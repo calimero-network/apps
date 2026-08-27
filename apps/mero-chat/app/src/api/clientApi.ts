@@ -28,7 +28,6 @@ export interface ChannelInfo {
   channel_type: string;
   created_at: number;
   created_by: string;
-  created_by_username: string;
   links_allowed: boolean;
   read_only: boolean;
   unread_count: number;
@@ -59,6 +58,33 @@ export interface GetMessagesProps {
   search_term?: string;
 }
 
+/**
+ * A window of history addressed from the START of the channel.
+ *
+ * Distinct from `GetMessagesProps`, which counts back from the end: an offset
+ * from the end names a different message every time something is appended, so
+ * it cannot be stored and reused. `start` is an absolute position and does not
+ * move, which is what lets a client persist where it got to and resume there
+ * after being closed.
+ */
+export interface GetMessagesFromProps {
+  group: Channel;
+  start: number;
+  limit?: number;
+  is_dm?: boolean;
+  dm_identity?: UserId;
+  refetch_context_id?: string;
+  refetch_identity?: UserId;
+}
+
+export interface GetMessageCountProps {
+  group: Channel;
+  is_dm?: boolean;
+  dm_identity?: UserId;
+  refetch_context_id?: string;
+  refetch_identity?: UserId;
+}
+
 export interface SearchAllMessagesProps {
   search_term: string;
   limit?: number;
@@ -70,7 +96,6 @@ export interface SearchAllMessagesProps {
 export interface Message {
   id: string;
   sender: string;
-  sender_username: string;
   text: string;
   timestamp: number;
   deleted?: boolean;
@@ -86,6 +111,15 @@ export interface Message {
 
 export interface MessageWithReactions extends Message {
   reactions: HashMap<string, UserId[]>;
+  /**
+   * Absolute position in the channel, counted from the first message.
+   *
+   * Stable: appends land after it and a delete keeps its slot, so an index
+   * names the same message whenever it is asked for. That is what makes it
+   * usable as a persisted cursor — unlike an offset from the end, which shifts
+   * every time someone speaks.
+   */
+  index: number;
 }
 
 export interface AttachmentRequest {
@@ -159,7 +193,6 @@ export interface CreateDmProps {
 export interface UpdateReactionProps {
   messageId: string;
   emoji: string;
-  userId: UserId;
   add: boolean;
   is_dm?: boolean;
   dm_identity?: UserId;
@@ -260,6 +293,8 @@ export enum ClientMethod {
   JOIN_CHANNEL = "join_channel",
   LEAVE_CHANNEL = "leave_channel",
   GET_MESSAGES = "get_messages",
+  GET_MESSAGES_FROM = "get_messages_from",
+  GET_MESSAGE_COUNT = "get_message_count",
   SEND_MESSAGE = "send_message",
   GET_DMS = "get_dms",
   GET_CHAT_MEMBERS = "get_chat_members",
@@ -336,6 +371,9 @@ export interface ClientApi {
   joinChannel(props: JoinChannelProps): ApiResponse<string>;
   leaveChannel(props: LeaveChannelProps): ApiResponse<string>;
   getMessages(props: GetMessagesProps): ApiResponse<FullMessageResponse>;
+  getMessagesFrom(props: GetMessagesFromProps): ApiResponse<FullMessageResponse>;
+  /** Channel length. One row read — no message bodies cross the wire. */
+  getMessageCount(props: GetMessageCountProps): ApiResponse<number>;
   searchAllMessages(props: SearchAllMessagesProps): ApiResponse<FullMessageResponse>;
   sendMessage(props: SendMessageProps): ApiResponse<Message>;
   getDms(): ApiResponse<DMChatInfo[]>;

@@ -9,6 +9,7 @@ import {
   type LegacyFetchContextIdentitiesResponse as FetchContextIdentitiesResponse,
 } from "../api/meroJsClient";
 import { getGroupMemberIdentity, setGroupMemberIdentity } from "../constants/config";
+import { resolveDmCounterpart } from "../utils/dmDiscovery";
 import { resolveSharedDmDiscovery } from "../utils/dmContext";
 import { isSelfSender } from "../utils/selfIdentity";
 
@@ -76,7 +77,11 @@ export function useDMs() {
       // (restricted visibility, 2 members) with one context inside whose
       // info.context_type === "Dm". Walk subgroups → contexts and filter
       // by type in the enrich pass below.
-      const contextEntries: { contextId: string; alias?: string }[] = [];
+      const contextEntries: {
+        contextId: string;
+        alias?: string;
+        subgroupMembers?: string[];
+      }[] = [];
 
       const subgroupsResp = await groupApi.listSubgroups(groupId);
       if (subgroupsResp.error) {
@@ -86,6 +91,23 @@ export function useDMs() {
 
       await Promise.all(
         subgroups.map(async (sg) => {
+          // Who is in this subgroup — the discovery that does not depend on
+          // anything being named.
+          //
+          // The alias-based paths below cannot be relied on: a DM subgroup was
+          // named `DM_CONTEXT_<accountA>_<accountB>`, 140 bytes into a field
+          // capped at 64, so the name was dropped on write and neither side had
+          // one to parse. Observed against two live nodes, where the invitee's
+          // context entry arrives as `{ contextId }` and nothing else.
+          //
+          // Membership is already access-controlled — listing a restricted
+          // subgroup's members returns 403 to non-members — so an error here is
+          // not a failure to handle, it is the answer "this one is not mine".
+          const membersResp = await groupApi.listMembers(sg.groupId);
+          const subgroupMembers = (membersResp.data?.members ?? [])
+            .map((member) => member.identity)
+            .filter(Boolean);
+
           const ctxResp = await groupApi.listGroupContexts(sg.groupId);
           if (ctxResp.data) {
             // Carry the subgroup alias as a fallback: the server may not echo
@@ -95,6 +117,7 @@ export function useDMs() {
               ...ctxResp.data.map((entry) => ({
                 ...entry,
                 alias: entry.alias ?? sg.alias,
+                subgroupMembers,
               })),
             );
           } else if (ctxResp.error) {
@@ -114,6 +137,13 @@ export function useDMs() {
           const { contextId: ctxId, alias } = entry;
           const discovery = currentMemberIdentity
             ? resolveSharedDmDiscovery(entry, currentMemberIdentity)
+            : null;
+
+          // Membership is the authority; the alias and metadata paths above are
+          // kept only because they answer without a second round trip when the
+          // data happens to be there.
+          const counterpartFromMembers = currentMemberIdentity
+            ? resolveDmCounterpart(entry.subgroupMembers ?? [], currentMemberIdentity)
             : null;
 
           let joinedIdentity: string | undefined;
@@ -145,7 +175,8 @@ export function useDMs() {
           }
 
           const shouldInclude =
-            info?.context_type === "Dm" || (!info && Boolean(discovery));
+            info?.context_type === "Dm" ||
+            (!info && Boolean(discovery || counterpartFromMembers));
           if (!shouldInclude) {
             return null;
           }
@@ -155,7 +186,8 @@ export function useDMs() {
           // group member identity. Kept separate because otherIdentity gets
           // overwritten by the context executor key when get_profiles succeeds,
           // making it useless for membership/dedup lookups.
-          const namespaceMemberIdentity = discovery?.otherIdentity || "";
+          const namespaceMemberIdentity =
+            discovery?.otherIdentity || counterpartFromMembers || "";
           let otherIdentity = namespaceMemberIdentity;
           let otherAlias = otherIdentity
             ? memberAliasByIdentity.get(otherIdentity) || ""

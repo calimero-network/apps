@@ -9,6 +9,15 @@ interface Message {
 
 interface UseMessageLoaderProps<T extends Message> {
   chatId: string;
+  /**
+   * Bump to reload the initial window without changing channel.
+   *
+   * The load is keyed on `chatId`, which is right for switching channels and
+   * useless for "reload THIS channel from the newest end" — the case that
+   * exists because a permalink leaves the view parked in the middle of the
+   * history with no way forward.
+   */
+  reloadKey?: number;
   loadInitialMessages: () => Promise<{ messages: T[]; totalCount: number }>;
   loadPrevMessages: (
     id: string,
@@ -30,6 +39,7 @@ interface UseMessageLoaderReturn<T extends Message> {
 
 export function useMessageLoader<T extends Message>({
   chatId,
+  reloadKey = 0,
   loadInitialMessages,
   loadPrevMessages,
   store,
@@ -145,7 +155,7 @@ export function useMessageLoader<T extends Message>({
       setHasMore(false);
       fetchInitialMessages();
     }
-  }, [chatId, fetchInitialMessages, store]);
+  }, [chatId, reloadKey, fetchInitialMessages, store]);
 
   return {
     messages,

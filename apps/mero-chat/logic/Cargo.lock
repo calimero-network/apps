@@ -276,6 +276,7 @@ dependencies = [
  "calimero-storage",
  "calimero-storage-macros",
  "calimero-wasm-abi",
+ "sha2",
  "thiserror 1.0.69",
 ]
 

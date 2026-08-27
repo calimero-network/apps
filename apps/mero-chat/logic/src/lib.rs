@@ -21,8 +21,53 @@ type ThreadVec = AuthoredVector<Message>;
 
 /// Build the storage key for a user's per-channel draft.
 /// Format: "<base58_user_id>:<channel_name>"
+/// Longest accepted search term.
+///
+/// A search walks every message and every thread, lowercasing the term once and
+/// running a substring match per message — so the work is (messages x term
+/// length) and the caller chooses the second factor. Without a bound, one
+/// request with a multi-megabyte term is a cheap way to make a node chew
+/// through the whole channel, and the runtime charges per wasm operator with no
+/// read limit to stop it.
+///
+/// 256 is well past any real query; the point is that the ceiling exists, not
+/// where exactly it sits.
+const MAX_SEARCH_TERM_LEN: usize = 256;
+
 fn draft_key(user_base58: &str, channel: &str) -> String {
     format!("{user_base58}:{channel}")
+}
+
+/// Unsent drafts — node-local, never synced.
+///
+/// These used to live on the replicated state as
+/// `UnorderedMap<String, LwwRegister<String>>`, keyed `"{user}:{channel}"`, with
+/// a comment calling them "effectively private — each user only reads/writes
+/// their own keys". That was true of the API and false of the storage: the keys
+/// gate what the CONTRACT will hand back, while the bytes themselves replicated
+/// to every member of the channel and sat decrypted in their local store. Half
+/// a sentence typed and abandoned was readable by everyone it was about.
+///
+/// `#[app::private]` puts them in the node-local namespace instead, so they are
+/// never part of the synced tree at all — the gate stops being a convention the
+/// contract has to keep and becomes a property of where the data lives.
+///
+/// The value is a plain `String`, not an `LwwRegister`: private storage has a
+/// single writer, so there is no concurrent edit to reconcile. (The macro
+/// rejects CRDT types here for exactly that reason.)
+#[derive(BorshDeserialize, BorshSerialize, Debug)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[app::private]
+pub struct Drafts {
+    entries: UnorderedMap<String, String>,
+}
+
+impl Default for Drafts {
+    fn default() -> Self {
+        Self {
+            entries: UnorderedMap::new(),
+        }
+    }
 }
 
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone, AbiType)]
@@ -148,7 +193,6 @@ const ROLE_MOD: &str = "mod";
 pub struct Message {
     pub timestamp: LwwRegister<u64>,
     pub sender: UserId,
-    pub sender_username: LwwRegister<String>,
     pub mentions: UnorderedSet<UserId>,
     pub mentions_usernames: Vector<LwwRegister<String>>,
     pub files: Vector<Attachment>,
@@ -162,7 +206,6 @@ pub struct Message {
 impl MergeableTrait for Message {
     fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
         MergeableTrait::merge(&mut self.timestamp, &other.timestamp)?;
-        MergeableTrait::merge(&mut self.sender_username, &other.sender_username)?;
         MergeableTrait::merge(&mut self.id, &other.id)?;
         MergeableTrait::merge(&mut self.text, &other.text)?;
         MergeableTrait::merge(&mut self.mentions, &other.mentions)?;
@@ -198,10 +241,6 @@ impl RekeyTarget for Message {
         calimero_storage::rekey_field_if_supported!(
             &mut self.timestamp,
             field_child_id(parent_id, "timestamp")
-        );
-        calimero_storage::rekey_field_if_supported!(
-            &mut self.sender_username,
-            field_child_id(parent_id, "sender_username")
         );
         calimero_storage::rekey_field_if_supported!(
             &mut self.mentions,
@@ -250,7 +289,6 @@ impl Clone for Message {
         Message {
             timestamp: self.timestamp.clone(),
             sender: self.sender,
-            sender_username: self.sender_username.clone(),
             mentions: {
                 let mut new_set = UnorderedSet::new();
                 if let Ok(iter) = self.mentions.iter() {
@@ -301,10 +339,9 @@ impl Serialize for Message {
         S: calimero_sdk::serde::Serializer,
     {
         use calimero_sdk::serde::ser::SerializeStruct;
-        let mut state = serializer.serialize_struct("Message", 11)?;
+        let mut state = serializer.serialize_struct("Message", 10)?;
         state.serialize_field("timestamp", &*self.timestamp)?;
         state.serialize_field("sender", &self.sender)?;
-        state.serialize_field("sender_username", self.sender_username.get())?;
 
         let mentions_vec: Vec<UserId> = if let Ok(iter) = self.mentions.iter() {
             iter.collect()
@@ -336,9 +373,19 @@ impl Serialize for Message {
 #[serde(crate = "calimero_sdk::serde")]
 #[borsh(crate = "calimero_sdk::borsh")]
 pub struct MessageWithReactions {
+    /// Position in the channel's append-only vector.
+    ///
+    /// A STABLE cursor, and the reason clients can page and resume without
+    /// gaps: appends land at the end and never renumber what came before, and
+    /// a delete keeps its slot (the text is blanked, the entry stays). So an
+    /// index a client stored two hours ago still names the same message.
+    ///
+    /// Counting a window from the END, which `get_messages` does, has no such
+    /// property: every append shifts it and a client paging that way re-reads
+    /// or skips messages. Use `get_messages_from` for anything that resumes.
+    pub index: u64,
     pub timestamp: u64,
     pub sender: UserId,
-    pub sender_username: String,
     pub mentions: Vec<UserId>,
     pub mentions_usernames: Vec<String>,
     pub files: Vec<AttachmentPublic>,
@@ -346,7 +393,7 @@ pub struct MessageWithReactions {
     pub id: MessageId,
     pub text: String,
     pub edited_on: Option<u64>,
-    pub reactions: Option<HashMap<String, Vec<String>>>,
+    pub reactions: Option<HashMap<String, Vec<UserId>>>,
     pub deleted: Option<bool>,
     pub thread_count: u32,
     pub thread_last_timestamp: u64,
@@ -464,7 +511,7 @@ pub struct MeroChat {
     creator: LwwRegister<String>,
     messages: AuthoredVector<Message>,
     threads: UnorderedMap<MessageId, ThreadVec>,
-    reactions: UnorderedMap<MessageId, UnorderedMap<String, UnorderedSet<String>>>,
+    reactions: UnorderedMap<MessageId, UnorderedMap<String, UnorderedSet<UserId>>>,
     profiles: AuthoredMap<UserId, StoredProfile>,
     /// Per-context moderation roles, backed by a writer-set-guarded registry.
     /// The admin tier IS the writer set, so a non-admin's forged `grant`/
@@ -486,9 +533,10 @@ pub struct MeroChat {
     /// Written by delete_message regardless of AuthoredVector ownership, so
     /// admins/mods can delete messages they didn't author.
     deleted_messages: UnorderedSet<String>,
-    /// Per-user per-channel draft text. Key: "{base58_user_id}:{channel_name}".
-    /// Effectively private — each user only reads/writes their own keys.
-    drafts: UnorderedMap<String, LwwRegister<String>>,
+    // Drafts are NOT here: they are node-local, in `Drafts`. They lived on this
+    // synced state until it was noticed that "each user only reads/writes their
+    // own keys" describes the API, not the storage — the bytes replicated to
+    // everyone regardless.
 }
 
 #[app::logic]
@@ -537,7 +585,6 @@ impl MeroChat {
             banned: UnorderedMap::new(),
             read_receipts: UnorderedMap::new(),
             deleted_messages: UnorderedSet::new(),
-            drafts: UnorderedMap::new(),
         }
     }
 
@@ -761,10 +808,12 @@ impl MeroChat {
     pub fn save_draft(&mut self, channel: String, text: String) -> app::Result<()> {
         self.require_not_banned()?;
         let key = draft_key(&Self::executor_id().to_string(), &channel);
+        let mut drafts = Drafts::private_load_or_default()?;
+        let mut drafts = drafts.as_mut();
         if text.is_empty() {
-            let _ = self.drafts.remove(&key);
+            let _ = drafts.entries.remove(&key)?;
         } else {
-            let _ = self.drafts.insert(key, LwwRegister::new(text));
+            let _ = drafts.entries.insert(key, text)?;
         }
         Ok(())
     }
@@ -773,11 +822,15 @@ impl MeroChat {
     /// string if none exists.
     pub fn get_draft(&self, channel: String) -> String {
         let key = draft_key(&Self::executor_id().to_string(), &channel);
-        self.drafts
+        let Ok(drafts) = Drafts::private_load_or_default() else {
+            return String::new();
+        };
+        drafts
+            .entries
             .get(&key)
             .ok()
             .flatten()
-            .map(|r| r.get().clone())
+            .map(|text| text.clone())
             .unwrap_or_default()
     }
 
@@ -785,7 +838,8 @@ impl MeroChat {
     pub fn delete_draft(&mut self, channel: String) -> app::Result<()> {
         self.require_not_banned()?;
         let key = draft_key(&Self::executor_id().to_string(), &channel);
-        let _ = self.drafts.remove(&key);
+        let mut drafts = Drafts::private_load_or_default()?;
+        let _ = drafts.as_mut().entries.remove(&key)?;
         Ok(())
     }
 
@@ -964,35 +1018,59 @@ impl MeroChat {
         UserId::new(env::account_id())
     }
 
+    /// A message's id: a digest of what identifies it, never a copy of it.
+    ///
+    /// This function used to build a buffer called `hash_input` and hex-encode
+    /// it WITHOUT hashing, so the id was
+    /// `hex(account ‖ plaintext ‖ timestamp ‖ counter)`. The message text came
+    /// back out of it verbatim, and the id grew with the message — a 37-char
+    /// message produced a 184-char id.
+    ///
+    /// That is not a cosmetic defect. Ids are the app's only handle on a
+    /// message: they key `threads`, `reactions` and `deleted_messages`, they
+    /// travel in events, and they are what any "link to this message" feature
+    /// would put in a URL — where the plaintext would then reach every client,
+    /// proxy log, scanner and chat history that touched the link.
+    ///
+    /// The digest covers the same four fields, so ids stay unique for the same
+    /// reasons they were before: the counter separates two identical messages
+    /// sent by the same account in the same millisecond.
     fn get_message_id(
         &self,
         account: &UserId,
         message: &str,
         timestamp: u64,
     ) -> MessageId {
-        let mut hash_input = Vec::new();
-        hash_input.extend_from_slice(account.as_ref());
-        hash_input.extend_from_slice(message.as_bytes());
-        hash_input.extend_from_slice(&timestamp.to_be_bytes());
+        use sha2::{Digest, Sha256};
 
         let message_counter = self.messages.len().unwrap_or(0) as u64 + 1;
-        hash_input.extend_from_slice(&message_counter.to_be_bytes());
 
-        let mut s = MessageId::with_capacity(hash_input.len() * 2);
-        for &b in &hash_input {
+        let mut hasher = Sha256::new();
+        hasher.update(account.as_ref());
+        hasher.update(message.as_bytes());
+        hasher.update(timestamp.to_be_bytes());
+        hasher.update(message_counter.to_be_bytes());
+        let digest = hasher.finalize();
+
+        let mut s = MessageId::with_capacity(digest.len() * 2);
+        for &b in &digest {
             write!(&mut s, "{:02x}", b).unwrap();
         }
+        // The timestamp suffix is kept: it is already public in the message it
+        // names, and it keeps ids roughly time-ordered for debugging.
         format!("{}_{}", s, timestamp)
     }
 
     fn message_matches_search(message: &Message, search_term: Option<&str>) -> bool {
         match search_term {
             Some(term) => {
-                let message_text = message.text.get();
-                if message_text.to_lowercase().contains(term) {
-                    return true;
-                }
-                message.sender_username.get().to_lowercase().contains(term)
+                // Text only. Sender names are namespace member metadata now,
+                // not message state, so the contract has nothing to match a
+                // name against. Searching by sender belongs on the client,
+                // which can resolve accounts to their CURRENT names — and get
+                // the right answer after a rename, which matching a stamped
+                // string never could.
+                message.text.get().to_lowercase().contains(term)
             }
             None => true,
         }
@@ -1005,17 +1083,11 @@ impl MeroChat {
         mentions_usernames: Vec<String>,
         parent_message: Option<MessageId>,
         timestamp: u64,
-        sender_username: String,
         files: Option<Vec<AttachmentInput>>,
         images: Option<Vec<AttachmentInput>>,
     ) -> app::Result<Message> {
         self.require_not_banned()?;
         let executor_id = Self::executor_id();
-
-        let sender_username = match self.profiles.get(&executor_id) {
-            Ok(Some(profile)) => profile.username.get().clone(),
-            _ => sender_username,
-        };
 
         let message_id = self.get_message_id(&executor_id, &message, timestamp);
         let current_context = env::context_id();
@@ -1035,7 +1107,6 @@ impl MeroChat {
         let msg = Message {
             timestamp: LwwRegister::new(timestamp),
             sender: executor_id,
-            sender_username: LwwRegister::new(sender_username),
             mentions: mentions_set,
             mentions_usernames: mentions_usernames_vec,
             files: files_vector,
@@ -1072,6 +1143,14 @@ impl MeroChat {
         offset: Option<usize>,
         search_term: Option<String>,
     ) -> app::Result<FullMessageResponse> {
+        if let Some(term) = &search_term {
+            if term.len() > MAX_SEARCH_TERM_LEN {
+                app::bail!(
+                    "Search term too long: {} characters, limit is {MAX_SEARCH_TERM_LEN}",
+                    term.len()
+                );
+            }
+        }
         let normalized_search = search_term.map(|term| term.to_lowercase());
 
         if let Some(parent_id) = parent_message {
@@ -1110,12 +1189,80 @@ impl MeroChat {
         Ok(Self::paginate(filtered, limit, offset))
     }
 
+    /// Messages by ABSOLUTE position, ascending — the resumable read.
+    ///
+    /// `get_messages` counts its window from the END, so every append shifts
+    /// it: a client that stored an offset and came back later re-reads or skips
+    /// messages, and the gap is silent. Indices from the START do not move,
+    /// because appends land after them and a delete keeps its slot. That makes
+    /// `start` a cursor a client can persist across sessions.
+    ///
+    /// Two uses, both needed for a chat that survives being closed:
+    ///
+    /// - **Catch up.** A client holding everything through index `n` asks for
+    ///   `n + 1` onward and gets exactly what it missed, however long it was
+    ///   away and whether or not it was subscribed at the time. Live events are
+    ///   an optimisation on top of this, never the only way to learn.
+    /// - **Backfill.** Scrolling up asks for a window ending where the local
+    ///   copy begins.
+    ///
+    /// `total_count` is the channel's length, so a client can tell how far
+    /// behind it is before fetching anything.
+    pub fn get_messages_from(
+        &self,
+        start: u64,
+        limit: Option<usize>,
+    ) -> app::Result<FullMessageResponse> {
+        let total = self.messages.len().unwrap_or(0);
+        let start_idx = start as usize;
+
+        if start_idx >= total {
+            return Ok(FullMessageResponse {
+                total_count: total as u32,
+                messages: Vec::new(),
+                start_position: start as u32,
+            });
+        }
+
+        let end_idx = limit
+            .map_or(total, |l| start_idx.saturating_add(l))
+            .min(total);
+
+        let mut page = Vec::with_capacity(end_idx - start_idx);
+        for idx in start_idx..end_idx {
+            if let Ok(Some(message)) = self.messages.get(idx) {
+                page.push(self.message_to_public(&message, true, idx as u64));
+            }
+        }
+
+        Ok(FullMessageResponse {
+            total_count: total as u32,
+            messages: page,
+            start_position: start as u32,
+        })
+    }
+
+    /// How many messages the channel holds, without reading any of them.
+    ///
+    /// One row read — the child trie maintains the count. A client compares it
+    /// with the highest index it has stored to know whether it is behind, and
+    /// by how much, before deciding what to fetch.
+    pub fn get_message_count(&self) -> app::Result<u64> {
+        Ok(self.messages.len().unwrap_or(0) as u64)
+    }
+
     pub fn search_all_messages(
         &self,
         search_term: String,
         limit: Option<usize>,
         offset: Option<usize>,
     ) -> app::Result<FullMessageResponse> {
+        if search_term.len() > MAX_SEARCH_TERM_LEN {
+            app::bail!(
+                "Search term too long: {} characters, limit is {MAX_SEARCH_TERM_LEN}",
+                search_term.len()
+            );
+        }
         let normalized = search_term.to_lowercase();
         let term = normalized.as_str();
 
@@ -1144,11 +1291,11 @@ impl MeroChat {
     ) -> Vec<MessageWithReactions> {
         let mut result = Vec::new();
         if let Ok(iter) = messages.iter() {
-            for message in iter {
+            for (index, message) in iter.enumerate() {
                 if !Self::message_matches_search(&message, search_term) {
                     continue;
                 }
-                result.push(self.message_to_public(&message, include_threads));
+                result.push(self.message_to_public(&message, include_threads, index as u64));
             }
         }
         result
@@ -1158,7 +1305,12 @@ impl MeroChat {
     ///
     /// Split out of the scan above so the scanning path and the windowed path
     /// below cannot drift in what they return.
-    fn message_to_public(&self, message: &Message, include_threads: bool) -> MessageWithReactions {
+    fn message_to_public(
+        &self,
+        message: &Message,
+        include_threads: bool,
+        index: u64,
+    ) -> MessageWithReactions {
         let reactions = self.get_reactions_for_message(message.id.get());
 
         let (thread_count, thread_last_timestamp) = if include_threads {
@@ -1189,9 +1341,9 @@ impl MeroChat {
         };
 
         MessageWithReactions {
+            index,
             timestamp: *message.timestamp,
             sender: message.sender,
-            sender_username: message.sender_username.get().clone(),
             id: msg_id,
             text,
             mentions: mentions_vec,
@@ -1258,7 +1410,7 @@ impl MeroChat {
         let mut page = Vec::with_capacity(end_idx - start_idx);
         for idx in start_idx..end_idx {
             if let Ok(Some(message)) = messages.get(idx) {
-                page.push(self.message_to_public(&message, include_threads));
+                page.push(self.message_to_public(&message, include_threads, idx as u64));
             }
         }
 
@@ -1269,10 +1421,14 @@ impl MeroChat {
         }
     }
 
+    /// Emoji -> the ACCOUNTS that reacted with it.
+    ///
+    /// Accounts, not names: the client resolves them, so a rename is reflected
+    /// on reactions already given rather than only on new ones.
     fn get_reactions_for_message(
         &self,
         message_id: &str,
-    ) -> Option<HashMap<String, Vec<String>>> {
+    ) -> Option<HashMap<String, Vec<UserId>>> {
         match self.reactions.get(message_id) {
             Ok(Some(reactions)) => {
                 let mut hashmap = HashMap::new();
@@ -1351,44 +1507,31 @@ impl MeroChat {
 
     /// Add or remove the CALLER's reaction to a message.
     ///
-    /// `user_supplied` is ignored — see below. It remains in the signature so
-    /// existing clients keep working.
+    /// Reactions are keyed by ACCOUNT. They used to be keyed by display name,
+    /// which is wrong in both directions: renaming split your own reaction into
+    /// two, and two members who chose the same name shared one — each able to
+    /// remove the other's. A name is also caller-supplied, so it was forgeable
+    /// through the plain public ABI: anyone could react as someone else, or
+    /// pass `add: false` to take theirs away.
+    ///
+    /// The client resolves accounts to names for display.
     pub fn update_reaction(
         &mut self,
         message_id: MessageId,
         emoji: String,
-        #[allow(unused_variables)] user: String,
         add: bool,
     ) -> app::Result<String> {
-        let user_supplied = user;
         self.require_not_banned()?;
         let action = if add { "added" } else { "removed" };
 
-        // `user` arrives from the caller and is therefore forgeable — not by a
-        // crafted delta, but through the plain public ABI: anyone could call
-        // this with someone else's name and attribute a reaction to them, or
-        // pass add:false to remove theirs. Derive the identity from the
-        // executor instead, exactly as `send_message` does for
-        // `sender_username`, so the stored value is the caller's own.
-        //
-        // The parameter is kept for ABI compatibility and deliberately ignored.
         let executor_id = Self::executor_id();
-        let user = match self.profiles.get(&executor_id) {
-            Ok(Some(profile)) => profile.username.get().clone(),
-            // No profile yet: fall back to the caller's account id rather than
-            // to the supplied string. It is not a display name, but it is
-            // unforgeable, and a reaction attributed to the wrong person is
-            // worse than one attributed to a raw id.
-            _ => executor_id.to_string(),
-        };
-        let _ = user_supplied;
 
         let mut reactions_entry = self.reactions.entry(message_id.clone())?.or_insert(UnorderedMap::new())?;
         let mut emoji_entry = reactions_entry.entry(emoji)?.or_insert(UnorderedSet::new())?;
         if add {
-            let _ = emoji_entry.insert(user);
+            let _ = emoji_entry.insert(executor_id);
         } else {
-            let _ = emoji_entry.remove(&user);
+            let _ = emoji_entry.remove(&executor_id);
         }
         drop(emoji_entry);
         drop(reactions_entry);
@@ -1556,7 +1699,7 @@ mod tests {
     use calimero_sdk::testing::TestHost;
     use calimero_sdk::BlobId;
 
-    use super::{draft_key, ContextType, MeroChat, Role, UserId};
+    use super::{draft_key, ContextType, MeroChat, Role, UserId, MAX_SEARCH_TERM_LEN};
 
     // ── AccessControl-backed roles (TestHost) ──────────────────────────────────
 
@@ -1631,36 +1774,378 @@ mod tests {
         assert!(r.is_err());
     }
 
+    /// A reaction records the ACCOUNT that made it, and nothing the caller says.
+    ///
+    /// `update_reaction` used to take the reacting user as a caller-supplied
+    /// string, which made impersonation reachable through the plain public ABI:
+    /// call it with someone else's name to react as them, or with `add: false`
+    /// to remove theirs. The parameter is gone; the executor is the only
+    /// source.
     #[test]
-    fn a_reaction_is_attributed_to_the_caller_not_the_argument() {
-        // `update_reaction` took the reacting user as a caller-supplied string
-        // and never compared it to the executor. That made impersonation
-        // reachable through the PLAIN PUBLIC ABI — no forged delta, no modified
-        // client: call it with someone else's name to add a reaction as them,
-        // or with add:false to remove theirs.
+    fn a_reaction_records_the_caller_account() {
         let mut app = new_chat();
 
-        // MODR reacts, but claims to be USER.
-        let claimed = UserId::new(USER).to_string();
         app.call_as_account(MODR, MODR, |s| {
-            s.update_reaction("msg-1".to_owned(), "\u{1f44d}".to_owned(), claimed.clone(), true)
+            s.update_reaction("msg-1".to_owned(), "\u{1f44d}".to_owned(), true)
         })
         .unwrap();
 
         let reactors = app
             .view(|s| s.get_reactions_for_message(&"msg-1".to_owned()))
             .unwrap_or_default();
-        let thumbs: Vec<String> = reactors.get("\u{1f44d}").cloned().unwrap_or_default();
+        let thumbs = reactors.get("\u{1f44d}").cloned().unwrap_or_default();
+
+        assert_eq!(thumbs, vec![UserId::new(MODR)], "the reactor is the caller");
+    }
+
+    /// Two members with the SAME display name must hold separate reactions.
+    ///
+    /// Keying by name meant they shared one slot — each able to remove the
+    /// other's — and that a rename split a member's own reaction in two.
+    #[test]
+    fn same_named_members_do_not_share_a_reaction() {
+        let mut app = new_chat();
+
+        let name = "Xabi".to_owned();
+        app.call_as_account(MODR, MODR, |s| s.set_profile(name.clone(), None))
+            .unwrap();
+        app.call_as_account(USER, USER, |s| s.set_profile(name.clone(), None))
+            .unwrap();
+
+        app.call_as_account(MODR, MODR, |s| {
+            s.update_reaction("msg-1".to_owned(), "\u{1f44d}".to_owned(), true)
+        })
+        .unwrap();
+        app.call_as_account(USER, USER, |s| {
+            s.update_reaction("msg-1".to_owned(), "\u{1f44d}".to_owned(), true)
+        })
+        .unwrap();
+
+        let reactors = app
+            .view(|s| s.get_reactions_for_message(&"msg-1".to_owned()))
+            .unwrap_or_default();
+        let mut thumbs = reactors.get("\u{1f44d}").cloned().unwrap_or_default();
+        thumbs.sort();
+        let mut want = vec![UserId::new(MODR), UserId::new(USER)];
+        want.sort();
+
+        assert_eq!(thumbs, want, "each account holds its own reaction");
+
+        // And one removing does not take the other's with it.
+        app.call_as_account(MODR, MODR, |s| {
+            s.update_reaction("msg-1".to_owned(), "\u{1f44d}".to_owned(), false)
+        })
+        .unwrap();
+        let after = app
+            .view(|s| s.get_reactions_for_message(&"msg-1".to_owned()))
+            .unwrap_or_default();
+        assert_eq!(
+            after.get("\u{1f44d}").cloned().unwrap_or_default(),
+            vec![UserId::new(USER)],
+        );
+    }
+
+    /// D7: a search term has a ceiling.
+    ///
+    /// Search walks every message in the channel and every thread, matching the
+    /// term against each — so the cost is (messages x term length) and the
+    /// caller picks the second factor. The runtime meters wasm operators and
+    /// has no read limit, so an unbounded term is a cheap way to make a node
+    /// grind through the whole channel on request.
+    #[test]
+    fn an_oversized_search_term_is_refused() {
+        let mut app = new_chat();
+        app.call(|s| {
+            s.send_message("hello".to_owned(), Vec::new(), Vec::new(), None, 1, None, None)
+        })
+        .unwrap();
+
+        let huge = "x".repeat(MAX_SEARCH_TERM_LEN + 1);
 
         assert!(
-            !thumbs.contains(&claimed),
-            "the caller must not be able to react as another user; got {thumbs:?}"
+            app.view(|s| s.search_all_messages(huge.clone(), None, None)).is_err(),
+            "search_all_messages accepted an oversized term",
         );
+        assert!(
+            app.view(|s| s.get_messages(None, None, None, Some(huge))).is_err(),
+            "get_messages accepted an oversized search term",
+        );
+    }
+
+    /// The bound must not reject terms anyone would actually type.
+    #[test]
+    fn a_normal_search_term_still_works() {
+        let mut app = new_chat();
+        app.call(|s| {
+            s.send_message(
+                "the merger closes friday".to_owned(),
+                Vec::new(),
+                Vec::new(),
+                None,
+                1,
+                None,
+                None,
+            )
+        })
+        .unwrap();
+
+        let found = app
+            .view(|s| s.search_all_messages("merger".to_owned(), None, None))
+            .expect("search");
+        assert_eq!(found.messages.len(), 1);
+
+        // Exactly at the limit is accepted; the ceiling is inclusive.
+        let at_limit = "y".repeat(MAX_SEARCH_TERM_LEN);
+        assert!(app
+            .view(|s| s.search_all_messages(at_limit, None, None))
+            .is_ok());
+    }
+
+    /// S2: a draft belongs to its author's node, not to the channel.
+    ///
+    /// Drafts used to sit on the replicated state, so an unsent message
+    /// replicated in the clear to every member of the channel. The API only
+    /// ever returned you your own — which is what made it look private — but
+    /// the bytes were in everyone's local store either way.
+    ///
+    /// Round-tripping through the private API is the observable part of the
+    /// fix; that the data is node-local is a property of `#[app::private]`.
+    #[test]
+    fn a_draft_round_trips_for_its_author() {
+        let mut app = new_chat();
+
+        app.call(|s| s.save_draft("general".to_owned(), "half a thought".to_owned()))
+            .unwrap();
         assert_eq!(
-            thumbs.len(),
-            1,
-            "exactly one reactor — the caller — should be recorded; got {thumbs:?}"
+            app.view(|s| s.get_draft("general".to_owned())),
+            "half a thought"
         );
+
+        // A different channel is a different draft, not the same one.
+        assert_eq!(app.view(|s| s.get_draft("random".to_owned())), "");
+
+        // Saving empty text clears it, which is how the composer signals
+        // "nothing left to keep".
+        app.call(|s| s.save_draft("general".to_owned(), String::new()))
+            .unwrap();
+        assert_eq!(app.view(|s| s.get_draft("general".to_owned())), "");
+    }
+
+    /// Deleting a draft removes it rather than blanking it.
+    #[test]
+    fn a_deleted_draft_is_gone() {
+        let mut app = new_chat();
+
+        app.call(|s| s.save_draft("general".to_owned(), "typing…".to_owned()))
+            .unwrap();
+        app.call(|s| s.delete_draft("general".to_owned())).unwrap();
+
+        assert_eq!(app.view(|s| s.get_draft("general".to_owned())), "");
+    }
+
+    /// S1: a message id must be a digest, not a transcript.
+    ///
+    /// The id used to be `hex(account ‖ plaintext ‖ …)` with no hashing at all,
+    /// so the message came straight back out of it. Ids travel in events, key
+    /// reactions and threads, and are exactly what a "link to this message"
+    /// would carry in a URL.
+    #[test]
+    fn a_message_id_does_not_contain_the_message() {
+        let mut app = new_chat();
+        let secret = "the merger closes friday, tell no one";
+
+        let message = app
+            .call(|s| {
+                s.send_message(
+                    secret.to_owned(),
+                    Vec::new(),
+                    Vec::new(),
+                    None,
+                    1,
+                    None,
+                    None,
+                )
+            })
+            .unwrap();
+
+        // Neither as text nor as the hex the old derivation produced.
+        assert!(!message.id.contains(secret));
+        let as_hex: String = secret.bytes().map(|b| format!("{b:02x}")).collect();
+        assert!(
+            !message.id.contains(&as_hex),
+            "id still carries the plaintext: {}",
+            message.id
+        );
+    }
+
+    /// The id's length must not track the message's.
+    ///
+    /// A length that grows with the message leaks how much was said even when
+    /// the words are hidden, and made ids unusable in a URL: a 500-character
+    /// message used to yield an id of about 1080 characters.
+    #[test]
+    fn message_id_length_does_not_grow_with_the_message() {
+        let mut app = new_chat();
+
+        let send = |app: &mut TestHost<MeroChat>, text: String, ts: u64| {
+            app.call(|s| s.send_message(text, Vec::new(), Vec::new(), None, ts, None, None))
+                .unwrap()
+                .id
+        };
+
+        let short = send(&mut app, "hi".to_owned(), 1);
+        let long = send(&mut app, "x".repeat(500), 2);
+
+        assert_eq!(short.len(), long.len());
+        // 64 hex characters of digest, an underscore, and the timestamp.
+        assert!(short.starts_with(&short[..64]));
+        assert_eq!(short[..64].len(), 64);
+    }
+
+    /// Hashing must not cost uniqueness: the same words twice are two messages.
+    #[test]
+    fn identical_messages_still_get_distinct_ids() {
+        let mut app = new_chat();
+
+        let send = |app: &mut TestHost<MeroChat>| {
+            app.call(|s| {
+                s.send_message(
+                    "same".to_owned(),
+                    Vec::new(),
+                    Vec::new(),
+                    None,
+                    7,
+                    None,
+                    None,
+                )
+            })
+            .unwrap()
+            .id
+        };
+
+        let first = send(&mut app);
+        let second = send(&mut app);
+
+        assert_ne!(first, second);
+    }
+
+    /// The property the whole resume story rests on: an index, once handed out,
+    /// keeps naming the same message however many messages arrive after it.
+    ///
+    /// If this stopped holding, a client returning after two hours would ask
+    /// for "everything after 42" and get the wrong messages — silently, with no
+    /// error and no gap it could detect.
+    #[test]
+    fn an_index_keeps_naming_the_same_message_as_the_channel_grows() {
+        let mut app = new_chat();
+
+        let send = |app: &mut TestHost<MeroChat>, n: u64| {
+            app.call(|s| {
+                s.send_message(
+                    format!("m{n}"),
+                    Vec::new(),
+                    Vec::new(),
+                    None,
+                    n,
+                    None,
+                    None,
+                )
+            })
+            .unwrap();
+        };
+
+        for n in 0..5 {
+            send(&mut app, n);
+        }
+
+        let before = app.view(|s| s.get_messages_from(2, Some(2))).unwrap();
+        let named: Vec<String> = before.messages.iter().map(|m| m.text.clone()).collect();
+        assert_eq!(named, vec!["m2", "m3"]);
+        assert_eq!(before.messages[0].index, 2);
+
+        // Twenty more arrive.
+        for n in 5..25 {
+            send(&mut app, n);
+        }
+
+        let after = app.view(|s| s.get_messages_from(2, Some(2))).unwrap();
+        let still: Vec<String> = after.messages.iter().map(|m| m.text.clone()).collect();
+        assert_eq!(
+            still, named,
+            "the same indices must still name the same messages after appends"
+        );
+        assert_eq!(after.total_count, 25);
+    }
+
+    /// Catching up asks for everything after the last index held, and gets
+    /// exactly that — no overlap to dedupe, no gap to detect.
+    #[test]
+    fn catching_up_from_the_last_index_returns_exactly_what_was_missed() {
+        let mut app = new_chat();
+        for n in 0..3 {
+            app.call(|s| {
+                s.send_message(
+                    format!("old{n}"),
+                    Vec::new(),
+                    Vec::new(),
+                    None,
+                    n,
+                    None,
+                    None,
+                )
+            })
+            .unwrap();
+        }
+
+        // The client goes away holding everything through index 2.
+        let held_through = app.view(|s| s.get_message_count()).unwrap() - 1;
+        assert_eq!(held_through, 2);
+
+        for n in 0..4 {
+            app.call(|s| {
+                s.send_message(
+                    format!("new{n}"),
+                    Vec::new(),
+                    Vec::new(),
+                    None,
+                    10 + n,
+                    None,
+                    None,
+                )
+            })
+            .unwrap();
+        }
+
+        let missed = app
+            .view(|s| s.get_messages_from(held_through + 1, None))
+            .unwrap();
+        let texts: Vec<String> = missed.messages.iter().map(|m| m.text.clone()).collect();
+        assert_eq!(texts, vec!["new0", "new1", "new2", "new3"]);
+        assert_eq!(missed.total_count, 7);
+    }
+
+    /// A cursor past the end is "you are up to date", not an error and not a
+    /// wrapped-around page.
+    #[test]
+    fn a_cursor_past_the_end_returns_nothing_and_the_current_length() {
+        let mut app = new_chat();
+        app.call(|s| {
+            s.send_message(
+                "only".to_owned(),
+                Vec::new(),
+                Vec::new(),
+                None,
+                1,
+                None,
+                None,
+            )
+        })
+        .unwrap();
+
+        let resp = app.view(|s| s.get_messages_from(99, Some(10))).unwrap();
+        assert!(resp.messages.is_empty());
+        assert_eq!(resp.total_count, 1);
+        assert_eq!(resp.start_position, 99);
     }
 
     /// The windowed read must be a pure optimisation: same page, same
@@ -1682,7 +2167,6 @@ mod tests {
                     Vec::new(),
                     None,
                     i as u64,
-                    "creator".to_owned(),
                     None,
                     None,
                 )

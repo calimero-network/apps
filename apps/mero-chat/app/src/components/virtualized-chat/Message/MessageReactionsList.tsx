@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import styled from "styled-components";
+import { useDisplayName } from "../../../repositories/names/useNames";
 import Avatar from "./Avatar";
 
 const OverlayContainer = styled.div`
@@ -241,6 +242,23 @@ const ShowMoreButton = styled.button`
   }
 `;
 
+/**
+ * One reactor row.
+ *
+ * Reactions store ACCOUNTS. Rendering the raw account is what the previous
+ * name-keyed storage hid; resolving it here means a rename is reflected on
+ * reactions already given, not only on new ones.
+ */
+function ReactorRow({ account }: { account: string }) {
+  const name = useDisplayName(account);
+  return (
+    <UserInfoContainer>
+      <Avatar size="sm" name={name} />
+      <NameContainer>{name}</NameContainer>
+    </UserInfoContainer>
+  );
+}
+
 const MessageReactionList: React.FC<{
   reactions: {
     reaction: string;
@@ -330,11 +348,8 @@ const MessageReactionList: React.FC<{
             <UsersList>
               {selected?.accounts && selected.accounts.length > 0 ? (
                 <>
-                  {displayedUsers?.map((account, id) => (
-                    <UserInfoContainer key={id}>
-                      <Avatar size="sm" name={account} />
-                      <NameContainer>{account}</NameContainer>
-                    </UserInfoContainer>
+                  {displayedUsers?.map((account) => (
+                    <ReactorRow key={account} account={account} />
                   ))}
                   {hasMoreUsers && (
                     <ShowMoreButton onClick={() => setShowAllUsers(!showAllUsers)}>

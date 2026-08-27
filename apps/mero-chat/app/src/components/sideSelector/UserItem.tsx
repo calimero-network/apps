@@ -4,6 +4,7 @@ import type { DMContextInfo } from "../../hooks/useDMs";
 import { IdentityAvatar } from "../IdentityAvatar";
 import ConfirmPopup from "../popups/ConfirmPopup";
 import { getDmDisplayName } from "../../utils/dmContext";
+import { useResolvedName } from "../../repositories/names/useNames";
 import type { ContextUnread } from "../../hooks/useUnreadCounts";
 import { usePresence } from "../../hooks/usePresence";
 
@@ -117,12 +118,21 @@ function UserItem({
   const otherIsOnline =
     isOnline(dm.otherIdentity) || (myContextKey ? hasOtherOnline(myContextKey) : false);
 
-  const displayName = getDmDisplayName({
-    otherUsername: dm.otherUsername,
-    otherAlias: dm.otherAlias,
-    otherIdentity: dm.otherIdentity,
-    contextId: dm.contextId,
-  });
+  // Resolve from the account. `getDmDisplayName` is only consulted while the
+  // repository has nothing yet — a DM opened before governance sync has
+  // delivered the member list still has the names captured at creation, and
+  // showing those beats showing a truncated account for a second.
+  const resolvedName = useResolvedName(
+    dm.otherIdentity || dm.namespaceMemberIdentity,
+  );
+  const displayName =
+    resolvedName ||
+    getDmDisplayName({
+      otherUsername: dm.otherUsername,
+      otherAlias: dm.otherAlias,
+      otherIdentity: dm.otherIdentity,
+      contextId: dm.contextId,
+    });
 
   const handleClick = useCallback(() => {
     if (!dm.isJoined) {

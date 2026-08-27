@@ -12,6 +12,9 @@ base64 = "0.23.0"
 borsh = "1.6.1"
 borsh-derive = "1.6.1"
 bs58 = "0.5.1"
+# Message ids are a digest, not a transcript — see `get_message_id`. Already in
+# the tree via the SDK, so this adds no code to the wasm.
+sha2 = { version = "0.10", default-features = false }
 # Pinned to a real release TAG — this does NOT track master, whatever the old
 # comment here said. Cargo.lock records which commit the tag resolved to, so a
 # bump is a deliberate `cargo update` reviewed as its own diff.

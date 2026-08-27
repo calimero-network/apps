@@ -1,5 +1,6 @@
 import { useMemo, useCallback } from "react";
 import { styled } from "styled-components";
+import { useDisplayName } from "../repositories/names/useNames";
 import type { CurbFile, CurbMessage, FileObject } from "../types/Common";
 import { IdentityAvatar } from "../components/IdentityAvatar";
 import RenderHtml from "../components/virtualized-chat/Message/RenderHtml";
@@ -133,7 +134,7 @@ export default function SearchResultMessage({
   message,
   contextId,
 }: SearchResultMessageProps) {
-  const displayName = message.senderUsername || message.sender;
+  const displayName = useDisplayName(message.sender);
   const timestampLabel = useMemo(
     () =>
       new Date(message.timestamp).toLocaleString(undefined, {

@@ -313,7 +313,6 @@ steps:
       mentions_usernames: []
       parent_message: null
       timestamp: 1751953010
-      sender_username: Alice
       files: null
       images: null
     outputs:
@@ -347,7 +346,6 @@ steps:
       mentions_usernames: []
       parent_message: null
       timestamp: 1751953011
-      sender_username: Bob
       files: null
       images: null
 
@@ -374,7 +372,6 @@ steps:
       mentions_usernames: []
       parent_message: null
       timestamp: 1751953012
-      sender_username: Carol
       files: null
       images: null
 
@@ -484,7 +481,6 @@ steps:
     args:
       message_id: "placeholder_id_for_reaction_test"
       emoji: "👍"
-      user: "Bob"
       add: true
     outputs:
       reaction_add: result
@@ -503,7 +499,6 @@ steps:
     args:
       message_id: "placeholder_id_for_reaction_test"
       emoji: "👍"
-      user: "Bob"
       add: false
     outputs:
       reaction_remove: result
@@ -570,7 +565,6 @@ steps:
       mentions_usernames: []
       parent_message: null
       timestamp: 1751953110
-      sender_username: Alice
       files: null
       images: null
 
@@ -596,7 +590,6 @@ steps:
       mentions_usernames: []
       parent_message: null
       timestamp: 1751953111
-      sender_username: Bob
       files: null
       images: null
 

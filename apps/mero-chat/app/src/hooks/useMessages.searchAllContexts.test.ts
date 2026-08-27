@@ -12,6 +12,7 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useMessages } from "./useMessages";
+import type { MessageWithReactions } from "../api/clientApi";
 
 // ── Mock ClientApiDataSource ────────────────────────────────────────────────
 
@@ -25,28 +26,32 @@ vi.mock("../api/dataSource/clientApiDataSource", () => ({
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function makeRawMessage(overrides: Partial<{
-  id: string;
-  text: string;
-  sender: string;
-  sender_username: string;
-  timestamp: number;
-}> = {}) {
+/**
+ * A message as the node returns it.
+ *
+ * Typed as `MessageWithReactions` on purpose: an untyped literal is free to
+ * keep describing fields the contract has dropped, which is exactly what
+ * happened here — it carried a `sender_username` long after messages stopped
+ * having one, and nothing complained. Annotating it means the next contract
+ * change breaks this fixture at compile time instead of quietly leaving the
+ * tests asserting against a shape the node never sends.
+ */
+function makeRawMessage(
+  overrides: Partial<MessageWithReactions> = {},
+): MessageWithReactions {
   return {
     id: overrides.id ?? `msg-${Math.random()}`,
     text: overrides.text ?? "hello",
+    // An ACCOUNT id — names are resolved from it, never carried alongside it.
     sender: overrides.sender ?? "alice.near",
-    sender_username: overrides.sender_username ?? "Alice",
     timestamp: overrides.timestamp ?? Math.floor(Date.now() / 1000),
-    mentions: [],
-    mentions_usernames: [],
+    index: overrides.index ?? 0,
     files: [],
     images: [],
-    deleted: null,
-    edited_on: null,
-    reactions: null,
+    reactions: {},
     thread_count: 0,
     thread_last_timestamp: 0,
+    ...overrides,
   };
 }
 

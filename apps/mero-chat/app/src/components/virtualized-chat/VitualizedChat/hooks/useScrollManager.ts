@@ -6,6 +6,17 @@ interface UseScrollManagerProps {
   chatId: string;
   isLoadingInitial: boolean;
   messageCount: number;
+  /**
+   * Don't auto-scroll to the newest message after loading.
+   *
+   * Set while a permalink is being opened, where the view is positioned on the
+   * linked message instead. Without this the two compete: the focus scroll
+   * centres the linked message and the initial scroll immediately drags the
+   * view towards the end of the loaded window, landing somewhere that is
+   * neither — for a link to the first message in a channel, several messages
+   * past the one the link named.
+   */
+  suppressInitialScroll?: boolean;
 }
 
 interface UseScrollManagerReturn {
@@ -23,6 +34,7 @@ export function useScrollManager({
   chatId,
   isLoadingInitial,
   messageCount,
+  suppressInitialScroll = false,
 }: UseScrollManagerProps): UseScrollManagerReturn {
   const listRef = useRef<VirtuosoHandle>(null);
   const isScrollingRef = useRef<boolean>(false);
@@ -162,6 +174,7 @@ export function useScrollManager({
 
   // Scroll to bottom after initial load
   useEffect(() => {
+    if (suppressInitialScroll) return;
     if (
       !isLoadingInitial &&
       messageCount > 0 &&
@@ -193,7 +206,13 @@ export function useScrollManager({
 
       return clearScrollTimeout;
     }
-  }, [isLoadingInitial, messageCount, chatId, clearScrollTimeout]);
+  }, [
+    isLoadingInitial,
+    messageCount,
+    chatId,
+    clearScrollTimeout,
+    suppressInitialScroll,
+  ]);
 
   return {
     listRef,

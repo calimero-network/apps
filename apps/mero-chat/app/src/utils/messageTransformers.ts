@@ -23,12 +23,12 @@ export function transformMessageToUI(
 ): CurbMessage {
   return {
     id: message.id,
+    index: message.index,
     text: message.text,
     nonce: Math.random().toString(36).substring(2, 15),
     key: message.id,
     timestamp: message.timestamp * 1000,
     sender: message.sender,
-    senderUsername: message.sender_username,
     reactions: message.reactions,
     threadCount: message.thread_count,
     threadLastTimestamp: message.thread_last_timestamp,

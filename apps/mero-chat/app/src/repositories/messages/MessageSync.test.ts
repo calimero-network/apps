@@ -1,0 +1,440 @@
+import { describe, expect, it } from "vitest";
+
+import {
+  CATCH_UP_PAGE,
+  MAX_CATCH_UP_PAGES,
+  MessageSyncEngine,
+  type ChannelCursor,
+  type MessagePage,
+  type MessageSource,
+  type MessageStore,
+} from "./MessageSync";
+
+interface Msg {
+  index: number;
+  text: string;
+}
+
+/** A channel on the node, as an ordered list. */
+function nodeWith(count: number): MessageSource<Msg> & { calls: string[] } {
+  const all: Msg[] = Array.from({ length: count }, (_, i) => ({
+    index: i,
+    text: `m${i}`,
+  }));
+  const calls: string[] = [];
+  return {
+    calls,
+    async count() {
+      calls.push("count");
+      return all.length;
+    },
+    async range(_ctx, start, limit): Promise<MessagePage<Msg>> {
+      calls.push(`range(${start},${limit})`);
+      return {
+        messages: all.slice(start, start + limit),
+        totalCount: all.length,
+      };
+    },
+  };
+}
+
+function memoryStore(): MessageStore<Msg> & { rows: Map<number, Msg> } {
+  const rows = new Map<number, Msg>();
+  let cursor: ChannelCursor | undefined;
+  return {
+    rows,
+    async read(_ctx, start, limit) {
+      const out: Msg[] = [];
+      for (let i = start; i < start + limit; i++) {
+        const row = rows.get(i);
+        if (row) out.push(row);
+      }
+      return out;
+    },
+    async put(_ctx, messages) {
+      messages.forEach((m) => rows.set(m.index, m));
+    },
+    async cursor() {
+      return cursor;
+    },
+    async saveCursor(next) {
+      cursor = next;
+    },
+  };
+}
+
+const CTX = "ctx-1";
+
+describe("MessageSyncEngine", () => {
+  it("on a first visit stores the newest page, not the whole history", async () => {
+    // Opening a channel with years of history must not download all of it
+    // before the first paint. The newest page is what the user is looking at.
+    const store = memoryStore();
+    const node = nodeWith(1000);
+    const sync = new MessageSyncEngine(store, node);
+
+    const result = await sync.catchUp(CTX);
+
+    expect(result.fetched).toBe(CATCH_UP_PAGE);
+    expect(store.rows.has(999)).toBe(true);
+    expect(store.rows.has(0)).toBe(false);
+    expect((await store.cursor(CTX))?.highestIndex).toBe(999);
+  });
+
+  it("costs one count call when already current", async () => {
+    // The common case on every reconnect. It must not transfer message bodies
+    // to discover there is nothing to transfer.
+    const store = memoryStore();
+    const node = nodeWith(10);
+    const sync = new MessageSyncEngine(store, node);
+
+    await sync.catchUp(CTX);
+    node.calls.length = 0;
+
+    const result = await sync.catchUp(CTX);
+
+    expect(result).toEqual({ fetched: 0, upToDate: true });
+    expect(node.calls).toEqual(["count"]);
+  });
+
+  it("fetches exactly what was missed while closed", async () => {
+    // The two-hours-later case: no overlap to dedupe, no gap left behind.
+    const store = memoryStore();
+    const sync = new MessageSyncEngine(store, nodeWith(10));
+    await sync.catchUp(CTX);
+
+    const later = nodeWith(25);
+    const resumed = new MessageSyncEngine(store, later);
+    later.calls.length = 0;
+
+    const result = await resumed.catchUp(CTX);
+
+    expect(result).toEqual({ fetched: 15, upToDate: true });
+    expect(later.calls).toContain(`range(10,${CATCH_UP_PAGE})`);
+    for (let i = 0; i < 25; i++) expect(store.rows.has(i)).toBe(true);
+  });
+
+  it("caps a very long absence instead of blocking on thousands of messages", async () => {
+    const store = memoryStore();
+    const sync = new MessageSyncEngine(store, nodeWith(10));
+    await sync.catchUp(CTX);
+
+    const later = nodeWith(10 + CATCH_UP_PAGE * (MAX_CATCH_UP_PAGES + 3));
+    const resumed = new MessageSyncEngine(store, later);
+
+    const result = await resumed.catchUp(CTX);
+
+    expect(result.fetched).toBe(CATCH_UP_PAGE * MAX_CATCH_UP_PAGES);
+    expect(result.upToDate).toBe(false);
+  });
+
+  it("serves older messages from the store without asking the node", async () => {
+    // The reopen case: an earlier session backfilled further than the window
+    // being rendered now, so scrolling up must read disk rather than the node.
+    // Note this needs the store to actually HOLD those messages — after a first
+    // catch-up it does not, and going to the node then is correct, not a miss.
+    const store = memoryStore();
+    const node = nodeWith(200);
+    const sync = new MessageSyncEngine(store, node);
+
+    for (let i = 0; i < 200; i++) store.rows.set(i, { index: i, text: `m${i}` });
+    await store.saveCursor({
+      contextId: CTX,
+      lowestIndex: 100,
+      highestIndex: 199,
+      knownTotal: 200,
+    });
+
+    node.calls.length = 0;
+    const older = await sync.loadOlder(CTX, 20);
+
+    expect(older.map((m) => m.index)).toEqual(
+      Array.from({ length: 20 }, (_, i) => 80 + i),
+    );
+    expect(node.calls).toEqual([]);
+    expect((await store.cursor(CTX))?.lowestIndex).toBe(80);
+  });
+
+  it("goes to the node for older messages the store does not hold", async () => {
+    // The first backfill after a fresh catch-up: nothing below the window is on
+    // disk yet, so this SHOULD be a fetch.
+    const store = memoryStore();
+    const node = nodeWith(200);
+    const sync = new MessageSyncEngine(store, node);
+    await sync.catchUp(CTX); // holds 100..199 only
+
+    node.calls.length = 0;
+    const older = await sync.loadOlder(CTX, 20);
+
+    expect(node.calls).toEqual(["range(80,20)"]);
+    expect(older.map((m) => m.index)).toEqual(
+      Array.from({ length: 20 }, (_, i) => 80 + i),
+    );
+  });
+
+  it("falls through to the node when the store runs out", async () => {
+    const store = memoryStore();
+    const node = nodeWith(200);
+    const sync = new MessageSyncEngine(store, node);
+    await sync.catchUp(CTX);
+
+    // Drop what the store holds below the window, as an eviction would.
+    for (let i = 100; i < 120; i++) store.rows.delete(i);
+    await store.saveCursor({
+      contextId: CTX,
+      lowestIndex: 120,
+      highestIndex: 199,
+      knownTotal: 200,
+    });
+
+    node.calls.length = 0;
+    const older = await sync.loadOlder(CTX, 20);
+
+    expect(node.calls).toEqual(["range(100,20)"]);
+    expect(older).toHaveLength(20);
+  });
+
+  it("applies a live message that lands exactly where the copy ends", async () => {
+    const store = memoryStore();
+    const node = nodeWith(5);
+    const sync = new MessageSyncEngine(store, node);
+    await sync.catchUp(CTX);
+
+    node.calls.length = 0;
+    const outcome = await sync.applyLive(CTX, { index: 5, text: "live" });
+
+    expect(outcome).toBe("applied");
+    expect(node.calls).toEqual([]);
+    expect((await store.cursor(CTX))?.highestIndex).toBe(5);
+  });
+
+  it("resyncs rather than writing a live message that would leave a hole", async () => {
+    // The important one. An event arriving ahead of the cursor means something
+    // in between was missed. Writing it would make the cursor claim contiguity
+    // it does not have, and no later read could detect the gap.
+    const store = memoryStore();
+    const sync = new MessageSyncEngine(store, nodeWith(5));
+    await sync.catchUp(CTX);
+
+    const later = nodeWith(9);
+    const resumed = new MessageSyncEngine(store, later);
+
+    const outcome = await resumed.applyLive(CTX, { index: 8, text: "ahead" });
+
+    expect(outcome).toBe("resynced");
+    // Everything in between is present, not just the message that arrived.
+    for (let i = 0; i < 9; i++) expect(store.rows.has(i)).toBe(true);
+    expect((await store.cursor(CTX))?.highestIndex).toBe(8);
+  });
+});
+
+describe("MessageSyncEngine.newest", () => {
+  it("paints from the store without touching the node", async () => {
+    // The offline reopen: history must appear before, and regardless of,
+    // whether the node can be reached.
+    const store = memoryStore();
+    const node = nodeWith(200);
+    await new MessageSyncEngine(store, node).catchUp(CTX);
+
+    const offline: MessageSource<Msg> = {
+      async count() {
+        throw new Error("node unreachable");
+      },
+      async range() {
+        throw new Error("node unreachable");
+      },
+    };
+    const reopened = new MessageSyncEngine(store, offline);
+
+    const painted = await reopened.newest(CTX, 30);
+
+    expect(painted.map((m) => m.index)).toEqual(
+      Array.from({ length: 30 }, (_, i) => 170 + i),
+    );
+  });
+
+  it("returns nothing for a channel never opened before", async () => {
+    const sync = new MessageSyncEngine(memoryStore(), nodeWith(50));
+    expect(await sync.newest(CTX, 30)).toEqual([]);
+  });
+
+  it("does not claim messages below what is stored", async () => {
+    const store = memoryStore();
+    const sync = new MessageSyncEngine(store, nodeWith(10));
+    await sync.catchUp(CTX);
+
+    // Ask for more than the channel holds.
+    const painted = await sync.newest(CTX, 500);
+
+    expect(painted).toHaveLength(10);
+  });
+});
+
+describe("MessageSyncEngine.loadOlder anchoring", () => {
+  it("continues from what the view shows, not from what the store holds", async () => {
+    // The hole bug: a catch-up can leave the store holding much more than the
+    // view is painting. Walking back from the store's bound returns a block
+    // that does not join onto the screen, and the gap is invisible afterwards.
+    const store = memoryStore();
+    const node = nodeWith(150);
+    const sync = new MessageSyncEngine(store, node);
+
+    await sync.catchUp(CTX); // stores 50..149
+    const painted = await sync.newest(CTX, 20); // view shows 130..149
+    expect(painted[0].index).toBe(130);
+
+    const older = await sync.loadOlder(CTX, 20, painted[0].index);
+
+    // Joins onto the view: 110..129, immediately before what is displayed.
+    expect(older.map((m) => m.index)).toEqual(
+      Array.from({ length: 20 }, (_, i) => 110 + i),
+    );
+  });
+
+  it("keeps the store's low bound falling, never rising", async () => {
+    // The bound describes contiguous coverage; reading nearer the top must not
+    // narrow it, or a later backfill would refetch what is already on disk.
+    const store = memoryStore();
+    const sync = new MessageSyncEngine(store, nodeWith(150));
+    await sync.catchUp(CTX); // lowestIndex 50
+
+    await sync.loadOlder(CTX, 20, 130); // reads 110..129, above the bound
+
+    expect((await store.cursor(CTX))?.lowestIndex).toBe(50);
+  });
+
+  it("stops at the beginning of the channel", async () => {
+    const store = memoryStore();
+    const sync = new MessageSyncEngine(store, nodeWith(150));
+    await sync.catchUp(CTX);
+
+    expect(await sync.loadOlder(CTX, 20, 0)).toEqual([]);
+  });
+
+  it("does not run off the start when fewer remain than asked for", async () => {
+    const store = memoryStore();
+    const sync = new MessageSyncEngine(store, nodeWith(150));
+    await sync.catchUp(CTX);
+
+    const older = await sync.loadOlder(CTX, 20, 5);
+
+    expect(older.map((m) => m.index)).toEqual([0, 1, 2, 3, 4]);
+  });
+});
+
+describe("MessageSyncEngine backfill de-duplication", () => {
+  it("collapses two simultaneous backfills of the same range into one fetch", async () => {
+    // A scroll to the top can fire "load older" twice before the first
+    // resolves. Both then read the same anchor and ask for the same messages.
+    const store = memoryStore();
+    const node = nodeWith(200);
+    const sync = new MessageSyncEngine(store, node);
+    await sync.catchUp(CTX);
+    node.calls.length = 0;
+
+    const [a, b] = await Promise.all([
+      sync.loadOlder(CTX, 20, 100),
+      sync.loadOlder(CTX, 20, 100),
+    ]);
+
+    expect(node.calls).toEqual(["range(80,20)"]);
+    expect(a.map((m) => m.index)).toEqual(b.map((m) => m.index));
+  });
+
+  it("does not confuse backfills of different ranges", async () => {
+    const store = memoryStore();
+    const node = nodeWith(200);
+    const sync = new MessageSyncEngine(store, node);
+    await sync.catchUp(CTX);
+    node.calls.length = 0;
+
+    const [a, b] = await Promise.all([
+      sync.loadOlder(CTX, 20, 100),
+      sync.loadOlder(CTX, 20, 60),
+    ]);
+
+    expect(a[0].index).toBe(80);
+    expect(b[0].index).toBe(40);
+    expect(node.calls.sort()).toEqual(["range(40,20)", "range(80,20)"]);
+  });
+
+  it("lets a later backfill of the same range run once the first is done", async () => {
+    const store = memoryStore();
+    const node = nodeWith(200);
+    const sync = new MessageSyncEngine(store, node);
+    await sync.catchUp(CTX);
+
+    await sync.loadOlder(CTX, 20, 100);
+    node.calls.length = 0;
+    const again = await sync.loadOlder(CTX, 20, 100);
+
+    // Served from the store this time — stored by the first call.
+    expect(node.calls).toEqual([]);
+    expect(again.map((m) => m.index)).toEqual(
+      Array.from({ length: 20 }, (_, i) => 80 + i),
+    );
+  });
+});
+
+describe("MessageSyncEngine.loadAround", () => {
+  it("centres a window on the linked message", async () => {
+    const store = memoryStore();
+    const sync = new MessageSyncEngine(store, nodeWith(200));
+
+    const around = await sync.loadAround(CTX, 100, 5);
+
+    expect(around.map((m) => m.index)).toEqual([
+      95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105,
+    ]);
+  });
+
+  it("does not run off the start for a link near the beginning", async () => {
+    const store = memoryStore();
+    const sync = new MessageSyncEngine(store, nodeWith(200));
+
+    const around = await sync.loadAround(CTX, 2, 5);
+
+    expect(around[0].index).toBe(0);
+    expect(around.map((m) => m.index)).toContain(2);
+  });
+
+  it("serves a window already on disk without asking the node", async () => {
+    const store = memoryStore();
+    const node = nodeWith(200);
+    const sync = new MessageSyncEngine(store, node);
+    await sync.catchUp(CTX); // stores 100..199
+    node.calls.length = 0;
+
+    const around = await sync.loadAround(CTX, 150, 5);
+
+    expect(node.calls).toEqual([]);
+    expect(around.map((m) => m.index)).toContain(150);
+  });
+
+  it("writes a fetched window down, so the same link is free next time", async () => {
+    const store = memoryStore();
+    const node = nodeWith(200);
+    const sync = new MessageSyncEngine(store, node);
+
+    await sync.loadAround(CTX, 40, 3);
+    node.calls.length = 0;
+    const again = await sync.loadAround(CTX, 40, 3);
+
+    expect(node.calls).toEqual([]);
+    expect(again.map((m) => m.index)).toContain(40);
+  });
+
+  it("leaves the cursor alone", async () => {
+    // The cursor means "contiguous from the newest end". A window from the
+    // middle does not extend that, and saying it did would make a later
+    // backfill skip a gap it never filled.
+    const store = memoryStore();
+    const sync = new MessageSyncEngine(store, nodeWith(200));
+    await sync.catchUp(CTX);
+    const before = await store.cursor(CTX);
+
+    await sync.loadAround(CTX, 20, 5);
+
+    expect(await store.cursor(CTX)).toEqual(before);
+  });
+});

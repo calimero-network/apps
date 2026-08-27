@@ -257,11 +257,13 @@ const StartDMPopup = memo(function StartDMPopup({
   const handleSuggestionClick = (s: MemberSuggestion) => {
     setSelectedIdentity(s.identity);
     updateValidation(s.identity);
-    // Only ever show the human-readable label in the visible input. The
-    // identity hash stays internal (selectedIdentity), used as the actual
-    // target for the DM. If the member has no label yet, leave the input
-    // empty rather than dumping the public key into the UI.
-    setInputValue(s.label || "");
+    // Show the label, never the raw account: the identity stays internal in
+    // `selectedIdentity`, which is what the DM is actually created against.
+    //
+    // The label is always present now — a member with no name gets a truncated
+    // account from `buildDmMemberOptions` — so this no longer blanks the field
+    // when you pick someone unnamed, which looked like the click had failed.
+    setInputValue(s.label);
     setShowSuggestions(false);
     setSuggestions([]);
   };

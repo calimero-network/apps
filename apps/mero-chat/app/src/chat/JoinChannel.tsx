@@ -1,5 +1,6 @@
 import { useCallback, useState } from "react";
 import type { ActiveChat } from "../types/Common";
+import { useDisplayName } from "../repositories/names/useNames";
 import Loader from "../components/loader/Loader";
 import { styled } from "styled-components";
 import type { ChannelInfo } from "../api/clientApi";
@@ -105,6 +106,10 @@ export default function JoinChannel({
   onJoinedChat,
 }: JoinChannelProps) {
   const [loading, setLoading] = useState(false);
+  // The creator is stored as an ACCOUNT by the contract. Resolve it to a name
+  // here; the API used to carry a `created_by_username` that was hardcoded to
+  // an empty string, so this banner read "@ created this channel on ...".
+  const creatorName = useDisplayName(channelMeta?.created_by);
   const joinChannel = useCallback(async () => {
     setLoading(true);
     const groupId = getGroupId();
@@ -156,7 +161,7 @@ export default function JoinChannel({
         {channelMeta &&
           channelMeta.created_by &&
           channelMeta.created_at &&
-          `@${channelMeta.created_by_username} created this channel on ${timestampToDate(
+          `@${creatorName} created this channel on ${timestampToDate(
             new Date(channelMeta.created_at * 1000).toISOString(),
           )}`}
         <div className="wrapper">

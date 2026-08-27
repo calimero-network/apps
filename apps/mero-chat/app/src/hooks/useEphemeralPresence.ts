@@ -15,7 +15,9 @@ import { getMessengerDisplayName } from "../utils/messengerName";
  * `a30341fa…`). There is no client-side join from author to member, so a name
  * the reader has to look up is a name it can never render.
  *
- * `name` is self-asserted, exactly as `sender_username` already is on the
+ * `name` is self-asserted, unlike a message's sender, which is an account
+ * resolved against namespace member metadata. This comment used to point at
+ * `sender_username` on the
  * message path. Presence is advisory; nothing is authorised off it.
  */
 export interface PresenceSlice {

@@ -148,6 +148,37 @@ rpc_call() {
 
 # ── merod node management ─────────────────────────────────────────────────────
 
+# Rewrite node-2's bootstrap list to node-1's local swarm address.
+#
+# Reads node-1's peer id out of its own config rather than an API call, so this
+# works before node-2 has ever run.
+peer_node_2_at_node_1() {
+  local n1_cfg="$NODE_1_HOME/node-1/config.toml"
+  local n2_cfg="$NODE_2_HOME/node-2/config.toml"
+
+  [ -f "$n1_cfg" ] || { yellow "no node-1 config at $n1_cfg — skipping peer wiring"; return 0; }
+  [ -f "$n2_cfg" ] || { yellow "no node-2 config at $n2_cfg — skipping peer wiring"; return 0; }
+
+  local peer_id
+  peer_id=$(sed -n 's/^peer_id = "\(.*\)"/\1/p' "$n1_cfg" | head -1)
+  [ -n "$peer_id" ] || { yellow "could not read node-1 peer id — skipping peer wiring"; return 0; }
+
+  local addr="/ip4/127.0.0.1/udp/${NODE_1_P2P_PORT}/quic-v1/p2p/${peer_id}"
+
+  python3 - "$n2_cfg" "$addr" <<'PYEOF'
+import re, sys
+cfg, addr = sys.argv[1], sys.argv[2]
+s = open(cfg).read()
+block = '[bootstrap]\nnodes = [\n    "%s",\n]\n' % addr
+s, n = re.subn(r'\[bootstrap\]\nnodes = \[[^\]]*\]\n', block, s, count=1)
+if not n:
+    s += "\n" + block
+open(cfg, "w").write(s)
+PYEOF
+
+  green "node-2 bootstrapped at node-1 ($addr)"
+}
+
 start_node_merod() {
   local name=$1 home=$2 port=$3 p2p_port=$4
 
@@ -171,6 +202,18 @@ start_node_merod() {
     --auth-mode embedded \
     --admin-user "$ADMIN_USER" \
     --admin-password-stdin
+
+  # Between init and run: the config only exists after init, and the bootstrap
+  # list is only read at startup.
+  #
+  # `merod init` seeds `[bootstrap] nodes` with the PUBLIC Calimero bootstrap
+  # and nothing else, so two local nodes can only find each other by mDNS —
+  # unreliable on a dev box, absent in containers. The symptom is not a
+  # connection error: the namespace join logs "found no reachable mesh peer;
+  # recording local membership and relying on gossip/sync catch-up", carries
+  # on, and then fails with "join response contained no group key" and a bare
+  # 500 — which reads like a server bug rather than a missing peer.
+  [ "$name" = "node-2" ] && peer_node_2_at_node_1
 
   step "Starting $name"
   merod --node "$name" --home "$home" run > "/tmp/curb-merod-${name}.log" 2>&1 &

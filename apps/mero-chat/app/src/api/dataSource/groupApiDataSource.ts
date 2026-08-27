@@ -8,6 +8,7 @@ import {
   loadSelfAccountIdentity,
 } from "../../utils/accountIdentity";
 import type { ApiResponse } from "../types";
+import { groupNameError } from "../../utils/groupName";
 import type {
   ContextVisibility,
   CreateGroupRequest,
@@ -345,6 +346,18 @@ export class GroupApiDataSource implements GroupApi {
     request: CreateGroupRequest,
   ): ApiResponse<CreateGroupResponse> {
     try {
+      // Same 64-byte metadata cap as a subgroup's name: over it, the server
+      // keeps the namespace and drops the name, with no error to notice.
+      //
+      // Only when a name was actually supplied — a namespace may be created
+      // without one, and rejecting that would refuse a legitimate call.
+      if (request.alias) {
+        const problem = groupNameError(request.alias);
+        if (problem) {
+          return { data: null, error: { code: 400, message: problem } };
+        }
+      }
+
       // Server expects `name` post-054a784f; keep `alias` for older nodes.
       const body = { ...request, name: request.alias };
       const data = (await getMeroJs().admin.createNamespace(
@@ -926,14 +939,25 @@ export class GroupApiDataSource implements GroupApi {
     request: CreateSubgroupRequest,
   ): ApiResponse<CreateSubgroupResponse> {
     try {
-      // Two separate concerns:
-      //   - groupAlias: routing identifier, no length cap (DM aliases are
-      //     long and structural).
-      //   - groupName : human-readable, stored in MetadataRecord, capped
-      //     at 64 bytes server-side. Only send if the caller passed one.
+      // `groupName` is human-readable and stored in a MetadataRecord capped at
+      // 64 BYTES. Over that the server drops the name and still returns 200, so
+      // an over-long name is not an error anyone sees — it is a group that
+      // quietly has no name. Refuse it here instead.
+      //
+      // (An earlier comment described a separate uncapped `groupAlias` for long
+      // structural identifiers. No such field is sent — both inputs below map
+      // to `groupName` — which is how a 140-byte DM alias came to be written
+      // into a 64-byte field on every DM ever created.)
+      const requestedName = request.groupName ?? request.name;
+      if (requestedName) {
+        const problem = groupNameError(requestedName);
+        if (problem) {
+          return { data: null, error: { code: 400, message: problem } };
+        }
+      }
+
       const body: Record<string, unknown> = {};
-      if (request.groupName) body.groupName = request.groupName;
-      if (request.name) body.groupName = request.name;
+      if (requestedName) body.groupName = requestedName;
       const data = await getMeroJs().admin.createGroupInNamespace(
         namespaceId,
         body,
