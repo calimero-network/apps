@@ -108,10 +108,18 @@ export function JoinCard({
             `isTerminalInvitationError` errs toward retryable, because a dropped
             invitation is unrecoverable and a retried one costs a round trip.
           */}
+          {/*
+            Two different truths. A LINK-delivered invitation is in the pending
+            intent store and really is replayed on the next load; a PASTED one
+            was never captured there, so "will be retried" would be a lie for
+            the very path this card exists for.
+          */}
           <p className="empty">
-            {state.retryable
-              ? "Kept — this will be retried the next time the app loads."
-              : "This invitation cannot succeed; ask for a new one."}
+            {!state.retryable
+              ? "This invitation cannot succeed; ask for a new one."
+              : state.fromLink
+                ? "Kept — this will be retried the next time the app loads."
+                : "Not saved — paste it again to retry."}
           </p>
         </>
       )}

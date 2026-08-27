@@ -139,6 +139,21 @@ describe("isTerminalInvitationError", () => {
     }
   });
 
+  it("does NOT treat a generic 'invalid'/'malformed' as terminal", () => {
+    // The reason the list holds PHRASES rather than bare words. A proxy or
+    // gateway saying "invalid response" is transient, and matching the bare word
+    // would discard the invitation — the exact opposite of this function's
+    // documented bias.
+    for (const m of [
+      "invalid response from upstream",
+      "502 invalid gateway",
+      "malformed response body",
+      "invalid JSON in reply",
+    ]) {
+      expect(isTerminalInvitationError(m)).toBe(false);
+    }
+  });
+
   it("KEEPS it for transient or unrecognised errors", () => {
     // The asymmetry that matters: a dropped invitation is unrecoverable for the
     // user, a retried one costs a round trip. Anything unfamiliar must be kept.

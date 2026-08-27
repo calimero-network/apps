@@ -2,14 +2,25 @@
 /target/
 **/*.rs.bk
 
+# `cargo mero build` writes the contract into the app's res/ alongside abi.json.
+# The ABI and state schema ARE committed (CI regenerates and diffs them); the
+# wasm is build output, so ignoring it is what keeps a local build from leaving
+# the tree dirty and a stray binary from being committed by `git add -A`.
+apps/*/logic/res/*.wasm
+
 # Node
 node_modules/
-dist/
+# Anchored to where builds actually write, so a source directory named `dist`
+# cannot be ignored by accident.
+apps/*/app/dist/
+apps/*/app/dist-types/
 *.tsbuildinfo
 
-# merobox drops several hundred MB of node state here
-data/
-logic/data/
+# merobox drops several hundred MB of node state here.
+# Anchored: an unanchored `data/` would also swallow a source directory called
+# `data` at any depth, silently.
+/data/
+apps/*/logic/data/
 apps/*/logic/workflows/data/
 
 # Signed bundles are build output; the registry is the distribution channel

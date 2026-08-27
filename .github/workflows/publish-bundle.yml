@@ -220,10 +220,27 @@ jobs:
             echo "::error::could not reach the registry to verify the signer — refusing to publish blind"
             exit 1
           fi
-          if ! published_signer=$(printf '%s' "$response" | jq -er '.[0].signerId // ""'); then
+          # Every DISTINCT signerId in the listing, not `.[0]`.
+          #
+          # The version resolution above deliberately scans the whole list rather
+          # than trusting its order; this gate was trusting it. If the registry
+          # ever returns bundles in another order, `.[0]` is an arbitrary
+          # element — and this is the check standing between a wrong key and
+          # publishing a DIFFERENT application under the same package id.
+          #
+          # More than one distinct signer for a package should be impossible
+          # (the registry pins it), so treat it as a reason to stop rather than
+          # something to pick from.
+          if ! signers=$(printf '%s' "$response" | jq -er '[.[].signerId // empty] | unique | join(" ")'); then
             echo "::error::registry returned a response this step cannot parse: $response"
             exit 1
           fi
+          count=$(wc -w <<<"$signers" | tr -d ' ')
+          if [ "$count" -gt 1 ]; then
+            echo "::error::registry lists MULTIPLE signers for $PACKAGE ($signers) — refusing to guess which lineage this release continues"
+            exit 1
+          fi
+          published_signer="$signers"
 
           if [ -z "$published_signer" ]; then
             echo "::notice::nothing published for $PACKAGE — skipping signer check (first publish)"

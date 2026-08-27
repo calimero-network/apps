@@ -28,7 +28,12 @@ export type JoinState =
    */
   | { status: "confirm"; payload: KvInvitationPayload }
   | { status: "joining"; payload: KvInvitationPayload }
-  | { status: "failed"; message: string; retryable: boolean };
+  /**
+   * `fromLink` distinguishes the two retry stories: a link-delivered invitation
+   * lives in the pending intent store and is replayed on the next load, while a
+   * pasted one was never captured there and is simply gone.
+   */
+  | { status: "failed"; message: string; retryable: boolean; fromLink: boolean };
 
 /**
  * Redeem a pending invitation, whenever one arrives and the session is ready.
@@ -65,7 +70,11 @@ export function useJoinFromInvitation(): {
   const attempted = useRef(false);
   // Held here rather than in state: an intent arriving before auth must not
   // trigger a render loop, and we need the resolve/ack callback intact.
-  const pending = useRef<{ intent: DeepLinkIntent; payload: KvInvitationPayload } | null>(null);
+  const pending = useRef<{
+    intent: DeepLinkIntent;
+    payload: KvInvitationPayload;
+    fromLink: boolean;
+  } | null>(null);
   const running = useRef(false);
 
   const redeem = useCallback(async () => {
@@ -94,7 +103,7 @@ export function useJoinFromInvitation(): {
         held.intent.resolve?.();
         pending.current = null;
       }
-      setState({ status: "failed", message, retryable: !terminal });
+      setState({ status: "failed", message, retryable: !terminal, fromLink: held.fromLink });
     } finally {
       running.current = false;
     }
@@ -116,10 +125,11 @@ export function useJoinFromInvitation(): {
         status: "failed",
         message: "That invitation link could not be read.",
         retryable: false,
+        fromLink: true,
       });
       return;
     }
-    pending.current = { intent, payload };
+    pending.current = { intent, payload, fromLink: true };
     attempted.current = false;
     // NOT redeemed here. The user has to confirm — see JoinState.confirm.
     setState({ status: "confirm", payload });
@@ -156,12 +166,17 @@ export function useJoinFromInvitation(): {
           status: "failed",
           message: "That invitation could not be read.",
           retryable: false,
+          fromLink: false,
         });
         return;
       }
       // No intent to ack: a pasted invitation was never captured by the store,
       // so `resolve` is a no-op and the retry path is the user pasting again.
-      pending.current = { intent: { resolve: () => {} } as DeepLinkIntent, payload };
+      pending.current = {
+        intent: { resolve: () => {} } as DeepLinkIntent,
+        payload,
+        fromLink: false,
+      };
       attempted.current = false;
       // A pasted invitation IS the confirmation — the user typed it in this
       // session, so there is nothing to warn them about.

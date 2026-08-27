@@ -216,11 +216,19 @@ export function isTerminalInvitationError(
 ): boolean {
   if (!message) return false;
   const m = message.toLowerCase();
+  // Phrases, not bare words. `"invalid"` on its own also matches an "invalid
+  // response" from a proxy or an "invalid gateway" — transient failures that
+  // would then DISCARD the invitation, which is the exact opposite of the bias
+  // this function documents. Each entry below names the invitation itself.
   return [
-    "expired",
-    "invalid",
-    "malformed",
-    "signature",
+    "invitation expired",
+    "expired invitation",
+    "invalid invitation",
+    "invitation is invalid",
+    "malformed invitation",
+    "malformed payload",
+    "invalid signature",
+    "signature verification failed",
     "not admin",
     "revoked",
     "already a member",
