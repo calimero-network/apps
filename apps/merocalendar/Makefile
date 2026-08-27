@@ -130,11 +130,11 @@ integration:
 test: unit e2e
 
 WORKFLOW_FILES := \
-	workflows/e2e.yml \
-	workflows/integration-setup.yml
+	logic/workflows/e2e.yml \
+	logic/workflows/integration-setup.yml
 
 LOGIC_TEST_FILES := \
-	workflows/logic-test.yml
+	logic/workflows/logic-test.yml
 
 workflows: logic-build
 	@bash scripts/workflows.sh $(WORKFLOW_FILES)

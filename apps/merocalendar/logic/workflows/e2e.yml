@@ -1,0 +1,186 @@
+name: E2E Two-Node Test
+description: >
+  Two-node Mero Calendar workflow. Installs the app on both nodes, creates a
+  shared calendar context, joins node 2, then verifies that a shared event
+  created on node 1 (and shared with node 2 as a peer) syncs and is visible
+  to node 2.
+
+stop_all_nodes: true
+restart: false
+wait_timeout: 120
+
+nodes:
+  chain_id: testnet-1
+  count: 2
+  # Must move in LOCKSTEP with the merobox pin in .github/workflows/. merobox
+  # talks to the node's admin API directly, so an image older than the merobox
+  # driving it fails on the FIRST step with a payload error that reads like a
+  # contract bug: rc.20 and older require `upgradePolicy` on create_namespace,
+  # and merobox 0.6.54+ stopped sending it (core#3393 dropped the concept in
+  # rc.21). rc.22 pairs with merobox >= 0.6.54; this repo pins 0.6.55.
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.26
+  prefix: calimero-node
+  # Stated, not inherited. core 0.11.0-rc.26 made mDNS opt-in (core#3620):
+  # `merod init` now writes `discovery.mdns = false`, where every earlier release
+  # left it on. merobox does not pass the flag, so this scenario's peer discovery
+  # changed behaviour at the image bump without a line of it changing.
+  mdns: true
+
+steps:
+  - name: Install Application on Node 1
+    type: install_application
+    node: calimero-node-1
+    path: res/merocalendar.wasm
+    dev: true
+    outputs:
+      app_id: applicationId
+
+  - name: Install Application on Node 2
+    type: install_application
+    node: calimero-node-2
+    path: res/merocalendar.wasm
+    dev: true
+
+  - name: Create Namespace
+    type: create_namespace
+    node: calimero-node-1
+    application_id: "{{app_id}}"
+    outputs:
+      namespace_id: namespaceId
+
+  # Subgroups/namespaces are RESTRICTED by default: without this, node 2 joins
+  # and then 403s on the first `call`, which looks like a sync failure rather
+  # than a permission one. 15 = the full read/write/execute/manage member bits.
+  - name: Set Default Member Capabilities
+    type: set_default_capabilities
+    node: calimero-node-1
+    group_id: "{{namespace_id}}"
+    capabilities: 15
+
+  - name: Create Calendar Context
+    type: create_context
+    node: calimero-node-1
+    application_id: "{{app_id}}"
+    group_id: "{{namespace_id}}"
+    params: '{}'
+    outputs:
+      context_id: contextId
+      member_public_key: memberPublicKey
+
+  # Mints an identity on node 2 so it has something to accept the invitation
+  # WITH. Its `publicKey` is deliberately not captured: the key that authorizes
+  # a `call` is the CONTEXT member key returned by join_context below, and using
+  # the raw identity key as executor_public_key is how you get an authorization
+  # error that reads like the contract rejecting the caller.
+  - name: Create Identity on Node 2
+    type: create_identity
+    node: calimero-node-2
+
+  - name: Wait for Identity Propagation
+    type: wait
+    seconds: 3
+
+  - name: Invite Node 2
+    type: create_namespace_invitation
+    node: calimero-node-1
+    group_id: "{{namespace_id}}"
+    outputs:
+      invitation_2: invitation
+
+  - name: Node 2 Joins Namespace
+    type: join_namespace
+    node: calimero-node-2
+    group_id: "{{namespace_id}}"
+    invitation: "{{invitation_2}}"
+
+  - name: Settle After Namespace Join
+    type: wait
+    seconds: 5
+
+  # The context was created AFTER node 2 was invited to the namespace, so node 2
+  # does not know it exists yet. Without this explicit pull, join_context below
+  # fails with "context not found" — a race that passes locally on a warm mesh
+  # and fails on a cold CI runner.
+  - name: Force Node 2 to Sync Namespace State
+    type: sync_group
+    node: calimero-node-2
+    group_id: "{{namespace_id}}"
+
+  - name: Settle After Sync
+    type: wait
+    seconds: 5
+
+  - name: Node 2 Joins Context
+    type: join_context
+    node: calimero-node-2
+    context_id: "{{context_id}}"
+    outputs:
+      public_key_2: memberPublicKey
+
+  - name: Sync
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  # Cross-node sync is verified through members (get_members is unfiltered, so it
+  # doesn't depend on per-caller owner/peer gating like get_events does). Each
+  # node registers a username; after sync both nodes must see both names.
+  - name: Node 1 Registers Alice
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: set_username
+    args:
+      username: "AliceNode1"
+      timestamp: 1751953010
+
+  - name: Node 2 Registers Bob
+    type: call
+    node: calimero-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_2}}"
+    method: set_username
+    args:
+      username: "BobNode2"
+      timestamp: 1751953011
+
+  - name: Sync After Usernames
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Node 1 Reads Members
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_members
+    args: {}
+    outputs:
+      members_n1: result
+
+  - name: Node 2 Reads Members
+    type: call
+    node: calimero-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_2}}"
+    method: get_members
+    args: {}
+    outputs:
+      members_n2: result
+
+  # Both nodes see both members → bidirectional CRDT sync confirmed.
+  - name: Assert Bidirectional Member Sync
+    type: assert
+    statements:
+      - "contains({{members_n1}}, 'AliceNode1')"
+      - "contains({{members_n1}}, 'BobNode2')"
+      - "contains({{members_n2}}, 'AliceNode1')"
+      - "contains({{members_n2}}, 'BobNode2')"
