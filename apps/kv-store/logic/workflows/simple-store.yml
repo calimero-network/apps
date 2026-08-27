@@ -44,7 +44,10 @@ steps:
     path: res/kv_store.wasm
     nodes:
       - kv-node-2
-    capability: member
+    # No `capability:` here. merobox 0.6.59 dropped the field from create_mesh
+    # and its validator now REJECTS it ("unknown field 'capability' - the step
+    # would ignore it"). Older merobox accepted it, so a workflow copied from a
+    # repo still on 0.6.55 fails validation here and nowhere else.
     outputs:
       context_id: contextId
       node1_key: memberPublicKey

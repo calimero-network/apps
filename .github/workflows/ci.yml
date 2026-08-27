@@ -271,6 +271,16 @@ jobs:
             echo "::endgroup::"
           done
 
+      # `merobox logs` takes a NODE_NAME argument — with only `--tail` it exits
+      # `Error: Missing argument 'NODE_NAME'`, so the first version of this step
+      # produced no diagnostics at all on the failure it existed to explain.
+      # `merobox bootstrap run` already exports each node's log to
+      # data/container-logs/, so upload that instead of re-deriving it.
       - name: Collect node logs
         if: failure()
-        run: merobox logs --tail 200 || true
+        uses: actions/upload-artifact@v4
+        with:
+          name: node-logs-${{ matrix.app }}-${{ github.run_attempt }}
+          path: apps/${{ matrix.app }}/logic/data/container-logs/
+          if-no-files-found: ignore
+          retention-days: 3
