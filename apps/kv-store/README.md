@@ -118,6 +118,22 @@ Until a release has actually published, the launcher path stays dark: what
 matters to the launcher is the field in the *published* bundle, not the one in
 this repo.
 
+### `vercel.json`
+
+`app/vercel.json` is an SPA fallback rewrite and nothing else.
+
+⚠️ **It cannot carry comments.** Vercel's schema sets `additionalProperties:
+false`, so a `"// note"` key — the usual JSON comment trick — fails the deploy
+outright with *should NOT have additional property `// note`*. The file declares
+`$schema`, which is a real supported property, so an editor flags this before a
+deploy does.
+
+The note that used to live in that file, kept here because it is the part worth
+remembering: **the Vercel PROJECT owns the production domain**
+(`<project>.vercel.app`), not the repo. That is why moving an app into this
+monorepo keeps its URL, and therefore keeps its published bundle's
+`links.frontend` valid, with no republish.
+
 ## Two caveats worth carrying to the next app
 
 **The ABI loses `Option<T>`.** `get(key) -> Option<String>` is recorded as
