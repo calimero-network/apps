@@ -41,13 +41,14 @@ steps:
     type: create_mesh
     context_node: kv-node-1
     application_id: "{{app_id}}"
-    path: res/kv_store.wasm
     nodes:
       - kv-node-2
-    # No `capability:` here. merobox 0.6.59 dropped the field from create_mesh
-    # and its validator now REJECTS it ("unknown field 'capability' - the step
-    # would ignore it"). Older merobox accepted it, so a workflow copied from a
-    # repo still on 0.6.55 fails validation here and nowhere else.
+    # No `capability:` and no `path:` here. Recent merobox dropped BOTH from
+    # create_mesh and its validator now rejects them ("unknown field ... - the
+    # step would ignore it" — which is the honest error: it would have been
+    # silently ignored). Older merobox accepted them, so a step copied from a
+    # repo on an older pin fails validation here and nowhere else. The app is
+    # already installed by the previous step, so `path` had nothing left to do.
     outputs:
       context_id: contextId
       node1_key: memberPublicKey

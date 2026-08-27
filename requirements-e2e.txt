@@ -22,8 +22,12 @@
 #
 # which names neither the field nor the version. Found by this repo's own CI.
 #
+# 0.6.66 is what mero-design, mero-pixart, mero-calendar, mero-blocks and
+# merraria all run GREEN against rc.25 nodes, so the fleet and this repo agree on
+# one pair rather than two.
+#
 # calimero-client-py is the layer that actually builds the request, and merobox
-# 0.6.59 only requires `>=0.6.31` — so leaving it unpinned tracks core master
+# 0.6.66 only requires `>=0.6.33` — so leaving it unpinned tracks core master
 # and can break a no-op commit.
-merobox==0.6.59
-calimero-client-py==0.6.31
+merobox==0.6.66
+calimero-client-py==0.6.33
