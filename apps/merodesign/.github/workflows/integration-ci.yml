@@ -1,0 +1,161 @@
+name: Integration Tests (Full Stack)
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - "logic/**"
+      - "app/**"
+      - "workflows/**"
+      - "scripts/**"
+      # This workflow file. Without it, changing the merod image or the
+      # merobox/client pins below never runs the workflow being changed — the
+      # edit reads as verified while nothing executed.
+      - ".github/workflows/integration-ci.yml"
+  pull_request:
+    branches: [main, master]
+    paths:
+      - "logic/**"
+      - "app/**"
+      - "workflows/**"
+      - "scripts/**"
+      # This workflow file. Without it, changing the merod image or the
+      # merobox/client pins below never runs the workflow being changed — the
+      # edit reads as verified while nothing executed.
+      - ".github/workflows/integration-ci.yml"
+
+concurrency:
+  group: integration-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  integration:
+    name: Full-Stack Integration Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.89.0"
+          targets: wasm32-unknown-unknown
+
+      - name: Cache Cargo
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            logic/target
+          key: cargo-${{ runner.os }}-${{ hashFiles('logic/Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-
+
+      - name: Install cargo-mero
+        uses: ./.github/actions/install-cargo-mero
+
+      - name: Build WASM (+ embedded ABI)
+        run: |
+          cd logic
+          cargo mero build
+
+      # merobox has had a console-verbosity knob since 0.6.30 (merobox#271): `quiet`
+      # keeps the banners and the final pass/fail summary and drops the per-step
+      # API-response dumps. Day to day that is what you want; to get the full detail
+      # back, re-run the job with "Enable debug logging" and GitHub sets runner.debug,
+      # which flips this to `verbose`. No second workflow, no flag to remember.
+      #
+      # It goes through $GITHUB_ENV rather than a workflow-level `env:` because the
+      # `runner` context does not exist at workflow or job level — only inside a step.
+      - name: Quiet merobox and its nodes on the happy path
+        run: |
+          # merobox's own console output.
+          echo "MEROBOX_LOG_LEVEL=${{ runner.debug == '1' && 'verbose' || 'quiet' }}" >> "$GITHUB_ENV"
+          # RUST_LOG for the merod nodes merobox boots. This has to go on the CLI:
+          # `bootstrap run --log-level` defaults to "debug", so the value is never
+          # None and merobox's `config.get("log_level")` fallback is unreachable — a
+          # `log_level:` key in the workflow YAML is silently ignored.
+          echo "MEROD_LOG=${{ runner.debug == '1' && 'debug' || 'info' }}" >> "$GITHUB_ENV"
+      # calimero-client-py publishes an sdist and no manylinux wheel, so a cold
+      # `pip install` compiles its Rust extension on the runner — 92 seconds of a
+      # 134-second step, measured. pip stores wheels it builds itself under
+      # ~/.cache/pip/wheels and reuses them, so keying this cache on the exact pins
+      # makes every run after the first a few seconds. Bump the key with the pins.
+      - name: Cache pip (calimero-client-py builds from source)
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ runner.os }}-merobox-0.6.66-ccpy-0.6.33
+      - name: Install merobox
+        run: pip install -q --disable-pip-version-check "merobox==0.6.66" "calimero-client-py==0.6.33" && merobox --version
+
+      - name: Run integration-setup workflow
+        working-directory: workflows
+        run: |
+          merobox stop --all 2>/dev/null || true
+          merobox nuke --force 2>/dev/null || true
+          merobox bootstrap run --log-level "$MEROD_LOG" integration-setup.yml
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: app/pnpm-lock.yaml
+
+      - name: Install frontend dependencies
+        working-directory: app
+        run: pnpm install --frozen-lockfile
+
+      - name: Resolve Playwright version
+        id: pw
+        working-directory: app
+        run: echo "version=$(pnpm exec playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        id: pw-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}-chromium
+
+      - name: Install Playwright browsers
+        if: steps.pw-cache.outputs.cache-hit != 'true'
+        timeout-minutes: 8
+        working-directory: app
+        run: pnpm exec playwright install --with-deps chromium
+
+      # A cache hit restores the browser but not the shared libraries it
+      # links against. This is the apt half alone — seconds, and it cannot
+      # pull a browser.
+      - name: Install browser system deps
+        if: steps.pw-cache.outputs.cache-hit == 'true'
+        timeout-minutes: 8
+        working-directory: app
+        run: pnpm exec playwright install-deps chromium
+
+      - name: Run integration tests
+        working-directory: app
+        run: pnpm exec playwright test --project=integration
+        env:
+          CI: "true"
+          INTEGRATION_MODE: "true"
+
+      - name: Stop nodes
+        if: always()
+        run: |
+          merobox stop --all 2>/dev/null || true
+          merobox nuke --force 2>/dev/null || true
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-playwright-report
+          path: app/e2e-report/
+          retention-days: 7
