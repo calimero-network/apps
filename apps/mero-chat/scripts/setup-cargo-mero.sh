@@ -6,7 +6,7 @@ set -euo pipefail
 # in logic/Cargo.toml. (0.11.0-rc.20 was the first release carrying the
 # bundle-manifest capabilities the metadata table uses: icon, slug, versioned
 # output path.)
-RELEASE=0.11.0-rc.25
+RELEASE=0.11.0-rc.26
 
 # Per-asset SHA-256, so a re-uploaded asset under the same tag cannot swap the
 # binary silently. Refresh these together with RELEASE:

@@ -15,20 +15,20 @@ bs58 = "0.5.1"
 # Pinned to a real release TAG — this does NOT track master, whatever the old
 # comment here said. Cargo.lock records which commit the tag resolved to, so a
 # bump is a deliberate `cargo update` reviewed as its own diff.
-calimero-sdk = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.25" }
-calimero-storage = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.25" }
-calimero-storage-macros = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.25" }
+calimero-sdk = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.26" }
+calimero-storage = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.26" }
+calimero-storage-macros = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.26" }
 thiserror = "1.0.56"
 
 # ABI description is a host-build concern: the manifest is extracted by running
 # the app natively. Linking it into the wasm only bloats the module.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-calimero-wasm-abi = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.25" }
+calimero-wasm-abi = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.26" }
 
 [dev-dependencies]
 # Enables register_crdt_merge + the native mock host so TestHost can drive the
 # AccessControl writer-set state under `cargo test`.
-calimero-storage = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.25", features = ["testing"] }
+calimero-storage = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.26", features = ["testing"] }
 
 [profile.app-release]
 inherits = "release"
@@ -52,12 +52,14 @@ slug        = "com.calimero.chat"
 # cargo-mero's placeholder floor, and it tells every node "any version will do"
 # while the wasm calls host functions an old node does not have.
 #
-# NOTE the deliberate mismatch with the e2e: `workflows/*.yml` still start a
-# merod 0.11.0-rc.24 node. Moving them to rc.25 requires merobox >= 0.6.59 (rc.25
-# renamed the namespace-join response field `groupId` -> `namespaceId`), and this
-# repo pins merobox 0.6.24 — 42 releases back, with a scenario schema 0.6.66
-# rejects in three places. That migration is its own piece of work; see the PR
-# that added this line. The mismatch is safe in the meantime: `crates/sys`, the
-# host-function surface, is unchanged between rc.24 and rc.25, so the wasm's
-# import set cannot have outgrown an rc.24 node.
-min-runtime-version = "0.11.0-rc.25"
+# The e2e node now matches: `workflows/*.yml` start merod 0.11.0-rc.26. The
+# mismatch could be held open for rc.25 because `crates/sys`, the host-function
+# surface, was unchanged — the wasm's import set could not outgrow an rc.24 node.
+#
+# rc.26 is different, and the difference is not in the import set. core#3633 added
+# `order` to `Metadata`, which rides inside `Action` across the guest<->host
+# boundary. The signatures are identical; the borsh payload behind them is not.
+# A contract built on rc.26 against an rc.24 node writes actions that node cannot
+# decode, and it surfaces as a peer that never replicates rather than as an error
+# — measured on this branch, not assumed. So the image moves with the SDK.
+min-runtime-version = "0.11.0-rc.26"
