@@ -1,0 +1,43 @@
+{
+  "name": "scaffold-e2e-frontend",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "sync-wasm": "mkdir -p public && cp ../logic/res/scaffolding_e2e.wasm public/app.wasm && echo 'Copied to public/app.wasm'",
+    "test": "vitest run",
+    "check:contract": "node scripts/check-contract-calls.mjs",
+    "test:headed": "playwright test --headed",
+    "test:ui": "playwright test --ui",
+    "test:mocked": "playwright test --config=playwright.mocked.config.ts",
+    "test:auth": "npx tsx tests/save-auth.ts",
+    "test:report": "playwright show-report",
+    "test:watch": "vitest",
+    "e2e": "playwright test",
+    "test:all": "vitest run && playwright test --config=playwright.mocked.config.ts"
+  },
+  "dependencies": {
+    "@calimero-network/mero-js": "^7.3.2",
+    "@calimero-network/mero-react": "^4.6.1",
+    "bootstrap": "^5.3.7",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "react-router-dom": "^7.6.2"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.59.1",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@types/react": "^19.1.2",
+    "@types/react-dom": "^19.1.2",
+    "@vitejs/plugin-react-swc": "^3.9.0",
+    "jsdom": "^28.1.0",
+    "typescript": "~5.8.3",
+    "vite": "^6.4.3",
+    "vitest": "^4.0.18"
+  },
+  "packageManager": "pnpm@11.0.8"
+}

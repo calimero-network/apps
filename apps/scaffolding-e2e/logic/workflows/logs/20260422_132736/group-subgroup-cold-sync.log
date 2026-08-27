@@ -1,0 +1,357 @@
+run_workflow: incoming log_level='debug'
+run_workflow: incoming rust_backtrace='0'
+WorkflowExecutor: resolved log_level='debug', binary_mode=False
+WorkflowExecutor: workflow_id='abfeb43e' (for test isolation)
+WorkflowExecutor: resolved rust_backtrace='0', binary_mode=False
+
+🚀 Executing Workflow: E2E KV Store - Subgroup Cold-Start Sync
+
+💥 Nuking all data before workflow ...
+Found 2 Calimero node data directory(ies)
+✓ Found merod binary in PATH: /usr/local/bin/merod
+
+Deleting 2 data directory(ies)...
+✓ Successfully deleted 2 data directory(ies)
+Total space freed: 3.7 MB
+✓ Nuke on start completed
+
+Step 1: Checking workflow nodes (restart=false)...
+Will reuse existing nodes if they're running...
+
+Step 2: Managing nodes...
+Checking 2 nodes with prefix 'e2e-node' (no restart mode)...
+✓ Image ghcr.io/calimero-network/merod:0.10.1-rc.29 already available locally
+✓ Cleaned up existing container e2e-node-1-init
+Setting RUST_LOG for node e2e-node-1: debug
+Setting RUST_BACKTRACE for node e2e-node-1: 0
+Environment variables for e2e-node-1:
+  CALIMERO_HOME=/app/data
+  NODE_NAME=e2e-node-1
+  RUST_LOG=debug
+  RUST_BACKTRACE=0
+Using default fresh WebUI fetch for node e2e-node-1
+Initializing node e2e-node-1...
+✓ Node e2e-node-1 initialized successfully
+Starting node e2e-node-1...
+✓ Started Calimero node e2e-node-1 (ID: 062d1b2574c3)
+  - P2P Port: 2428
+  - RPC/Admin Port: 2528
+  - Data Directory: ./data/e2e-node-1
+  - Non Auth Node URL: http://localhost:2528
+✓ Image ghcr.io/calimero-network/merod:0.10.1-rc.29 already available locally
+✓ Cleaned up existing container e2e-node-2-init
+Setting RUST_LOG for node e2e-node-2: debug
+Setting RUST_BACKTRACE for node e2e-node-2: 0
+Environment variables for e2e-node-2:
+  CALIMERO_HOME=/app/data
+  NODE_NAME=e2e-node-2
+  RUST_LOG=debug
+  RUST_BACKTRACE=0
+Using default fresh WebUI fetch for node e2e-node-2
+Initializing node e2e-node-2...
+✓ Node e2e-node-2 initialized successfully
+Starting node e2e-node-2...
+✓ Started Calimero node e2e-node-2 (ID: f649689a187a)
+  - P2P Port: 2429
+  - RPC/Admin Port: 2529
+  - Data Directory: ./data/e2e-node-2
+  - Non Auth Node URL: http://localhost:2529
+✓ Node management completed
+
+Step 3: Waiting for nodes to be ready...
+Waiting up to 60 seconds for 2 nodes to be ready...
+✓ Admin server accessible on localhost:2528 for e2e-node-1
+✓ Node e2e-node-1 is ready (health check passed)
+✓ Admin server accessible on localhost:2528 for e2e-node-2
+✓ Node e2e-node-2 is ready (health check passed)
+  Waiting for nodes... ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 100% 0:00:00
+✓ All nodes are ready
+
+Step 4: Executing workflow steps...
+
+Executing Install application on node-1 (install_application)...
+✅ Custom outputs configuration validated: 1 outputs defined
+Connecting to http://localhost:2528 (node: e2e-node-1)...
+Copied file to container data directory: data/e2e-node-1/e2e_kv_store.wasm
+Installing dev application using container path: /app/data/e2e_kv_store.wasm
+🔍 Install API Response for e2e-node-1:
+  Success: True
+  Data:
+{
+  "data": {
+    "applicationId": "64Ayc8BQoYBWYRFVToQJ3TxAveEw3oHm2grs9DaavcCU"
+  }
+}
+📝 Install result data: {'data': {'applicationId': '64Ayc8BQoYBWYRFVToQJ3TxAveEw3oHm2grs9DaavcCU'}}
+� Exporting variables from e2e-node-1 response:
+   ✓ app_id = 64Ayc8BQoYBWYRFVToQJ3TxAveEw3oHm2grs9DaavcCU
+📝 Fallback: Captured application ID for e2e-node-1: 64Ayc8BQoYBWYRFVToQJ3TxAveEw3oHm2grs9DaavcCU
+✓ Step 'Install application on node-1' completed
+
+Executing Install application on node-2 (install_application)...
+✅ Automatic exports configuration validated: 1 variables defined
+Connecting to http://localhost:2529 (node: e2e-node-2)...
+Copied file to container data directory: data/e2e-node-2/e2e_kv_store.wasm
+Installing dev application using container path: /app/data/e2e_kv_store.wasm
+🔍 Install API Response for e2e-node-2:
+  Success: True
+  Data:
+{
+  "data": {
+    "applicationId": "64Ayc8BQoYBWYRFVToQJ3TxAveEw3oHm2grs9DaavcCU"
+  }
+}
+📝 Install result data: {'data': {'applicationId': '64Ayc8BQoYBWYRFVToQJ3TxAveEw3oHm2grs9DaavcCU'}}
+⚠️  No outputs configured for this step. Variables will not be exported automatically.
+   To export variables, add an 'outputs' section to your step configuration.
+📝 Fallback: Captured application ID for e2e-node-2: 64Ayc8BQoYBWYRFVToQJ3TxAveEw3oHm2grs9DaavcCU
+✓ Step 'Install application on node-2' completed
+
+Executing Create namespace on node-1 (create_namespace)...
+� Exporting variables from e2e-node-1 response:
+   ✓ namespace_id = 7124786b5fcd226c8ccaa4cea331580735686fa5c3000abcb53329202aa94480
+Captured namespace ID for e2e-node-1: 7124786b5fcd226c8ccaa4cea331580735686fa5c3000abcb53329202aa94480
+✓ Namespace created on e2e-node-1: 7124786b5fcd226c8ccaa4cea331580735686fa5c3000abcb53329202aa94480
+✓ Step 'Create namespace on node-1' completed
+
+Executing Create namespace invitation for node-2 (create_namespace_invitation)...
+� Exporting variables from e2e-node-1 response:
+   ✓ namespace_invitation = {'invitation': {'expiration_timestamp': 1808393551, 'group_id': [113, 36, 120, 107, 95, 205, 34, ...
+✓ Namespace invitation created on e2e-node-1
+✓ Step 'Create namespace invitation for node-2' completed
+
+Executing Node-2 joins namespace (join_namespace)...
+� Exporting variables from e2e-node-2 response:
+   ✓ member_identity_node2 = GxqWKZ71eg6yHamGLssroe6bbBxMQB2bo68SFfAECfx4
+✓ Node e2e-node-2 joined namespace successfully
+✓ Step 'Node-2 joins namespace' completed
+
+Executing Create subgroup inside namespace (create_group_in_namespace)...
+� Exporting variables from e2e-node-1 response:
+   ✓ subgroup_id = 715648b2f7581e0a99ba0a3cd8aa7b48e35e445eafaa5aaee0368d469e27eb2d
+✓ Created group in namespace on e2e-node-1
+✓ Step 'Create subgroup inside namespace' completed
+
+Executing Add node-2 to subgroup (add_group_members)...
+✓ Added 1 member(s) to group 715648b2f7581e0a99ba0a3cd8aa7b48e35e445eafaa5aaee0368d469e27eb2d on e2e-node-1
+✓ Step 'Add node-2 to subgroup' completed
+
+Executing Wait for subgroup governance (wait)...
+Waiting 5 seconds...
+✓ Step 'Wait for subgroup governance' completed
+
+Executing Create context in subgroup (node-1) (create_context)...
+Debug: CreateContext resolved values:
+  node: e2e-node-1
+  application_id (resolved): 64Ayc8BQoYBWYRFVToQJ3TxAveEw3oHm2grs9DaavcCU
+  dynamic_values keys: ['app_path_e2e-node-1', 'app_id', 'app_id_e2e-node-1', 'app_path_e2e-node-2', 'app_id_e2e-node-2', 'namespace_id',
+'namespace_id_e2e-node-1', 'namespace_invitation', 'member_identity_node2', 'subgroup_id']
+  workflow_results keys: ['install_e2e-node-1', 'install_e2e-node-2', 'namespace_e2e-node-1', 'namespace_invitation_Create namespace 
+invitation for node-2', 'join_namespace_e2e-node-2', 'group_in_namespace_e2e-node-1', 'add_group_members_e2e-node-1']
+✅ Custom outputs configuration validated: 1 outputs defined
+🔍 Context Creation API Response for e2e-node-1:
+  Success: True
+  Data:
+{
+  "data": {
+    "contextId": "3FMdgqXo2fLEV9FRogJQESVCad3WoD3477zqvZvCARsy",
+    "groupCreated": false,
+    "groupId": "715648b2f7581e0a99ba0a3cd8aa7b48e35e445eafaa5aaee0368d469e27eb2d",
+    "memberPublicKey": "GXSbGvFgU7KbAStmtfDuPFvJqaLbD8yVNKybfJGTGvVQ"
+  }
+}
+� Exporting variables from e2e-node-1 response:
+   ✓ sub_ctx_id = 3FMdgqXo2fLEV9FRogJQESVCad3WoD3477zqvZvCARsy
+📝 Fallback: Captured context ID for e2e-node-1: 3FMdgqXo2fLEV9FRogJQESVCad3WoD3477zqvZvCARsy
+✓ Step 'Create context in subgroup (node-1)' completed
+
+Executing Node-2 joins subgroup context (join_context)...
+Join context failed on e2e-node-2: join_context failed
+
+📋 Recent logs from node 'e2e-node-2' (last 50 lines):
+================================================================================
+2026-04-22T11:32:35.943839886Z [2m2026-04-22T11:32:35.943512Z[0m [34mDEBUG[0m 
+[1mnew_established_connection[0m[1m{[0m[3mremote_addr[0m[2m=[0m/ip4/63.181.86.34/udp/4001/quic-v1/p2p/12D3KooWR5V4zmisVtVdGE6i8jfFwtgRNq5
+t8eDGxfckKuhXu7Eh [3mid[0m[2m=[0m1 
+[3mpeer[0m[2m=[0m12D3KooWR5V4zmisVtVdGE6i8jfFwtgRNq5t8eDGxfckKuhXu7Eh[1m}[0m[2m:[0m[1mConnection::poll[0m[2m:[0m 
+[2mmultistream_select::dialer_select[0m[2m:[0m Dialer: Received confirmation for protocol: /libp2p/circuit/relay/0.2.0/hop
+2026-04-22T11:32:35.988357303Z [2m2026-04-22T11:32:35.987523Z[0m [34mDEBUG[0m 
+[1mnew_established_connection[0m[1m{[0m[3mremote_addr[0m[2m=[0m/ip4/63.181.86.34/udp/4001/quic-v1/p2p/12D3KooWR5V4zmisVtVdGE6i8jfFwtgRNq5
+t8eDGxfckKuhXu7Eh [3mid[0m[2m=[0m1 
+[3mpeer[0m[2m=[0m12D3KooWR5V4zmisVtVdGE6i8jfFwtgRNq5t8eDGxfckKuhXu7Eh[1m}[0m[2m:[0m[1mConnection::poll[0m[2m:[0m 
+[2mmultistream_select::dialer_select[0m[2m:[0m Dialer: Proposed protocol: /libp2p/circuit/relay/0.2.0/hop
+2026-04-22T11:32:36.010879136Z [2m2026-04-22T11:32:36.010114Z[0m [34mDEBUG[0m 
+[1mnew_established_connection[0m[1m{[0m[3mremote_addr[0m[2m=[0m/ip4/63.181.86.34/udp/4001/quic-v1/p2p/12D3KooWR5V4zmisVtVdGE6i8jfFwtgRNq5
+t8eDGxfckKuhXu7Eh [3mid[0m[2m=[0m1 
+[3mpeer[0m[2m=[0m12D3KooWR5V4zmisVtVdGE6i8jfFwtgRNq5t8eDGxfckKuhXu7Eh[1m}[0m[2m:[0m[1mConnection::poll[0m[2m:[0m 
+[2mmultistream_select::dialer_select[0m[2m:[0m Dialer: Received confirmation for protocol: /libp2p/circuit/relay/0.2.0/hop
+2026-04-22T11:32:36.034274678Z [2m2026-04-22T11:32:36.033973Z[0m [34mDEBUG[0m 
+[1mnew_established_connection[0m[1m{[0m[3mremote_addr[0m[2m=[0m/ip4/63.181.86.34/udp/4001/quic-v1/p2p/12D3KooWR5V4zmisVtVdGE6i8jfFwtgRNq5
+t8eDGxfckKuhXu7Eh [3mid[0m[2m=[0m1 
+[3mpeer[0m[2m=[0m12D3KooWR5V4zmisVtVdGE6i8jfFwtgRNq5t8eDGxfckKuhXu7Eh[1m}[0m[2m:[0m[1mConnection::poll[0m[2m:[0m 
+[2mmultistream_select::dialer_select[0m[2m:[0m Dialer: Proposed protocol: /libp2p/circuit/relay/0.2.0/hop
+2026-04-22T11:32:36.058355220Z [2m2026-04-22T11:32:36.058108Z[0m [34mDEBUG[0m 
+[1mnew_established_connection[0m[1m{[0m[3mremote_addr[0m[2m=[0m/ip4/63.181.86.34/udp/4001/quic-v1/p2p/12D3KooWR5V4zmisVtVdGE6i8jfFwtgRNq5
+t8eDGxfckKuhXu7Eh [3mid[0m[2m=[0m1 
+[3mpeer[0m[2m=[0m12D3KooWR5V4zmisVtVdGE6i8jfFwtgRNq5t8eDGxfckKuhXu7Eh[1m}[0m[2m:[0m[1mConnection::poll[0m[2m:[0m 
+[2mmultistream_select::dialer_select[0m[2m:[0m Dialer: Received confirmation for protocol: /libp2p/circuit/relay/0.2.0/hop
+2026-04-22T11:32:36.084347095Z [2m2026-04-22T11:32:36.084069Z[0m [34mDEBUG[0m 
+[1mnew_established_connection[0m[1m{[0m[3mremote_addr[0m[2m=[0m/ip4/63.181.86.34/udp/4001/quic-v1/p2p/12D3KooWR5V4zmisVtVdGE6i8jfFwtgRNq5
+t8eDGxfckKuhXu7Eh [3mid[0m[2m=[0m1 
+[3mpeer[0m[2m=[0m12D3KooWR5V4zmisVtVdGE6i8jfFwtgRNq5t8eDGxfckKuhXu7Eh[1m}[0m[2m:[0m[1mConnection::poll[0m[2m:[0m 
+[2mmultistream_select::dialer_select[0m[2m:[0m Dialer: Proposed protocol: /libp2p/circuit/relay/0.2.0/hop
+2026-04-22T11:32:36.119382262Z [2m2026-04-22T11:32:36.119079Z[0m [34mDEBUG[0m 
+[1mnew_established_connection[0m[1m{[0m[3mremote_addr[0m[2m=[0m/ip4/63.181.86.34/udp/4001/quic-v1/p2p/12D3KooWR5V4zmisVtVdGE6i8jfFwtgRNq5
+t8eDGxfckKuhXu7Eh [3mid[0m[2m=[0m1 
+[3mpeer[0m[2m=[0m12D3KooWR5V4zmisVtVdGE6i8jfFwtgRNq5t8eDGxfckKuhXu7Eh[1m}[0m[2m:[0m[1mConnection::poll[0m[2m:[0m 
+[2mmultistream_select::dialer_select[0m[2m:[0m Dialer: Received confirmation for protocol: /libp2p/circuit/relay/0.2.0/hop
+2026-04-22T11:32:36.143603470Z [2m2026-04-22T11:32:36.143204Z[0m [34mDEBUG[0m 
+[1mnew_established_connection[0m[1m{[0m[3mremote_addr[0m[2m=[0m/ip4/63.181.86.34/udp/4001/quic-v1/p2p/12D3KooWR5V4zmisVtVdGE6i8jfFwtgRNq5
+t8eDGxfckKuhXu7Eh [3mid[0m[2m=[0m1 
+[3mpeer[0m[2m=[0m12D3KooWR5V4zmisVtVdGE6i8jfFwtgRNq5t8eDGxfckKuhXu7Eh[1m}[0m[2m:[0m[1mConnection::poll[0m[2m:[0m 
+[2mmultistream_select::dialer_select[0m[2m:[0m Dialer: Proposed protocol: /libp2p/circuit/relay/0.2.0/hop
+2026-04-22T11:32:36.191994428Z [2m2026-04-22T11:32:36.191777Z[0m [34mDEBUG[0m 
+[1mnew_established_connection[0m[1m{[0m[3mremote_addr[0m[2m=[0m/ip4/63.181.86.34/udp/4001/quic-v1/p2p/12D3KooWR5V4zmisVtVdGE6i8jfFwtgRNq5
+t8eDGxfckKuhXu7Eh [3mid[0m[2m=[0m1 
+[3mpeer[0m[2m=[0m12D3KooWR5V4zmisVtVdGE6i8jfFwtgRNq5t8eDGxfckKuhXu7Eh[1m}[0m[2m:[0m[1mConnection::poll[0m[2m:[0m 
+[2mmultistream_select::dialer_select[0m[2m:[0m Dialer: Received confirmation for protocol: /libp2p/circuit/relay/0.2.0/hop
+2026-04-22T11:32:36.214731803Z [2m2026-04-22T11:32:36.214402Z[0m [34mDEBUG[0m 
+[1mnew_established_connection[0m[1m{[0m[3mremote_addr[0m[2m=[0m/ip4/63.181.86.34/udp/4001/quic-v1/p2p/12D3KooWR5V4zmisVtVdGE6i8jfFwtgRNq5
+t8eDGxfckKuhXu7Eh [3mid[0m[2m=[0m1 
+[3mpeer[0m[2m=[0m12D3KooWR5V4zmisVtVdGE6i8jfFwtgRNq5t8eDGxfckKuhXu7Eh[1m}[0m[2m:[0m[1mConnection::poll[0m[2m:[0m 
+[2mmultistream_select::dialer_select[0m[2m:[0m Dialer: Proposed protocol: /libp2p/circuit/relay/0.2.0/hop
+2026-04-22T11:32:36.244527720Z [2m2026-04-22T11:32:36.244224Z[0m [34mDEBUG[0m 
+[1mnew_established_connection[0m[1m{[0m[3mremote_addr[0m[2m=[0m/ip4/63.181.86.34/udp/4001/quic-v1/p2p/12D3KooWR5V4zmisVtVdGE6i8jfFwtgRNq5
+t8eDGxfckKuhXu7Eh [3mid[0m[2m=[0m1 
+[3mpeer[0m[2m=[0m12D3KooWR5V4zmisVtVdGE6i8jfFwtgRNq5t8eDGxfckKuhXu7Eh[1m}[0m[2m:[0m[1mConnection::poll[0m[2m:[0m 
+[2mmultistream_select::dialer_select[0m[2m:[0m Dialer: Received confirmation for protocol: /libp2p/circuit/relay/0.2.0/hop
+2026-04-22T11:32:36.298806845Z [2m2026-04-22T11:32:36.298483Z[0m [34mDEBUG[0m 
+[1mnew_established_connection[0m[1m{[0m[3mremote_addr[0m[2m=[0m/ip4/63.181.86.34/udp/4001/quic-v1/p2p/12D3KooWR5V4zmisVtVdGE6i8jfFwtgRNq5
+t8eDGxfckKuhXu7Eh [3mid[0m[2m=[0m1 
+[3mpeer[0m[2m=[0m12D3KooWR5V4zmisVtVdGE6i8jfFwtgRNq5t8eDGxfckKuhXu7Eh[1m}[0m[2m:[0m[1mConnection::poll[0m[2m:[0m 
+[2mmultistream_select::dialer_select[0m[2m:[0m Dialer: Proposed protocol: /libp2p/circuit/relay/0.2.0/hop
+2026-04-22T11:32:36.320710553Z [2m2026-04-22T11:32:36.320437Z[0m [34mDEBUG[0m 
+[1mnew_established_connection[0m[1m{[0m[3mremote_addr[0m[2m=[0m/ip4/63.181.86.34/udp/4001/quic-v1/p2p/12D3KooWR5V4zmisVtVdGE6i8jfFwtgRNq5
+t8eDGxfckKuhXu7Eh [3mid[0m[2m=[0m1 
+[3mpeer[0m[2m=[0m12D3KooWR5V4zmisVtVdGE6i8jfFwtgRNq5t8eDGxfckKuhXu7Eh[1m}[0m[2m:[0m[1mConnection::poll[0m[2m:[0m 
+[2mmultistream_select::dialer_select[0m[2m:[0m Dialer: Received confirmation for protocol: /libp2p/circuit/relay/0.2.0/hop
+2026-04-22T11:32:36.342818762Z [2m2026-04-22T11:32:36.342409Z[0m [34mDEBUG[0m 
+[1mTransport::dial[0m[1m{[0m[3maddress[0m[2m=[0m/ip4/10.14.1.8/tcp/2529/p2p/12D3KooWG677qyRCyeRydMmrZigQHf7a3LM3XXoQZwJaszCmkShE[1m}[0m[2
+m:[0m [2mlibp2p_tcp[0m[2m:[0m Failed to connect using existing socket because we already have a connection, re-dialing with new port
+[3mconnect_addr[0m[2m=[0m10.14.1.8:2529 [3mbind_addr[0m[2m=[0m0.0.0.0:2428
+2026-04-22T11:32:36.419103428Z [2m2026-04-22T11:32:36.418788Z[0m [34mDEBUG[0m [1mSwarm::poll[0m[2m:[0m 
+[2mlibp2p_gossipsub::behaviour[0m[2m:[0m HEARTBEAT: Mesh low. Topic contains: 1 needs: 6 
+[3mtopic[0m[2m=[0mns/7124786b5fcd226c8ccaa4cea331580735686fa5c3000abcb53329202aa94480
+2026-04-22T11:32:36.419152887Z [2m2026-04-22T11:32:36.418861Z[0m [34mDEBUG[0m [1mSwarm::poll[0m[2m:[0m 
+[2mlibp2p_gossipsub::behaviour[0m[2m:[0m RANDOM PEERS: Got 0 peers
+2026-04-22T11:32:36.419158303Z [2m2026-04-22T11:32:36.418881Z[0m [34mDEBUG[0m [1mSwarm::poll[0m[2m:[0m 
+[2mlibp2p_gossipsub::behaviour[0m[2m:[0m Updating mesh, new mesh: {}
+2026-04-22T11:32:36.419162803Z [2m2026-04-22T11:32:36.418892Z[0m [34mDEBUG[0m [1mSwarm::poll[0m[2m:[0m 
+[2mlibp2p_gossipsub::behaviour[0m[2m:[0m HEARTBEAT: Mesh low. Topic contains: 2 needs: 6 [3mtopic[0m[2m=[0mmero_specialized_node_invites
+2026-04-22T11:32:36.419167845Z [2m2026-04-22T11:32:36.418913Z[0m [34mDEBUG[0m [1mSwarm::poll[0m[2m:[0m 
+[2mlibp2p_gossipsub::behaviour[0m[2m:[0m RANDOM PEERS: Got 0 peers
+2026-04-22T11:32:36.419172137Z [2m2026-04-22T11:32:36.418920Z[0m [34mDEBUG[0m [1mSwarm::poll[0m[2m:[0m 
+[2mlibp2p_gossipsub::behaviour[0m[2m:[0m Updating mesh, new mesh: {}
+2026-04-22T11:32:36.419223803Z [2m2026-04-22T11:32:36.418956Z[0m [34mDEBUG[0m [1mSwarm::poll[0m[2m:[0m 
+[2mlibp2p_gossipsub::behaviour[0m[2m:[0m RANDOM PEERS: Got 0 peers
+2026-04-22T11:32:36.419234762Z [2m2026-04-22T11:32:36.418965Z[0m [34mDEBUG[0m [1mSwarm::poll[0m[2m:[0m 
+[2mlibp2p_gossipsub::behaviour[0m[2m:[0m Gossiping IHAVE to 0 peers
+2026-04-22T11:32:37.428056470Z [2m2026-04-22T11:32:37.427469Z[0m [34mDEBUG[0m [2mlibp2p_mdns::behaviour::iface[0m[2m:[0m Parsing mdns
+packet failed: ProtoError { kind: Msg("rdata length too large for remaining bytes, need: 219 remain: 139") }
+2026-04-22T11:32:37.428112679Z [2m2026-04-22T11:32:37.427841Z[0m [34mDEBUG[0m [2mlibp2p_mdns::behaviour::iface[0m[2m:[0m Parsing mdns
+packet failed: ProtoError { kind: Msg("rdata length too large for remaining bytes, need: 98 remain: 63") }
+2026-04-22T11:32:39.365603471Z [2m2026-04-22T11:32:39.364767Z[0m [34mDEBUG[0m [1mSwarm::poll[0m[2m:[0m 
+[2mlibp2p_gossipsub::behaviour[0m[2m:[0m HEARTBEAT: Mesh low. Topic contains: 1 needs: 6 
+[3mtopic[0m[2m=[0mns/7124786b5fcd226c8ccaa4cea331580735686fa5c3000abcb53329202aa94480
+2026-04-22T11:32:39.365720930Z [2m2026-04-22T11:32:39.364827Z[0m [34mDEBUG[0m [1mSwarm::poll[0m[2m:[0m 
+[2mlibp2p_gossipsub::behaviour[0m[2m:[0m RANDOM PEERS: Got 0 peers
+2026-04-22T11:32:39.365750013Z [2m2026-04-22T11:32:39.364832Z[0m [34mDEBUG[0m [1mSwarm::poll[0m[2m:[0m 
+[2mlibp2p_gossipsub::behaviour[0m[2m:[0m Updating mesh, new mesh: {}
+2026-04-22T11:32:39.365752096Z [2m2026-04-22T11:32:39.364834Z[0m [34mDEBUG[0m [1mSwarm::poll[0m[2m:[0m 
+[2mlibp2p_gossipsub::behaviour[0m[2m:[0m HEARTBEAT: Mesh low. Topic contains: 2 needs: 6 [3mtopic[0m[2m=[0mmero_specialized_node_invites
+2026-04-22T11:32:39.365755430Z [2m2026-04-22T11:32:39.364837Z[0m [34mDEBUG[0m [1mSwarm::poll[0m[2m:[0m 
+[2mlibp2p_gossipsub::behaviour[0m[2m:[0m RANDOM PEERS: Got 0 peers
+2026-04-22T11:32:39.365756471Z [2m2026-04-22T11:32:39.364838Z[0m [34mDEBUG[0m [1mSwarm::poll[0m[2m:[0m 
+[2mlibp2p_gossipsub::behaviour[0m[2m:[0m Updating mesh, new mesh: {}
+2026-04-22T11:32:39.365757430Z [2m2026-04-22T11:32:39.364865Z[0m [34mDEBUG[0m [1mSwarm::poll[0m[2m:[0m 
+[2mlibp2p_gossipsub::behaviour[0m[2m:[0m RANDOM PEERS: Got 0 peers
+2026-04-22T11:32:39.365758346Z [2m2026-04-22T11:32:39.364868Z[0m [34mDEBUG[0m [1mSwarm::poll[0m[2m:[0m 
+[2mlibp2p_gossipsub::behaviour[0m[2m:[0m Gossiping IHAVE to 0 peers
+2026-04-22T11:32:39.365759430Z [2m2026-04-22T11:32:39.365008Z[0m [34mDEBUG[0m [1mSwarm::poll[0m[2m:[0m 
+[2mlibp2p_gossipsub::behaviour[0m[2m:[0m Handling message from peer [3mpeer[0m[2m=[0m12D3KooWQZrHUJk3Yq9hTCXt4EbDV2pKznnCs9HrH2i1LyKkuCRn
+[3mmessage_id[0m[2m=[0m313244334b6f6f57515a7248554a6b335971396854435874344562445632704b7a6e6e4373394872483269314c794b6b7543526e3137373638
+3537353438373632383336373233
+2026-04-22T11:32:39.365772221Z [2m2026-04-22T11:32:39.365253Z[0m [34mDEBUG[0m [1mSwarm::poll[0m[2m:[0m 
+[2mlibp2p_gossipsub::behaviour[0m[2m:[0m Put message in duplicate_cache and resolve promises 
+[3mmessage_id[0m[2m=[0m313244334b6f6f57515a7248554a6b335971396854435874344562445632704b7a6e6e4373394872483269314c794b6b7543526e3137373638
+3537353438373632383336373233
+2026-04-22T11:32:39.365775638Z [2m2026-04-22T11:32:39.365264Z[0m [34mDEBUG[0m [1mSwarm::poll[0m[2m:[0m 
+[2mlibp2p_gossipsub::behaviour[0m[2m:[0m Sending received message to user
+2026-04-22T11:32:39.365776638Z [2m2026-04-22T11:32:39.365268Z[0m [34mDEBUG[0m [1mSwarm::poll[0m[2m:[0m 
+[2mlibp2p_gossipsub::behaviour[0m[2m:[0m Forwarding message 
+[3mmessage_id[0m[2m=[0m313244334b6f6f57515a7248554a6b335971396854435874344562445632704b7a6e6e4373394872483269314c794b6b7543526e3137373638
+3537353438373632383336373233
+2026-04-22T11:32:39.365797180Z [2m2026-04-22T11:32:39.365272Z[0m [34mDEBUG[0m [1mSwarm::poll[0m[2m:[0m 
+[2mlibp2p_gossipsub::behaviour[0m[2m:[0m Completed message handling for message 
+[3mmessage_id[0m[2m=[0m313244334b6f6f57515a7248554a6b335971396854435874344562445632704b7a6e6e4373394872483269314c794b6b7543526e3137373638
+3537353438373632383336373233
+2026-04-22T11:32:39.365804971Z [2m2026-04-22T11:32:39.365318Z[0m [34mDEBUG[0m 
+[2mcalimero_network::handlers::stream::swarm::gossipsub[0m[2m:[0m \x1b[33mgossipsub\x1b[39m: Message { propagation_source: 
+PeerId("12D3KooWQZrHUJk3Yq9hTCXt4EbDV2pKznnCs9HrH2i1LyKkuCRn"), message_id: 
+MessageId(313244334b6f6f57515a7248554a6b335971396854435874344562445632704b7a6e6e4373394872483269314c794b6b7543526e31373736383537353438373
+632383336373233), message: Message { data: 057124786b5fcd226c.., source: 
+Some(PeerId("12D3KooWQZrHUJk3Yq9hTCXt4EbDV2pKznnCs9HrH2i1LyKkuCRn")), sequence_number: Some(1776857548762836723), topic: TopicHash { 
+hash: "ns/7124786b5fcd226c8ccaa4cea331580735686fa5c3000abcb53329202aa94480" } } }
+2026-04-22T11:32:39.366436305Z [2m2026-04-22T11:32:39.365557Z[0m [34mDEBUG[0m [1mSwarm::poll[0m[2m:[0m 
+[2mlibp2p_gossipsub::behaviour[0m[2m:[0m SUBSCRIPTION: Adding gossip peer to topic 
+[3mpeer[0m[2m=[0m12D3KooWQZrHUJk3Yq9hTCXt4EbDV2pKznnCs9HrH2i1LyKkuCRn [3mtopic[0m[2m=[0m3FMdgqXo2fLEV9FRogJQESVCad3WoD3477zqvZvCARsy
+2026-04-22T11:32:39.366442263Z [2m2026-04-22T11:32:39.365616Z[0m [34mDEBUG[0m [2mcalimero_node::network_event_processor[0m[2m:[0m
+Forwarding network event to NodeManager [3mevent_type[0m[2m=[0m"Message"
+2026-04-22T11:32:39.366501138Z [2m2026-04-22T11:32:39.365770Z[0m [34mDEBUG[0m 
+[2mcalimero_network::handlers::stream::swarm::gossipsub[0m[2m:[0m \x1b[33mgossipsub\x1b[39m: Subscribed { peer_id: 
+PeerId("12D3KooWQZrHUJk3Yq9hTCXt4EbDV2pKznnCs9HrH2i1LyKkuCRn"), topic: TopicHash { hash: "3FMdgqXo2fLEV9FRogJQESVCad3WoD3477zqvZvCARsy" }
+}
+2026-04-22T11:32:39.366509596Z [2m2026-04-22T11:32:39.365845Z[0m [34mDEBUG[0m [2mcalimero_node::network_event_processor[0m[2m:[0m
+Forwarding network event to NodeManager [3mevent_type[0m[2m=[0m"Subscribed"
+2026-04-22T11:32:39.366523638Z [2m2026-04-22T11:32:39.366023Z[0m [34mDEBUG[0m [1mSwarm::poll[0m[2m:[0m 
+[2mlibp2p_gossipsub::behaviour[0m[2m:[0m SUBSCRIPTION: Adding gossip peer to topic 
+[3mpeer[0m[2m=[0m12D3KooWQZrHUJk3Yq9hTCXt4EbDV2pKznnCs9HrH2i1LyKkuCRn 
+[3mtopic[0m[2m=[0mns/715648b2f7581e0a99ba0a3cd8aa7b48e35e445eafaa5aaee0368d469e27eb2d
+2026-04-22T11:32:39.366529013Z [2m2026-04-22T11:32:39.366033Z[0m [34mDEBUG[0m 
+[2mcalimero_node::handlers::network_event::subscriptions[0m[2m:[0m Observed subscription to unknown context, ignoring.. 
+[3mcontext_id[0m[2m=[0m3FMdgqXo2fLEV9FRogJQESVCad3WoD3477zqvZvCARsy 
+[3mpeer_id[0m[2m=[0m12D3KooWQZrHUJk3Yq9hTCXt4EbDV2pKznnCs9HrH2i1LyKkuCRn
+2026-04-22T11:32:39.366531305Z [2m2026-04-22T11:32:39.366064Z[0m [34mDEBUG[0m 
+[2mcalimero_network::handlers::stream::swarm::gossipsub[0m[2m:[0m \x1b[33mgossipsub\x1b[39m: Subscribed { peer_id: 
+PeerId("12D3KooWQZrHUJk3Yq9hTCXt4EbDV2pKznnCs9HrH2i1LyKkuCRn"), topic: TopicHash { hash: 
+"ns/715648b2f7581e0a99ba0a3cd8aa7b48e35e445eafaa5aaee0368d469e27eb2d" } }
+2026-04-22T11:32:39.366534055Z [2m2026-04-22T11:32:39.366093Z[0m [34mDEBUG[0m [2mcalimero_node::network_event_processor[0m[2m:[0m
+Forwarding network event to NodeManager [3mevent_type[0m[2m=[0m"Subscribed"
+2026-04-22T11:32:39.366625263Z [2m2026-04-22T11:32:39.366500Z[0m [32m INFO[0m 
+[2mcalimero_context::group_store::context_registration[0m[2m:[0m processing ContextRegistered governance op 
+[3mcontext_id[0m[2m=[0m3FMdgqXo2fLEV9FRogJQESVCad3WoD3477zqvZvCARsy 
+[3mapplication_id[0m[2m=[0m64Ayc8BQoYBWYRFVToQJ3TxAveEw3oHm2grs9DaavcCU 
+[3mgroup_id[0m[2m=[0m715648b2f7581e0a99ba0a3cd8aa7b48e35e445eafaa5aaee0368d469e27eb2d
+2026-04-22T11:32:39.367239388Z [2m2026-04-22T11:32:39.367084Z[0m [32m INFO[0m 
+[2mcalimero_context::group_store::context_registration[0m[2m:[0m updated group meta with real application ID from ContextRegistered 
+[3mgroup_id[0m[2m=[0m715648b2f7581e0a99ba0a3cd8aa7b48e35e445eafaa5aaee0368d469e27eb2d 
+[3mapplication_id[0m[2m=[0m64Ayc8BQoYBWYRFVToQJ3TxAveEw3oHm2grs9DaavcCU
+2026-04-22T11:32:39.382956388Z [2m2026-04-22T11:32:39.382667Z[0m [32m INFO[0m [1mcall[0m[2m:[0m 
+[2mcalimero_server::admin::handlers::context::join_context[0m[2m:[0m Joining context via group membership 
+[3mcontext_id[0m[2m=[0m3FMdgqXo2fLEV9FRogJQESVCad3WoD3477zqvZvCARsy
+2026-04-22T11:32:39.383231305Z [2m2026-04-22T11:32:39.383099Z[0m [31mERROR[0m [1mcall[0m[2m:[0m 
+[2mcalimero_server::admin::handlers::context::join_context[0m[2m:[0m Failed to join context via group 
+[3mcontext_id[0m[2m=[0m3FMdgqXo2fLEV9FRogJQESVCad3WoD3477zqvZvCARsy [3merror[0m[2m=[0mApiError { status_code: 500, message: "identity is
+not a member of the group" }
+
+================================================================================
+
+❌ Step 'Node-2 joins subgroup context' failed
+❌ Workflow steps failed - stopping workflow
+
+❌ Workflow failed!
+Stopping managed containers with graceful shutdown...
+Initiating graceful shutdown for 2 containers...
+Waiting 3s for connection draining...
+✓ Gracefully stopped and removed e2e-node-1
+✓ Gracefully stopped and removed e2e-node-2

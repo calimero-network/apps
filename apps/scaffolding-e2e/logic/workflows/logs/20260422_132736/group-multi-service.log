@@ -1,0 +1,180 @@
+run_workflow: incoming log_level='debug'
+run_workflow: incoming rust_backtrace='0'
+WorkflowExecutor: resolved log_level='debug', binary_mode=False
+WorkflowExecutor: workflow_id='1d8dd80a' (for test isolation)
+WorkflowExecutor: resolved rust_backtrace='0', binary_mode=False
+
+🚀 Executing Workflow: E2E KV Store - Multi-Service Bundle
+
+💥 Nuking all data before workflow ...
+Found 3 Calimero node data directory(ies)
+✓ Found merod binary in PATH: /usr/local/bin/merod
+
+Deleting 3 data directory(ies)...
+✓ Successfully deleted 3 data directory(ies)
+Total space freed: 4.1 MB
+✓ Nuke on start completed
+
+Step 1: Checking workflow nodes (restart=false)...
+Will reuse existing nodes if they're running...
+
+Step 2: Managing nodes...
+Checking 2 nodes with prefix 'e2e-node' (no restart mode)...
+✓ Image ghcr.io/calimero-network/merod:0.10.1-rc.29 already available locally
+✓ Cleaned up existing container e2e-node-1-init
+Setting RUST_LOG for node e2e-node-1: debug
+Setting RUST_BACKTRACE for node e2e-node-1: 0
+Environment variables for e2e-node-1:
+  CALIMERO_HOME=/app/data
+  NODE_NAME=e2e-node-1
+  RUST_LOG=debug
+  RUST_BACKTRACE=0
+Using default fresh WebUI fetch for node e2e-node-1
+Initializing node e2e-node-1...
+✓ Node e2e-node-1 initialized successfully
+Starting node e2e-node-1...
+✓ Started Calimero node e2e-node-1 (ID: 6a5b6f0d40bb)
+  - P2P Port: 2428
+  - RPC/Admin Port: 2528
+  - Data Directory: ./data/e2e-node-1
+  - Non Auth Node URL: http://localhost:2528
+✓ Image ghcr.io/calimero-network/merod:0.10.1-rc.29 already available locally
+✓ Cleaned up existing container e2e-node-2-init
+Setting RUST_LOG for node e2e-node-2: debug
+Setting RUST_BACKTRACE for node e2e-node-2: 0
+Environment variables for e2e-node-2:
+  CALIMERO_HOME=/app/data
+  NODE_NAME=e2e-node-2
+  RUST_LOG=debug
+  RUST_BACKTRACE=0
+Using default fresh WebUI fetch for node e2e-node-2
+Initializing node e2e-node-2...
+✓ Node e2e-node-2 initialized successfully
+Starting node e2e-node-2...
+✓ Started Calimero node e2e-node-2 (ID: f3f35f945510)
+  - P2P Port: 2429
+  - RPC/Admin Port: 2529
+  - Data Directory: ./data/e2e-node-2
+  - Non Auth Node URL: http://localhost:2529
+✓ Node management completed
+
+Step 3: Waiting for nodes to be ready...
+Waiting up to 60 seconds for 2 nodes to be ready...
+✓ Admin server accessible on localhost:2528 for e2e-node-2
+✓ Node e2e-node-2 is ready (health check passed)
+✓ Admin server accessible on localhost:2528 for e2e-node-1
+✓ Node e2e-node-1 is ready (health check passed)
+  Waiting for nodes... ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 100% 0:00:00
+✓ All nodes are ready
+
+Step 4: Executing workflow steps...
+
+Executing Install multi-service bundle on node-1 (install_application)...
+✅ Custom outputs configuration validated: 1 outputs defined
+Connecting to http://localhost:2528 (node: e2e-node-1)...
+Copied file to container data directory: data/e2e-node-1/e2e-kv-store-multi-0.1.0.mpk
+Installing dev application using container path: /app/data/e2e-kv-store-multi-0.1.0.mpk
+🔍 Install API Response for e2e-node-1:
+  Success: True
+  Data:
+{
+  "data": {
+    "applicationId": "JSMDff7LojPQzty5rto17RYsD3uqqRis5PMiX5nzSwy"
+  }
+}
+📝 Install result data: {'data': {'applicationId': 'JSMDff7LojPQzty5rto17RYsD3uqqRis5PMiX5nzSwy'}}
+� Exporting variables from e2e-node-1 response:
+   ✓ app_id = JSMDff7LojPQzty5rto17RYsD3uqqRis5PMiX5nzSwy
+📝 Fallback: Captured application ID for e2e-node-1: JSMDff7LojPQzty5rto17RYsD3uqqRis5PMiX5nzSwy
+✓ Step 'Install multi-service bundle on node-1' completed
+
+Executing Assert bundle installed (assert)...
+✓ Assertion #1: is_set({{app_id}})
+✓ Step 'Assert bundle installed' completed
+
+Executing Create namespace on node-1 (create_namespace)...
+� Exporting variables from e2e-node-1 response:
+   ✓ namespace_id = c340fc77fa55a44a17df0002e4d6a077dece832e7d5e6278c4eaa81054270b8f
+Captured namespace ID for e2e-node-1: c340fc77fa55a44a17df0002e4d6a077dece832e7d5e6278c4eaa81054270b8f
+✓ Namespace created on e2e-node-1: c340fc77fa55a44a17df0002e4d6a077dece832e7d5e6278c4eaa81054270b8f
+✓ Step 'Create namespace on node-1' completed
+
+Executing Assert namespace created (assert)...
+✓ Assertion #1: is_set({{namespace_id}})
+✓ Step 'Assert namespace created' completed
+
+Executing Create context for service store-a on node-1 (create_context)...
+Debug: CreateContext resolved values:
+  node: e2e-node-1
+  application_id (resolved): JSMDff7LojPQzty5rto17RYsD3uqqRis5PMiX5nzSwy
+  dynamic_values keys: ['app_path_e2e-node-1', 'app_id', 'app_id_e2e-node-1', 'namespace_id', 'namespace_id_e2e-node-1']
+  workflow_results keys: ['install_e2e-node-1', 'namespace_e2e-node-1']
+✅ Custom outputs configuration validated: 2 outputs defined
+🔍 Context Creation API Response for e2e-node-1:
+  Success: True
+  Data:
+{
+  "data": {
+    "contextId": "2zijhRfFTLk43FLuct31LgLNmoRFL2fhc8fhK1o7ufMm",
+    "groupCreated": false,
+    "groupId": "c340fc77fa55a44a17df0002e4d6a077dece832e7d5e6278c4eaa81054270b8f",
+    "memberPublicKey": "73K4LWus8wovLvgnzbdmEpg1x2mx37PqeN7fMvu4z72j"
+  }
+}
+� Exporting variables from e2e-node-1 response:
+   ✓ ctx_a_id = 2zijhRfFTLk43FLuct31LgLNmoRFL2fhc8fhK1o7ufMm
+   ✓ ctx_a_key_node1 = 73K4LWus8wovLvgnzbdmEpg1x2mx37PqeN7fMvu4z72j
+📝 Fallback: Captured context ID for e2e-node-1: 2zijhRfFTLk43FLuct31LgLNmoRFL2fhc8fhK1o7ufMm
+✓ Step 'Create context for service store-a on node-1' completed
+
+Executing Create context for service store-b on node-1 (create_context)...
+Debug: CreateContext resolved values:
+  node: e2e-node-1
+  application_id (resolved): JSMDff7LojPQzty5rto17RYsD3uqqRis5PMiX5nzSwy
+  dynamic_values keys: ['app_path_e2e-node-1', 'app_id', 'app_id_e2e-node-1', 'namespace_id', 'namespace_id_e2e-node-1', 'ctx_a_id', 
+'ctx_a_key_node1', 'context_id_e2e-node-1']
+  workflow_results keys: ['install_e2e-node-1', 'namespace_e2e-node-1', 'context_e2e-node-1']
+✅ Custom outputs configuration validated: 2 outputs defined
+🔍 Context Creation API Response for e2e-node-1:
+  Success: True
+  Data:
+{
+  "data": {
+    "contextId": "8BetMppyubGfBmmsRaJ1r7gSAtzzY286MCX4ZmLxHqJQ",
+    "groupCreated": false,
+    "groupId": "c340fc77fa55a44a17df0002e4d6a077dece832e7d5e6278c4eaa81054270b8f",
+    "memberPublicKey": "73K4LWus8wovLvgnzbdmEpg1x2mx37PqeN7fMvu4z72j"
+  }
+}
+� Exporting variables from e2e-node-1 response:
+   ✓ ctx_b_id = 8BetMppyubGfBmmsRaJ1r7gSAtzzY286MCX4ZmLxHqJQ
+   ✓ ctx_b_key_node1 = 73K4LWus8wovLvgnzbdmEpg1x2mx37PqeN7fMvu4z72j
+✓ Step 'Create context for service store-b on node-1' completed
+
+Executing Assert both contexts created (assert)...
+✓ Assertion #1: is_set({{ctx_a_id}})
+✓ Assertion #2: is_set({{ctx_b_id}})
+✓ Step 'Assert both contexts created' completed
+
+Executing Create namespace invitation for node-2 (create_namespace_invitation)...
+� Exporting variables from e2e-node-1 response:
+   ✓ namespace_invitation = {'invitation': {'expiration_timestamp': 1808393491, 'group_id': [195, 64, 252, 119, 250, 85, 164,...
+✓ Namespace invitation created on e2e-node-1
+✓ Step 'Create namespace invitation for node-2' completed
+
+Executing Node-2 joins namespace (join_namespace)...
+Auto-installed application on e2e-node-2
+Join namespace failed on e2e-node-2: Client error: Invalid JSON data: Failed to deserialize the JSON body into the target type: 
+invitation: missing field `invitation` at line 1 column 461
+
+📋 Recent logs from node 'e2e-node-2' (last 50 lines):
+================================================================================
+Failed to execute workflow: closing tag '[/ip6/fe80::4001:aff:fe00:6/udp/2528/quic-v1, /ip6/fe80::4001:aff:fe00:6/tcp/2528, 
+/ip4/10.0.0.6/tcp/2528, /ip4/127.0.0.1/udp/2528/quic-v1, /ip4/127.0.0.1/tcp/2528, /ip4/35.214.188.225/tcp/2528, 
+/ip4/35.214.188.225/udp/2528/quic-v1, /ip4/10.0.0.6/udp/2528/quic-v1, /ip6/::1/tcp/2528, /ip6/::1/udp/2528/quic-v1]' at position 49 
+doesn't match any open tag
+Stopping managed containers with graceful shutdown...
+Initiating graceful shutdown for 2 containers...
+Waiting 3s for connection draining...
+✓ Gracefully stopped and removed e2e-node-1
+✓ Gracefully stopped and removed e2e-node-2

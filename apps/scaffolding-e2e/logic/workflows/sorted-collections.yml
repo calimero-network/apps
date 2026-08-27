@@ -1,0 +1,614 @@
+name: Sorted Collections E2E
+description: >
+  SortedMap and SortedSet across two nodes. These are the only collections in
+  this app that maintain the WASM host's ordered index, so they are the only
+  coverage of `storage_index_set`/`storage_index_scan` — a regression in that
+  host path would show up in no other scenario here. Also covers
+  `shared_rotate_writers`, which is the only way to REVOKE a writer.
+
+force_pull_image: false
+nuke_on_start: true
+near_devnet: false
+
+nodes:
+  count: 2
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.24
+  prefix: e2e-node
+
+steps:
+  - name: Install application on node-1
+    type: install_application
+    node: e2e-node-1
+    path: res/scaffolding_e2e.wasm
+    dev: true
+    outputs:
+      app_id: applicationId
+
+  - name: Assert application installed
+    type: assert
+    statements:
+      - "is_set({{app_id}})"
+
+  - name: Create mesh with node-2
+    type: create_mesh
+    context_node: e2e-node-1
+    application_id: "{{app_id}}"
+    path: res/scaffolding_e2e.wasm
+    nodes:
+      - e2e-node-2
+    capability: member
+    outputs:
+      context_id: contextId
+      node1_key: memberPublicKey
+
+  - name: Verify mesh keys are populated
+    type: assert
+    statements:
+      - "is_set({{node1_key}})"
+      - "is_set({{public_key_e2e-node-2}})"
+
+  # ─── SortedMap: ordering is the contract's, not the caller's ───────────────
+
+  # Written out of order on purpose. If the ordered index is not being
+  # maintained, `sorted_keys` comes back in insertion or hash order and the
+  # assertion below fails — which is the whole point of writing them this way.
+  - name: node-1 writes key c
+    type: call
+    node: e2e-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: sorted_set
+    args:
+      key: "city_c"
+      value: "chicago"
+
+  - name: node-1 writes key a
+    type: call
+    node: e2e-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: sorted_set
+    args:
+      key: "city_a"
+      value: "amsterdam"
+
+  - name: node-1 writes key b
+    type: call
+    node: e2e-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: sorted_set
+    args:
+      key: "city_b"
+      value: "berlin"
+
+  - name: Wait for the sorted map to reach node-2
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - e2e-node-1
+      - e2e-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: node-2 reads the key listing
+    type: call
+    node: e2e-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_e2e-node-2}}"
+    method: sorted_keys
+    args: {}
+    outputs:
+      n2_keys: result
+
+  # Ascending on the READING node, from an index built by the writing one.
+  - name: Assert node-2 sees the keys in ascending order
+    type: json_assert
+    statements:
+      - 'json_equal({{n2_keys}}, {"output": ["city_a", "city_b", "city_c"]})'
+
+  - name: node-2 reads a range
+    type: call
+    node: e2e-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_e2e-node-2}}"
+    method: sorted_range
+    args:
+      start: "city_a"
+      end: "city_c"
+    outputs:
+      n2_range: result
+
+  # Half-open: `city_a` and `city_b`, never `city_c`. An inclusive-end
+  # implementation passes every other assertion in this file, so this is the one
+  # that pins it.
+  - name: Assert the range is half-open
+    type: json_assert
+    statements:
+      - 'json_equal({{n2_range}}, {"output": {"city_a": "amsterdam", "city_b": "berlin"}})'
+
+  - name: node-2 reads the largest key
+    type: call
+    node: e2e-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_e2e-node-2}}"
+    method: sorted_last_key
+    args: {}
+    outputs:
+      n2_last: result
+
+  - name: Assert last_key is the largest, not the newest
+    type: json_assert
+    statements:
+      - 'json_equal({{n2_last}}, {"output": "city_c"})'
+
+  - name: node-2 writes a key of its own
+    type: call
+    node: e2e-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_e2e-node-2}}"
+    method: sorted_set
+    args:
+      key: "city_bb"
+      value: "brussels"
+
+  - name: Wait for node-2's write to reach node-1
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - e2e-node-1
+      - e2e-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  # A key written on node-2 has to land in the right PLACE in node-1's index,
+  # not merely be present — this is the assertion that a merge rebuilds the
+  # ordering rather than appending.
+  - name: node-1 reads the listing after node-2's write
+    type: call
+    node: e2e-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: sorted_keys
+    args: {}
+    outputs:
+      n1_keys_merged: result
+
+  - name: Assert the merged listing is still ordered
+    type: json_assert
+    statements:
+      - 'json_equal({{n1_keys_merged}}, {"output": ["city_a", "city_b", "city_bb", "city_c"]})'
+
+  - name: node-1 removes a key
+    type: call
+    node: e2e-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: sorted_remove
+    args:
+      key: "city_b"
+    outputs:
+      removed: result
+
+  - name: Assert the remove reported the key was present
+    type: json_assert
+    statements:
+      - 'json_equal({{removed}}, {"output": true})'
+
+  - name: Wait for the removal to reach node-2
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - e2e-node-1
+      - e2e-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: node-2 reads the listing after the removal
+    type: call
+    node: e2e-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_e2e-node-2}}"
+    method: sorted_keys
+    args: {}
+    outputs:
+      n2_keys_after_remove: result
+
+  # The removed key must be gone from the INDEX too, not just from the map —
+  # a stale index entry shows up here and nowhere else.
+  - name: Assert the removed key left the index
+    type: json_assert
+    statements:
+      - 'json_equal({{n2_keys_after_remove}}, {"output": ["city_a", "city_bb", "city_c"]})'
+
+  - name: node-2 reads the length
+    type: call
+    node: e2e-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_e2e-node-2}}"
+    method: sorted_len
+    args: {}
+    outputs:
+      n2_len: result
+
+  - name: Assert the length matches the listing
+    type: json_assert
+    statements:
+      - 'json_equal({{n2_len}}, {"output": 3})'
+
+  - name: node-2 reads a removed key
+    type: call
+    node: e2e-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_e2e-node-2}}"
+    method: sorted_get
+    args:
+      key: "city_b"
+    outputs:
+      n2_removed_get: result
+
+  - name: Assert the removed key reads as null
+    type: json_assert
+    statements:
+      - 'json_equal({{n2_removed_get}}, {"output": null})'
+
+  # ─── SortedSet ────────────────────────────────────────────────────────────
+
+  - name: node-1 adds tag red
+    type: call
+    node: e2e-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: sorted_tag_add
+    args:
+      tag: "red"
+    outputs:
+      tag_red_added: result
+
+  - name: Assert a new element reports true
+    type: json_assert
+    statements:
+      - 'json_equal({{tag_red_added}}, {"output": true})'
+
+  - name: node-1 adds tag red again
+    type: call
+    node: e2e-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: sorted_tag_add
+    args:
+      tag: "red"
+    outputs:
+      tag_red_again: result
+
+  - name: Assert a repeat add reports false
+    type: json_assert
+    statements:
+      - 'json_equal({{tag_red_again}}, {"output": false})'
+
+  - name: node-1 adds tag blue
+    type: call
+    node: e2e-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: sorted_tag_add
+    args:
+      tag: "blue"
+
+  - name: node-2 adds tag green
+    type: call
+    node: e2e-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_e2e-node-2}}"
+    method: sorted_tag_add
+    args:
+      tag: "green"
+
+  - name: Wait for the tags to converge
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - e2e-node-1
+      - e2e-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: node-1 reads all tags
+    type: call
+    node: e2e-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: sorted_tags_all
+    args: {}
+    outputs:
+      n1_tags: result
+
+  # Written blue/green/red across two nodes in the order red, blue, green.
+  - name: Assert tags from both nodes merge in order
+    type: json_assert
+    statements:
+      - 'json_equal({{n1_tags}}, {"output": ["blue", "green", "red"]})'
+
+  - name: node-2 reads a tag range
+    type: call
+    node: e2e-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_e2e-node-2}}"
+    method: sorted_tags_range
+    args:
+      start: "blue"
+      end: "red"
+    outputs:
+      n2_tag_range: result
+
+  - name: Assert the tag range is half-open
+    type: json_assert
+    statements:
+      - 'json_equal({{n2_tag_range}}, {"output": ["blue", "green"]})'
+
+  - name: node-2 reads the largest tag
+    type: call
+    node: e2e-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_e2e-node-2}}"
+    method: sorted_tags_last
+    args: {}
+    outputs:
+      n2_tag_last: result
+
+  - name: Assert tags_last is the largest element
+    type: json_assert
+    statements:
+      - 'json_equal({{n2_tag_last}}, {"output": "red"})'
+
+  # ⚠️ Insert-after-remove on a set NEVER converged before rc.10: the tombstone
+  # won every merge, so the re-added element stayed invisible on the other node
+  # forever. Single-node checks pass throughout — only this cross-node
+  # re-add-then-sync sees it.
+  - name: node-1 removes tag green
+    type: call
+    node: e2e-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: sorted_tag_remove
+    args:
+      tag: "green"
+    outputs:
+      tag_removed: result
+
+  - name: Assert the remove reported the element was present
+    type: json_assert
+    statements:
+      - 'json_equal({{tag_removed}}, {"output": true})'
+
+  - name: Wait for the tag removal to converge
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - e2e-node-1
+      - e2e-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: node-2 checks the removed tag is gone
+    type: call
+    node: e2e-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_e2e-node-2}}"
+    method: sorted_tag_contains
+    args:
+      tag: "green"
+    outputs:
+      n2_contains_removed: result
+
+  - name: Assert the removal propagated
+    type: json_assert
+    statements:
+      - 'json_equal({{n2_contains_removed}}, {"output": false})'
+
+  - name: node-2 re-adds the removed tag
+    type: call
+    node: e2e-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_e2e-node-2}}"
+    method: sorted_tag_add
+    args:
+      tag: "green"
+    outputs:
+      tag_readded: result
+
+  - name: Assert the re-add reports it as newly added
+    type: json_assert
+    statements:
+      - 'json_equal({{tag_readded}}, {"output": true})'
+
+  - name: Wait for the re-add to converge
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - e2e-node-1
+      - e2e-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: node-1 reads all tags after the re-add
+    type: call
+    node: e2e-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: sorted_tags_all
+    args: {}
+    outputs:
+      n1_tags_readded: result
+
+  # This is the assertion the rc.10 bug failed: the element is back, in order,
+  # on the node that removed it.
+  - name: Assert the re-added element survived the merge
+    type: json_assert
+    statements:
+      - 'json_equal({{n1_tags_readded}}, {"output": ["blue", "green", "red"]})'
+
+  # ─── shared_rotate_writers: revocation, not just granting ─────────────────
+
+  - name: node-1 reports its own account id
+    type: call
+    node: e2e-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: whoami
+    args: {}
+    outputs:
+      n1_account: result.output.account_id
+
+  - name: node-2 reports its own account id
+    type: call
+    node: e2e-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_e2e-node-2}}"
+    method: whoami
+    args: {}
+    outputs:
+      n2_account: result.output.account_id
+
+  - name: Assert both accounts are populated
+    type: assert
+    statements:
+      - "is_set({{n1_account}})"
+      - "is_set({{n2_account}})"
+
+  # `shared_add_writer` can only union a key in, so before this method there was
+  # no way to shrink the set — the interesting half of a writer set was
+  # untestable.
+  - name: node-1 rotates the writer set to both accounts
+    type: call
+    node: e2e-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: shared_rotate_writers
+    args:
+      account_hexes:
+        - "{{n1_account}}"
+        - "{{n2_account}}"
+
+  - name: Wait for the rotation to reach node-2
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - e2e-node-1
+      - e2e-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: node-2 checks it is now a writer
+    type: call
+    node: e2e-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_e2e-node-2}}"
+    method: shared_is_writer
+    args:
+      account_hex: "{{n2_account}}"
+    outputs:
+      n2_is_writer: result
+
+  - name: Assert the rotation granted node-2
+    type: json_assert
+    statements:
+      - 'json_equal({{n2_is_writer}}, {"output": true})'
+
+  - name: node-2 writes the shared value
+    type: call
+    node: e2e-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_e2e-node-2}}"
+    method: shared_set
+    args:
+      value: "written_after_rotation"
+
+  - name: Wait for the shared write to reach node-1
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - e2e-node-1
+      - e2e-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: node-1 reads the shared value
+    type: call
+    node: e2e-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: shared_get
+    args: {}
+    outputs:
+      shared_after_rotation: result
+
+  - name: Assert the newly granted writer's write landed
+    type: json_assert
+    statements:
+      - 'json_equal({{shared_after_rotation}}, {"output": "written_after_rotation"})'
+
+  # Now shrink it: node-2 out, node-1 in. This is the direction
+  # `shared_add_writer` could never express.
+  - name: node-1 rotates node-2 back out
+    type: call
+    node: e2e-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: shared_rotate_writers
+    args:
+      account_hexes:
+        - "{{n1_account}}"
+
+  - name: Wait for the revocation to reach node-2
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - e2e-node-1
+      - e2e-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: node-2 checks whether it is still a writer
+    type: call
+    node: e2e-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_e2e-node-2}}"
+    method: shared_is_writer
+    args:
+      account_hex: "{{n2_account}}"
+    outputs:
+      n2_is_writer_after_revoke: result
+
+  - name: Assert the revocation propagated
+    type: json_assert
+    statements:
+      - 'json_equal({{n2_is_writer_after_revoke}}, {"output": false})'
+
+  - name: node-1 reads the writer set
+    type: call
+    node: e2e-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: shared_get_writers
+    args: {}
+    outputs:
+      writers_final: result
+
+  - name: Assert only node-1 is left in the writer set
+    type: json_assert
+    statements:
+      - 'json_equal({{writers_final}}, {"output": ["{{n1_account}}"]})'
+
+stop_all_nodes: false
+restart: false
+wait_timeout: 180

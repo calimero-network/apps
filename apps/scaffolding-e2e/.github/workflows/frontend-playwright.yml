@@ -1,0 +1,232 @@
+name: Frontend - Playwright Tests
+
+# Runs mocked Playwright UI tests and TypeScript type check for the frontend.
+# Mocked tests use playwright.mocked.config.ts — no live Calimero node required.
+# WASM is still built so `pnpm sync-wasm` has something to copy and the live-node
+# suite can install the app it tests against.
+
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - "frontend/**"
+      - "logic/**"
+      - ".github/workflows/frontend-playwright.yml"
+
+  pull_request:
+    branches: [main, master]
+    paths:
+      - "frontend/**"
+      - "logic/**"
+      - ".github/workflows/frontend-playwright.yml"
+
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ── TypeScript type check ──────────────────────────────────────────────────────
+  typecheck:
+    name: TypeScript
+    runs-on: ubuntu-latest
+    # Every job here is minutes of work. Without a ceiling a hung step runs to
+    # the account default of 6 hours: `playwright install --with-deps` did
+    # exactly that on PR #15 (6h1m) and on mero-pixart #22 (24m).
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.0.8
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Type check
+        working-directory: frontend
+        run: pnpm exec tsc -b --noEmit
+
+      # Vitest, like every other mero app. Covers the SDK boundary this frontend
+      # sits on: the JSON-RPC envelope (a byte-array `output` vs parsed JSON, a
+      # byte-array error message) and the auth/token/context accessors.
+      - name: Unit tests
+        working-directory: frontend
+        run: pnpm test
+
+  # ── Build WASM ─────────────────────────────────────────────────────────────────
+  build-wasm:
+    name: Build WASM
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Install Rust + wasm target
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: logic -> logic/target
+
+      # build.sh is a wrapper around `cargo mero build` now — it also emits the
+      # ABI, which used to come from a build.rs that re-parsed the source.
+      - name: Setup cargo-mero
+        uses: ./.github/actions/install-cargo-mero
+
+      - name: Build WASM
+        run: cd logic && ./build.sh
+
+      # `scripts/check-contract-calls.mjs` reads the COMMITTED ABI — it has to,
+      # because the TypeScript job that runs it does not build the contract. So a
+      # stale abi.json would let it validate the frontend against a snapshot of
+      # a contract that no longer exists and report success. `cargo mero build`
+      # resolves the ABI from the compiled `__calimero_abi()`, so this is the
+      # authoritative copy; if it differs, commit it.
+      - name: Assert the committed ABI matches the built contract
+        run: |
+          if ! git diff --quiet -- logic/res/abi.json logic/res/state-schema.json; then
+            echo "::error::logic/res/abi.json is stale. Run logic/build.sh and commit the result."
+            git --no-pager diff --stat -- logic/res/abi.json logic/res/state-schema.json
+            git --no-pager diff -- logic/res/abi.json | head -200
+            exit 1
+          fi
+          echo "committed ABI matches the built contract"
+
+      # `always()` because the ABI gate above runs first: when it fails, this
+      # artifact holds the regenerated abi.json, which is exactly what the
+      # failure is asking you to commit. Withholding it would make the error
+      # true and useless at the same time.
+      - name: Upload WASM artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-wasm-${{ github.sha }}
+          path: |
+            logic/res/scaffolding_e2e.wasm
+            logic/res/abi.json
+            logic/res/state-schema.json
+          retention-days: 1
+
+  # ── Playwright mocked UI tests ─────────────────────────────────────────────────
+  playwright:
+    name: Playwright (mocked UI)
+    needs: build-wasm
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Download WASM artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-wasm-${{ github.sha }}
+          path: logic/res
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.0.8
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Copy WASM to public
+        working-directory: frontend
+        run: pnpm sync-wasm
+
+      - name: Write .env
+        working-directory: frontend
+        run: |
+          echo "VITE_NODE_URL=http://localhost:2528" >> .env
+          echo "VITE_APPLICATION_PACKAGE=com.calimero.scaffolding-e2e" >> .env
+
+      # The browser binary is ~170 MB and the version is pinned by the lockfile,
+      # so it is cacheable. `--with-deps` (the apt half) is NOT cacheable and is
+      # the half that hangs, so it runs on its own, once, only on a cache miss.
+      - name: Resolve Playwright version
+        id: pw
+        working-directory: frontend
+        run: |
+          echo "version=$(pnpm exec playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        id: pw-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}-chromium
+
+      - name: Install Playwright browsers
+        if: steps.pw-cache.outputs.cache-hit != 'true'
+        working-directory: frontend
+        timeout-minutes: 8
+        run: pnpm exec playwright install --with-deps chromium
+
+      # A cache hit restores the binary but not the shared libraries it links
+      # against. This is the apt half alone — seconds, and it cannot pull a
+      # browser.
+      - name: Install browser system deps
+        if: steps.pw-cache.outputs.cache-hit == 'true'
+        working-directory: frontend
+        timeout-minutes: 8
+        run: pnpm exec playwright install-deps chromium
+
+      - name: Run mocked tests
+        working-directory: frontend
+        run: pnpm test:mocked
+
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-${{ github.sha }}
+          path: frontend/playwright-report/
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Upload test results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-results-${{ github.sha }}
+          path: frontend/test-results/
+          retention-days: 7
+          if-no-files-found: ignore
