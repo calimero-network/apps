@@ -119,7 +119,7 @@ steps:
     type: create_group_in_namespace
     node: e2e-node-1
     namespace_id: '{{parent_id}}'
-    group_alias: nestable-child
+    group_name: nestable-child
     outputs:
       child_id: groupId
 
@@ -146,7 +146,7 @@ steps:
     type: create_group_in_namespace
     node: e2e-node-1
     namespace_id: '{{parent_id}}'
-    group_alias: sibling
+    group_name: sibling
     outputs:
       sibling_id: groupId
 

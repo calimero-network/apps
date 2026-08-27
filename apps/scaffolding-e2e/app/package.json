@@ -17,7 +17,8 @@
     "test:report": "playwright show-report",
     "test:watch": "vitest",
     "e2e": "playwright test",
-    "test:all": "vitest run && playwright test --config=playwright.mocked.config.ts"
+    "test:all": "vitest run && playwright test --config=playwright.mocked.config.ts",
+    "test:e2e:ci": "playwright test --config=playwright.mocked.config.ts"
   },
   "dependencies": {
     "@calimero-network/mero-js": "^7.3.2",

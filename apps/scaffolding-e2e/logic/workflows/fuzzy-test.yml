@@ -29,13 +29,10 @@ steps:
     type: create_mesh
     context_node: fuzzy-e2e-node-1
     application_id: "{{e2e_app_id}}"
-    path: res/scaffolding_e2e.wasm
-    protocol: near
     nodes:
       - fuzzy-e2e-node-2
       - fuzzy-e2e-node-3
       - fuzzy-e2e-node-4
-    capability: member
     outputs:
       e2e_context_id: contextId
       node1_key: memberPublicKey
@@ -64,7 +61,8 @@ steps:
   - name: Seed initial KV data
     type: repeat
     count: 10
-    variable: seed_idx
+    outputs:
+      seed_idx: iteration
     steps:
       - type: call
         node: fuzzy-e2e-node-1
@@ -79,7 +77,8 @@ steps:
   - name: Seed initial CRDT counters
     type: repeat
     count: 5
-    variable: cnt_idx
+    outputs:
+      cnt_idx: iteration
     steps:
       - type: call
         node: fuzzy-e2e-node-1
@@ -93,7 +92,8 @@ steps:
   - name: Seed initial metrics vector
     type: repeat
     count: 3
-    variable: metric_idx
+    outputs:
+      metric_idx: iteration
     steps:
       - type: call
         node: fuzzy-e2e-node-1
