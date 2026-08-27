@@ -481,7 +481,6 @@ steps:
     args:
       message_id: "placeholder_id_for_reaction_test"
       emoji: "👍"
-      user: "Bob"
       add: true
     outputs:
       reaction_add: result
@@ -500,7 +499,6 @@ steps:
     args:
       message_id: "placeholder_id_for_reaction_test"
       emoji: "👍"
-      user: "Bob"
       add: false
     outputs:
       reaction_remove: result
