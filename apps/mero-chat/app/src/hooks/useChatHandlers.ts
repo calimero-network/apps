@@ -10,6 +10,7 @@ import type {
   WebSocketEvent,
   ExecutionEventData,
 } from "../types/WebSocketTypes";
+import { nameRepository } from "../repositories/names/useNames";
 import { bytesParser } from "../utils/bytesParser";
 import { isSelfSender } from "../utils/selfIdentity";
 
@@ -500,6 +501,33 @@ export function useChatHandlers(
             }
             actions.shouldNotifyMessage = false;
             actions.fetchMessages = true;
+            break;
+          }
+
+          case "ProfileUpdated": {
+            // A rename by someone ELSE. The name repository caches for five
+            // minutes and its policy says a rename "does not wait for it: the
+            // write path invalidates" — true only for your own rename, which
+            // is the one case that needs it least. Nothing was listening for
+            // this event, so a peer's new name took up to the full TTL to
+            // appear, and looked like the app ignoring it.
+            if (executionEvent.data) {
+              try {
+                const account = JSON.parse(bytesParser(executionEvent.data));
+                if (typeof account === "string" && account) {
+                  nameRepository.invalidate(account);
+                } else {
+                  nameRepository.invalidate();
+                }
+              } catch {
+                // An unreadable payload still means SOME name changed.
+                // Dropping the whole cache costs a refetch; keeping a name we
+                // have been told is wrong costs a wrong name on screen.
+                nameRepository.invalidate();
+              }
+            } else {
+              nameRepository.invalidate();
+            }
             break;
           }
 
