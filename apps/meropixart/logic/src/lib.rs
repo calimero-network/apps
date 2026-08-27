@@ -6,20 +6,20 @@
 
 use std::str::FromStr;
 
+use calimero_sdk::abi::AbiType;
 use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use calimero_sdk::serde::{Deserialize, Serialize};
-use calimero_sdk::abi::AbiType;
 use calimero_sdk::{app, env as sdk_env, AccountId, BlobId, PublicKey};
+use calimero_storage::address::Id;
 use calimero_storage::collections::crdt_meta::MergeError;
 use calimero_storage::collections::rekey::RekeyTarget;
-use calimero_storage::address::Id;
 use calimero_storage::collections::{
     AccessControl, LwwRegister, Mergeable as MergeableTrait, Ownable, UnorderedMap,
 };
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type LayerId  = String;
+type LayerId = String;
 /// A member of this document, written the way an `AccountId` renders: 64 hex
 /// characters. Since core rc.23 a member is a PERSON everywhere — the node's
 /// group listing answers with accounts, `AccessControl` and `Ownable` gate on
@@ -36,7 +36,9 @@ const ROLE_EDITOR: &str = "editor";
 
 // ── Adjustments (non-destructive, applied at composite/render time) ─────────────
 
-#[derive(AbiType, BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug, Default)]
+#[derive(
+    AbiType, BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug, Default,
+)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 #[serde(rename_all = "camelCase")]
@@ -44,21 +46,21 @@ pub struct Adjustments {
     /// -100..=100, 0 = neutral
     pub brightness: i32,
     /// -100..=100, 0 = neutral
-    pub contrast:   i32,
+    pub contrast: i32,
     /// -100..=100, 0 = neutral
     pub saturation: i32,
     /// -180..=180 degrees, 0 = neutral
-    pub hue:        i32,
+    pub hue: i32,
     /// -100..=100, 0 = neutral
-    pub exposure:   i32,
+    pub exposure: i32,
     /// 0..=100 blur radius in px (filter), 0 = none
-    pub blur:       u32,
+    pub blur: u32,
     /// invert colors
-    pub invert:     bool,
+    pub invert: bool,
     /// JSON-encoded curve control points (per-channel splines). Opaque to the
     /// contract; the frontend interprets it. Empty = identity curve.
     #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub curves:     String,
+    pub curves: String,
 }
 
 // ── Text layer properties ───────────────────────────────────────────────────
@@ -68,26 +70,26 @@ pub struct Adjustments {
 #[serde(crate = "calimero_sdk::serde")]
 #[serde(rename_all = "camelCase")]
 pub struct TextProps {
-    pub content:     String,
+    pub content: String,
     pub font_family: String,
-    pub font_size:   u32,
-    pub color:       String,
-    pub bold:        bool,
-    pub italic:      bool,
+    pub font_size: u32,
+    pub color: String,
+    pub bold: bool,
+    pub italic: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub align:       Option<String>,
+    pub align: Option<String>,
 }
 
 impl Default for TextProps {
     fn default() -> Self {
         TextProps {
-            content:     String::new(),
+            content: String::new(),
             font_family: "Inter".to_owned(),
-            font_size:   48,
-            color:       "#ffffff".to_owned(),
-            bold:        false,
-            italic:      false,
-            align:       None,
+            font_size: 48,
+            color: "#ffffff".to_owned(),
+            bold: false,
+            italic: false,
+            align: None,
         }
     }
 }
@@ -109,68 +111,68 @@ impl Default for TextProps {
 #[serde(crate = "calimero_sdk::serde")]
 #[serde(rename_all = "camelCase")]
 pub struct Layer {
-    pub id:           LayerId,
-    pub name:         String,
+    pub id: LayerId,
+    pub name: String,
     /// "raster" | "group" | "text" | "adjustment" | "fill"
-    pub kind:         String,
+    pub kind: String,
     /// Parent group layer id (folder nesting); None = top level.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub parent_id:    Option<String>,
+    pub parent_id: Option<String>,
     /// Order within the parent (ascending = bottom→top).
-    pub layer_index:  u32,
+    pub layer_index: u32,
 
-    pub visible:      bool,
-    pub locked:       bool,
+    pub visible: bool,
+    pub locked: bool,
     /// 0..=100
-    pub opacity:      u8,
+    pub opacity: u8,
     /// "normal" | "multiply" | "screen" | "overlay" | "darken" | "lighten" | …
-    pub blend_mode:   String,
+    pub blend_mode: String,
 
     // Transform — position/size/rotation/scale of the layer in document space.
-    pub x:            i64,
-    pub y:            i64,
-    pub width:        u32,
-    pub height:       u32,
-    pub rotation:     i32,
+    pub x: i64,
+    pub y: i64,
+    pub width: u32,
+    pub height: u32,
+    pub rotation: i32,
     /// percent, 100 = 1:1
-    pub scale_x:      i32,
-    pub scale_y:      i32,
+    pub scale_x: i32,
+    pub scale_y: i32,
     /// Horizontal shear in degrees (-80..=80), 0 = none.
     #[serde(default)]
-    pub skew_x:       i32,
+    pub skew_x: i32,
     /// Vertical shear in degrees (-80..=80), 0 = none.
     #[serde(default)]
-    pub skew_y:       i32,
+    pub skew_y: i32,
     /// Mirror across the layer's vertical centre line.
     #[serde(default)]
-    pub flip_h:       bool,
+    pub flip_h: bool,
     /// Mirror across the layer's horizontal centre line.
     #[serde(default)]
-    pub flip_v:       bool,
+    pub flip_v: bool,
     /// Corner-pin warp: JSON `{"tl":[dx,dy],"tr":[…],"br":[…],"bl":[…]}` in the
     /// layer's own pixel units. Opaque to the contract (like `adjustments.curves`)
     /// — the renderer subdivides the quad into a triangle mesh. Empty = no warp.
     #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub warp:         String,
+    pub warp: String,
 
     /// PNG pixel data for raster layers (blob id). Empty for non-raster kinds.
     #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub blob_id:      String,
+    pub blob_id: String,
     /// Grayscale PNG layer mask (blob id). None = no mask.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mask_blob_id: Option<String>,
 
     /// Solid color for `fill` layers (and a tint reference otherwise).
     #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub fill:         String,
+    pub fill: String,
 
-    pub adjustments:  Adjustments,
+    pub adjustments: Adjustments,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub text:         Option<TextProps>,
+    pub text: Option<TextProps>,
 
-    pub created_by:   MemberId,
-    pub created_at:   u64,
-    pub updated_at:   u64,
+    pub created_by: MemberId,
+    pub created_at: u64,
+    pub updated_at: u64,
 }
 
 impl MergeableTrait for Layer {
@@ -195,10 +197,10 @@ impl RekeyTarget for Layer {
 #[serde(crate = "calimero_sdk::serde")]
 #[serde(rename_all = "camelCase")]
 pub struct Member {
-    pub id:                  MemberId,
-    pub username:            String,
-    pub avatar:              Option<String>,
-    pub joined_at:           u64,
+    pub id: MemberId,
+    pub username: String,
+    pub avatar: Option<String>,
+    pub joined_at: u64,
     /// Dedicated LWW clock for username/avatar edits (joined_at never changes,
     /// so merging on it would freeze a member's username at its first value).
     pub username_updated_at: u64,
@@ -207,8 +209,8 @@ pub struct Member {
 impl MergeableTrait for Member {
     fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
         if other.username_updated_at > self.username_updated_at {
-            self.username            = other.username.clone();
-            self.avatar              = other.avatar.clone();
+            self.username = other.username.clone();
+            self.avatar = other.avatar.clone();
             self.username_updated_at = other.username_updated_at;
         }
         Ok(())
@@ -226,14 +228,14 @@ impl RekeyTarget for Member {
 #[serde(crate = "calimero_sdk::serde")]
 #[serde(rename_all = "camelCase")]
 pub struct DocumentInfo {
-    pub name:        String,
+    pub name: String,
     pub description: String,
-    pub width:       u32,
-    pub height:      u32,
-    pub background:  String,
+    pub width: u32,
+    pub height: u32,
+    pub background: String,
     pub layer_count: u32,
     pub member_count: u32,
-    pub owner:       Option<String>,
+    pub owner: Option<String>,
 }
 
 /// A member paired with their effective role, for the settings/members UI.
@@ -242,7 +244,7 @@ pub struct DocumentInfo {
 #[serde(rename_all = "camelCase")]
 pub struct MemberRole {
     pub member: String,
-    pub role:   String,
+    pub role: String,
 }
 
 // ── Cursor state (ephemeral — last known position per device) ─────────────────
@@ -260,18 +262,20 @@ pub struct MemberRole {
 pub struct CursorState {
     /// The device this pointer belongs to (bs58 context key) — unique per open
     /// installation, so it is what the map is keyed by.
-    pub identity:   String,
+    pub identity: String,
     /// The member (account) behind that device, so the overlay can label the
     /// pointer with a username without a second lookup table.
-    pub account:    MemberId,
-    pub x:          i64,
-    pub y:          i64,
+    pub account: MemberId,
+    pub x: i64,
+    pub y: i64,
     pub updated_at: u64,
 }
 
 impl MergeableTrait for CursorState {
     fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        if other.updated_at > self.updated_at { *self = other.clone(); }
+        if other.updated_at > self.updated_at {
+            *self = other.clone();
+        }
         Ok(())
     }
 }
@@ -304,27 +308,27 @@ pub struct MeroPixArt {
     // Document metadata lives inside `Ownable` so a rename/resize only converges
     // from the owner — a forged delta from a non-owner is rejected at merge, not
     // merely by the fail-fast API guard.
-    doc_name:        Ownable<LwwRegister<String>>,
+    doc_name: Ownable<LwwRegister<String>>,
     doc_description: Ownable<LwwRegister<String>>,
     /// What `init` was given. The `Ownable` cells above cannot be seeded at init
     /// on rc.20 (the value is silently dropped — see `init`), so the opening
     /// name/description live here and the owner-gated cells take over from the
     /// first owner edit onwards. Read both through `doc_name_str`.
-    initial_name:        LwwRegister<String>,
+    initial_name: LwwRegister<String>,
     initial_description: LwwRegister<String>,
-    canvas_width:    LwwRegister<u32>,
-    canvas_height:   LwwRegister<u32>,
-    background:      LwwRegister<String>,
+    canvas_width: LwwRegister<u32>,
+    canvas_height: LwwRegister<u32>,
+    background: LwwRegister<String>,
 
-    layers:          UnorderedMap<LayerId, Layer>,
-    members:         UnorderedMap<MemberId, Member>,
+    layers: UnorderedMap<LayerId, Layer>,
+    members: UnorderedMap<MemberId, Member>,
     /// Keyed by DEVICE, not by member — see `CursorState`. The only map here
     /// that is.
-    cursors:         UnorderedMap<String, CursorState>,
+    cursors: UnorderedMap<String, CursorState>,
 
     // Role registry whose admin tier is a signed writer set. Grants/revokes are
     // admin-gated at merge; the creator is the sole initial admin.
-    roles:           AccessControl,
+    roles: AccessControl,
 }
 
 // ── Logic ─────────────────────────────────────────────────────────────────────
@@ -346,15 +350,15 @@ impl MeroPixArt {
         MeroPixArt {
             doc_name,
             doc_description,
-            initial_name:        LwwRegister::new(name),
+            initial_name: LwwRegister::new(name),
             initial_description: LwwRegister::new(description),
-            canvas_width:  LwwRegister::new(if width  == 0 { 1280 } else { width }),
-            canvas_height: LwwRegister::new(if height == 0 { 720  } else { height }),
-            background:    LwwRegister::new("#00000000".to_owned()),
-            layers:        UnorderedMap::new(),
-            members:       UnorderedMap::new(),
-            cursors:       UnorderedMap::new(),
-            roles:         AccessControl::new(me),
+            canvas_width: LwwRegister::new(if width == 0 { 1280 } else { width }),
+            canvas_height: LwwRegister::new(if height == 0 { 720 } else { height }),
+            background: LwwRegister::new("#00000000".to_owned()),
+            layers: UnorderedMap::new(),
+            members: UnorderedMap::new(),
+            cursors: UnorderedMap::new(),
+            roles: AccessControl::new(me),
         }
     }
 
@@ -430,7 +434,9 @@ impl MeroPixArt {
 
     /// Announce a blob to the context so it propagates to all members.
     fn announce_blob(blob_id_str: &str) {
-        if blob_id_str.is_empty() { return; }
+        if blob_id_str.is_empty() {
+            return;
+        }
         if let Ok(blob_id) = blob_id_str.parse::<BlobId>() {
             sdk_env::blob_announce_to_context(blob_id.as_ref(), &sdk_env::context_id());
         }
@@ -442,27 +448,43 @@ impl MeroPixArt {
     /// before the first owner edit it is empty and what `init` was given is the
     /// answer. See `initial_name`.
     fn doc_name_str(&self) -> String {
-        let edited = self.doc_name.get().map(|r| r.get().clone()).unwrap_or_default();
-        if edited.is_empty() { self.initial_name.get().clone() } else { edited }
+        let edited = self
+            .doc_name
+            .get()
+            .map(|r| r.get().clone())
+            .unwrap_or_default();
+        if edited.is_empty() {
+            self.initial_name.get().clone()
+        } else {
+            edited
+        }
     }
 
     /// As [`Self::doc_name_str`], for the description.
     fn doc_description_str(&self) -> String {
-        let edited = self.doc_description.get().map(|r| r.get().clone()).unwrap_or_default();
-        if edited.is_empty() { self.initial_description.get().clone() } else { edited }
+        let edited = self
+            .doc_description
+            .get()
+            .map(|r| r.get().clone())
+            .unwrap_or_default();
+        if edited.is_empty() {
+            self.initial_description.get().clone()
+        } else {
+            edited
+        }
     }
 
     pub fn get_document(&self) -> DocumentInfo {
         DocumentInfo {
-            name:         self.doc_name_str(),
-            description:  self.doc_description_str(),
-            width:        *self.canvas_width.get(),
-            height:       *self.canvas_height.get(),
-            background:   self.background.get().clone(),
-            layer_count:  self.layers.len().unwrap_or(0) as u32,
+            name: self.doc_name_str(),
+            description: self.doc_description_str(),
+            width: *self.canvas_width.get(),
+            height: *self.canvas_height.get(),
+            background: self.background.get().clone(),
+            layer_count: self.layers.len().unwrap_or(0) as u32,
             member_count: self.members.len().unwrap_or(0) as u32,
             // An account IS a member id now, so this needs no translation.
-            owner:        self.doc_name.owner().map(|a| a.to_string()),
+            owner: self.doc_name.owner().map(|a| a.to_string()),
         }
     }
 
@@ -477,11 +499,21 @@ impl MeroPixArt {
         background: Option<String>,
     ) -> app::Result<()> {
         self.doc_name.only_owner()?;
-        if let Some(n) = name        { self.doc_name.insert(LwwRegister::new(n))?; }
-        if let Some(d) = description { self.doc_description.insert(LwwRegister::new(d))?; }
-        if let Some(w) = width  { self.canvas_width.set(w); }
-        if let Some(h) = height { self.canvas_height.set(h); }
-        if let Some(b) = background { self.background.set(b); }
+        if let Some(n) = name {
+            self.doc_name.insert(LwwRegister::new(n))?;
+        }
+        if let Some(d) = description {
+            self.doc_description.insert(LwwRegister::new(d))?;
+        }
+        if let Some(w) = width {
+            self.canvas_width.set(w);
+        }
+        if let Some(h) = height {
+            self.canvas_height.set(h);
+        }
+        if let Some(b) = background {
+            self.background.set(b);
+        }
         app::emit!(Event::DocumentUpdated());
         Ok(())
     }
@@ -567,7 +599,9 @@ impl MeroPixArt {
     /// on a second machine does not add a second "member".
     pub fn join(&mut self, username: String, avatar: Option<String>, timestamp: u64) {
         let member_id = Self::caller_id();
-        if self.members.contains(&member_id).unwrap_or(false) { return; }
+        if self.members.contains(&member_id).unwrap_or(false) {
+            return;
+        }
         let m = Member {
             id: member_id.clone(),
             username,
@@ -586,7 +620,7 @@ impl MeroPixArt {
     pub fn update_member_username(&mut self, username: String, timestamp: u64) {
         let member_id = Self::caller_id();
         if let Ok(Some(mut m)) = self.members.get_mut(&member_id) {
-            m.username            = username;
+            m.username = username;
             m.username_updated_at = timestamp;
             drop(m);
             app::emit!(Event::MemberUsernameUpdated(member_id));
@@ -603,7 +637,9 @@ impl MeroPixArt {
         // layer, and the value matches the ids the members list is written in.
         layer.created_by = Self::caller_id();
         Self::announce_blob(&layer.blob_id);
-        if let Some(ref mask) = layer.mask_blob_id { Self::announce_blob(mask); }
+        if let Some(ref mask) = layer.mask_blob_id {
+            Self::announce_blob(mask);
+        }
         let _ = self.layers.insert(id.clone(), layer);
         app::emit!(Event::LayerAdded(id.clone()));
         Ok(id)
@@ -619,28 +655,57 @@ impl MeroPixArt {
         locked: Option<bool>,
         opacity: Option<u8>,
         blend_mode: Option<String>,
-        x: Option<i64>, y: Option<i64>,
-        width: Option<u32>, height: Option<u32>,
+        x: Option<i64>,
+        y: Option<i64>,
+        width: Option<u32>,
+        height: Option<u32>,
         rotation: Option<i32>,
-        scale_x: Option<i32>, scale_y: Option<i32>,
+        scale_x: Option<i32>,
+        scale_y: Option<i32>,
         fill: Option<String>,
         updated_at: u64,
     ) -> app::Result<()> {
         self.require_editor()?;
         if let Ok(Some(mut l)) = self.layers.get_mut(&id) {
-            if let Some(v) = name       { l.name       = v; }
-            if let Some(v) = visible    { l.visible    = v; }
-            if let Some(v) = locked     { l.locked     = v; }
-            if let Some(v) = opacity    { l.opacity    = v; }
-            if let Some(v) = blend_mode { l.blend_mode = v; }
-            if let Some(v) = x          { l.x          = v; }
-            if let Some(v) = y          { l.y          = v; }
-            if let Some(v) = width      { l.width      = v; }
-            if let Some(v) = height     { l.height     = v; }
-            if let Some(v) = rotation   { l.rotation   = v; }
-            if let Some(v) = scale_x    { l.scale_x    = v; }
-            if let Some(v) = scale_y    { l.scale_y    = v; }
-            if let Some(v) = fill       { l.fill       = v; }
+            if let Some(v) = name {
+                l.name = v;
+            }
+            if let Some(v) = visible {
+                l.visible = v;
+            }
+            if let Some(v) = locked {
+                l.locked = v;
+            }
+            if let Some(v) = opacity {
+                l.opacity = v;
+            }
+            if let Some(v) = blend_mode {
+                l.blend_mode = v;
+            }
+            if let Some(v) = x {
+                l.x = v;
+            }
+            if let Some(v) = y {
+                l.y = v;
+            }
+            if let Some(v) = width {
+                l.width = v;
+            }
+            if let Some(v) = height {
+                l.height = v;
+            }
+            if let Some(v) = rotation {
+                l.rotation = v;
+            }
+            if let Some(v) = scale_x {
+                l.scale_x = v;
+            }
+            if let Some(v) = scale_y {
+                l.scale_y = v;
+            }
+            if let Some(v) = fill {
+                l.fill = v;
+            }
             l.updated_at = updated_at;
             drop(l);
             app::emit!(Event::LayerUpdated(id));
@@ -660,22 +725,41 @@ impl MeroPixArt {
         &mut self,
         id: String,
         rotation: Option<i32>,
-        scale_x: Option<i32>, scale_y: Option<i32>,
-        skew_x: Option<i32>, skew_y: Option<i32>,
-        flip_h: Option<bool>, flip_v: Option<bool>,
+        scale_x: Option<i32>,
+        scale_y: Option<i32>,
+        skew_x: Option<i32>,
+        skew_y: Option<i32>,
+        flip_h: Option<bool>,
+        flip_v: Option<bool>,
         warp: Option<String>,
         updated_at: u64,
     ) -> app::Result<()> {
         self.require_editor()?;
         if let Ok(Some(mut l)) = self.layers.get_mut(&id) {
-            if let Some(v) = rotation { l.rotation = v; }
-            if let Some(v) = scale_x  { l.scale_x  = v; }
-            if let Some(v) = scale_y  { l.scale_y  = v; }
-            if let Some(v) = skew_x   { l.skew_x   = v.clamp(-80, 80); }
-            if let Some(v) = skew_y   { l.skew_y   = v.clamp(-80, 80); }
-            if let Some(v) = flip_h   { l.flip_h   = v; }
-            if let Some(v) = flip_v   { l.flip_v   = v; }
-            if let Some(v) = warp     { l.warp     = v; }
+            if let Some(v) = rotation {
+                l.rotation = v;
+            }
+            if let Some(v) = scale_x {
+                l.scale_x = v;
+            }
+            if let Some(v) = scale_y {
+                l.scale_y = v;
+            }
+            if let Some(v) = skew_x {
+                l.skew_x = v.clamp(-80, 80);
+            }
+            if let Some(v) = skew_y {
+                l.skew_y = v.clamp(-80, 80);
+            }
+            if let Some(v) = flip_h {
+                l.flip_h = v;
+            }
+            if let Some(v) = flip_v {
+                l.flip_v = v;
+            }
+            if let Some(v) = warp {
+                l.warp = v;
+            }
             l.updated_at = updated_at;
             drop(l);
             app::emit!(Event::LayerUpdated(id));
@@ -698,10 +782,12 @@ impl MeroPixArt {
         self.require_editor()?;
         for (id, parent_id) in moves {
             if let Some(ref parent) = parent_id {
-                if *parent == id || self.is_descendant_of(parent, &id) { continue; }
+                if *parent == id || self.is_descendant_of(parent, &id) {
+                    continue;
+                }
             }
             if let Ok(Some(mut l)) = self.layers.get_mut(&id) {
-                l.parent_id  = parent_id;
+                l.parent_id = parent_id;
                 l.updated_at = updated_at;
             }
         }
@@ -741,9 +827,9 @@ impl MeroPixArt {
         self.require_editor()?;
         Self::announce_blob(&blob_id);
         if let Ok(Some(mut l)) = self.layers.get_mut(&id) {
-            l.blob_id    = blob_id;
-            l.width      = width;
-            l.height     = height;
+            l.blob_id = blob_id;
+            l.width = width;
+            l.height = height;
             l.updated_at = updated_at;
             drop(l);
             app::emit!(Event::LayerUpdated(id));
@@ -759,10 +845,12 @@ impl MeroPixArt {
         updated_at: u64,
     ) -> app::Result<()> {
         self.require_editor()?;
-        if let Some(ref mask) = mask_blob_id { Self::announce_blob(mask); }
+        if let Some(ref mask) = mask_blob_id {
+            Self::announce_blob(mask);
+        }
         if let Ok(Some(mut l)) = self.layers.get_mut(&id) {
             l.mask_blob_id = mask_blob_id;
-            l.updated_at   = updated_at;
+            l.updated_at = updated_at;
             drop(l);
             app::emit!(Event::LayerUpdated(id));
         }
@@ -785,14 +873,30 @@ impl MeroPixArt {
     ) -> app::Result<()> {
         self.require_editor()?;
         if let Ok(Some(mut l)) = self.layers.get_mut(&id) {
-            if let Some(v) = brightness { l.adjustments.brightness = v; }
-            if let Some(v) = contrast   { l.adjustments.contrast   = v; }
-            if let Some(v) = saturation { l.adjustments.saturation = v; }
-            if let Some(v) = hue        { l.adjustments.hue        = v; }
-            if let Some(v) = exposure   { l.adjustments.exposure   = v; }
-            if let Some(v) = blur       { l.adjustments.blur       = v; }
-            if let Some(v) = invert     { l.adjustments.invert     = v; }
-            if let Some(v) = curves     { l.adjustments.curves     = v; }
+            if let Some(v) = brightness {
+                l.adjustments.brightness = v;
+            }
+            if let Some(v) = contrast {
+                l.adjustments.contrast = v;
+            }
+            if let Some(v) = saturation {
+                l.adjustments.saturation = v;
+            }
+            if let Some(v) = hue {
+                l.adjustments.hue = v;
+            }
+            if let Some(v) = exposure {
+                l.adjustments.exposure = v;
+            }
+            if let Some(v) = blur {
+                l.adjustments.blur = v;
+            }
+            if let Some(v) = invert {
+                l.adjustments.invert = v;
+            }
+            if let Some(v) = curves {
+                l.adjustments.curves = v;
+            }
             l.updated_at = updated_at;
             drop(l);
             app::emit!(Event::LayerUpdated(id));
@@ -816,14 +920,28 @@ impl MeroPixArt {
         self.require_editor()?;
         if let Ok(Some(mut l)) = self.layers.get_mut(&id) {
             let mut t = l.text.clone().unwrap_or_default();
-            if let Some(v) = content     { t.content     = v; }
-            if let Some(v) = font_family { t.font_family = v; }
-            if let Some(v) = font_size   { t.font_size   = v; }
-            if let Some(v) = color       { t.color       = v; }
-            if let Some(v) = bold        { t.bold        = v; }
-            if let Some(v) = italic      { t.italic      = v; }
-            if let Some(v) = align       { t.align       = Some(v); }
-            l.text       = Some(t);
+            if let Some(v) = content {
+                t.content = v;
+            }
+            if let Some(v) = font_family {
+                t.font_family = v;
+            }
+            if let Some(v) = font_size {
+                t.font_size = v;
+            }
+            if let Some(v) = color {
+                t.color = v;
+            }
+            if let Some(v) = bold {
+                t.bold = v;
+            }
+            if let Some(v) = italic {
+                t.italic = v;
+            }
+            if let Some(v) = align {
+                t.align = Some(v);
+            }
+            l.text = Some(t);
             l.updated_at = updated_at;
             drop(l);
             app::emit!(Event::LayerUpdated(id));
@@ -834,11 +952,14 @@ impl MeroPixArt {
     pub fn delete_layer(&mut self, id: String) -> app::Result<()> {
         self.require_editor()?;
         // Re-parent / delete orphaned children of a deleted group to top level.
-        let children: Vec<String> = self.layers.entries()
-            .map(|iter| iter
-                .filter(|(_, l)| l.parent_id.as_deref() == Some(id.as_str()))
-                .map(|(k, _)| k)
-                .collect())
+        let children: Vec<String> = self
+            .layers
+            .entries()
+            .map(|iter| {
+                iter.filter(|(_, l)| l.parent_id.as_deref() == Some(id.as_str()))
+                    .map(|(k, _)| k)
+                    .collect()
+            })
             .unwrap_or_default();
         for child in children {
             if let Ok(Some(mut l)) = self.layers.get_mut(&child) {
@@ -870,9 +991,9 @@ impl MeroPixArt {
     ) -> app::Result<()> {
         self.require_editor()?;
         if let Ok(Some(mut l)) = self.layers.get_mut(&id) {
-            l.parent_id   = parent_id;
+            l.parent_id = parent_id;
             l.layer_index = layer_index;
-            l.updated_at  = updated_at;
+            l.updated_at = updated_at;
             drop(l);
             app::emit!(Event::LayersReordered());
         }
@@ -881,12 +1002,16 @@ impl MeroPixArt {
 
     /// Apply an explicit ordering: each (id, index) pair sets that layer's
     /// `layer_index`. Used after a drag-reorder in the layers panel.
-    pub fn reorder_layers(&mut self, order: Vec<(String, u32)>, updated_at: u64) -> app::Result<()> {
+    pub fn reorder_layers(
+        &mut self,
+        order: Vec<(String, u32)>,
+        updated_at: u64,
+    ) -> app::Result<()> {
         self.require_editor()?;
         for (id, idx) in order {
             if let Ok(Some(mut l)) = self.layers.get_mut(&id) {
                 l.layer_index = idx;
-                l.updated_at  = updated_at;
+                l.updated_at = updated_at;
             }
         }
         app::emit!(Event::LayersReordered());
@@ -895,10 +1020,16 @@ impl MeroPixArt {
 
     pub fn bring_to_front(&mut self, id: String, updated_at: u64) -> app::Result<()> {
         self.require_editor()?;
-        let max_index = self.layers.entries().unwrap().map(|(_, v)| v.layer_index).max().unwrap_or(0);
+        let max_index = self
+            .layers
+            .entries()
+            .unwrap()
+            .map(|(_, v)| v.layer_index)
+            .max()
+            .unwrap_or(0);
         if let Ok(Some(mut l)) = self.layers.get_mut(&id) {
             l.layer_index = max_index + 1;
-            l.updated_at  = updated_at;
+            l.updated_at = updated_at;
         }
         app::emit!(Event::LayersReordered());
         Ok(())
@@ -906,8 +1037,13 @@ impl MeroPixArt {
 
     pub fn send_to_back(&mut self, id: String, updated_at: u64) -> app::Result<()> {
         self.require_editor()?;
-        let other_ids: Vec<String> = self.layers.entries().unwrap()
-            .filter(|(k, _)| *k != id).map(|(k, _)| k).collect();
+        let other_ids: Vec<String> = self
+            .layers
+            .entries()
+            .unwrap()
+            .filter(|(k, _)| *k != id)
+            .map(|(k, _)| k)
+            .collect();
         for other_id in &other_ids {
             if let Ok(Some(mut other)) = self.layers.get_mut(other_id) {
                 other.layer_index = other.layer_index.saturating_add(1);
@@ -915,7 +1051,7 @@ impl MeroPixArt {
         }
         if let Ok(Some(mut l)) = self.layers.get_mut(&id) {
             l.layer_index = 0;
-            l.updated_at  = updated_at;
+            l.updated_at = updated_at;
         }
         app::emit!(Event::LayersReordered());
         Ok(())
@@ -923,7 +1059,9 @@ impl MeroPixArt {
 
     pub fn clear_layers(&mut self) -> app::Result<()> {
         self.require_admin()?;
-        let ids: Vec<String> = self.layers.entries()
+        let ids: Vec<String> = self
+            .layers
+            .entries()
             .map(|iter| iter.map(|(k, _)| k).collect())
             .unwrap_or_default();
         for id in ids {
@@ -995,9 +1133,17 @@ mod tests {
             locked: false,
             opacity: 100,
             blend_mode: "normal".to_owned(),
-            x: 0, y: 0, width: 100, height: 100, rotation: 0,
-            scale_x: 100, scale_y: 100,
-            skew_x: 0, skew_y: 0, flip_h: false, flip_v: false,
+            x: 0,
+            y: 0,
+            width: 100,
+            height: 100,
+            rotation: 0,
+            scale_x: 100,
+            scale_y: 100,
+            skew_x: 0,
+            skew_y: 0,
+            flip_h: false,
+            flip_v: false,
             warp: String::new(),
             blob_id: String::new(),
             mask_blob_id: None,
@@ -1005,7 +1151,8 @@ mod tests {
             adjustments: Adjustments::default(),
             text: None,
             created_by: "creator".to_owned(),
-            created_at: 1, updated_at: 1,
+            created_at: 1,
+            updated_at: 1,
         }
     }
 
@@ -1022,7 +1169,8 @@ mod tests {
         let doc = app.view(|s| s.get_document());
         assert_eq!(doc.width, 800);
         assert_eq!(doc.height, 600);
-        app.call(|s| s.update_document(None, None, Some(1024), Some(768), None)).unwrap();
+        app.call(|s| s.update_document(None, None, Some(1024), Some(768), None))
+            .unwrap();
         let doc = app.view(|s| s.get_document());
         assert_eq!(doc.width, 1024);
         assert_eq!(doc.height, 768);
@@ -1100,7 +1248,9 @@ mod tests {
         app.call_as_account(OTHER_ACCOUNT, TABLET, |s| s.update_cursor(80, 80, 4));
         let cursors = app.view(|s| s.get_cursors());
         assert_eq!(cursors.len(), 2);
-        assert!(cursors.iter().all(|c| c.account == member_id(OTHER_ACCOUNT)));
+        assert!(cursors
+            .iter()
+            .all(|c| c.account == member_id(OTHER_ACCOUNT)));
     }
 
     #[test]
@@ -1116,15 +1266,28 @@ mod tests {
     fn layer_content_and_adjustments_update() {
         let mut app = new_doc();
         app.call(|s| s.add_layer(sample_layer("l1"))).unwrap();
-        app.call(|s| s.update_adjustments(
-            "l1".to_owned(), Some(20), Some(-10), Some(5), None, None, None, Some(true), None, 2,
-        )).unwrap();
+        app.call(|s| {
+            s.update_adjustments(
+                "l1".to_owned(),
+                Some(20),
+                Some(-10),
+                Some(5),
+                None,
+                None,
+                None,
+                Some(true),
+                None,
+                2,
+            )
+        })
+        .unwrap();
         let l = app.view(|s| s.get_layer("l1".to_owned())).unwrap();
         assert_eq!(l.adjustments.brightness, 20);
         assert_eq!(l.adjustments.contrast, -10);
         assert!(l.adjustments.invert);
 
-        app.call(|s| s.update_layer_content("l1".to_owned(), String::new(), 256, 256, 3)).unwrap();
+        app.call(|s| s.update_layer_content("l1".to_owned(), String::new(), 256, 256, 3))
+            .unwrap();
         let l = app.view(|s| s.get_layer("l1".to_owned())).unwrap();
         assert_eq!(l.width, 256);
         assert_eq!(l.height, 256);
@@ -1154,15 +1317,28 @@ mod tests {
         app.call(|s| s.add_layer(l)).unwrap();
 
         // Shear + mirror + warp, leaving rotation/scale untouched.
-        app.call(|s| s.update_transform(
-            "l1".to_owned(), None, None, None,
-            Some(12), Some(-8), Some(true), None,
-            Some(r#"{"tl":[4,0],"tr":[0,0],"br":[0,0],"bl":[0,6]}"#.to_owned()),
-            2,
-        )).unwrap();
+        app.call(|s| {
+            s.update_transform(
+                "l1".to_owned(),
+                None,
+                None,
+                None,
+                Some(12),
+                Some(-8),
+                Some(true),
+                None,
+                Some(r#"{"tl":[4,0],"tr":[0,0],"br":[0,0],"bl":[0,6]}"#.to_owned()),
+                2,
+            )
+        })
+        .unwrap();
 
         let l = app.view(|s| s.get_layer("l1".to_owned())).unwrap();
-        assert_eq!((l.rotation, l.scale_x), (15, 120), "untouched fields survive");
+        assert_eq!(
+            (l.rotation, l.scale_x),
+            (15, 120),
+            "untouched fields survive"
+        );
         assert_eq!((l.skew_x, l.skew_y), (12, -8));
         assert!(l.flip_h);
         assert!(!l.flip_v);
@@ -1176,9 +1352,21 @@ mod tests {
     fn update_transform_clamps_skew_to_a_renderable_range() {
         let mut app = new_doc();
         app.call(|s| s.add_layer(sample_layer("l1"))).unwrap();
-        app.call(|s| s.update_transform(
-            "l1".to_owned(), None, None, None, Some(400), Some(-999), None, None, None, 2,
-        )).unwrap();
+        app.call(|s| {
+            s.update_transform(
+                "l1".to_owned(),
+                None,
+                None,
+                None,
+                Some(400),
+                Some(-999),
+                None,
+                None,
+                None,
+                2,
+            )
+        })
+        .unwrap();
         let l = app.view(|s| s.get_layer("l1".to_owned())).unwrap();
         assert_eq!((l.skew_x, l.skew_y), (80, -80));
     }
@@ -1187,16 +1375,47 @@ mod tests {
     fn update_transform_with_an_empty_warp_clears_it() {
         let mut app = new_doc();
         app.call(|s| s.add_layer(sample_layer("l1"))).unwrap();
-        app.call(|s| s.update_transform(
-            "l1".to_owned(), None, None, None, None, None, None, None,
-            Some(r#"{"tl":[9,9],"tr":[0,0],"br":[0,0],"bl":[0,0]}"#.to_owned()), 2,
-        )).unwrap();
-        assert!(!app.view(|s| s.get_layer("l1".to_owned())).unwrap().warp.is_empty());
+        app.call(|s| {
+            s.update_transform(
+                "l1".to_owned(),
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                Some(r#"{"tl":[9,9],"tr":[0,0],"br":[0,0],"bl":[0,0]}"#.to_owned()),
+                2,
+            )
+        })
+        .unwrap();
+        assert!(!app
+            .view(|s| s.get_layer("l1".to_owned()))
+            .unwrap()
+            .warp
+            .is_empty());
 
-        app.call(|s| s.update_transform(
-            "l1".to_owned(), None, None, None, None, None, None, None, Some(String::new()), 3,
-        )).unwrap();
-        assert!(app.view(|s| s.get_layer("l1".to_owned())).unwrap().warp.is_empty());
+        app.call(|s| {
+            s.update_transform(
+                "l1".to_owned(),
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                Some(String::new()),
+                3,
+            )
+        })
+        .unwrap();
+        assert!(app
+            .view(|s| s.get_layer("l1".to_owned()))
+            .unwrap()
+            .warp
+            .is_empty());
     }
 
     #[test]
@@ -1205,10 +1424,22 @@ mod tests {
         app.call(|s| s.add_layer(sample_layer("l1"))).unwrap();
         assert!(app
             .call_as_account(OTHER_ACCOUNT, OTHER, |s| s.update_transform(
-                "l1".to_owned(), Some(90), None, None, None, None, None, None, None, 2,
+                "l1".to_owned(),
+                Some(90),
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                2,
             ))
             .is_err());
-        assert_eq!(app.view(|s| s.get_layer("l1".to_owned())).unwrap().rotation, 0);
+        assert_eq!(
+            app.view(|s| s.get_layer("l1".to_owned())).unwrap().rotation,
+            0
+        );
     }
 
     #[test]
@@ -1220,10 +1451,16 @@ mod tests {
         app.call(|s| s.add_layer(sample_layer("a"))).unwrap();
         app.call(|s| s.add_layer(sample_layer("b"))).unwrap();
 
-        app.call(|s| s.move_layers(
-            vec![("a".to_owned(), Some("g1".to_owned())), ("b".to_owned(), Some("g1".to_owned()))],
-            5,
-        )).unwrap();
+        app.call(|s| {
+            s.move_layers(
+                vec![
+                    ("a".to_owned(), Some("g1".to_owned())),
+                    ("b".to_owned(), Some("g1".to_owned())),
+                ],
+                5,
+            )
+        })
+        .unwrap();
 
         for id in ["a", "b"] {
             let l = app.view(|s| s.get_layer(id.to_owned())).unwrap();
@@ -1232,8 +1469,12 @@ mod tests {
         }
 
         // …and back out to the root.
-        app.call(|s| s.move_layers(vec![("a".to_owned(), None)], 6)).unwrap();
-        assert_eq!(app.view(|s| s.get_layer("a".to_owned())).unwrap().parent_id, None);
+        app.call(|s| s.move_layers(vec![("a".to_owned(), None)], 6))
+            .unwrap();
+        assert_eq!(
+            app.view(|s| s.get_layer("a".to_owned())).unwrap().parent_id,
+            None
+        );
     }
 
     /// Dropping a group into its own child would make the tree unrenderable for
@@ -1246,17 +1487,32 @@ mod tests {
             g.kind = "group".to_owned();
             app.call(|s| s.add_layer(g)).unwrap();
         }
-        app.call(|s| s.move_layers(vec![("inner".to_owned(), Some("outer".to_owned()))], 2)).unwrap();
+        app.call(|s| s.move_layers(vec![("inner".to_owned(), Some("outer".to_owned()))], 2))
+            .unwrap();
 
         // outer → inner would close the loop, and self-parenting is refused too.
-        app.call(|s| s.move_layers(
-            vec![("outer".to_owned(), Some("inner".to_owned())), ("inner".to_owned(), Some("inner".to_owned()))],
-            3,
-        )).unwrap();
+        app.call(|s| {
+            s.move_layers(
+                vec![
+                    ("outer".to_owned(), Some("inner".to_owned())),
+                    ("inner".to_owned(), Some("inner".to_owned())),
+                ],
+                3,
+            )
+        })
+        .unwrap();
 
-        assert_eq!(app.view(|s| s.get_layer("outer".to_owned())).unwrap().parent_id, None);
         assert_eq!(
-            app.view(|s| s.get_layer("inner".to_owned())).unwrap().parent_id.as_deref(),
+            app.view(|s| s.get_layer("outer".to_owned()))
+                .unwrap()
+                .parent_id,
+            None
+        );
+        assert_eq!(
+            app.view(|s| s.get_layer("inner".to_owned()))
+                .unwrap()
+                .parent_id
+                .as_deref(),
             Some("outer"),
         );
     }
@@ -1266,12 +1522,12 @@ mod tests {
         let mut app = new_doc();
         app.call(|s| s.add_layer(sample_layer("a"))).unwrap();
         assert!(app
-            .call_as_account(OTHER_ACCOUNT, OTHER, |s| s.move_layers(
-                vec![("a".to_owned(), Some("ghost".to_owned()))], 2,
-            ))
+            .call_as_account(OTHER_ACCOUNT, OTHER, |s| s
+                .move_layers(vec![("a".to_owned(), Some("ghost".to_owned()))], 2,))
             .is_err());
         // An id nobody has heard of is a no-op, not a failure.
-        app.call(|s| s.move_layers(vec![("ghost".to_owned(), None)], 3)).unwrap();
+        app.call(|s| s.move_layers(vec![("ghost".to_owned(), None)], 3))
+            .unwrap();
         assert_eq!(app.view(|s| s.get_layers()).len(), 1);
     }
 
@@ -1283,7 +1539,9 @@ mod tests {
         for id in ["outer", "inner"] {
             let mut g = sample_layer(id);
             g.kind = "group".to_owned();
-            if id == "inner" { g.parent_id = Some("outer".to_owned()); }
+            if id == "inner" {
+                g.parent_id = Some("outer".to_owned());
+            }
             app.call(|s| s.add_layer(g)).unwrap();
         }
         let mut leaf = sample_layer("leaf");
@@ -1291,9 +1549,17 @@ mod tests {
         app.call(|s| s.add_layer(leaf)).unwrap();
 
         app.call(|s| s.delete_layer("outer".to_owned())).unwrap();
-        assert_eq!(app.view(|s| s.get_layer("inner".to_owned())).unwrap().parent_id, None);
         assert_eq!(
-            app.view(|s| s.get_layer("leaf".to_owned())).unwrap().parent_id.as_deref(),
+            app.view(|s| s.get_layer("inner".to_owned()))
+                .unwrap()
+                .parent_id,
+            None
+        );
+        assert_eq!(
+            app.view(|s| s.get_layer("leaf".to_owned()))
+                .unwrap()
+                .parent_id
+                .as_deref(),
             Some("inner"),
             "the grandchild stays inside the group that still exists",
         );
@@ -1302,9 +1568,11 @@ mod tests {
     #[test]
     fn layer_merge_uses_updated_at() {
         let mut a = sample_layer("l");
-        a.opacity = 100; a.updated_at = 100;
+        a.opacity = 100;
+        a.updated_at = 100;
         let mut b = sample_layer("l");
-        b.opacity = 40; b.updated_at = 200;
+        b.opacity = 40;
+        b.updated_at = 200;
         a.merge(&b).unwrap();
         assert_eq!(a.opacity, 40);
     }
@@ -1326,13 +1594,19 @@ mod tests {
     #[test]
     fn only_owner_renames_document() {
         let mut app = new_doc();
-        app.call(|s| s.update_document(Some("Renamed".to_owned()), None, None, None, None)).unwrap();
+        app.call(|s| s.update_document(Some("Renamed".to_owned()), None, None, None, None))
+            .unwrap();
         assert_eq!(app.view(|s| s.get_document()).name, "Renamed");
         // A second PERSON, not just a second device: ownership is account-keyed on
         // rc.20 and `call_as` keeps the caller's account.
         assert!(app
-            .call_as_account(OTHER_ACCOUNT, OTHER, |s| s
-                .update_document(Some("Hijacked".to_owned()), None, None, None, None))
+            .call_as_account(OTHER_ACCOUNT, OTHER, |s| s.update_document(
+                Some("Hijacked".to_owned()),
+                None,
+                None,
+                None,
+                None
+            ))
             .is_err());
         assert_eq!(app.view(|s| s.get_document()).name, "Renamed");
     }
@@ -1344,11 +1618,14 @@ mod tests {
         let other = member_id(OTHER_ACCOUNT);
         app.call(|s| s.transfer_ownership(other.clone())).unwrap();
         assert_eq!(app.view(|s| s.get_document()).owner, Some(other.clone()));
-        app.call_as_account(OTHER_ACCOUNT, OTHER, |s| s
-            .update_document(Some("Owned".to_owned()), None, None, None, None))
-            .unwrap();
+        app.call_as_account(OTHER_ACCOUNT, OTHER, |s| {
+            s.update_document(Some("Owned".to_owned()), None, None, None, None)
+        })
+        .unwrap();
         assert_eq!(app.view(|s| s.get_document()).name, "Owned");
-        assert!(app.call(|s| s.update_document(Some("nope".to_owned()), None, None, None, None)).is_err());
+        assert!(app
+            .call(|s| s.update_document(Some("nope".to_owned()), None, None, None, None))
+            .is_err());
         assert_eq!(app.view(|s| s.get_role(other)), "admin");
         assert_eq!(app.view(|s| s.my_role()), "viewer");
         assert!(!app.view(|s| s.can_edit()));

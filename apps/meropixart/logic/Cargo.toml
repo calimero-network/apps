@@ -40,32 +40,25 @@ github = "https://github.com/calimero-network/mero-pixart"
 # that earlier merod has no implementation for: claiming 0.1.0 lets such a node
 # install the bundle happily and then fail at context creation with "unknown
 # import". Keep this equal to the calimero-sdk tag above.
-min-runtime-version = "0.11.0-rc.25"
+min-runtime-version = "0.11.0-rc.26"
 frontend = "https://mero-pixart.vercel.app/"
 
 [dependencies]
-borsh = "0.10.3"
-borsh-derive = "0.10.3"
+# No direct `borsh`: the crate reaches it through `calimero_sdk::borsh`.
 # Pin a real release tag, never `branch = "master"`: master rides unreleased
 # protocol work against nodes that run the release. All SDK crates must share the
 # exact same tag (the workspace version at a tag is 0.0.0, so a version
 # requirement cannot match).
-calimero-sdk = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.25" }
-calimero-storage = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.25" }
-calimero-storage-macros = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.25" }
+calimero-sdk = { workspace = true }
+calimero-storage = { workspace = true }
+calimero-storage-macros = { workspace = true }
 thiserror = "1.0.56"
 serde_json = "1.0.113"
 
 [dev-dependencies]
 # Enables register_crdt_merge + the native mock host so TestHost can drive
 # CRDT state (incl. the permissioned components) under `cargo test`.
-calimero-storage = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.25", features = ["testing"] }
+calimero-storage = { workspace = true, features = ["testing"] }
 
-[profile.app-release]
-inherits = "release"
-codegen-units = 1
-opt-level = "z"
-lto = true
-debug = false
-panic = "abort"
-overflow-checks = true
+# `[profile.*]` lives at the workspace root. Cargo IGNORES a profile in a
+# member and then hard-errors on it, so this is not stylistic.
