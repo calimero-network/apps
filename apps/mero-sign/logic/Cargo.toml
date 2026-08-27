@@ -1,0 +1,23 @@
+[package]
+name = "mero_sign"
+description = "Calimero MeroSign logic"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+bs58 = "0.5.1"
+calimero-sdk = { git = "https://github.com/calimero-network/core", rev = "770d93c1240ed9a3fce35f89b63c9393948ded11" }
+calimero-storage = { git = "https://github.com/calimero-network/core", rev = "770d93c1240ed9a3fce35f89b63c9393948ded11" }
+calimero-storage-macros = { git = "https://github.com/calimero-network/core", rev = "770d93c1240ed9a3fce35f89b63c9393948ded11" }
+
+[profile.app-release]
+inherits = "release"
+codegen-units = 1
+opt-level = "z"
+lto = true
+debug = false
+panic = "abort"
+overflow-checks = true
