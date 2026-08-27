@@ -16,6 +16,10 @@ export function KvPanel({ contextId }: { contextId: string }) {
   const [listErr, setListErr] = useState<string | null>(null);
   const [key, setKey] = useState("");
   const [value, setValue] = useState("");
+  // The read section owns its key. It used to share `key` with Write, which
+  // meant you could not look up one entry while composing another, and the
+  // read buttons went disabled the moment the write field was cleared.
+  const [readKey, setReadKey] = useState("");
   const [result, setResult] = useState<Result>(null);
   const [busy, setBusy] = useState(false);
 
@@ -106,15 +110,27 @@ export function KvPanel({ contextId }: { contextId: string }) {
       <div className="card">
         <h2>Read</h2>
         <div className="row">
+          <input
+            placeholder="key"
+            value={readKey}
+            onChange={(e) => setReadKey(e.target.value)}
+            aria-label="read key"
+          />
+        </div>
+        <div className="row" style={{ marginTop: 10 }}>
           {/* Typed `Promise<string>`, actually nullable — see useKvStore. */}
-          <button className="ghost" disabled={busy || !key} onClick={() => run("get", () => kv.get({ key }))}>
+          <button
+            className="ghost"
+            disabled={busy || !readKey}
+            onClick={() => run("get", () => kv.get({ key: readKey }))}
+          >
             get
           </button>
           {/* Returns a typed contract error for a missing key. */}
           <button
             className="ghost"
-            disabled={busy || !key}
-            onClick={() => run("get_result", () => kv.getResult({ key }))}
+            disabled={busy || !readKey}
+            onClick={() => run("get_result", () => kv.getResult({ key: readKey }))}
           >
             get_result
           </button>
@@ -125,8 +141,8 @@ export function KvPanel({ contextId }: { contextId: string }) {
           */}
           <button
             className="ghost"
-            disabled={busy || !key}
-            onClick={() => run("get_unchecked", () => kv.getUnchecked({ key }))}
+            disabled={busy || !readKey}
+            onClick={() => run("get_unchecked", () => kv.getUnchecked({ key: readKey }))}
           >
             get_unchecked
           </button>
