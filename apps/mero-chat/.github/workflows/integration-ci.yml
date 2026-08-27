@@ -63,7 +63,21 @@ jobs:
       # ── Install merobox ───────────────────────────────────────────────────────
 
       - name: Install merobox
-        run: pip install merobox==0.6.24 && merobox --version
+      # ⚠️ calimero-client-py MUST be pinned, not just merobox. It is the layer
+      # that actually builds the admin-API request, merobox only requires a
+      # floor, and it tracks core master — so an unpinned install silently picks
+      # up whatever landed today.
+      #
+      # That is not hypothetical here. Leaving it unpinned resolved to 0.6.33,
+      # which expects rc.25's renamed `namespaceId`, against the rc.24 node these
+      # scenarios start:
+      #
+      #     Join namespace failed: Client error: missing field `namespaceId`
+      #
+      # 0.6.29 is the version the rest of the fleet ran green against rc.24
+      # nodes. Moving the node to rc.25 means moving BOTH pins and migrating the
+      # scenario schema (see logic/Cargo.toml's min-runtime-version note).
+        run: pip install merobox==0.6.24 calimero-client-py==0.6.29 && merobox --version
 
       # ── Start nodes + install curb app + create context + seed messages ───────
       # integration-setup.yml sets stop_all_nodes: false so nodes stay running.
