@@ -51,4 +51,13 @@ slug        = "com.calimero.chat"
 # registry advertises `minRuntimeVersion: 0.1.0` for this package: that is
 # cargo-mero's placeholder floor, and it tells every node "any version will do"
 # while the wasm calls host functions an old node does not have.
+#
+# NOTE the deliberate mismatch with the e2e: `workflows/*.yml` still start a
+# merod 0.11.0-rc.24 node. Moving them to rc.25 requires merobox >= 0.6.59 (rc.25
+# renamed the namespace-join response field `groupId` -> `namespaceId`), and this
+# repo pins merobox 0.6.24 — 42 releases back, with a scenario schema 0.6.66
+# rejects in three places. That migration is its own piece of work; see the PR
+# that added this line. The mismatch is safe in the meantime: `crates/sys`, the
+# host-function surface, is unchanged between rc.24 and rc.25, so the wasm's
+# import set cannot have outgrown an rc.24 node.
 min-runtime-version = "0.11.0-rc.25"

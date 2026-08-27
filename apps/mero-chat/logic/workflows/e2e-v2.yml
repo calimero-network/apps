@@ -21,7 +21,7 @@ force_pull_image: true
 nodes:
   chain_id: testnet-1
   count: 2
-  image: ghcr.io/calimero-network/merod:0.11.0-rc.25
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.24
   prefix: calimero-node
 
 steps:
