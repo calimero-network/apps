@@ -1,0 +1,30 @@
+name: recalc-wasm freshness
+
+on:
+  pull_request:
+    paths:
+      - 'logic/crates/recalc/**'
+      - 'logic/crates/recalc-wasm/**'
+      - 'app/src/engine/recalc/**'
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust toolchain (wasm32)
+        run: rustup target add wasm32-unknown-unknown
+
+      # Pinned to the exact version that generated the committed artifact — a
+      # newer wasm-pack could emit different glue and fail the diff check
+      # below even when the engine itself hasn't changed. Installed from
+      # source (slower than the installer script) to guarantee this version.
+      - name: Install wasm-pack
+        run: cargo install wasm-pack --version 0.13.1 --locked
+
+      - name: Rebuild the committed artifact
+        run: bash logic/build-recalc-wasm.sh
+
+      - name: Fail if the committed artifact is stale
+        run: git diff --exit-code -- app/src/engine/recalc

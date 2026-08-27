@@ -1,0 +1,289 @@
+# Managed by Calimero Studio (P2). Deterministic verify gate — do not
+# hand-edit; the builder overwrites this on every verify.
+name: verify
+
+on:
+  push:
+    branches:
+      # Must cover EVERY branch prefix buildBranchName can emit:
+      #   workshop/<user>/<slug>  (workshop/prod users, userId != 'dev')
+      #   ai-builder/<slug>        (local dev, userId == 'dev')
+      # A mismatch here = the workflow never fires → the worker polls a
+      # check that never exists ("waiting for actions, none run").
+      - 'workshop/**'
+      - 'ai-builder/**'
+
+# A heal push supersedes the prior run for the same branch.
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  checks: write
+
+# Job id is 'gate' (not 'verify') so the ONLY check named `verify` is
+# the explicit one the publish step creates — the worker keys off it.
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      # corepack's download prompt aborts in a non-interactive runner
+      COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Enable corepack (pnpm)
+        run: corepack enable
+
+      - name: Rust toolchain (wasm32)
+        run: |
+          rustup target add wasm32-unknown-unknown
+          rustup component add rust-src || true
+
+      - name: Install merobox
+        run: pipx install merobox || pip install --user merobox
+
+      # ── ACQUIRE MEROD (native, no Docker) ──────────────────────────
+      # Prebuilt release from calimero-network/core. Pre-launch: track
+      # the LATEST RC (newest prerelease) by default; pin via the
+      # repo/org Actions variable MEROD_VERSION when needed.
+      - name: Resolve merod version
+        id: merodver
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PINNED: ${{ vars.MEROD_VERSION }}
+        run: |
+          set -euo pipefail
+          if [ -n "${PINNED:-}" ]; then
+            ver="$PINNED"
+          else
+            ver="$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" \
+              'https://api.github.com/repos/calimero-network/core/releases?per_page=30' \
+              | jq -r '[ .[] | select(.prerelease==true)
+                          | select(any(.assets[].name; .=="merod_x86_64-unknown-linux-gnu.tar.gz")) ]
+                        | .[0].tag_name')"
+          fi
+          test -n "$ver" && test "$ver" != "null"
+          echo "version=$ver" >> "$GITHUB_OUTPUT"
+          echo "merod version: $ver"
+      - name: Cache merod
+        id: merod-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/merod
+          key: merod-${{ steps.merodver.outputs.version }}-x86_64-linux
+      - name: Download merod
+        if: steps.merod-cache.outputs.cache-hit != 'true'
+        env:
+          MEROD_VERSION: ${{ steps.merodver.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.local/merod"
+          url="https://github.com/calimero-network/core/releases/download/${MEROD_VERSION}/merod_x86_64-unknown-linux-gnu.tar.gz"
+          echo "Downloading $url"
+          curl -fsSL "$url" -o /tmp/merod.tgz
+          tar -xzf /tmp/merod.tgz -C "$HOME/.local/merod"
+          # Asset layout varies: the binary may extract straight to the
+          # canonical path (.../merod) OR nested in a subdir. Only symlink
+          # when it's nested — symlinking the canonical path onto itself
+          # is "ln: X and X are the same file" → exit 1 (the bug that made
+          # this step fail on every run, skipping all real verification).
+          target="$HOME/.local/merod/merod"
+          if [ ! -f "$target" ]; then
+            nested="$(find "$HOME/.local/merod" -type f -name merod | head -n1)"
+            test -n "$nested"
+            ln -sf "$nested" "$target"
+          fi
+          chmod +x "$target"
+      - name: Put merod on PATH
+        run: |
+          echo "$HOME/.local/merod" >> "$GITHUB_PATH"
+          echo "MEROD_BINARY=$HOME/.local/merod/merod" >> "$GITHUB_ENV"
+      - name: merod sanity
+        id: merodsanity
+        # continue-on-error so a missing/broken merod does NOT skip the
+        # verification steps below (a skipped step is misread as "did not
+        # fail"). The publish step folds steps.merodsanity.outcome into the
+        # gate: merod-not-acquired => conclusion 'failure', never a silent
+        # 'success' on a build that verified nothing.
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          command -v merod
+          merod --version
+
+      # bundle / validate / smoke / e2e are all continue-on-error so a
+      # hard failure never skips later steps — the final "Publish verify
+      # check" step is the SINGLE source of truth for the conclusion
+      # (a skipped step would otherwise be misread as "did not fail").
+      # Each stage tees to BOTH a stage-scoped log (merobox.log / e2e.log)
+      # AND verify-out.txt. The all-in-one verify-out.txt is the artifact
+      # for human debugging; the stage logs are what the "Publish verify
+      # check" step slices to feed the heal classifier with the BLOCKING
+      # stage's output ONLY — otherwise the e2e tail dominates the
+      # ~60KB tail and merobox-stage failures (e.g. cross-node sync
+      # timeouts) get misclassified as UI selector issues.
+      - name: Build dev bundle (.mpk)
+        id: bundle
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          if [ -f logic/build-bundle.sh ]; then
+            bash logic/build-bundle.sh 2>&1 | tee -a merobox.log verify-out.txt
+          else
+            echo "no logic/build-bundle.sh — skipping bundle build" | tee -a merobox.log verify-out.txt
+          fi
+
+      # Schema gate FIRST (the validateMeroboxWorkflows gate): a bad
+      # step type / missing field is a pure workflow-file problem.
+      - name: merobox validate
+        id: mvalidate
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          if [ -f test/spec-smoke.workflow.yml ]; then
+            merobox bootstrap validate test/spec-smoke.workflow.yml 2>&1 | tee -a merobox.log verify-out.txt
+          else
+            echo "no test/spec-smoke.workflow.yml — nothing to validate" | tee -a merobox.log verify-out.txt
+          fi
+
+      - name: merobox smoke (two-node, native merod --no-docker)
+        id: msmoke
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          if [ -f test/spec-smoke.workflow.yml ]; then
+            merobox bootstrap run --no-docker --binary-path "$MEROD_BINARY" \
+              test/spec-smoke.workflow.yml 2>&1 | tee -a merobox.log verify-out.txt
+          else
+            echo "no smoke workflow — merobox stage skipped" | tee -a merobox.log verify-out.txt
+          fi
+
+      # Floor check: every build is supposed to ship with at least one
+      # app/e2e/*.spec.ts (deterministic floor in worker/e2eSpecs.js).
+      # Missing specs = the floor failed to materialize → a real failure,
+      # NOT a silent skip (the bug that let trading-pod-forum 2026-05-26
+      # ship with zero verification). The publish step below maps
+      # specs.outcome == 'failure' to stage=e2e-missing-specs.
+      - name: Floor check — app/e2e/*.spec.ts must exist
+        id: specs
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          if ls app/e2e/*.spec.ts >/dev/null 2>&1; then
+            echo "specs ok: $(ls app/e2e/*.spec.ts | wc -l) file(s)" | tee -a e2e.log verify-out.txt
+          else
+            echo "FATAL: no app/e2e/*.spec.ts — deterministic floor failed" | tee -a e2e.log verify-out.txt
+            exit 1
+          fi
+
+      - name: Playwright e2e
+        id: e2e
+        # BLOCKING by default — Playwright outcomes feed the verify
+        # check's conclusion. Opt out per-repo with the GHA variable
+        # STRICT_E2E_GATE=false (the conclusion logic below honours it).
+        # Only run if the spec floor passed; otherwise the publish step
+        # will already report stage=e2e-missing-specs as the failure.
+        if: steps.specs.outcome == 'success'
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          cd app
+          pnpm install --no-frozen-lockfile 2>&1 | tee -a ../e2e.log ../verify-out.txt
+          npx playwright install --with-deps chromium 2>&1 | tee -a ../e2e.log ../verify-out.txt
+          npx playwright test --reporter=line 2>&1 | tee -a ../e2e.log ../verify-out.txt
+
+      - name: Upload verify logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verify-logs
+          path: verify-out.txt
+          if-no-files-found: ignore
+
+      # Publish the `verify` check with a stage marker + failing tail
+      # the worker's verify-heal consumes.
+      - name: Publish verify check
+        if: always()
+        uses: actions/github-script@v7
+        env:
+          STRICT_E2E_GATE: ${{ vars.STRICT_E2E_GATE }}
+        with:
+          script: |
+            const fs = require('fs');
+            const readIf = (p) => fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : '';
+            const verifyOut = readIf('verify-out.txt');
+            const meroboxLog = readIf('merobox.log');
+            const e2eLog = readIf('e2e.log');
+            // merod must have been acquired, else NOTHING below actually
+            // verified the app. outcome != 'success' covers both 'failure'
+            // (sanity ran, merod broken) and 'skipped' (a prior hard step
+            // bailed). Treat that as a hard verify failure — never a silent
+            // pass on a build that verified nothing. The worker maps
+            // success/neutral/skipped check conclusions to ready-to-deploy,
+            // so 'neutral' would NOT block here; only 'failure' does.
+            const setupFailed = ${{ steps.merodsanity.outcome != 'success' }};
+            const bundleFailed = ${{ steps.bundle.outcome == 'failure' }};
+            const meroboxFailed = bundleFailed || ${{ steps.mvalidate.outcome == 'failure' || steps.msmoke.outcome == 'failure' }};
+            // Deterministic floor: missing app/e2e/*.spec.ts is a hard
+            // failure (the floor generator failed). Distinct from a
+            // genuine Playwright failure so the heal classifier can
+            // route correctly (a missing floor isn't a UI bug).
+            const specsMissing = ${{ steps.specs.outcome == 'failure' }};
+            const e2eFailed = ${{ steps.e2e.outcome == 'failure' }};
+            // STRICT_E2E_GATE is the GHA repo variable. Default is BLOCKING
+            // (deterministic spec floor + dangling-testid check in polish
+            // make e2e signal trustworthy). Opt out per-repo with
+            // STRICT_E2E_GATE=false. Empty / unset = strict.
+            const strict = String(process.env.STRICT_E2E_GATE || 'true').toLowerCase() !== 'false';
+            // A missing-spec floor is ALWAYS a failure regardless of strict.
+            const failed = setupFailed || meroboxFailed || specsMissing || (strict && e2eFailed);
+            const stage =
+              setupFailed ? 'setup' :
+              meroboxFailed ? 'merobox' :
+              specsMissing ? 'e2e-missing-specs' :
+              e2eFailed ? 'e2e' :
+              'none';
+            const conclusion = failed ? 'failure' : (e2eFailed ? 'neutral' : 'success');
+            // STAGE-SCOPED failure tail. The worker's verify-heal classifier
+            // reads output.text to decide what kind of fix to attempt. If
+            // we feed it the whole verify-out.txt the e2e output dominates
+            // the last 60KB and a merobox-stage failure (e.g. a cross-node
+            // sync timeout) gets misclassified as a UI/selector issue → the
+            // heal polishes Playwright tests while the real backend bug
+            // goes untouched. Pick the BLOCKING stage's log so the
+            // classifier sees what actually broke.
+            const failingLog =
+              setupFailed ? (meroboxLog || verifyOut) :
+              meroboxFailed ? (meroboxLog || verifyOut) :
+              specsMissing ? (e2eLog || verifyOut) :
+              e2eFailed ? (e2eLog || verifyOut) :
+              verifyOut;
+            const tail = failingLog.slice(-60000);
+            const summary = [
+              'stage=' + stage,
+              'merod=' + (setupFailed ? 'missing' : 'ok'),
+              'merobox=' + (meroboxFailed ? 'fail' : 'ok'),
+              'specs=' + (specsMissing ? 'missing' : 'ok'),
+              'e2e=' + (specsMissing ? 'skipped' : (e2eFailed ? (strict ? 'fail' : 'fail(non-blocking)') : 'ok')),
+            ].join(' ');
+            await github.rest.checks.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              name: 'verify',
+              head_sha: context.sha,
+              status: 'completed',
+              conclusion,
+              output: {
+                title: 'Calimero verify',
+                summary,
+                text: tail,
+              },
+            });
+            if (failed) core.setFailed('verify gate failed (' + stage + ')');
