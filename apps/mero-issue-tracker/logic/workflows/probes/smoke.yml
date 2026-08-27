@@ -9,10 +9,10 @@
 #     delta path (the per-entry authorization the bare converge harness can't test)
 #
 # Usage (run from the chat project root, after a dev bundle has been built):
-#   merobox bootstrap run test/smoke.workflow.yml
+#   cd logic && merobox bootstrap run workflows/probes/smoke.yml
 #
 # Pre-flight: `pnpm logic:build` must have produced
-# `logic/dist/network.calimero.mero-issue-tracker.mpk` (named after the package;
+# `logic/dist/com.calimero.mero-issue-tracker.mpk` (named after the package;
 # the version lives in the manifest).
 
 name: issue-tracker spec smoke
@@ -40,7 +40,7 @@ steps:
     name: Install issue-tracker bundle on node 1
     node: app-node-1
     dev: true
-    path: ./logic/dist/network.calimero.mero-issue-tracker.mpk
+    path: dist/com.calimero.mero-issue-tracker.mpk
     outputs:
       app_id: applicationId
 
@@ -48,7 +48,7 @@ steps:
     name: Install issue-tracker bundle on node 2
     node: app-node-2
     dev: true
-    path: ./logic/dist/network.calimero.mero-issue-tracker.mpk
+    path: dist/com.calimero.mero-issue-tracker.mpk
 
   - type: create_namespace
     name: Create namespace on node 1
@@ -300,7 +300,27 @@ steps:
     args:
       comment_id: '{{comment_id}}'
       new_body: "malicious edit"
-    expect_error: true
+    # `expected_failure`, not `expect_error`. The original spelling is not a
+    # merobox field at all, so 0.6.66 rejects it — and an older merobox IGNORED
+    # it, which means this step did not assert what it claims.
+    #
+    # And `expected_failure: true` alone is NOT enough: on a `call` step it can
+    # never fail the run. It marks the step as allowed-to-fail, so a call that
+    # unexpectedly SUCCEEDS — the actual regression this guards, a non-author
+    # editing someone else's comment — still passes. The error has to be
+    # captured and asserted.
+    expected_failure: true
+    outputs:
+      non_author_edit_error: error
+
+  - type: assert
+    name: The rejection must actually have happened
+    statements:
+      # is_set, not an equality check on the message: the point is that the
+      # call FAILED. Comparing text would couple this to the contract's wording,
+      # and merobox splits an assert on every comma, so a message containing one
+      # would silently become two statements.
+      - "is_set({{non_author_edit_error}})"
 
   # --- edit_comment: the author can edit ---
 

@@ -28,7 +28,7 @@ import {
 import { useSubscription } from '@calimero-network/mero-react';
 import { PRIMARY_SERVICE } from '../config';
 import { decodeInvitation } from '../utils/invitation';
-import { IssueTrackerClient } from '../api/issue-tracker/IssueTrackerClient';
+import { IssueTrackerClient } from '../generated/IssueTrackerClient';
 import { buildAliasMap } from './useAliases';
 import {
   readActiveNs,

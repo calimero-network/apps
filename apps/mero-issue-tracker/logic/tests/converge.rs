@@ -20,7 +20,7 @@
 //! in-`lib.rs` `TestHost` unit tests.
 
 use calimero_storage::testing::converge_app;
-use issue_tracker_issue_tracker::IssueTracker;
+use mero_issue_tracker::IssueTracker;
 use serial_test::serial;
 
 #[test]

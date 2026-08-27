@@ -1,8 +1,8 @@
 {
   "appName": "mero-issue-tracker",
   "appVersion": "1.1.0",
-  "package": "network.calimero.mero-issue-tracker",
-  "frontendUrl": "https://mero-issue-tracker-app.vercel.app/",
+  "package": "com.calimero.mero-issue-tracker",
+  "frontendUrl": "https://mero-issue-tracker-app.vercel.app",
   "metadata": {
     "name": "mero-issue-tracker",
     "description": "A private, real-time issue board for a small engineering team \u2014 create, triage, and discuss issues together",
@@ -17,7 +17,7 @@
   "services": [
     {
       "name": "issue-tracker",
-      "crate": "issue-tracker-issue-tracker"
+      "crate": "mero-issue-tracker"
     }
   ]
 }

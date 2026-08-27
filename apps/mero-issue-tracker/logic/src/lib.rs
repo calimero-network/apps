@@ -276,6 +276,15 @@ impl IssueTracker {
     }
 
     /// Create an issue. Returns its generated id. Starts in status `Open`.
+    //
+    // Scoped allow, not a refactor. The monorepo gates `clippy -D warnings`
+    // where this app's own CI ran plain `clippy`, so 8/7 arguments became an
+    // error on the move. Collapsing them into a params struct is the lint's
+    // suggestion and it would CHANGE THE ABI: each argument is a named field in
+    // the generated client and in every merobox `args:` payload, so the rename
+    // would break the committed IssueTrackerClient and every scenario at once.
+    // The ABI is the public contract; the lint is a style heuristic.
+    #[allow(clippy::too_many_arguments)]
     pub fn create_issue(
         &mut self,
         title: String,

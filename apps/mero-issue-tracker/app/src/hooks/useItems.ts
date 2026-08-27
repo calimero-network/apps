@@ -17,7 +17,7 @@ import {
   IssueView,
   CommentView,
   IssueDetail,
-} from '../api/issue-tracker/IssueTrackerClient';
+} from '../generated/IssueTrackerClient';
 
 export type { IssueView, CommentView, IssueDetail };
 

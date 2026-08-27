@@ -1,35 +1,35 @@
 {
-  "name": "issue-tracker",
+  "name": "mero-issue-tracker",
   "version": "1.0.0",
   "private": true,
   "type": "module",
   "dependencies": {
     "@calimero-network/mero-icons": "0.0.6",
-    "@calimero-network/mero-js": "^13.3.0",
-    "@calimero-network/mero-platform": "^0.1.0",
-    "@calimero-network/mero-react": "^6.0.4",
-    "@calimero-network/mero-ui": "1.5.1",
-    "bs58": "^6.0.0",
-    "fflate": "^0.8.3",
-    "react": "^19.1.1",
-    "react-dom": "^19.1.1",
+    "@calimero-network/mero-js": "catalog:",
+    "@calimero-network/mero-platform": "catalog:",
+    "@calimero-network/mero-react": "catalog:",
+    "@calimero-network/mero-ui": "catalog:",
+    "bs58": "catalog:",
+    "fflate": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
     "react-router-dom": "^6.22.3",
     "styled-components": "^6.1.11"
   },
   "devDependencies": {
-    "@calimero-network/abi-codegen": "1.1.1",
-    "@playwright/test": "^1.59.1",
-    "@types/node": "^25.6.0",
-    "@types/react": "^19.0.0",
-    "@types/react-dom": "^19.0.0",
+    "@calimero-network/abi-codegen": "catalog:",
+    "@playwright/test": "catalog:",
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
     "@types/styled-components": "^5.1.34",
-    "@vitejs/plugin-react": "^4.2.1",
+    "@vitejs/plugin-react": "catalog:",
     "tweetnacl": "^1.0.3",
     "tweetnacl-util": "^0.15.1",
-    "typescript": "^5.7.0",
-    "vite": "^7.3.5",
+    "typescript": "catalog:",
+    "vite": "catalog:",
     "vite-plugin-node-polyfills": "^0.24.0",
-    "vitest": "^3.2.6"
+    "vitest": "catalog:"
   },
   "scripts": {
     "dev": "vite",
@@ -43,6 +43,7 @@
     "test:unit": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
-    "test:e2e:ui": "playwright test --ui"
+    "test:e2e:ui": "playwright test --ui",
+    "typecheck": "tsc -b"
   }
 }

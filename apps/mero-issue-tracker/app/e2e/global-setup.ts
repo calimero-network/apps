@@ -40,6 +40,18 @@ function resolveMerodBinary(): string {
 // in the manifest, so the exact name is stable; the newest-file fallback
 // covers a bundle built before this layout.
 function resolveMpkPath(): string {
+  // ci.yml's `browser` job downloads the .mpk the `wasm` job built into
+  // ./bundle/ and exports its path — under the name KV_MPK_PATH, which is
+  // kv-store-shaped but IS the repo-wide contract today. Honour it first: in CI
+  // nothing ever runs `cargo mero bundle` in the app directory, so
+  // logic/dist/*.mpk does not exist and every fallback below would miss.
+  // APP_MPK_PATH is accepted too, so renaming that env var in ci.yml later needs
+  // no change here.
+  const fromEnv = process.env['APP_MPK_PATH'] ?? process.env['KV_MPK_PATH'];
+  if (fromEnv && existsSync(fromEnv)) {
+    console.log(`[global-setup] using the bundle CI provided: ${fromEnv}`);
+    return fromEnv;
+  }
   const cfgPath = path.resolve(__dirname, '..', '..', 'studio.config.json');
   const cfg = JSON.parse(readFileSync(cfgPath, 'utf-8'));
   const resDir = path.resolve(__dirname, '..', '..', 'logic', 'dist');

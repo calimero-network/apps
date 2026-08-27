@@ -1,49 +1,82 @@
-[workspace]
-members = [
-    "crates/types",
-    "crates/issue-tracker"
-]
-resolver = "2"
+[package]
+# Renamed from `issue-tracker-issue-tracker` — a scaffolding artefact that
+# doubled the app name. The DIRECTORY, the cargo package and the npm package must
+# be ONE value: publish-bundle.yml uses it as both a path (`apps/$APP/logic`) and
+# a package (`pnpm -F $APP`), and ci.yml's e2e job asserts the directory exists.
+name        = "mero-issue-tracker"
+description = "A private, real-time issue board for a small engineering team"
+version     = "0.1.0"
+edition.workspace    = true
+authors.workspace    = true
+license.workspace    = true
+repository.workspace = true
 
-# Read by `cargo mero bundle`. `appVersion` is not here on purpose: it lives in
-# studio.config.json, which the e2e and smoke consumers also read, and is passed
-# through with --app-version so the two cannot drift.
-[workspace.metadata.calimero]
-package = "network.calimero.mero-issue-tracker"
-name = "mero-issue-tracker"
+[lib]
+# `cdylib` for the WASM artifact the bundle ships; `rlib` so the in-process
+# TestHost unit tests and the tests/converge.rs integration binary can link the
+# crate as a normal Rust library.
+crate-type = ["cdylib", "rlib"]
+
+# ── app metadata: PACKAGE level, with `services` ─────────────────────────────
+#
+# The standalone repo carried this as `[workspace.metadata.calimero]` on its own
+# nested workspace. That cannot work here, and not because of style: cargo-mero
+# reads `[workspace.metadata.calimero]` and **REPLACES** an app's package table
+# with it. In a workspace of many independent apps, one such table masks every
+# app's identity, so the root Cargo.toml deliberately has none (it uses
+# `[workspace.metadata.mero-apps]` instead).
+#
+# cargo-mero supports exactly this case — from meta.rs: "A crate that cannot
+# declare a workspace table of its own (e.g. a member of a larger workspace) may
+# instead declare `services` in its own package table." Verified: `cargo mero
+# bundle` calls build::run_all, which builds EVERY declared service regardless of
+# --manifest-path, so the multi-service bundle is staged correctly.
+[package.metadata.calimero]
+# ⚠️ CHANGED from `network.calimero.mero-issue-tracker`, which is published as
+# v1.1.0. check-app-metadata.sh requires `com.calimero.*` — thirteen of the
+# fourteen published bundles use it and this was the lone exception. The cost is
+# real and accepted: this publishes as a NEW application id, so the live 1.1.0 is
+# orphaned, version numbering restarts, and existing invite links stop resolving
+# (the desktop resolves a deep link by Application.package). Same trade taken for
+# merraria and mero-blocks.
+package     = "com.calimero.mero-issue-tracker"
+name        = "Mero Issue Tracker"
 description = "A private, real-time issue board for a small engineering team - create, triage, and discuss issues together"
-# Must match the registry username that owns the package; the registry returns
-# 403 not_owner on a mismatch.
-author = "calimero-network"
+author      = "Calimero"
+slug        = "com.calimero.mero-issue-tracker"
+# The repo ships no icon of its own; `cargo mero bundle` refuses to run without
+# an icon DECISION and fails at bundle time — after a green PR, on the release run.
+icon        = "default"
+tags        = ["productivity", "issues", "collaboration"]
+github      = "https://github.com/calimero-network/apps"
 min-runtime-version = "0.11.0-rc.26"
-frontend = "https://mero-issue-tracker-app.vercel.app/"
-# The tool's stock Calimero mark - the repo ships no icon of its own.
-icon = "default"
+# A BARE https origin — it doubles as the login callback's registered redirect
+# URI and is compared by EXACT ORIGIN, so a trailing path breaks hosted login
+# after credentials are accepted while desktop login keeps working.
+frontend    = "https://mero-issue-tracker-app.vercel.app"
 
-[[workspace.metadata.calimero.services]]
-name = "issue-tracker"
-crate = "issue-tracker-issue-tracker"
+# One service, named `issue-tracker`. Kept even though it is a single wasm: the
+# bundle layout differs (`services/issue-tracker.wasm` vs a bare `app.wasm`) and
+# context creation passes `serviceName`, so dropping it would change how every
+# context is created. `crate` follows the rename above.
+[[package.metadata.calimero.services]]
+name  = "issue-tracker"
+crate = "mero-issue-tracker"
 
-[workspace.dependencies]
-# OFFLINE FALLBACK ONLY — do not maintain by hand. Every fresh scaffold
-# rewrites these tags to the latest core release (sdkPin.js), and the verify
-# pipeline + worker image derive their merod from whatever tag ends up here,
-# so app and node stay in step automatically. Keep it a real release tag
-# (never `branch = "master"`): it's what builds use when the release lookup
-# is unreachable.
-calimero-sdk = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.26" }
-calimero-storage = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.26" }
-calimero-storage-macros = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.26" }
-thiserror = "1.0.56"
-bs58 = "0.4"
+[dependencies]
+issue-tracker-types     = { path = "crates/types" }
+calimero-sdk            = { workspace = true }
+calimero-storage        = { workspace = true }
+calimero-storage-macros = { workspace = true }
+bs58                    = { workspace = true }
+
+[dev-dependencies]
+# Enables register_crdt_merge + the native mock host so TestHost and converge_app
+# can drive CRDT state under `cargo test`.
+calimero-storage = { workspace = true, features = ["testing"] }
+# Convergence tests are serial: converge_app clears/repopulates the
+# process-global merge registry per run.
 serial_test = "3"
-issue-tracker-types = { path = "crates/types" }
 
-[profile.app-release]
-inherits = "release"
-codegen-units = 1
-opt-level = "z"
-lto = true
-debug = false
-panic = "abort"
-overflow-checks = true
+# NOTE: no [profile.*]. Cargo ignores profiles in a workspace member and
+# `cargo mero build` then fails with `profile 'app-release' is not defined`.
