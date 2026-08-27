@@ -122,6 +122,8 @@ jobs:
             file: workflows/sorted-collections.yml
           - workflow: access-control
             file: workflows/access-control.yml
+          - workflow: host-logging
+            file: workflows/host-logging.yml
 
     steps:
       - name: Checkout code

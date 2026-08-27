@@ -22,6 +22,39 @@ export interface Identity {
 export const whoami = () =>
   call<Record<string, never>, Identity>("whoami", {});
 
+/**
+ * The caller's account on its own.
+ *
+ * `whoami().account_id` is the same value and is what the rest of this UI uses.
+ * This method exists only so the account accessor is spelled the same here as
+ * in core's copy of this scaffold, which is what keeps a merobox scenario
+ * portable between the two. It is exposed in the frontend so the contract-call
+ * check sees a caller for it, and so the Test Runner can assert the two names
+ * never start disagreeing.
+ */
+export const myAccount = () =>
+  call<Record<string, never>, string>("my_account", {});
+
+/**
+ * Drives the SDK's host-backed `tracing` subscriber.
+ *
+ * ⚠️ The response tells you almost nothing, by design of the RPC layer rather
+ * than of this method. The node writes the execution outcome's log lines to ITS
+ * OWN log (`crates/server/src/execute.rs`) and returns only the value, so there
+ * is no `logs` field on the reply for this — or any — client to read. `output`
+ * is null and that is all there is.
+ *
+ * To see the lines: grep the node's log for `execution log`. The level
+ * filtering is asserted in `workflows/host-logging.yml`, where a container log
+ * IS available.
+ *
+ * `debug: true` raises the level to DEBUG first. The default is WARN, so
+ * without it the info and debug lines are filtered out inside the guest and
+ * never reach the outcome at all.
+ */
+export const tracingProbe = (debug: boolean) =>
+  call<{ debug: boolean }, null>("tracing_probe", { debug });
+
 export const kvSet = (key: string, value: string) =>
   call("set", { key, value });
 

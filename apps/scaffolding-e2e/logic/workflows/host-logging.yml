@@ -1,0 +1,226 @@
+name: Host Logging E2E
+description: >
+  Proves the SDK's `tracing` subscriber is actually compiled into this build,
+  and that `set_log_level` retunes a live filter.
+
+  This is the only coverage of the `tracing` cargo feature. Without it the
+  macros are no-ops: the call still SUCCEEDS and returns the same empty output,
+  and the only symptom is that nothing was logged. So an assertion on the call's
+  result proves nothing here — the real assertions are all log greps.
+
+  The SDK's default level is WARN, so the default probe emits the warn line ONLY
+  and both info and debug are filtered out inside the guest. Raising to DEBUG
+  surfaces the app's debug line and `calimero_storage`'s own output. Same
+  expectations as core's `crates/runtime/tests/tracing_logs.rs`.
+
+  Also covers `my_account`, which exists to be spelled the same as in core's
+  copy of this scaffold (`apps/scaffolding-e2e`) so a scenario stays portable
+  between the two.
+
+force_pull_image: false
+nuke_on_start: true
+near_devnet: false
+
+# Single node on purpose: nothing here is about replication. Two nodes would
+# double the runtime and test nothing extra.
+nodes:
+  count: 1
+  # rc.25, matching the calimero-sdk tag in logic/Cargo.toml. The other
+  # workflows in this directory still say rc.24 — they predate the SDK bump in
+  # #21 and are being brought forward separately.
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.25
+  prefix: e2e-node
+
+steps:
+  - name: Install application on node-1
+    type: install_application
+    node: e2e-node-1
+    path: res/scaffolding_e2e.wasm
+    dev: true
+    outputs:
+      app_id: applicationId
+
+  - name: Assert application installed
+    type: assert
+    statements:
+      - "is_set({{app_id}})"
+
+  # A context has to live in a namespace since rc.21; `create_context` requires
+  # `group_id` and there is no bare-context path any more.
+  - name: Create namespace on node-1
+    type: create_namespace
+    node: e2e-node-1
+    application_id: "{{app_id}}"
+    outputs:
+      namespace_id: namespaceId
+
+  - name: Assert namespace created
+    type: assert
+    statements:
+      - "is_set({{namespace_id}})"
+
+  - name: Create context in the namespace
+    type: create_context
+    node: e2e-node-1
+    application_id: "{{app_id}}"
+    group_id: "{{namespace_id}}"
+    outputs:
+      context_id: contextId
+      member_key: memberPublicKey
+
+  - name: Assert the context and member key are populated
+    type: assert
+    statements:
+      - "is_set({{context_id}})"
+      - "is_set({{member_key}})"
+
+  # ─── my_account agrees with whoami ────────────────────────────────────────
+
+  - name: Read the account through whoami
+    type: call
+    node: e2e-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_key}}"
+    method: whoami
+    args: {}
+    outputs:
+      account_via_whoami: result.output.account_id
+
+  - name: Read the account through my_account
+    type: call
+    node: e2e-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_key}}"
+    method: my_account
+    args: {}
+    outputs:
+      account_via_my_account: result.output
+
+  - name: Assert both accounts are populated
+    type: assert
+    statements:
+      - "is_set({{account_via_whoami}})"
+      - "is_set({{account_via_my_account}})"
+
+  # Two names for one value is a drift risk, and the drift would be silent: a
+  # grant built from one while the UI shows the other authorizes a different
+  # subject, and every `shared_set` then fails its writer check for no visible
+  # reason. `equal`, not `is_set` on each — the point is that they MATCH.
+  - name: Assert my_account returns exactly whoami's account_id
+    type: assert
+    statements:
+      - "equal({{account_via_my_account}}, {{account_via_whoami}})"
+
+  # ─── the tracing subscriber ───────────────────────────────────────────────
+  #
+  # Asserted against the NODE'S LOG, because that is the only place they exist.
+  #
+  # `crates/server/src/execute.rs` collects the execution outcome's logs and
+  # writes them to the node's own log —
+  #
+  #     info!("execution log {i:>width$}| {}", log)
+  #
+  # — and then returns `ExecutionResponse::new(Some(returns))`: the value, and
+  # nothing else. There is no `logs` field on the JSON-RPC reply, which is why
+  # an earlier version of this file was rejected outright:
+  #
+  #     [OUTPUT_CAPTURE_FAILED] output 'default_logs' captures 'result.logs',
+  #     which the response does not have. Available: id, jsonrpc, result
+  #
+  # So no RPC client can observe these lines. `assert_log_present` /
+  # `assert_log_absent` grep the container log, which is the right layer.
+
+  - name: Probe tracing at the default level
+    type: call
+    node: e2e-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_key}}"
+    method: tracing_probe
+    args:
+      debug: false
+    outputs:
+      default_probe: result
+
+  # The call returning `unit` is NOT evidence of anything: with the `tracing`
+  # feature off the macros are no-ops and this succeeds identically. It is here
+  # only to prove the call itself did not error.
+  - name: Assert the probe call succeeded
+    type: json_assert
+    statements:
+      - 'json_equal({{default_probe}}, {"output": null})'
+
+  # THIS is the assertion that the `tracing` feature is compiled in. Without it
+  # the subscriber is never installed and nothing forwards.
+  #
+  # WARN only. The SDK's default level is WARN, not INFO — `calimero_storage`
+  # logs routine operations at INFO, so an INFO default would flood every
+  # execution. core's own `crates/runtime/tests/tracing_logs.rs` asserts exactly
+  # this: at the default, warn passes and info + debug are both filtered out.
+  - name: Assert the warn line reached the node log
+    type: assert_log_present
+    nodes:
+      - e2e-node-1
+    patterns:
+      - "tracing_probe: warn line"
+
+  # The negative half, and it MUST come before the DEBUG probe below — once the
+  # level is raised both lines appear, and these assertions would then be
+  # checking the wrong execution.
+  - name: Assert info and debug were filtered out at the default level
+    type: assert_log_absent
+    nodes:
+      - e2e-node-1
+    patterns:
+      - "tracing_probe: info line"
+      - "tracing_probe: debug line"
+
+  # Last, because `set_log_level` mutates a static that lives as long as the WASM
+  # instance, and DEBUG on calimero-storage is loud.
+  - name: Probe tracing with the level raised to DEBUG
+    type: call
+    node: e2e-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_key}}"
+    method: tracing_probe
+    args:
+      debug: true
+
+  - name: Assert the app's debug line appears once the level is raised
+    type: assert_log_present
+    nodes:
+      - e2e-node-1
+    patterns:
+      - "tracing_probe: debug line"
+
+  # The imported-dependency case, and the reason the probe writes a KV entry at
+  # all: `calimero_storage`'s OWN tracing only shows up if the subscriber is
+  # process-wide rather than scoped to the app crate.
+  - name: Assert the storage crate's own tracing came through too
+    type: assert_log_present
+    nodes:
+      - e2e-node-1
+    patterns:
+      - "calimero_storage"
+
+  # The probe writes a KV entry so calimero-storage's own instrumentation runs
+  # through the same subscriber. Reading it back confirms the write happened
+  # rather than the whole call being a no-op that logged.
+  - name: Read back the key the probe wrote
+    type: call
+    node: e2e-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_key}}"
+    method: get
+    args:
+      key: "probe_key"
+    outputs:
+      probe_value: result
+
+  - name: Assert the probe's KV write landed
+    type: json_assert
+    statements:
+      - 'json_equal({{probe_value}}, {"output": "probe_value"})'
+
+stop_all_nodes: false
+restart: false
+wait_timeout: 180

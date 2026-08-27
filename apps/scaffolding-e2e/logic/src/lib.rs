@@ -20,6 +20,8 @@
 //!   groups and member roles, plus a cross-context `xcall` ping
 //! - **Access Control**: Named roles projected onto per-account capability masks
 //! - **Ownable**: Single-owner storage with authenticated ownership transfer
+//! - **Host Logging**: the SDK's `tracing` subscriber, and `set_log_level`
+//!   retuning the filter mid-execution
 //!
 //! Each feature area is organized into its own method group with clear prefixes.
 
@@ -746,7 +748,78 @@ impl E2eKvStore {
         }
     }
 
+    /// This node's account on its own, hex-encoded.
+    ///
+    /// `whoami` already returns this value as one half of an `Identity`, and a
+    /// merobox workflow can capture it directly (`result.output.account_id` —
+    /// `sorted-collections.yml` does exactly that), so this method adds no
+    /// capability. It exists for one reason: **it is the name core's own copy
+    /// of this scaffold uses** (`apps/scaffolding-e2e`).
+    ///
+    /// The two scaffolds have drifted apart once already. Keeping the account
+    /// accessor spelled the same in both is what lets a scenario written
+    /// against one run unchanged against the other, which is the only cheap
+    /// defence against drifting again.
+    ///
+    /// Keep both names. `whoami` is the better call — one round trip for both
+    /// halves of an identity — and nothing here should be rewritten to use
+    /// this one.
+    pub fn my_account(&self) -> app::Result<String> {
+        Ok(AccountId::from(env::account_id()).to_string())
+    }
+
     // KV OPERATIONS
+
+    /// Drives the host-backed `tracing` subscriber, and reports what came back.
+    ///
+    /// `app::log!` reaches the execution outcome on its own. The `tracing`
+    /// macros do not, unless the SDK's `tracing` feature is on — it installs a
+    /// subscriber that forwards them to the same host log. That feature is off
+    /// by default because the subscriber costs wasm size, so whether it is
+    /// wired up is a per-app build decision, and this is the call that proves
+    /// this build made it.
+    ///
+    /// Three things are being tested at once, which is why the KV insert is
+    /// here and not incidental:
+    ///
+    /// * this crate's own `tracing::info!`/`warn!` arrive;
+    /// * `calimero-storage`'s internal instrumentation arrives too — the insert
+    ///   is what makes the storage crate emit, and it only shows up if the
+    ///   subscriber is process-wide rather than scoped to this crate;
+    /// * `set_log_level` actually retunes the filter at runtime.
+    ///
+    /// ⚠️ The SDK's default level is **WARN**, not INFO — deliberately, because
+    /// `calimero_storage` logs routine operations at INFO and an INFO default
+    /// floods every execution. So at the default level this emits the WARN line
+    /// only: the info AND debug lines are both filtered out inside the guest and
+    /// never reach the outcome at all. With `debug = true` the debug line
+    /// appears, and so does the storage crate's own output. That difference is
+    /// the assertion; a probe that only ever ran at one level could not tell a
+    /// working filter from a subscriber that was never installed.
+    ///
+    /// ⚠️ WHERE THE LINES GO. Not into this call's response. The node collects
+    /// them into the execution outcome and writes them to ITS OWN log
+    /// (`crates/server/src/execute.rs`: `info!("execution log {i}| {}", log)`);
+    /// the JSON-RPC reply carries the return value and nothing else. So no RPC
+    /// client — not the frontend, not merobox's `result.logs` — can observe
+    /// them. Grep the node's log for `execution log`.
+    pub fn tracing_probe(&mut self, debug: bool) -> app::Result<()> {
+        if debug {
+            env::set_log_level(env::LevelFilter::DEBUG);
+        }
+
+        tracing::info!(probe = true, "tracing_probe: info line");
+        tracing::debug!(probe = true, "tracing_probe: debug line");
+        tracing::warn!("tracing_probe: warn line");
+
+        // Mutating storage is what drives `calimero-storage`'s own `tracing`
+        // output (`Interface::apply_action`, `commit_root`), so this is part of
+        // the assertion rather than a side effect.
+        self.kv_items
+            .insert("probe_key".to_owned(), "probe_value".to_owned().into())?;
+
+        Ok(())
+    }
 
     /// Basic KV set without handlers
     pub fn set(&mut self, key: String, value: String) -> app::Result<()> {

@@ -43,6 +43,7 @@ function noErr(res: unknown): void {
   if (r?.error) throw new Error(extractErrMsg(r.error));
 }
 
+
 function expectErr(res: unknown): void {
   const r = res as { error?: unknown };
   if (!r?.error) throw new Error("expected error response but call succeeded");
@@ -109,6 +110,51 @@ const TESTS: TestCase[] = [
       const b = out<api.Identity>(await api.whoami());
       eq(a.device_id, b.device_id);
       eq(a.account_id, b.account_id);
+    },
+  },
+  {
+    id: "my-account-agrees-with-whoami",
+    name: "my_account returns exactly whoami's account_id",
+    group: "Identity",
+    fn: async () => {
+      // Two methods reporting the same thing is a drift risk, and the drift
+      // would be invisible: a workflow grants a writer slot to whatever
+      // `my_account` returned, while the UI shows `whoami().account_id`. If
+      // they ever disagreed the grant would authorize a different subject than
+      // the one on screen, and every `shared_set` would fail the writer check
+      // for no visible reason. This is the assertion that keeps the duplicate
+      // name honest.
+      const scalar = out<string>(await api.myAccount());
+      const pair = out<api.Identity>(await api.whoami());
+      matches(scalar, /^[0-9a-f]{64}$/, "a 64-hex account id");
+      eq(scalar, pair.account_id);
+    },
+  },
+  {
+    id: "tracing-probe-commits-its-write",
+    name: "tracing_probe runs and commits its KV write",
+    group: "Identity",
+    fn: async () => {
+      // What this CANNOT assert, and why:
+      //
+      // The log lines are the interesting part of `tracing_probe`, and they are
+      // not observable from here. `crates/server/src/execute.rs` writes the
+      // execution outcome's logs to the NODE's own log
+      // (`info!("execution log {i}| {}", log)`) and then returns
+      // `ExecutionResponse::new(Some(returns))` — the value and nothing else.
+      // There is no `logs` field on the JSON-RPC reply for any client to read,
+      // which is why merobox rejects `result.logs` outright.
+      //
+      // So the level-filtering behaviour is asserted where it is visible: in
+      // `workflows/host-logging.yml`, by grepping the container log, and
+      // upstream in core's `crates/runtime/tests/tracing_logs.rs`.
+      //
+      // What IS observable is that the call ran and its side effect committed —
+      // the KV write is what drives `calimero_storage`'s own instrumentation, so
+      // if it did not land, the log assertions in the workflow would be testing
+      // a call that did nothing.
+      noErr(await api.tracingProbe(false));
+      eq(out<string | null>(await api.kvGet("probe_key")), "probe_value");
     },
   },
 

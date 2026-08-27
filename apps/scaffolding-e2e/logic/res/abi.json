@@ -2318,6 +2318,13 @@
       }
     },
     {
+      "name": "my_account",
+      "params": [],
+      "returns": {
+        "kind": "string"
+      }
+    },
+    {
       "name": "my_secrets",
       "params": [],
       "returns": {
@@ -2943,6 +2950,20 @@
         "items": {
           "kind": "string"
         }
+      }
+    },
+    {
+      "name": "tracing_probe",
+      "params": [
+        {
+          "name": "debug",
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
       }
     },
     {

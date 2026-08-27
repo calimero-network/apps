@@ -16,6 +16,7 @@ import { KvOperations } from "./sections/KvOperations";
 import { KvHandlers } from "./sections/KvHandlers";
 import { UserStorage } from "./sections/UserStorage";
 import { FrozenStorage } from "./sections/FrozenStorage";
+import { HostLogging } from "./sections/HostLogging";
 import { PrivateStorage } from "./sections/PrivateStorage";
 import { BlobStorage } from "./sections/BlobStorage";
 import { ContextMembers } from "./sections/ContextMembers";
@@ -45,6 +46,7 @@ type SectionId =
   | "sync"
   | "kv"
   | "kv-handlers"
+  | "logging"
   | "user-storage"
   | "frozen"
   | "private"
@@ -78,6 +80,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: "sync", label: "Sync Test", icon: "⇄", group: "Guide" },
   { id: "kv", label: "KV Operations", icon: "◈", group: "Core" },
   { id: "kv-handlers", label: "KV Handlers", icon: "⚡", group: "Core" },
+  { id: "logging", label: "Host Logging", icon: "≡", group: "Core" },
   { id: "user-storage", label: "User Storage", icon: "👤", group: "Storage" },
   { id: "frozen", label: "Frozen Storage", icon: "❄", group: "Storage" },
   { id: "private", label: "Private Secrets", icon: "🔒", group: "Storage" },
@@ -108,6 +111,7 @@ function renderSection(id: SectionId) {
     case "sync": return <SyncTest />;
     case "kv": return <KvOperations />;
     case "kv-handlers": return <KvHandlers />;
+    case "logging": return <HostLogging />;
     case "user-storage": return <UserStorage />;
     case "frozen": return <FrozenStorage />;
     case "private": return <PrivateStorage />;
