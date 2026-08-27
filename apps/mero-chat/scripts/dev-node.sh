@@ -39,7 +39,7 @@ for arg in "$@"; do
 done
 
 # Which merod to run. Defaults to PATH, but a Homebrew merod is easily years
-# behind this repo's toolchain (cargo-mero is pinned to 0.11.0-rc.24): an old
+# behind this repo's toolchain (cargo-mero is pinned to 0.11.0-rc.25): an old
 # binary mints a root key without newer permissions, and login then fails with
 # "Root key does not have permission: namespace". Point this at a locally built
 # merod to match:

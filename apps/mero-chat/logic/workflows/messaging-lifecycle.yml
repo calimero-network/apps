@@ -24,7 +24,7 @@ force_pull_image: true
 nodes:
   chain_id: testnet-1
   count: 2
-  image: ghcr.io/calimero-network/merod:0.11.0-rc.24
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.26
   prefix: msg-node
   # Clear of the defaults (2428/2528), which collide with a locally running
   # Calimero Desktop node and with the scripts/setup-nodes.sh dev rig.

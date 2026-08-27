@@ -10,7 +10,7 @@ force_pull_image: true
 nodes:
   chain_id: testnet-1
   count: 3
-  image: ghcr.io/calimero-network/merod:0.11.0-rc.24
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.26
   prefix: calimero-node
 
 steps:
@@ -527,18 +527,6 @@ steps:
     type: assert
     statements:
       - "is_set({{dm_id}})"
-
-  # NOTE: invite_identity has no per-context scoping — it invites to the
-  # NAMESPACE. This step used to also pass context_id/capability/grantee_id/
-  # granter_id, which merobox has never had fields for and silently dropped.
-  # They are removed rather than "fixed" because removing them changes nothing
-  # that runs; what they imply this step does, it has never done.
-  - name: Invite Bob to DM Context
-    type: invite_identity
-    node: calimero-node-1
-    namespace_id: "{{namespace_id}}"
-    outputs:
-      bob_dm_invite: invitation
 
   - name: Node 2 Joins DM Context
     type: join_context
