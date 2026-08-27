@@ -88,7 +88,8 @@ jobs:
               merobox nuke --force || true
               sleep 2
             fi
-            if merobox bootstrap run e2e.yml; then
+            # See integration-ci.yml for why --e2e-mode is required here.
+            if merobox bootstrap run e2e.yml --e2e-mode; then
               success=true
               break
             fi
@@ -110,7 +111,7 @@ jobs:
               merobox nuke --force || true
               sleep 2
             fi
-            if merobox bootstrap run integration-setup.yml; then
+            if merobox bootstrap run integration-setup.yml --e2e-mode; then
               success=true
               break
             fi
