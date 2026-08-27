@@ -21,6 +21,7 @@ import {
   useJoinNamespace,
   useGroupContexts,
   useGroupMembers,
+  useNodeIdentity,
   useSetMemberMetadata,
   type Namespace,
 } from '@calimero-network/mero-react';
@@ -247,10 +248,19 @@ export function useWorkspace(): UseWorkspaceReturn {
   // --- Namespace members (people names live here) ---
   const {
     members: nsMembers,
-    selfIdentity,
     loading: membersLoading,
     refetch: refetchMembers,
   } = useGroupMembers(activeNs);
+  // mero-react 6 dropped `selfIdentity` from useGroupMembers: identity belongs
+  // to the node, not to one group, so it moved to its own endpoint. Use
+  // `accountId` - core rc.21 rekeyed group members from a signing PublicKey to
+  // an AccountId, and it is what listGroupMembers keys entries by, so it is
+  // what locates us in `nsMembers` and what member-addressing endpoints take.
+  // Both ids are 32 bytes and neither the client nor the node rejects the
+  // wrong one (it just names a principal that exists nowhere), so this has to
+  // be the account and never `publicKey`.
+  const { identity: nodeIdentity } = useNodeIdentity();
+  const selfIdentity = nodeIdentity?.accountId ?? null;
   const [membersLoaded, setMembersLoaded] = useState(false);
   useEffect(() => {
     setMembersLoaded(false);
@@ -328,9 +338,12 @@ export function useWorkspace(): UseWorkspaceReturn {
       setCreateNamespaceLoading(true);
       setCreateNamespaceError(null);
       try {
+        // No `upgradePolicy` here: core stopped accepting it on this endpoint
+        // and mero-js 13 dropped it from CreateNamespaceRequest. Upgrades are
+        // driven per-group now (useUpgradeGroup / useGroupUpgradeStatus), not
+        // fixed at namespace creation.
         const ns = await mero.admin.createNamespace({
           applicationId,
-          upgradePolicy: 'Automatic',
           name: trimmed,
         });
         if (!ns?.namespaceId) throw new Error('createNamespace returned no namespaceId');

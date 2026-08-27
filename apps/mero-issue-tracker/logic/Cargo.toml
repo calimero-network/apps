@@ -15,7 +15,7 @@ description = "A private, real-time issue board for a small engineering team - c
 # Must match the registry username that owns the package; the registry returns
 # 403 not_owner on a mismatch.
 author = "calimero-network"
-min-runtime-version = "0.1.0"
+min-runtime-version = "0.11.0-rc.25"
 frontend = "https://mero-issue-tracker-app.vercel.app/"
 # The tool's stock Calimero mark - the repo ships no icon of its own.
 icon = "default"
@@ -31,9 +31,9 @@ crate = "issue-tracker-issue-tracker"
 # so app and node stay in step automatically. Keep it a real release tag
 # (never `branch = "master"`): it's what builds use when the release lookup
 # is unreachable.
-calimero-sdk = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.20" }
-calimero-storage = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.20" }
-calimero-storage-macros = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.20" }
+calimero-sdk = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.25" }
+calimero-storage = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.25" }
+calimero-storage-macros = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.25" }
 thiserror = "1.0.56"
 bs58 = "0.4"
 serial_test = "3"
