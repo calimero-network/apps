@@ -36,6 +36,8 @@ jobs:
       logic: ${{ steps.filter.outputs.logic }}
       frontend: ${{ steps.filter.outputs.frontend }}
       shared: ${{ steps.filter.outputs.shared }}
+      tooling: ${{ steps.filter.outputs.tooling }}
+      js_deps: ${{ steps.filter.outputs.js_deps }}
     steps:
       - uses: actions/checkout@v4
 
@@ -46,17 +48,32 @@ jobs:
           # instead of re-deriving them from a boolean.
           list-files: shell
           filters: |
+            # `shared` means "this can change a CONTRACT's bytes", which is what
+            # justifies fanning out to every app AND running the 40-minute
+            # merobox matrix.
+            #
+            # It used to include `.github/**`, `scripts/**` and the JS
+            # workspace files, so editing a COMMENT in this very file triggered
+            # the most expensive path in the pipeline. Those still need to run
+            # something — they just do not change any wasm — so they are their
+            # own filters below.
+            #
+            # Add 'crates/**' here when that directory is created.
             shared:
-              # Add 'crates/**' and 'packages/**' here when those directories are
-              # created — a change to shared code has to fan out to every app for
-              # the same reason a Cargo.lock change does.
               - 'Cargo.toml'
               - 'Cargo.lock'
+            # The pipeline itself changed, so the pipeline has to be exercised —
+            # including the e2e, since these are what drive it.
+            tooling:
+              - '.github/**'
+              - 'scripts/**'
+              - 'requirements-e2e.txt'
+            # JS-only: a catalog bump or a tsconfig change cannot alter a
+            # contract, so it must not start merod containers.
+            js_deps:
               - 'pnpm-workspace.yaml'
               - 'pnpm-lock.yaml'
               - 'tsconfig.base.json'
-              - 'scripts/**'
-              - '.github/**'
             logic:
               - 'apps/*/logic/**'
             frontend:
@@ -80,10 +97,12 @@ jobs:
         id: set
         env:
           SHARED: ${{ steps.filter.outputs.shared }}
+          TOOLING: ${{ steps.filter.outputs.tooling }}
+          JS_DEPS: ${{ steps.filter.outputs.js_deps }}
           APP_FILES: ${{ steps.filter.outputs.app_files }}
         run: |
           set -euo pipefail
-          if [ "$SHARED" = "true" ]; then
+          if [ "$SHARED" = "true" ] || [ "$TOOLING" = "true" ] || [ "$JS_DEPS" = "true" ]; then
             apps=$(bash scripts/app-packages.sh all)
             echo "::notice::workspace-level change — covering every app: $apps"
           else
@@ -105,7 +124,7 @@ jobs:
   rust:
     name: Rust (fmt, clippy, test)
     needs: changes
-    if: needs.changes.outputs.logic == 'true' || needs.changes.outputs.shared == 'true'
+    if: needs.changes.outputs.logic == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.tooling == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -153,7 +172,7 @@ jobs:
     #
     # `apps != '[]'` is what makes an empty matrix a skipped job rather than a
     # job that silently succeeds having built nothing.
-    if: (needs.changes.outputs.logic == 'true' || needs.changes.outputs.shared == 'true') && needs.changes.outputs.apps != '[]'
+    if: (needs.changes.outputs.logic == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.tooling == 'true') && needs.changes.outputs.apps != '[]'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -244,7 +263,7 @@ jobs:
   frontend:
     name: Frontend (typecheck, test, build)
     needs: changes
-    if: needs.changes.outputs.frontend == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.logic == 'true'
+    if: needs.changes.outputs.frontend == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.logic == 'true' || needs.changes.outputs.tooling == 'true' || needs.changes.outputs.js_deps == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -283,11 +302,15 @@ jobs:
 
   e2e:
     name: E2E (${{ matrix.app }})
-    needs: changes
-    # Only when a CONTRACT moved: a frontend-only change cannot alter what a
-    # two-node merobox run does, and each of these pulls an image and starts two
-    # merod containers.
-    if: (needs.changes.outputs.logic == 'true' || needs.changes.outputs.shared == 'true') && needs.changes.outputs.apps != '[]'
+    # `needs: wasm` so the contract is DOWNLOADED, not rebuilt. This job used to
+    # run `cargo mero build -p` itself, duplicating a fat-LTO wasm build the
+    # `wasm` job had already done and uploaded — and it needed a Rust toolchain,
+    # a cargo cache and cargo-mero to do it.
+    needs: [changes, wasm]
+    # Only when a CONTRACT or the pipeline moved. A frontend-only change cannot
+    # alter what a two-node merobox run does, and each of these pulls an image
+    # and starts two merod containers.
+    if: (needs.changes.outputs.logic == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.tooling == 'true') && needs.changes.outputs.apps != '[]'
     runs-on: ubuntu-latest
     timeout-minutes: 40
     strategy:
@@ -297,24 +320,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: dtolnay/rust-toolchain@stable
+      # The exact artifact the wasm job built and the ABI gate validated, so the
+      # e2e runs the same bytes rather than a second independent build.
+      - uses: actions/download-artifact@v4
         with:
-          targets: wasm32-unknown-unknown
+          name: wasm-${{ matrix.app }}-${{ github.sha }}
+          path: .
 
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          # Separate from the native key — see the `rust` job. Shared between the
-          # wasm and e2e jobs on purpose: both build the same wasm32 tree.
-          key: cargo-wasm-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
-          restore-keys: cargo-wasm-${{ runner.os }}-
-
-      - uses: ./.github/actions/install-cargo-mero
-
-      - run: cargo mero build -p ${{ matrix.app }}
+      - name: Verify the contract arrived
+        run: |
+          set -euo pipefail
+          wasm=$(find apps -path 'apps/*/logic/res/*.wasm' -print -quit)
+          if [ -z "$wasm" ]; then
+            echo "::error::no wasm in the downloaded artifact — the e2e would run against nothing"
+            exit 1
+          fi
+          echo "using $wasm ($(stat -c%s "$wasm" 2>/dev/null || stat -f%z "$wasm") bytes)"
 
       - uses: actions/setup-python@v5
         with:
