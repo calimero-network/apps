@@ -33,7 +33,7 @@ github = "https://github.com/calimero-network/mero-blocks"
 # SDK tag below rather than sitting at a floor nobody re-reads. It was "0.1.0"
 # through rc.20 — a version no node has ever run, which made the field say
 # nothing.
-min-runtime-version = "0.11.0-rc.25"
+min-runtime-version = "0.11.0-rc.26"
 frontend = "https://mero-blocks.vercel.app/"
 
 [dependencies]
@@ -45,19 +45,13 @@ bs58 = "0.5.1"
 # Pin a real release tag, never `branch = "master"`: master rides unreleased
 # protocol work against nodes that run the release, and `latest` does not exist
 # on the remote (it only ever resolves from a warm cargo cache).
-calimero-sdk = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.25" }
-calimero-storage = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.25" }
-calimero-storage-macros = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.25" }
+calimero-sdk = { workspace = true }
+calimero-storage = { workspace = true }
+calimero-storage-macros = { workspace = true }
 
 [dev-dependencies]
 # "testing" enables the native mock host (TestHost) for `cargo test`
-calimero-storage = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.25", features = ["testing"] }
+calimero-storage = { workspace = true, features = ["testing"] }
 
-[profile.app-release]
-inherits = "release"
-codegen-units = 1
-opt-level = "z"
-lto = true
-debug = false
-panic = "abort"
-overflow-checks = true
+# `[profile.*]` lives at the workspace root. Cargo IGNORES a profile in a
+# member and then hard-errors on it, so this is not stylistic.

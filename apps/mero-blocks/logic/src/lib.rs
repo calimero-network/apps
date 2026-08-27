@@ -338,10 +338,7 @@ impl MeroBlocks {
     }
 
     pub fn override_count(&self) -> u32 {
-        self.overrides
-            .entries()
-            .map(|e| e.count())
-            .unwrap_or(0) as u32
+        self.overrides.entries().map(|e| e.count()).unwrap_or(0) as u32
     }
 
     // ── Players ───────────────────────────────────────────────────────────────
@@ -575,8 +572,18 @@ mod tests {
         app.call_as(ALICE, |s| {
             s.set_blocks(
                 vec![
-                    Edit { x: 1, y: 2, z: 3, b: 5 },
-                    Edit { x: 4, y: 5, z: 6, b: 0 }, // break
+                    Edit {
+                        x: 1,
+                        y: 2,
+                        z: 3,
+                        b: 5,
+                    },
+                    Edit {
+                        x: 4,
+                        y: 5,
+                        z: 6,
+                        b: 0,
+                    }, // break
                 ],
                 1000,
             )
@@ -593,12 +600,42 @@ mod tests {
     #[test]
     fn breaking_then_replacing_same_block_converges_to_latest() {
         let mut app = new_world();
-        app.call_as(ALICE, |s| s.set_blocks(vec![Edit { x: 1, y: 1, z: 1, b: 3 }], 1000))
-            .unwrap();
-        app.call_as(BOB, |s| s.set_blocks(vec![Edit { x: 1, y: 1, z: 1, b: 0 }], 1010))
-            .unwrap();
-        app.call_as(ALICE, |s| s.set_blocks(vec![Edit { x: 1, y: 1, z: 1, b: 9 }], 1020))
-            .unwrap();
+        app.call_as(ALICE, |s| {
+            s.set_blocks(
+                vec![Edit {
+                    x: 1,
+                    y: 1,
+                    z: 1,
+                    b: 3,
+                }],
+                1000,
+            )
+        })
+        .unwrap();
+        app.call_as(BOB, |s| {
+            s.set_blocks(
+                vec![Edit {
+                    x: 1,
+                    y: 1,
+                    z: 1,
+                    b: 0,
+                }],
+                1010,
+            )
+        })
+        .unwrap();
+        app.call_as(ALICE, |s| {
+            s.set_blocks(
+                vec![Edit {
+                    x: 1,
+                    y: 1,
+                    z: 1,
+                    b: 9,
+                }],
+                1020,
+            )
+        })
+        .unwrap();
         let overrides = app.view(|s| s.get_overrides());
         assert_eq!(overrides.len(), 1, "same key upserts, never duplicates");
         assert_eq!(overrides[0].b, 9);
@@ -611,10 +648,30 @@ mod tests {
             .call_as(ALICE, |s| {
                 s.set_blocks(
                     vec![
-                        Edit { x: -1, y: 0, z: 0, b: 1 },
-                        Edit { x: 0, y: 64, z: 0, b: 1 },  // y too high
-                        Edit { x: 128, y: 0, z: 0, b: 1 }, // x too high
-                        Edit { x: 10, y: 10, z: 10, b: 1 },
+                        Edit {
+                            x: -1,
+                            y: 0,
+                            z: 0,
+                            b: 1,
+                        },
+                        Edit {
+                            x: 0,
+                            y: 64,
+                            z: 0,
+                            b: 1,
+                        }, // y too high
+                        Edit {
+                            x: 128,
+                            y: 0,
+                            z: 0,
+                            b: 1,
+                        }, // x too high
+                        Edit {
+                            x: 10,
+                            y: 10,
+                            z: 10,
+                            b: 1,
+                        },
                     ],
                     1000,
                 )
@@ -627,15 +684,24 @@ mod tests {
     #[test]
     fn oversized_batch_is_rejected() {
         let mut app = new_world();
-        let edits: Vec<Edit> = (0..513).map(|i| Edit { x: i % 100, y: 1, z: 1, b: 1 }).collect();
+        let edits: Vec<Edit> = (0..513)
+            .map(|i| Edit {
+                x: i % 100,
+                y: 1,
+                z: 1,
+                b: 1,
+            })
+            .collect();
         assert!(app.call_as(ALICE, |s| s.set_blocks(edits, 1000)).is_err());
     }
 
     #[test]
     fn join_and_heartbeat_make_player_visible_online() {
         let mut app = new_world();
-        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000)).unwrap();
-        app.call_as(ALICE, |s| s.heartbeat(t("Alice", 12.5), 1003)).unwrap();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
+            .unwrap();
+        app.call_as(ALICE, |s| s.heartbeat(t("Alice", 12.5), 1003))
+            .unwrap();
         let players = app.view(|s| s.get_players(1005));
         assert_eq!(players.len(), 1);
         assert_eq!(players[0].id, id_of(ALICE));
@@ -646,9 +712,12 @@ mod tests {
     #[test]
     fn silent_player_goes_offline_after_ttl() {
         let mut app = new_world();
-        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000)).unwrap();
-        app.call_as(BOB, |s| s.join("Bob".to_owned(), 1000)).unwrap();
-        app.call_as(BOB, |s| s.heartbeat(t("Bob", 0.0), 1020)).unwrap();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
+            .unwrap();
+        app.call_as(BOB, |s| s.join("Bob".to_owned(), 1000))
+            .unwrap();
+        app.call_as(BOB, |s| s.heartbeat(t("Bob", 0.0), 1020))
+            .unwrap();
         let players = app.view(|s| s.get_players(1020));
         let alice = players.iter().find(|p| p.id == id_of(ALICE)).unwrap();
         let bob = players.iter().find(|p| p.id == id_of(BOB)).unwrap();
@@ -659,7 +728,8 @@ mod tests {
     #[test]
     fn leave_marks_player_left_immediately() {
         let mut app = new_world();
-        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000)).unwrap();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
+            .unwrap();
         app.call_as(ALICE, |s| s.leave(1002)).unwrap();
         let players = app.view(|s| s.get_players(1003));
         assert!(!players[0].online);
@@ -668,26 +738,32 @@ mod tests {
     #[test]
     fn reap_requires_mark_plus_frozen_grace() {
         let mut app = new_world();
-        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000)).unwrap();
-        app.call_as(BOB, |s| s.join("Bob".to_owned(), 1000)).unwrap();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
+            .unwrap();
+        app.call_as(BOB, |s| s.join("Bob".to_owned(), 1000))
+            .unwrap();
 
         // Alice goes silent; Bob keeps heartbeating.
         // pass 1: stale (>30s) => marked, not reaped
-        app.call_as(BOB, |s| s.heartbeat(t("Bob", 0.0), 1040)).unwrap();
+        app.call_as(BOB, |s| s.heartbeat(t("Bob", 0.0), 1040))
+            .unwrap();
         let players = app.view(|s| s.get_players(1040));
         let alice = players.iter().find(|p| p.id == id_of(ALICE)).unwrap();
         assert!(!alice.online, "offline, but not yet reaped (marked)");
 
         // pass 2 within grace: still nothing final
-        app.call_as(BOB, |s| s.heartbeat(t("Bob", 0.0), 1060)).unwrap();
+        app.call_as(BOB, |s| s.heartbeat(t("Bob", 0.0), 1060))
+            .unwrap();
         // pass 3 after grace (>30s past mark): reaped => left = true forever
-        app.call_as(BOB, |s| s.heartbeat(t("Bob", 0.0), 1075)).unwrap();
+        app.call_as(BOB, |s| s.heartbeat(t("Bob", 0.0), 1075))
+            .unwrap();
         let players = app.view(|s| s.get_players(1075));
         let alice = players.iter().find(|p| p.id == id_of(ALICE)).unwrap();
         assert!(!alice.online);
 
         // Alice comes back: heartbeat self-heals (re-join announcement)
-        app.call_as(ALICE, |s| s.heartbeat(t("Alice", 5.0), 1080)).unwrap();
+        app.call_as(ALICE, |s| s.heartbeat(t("Alice", 5.0), 1080))
+            .unwrap();
         let players = app.view(|s| s.get_players(1081));
         let alice = players.iter().find(|p| p.id == id_of(ALICE)).unwrap();
         assert!(alice.online, "reaped player self-heals on next heartbeat");
@@ -696,13 +772,17 @@ mod tests {
     #[test]
     fn skewed_fast_clock_cannot_instantly_reap_peers() {
         let mut app = new_world();
-        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000)).unwrap();
-        app.call_as(BOB, |s| s.join("Bob".to_owned(), 1000)).unwrap();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
+            .unwrap();
+        app.call_as(BOB, |s| s.join("Bob".to_owned(), 1000))
+            .unwrap();
 
         // Bob's clock runs 10 minutes ahead: room time jumps forward.
-        app.call_as(BOB, |s| s.heartbeat(t("Bob", 0.0), 1600)).unwrap();
+        app.call_as(BOB, |s| s.heartbeat(t("Bob", 0.0), 1600))
+            .unwrap();
         // Alice heartbeats on her own slow clock — room-time stamping keeps her live.
-        app.call_as(ALICE, |s| s.heartbeat(t("Alice", 0.0), 1002)).unwrap();
+        app.call_as(ALICE, |s| s.heartbeat(t("Alice", 0.0), 1002))
+            .unwrap();
         let players = app.view(|s| s.get_players(1603));
         let alice = players.iter().find(|p| p.id == id_of(ALICE)).unwrap();
         assert!(alice.online, "slow-clock player stays alive under skew");
@@ -711,9 +791,11 @@ mod tests {
     #[test]
     fn backward_clock_never_freezes_liveness() {
         let mut app = new_world();
-        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 5000)).unwrap();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 5000))
+            .unwrap();
         // clock jumps BACK; stamp() must still move the row forward
-        app.call_as(ALICE, |s| s.heartbeat(t("Alice", 0.0), 1000)).unwrap();
+        app.call_as(ALICE, |s| s.heartbeat(t("Alice", 0.0), 1000))
+            .unwrap();
         let players = app.view(|s| s.get_players(5002));
         assert!(players[0].online);
     }
@@ -724,25 +806,52 @@ mod tests {
         app.call_as(ALICE, |s| {
             s.set_blocks(
                 vec![
-                    Edit { x: 1, y: 1, z: 1, b: 3 },
-                    Edit { x: 2, y: 1, z: 1, b: 3 },
+                    Edit {
+                        x: 1,
+                        y: 1,
+                        z: 1,
+                        b: 3,
+                    },
+                    Edit {
+                        x: 2,
+                        y: 1,
+                        z: 1,
+                        b: 3,
+                    },
                 ],
                 1000,
             )
         })
         .unwrap();
-        app.call_as(BOB, |s| s.set_blocks(vec![Edit { x: 1, y: 1, z: 1, b: 0 }], 1001))
-            .unwrap();
-        assert_eq!(app.view(|s| s.override_count()), 2, "upserts don't duplicate");
+        app.call_as(BOB, |s| {
+            s.set_blocks(
+                vec![Edit {
+                    x: 1,
+                    y: 1,
+                    z: 1,
+                    b: 0,
+                }],
+                1001,
+            )
+        })
+        .unwrap();
+        assert_eq!(
+            app.view(|s| s.override_count()),
+            2,
+            "upserts don't duplicate"
+        );
     }
 
     #[test]
     fn rejoin_preserves_joined_at_and_position() {
         let mut app = new_world();
-        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000)).unwrap();
-        app.call_as(ALICE, |s| s.heartbeat(t("Alice", 42.0), 1005)).unwrap();
+        app.call_as(ALICE, |s| s.join("Alice".to_owned(), 1000))
+            .unwrap();
+        app.call_as(ALICE, |s| s.heartbeat(t("Alice", 42.0), 1005))
+            .unwrap();
         // rejoin (e.g. page refresh) must not teleport the player to origin
-        app.call_as(ALICE, |s| s.join("Alice2".to_owned(), 1010)).unwrap();
+        app.call_as(ALICE, |s| s.join("Alice2".to_owned(), 1010))
+            .unwrap();
         let players = app.view(|s| s.get_players(1011));
         assert_eq!(players[0].x, 42.0, "position survives rejoin");
         assert_eq!(players[0].name, "Alice2", "name updates on rejoin");
@@ -751,7 +860,8 @@ mod tests {
     #[test]
     fn heartbeat_without_join_creates_a_live_row() {
         let mut app = new_world();
-        app.call_as(ALICE, |s| s.heartbeat(t("Ghost", 1.0), 1000)).unwrap();
+        app.call_as(ALICE, |s| s.heartbeat(t("Ghost", 1.0), 1000))
+            .unwrap();
         let players = app.view(|s| s.get_players(1001));
         assert_eq!(players.len(), 1);
         assert!(players[0].online);
@@ -768,10 +878,30 @@ mod tests {
     #[test]
     fn concurrent_edits_by_two_players_both_land() {
         let mut app = new_world();
-        app.call_as(ALICE, |s| s.set_blocks(vec![Edit { x: 1, y: 1, z: 1, b: 3 }], 1000))
-            .unwrap();
-        app.call_as(BOB, |s| s.set_blocks(vec![Edit { x: 2, y: 2, z: 2, b: 8 }], 1000))
-            .unwrap();
+        app.call_as(ALICE, |s| {
+            s.set_blocks(
+                vec![Edit {
+                    x: 1,
+                    y: 1,
+                    z: 1,
+                    b: 3,
+                }],
+                1000,
+            )
+        })
+        .unwrap();
+        app.call_as(BOB, |s| {
+            s.set_blocks(
+                vec![Edit {
+                    x: 2,
+                    y: 2,
+                    z: 2,
+                    b: 8,
+                }],
+                1000,
+            )
+        })
+        .unwrap();
         let overrides = app.view(|s| s.get_overrides());
         assert_eq!(overrides.len(), 2);
     }
@@ -811,8 +941,18 @@ mod tests {
             .call_as(ALICE, |s| {
                 s.set_blocks(
                     vec![
-                        Edit { x: 0, y: 0, z: 0, b: 1 },
-                        Edit { x: 127, y: 63, z: 127, b: 1 },
+                        Edit {
+                            x: 0,
+                            y: 0,
+                            z: 0,
+                            b: 1,
+                        },
+                        Edit {
+                            x: 127,
+                            y: 63,
+                            z: 127,
+                            b: 1,
+                        },
                     ],
                     1000,
                 )
@@ -824,11 +964,31 @@ mod tests {
     #[test]
     fn set_blocks_lww_stamps_are_monotonic_per_key() {
         let mut app = new_world();
-        app.call_as(ALICE, |s| s.set_blocks(vec![Edit { x: 2, y: 2, z: 2, b: 7 }], 9000))
-            .unwrap();
+        app.call_as(ALICE, |s| {
+            s.set_blocks(
+                vec![Edit {
+                    x: 2,
+                    y: 2,
+                    z: 2,
+                    b: 7,
+                }],
+                9000,
+            )
+        })
+        .unwrap();
         // Bob's clock is behind, but his edit must still win (stamp = stored+1)
-        app.call_as(BOB, |s| s.set_blocks(vec![Edit { x: 2, y: 2, z: 2, b: 4 }], 1000))
-            .unwrap();
+        app.call_as(BOB, |s| {
+            s.set_blocks(
+                vec![Edit {
+                    x: 2,
+                    y: 2,
+                    z: 2,
+                    b: 4,
+                }],
+                1000,
+            )
+        })
+        .unwrap();
         let overrides = app.view(|s| s.get_overrides());
         assert_eq!(overrides[0].b, 4, "later edit wins even with a slow clock");
     }
