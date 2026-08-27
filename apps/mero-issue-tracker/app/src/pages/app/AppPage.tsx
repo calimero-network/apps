@@ -34,11 +34,19 @@ export default function AppPage(): React.ReactElement | null {
   const toast = useToast();
   const [searchParams] = useSearchParams();
 
-  // Authorship + "me" gates must use the identity writes execute as: the backend
-  // stamps created_by/author with the executor key and enforces delete/edit
-  // against it. selfIdentity (the namespace-member key) can diverge from it under
-  // namespace drift, so it is only a display fallback while the executor resolves.
+  // Two different ids, and they are NOT interchangeable since core rc.21.
+  //
+  // `currentUser` is the identity writes execute as: the backend stamps
+  // created_by/author with the executor key and enforces delete/edit against
+  // it, so every authorship and "is this mine" gate must use this one.
   const currentUser = ws.executorPublicKey ?? ws.selfIdentity ?? contextIdentity ?? '';
+  // `selfMember` is the namespace-member id, which is an ACCOUNT. Member
+  // metadata - the display names behind `aliases` - is stored and keyed by it,
+  // so every name lookup must use this one. It used to be safe to resolve a
+  // name from the executor key because the two coincided; rc.21 rekeyed group
+  // members from a signing PublicKey to an AccountId and they no longer do, so
+  // resolving the executor key just returns a truncated key forever.
+  const selfMember = ws.selfIdentity ?? '';
   const myIssues = searchParams.get('assignee') === 'me';
 
   const aliases = useMemo(
@@ -65,7 +73,7 @@ export default function AppPage(): React.ReactElement | null {
     setPendingInvite(null);
   }, []);
 
-  const effectiveAssignee = myIssues ? (currentUser ? aliases.resolve(currentUser) : '') : filters.assignee;
+  const effectiveAssignee = myIssues ? (selfMember ? aliases.resolve(selfMember) : '') : filters.assignee;
   const hookFilters = useMemo(
     () => ({ status: filters.status, assignee: effectiveAssignee, label: filters.label }),
     [filters.status, effectiveAssignee, filters.label],
@@ -144,8 +152,8 @@ export default function AppPage(): React.ReactElement | null {
     totalIssues,
     membersCount,
     currentUser,
-    currentUserLabel: currentUser ? aliases.resolve(currentUser) : '',
-    currentUserHasAlias: currentUser ? aliases.hasAlias(currentUser) : false,
+    currentUserLabel: selfMember ? aliases.resolve(selfMember) : '',
+    currentUserHasAlias: selfMember ? aliases.hasAlias(selfMember) : false,
     namespaces: ws.namespaces,
     activeNs: ws.activeNs,
     onSelectNamespace: ws.selectNamespace,
