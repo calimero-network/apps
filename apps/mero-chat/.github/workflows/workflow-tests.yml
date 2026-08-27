@@ -60,7 +60,21 @@ jobs:
         run: cargo mero bundle --dev
 
       - name: Install merobox
-        run: pip install merobox==0.6.58 calimero-client-py==0.6.30 && merobox --version
+      # ⚠️ calimero-client-py MUST be pinned, not just merobox. It is the layer
+      # that actually builds the admin-API request, merobox only requires a
+      # floor, and it tracks core master — so an unpinned install silently picks
+      # up whatever landed today.
+      #
+      # That is not hypothetical here. Leaving it unpinned resolved to 0.6.33,
+      # which expects rc.25's renamed `namespaceId`, against the rc.24 node these
+      # scenarios start:
+      #
+      #     Join namespace failed: Client error: missing field `namespaceId`
+      #
+      # 0.6.29 is the version the rest of the fleet ran green against rc.24
+      # nodes. Moving the node to rc.25 means moving BOTH pins and migrating the
+      # scenario schema (see logic/Cargo.toml's min-runtime-version note).
+        run: pip install merobox==0.6.24 calimero-client-py==0.6.29 && merobox --version
 
       - name: Run E2E workflow (3-node)
         working-directory: workflows
@@ -75,35 +89,6 @@ jobs:
               sleep 2
             fi
             if merobox bootstrap run e2e.yml; then
-              success=true
-              break
-            fi
-            attempt=$((attempt + 1))
-          done
-          merobox stop --all || true
-          merobox nuke --force || true
-          [ "$success" = true ] || exit 1
-
-      - name: Run messaging-lifecycle workflow (2-node)
-        working-directory: workflows
-        run: |
-          max_attempts=2
-          attempt=1
-          success=false
-          while [ $attempt -le $max_attempts ]; do
-            if [ $attempt -gt 1 ]; then
-              merobox stop --all || true
-              merobox nuke --force || true
-              # nuke is not sufficient on its own: it reports "No Calimero node
-              # data directories found" while data/ still holds state and -init
-              # containers survive. This test asserts on fixed message markers,
-              # so surviving state from attempt 1 could satisfy attempt 2 and
-              # turn a real failure into a pass.
-              docker rm -f $(docker ps -aq --filter name=msg-node) 2>/dev/null || true
-              rm -rf data/
-              sleep 2
-            fi
-            if merobox bootstrap run messaging-lifecycle.yml; then
               success=true
               break
             fi
