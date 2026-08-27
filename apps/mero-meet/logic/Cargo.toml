@@ -38,7 +38,7 @@ github = "https://github.com/calimero-network/mero-meet"
 # bundle was built and tested against, not a floor someone once guessed: it sat
 # at "0.1.0" for three releases, which told every node "any version will do"
 # while the wasm was calling host functions no such node has.
-min-runtime-version = "0.11.0-rc.24"
+min-runtime-version = "0.11.0-rc.25"
 frontend = "https://mero-meet.vercel.app/"
 
 [dependencies]
@@ -48,15 +48,15 @@ bs58 = "0.5.1"
 # Pin a real release tag, never `branch = "master"`: master rides unreleased
 # protocol work against nodes that run the release. All SDK crates must share
 # the exact same tag (the workspace version at a tag is 0.0.0).
-calimero-sdk = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.24" }
-calimero-storage = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.24" }
-calimero-storage-macros = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.24" }
+calimero-sdk = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.25" }
+calimero-storage = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.25" }
+calimero-storage-macros = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.25" }
 thiserror = "1.0.56"
 
 [dev-dependencies]
 # Enables register_crdt_merge + the native mock host so TestHost can drive the
 # AccessControl writer-set state under `cargo test`.
-calimero-storage = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.24", features = ["testing"] }
+calimero-storage = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.25", features = ["testing"] }
 
 [profile.app-release]
 inherits = "release"
