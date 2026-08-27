@@ -1,0 +1,14 @@
+[package]
+name = "mero-drive-registry"
+version.workspace = true
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+mero-drive-types = { workspace = true }
+calimero-sdk = { workspace = true }
+calimero-storage = { workspace = true }
+calimero-storage-macros = { workspace = true }
+bs58 = { workspace = true }

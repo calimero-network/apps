@@ -1,0 +1,63 @@
+name: Setup merobox
+description: Install the pinned merobox CLI from its release binary and put it on PATH.
+
+# One pin for every job. It was previously spelled at four call sites and had
+# already drifted to two different versions, each with its own rationale.
+#   >=0.6.14  JoinSubgroupInheritanceStep
+#   >=0.6.37  drops migrate_method from upgrade_group (0.6.36 crashes against
+#             the newer calimero-client-py binding)
+#   >=0.6.43  forwards MERO_AUTH_ADMIN_* to the auth service; without it
+#             mero-auth:edge has no account and every token mint 401s
+inputs:
+  version:
+    description: merobox version to install, without the leading v.
+    required: false
+    default: "0.6.43"
+
+runs:
+  using: composite
+  steps:
+    - name: Install merobox
+      shell: bash
+      env:
+        MEROBOX_VERSION: ${{ inputs.version }}
+      run: |
+        set -euo pipefail
+
+        # merobox publishes a standalone PyInstaller binary per target with a
+        # .sha256 beside it. One download beats resolving the Python dependency
+        # tree (py-near / ed25519 build from source), and the checksum gives
+        # integrity verification that `pip install merobox==x.y.z` does not:
+        # a version pin fixes the name, not the artifact.
+        case "$(uname -s)" in
+          Linux)  os=linux ;;
+          Darwin) os=darwin ;;
+          *) echo "unsupported OS: $(uname -s)" >&2; exit 1 ;;
+        esac
+        case "$(uname -m)" in
+          x86_64|amd64)  arch=x86-64 ;;
+          arm64|aarch64) arch=aarch64 ;;
+          *) echo "unsupported arch: $(uname -m)" >&2; exit 1 ;;
+        esac
+
+        asset="merobox-v${MEROBOX_VERSION}-${os}-${arch}"
+        base="https://github.com/calimero-network/merobox/releases/download/v${MEROBOX_VERSION}"
+        tmp="$(mktemp -d)"
+
+        curl -fsSL --retry 3 --retry-delay 2 --max-time 300 -o "$tmp/merobox" "$base/$asset"
+        curl -fsSL --retry 3 --retry-delay 2 --max-time 60  -o "$tmp/merobox.sha256" "$base/$asset.sha256"
+
+        # The published file is `<hash>  dist/<asset>`, so its path will not match
+        # a local download -- compare the hash field rather than using `-c`.
+        expected="$(cut -d' ' -f1 "$tmp/merobox.sha256")"
+        actual="$(shasum -a 256 "$tmp/merobox" | cut -d' ' -f1)"
+        if [ "$expected" != "$actual" ]; then
+          echo "$asset checksum mismatch: expected $expected, got $actual" >&2
+          exit 1
+        fi
+
+        mkdir -p "$HOME/.local/bin"
+        install -m 0755 "$tmp/merobox" "$HOME/.local/bin/merobox"
+        rm -rf "$tmp"
+        echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+        "$HOME/.local/bin/merobox" --version

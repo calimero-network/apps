@@ -1,0 +1,60 @@
+[workspace]
+members = ["crates/types", "crates/registry", "crates/docs"]
+resolver = "2"
+
+# Single source of truth for the bundle/app version. Bump HERE only; the
+# crates inherit via `version.workspace = true`, `cargo mero bundle` reads
+# APP_VERSION from this, and e2e-up.ts discovers the .mpk by glob (no
+# hardcoded version). (app/package.json carries the frontend's own npm
+# version separately — different ecosystem.)
+[workspace.package]
+version = "10.1.3"
+
+# Read by `cargo mero bundle`, which builds each service, embeds its ABI as the
+# calimero_abi_v1 section, records a digest per artifact and signs the manifest.
+[workspace.metadata.calimero]
+package = "com.calimero.mero-drive-docs"
+name = "Mero Drive Docs"
+description = "Namespace-based document workspace - registry + docs multi-service bundle."
+# Must match the registry username that owns the package (the registry
+# returns 403 not_owner on a mismatch).
+author = "ron"
+min-runtime-version = "0.1.0"
+frontend = "https://mero-drive.vercel.app/"
+# Same mark the PWA manifest and favicon use (app/public/icons/); the tool
+# base64-encodes it into manifest.json. Replace both copies together.
+icon = "assets/icon-512x512.png"
+slug = "com.calimero.mero-drive-docs"
+license = "MIT"
+tags = ["productivity", "documents", "collaboration"]
+github = "https://github.com/calimero-network/mero-drive"
+docs = "https://docs.calimero.network"
+
+[[workspace.metadata.calimero.services]]
+name = "registry"
+crate = "mero-drive-registry"
+
+[[workspace.metadata.calimero.services]]
+name = "docs"
+crate = "mero-drive-docs"
+
+[workspace.dependencies]
+calimero-sdk = { git = "https://github.com/calimero-network/core", branch = "master" }
+calimero-storage = { git = "https://github.com/calimero-network/core", branch = "master" }
+calimero-storage-macros = { git = "https://github.com/calimero-network/core", branch = "master" }
+calimero-wasm-abi = { git = "https://github.com/calimero-network/core", branch = "master" }
+thiserror = "1.0.56"
+bs58 = "0.5"
+serde_json = "1.0.113"
+mero-drive-types = { path = "crates/types" }
+
+[profile.app-release]
+inherits = "release"
+codegen-units = 1
+opt-level = "z"
+lto = true
+debug = false
+panic = "abort"
+overflow-checks = true
+
+
