@@ -8,6 +8,10 @@ on:
       - "app/**"
       - "workflows/**"
       - "scripts/**"
+      # This workflow file. Without it, changing the merod image or the
+      # merobox/client pins below never runs the workflow being changed — the
+      # edit reads as verified while nothing executed.
+      - ".github/workflows/integration-ci.yml"
   pull_request:
     branches: [main, master]
     paths:
@@ -15,6 +19,10 @@ on:
       - "app/**"
       - "workflows/**"
       - "scripts/**"
+      # This workflow file. Without it, changing the merod image or the
+      # merobox/client pins below never runs the workflow being changed — the
+      # edit reads as verified while nothing executed.
+      - ".github/workflows/integration-ci.yml"
 
 concurrency:
   group: integration-ci-${{ github.ref }}
