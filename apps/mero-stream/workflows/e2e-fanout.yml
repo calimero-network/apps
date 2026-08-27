@@ -1,0 +1,173 @@
+name: Mero Stream — gossip fan-out to two peers (3 nodes)
+description: >
+  §4 asks where fan-out saturates "across K peers", and §6 ranks gossip
+  fan-out among the likely failure modes. Both `e2e.yml` and `e2e-tombstones.yml`
+  run K=1, where a single mesh link carries everything and a fan-out problem
+  cannot show up at all. This runs K=2.
+
+  What it establishes: one node encodes a frame in WASM, and BOTH peers
+  independently decode it to the same checksum. That is a stronger claim than two
+  runs of the K=1 scenario — it exercises the sender publishing to a mesh with
+  more than one subscriber, which is where co-located dev nodes have historically
+  had trouble forming a usable gossipsub mesh.
+
+  Kept to a single frame on purpose: this scenario is about reach, not load. The
+  load curve is `scripts/load-curve.py`.
+
+force_pull_image: true
+
+nodes:
+  chain_id: testnet-1
+  count: 3
+  # Keep in step with logic/Cargo.toml's calimero-* tag.
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.25
+  prefix: calimero-node
+  # Distinct from e2e.yml (2760/2660) and e2e-tombstones.yml (2780/2680).
+  base_port: 2800
+  base_rpc_port: 2700
+
+steps:
+  - name: Install application on Node 1
+    type: install_application
+    node: calimero-node-1
+    path: "../logic/res/mero_stream.wasm"
+    dev: true
+    outputs:
+      app_id: applicationId
+
+  - name: Create the stream mesh with TWO joining nodes
+    type: create_mesh
+    context_node: calimero-node-1
+    application_id: "{{app_id}}"
+    path: "../logic/res/mero_stream.wasm"
+    nodes:
+      - calimero-node-2
+      - calimero-node-3
+    capability: member
+    params: '{"name": "fanout"}'
+    # With more than one joining node there is no single {{public_key}} default —
+    # each joiner is published under {{public_key_<node-name>}} instead. Dashes in
+    # the name are fine: placeholder lookup is a plain dict get, not an identifier.
+
+  - name: Wait for the context on all three nodes
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes: [calimero-node-1, calimero-node-2, calimero-node-3]
+    timeout: 90
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Alice joins
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    method: join
+    args: { username: "Alice", now: 1751955000 }
+    executor_public_key: "{{member_public_key}}"
+
+  - name: Bob joins
+    type: call
+    node: calimero-node-2
+    context_id: "{{context_id}}"
+    method: join
+    args: { username: "Bob", now: 1751955001 }
+    executor_public_key: "{{public_key_calimero-node-2}}"
+
+  - name: Carol joins
+    type: call
+    node: calimero-node-3
+    context_id: "{{context_id}}"
+    method: join
+    args: { username: "Carol", now: 1751955002 }
+    executor_public_key: "{{public_key_calimero-node-3}}"
+
+  - name: Sync membership across all three
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes: [calimero-node-1, calimero-node-2, calimero-node-3]
+    timeout: 90
+    check_interval: 2
+    trigger_sync: true
+
+  # Establish the mesh is genuinely three-way BEFORE measuring fan-out, so a
+  # failure downstream is unambiguously about the fragment and not about a peer
+  # that never joined.
+  - name: Carol reads the roster
+    type: call
+    node: calimero-node-3
+    context_id: "{{context_id}}"
+    method: get_stats
+    args: {}
+    executor_public_key: "{{public_key_calimero-node-3}}"
+    outputs:
+      carol_stats: result
+
+  - name: The furthest node sees all three members
+    type: json_assert
+    statements:
+      - 'json_subset({{carol_stats}}, {"output": {"memberCount": 3, "name": "fanout"}})'
+
+  - name: Alice encodes a frame IN WASM
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    method: encode_frame
+    args:
+      raw: [0, 17, 34, 51, 68, 85, 102, 119, 136, 153, 170, 187, 204, 221, 238, 255]
+      width: 4
+      height: 4
+      track: 0
+      now: 1751955010000
+    executor_public_key: "{{member_public_key}}"
+    outputs:
+      frame_seq: result.output
+
+  - name: Fan the fragment out to both peers
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes: [calimero-node-1, calimero-node-2, calimero-node-3]
+    timeout: 90
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Alice checksums her own decode
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    method: frame_checksum
+    args: { seq: "{{frame_seq}}" }
+    executor_public_key: "{{member_public_key}}"
+    outputs:
+      alice_checksum: result.output
+
+  - name: Bob checksums his decode
+    type: call
+    node: calimero-node-2
+    context_id: "{{context_id}}"
+    method: frame_checksum
+    args: { seq: "{{frame_seq}}" }
+    executor_public_key: "{{public_key_calimero-node-2}}"
+    outputs:
+      bob_checksum: result.output
+
+  - name: Carol checksums her decode
+    type: call
+    node: calimero-node-3
+    context_id: "{{context_id}}"
+    method: frame_checksum
+    args: { seq: "{{frame_seq}}" }
+    executor_public_key: "{{public_key_calimero-node-3}}"
+    outputs:
+      carol_checksum: result.output
+
+  - name: Assert the fragment reached BOTH peers and decoded identically
+    type: assert
+    statements:
+      # is_set on all three: absent decodes come back null, and the operator
+      # comparisons below stringify, so nulls would compare equal and this whole
+      # scenario would pass green on a total fan-out failure.
+      - "is_set({{alice_checksum}})"
+      - "is_set({{bob_checksum}})"
+      - "is_set({{carol_checksum}})"
+      - "{{alice_checksum}} == {{bob_checksum}}"
+      - "{{alice_checksum}} == {{carol_checksum}}"

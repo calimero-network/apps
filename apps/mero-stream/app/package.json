@@ -1,0 +1,67 @@
+{
+  "name": "mero-stream",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Calimero Mero Stream \u2014 streaming media OVER the Calimero contract (Task 3 capacity probe)",
+  "keywords": [
+    "calimero",
+    "streaming",
+    "codec",
+    "react",
+    "vite",
+    "web3"
+  ],
+  "type": "module",
+  "// packageManager": "Pinned to the version that generated pnpm-lock.yaml (lockfileVersion 9.0). Vercel otherwise picks a pnpm major from the project creation date \u2014 its build log says so explicitly \u2014 which is a silent version drift waiting to break --frozen-lockfile.",
+  "packageManager": "pnpm@9.6.0",
+  "engines": {
+    "pnpm": ">=9"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "preview": "vite preview",
+    "e2e:call": "node e2e/browser-call.mjs",
+    "prettier": "prettier --check 'src/**/*.{js,jsx,ts,tsx,json}' 'e2e/**/*.mjs'",
+    "prettier:write": "prettier --write 'src/**/*.{js,jsx,ts,tsx,json}' 'e2e/**/*.mjs'"
+  },
+  "dependencies": {
+    "@calimero-network/mero-js": "^13.3.0",
+    "@calimero-network/mero-platform": "^0.1.0",
+    "@calimero-network/mero-react": "^6.0.4",
+    "@calimero-network/mero-ui": "1.5.1",
+    "bs58": "^6.0.0",
+    "fflate": "^0.8.3",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "react-router-dom": "^7.15.1",
+    "zustand": "^5.0.14"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.25.0",
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.6",
+    "@types/node": "^26.0.1",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react-swc": "^3.9.0",
+    "eslint": "^9.29.0",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "eslint-plugin-react-refresh": "^0.5.3",
+    "globals": "^17.7.0",
+    "jsdom": "^29.1.1",
+    "playwright": "1.61.0",
+    "prettier": "^3.8.4",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.62.0",
+    "vite": "^6.4.1",
+    "vitest": "^4.1.9"
+  },
+  "resolutions": {
+    "@types/react": "19.2.17",
+    "@types/react-dom": "19.2.3"
+  }
+}

@@ -1,0 +1,242 @@
+name: Mero Stream — pruning + tombstones across the wire (C3)
+description: >
+  The C3 regression, cross-node. `e2e.yml` proves ONE frame crosses and decodes
+  bit-identically. This proves the property that actually decides whether a
+  long-running stream survives: after enough frames to force pruning, the peer
+  still decodes recent frames correctly.
+
+  Why that is not obvious. A CRDT remove leaves a tombstone that permanently
+  shadows any later insert under the same key. Pruning the live window emits one
+  tombstone per removed fragment, so a contract that reused fragment keys would
+  see later frames silently swallowed — on the RECEIVING node, after replication,
+  which is exactly where a unit test cannot look. The contract's defence is
+  globally monotone `frag-{seq}-{chunk}` keys that are never reused; this scenario
+  is what proves that defence holds through gossip.
+
+  FRAME_WINDOW is 30, so 40 frames guarantees pruning has happened.
+
+force_pull_image: true
+
+nodes:
+  chain_id: testnet-1
+  count: 2
+  # Keep in step with logic/Cargo.toml's calimero-* tag.
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.25
+  prefix: calimero-node
+  # Distinct from e2e.yml's 2760/2660 so the two scenarios can run concurrently.
+  base_port: 2780
+  base_rpc_port: 2680
+
+steps:
+  - name: Install application on Node 1
+    type: install_application
+    node: calimero-node-1
+    path: "../logic/res/mero_stream.wasm"
+    dev: true
+    outputs:
+      app_id: applicationId
+
+  - name: Create the stream mesh
+    type: create_mesh
+    context_node: calimero-node-1
+    application_id: "{{app_id}}"
+    path: "../logic/res/mero_stream.wasm"
+    nodes:
+      - calimero-node-2
+    capability: member
+    params: '{"name": "tombstones"}'
+
+  - name: Wait for the context on both nodes
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Alice joins
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    method: join
+    args: { username: "Alice", now: 1751955000 }
+    executor_public_key: "{{member_public_key}}"
+
+  - name: Bob joins
+    type: call
+    node: calimero-node-2
+    context_id: "{{context_id}}"
+    method: join
+    args: { username: "Bob", now: 1751955001 }
+    executor_public_key: "{{public_key}}"
+
+  - name: Sync membership
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  # ── Push past FRAME_WINDOW (30) so the reaper definitely runs ───────────────
+  # A 4x4 quant-aligned frame, so every frame is one chunk and decode is the
+  # identity. The same frame content each time is fine here: this scenario is
+  # about key lifecycle, not compression. (The load generator varies content —
+  # a constant frame would make its compression numbers meaningless.)
+  # PACED, not bursted — and the reason is itself a Task-3 data point worth
+  # keeping in the results write-up.
+  #
+  # The first version of this step fired all 40 mutations as fast as RPC would
+  # accept them. That reproducibly failed to converge within 120 s on a CI runner,
+  # and the node logs name why: "StateDelta worker over soft budget", "SyncSession
+  # responder exceeded timeout — dropping", "Sync timed out, applying exponential
+  # backoff". So an unpaced burst of 40 small mutations is enough to saturate the
+  # delta pipeline and push sync into backoff — which is exactly the kind of
+  # ceiling Task 3 exists to find, but makes a terrible CI gate.
+  #
+  # 1 s between frames keeps it near the app's real cadence (the capture loop
+  # starts at 2–5 fps) and lets the pipeline drain. The C3 property being proven
+  # is rate-independent: what matters is that 40 > FRAME_WINDOW (30), so the
+  # reaper runs and emits tombstones either way.
+  #
+  # `seconds` must be a positive integer in merobox, so 1 s is the finest pacing
+  # available; that puts ~40 s on this leg.
+  - name: Alice streams 40 frames, paced
+    type: repeat
+    count: 40
+    steps:
+      - name: encode one frame
+        type: call
+        node: calimero-node-1
+        context_id: "{{context_id}}"
+        method: encode_frame
+        args:
+          raw: [0, 17, 34, 51, 68, 85, 102, 119, 136, 153, 170, 187, 204, 221, 238, 255]
+          width: 4
+          height: 4
+          track: 0
+          now: 1751955010000
+        executor_public_key: "{{member_public_key}}"
+      - name: pace the stream
+        type: wait
+        seconds: 1
+
+  - name: Sync the whole burst to node 2
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    # Generous headroom: sync backoff is exponential, so once a session has timed
+    # out under load the retry cadence slows and a tight budget compounds it.
+    timeout: 240
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Sender stats
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    method: get_stats
+    args: {}
+    executor_public_key: "{{member_public_key}}"
+    outputs:
+      alice_stats: result
+
+  - name: Receiver stats
+    type: call
+    node: calimero-node-2
+    context_id: "{{context_id}}"
+    method: get_stats
+    args: {}
+    executor_public_key: "{{public_key}}"
+    outputs:
+      bob_stats: result
+
+  # `json_subset` rather than `contains`: the call step hands the assertion engine
+  # a parsed dict, so `contains` would be matching against Python's repr of it
+  # (single-quoted keys, spaces after colons) — a brittle thing to depend on.
+  # json_subset recurses into nested dicts, which is exactly this shape.
+  #
+  # Exact values, not ">0": the arithmetic is fully determined. FRAME_WINDOW is 30
+  # and 40 frames were sent, so the reaper's threshold is 40-30=10, frames 1..9
+  # are pruned (9), the oldest live seq is 10, and 31 fragments remain live (one
+  # chunk per 4x4 frame). Asserting the exact numbers pins the window behaviour;
+  # "not zero" would still pass if the reaper became far too aggressive.
+  - name: Assert pruning happened, and identically on both nodes
+    type: json_assert
+    statements:
+      # 40 frames sent ⇒ the monotone counter reads 40 on BOTH nodes. This is the
+      # assertion that catches a burst partially failing to replicate.
+      - 'json_subset({{alice_stats}}, {"output": {"nextSeq": 40, "prunedFrames": 9, "oldestLiveSeq": 10, "liveFragments": 31}})'
+      # The receiver converged on the SAME bounded live window — i.e. it applied
+      # the removals too, rather than accumulating every fragment forever.
+      - 'json_subset({{bob_stats}}, {"output": {"nextSeq": 40, "prunedFrames": 9, "oldestLiveSeq": 10, "liveFragments": 31}})'
+
+  # ── The actual C3 claim: frames sent AFTER pruning still decode on the peer ──
+  - name: Alice sends one more frame after the prunes
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    method: encode_frame
+    args:
+      raw: [255, 238, 221, 204, 187, 170, 153, 136, 119, 102, 85, 68, 51, 34, 17, 0]
+      width: 4
+      height: 4
+      track: 0
+      now: 1751955020000
+    executor_public_key: "{{member_public_key}}"
+    outputs:
+      post_prune_seq: result.output
+
+  - name: Sync the post-prune frame
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Alice checksums the post-prune frame
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    method: frame_checksum
+    args: { seq: "{{post_prune_seq}}" }
+    executor_public_key: "{{member_public_key}}"
+    outputs:
+      alice_post: result.output
+
+  - name: Bob checksums the post-prune frame
+    type: call
+    node: calimero-node-2
+    context_id: "{{context_id}}"
+    method: frame_checksum
+    args: { seq: "{{post_prune_seq}}" }
+    executor_public_key: "{{public_key}}"
+    outputs:
+      bob_post: result.output
+
+  - name: Assert a post-prune frame is NOT shadowed by prune tombstones
+    type: assert
+    statements:
+      - "{{post_prune_seq}} == 41"
+      # is_set is load-bearing: a tombstone-shadowed insert would make BOTH sides
+      # return null, and null == null passes. Without these two lines this
+      # scenario would go green on exactly the bug it exists to catch.
+      - "is_set({{alice_post}})"
+      - "is_set({{bob_post}})"
+      - "{{alice_post}} == {{bob_post}}"
+
+  - name: Assert a pruned frame reads as absent, not as corrupt
+    type: call
+    node: calimero-node-2
+    context_id: "{{context_id}}"
+    method: frame_checksum
+    args: { seq: 1 }
+    executor_public_key: "{{public_key}}"
+    outputs:
+      bob_pruned: result.output
+
+  - name: Frame 1 is long gone from the live window
+    type: assert
+    statements:
+      - "is_empty({{bob_pruned}})"
