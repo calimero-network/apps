@@ -1,26 +1,48 @@
 [package]
-name = "meropass"
+name        = "meropass"
 description = "Secret management app for sharing secrets between members"
-version = "0.1.0"
-edition = "2021"
+version     = "0.1.0"
+edition.workspace    = true
+authors.workspace    = true
+license.workspace    = true
+repository.workspace = true
 
 [lib]
-crate-type = ["cdylib"]
+# `rlib` added alongside cdylib so TestHost unit tests can link the crate. This
+# contract has no tests at all today — part of the punch list.
+crate-type = ["cdylib", "rlib"]
+
+# NEW. The standalone repo had no [package.metadata.calimero], so this app was
+# never bundled by cargo-mero and never published — the registry has nothing
+# under any meropass id. So this is a FIRST publish: no installed copies and no
+# invite links to orphan.
+[package.metadata.calimero]
+package     = "com.calimero.meropass"
+name        = "MeroPass"
+description = "A peer-to-peer secret manager: keep credentials in a vault on your own nodes and share them with namespace members."
+author      = "Calimero"
+slug        = "com.calimero.meropass"
+# `cargo mero bundle` refuses to run without an icon DECISION, and it fails at
+# BUNDLE time — after a green PR, on the release run. No PNG in the repo.
+icon        = "default"
+tags        = ["secrets", "passwords", "security"]
+github      = "https://github.com/calimero-network/apps"
+min-runtime-version = "0.11.0-rc.26"
+frontend    = "https://meropass.vercel.app"
 
 [dependencies]
-thiserror = "1.0.56"
-calimero-sdk = { git = "https://github.com/calimero-network/core", branch = "master" }
-calimero-storage = { git = "https://github.com/calimero-network/core", branch = "master" }
+thiserror               = { workspace = true }
+# WAS `branch = "master"` resolved around 2025-11 — it rides unreleased protocol
+# work against nodes running a release, and silently drifts between builds. The
+# workspace pins one real release tag for the whole fleet.
+calimero-sdk            = { workspace = true }
+calimero-storage        = { workspace = true }
+calimero-storage-macros = { workspace = true }
 
-[build-dependencies]
-calimero-wasm-abi = { git = "https://github.com/calimero-network/core", branch = "master" }
-serde_json = "1.0.113"
-
-[profile.app-release]
-inherits = "release"
-codegen-units = 1
-opt-level = "z"
-lto = true
-debug = false
-panic = "abort"
-overflow-checks = true
+# NOTE: build.rs and its [build-dependencies] on calimero-wasm-abi are GONE.
+# Core deleted all 60 per-app ABI build scripts (#3319) and derives the ABI from
+# the type system (#3364); `cargo mero build` is the emitter now. Keeping the
+# build script would fail to resolve calimero-wasm-abi at the workspace tag.
+#
+# NOTE: no [profile.*] — cargo ignores profiles in a workspace member and
+# `cargo mero build` then fails with `profile 'app-release' is not defined`.
