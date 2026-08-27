@@ -197,6 +197,21 @@ steps:
       key: "node3_key"
       value: "should_not_work"
     expected_failure: true
+    outputs:
+      node3_denied_error: error
+
+  - name: Assert node-3 was actually refused
+    type: assert
+    statements:
+      # `expected_failure: true` on its own can NEVER fail this run — it marks the
+      # step allowed-to-fail, so a `set` that SUCCEEDED would pass just as
+      # quietly. That is the wrong way round for an authorization test: the whole
+      # regression being guarded is a non-member being ALLOWED to write, and this
+      # step was the only thing standing in front of it.
+      #
+      # Capturing the error and asserting it is set is what turns
+      # "we tolerated a failure" into "a failure was required".
+      - "is_set({{node3_denied_error}})"
 
   # --- SCENARIO 6: Remove node-2 from subgroup and verify access revoked ---
 
@@ -230,6 +245,36 @@ steps:
       key: "revoked_key"
       value: "should_not_work"
     expected_failure: true
+    outputs:
+      node2_revoked_error: error
+
+  - name: Assert the removal actually revoked write access
+    type: assert
+    statements:
+      # Same trap, and the higher-stakes one: without this assertion a
+      # `remove_group_members` that did not take effect leaves node-2 able to
+      # write, the `set` succeeds, and `expected_failure` waves it through. The
+      # test would report that access was revoked while it demonstrably was not.
+      - "is_set({{node2_revoked_error}})"
+
+  - name: Node-1 confirms the revoked write never landed
+    type: call
+    node: e2e-node-1
+    context_id: '{{sub_ctx_id}}'
+    method: get
+    args:
+      key: "revoked_key"
+    outputs:
+      revoked_key_value: result
+
+  - name: Assert no value was written by the removed member
+    type: json_assert
+    statements:
+      # The other half of the property, read from a node that IS still a member:
+      # "the call errored" and "nothing was written" are different claims, and a
+      # partial write that errors on the response path would satisfy only the
+      # first.
+      - 'json_equal({{revoked_key_value}}, {"output": null})'
 
   # --- SCENARIO 7: Get group info ---
 
