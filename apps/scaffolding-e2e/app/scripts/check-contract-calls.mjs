@@ -75,7 +75,7 @@ const CALL_SITE = /\b(?:call|rpcRaw|rpcCall)\s*(?:<[\s\S]*?>)?\s*\(\s*"([A-Za-z_
 
 export function collectFrontendCalls(root = REPO_ROOT) {
   const sites = [];
-  for (const file of walk(join(root, "frontend/src"), /\.(ts|tsx)$/)) {
+  for (const file of walk(join(root, "app/src"), /\.(ts|tsx)$/)) {
     // Test files assert against mocks, not against the contract. They are the
     // reason this checker exists, so they are not evidence of coverage.
     if (/\.(test|spec)\.tsx?$/.test(file)) continue;

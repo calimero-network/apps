@@ -41,7 +41,7 @@ github = "https://github.com/calimero-network/scaffolding-e2e-application"
 # build imports host functions that only exist from that release on, so a node
 # older than this installs the bundle happily and then dies at context creation
 # with `link error: unknown import`.
-min-runtime-version = "0.11.0-rc.25"
+min-runtime-version = "0.11.0-rc.26"
 # Where the desktop app and links.calimero.network send a deep link for this
 # package. The hosted build is the same `frontend/` in this repo (Vercel project
 # root = `frontend`); it still talks to whatever node the user connects to from
@@ -73,9 +73,9 @@ frontend = "https://scaffolding-e2e-application.vercel.app/"
 # — through the host log, which is what `tracing_probe` exists to prove. Off by
 # default upstream because the subscriber costs wasm size; this is a scaffold, so
 # covering the surface wins over the bytes.
-calimero-sdk            = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.25", features = ["tracing"] }
-calimero-storage        = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.25" }
-calimero-storage-macros = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.25" }
+calimero-sdk            = { workspace = true, features = ["tracing"] }
+calimero-storage        = { workspace = true }
+calimero-storage-macros = { workspace = true }
 thiserror = "1.0.56"
 sha2      = "0.10.8"
 hex       = "0.4.3"
@@ -92,16 +92,8 @@ tracing   = "0.1.37"
 # the compiler-resolved `__calimero_abi()` — which is why type aliases and
 # re-exports now resolve correctly instead of silently dropping types.
 
-[profile.app-release]
-inherits          = "release"
-codegen-units     = 1
-opt-level         = "z"
-lto               = true
-debug             = false
-strip             = "symbols"
-panic             = "abort"
-overflow-checks   = true
-
+# `[profile.*]` lives at the workspace root. Cargo IGNORES a profile in a
+# member and then hard-errors on it, so this is not stylistic.
 [profile.app-profiling]
 inherits          = "release"
 codegen-units     = 1
