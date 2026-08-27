@@ -5,7 +5,7 @@
 
 import { useMemo } from 'react';
 import { useMero } from '@calimero-network/mero-react';
-import { DocsClient } from '../api/docs/DocsClient';
+import { DocsClient } from '../generated/docs/DocsClient';
 
 export function useDocsClient(
   docsContextId: string | null,

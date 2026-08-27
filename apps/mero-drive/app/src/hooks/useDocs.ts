@@ -17,7 +17,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useJoinContext } from '@calimero-network/mero-react';
-import { CalimeroBytes, type DocDto } from '../api/docs/DocsClient';
+import { CalimeroBytes, type DocDto } from '../generated/docs/DocsClient';
 import { useDriveWorkspace } from '../hooks/useDriveWorkspace';
 import { useSelfIdentity } from './useSelfIdentity';
 import { useDocsClient } from './useDocsClient';

@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 import { useFolderPermissions } from '../useFolderPermissions';
 import { CAPABILITIES } from '../../constants/config';
-import type { Role } from '../../api/registry/RegistryClient';
+import type { Role } from '../../generated/registry/RegistryClient';
 
 // The registry-Role layer (useFolderRole) is mocked so each test can
 // pin a role / loading / error / registry-availability independently of

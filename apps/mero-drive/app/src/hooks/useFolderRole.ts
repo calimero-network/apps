@@ -25,7 +25,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useContextEvents } from './useContextEvents';
 import { useDriveWorkspace } from './useDriveWorkspace';
-import type { Role, FolderRoleEntry } from '../api/registry/RegistryClient';
+import type { Role, FolderRoleEntry } from '../generated/registry/RegistryClient';
 
 export interface FolderRoleState {
   /** The caller's role on this folder. `null` = not-yet-resolved

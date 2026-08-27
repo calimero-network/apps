@@ -22,7 +22,7 @@
 
 import React from 'react';
 import { CAPABILITIES } from '@/constants/config';
-import type { Role } from '@/api/registry/RegistryClient';
+import type { Role } from '@/generated/registry/RegistryClient';
 
 const C = CAPABILITIES;
 

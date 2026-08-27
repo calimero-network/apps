@@ -22,7 +22,7 @@ import {
   useAddGroupMembers,
   useMero,
 } from '@calimero-network/mero-react';
-import type { RegistryClient } from '../api/registry/RegistryClient';
+import type { RegistryClient } from '../generated/registry/RegistryClient';
 import { DOCS_SERVICE_ID } from '../constants/config';
 import { reparentGroup } from '../api/reparentGroup';
 import { descendantsOf } from '../utils/ancestry';

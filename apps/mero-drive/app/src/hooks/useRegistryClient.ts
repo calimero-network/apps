@@ -9,7 +9,7 @@
 
 import { useMemo } from 'react';
 import { useMero } from '@calimero-network/mero-react';
-import { RegistryClient } from '../api/registry/RegistryClient';
+import { RegistryClient } from '../generated/registry/RegistryClient';
 
 export function useRegistryClient(
   contextId: string | null,

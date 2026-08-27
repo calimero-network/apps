@@ -37,7 +37,7 @@ import { InviteDialog } from '@/components/workspace/InviteDialog';
 import { FolderMemberRoleRow } from '@/components/admin/FolderMemberRoleRow';
 import { MemberLabel } from '@/components/common/MemberLabel';
 import { MemberPicker } from '@/components/common/MemberPicker';
-import type { Role } from '@/api/registry/RegistryClient';
+import type { Role } from '@/generated/registry/RegistryClient';
 import { looksLikeMemberIdentity } from '@/utils/validation';
 
 interface Props {

@@ -30,7 +30,11 @@ force_pull_image: true
 
 nodes:
   count: 2
-  image: ghcr.io/calimero-network/merod:edge
+  # Stated, not inherited. core rc.26 made mDNS opt-in (core#3620): `merod init`
+  # now writes `discovery.mdns = false`. merobox does not pass the flag, so peer
+  # discovery changed at the image bump with nothing here changing.
+  mdns: true
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.26
   prefix: calimero-node
 
 steps:
@@ -41,7 +45,7 @@ steps:
   - name: Install bundle on Alice
     type: install_application
     node: calimero-node-1
-    path: ../logic/dist/com.calimero.mero-drive-docs.mpk
+    path: dist/com.calimero.mero-drive-docs.mpk
     dev: true
     outputs:
       app_id: applicationId
@@ -49,7 +53,7 @@ steps:
   - name: Install bundle on Bob
     type: install_application
     node: calimero-node-2
-    path: ../logic/dist/com.calimero.mero-drive-docs.mpk
+    path: dist/com.calimero.mero-drive-docs.mpk
     dev: true
 
   - name: Alice creates the namespace

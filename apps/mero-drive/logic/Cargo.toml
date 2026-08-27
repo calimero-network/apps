@@ -1,60 +1,68 @@
-[workspace]
-members = ["crates/types", "crates/registry", "crates/docs"]
-resolver = "2"
+[package]
+# Renamed from `mero-drive-docs`: the DIRECTORY, cargo package and npm package
+# must be one value (publish-bundle.yml uses it as both `apps/$APP/logic` and
+# `pnpm -F $APP`). The registry PACKAGE id keeps `-docs`, and so does the service
+# NAME below — only the crate is renamed.
+name        = "mero-drive"
+version     = "10.1.3"
+edition.workspace    = true
+authors.workspace    = true
+license.workspace    = true
+repository.workspace = true
 
-# Single source of truth for the bundle/app version. Bump HERE only; the
-# crates inherit via `version.workspace = true`, `cargo mero bundle` reads
-# APP_VERSION from this, and e2e-up.ts discovers the .mpk by glob (no
-# hardcoded version). (app/package.json carries the frontend's own npm
-# version separately — different ecosystem.)
-[workspace.package]
-version = "10.1.3"
+[lib]
+crate-type = ["cdylib", "rlib"]
 
-# Read by `cargo mero bundle`, which builds each service, embeds its ABI as the
-# calimero_abi_v1 section, records a digest per artifact and signs the manifest.
-[workspace.metadata.calimero]
-package = "com.calimero.mero-drive-docs"
-name = "Mero Drive Docs"
+[features]
+default   = []
+schema_v2 = []
+
+[package.metadata.calimero]
+package     = "com.calimero.mero-drive-docs"
+name        = "Mero Drive Docs"
 description = "Namespace-based document workspace - registry + docs multi-service bundle."
-# Must match the registry username that owns the package (the registry
-# returns 403 not_owner on a mismatch).
-author = "ron"
-min-runtime-version = "0.1.0"
-frontend = "https://mero-drive.vercel.app/"
-# Same mark the PWA manifest and favicon use (app/public/icons/); the tool
-# base64-encodes it into manifest.json. Replace both copies together.
-icon = "assets/icon-512x512.png"
-slug = "com.calimero.mero-drive-docs"
-license = "MIT"
-tags = ["productivity", "documents", "collaboration"]
-github = "https://github.com/calimero-network/mero-drive"
-docs = "https://docs.calimero.network"
+author      = "Calimero"
+slug        = "com.calimero.mero-drive-docs"
+license     = "MIT"
+tags        = ["productivity", "documents", "collaboration"]
+github      = "https://github.com/calimero-network/apps"
+docs        = "https://docs.calimero.network"
+# Relative to the directory of the table that supplied the metadata — this
+# package's own dir, so logic/assets/icon-512x512.png.
+icon        = "assets/icon-512x512.png"
+# ⚠️ WAS "0.1.0" — cargo-mero's placeholder floor, which nobody verified. This
+# contract is built against rc.26, and a node older than that installs the bundle
+# happily and then dies at context creation with `link error: unknown import`.
+# check-app-metadata.sh now asserts this equals the workspace value.
+min-runtime-version = "0.11.0-rc.26"
+frontend    = "https://mero-drive.vercel.app"
 
-[[workspace.metadata.calimero.services]]
-name = "registry"
+# Two services, ONE bundle. Declared at PACKAGE level, which cargo-mero supports
+# for "a crate that cannot declare a workspace table of its own (e.g. a member of
+# a larger workspace)" — `[workspace.metadata.calimero]` is unusable here because
+# cargo-mero REPLACES an app's package table with the workspace one, masking every
+# other app in the repo.
+#
+# Service NAMES are unchanged (`docs`, `registry`): they are what the frontend and
+# every scenario pass as `serviceName` at context creation, and a mismatch against
+# the bundle's services list fails with a bare 500.
+[[package.metadata.calimero.services]]
+name  = "docs"
+crate = "mero-drive"
+
+[[package.metadata.calimero.services]]
+name  = "registry"
 crate = "mero-drive-registry"
 
-[[workspace.metadata.calimero.services]]
-name = "docs"
-crate = "mero-drive-docs"
+[dependencies]
+mero-drive-types        = { path = "crates/types" }
+calimero-sdk            = { workspace = true }
+calimero-storage        = { workspace = true }
+calimero-storage-macros = { workspace = true }
 
-[workspace.dependencies]
-calimero-sdk = { git = "https://github.com/calimero-network/core", branch = "master" }
-calimero-storage = { git = "https://github.com/calimero-network/core", branch = "master" }
-calimero-storage-macros = { git = "https://github.com/calimero-network/core", branch = "master" }
-calimero-wasm-abi = { git = "https://github.com/calimero-network/core", branch = "master" }
-thiserror = "1.0.56"
-bs58 = "0.5"
-serde_json = "1.0.113"
-mero-drive-types = { path = "crates/types" }
+[dev-dependencies]
+calimero-storage = { workspace = true, features = ["testing"] }
+serial_test      = "3.2"
 
-[profile.app-release]
-inherits = "release"
-codegen-units = 1
-opt-level = "z"
-lto = true
-debug = false
-panic = "abort"
-overflow-checks = true
-
-
+# NOTE: no [profile.*] — cargo ignores profiles in a workspace member and
+# `cargo mero build` then fails with `profile 'app-release' is not defined`.

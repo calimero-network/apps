@@ -43,7 +43,7 @@
 // menu fires an extra N×getFolderRole. (Out of scope for this round.)
 
 import { CAPABILITIES, hasCap } from '../constants/config';
-import type { Role } from '../api/registry/RegistryClient';
+import type { Role } from '../generated/registry/RegistryClient';
 import { useMemberCaps } from './useMemberCaps';
 import { useFolderRole } from './useFolderRole';
 import { useDriveWorkspace } from './useDriveWorkspace';

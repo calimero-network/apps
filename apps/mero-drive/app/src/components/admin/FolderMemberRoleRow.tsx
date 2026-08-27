@@ -26,7 +26,7 @@ import {
   FolderRoleSelect,
   type FolderRolePreset,
 } from './FolderRoleSelect';
-import type { Role } from '@/api/registry/RegistryClient';
+import type { Role } from '@/generated/registry/RegistryClient';
 
 interface Props {
   folderId: string;

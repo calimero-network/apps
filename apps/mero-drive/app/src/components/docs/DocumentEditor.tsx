@@ -46,7 +46,7 @@ import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useFolderPermissions } from '@/hooks/useFolderPermissions';
 import { useContextEvents } from '@/hooks/useContextEvents';
 import { useDocs } from '@/hooks/useDocs';
-import type { DocDto } from '@/api/docs/DocsClient';
+import type { DocDto } from '@/generated/docs/DocsClient';
 import { CollabDocumentEditor } from './CollabDocumentEditor';
 
 interface Props {

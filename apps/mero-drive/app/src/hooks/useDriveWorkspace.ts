@@ -53,7 +53,7 @@ import {
   useSubgroups,
   type Namespace,
 } from '@calimero-network/mero-react';
-import { RegistryClient } from '../api/registry/RegistryClient';
+import { RegistryClient } from '../generated/registry/RegistryClient';
 import { useContextEvents } from './useContextEvents';
 import { useSyncStatus, type SyncSnapshot } from './useSyncStatus';
 import { useLocalStorage } from './useLocalStorage';
