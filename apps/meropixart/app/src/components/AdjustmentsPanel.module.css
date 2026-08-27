@@ -1,0 +1,84 @@
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+}
+
+.empty {
+  font-size: 12px;
+  color: var(--text-faint);
+  text-align: center;
+  padding: 20px 8px;
+}
+
+.headerRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.headerRow .mp-btn {
+  height: 24px;
+  padding: 0 8px;
+  font-size: 11px;
+}
+
+.sliders {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.sliderRow {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.sliderHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.sliderLabel {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.sliderVal {
+  font-size: 11px;
+  font-family: var(--mono);
+  color: var(--text);
+  min-width: 32px;
+  text-align: right;
+}
+
+.checkRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.checkRow input { cursor: pointer; accent-color: var(--accent); }
+
+.divider {
+  height: 1px;
+  background: var(--border);
+}
+
+.subHead {
+  display: flex;
+  align-items: center;
+}
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.filterBtn {
+  flex: 1;
+  min-width: 64px;
+  height: 28px;
+  padding: 0 8px;
+  font-size: 12px;
+}

@@ -1,0 +1,1356 @@
+// The `#[app::logic]` methods below are the app's RPC surface, and a patch call
+// takes one optional argument per field it can change. Collapsing those into a
+// params struct to satisfy the lint would rewrite the ABI and every call site in
+// the frontend for no gain the caller can see.
+#![allow(clippy::too_many_arguments)]
+
+use std::str::FromStr;
+
+use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
+use calimero_sdk::serde::{Deserialize, Serialize};
+use calimero_sdk::abi::AbiType;
+use calimero_sdk::{app, env as sdk_env, AccountId, BlobId, PublicKey};
+use calimero_storage::collections::crdt_meta::MergeError;
+use calimero_storage::collections::rekey::RekeyTarget;
+use calimero_storage::address::Id;
+use calimero_storage::collections::{
+    AccessControl, LwwRegister, Mergeable as MergeableTrait, Ownable, UnorderedMap,
+};
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+type LayerId  = String;
+/// A member of this document, written the way an `AccountId` renders: 64 hex
+/// characters. Since core rc.23 a member is a PERSON everywhere — the node's
+/// group listing answers with accounts, `AccessControl` and `Ownable` gate on
+/// accounts, and `env::executor_id()` resolves to one — so the document keys its
+/// roster, its roles and its authorship by the same thing. It is deliberately
+/// not the bs58 a public key renders in; the two are both 32 bytes and nothing
+/// downstream would object to the wrong one.
+type MemberId = String;
+
+/// Named role granted on top of the admin tier. Editors may mutate the
+/// document; everyone else is read-only ("viewer"). The document creator is the
+/// sole initial admin and is implicitly an editor + owner.
+const ROLE_EDITOR: &str = "editor";
+
+// ── Adjustments (non-destructive, applied at composite/render time) ─────────────
+
+#[derive(AbiType, BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug, Default)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+#[serde(rename_all = "camelCase")]
+pub struct Adjustments {
+    /// -100..=100, 0 = neutral
+    pub brightness: i32,
+    /// -100..=100, 0 = neutral
+    pub contrast:   i32,
+    /// -100..=100, 0 = neutral
+    pub saturation: i32,
+    /// -180..=180 degrees, 0 = neutral
+    pub hue:        i32,
+    /// -100..=100, 0 = neutral
+    pub exposure:   i32,
+    /// 0..=100 blur radius in px (filter), 0 = none
+    pub blur:       u32,
+    /// invert colors
+    pub invert:     bool,
+    /// JSON-encoded curve control points (per-channel splines). Opaque to the
+    /// contract; the frontend interprets it. Empty = identity curve.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub curves:     String,
+}
+
+// ── Text layer properties ───────────────────────────────────────────────────
+
+#[derive(AbiType, BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+#[serde(rename_all = "camelCase")]
+pub struct TextProps {
+    pub content:     String,
+    pub font_family: String,
+    pub font_size:   u32,
+    pub color:       String,
+    pub bold:        bool,
+    pub italic:      bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub align:       Option<String>,
+}
+
+impl Default for TextProps {
+    fn default() -> Self {
+        TextProps {
+            content:     String::new(),
+            font_family: "Inter".to_owned(),
+            font_size:   48,
+            color:       "#ffffff".to_owned(),
+            bold:        false,
+            italic:      false,
+            align:       None,
+        }
+    }
+}
+
+// ── Layer ─────────────────────────────────────────────────────────────────────
+//
+// `kind` discriminates how the layer is composited:
+//   raster     — pixel data lives in `blob_id` (PNG); the workhorse layer
+//   group      — a folder; has children via their `parent_id`; no pixels
+//   text       — rendered from `text` at composite time; bakeable to raster
+//   adjustment — applies `adjustments` to layers below it within its group
+//   fill       — a solid `fill` color rectangle
+//
+// All shared compositing params (visible, locked, opacity, blend_mode,
+// transform, mask, adjustments) live flat so any layer kind can use them.
+
+#[derive(AbiType, BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+#[serde(rename_all = "camelCase")]
+pub struct Layer {
+    pub id:           LayerId,
+    pub name:         String,
+    /// "raster" | "group" | "text" | "adjustment" | "fill"
+    pub kind:         String,
+    /// Parent group layer id (folder nesting); None = top level.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent_id:    Option<String>,
+    /// Order within the parent (ascending = bottom→top).
+    pub layer_index:  u32,
+
+    pub visible:      bool,
+    pub locked:       bool,
+    /// 0..=100
+    pub opacity:      u8,
+    /// "normal" | "multiply" | "screen" | "overlay" | "darken" | "lighten" | …
+    pub blend_mode:   String,
+
+    // Transform — position/size/rotation/scale of the layer in document space.
+    pub x:            i64,
+    pub y:            i64,
+    pub width:        u32,
+    pub height:       u32,
+    pub rotation:     i32,
+    /// percent, 100 = 1:1
+    pub scale_x:      i32,
+    pub scale_y:      i32,
+    /// Horizontal shear in degrees (-80..=80), 0 = none.
+    #[serde(default)]
+    pub skew_x:       i32,
+    /// Vertical shear in degrees (-80..=80), 0 = none.
+    #[serde(default)]
+    pub skew_y:       i32,
+    /// Mirror across the layer's vertical centre line.
+    #[serde(default)]
+    pub flip_h:       bool,
+    /// Mirror across the layer's horizontal centre line.
+    #[serde(default)]
+    pub flip_v:       bool,
+    /// Corner-pin warp: JSON `{"tl":[dx,dy],"tr":[…],"br":[…],"bl":[…]}` in the
+    /// layer's own pixel units. Opaque to the contract (like `adjustments.curves`)
+    /// — the renderer subdivides the quad into a triangle mesh. Empty = no warp.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub warp:         String,
+
+    /// PNG pixel data for raster layers (blob id). Empty for non-raster kinds.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub blob_id:      String,
+    /// Grayscale PNG layer mask (blob id). None = no mask.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mask_blob_id: Option<String>,
+
+    /// Solid color for `fill` layers (and a tint reference otherwise).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub fill:         String,
+
+    pub adjustments:  Adjustments,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub text:         Option<TextProps>,
+
+    pub created_by:   MemberId,
+    pub created_at:   u64,
+    pub updated_at:   u64,
+}
+
+impl MergeableTrait for Layer {
+    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        if other.updated_at > self.updated_at {
+            *self = other.clone();
+        }
+        Ok(())
+    }
+}
+
+// rc.9 made `RekeyTarget` a supertrait of `Mergeable`. `Layer` is a plain data
+// struct with no nested Calimero collections, so re-keying is a no-op.
+impl RekeyTarget for Layer {
+    fn rekey_relative_to(&mut self, _parent_id: Id) {}
+}
+
+// ── Member ────────────────────────────────────────────────────────────────────
+
+#[derive(AbiType, BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+#[serde(rename_all = "camelCase")]
+pub struct Member {
+    pub id:                  MemberId,
+    pub username:            String,
+    pub avatar:              Option<String>,
+    pub joined_at:           u64,
+    /// Dedicated LWW clock for username/avatar edits (joined_at never changes,
+    /// so merging on it would freeze a member's username at its first value).
+    pub username_updated_at: u64,
+}
+
+impl MergeableTrait for Member {
+    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        if other.username_updated_at > self.username_updated_at {
+            self.username            = other.username.clone();
+            self.avatar              = other.avatar.clone();
+            self.username_updated_at = other.username_updated_at;
+        }
+        Ok(())
+    }
+}
+
+// No nested Calimero collections — re-keying is a no-op (see `Layer`).
+impl RekeyTarget for Member {
+    fn rekey_relative_to(&mut self, _parent_id: Id) {}
+}
+
+// ── Document info ───────────────────────────────────────────────────────────
+
+#[derive(AbiType, Serialize, Deserialize, Clone, Debug)]
+#[serde(crate = "calimero_sdk::serde")]
+#[serde(rename_all = "camelCase")]
+pub struct DocumentInfo {
+    pub name:        String,
+    pub description: String,
+    pub width:       u32,
+    pub height:      u32,
+    pub background:  String,
+    pub layer_count: u32,
+    pub member_count: u32,
+    pub owner:       Option<String>,
+}
+
+/// A member paired with their effective role, for the settings/members UI.
+#[derive(AbiType, Serialize, Deserialize, Clone, Debug)]
+#[serde(crate = "calimero_sdk::serde")]
+#[serde(rename_all = "camelCase")]
+pub struct MemberRole {
+    pub member: String,
+    pub role:   String,
+}
+
+// ── Cursor state (ephemeral — last known position per device) ─────────────────
+//
+// The one thing in this document keyed by DEVICE rather than by account: a
+// pointer belongs to a screen, so someone with the document open on a laptop and
+// a tablet has two of them. Keying this by account would make the two
+// installations fight over one LWW cell and the remaining participants would
+// watch a single cursor teleport between two people's hands.
+
+#[derive(AbiType, BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+#[serde(rename_all = "camelCase")]
+pub struct CursorState {
+    /// The device this pointer belongs to (bs58 context key) — unique per open
+    /// installation, so it is what the map is keyed by.
+    pub identity:   String,
+    /// The member (account) behind that device, so the overlay can label the
+    /// pointer with a username without a second lookup table.
+    pub account:    MemberId,
+    pub x:          i64,
+    pub y:          i64,
+    pub updated_at: u64,
+}
+
+impl MergeableTrait for CursorState {
+    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        if other.updated_at > self.updated_at { *self = other.clone(); }
+        Ok(())
+    }
+}
+
+// No nested Calimero collections — re-keying is a no-op (see `Layer`).
+impl RekeyTarget for CursorState {
+    fn rekey_relative_to(&mut self, _parent_id: Id) {}
+}
+
+// ── Events ────────────────────────────────────────────────────────────────────
+
+#[app::event]
+pub enum Event {
+    LayerAdded(String),
+    LayerUpdated(String),
+    LayerDeleted(String),
+    LayersReordered(),
+    MemberJoined(String),
+    MemberUsernameUpdated(String),
+    DocumentUpdated(),
+    CursorMoved(String),
+    RoleUpdated(String),
+    OwnerTransferred(String),
+}
+
+// ── App state ─────────────────────────────────────────────────────────────────
+
+#[app::state(emits = Event)]
+pub struct MeroPixArt {
+    // Document metadata lives inside `Ownable` so a rename/resize only converges
+    // from the owner — a forged delta from a non-owner is rejected at merge, not
+    // merely by the fail-fast API guard.
+    doc_name:        Ownable<LwwRegister<String>>,
+    doc_description: Ownable<LwwRegister<String>>,
+    /// What `init` was given. The `Ownable` cells above cannot be seeded at init
+    /// on rc.20 (the value is silently dropped — see `init`), so the opening
+    /// name/description live here and the owner-gated cells take over from the
+    /// first owner edit onwards. Read both through `doc_name_str`.
+    initial_name:        LwwRegister<String>,
+    initial_description: LwwRegister<String>,
+    canvas_width:    LwwRegister<u32>,
+    canvas_height:   LwwRegister<u32>,
+    background:      LwwRegister<String>,
+
+    layers:          UnorderedMap<LayerId, Layer>,
+    members:         UnorderedMap<MemberId, Member>,
+    /// Keyed by DEVICE, not by member — see `CursorState`. The only map here
+    /// that is.
+    cursors:         UnorderedMap<String, CursorState>,
+
+    // Role registry whose admin tier is a signed writer set. Grants/revokes are
+    // admin-gated at merge; the creator is the sole initial admin.
+    roles:           AccessControl,
+}
+
+// ── Logic ─────────────────────────────────────────────────────────────────────
+
+#[app::logic]
+impl MeroPixArt {
+    #[app::init]
+    pub fn init(name: String, description: String, width: u32, height: u32) -> MeroPixArt {
+        // Ownership, the admin tier and the member roster are all ACCOUNT-scoped
+        // — one person, one entry, however many machines they open this on.
+        let me = Self::caller_account();
+        // Deliberately NOT seeding the `Ownable` cells here. On rc.20 the cell is
+        // still detached from the state tree at init: the writer set carries
+        // through the constructor, but the inserted VALUE never lands — `insert`
+        // returns `Ok` and a later read returns `Ok("")`. The opening values go to
+        // the plain `initial_*` registers instead; see `doc_name_str`.
+        let doc_name = Ownable::new_owned_by(me);
+        let doc_description = Ownable::new_owned_by(me);
+        MeroPixArt {
+            doc_name,
+            doc_description,
+            initial_name:        LwwRegister::new(name),
+            initial_description: LwwRegister::new(description),
+            canvas_width:  LwwRegister::new(if width  == 0 { 1280 } else { width }),
+            canvas_height: LwwRegister::new(if height == 0 { 720  } else { height }),
+            background:    LwwRegister::new("#00000000".to_owned()),
+            layers:        UnorderedMap::new(),
+            members:       UnorderedMap::new(),
+            cursors:       UnorderedMap::new(),
+            roles:         AccessControl::new(me),
+        }
+    }
+
+    // ── Identity & authorization helpers ────────────────────────────────────────
+
+    /// Who this call is authorized as: the person, not the machine. Never trust
+    /// a client-supplied id.
+    ///
+    /// This is what everything in this document that means "whose" is keyed by —
+    /// the roster, the roles, `Ownable`, layer authorship. rc.23 made the point
+    /// unavoidable by resolving the legacy `env::executor_id()` here too (core
+    /// #3510), and by making the node's own group-members listing answer with
+    /// accounts (#3522), so the document and the node finally name a member the
+    /// same way.
+    fn caller_account() -> AccountId {
+        AccountId::from(sdk_env::account_id())
+    }
+
+    /// Hex string form of the caller's account — this document's member id.
+    fn caller_id() -> MemberId {
+        Self::caller_account().to_string()
+    }
+
+    /// The installation this call came from, as the bs58 context key the
+    /// frontend reads back from `/contexts/{id}/identities-owned`.
+    ///
+    /// Kept on `device_id()` deliberately and used for exactly one thing: the
+    /// cursor map. A pointer is a property of a screen, not of a person, so this
+    /// genuinely means "this installation" — the same human on a second machine
+    /// must get a second cursor, and would get a fight over one cell if this
+    /// were an account. Every other identity in this file is
+    /// [`Self::caller_account`]; if you are about to reach for this one for
+    /// anything that answers "whose is it", you want that instead.
+    fn caller_device() -> PublicKey {
+        sdk_env::device_id().into()
+    }
+
+    /// Resolve a client-supplied member id to the account a grant can name.
+    ///
+    /// Nothing to look up any more: a member id IS an account since rc.23, so
+    /// this is a parse. That also means an admin can hand a role to someone who
+    /// has never opened the document — under rc.20 the contract had to learn a
+    /// member's device→account pairing from their own writes first, and grants
+    /// to anyone else were refused.
+    fn require_account(&self, member: &str) -> app::Result<AccountId> {
+        AccountId::from_str(member).map_err(|_| {
+            app::err!(
+                "that is not a member id — expected the 64-character account id \
+                 the members list shows, not a public key"
+            )
+        })
+    }
+
+    fn is_editor(&self, who: &AccountId) -> bool {
+        self.roles.is_admin(who) || self.roles.has_role(ROLE_EDITOR, who).unwrap_or(false)
+    }
+
+    /// Gate a document mutation. Viewers (no admin/editor role) are read-only.
+    fn require_editor(&self) -> app::Result<()> {
+        if self.is_editor(&Self::caller_account()) {
+            return Ok(());
+        }
+        app::bail!("view-only: editor or admin access is required to modify this document");
+    }
+
+    /// Gate a document-level / destructive operation on admin.
+    fn require_admin(&self) -> app::Result<()> {
+        if self.roles.is_admin(&Self::caller_account()) {
+            return Ok(());
+        }
+        app::bail!("admin access is required for this operation");
+    }
+
+    /// Announce a blob to the context so it propagates to all members.
+    fn announce_blob(blob_id_str: &str) {
+        if blob_id_str.is_empty() { return; }
+        if let Ok(blob_id) = blob_id_str.parse::<BlobId>() {
+            sdk_env::blob_announce_to_context(blob_id.as_ref(), &sdk_env::context_id());
+        }
+    }
+
+    // ── Document ────────────────────────────────────────────────────────────────
+
+    /// The document's name. The owner-gated cell wins once it holds anything;
+    /// before the first owner edit it is empty and what `init` was given is the
+    /// answer. See `initial_name`.
+    fn doc_name_str(&self) -> String {
+        let edited = self.doc_name.get().map(|r| r.get().clone()).unwrap_or_default();
+        if edited.is_empty() { self.initial_name.get().clone() } else { edited }
+    }
+
+    /// As [`Self::doc_name_str`], for the description.
+    fn doc_description_str(&self) -> String {
+        let edited = self.doc_description.get().map(|r| r.get().clone()).unwrap_or_default();
+        if edited.is_empty() { self.initial_description.get().clone() } else { edited }
+    }
+
+    pub fn get_document(&self) -> DocumentInfo {
+        DocumentInfo {
+            name:         self.doc_name_str(),
+            description:  self.doc_description_str(),
+            width:        *self.canvas_width.get(),
+            height:       *self.canvas_height.get(),
+            background:   self.background.get().clone(),
+            layer_count:  self.layers.len().unwrap_or(0) as u32,
+            member_count: self.members.len().unwrap_or(0) as u32,
+            // An account IS a member id now, so this needs no translation.
+            owner:        self.doc_name.owner().map(|a| a.to_string()),
+        }
+    }
+
+    /// Rename / re-describe / resize the document. Owner-only — only converges
+    /// from the document owner.
+    pub fn update_document(
+        &mut self,
+        name: Option<String>,
+        description: Option<String>,
+        width: Option<u32>,
+        height: Option<u32>,
+        background: Option<String>,
+    ) -> app::Result<()> {
+        self.doc_name.only_owner()?;
+        if let Some(n) = name        { self.doc_name.insert(LwwRegister::new(n))?; }
+        if let Some(d) = description { self.doc_description.insert(LwwRegister::new(d))?; }
+        if let Some(w) = width  { self.canvas_width.set(w); }
+        if let Some(h) = height { self.canvas_height.set(h); }
+        if let Some(b) = background { self.background.set(b); }
+        app::emit!(Event::DocumentUpdated());
+        Ok(())
+    }
+
+    /// Hand the document (and its owner-gated config) to another member. Owner-only.
+    pub fn transfer_ownership(&mut self, new_owner: String) -> app::Result<()> {
+        let owner = self.require_account(&new_owner)?;
+        // Only the current owner can pass the `Ownable` transfer guards below, so
+        // the caller IS the previous owner.
+        let previous = Self::caller_account();
+        self.doc_name.transfer_ownership(owner)?;
+        self.doc_description.transfer_ownership(owner)?;
+        if !self.roles.is_admin(&owner) {
+            self.roles.grant_admin(owner)?;
+        }
+        if previous != owner && self.roles.is_admin(&previous) {
+            self.roles.revoke_admin(&previous)?;
+        }
+        app::emit!(Event::OwnerTransferred(new_owner));
+        Ok(())
+    }
+
+    // ── Roles ───────────────────────────────────────────────────────────────────
+
+    pub fn grant_editor(&mut self, member: String) -> app::Result<()> {
+        let who = self.require_account(&member)?;
+        self.roles.grant(ROLE_EDITOR, who)?;
+        app::emit!(Event::RoleUpdated(member));
+        Ok(())
+    }
+
+    pub fn revoke_editor(&mut self, member: String) -> app::Result<()> {
+        let who = self.require_account(&member)?;
+        self.roles.revoke(ROLE_EDITOR, &who)?;
+        app::emit!(Event::RoleUpdated(member));
+        Ok(())
+    }
+
+    pub fn get_role(&self, member: String) -> String {
+        // Anything that is not a member id names nobody, and nobody holds a
+        // grant — the same answer as a member who was never granted one.
+        match AccountId::from_str(&member) {
+            Ok(account) => self.role_label(&account),
+            Err(_) => "viewer".to_string(),
+        }
+    }
+
+    pub fn my_role(&self) -> String {
+        self.role_label(&Self::caller_account())
+    }
+
+    pub fn can_edit(&self) -> bool {
+        self.is_editor(&Self::caller_account())
+    }
+
+    pub fn list_roles(&self) -> Vec<MemberRole> {
+        let mut out = Vec::new();
+        if let Ok(entries) = self.members.entries() {
+            for (id, _) in entries {
+                let role = match AccountId::from_str(&id) {
+                    Ok(account) => self.role_label(&account),
+                    Err(_) => "viewer".to_string(),
+                };
+                out.push(MemberRole { member: id, role });
+            }
+        }
+        out
+    }
+
+    fn role_label(&self, who: &AccountId) -> String {
+        if self.roles.is_admin(who) {
+            "admin".to_string()
+        } else if self.roles.has_role(ROLE_EDITOR, who).unwrap_or(false) {
+            "editor".to_string()
+        } else {
+            "viewer".to_string()
+        }
+    }
+
+    // ── Members ───────────────────────────────────────────────────────────────
+
+    /// Add the caller to the roster. Keyed by account, so opening the document
+    /// on a second machine does not add a second "member".
+    pub fn join(&mut self, username: String, avatar: Option<String>, timestamp: u64) {
+        let member_id = Self::caller_id();
+        if self.members.contains(&member_id).unwrap_or(false) { return; }
+        let m = Member {
+            id: member_id.clone(),
+            username,
+            avatar,
+            joined_at: timestamp,
+            username_updated_at: timestamp,
+        };
+        let _ = self.members.insert(member_id.clone(), m);
+        app::emit!(Event::MemberJoined(member_id));
+    }
+
+    pub fn get_members(&self) -> Vec<Member> {
+        self.members.entries().unwrap().map(|(_, v)| v).collect()
+    }
+
+    pub fn update_member_username(&mut self, username: String, timestamp: u64) {
+        let member_id = Self::caller_id();
+        if let Ok(Some(mut m)) = self.members.get_mut(&member_id) {
+            m.username            = username;
+            m.username_updated_at = timestamp;
+            drop(m);
+            app::emit!(Event::MemberUsernameUpdated(member_id));
+        }
+    }
+
+    // ── Layers ──────────────────────────────────────────────────────────────────
+
+    pub fn add_layer(&mut self, mut layer: Layer) -> app::Result<String> {
+        self.require_editor()?;
+        let id = layer.id.clone();
+        // Authorship is whose, so it is the caller's account and not whatever the
+        // client put in the field — a member cannot sign someone else's name to a
+        // layer, and the value matches the ids the members list is written in.
+        layer.created_by = Self::caller_id();
+        Self::announce_blob(&layer.blob_id);
+        if let Some(ref mask) = layer.mask_blob_id { Self::announce_blob(mask); }
+        let _ = self.layers.insert(id.clone(), layer);
+        app::emit!(Event::LayerAdded(id.clone()));
+        Ok(id)
+    }
+
+    /// Update layer metadata / transform / compositing params. Each arg is
+    /// optional so callers patch only what changed.
+    pub fn update_layer(
+        &mut self,
+        id: String,
+        name: Option<String>,
+        visible: Option<bool>,
+        locked: Option<bool>,
+        opacity: Option<u8>,
+        blend_mode: Option<String>,
+        x: Option<i64>, y: Option<i64>,
+        width: Option<u32>, height: Option<u32>,
+        rotation: Option<i32>,
+        scale_x: Option<i32>, scale_y: Option<i32>,
+        fill: Option<String>,
+        updated_at: u64,
+    ) -> app::Result<()> {
+        self.require_editor()?;
+        if let Ok(Some(mut l)) = self.layers.get_mut(&id) {
+            if let Some(v) = name       { l.name       = v; }
+            if let Some(v) = visible    { l.visible    = v; }
+            if let Some(v) = locked     { l.locked     = v; }
+            if let Some(v) = opacity    { l.opacity    = v; }
+            if let Some(v) = blend_mode { l.blend_mode = v; }
+            if let Some(v) = x          { l.x          = v; }
+            if let Some(v) = y          { l.y          = v; }
+            if let Some(v) = width      { l.width      = v; }
+            if let Some(v) = height     { l.height     = v; }
+            if let Some(v) = rotation   { l.rotation   = v; }
+            if let Some(v) = scale_x    { l.scale_x    = v; }
+            if let Some(v) = scale_y    { l.scale_y    = v; }
+            if let Some(v) = fill       { l.fill       = v; }
+            l.updated_at = updated_at;
+            drop(l);
+            app::emit!(Event::LayerUpdated(id));
+        }
+        Ok(())
+    }
+
+    /// Patch the free-transform params of a layer: rotation, scale, shear, mirror
+    /// and corner-pin warp.
+    ///
+    /// Separate from `update_layer` (which already carries fifteen arguments) so
+    /// the transform gizmo and the Transform panel commit exactly the fields they
+    /// own. Every arg is optional — an untouched control sends `None` and the
+    /// stored value survives. `warp` is round-tripped verbatim; an empty string
+    /// clears the warp.
+    pub fn update_transform(
+        &mut self,
+        id: String,
+        rotation: Option<i32>,
+        scale_x: Option<i32>, scale_y: Option<i32>,
+        skew_x: Option<i32>, skew_y: Option<i32>,
+        flip_h: Option<bool>, flip_v: Option<bool>,
+        warp: Option<String>,
+        updated_at: u64,
+    ) -> app::Result<()> {
+        self.require_editor()?;
+        if let Ok(Some(mut l)) = self.layers.get_mut(&id) {
+            if let Some(v) = rotation { l.rotation = v; }
+            if let Some(v) = scale_x  { l.scale_x  = v; }
+            if let Some(v) = scale_y  { l.scale_y  = v; }
+            if let Some(v) = skew_x   { l.skew_x   = v.clamp(-80, 80); }
+            if let Some(v) = skew_y   { l.skew_y   = v.clamp(-80, 80); }
+            if let Some(v) = flip_h   { l.flip_h   = v; }
+            if let Some(v) = flip_v   { l.flip_v   = v; }
+            if let Some(v) = warp     { l.warp     = v; }
+            l.updated_at = updated_at;
+            drop(l);
+            app::emit!(Event::LayerUpdated(id));
+        }
+        Ok(())
+    }
+
+    /// Re-parent several layers in one call, so "group the selection" is a single
+    /// state transition rather than one RPC per layer.
+    ///
+    /// A layer may not become its own ancestor: every requested parent is walked
+    /// up the (pre-move) tree first and the pair is dropped if the move would
+    /// close a cycle, which would otherwise make `get_layers` unrenderable for
+    /// every peer. Unknown ids are skipped.
+    pub fn move_layers(
+        &mut self,
+        moves: Vec<(String, Option<String>)>,
+        updated_at: u64,
+    ) -> app::Result<()> {
+        self.require_editor()?;
+        for (id, parent_id) in moves {
+            if let Some(ref parent) = parent_id {
+                if *parent == id || self.is_descendant_of(parent, &id) { continue; }
+            }
+            if let Ok(Some(mut l)) = self.layers.get_mut(&id) {
+                l.parent_id  = parent_id;
+                l.updated_at = updated_at;
+            }
+        }
+        app::emit!(Event::LayersReordered());
+        Ok(())
+    }
+
+    /// True when `candidate` sits anywhere under `ancestor` in the layer tree.
+    /// Depth-capped so a pre-existing cycle in replicated state cannot hang the
+    /// guest.
+    fn is_descendant_of(&self, candidate: &str, ancestor: &str) -> bool {
+        let mut cur = candidate.to_string();
+        for _ in 0..64 {
+            let parent = match self.layers.get(&cur) {
+                Ok(Some(l)) => l.parent_id.clone(),
+                _ => return false,
+            };
+            match parent {
+                Some(p) if p == ancestor => return true,
+                Some(p) => cur = p,
+                None => return false,
+            }
+        }
+        false
+    }
+
+    /// Replace a raster layer's pixel data with a freshly rendered blob (after a
+    /// destructive edit: brush, eraser, fill, crop bake, filter, transform bake).
+    pub fn update_layer_content(
+        &mut self,
+        id: String,
+        blob_id: String,
+        width: u32,
+        height: u32,
+        updated_at: u64,
+    ) -> app::Result<()> {
+        self.require_editor()?;
+        Self::announce_blob(&blob_id);
+        if let Ok(Some(mut l)) = self.layers.get_mut(&id) {
+            l.blob_id    = blob_id;
+            l.width      = width;
+            l.height     = height;
+            l.updated_at = updated_at;
+            drop(l);
+            app::emit!(Event::LayerUpdated(id));
+        }
+        Ok(())
+    }
+
+    /// Set / clear a layer mask (grayscale PNG blob; None clears it).
+    pub fn update_layer_mask(
+        &mut self,
+        id: String,
+        mask_blob_id: Option<String>,
+        updated_at: u64,
+    ) -> app::Result<()> {
+        self.require_editor()?;
+        if let Some(ref mask) = mask_blob_id { Self::announce_blob(mask); }
+        if let Ok(Some(mut l)) = self.layers.get_mut(&id) {
+            l.mask_blob_id = mask_blob_id;
+            l.updated_at   = updated_at;
+            drop(l);
+            app::emit!(Event::LayerUpdated(id));
+        }
+        Ok(())
+    }
+
+    /// Patch non-destructive adjustments on a layer (or adjustment layer).
+    pub fn update_adjustments(
+        &mut self,
+        id: String,
+        brightness: Option<i32>,
+        contrast: Option<i32>,
+        saturation: Option<i32>,
+        hue: Option<i32>,
+        exposure: Option<i32>,
+        blur: Option<u32>,
+        invert: Option<bool>,
+        curves: Option<String>,
+        updated_at: u64,
+    ) -> app::Result<()> {
+        self.require_editor()?;
+        if let Ok(Some(mut l)) = self.layers.get_mut(&id) {
+            if let Some(v) = brightness { l.adjustments.brightness = v; }
+            if let Some(v) = contrast   { l.adjustments.contrast   = v; }
+            if let Some(v) = saturation { l.adjustments.saturation = v; }
+            if let Some(v) = hue        { l.adjustments.hue        = v; }
+            if let Some(v) = exposure   { l.adjustments.exposure   = v; }
+            if let Some(v) = blur       { l.adjustments.blur       = v; }
+            if let Some(v) = invert     { l.adjustments.invert     = v; }
+            if let Some(v) = curves     { l.adjustments.curves     = v; }
+            l.updated_at = updated_at;
+            drop(l);
+            app::emit!(Event::LayerUpdated(id));
+        }
+        Ok(())
+    }
+
+    /// Update text-layer properties.
+    pub fn update_text(
+        &mut self,
+        id: String,
+        content: Option<String>,
+        font_family: Option<String>,
+        font_size: Option<u32>,
+        color: Option<String>,
+        bold: Option<bool>,
+        italic: Option<bool>,
+        align: Option<String>,
+        updated_at: u64,
+    ) -> app::Result<()> {
+        self.require_editor()?;
+        if let Ok(Some(mut l)) = self.layers.get_mut(&id) {
+            let mut t = l.text.clone().unwrap_or_default();
+            if let Some(v) = content     { t.content     = v; }
+            if let Some(v) = font_family { t.font_family = v; }
+            if let Some(v) = font_size   { t.font_size   = v; }
+            if let Some(v) = color       { t.color       = v; }
+            if let Some(v) = bold        { t.bold        = v; }
+            if let Some(v) = italic      { t.italic      = v; }
+            if let Some(v) = align       { t.align       = Some(v); }
+            l.text       = Some(t);
+            l.updated_at = updated_at;
+            drop(l);
+            app::emit!(Event::LayerUpdated(id));
+        }
+        Ok(())
+    }
+
+    pub fn delete_layer(&mut self, id: String) -> app::Result<()> {
+        self.require_editor()?;
+        // Re-parent / delete orphaned children of a deleted group to top level.
+        let children: Vec<String> = self.layers.entries()
+            .map(|iter| iter
+                .filter(|(_, l)| l.parent_id.as_deref() == Some(id.as_str()))
+                .map(|(k, _)| k)
+                .collect())
+            .unwrap_or_default();
+        for child in children {
+            if let Ok(Some(mut l)) = self.layers.get_mut(&child) {
+                l.parent_id = None;
+            }
+        }
+        let _ = self.layers.remove(&id);
+        app::emit!(Event::LayerDeleted(id));
+        Ok(())
+    }
+
+    pub fn get_layers(&self) -> Vec<Layer> {
+        let mut layers: Vec<Layer> = self.layers.entries().unwrap().map(|(_, v)| v).collect();
+        layers.sort_by_key(|l| l.layer_index);
+        layers
+    }
+
+    pub fn get_layer(&self, id: String) -> Option<Layer> {
+        self.layers.get(&id).ok().flatten().map(|v| v.clone())
+    }
+
+    /// Move a layer into / out of a group and set its index in one call.
+    pub fn move_layer(
+        &mut self,
+        id: String,
+        parent_id: Option<String>,
+        layer_index: u32,
+        updated_at: u64,
+    ) -> app::Result<()> {
+        self.require_editor()?;
+        if let Ok(Some(mut l)) = self.layers.get_mut(&id) {
+            l.parent_id   = parent_id;
+            l.layer_index = layer_index;
+            l.updated_at  = updated_at;
+            drop(l);
+            app::emit!(Event::LayersReordered());
+        }
+        Ok(())
+    }
+
+    /// Apply an explicit ordering: each (id, index) pair sets that layer's
+    /// `layer_index`. Used after a drag-reorder in the layers panel.
+    pub fn reorder_layers(&mut self, order: Vec<(String, u32)>, updated_at: u64) -> app::Result<()> {
+        self.require_editor()?;
+        for (id, idx) in order {
+            if let Ok(Some(mut l)) = self.layers.get_mut(&id) {
+                l.layer_index = idx;
+                l.updated_at  = updated_at;
+            }
+        }
+        app::emit!(Event::LayersReordered());
+        Ok(())
+    }
+
+    pub fn bring_to_front(&mut self, id: String, updated_at: u64) -> app::Result<()> {
+        self.require_editor()?;
+        let max_index = self.layers.entries().unwrap().map(|(_, v)| v.layer_index).max().unwrap_or(0);
+        if let Ok(Some(mut l)) = self.layers.get_mut(&id) {
+            l.layer_index = max_index + 1;
+            l.updated_at  = updated_at;
+        }
+        app::emit!(Event::LayersReordered());
+        Ok(())
+    }
+
+    pub fn send_to_back(&mut self, id: String, updated_at: u64) -> app::Result<()> {
+        self.require_editor()?;
+        let other_ids: Vec<String> = self.layers.entries().unwrap()
+            .filter(|(k, _)| *k != id).map(|(k, _)| k).collect();
+        for other_id in &other_ids {
+            if let Ok(Some(mut other)) = self.layers.get_mut(other_id) {
+                other.layer_index = other.layer_index.saturating_add(1);
+            }
+        }
+        if let Ok(Some(mut l)) = self.layers.get_mut(&id) {
+            l.layer_index = 0;
+            l.updated_at  = updated_at;
+        }
+        app::emit!(Event::LayersReordered());
+        Ok(())
+    }
+
+    pub fn clear_layers(&mut self) -> app::Result<()> {
+        self.require_admin()?;
+        let ids: Vec<String> = self.layers.entries()
+            .map(|iter| iter.map(|(k, _)| k).collect())
+            .unwrap_or_default();
+        for id in ids {
+            let _ = self.layers.remove(&id);
+        }
+        app::emit!(Event::LayersReordered());
+        Ok(())
+    }
+
+    // ── Cursor tracking ───────────────────────────────────────────────────────
+
+    /// Broadcast the caller's cursor. Presence is open to all members
+    /// (including viewers); both ids are the real signer's, not client-supplied.
+    pub fn update_cursor(&mut self, x: i64, y: i64, updated_at: u64) {
+        // Keyed by DEVICE: one pointer per open window, so a member editing from
+        // two machines shows two. The account rides along so the overlay can put
+        // their username on both.
+        let identity = String::from(Self::caller_device());
+        let cs = CursorState {
+            identity: identity.clone(),
+            account: Self::caller_id(),
+            x,
+            y,
+            updated_at,
+        };
+        let _ = self.cursors.insert(identity.clone(), cs);
+        app::emit!(Event::CursorMoved(identity));
+    }
+
+    pub fn get_cursors(&self) -> Vec<CursorState> {
+        self.cursors.entries().unwrap().map(|(_, v)| v).collect()
+    }
+}
+
+// ── Tests ───────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use calimero_sdk::testing::TestHost;
+
+    use super::*;
+
+    const OTHER: [u8; 32] = [0x22; 32];
+
+    // Roles, ownership and the member roster are keyed by ACCOUNT, and `call_as`
+    // keeps the caller's account on purpose (two devices of one person). A second
+    // PERSON therefore needs their own account.
+    const OTHER_ACCOUNT: [u8; 32] = [0xA2; 32];
+
+    /// The member id an account is written as — hex, which is what
+    /// [`MeroPixArt::require_account`] parses. `String::from(PublicKey::…)` gives
+    /// bs58 and is now rejected by shape.
+    fn member_id(account: [u8; 32]) -> MemberId {
+        AccountId::from(account).to_string()
+    }
+
+    fn new_doc() -> TestHost<MeroPixArt> {
+        TestHost::new(|| MeroPixArt::init("Untitled".to_owned(), "desc".to_owned(), 800, 600))
+    }
+
+    fn sample_layer(id: &str) -> Layer {
+        Layer {
+            id: id.to_owned(),
+            name: "Layer".to_owned(),
+            kind: "raster".to_owned(),
+            parent_id: None,
+            layer_index: 0,
+            visible: true,
+            locked: false,
+            opacity: 100,
+            blend_mode: "normal".to_owned(),
+            x: 0, y: 0, width: 100, height: 100, rotation: 0,
+            scale_x: 100, scale_y: 100,
+            skew_x: 0, skew_y: 0, flip_h: false, flip_v: false,
+            warp: String::new(),
+            blob_id: String::new(),
+            mask_blob_id: None,
+            fill: String::new(),
+            adjustments: Adjustments::default(),
+            text: None,
+            created_by: "creator".to_owned(),
+            created_at: 1, updated_at: 1,
+        }
+    }
+
+    #[test]
+    fn creator_is_admin_and_can_edit() {
+        let app = new_doc();
+        assert_eq!(app.view(|s| s.my_role()), "admin");
+        assert!(app.view(|s| s.can_edit()));
+    }
+
+    #[test]
+    fn document_defaults_and_resize() {
+        let mut app = new_doc();
+        let doc = app.view(|s| s.get_document());
+        assert_eq!(doc.width, 800);
+        assert_eq!(doc.height, 600);
+        app.call(|s| s.update_document(None, None, Some(1024), Some(768), None)).unwrap();
+        let doc = app.view(|s| s.get_document());
+        assert_eq!(doc.width, 1024);
+        assert_eq!(doc.height, 768);
+    }
+
+    #[test]
+    fn join_uses_signer_identity_not_client_arg() {
+        let mut app = new_doc();
+        app.call(|s| s.join("alice".to_owned(), None, 1));
+        let members = app.view(|s| s.get_members());
+        assert_eq!(members.len(), 1);
+        assert_eq!(members[0].username, "alice");
+        assert!(!members[0].id.is_empty());
+    }
+
+    #[test]
+    fn viewer_cannot_edit_editor_can() {
+        let mut app = new_doc();
+        app.call_as_account(OTHER_ACCOUNT, OTHER, |s| s.join("bob".to_owned(), None, 1));
+        assert!(app
+            .call_as_account(OTHER_ACCOUNT, OTHER, |s| s.add_layer(sample_layer("l1")))
+            .is_err());
+        assert_eq!(app.view(|s| s.get_layers()).len(), 0);
+
+        let bob = member_id(OTHER_ACCOUNT);
+        app.call(|s| s.grant_editor(bob.clone())).unwrap();
+        assert_eq!(app.view(|s| s.get_role(bob.clone())), "editor");
+        app.call_as_account(OTHER_ACCOUNT, OTHER, |s| s.add_layer(sample_layer("l1")))
+            .unwrap();
+        assert_eq!(app.view(|s| s.get_layers()).len(), 1);
+
+        app.call(|s| s.revoke_editor(bob.clone())).unwrap();
+        assert!(app
+            .call_as_account(OTHER_ACCOUNT, OTHER, |s| s.delete_layer("l1".to_owned()))
+            .is_err());
+    }
+
+    /// Under rc.20 a grant could only name someone the document had already heard
+    /// from, because that was the only way it learned their account. Members are
+    /// accounts now, so an admin can set a role from the node's members list
+    /// alone — before the invitee has ever opened the document.
+    #[test]
+    fn a_member_can_be_granted_before_they_ever_open_the_document() {
+        let mut app = new_doc();
+        let stranger = member_id([0x44u8; 32]);
+        app.call(|s| s.grant_editor(stranger.clone())).unwrap();
+        assert_eq!(app.view(|s| s.get_role(stranger)), "editor");
+    }
+
+    /// The ids are both 32 bytes and nothing downstream would object, so a public
+    /// key pasted where a member id belongs has to be rejected by shape here.
+    #[test]
+    fn a_public_key_is_not_a_member_id() {
+        let mut app = new_doc();
+        let key = String::from(PublicKey::from([0x44u8; 32]));
+        // `calimero_sdk::types::Error` is Debug-only, not Display.
+        let err = format!("{:?}", app.call(|s| s.grant_editor(key)).unwrap_err());
+        assert!(err.contains("not a member id"), "unexpected: {err}");
+    }
+
+    /// The one thing still keyed by device. Two windows of one person are two
+    /// pointers on everyone else's screen, both labelled with that person — which
+    /// is why `CursorState` carries the account as well as the device.
+    #[test]
+    fn one_person_on_two_devices_has_two_cursors_and_one_membership() {
+        let mut app = new_doc();
+        const LAPTOP: [u8; 32] = [0x01; 32];
+        const TABLET: [u8; 32] = [0x02; 32];
+
+        app.call_as_account(OTHER_ACCOUNT, LAPTOP, |s| s.join("bob".to_owned(), None, 1));
+        app.call_as_account(OTHER_ACCOUNT, TABLET, |s| s.join("bob".to_owned(), None, 2));
+        assert_eq!(app.view(|s| s.get_members()).len(), 1);
+
+        app.call_as_account(OTHER_ACCOUNT, LAPTOP, |s| s.update_cursor(10, 10, 3));
+        app.call_as_account(OTHER_ACCOUNT, TABLET, |s| s.update_cursor(80, 80, 4));
+        let cursors = app.view(|s| s.get_cursors());
+        assert_eq!(cursors.len(), 2);
+        assert!(cursors.iter().all(|c| c.account == member_id(OTHER_ACCOUNT)));
+    }
+
+    #[test]
+    fn non_admin_cannot_grant_roles() {
+        let mut app = new_doc();
+        let third = member_id([0x33u8; 32]);
+        assert!(app
+            .call_as_account(OTHER_ACCOUNT, OTHER, |s| s.grant_editor(third))
+            .is_err());
+    }
+
+    #[test]
+    fn layer_content_and_adjustments_update() {
+        let mut app = new_doc();
+        app.call(|s| s.add_layer(sample_layer("l1"))).unwrap();
+        app.call(|s| s.update_adjustments(
+            "l1".to_owned(), Some(20), Some(-10), Some(5), None, None, None, Some(true), None, 2,
+        )).unwrap();
+        let l = app.view(|s| s.get_layer("l1".to_owned())).unwrap();
+        assert_eq!(l.adjustments.brightness, 20);
+        assert_eq!(l.adjustments.contrast, -10);
+        assert!(l.adjustments.invert);
+
+        app.call(|s| s.update_layer_content("l1".to_owned(), String::new(), 256, 256, 3)).unwrap();
+        let l = app.view(|s| s.get_layer("l1".to_owned())).unwrap();
+        assert_eq!(l.width, 256);
+        assert_eq!(l.height, 256);
+    }
+
+    #[test]
+    fn deleting_group_reparents_children() {
+        let mut app = new_doc();
+        let mut group = sample_layer("g1");
+        group.kind = "group".to_owned();
+        app.call(|s| s.add_layer(group)).unwrap();
+        let mut child = sample_layer("c1");
+        child.parent_id = Some("g1".to_owned());
+        app.call(|s| s.add_layer(child)).unwrap();
+
+        app.call(|s| s.delete_layer("g1".to_owned())).unwrap();
+        let c = app.view(|s| s.get_layer("c1".to_owned())).unwrap();
+        assert_eq!(c.parent_id, None);
+    }
+
+    #[test]
+    fn update_transform_patches_only_what_it_is_given() {
+        let mut app = new_doc();
+        let mut l = sample_layer("l1");
+        l.rotation = 15;
+        l.scale_x = 120;
+        app.call(|s| s.add_layer(l)).unwrap();
+
+        // Shear + mirror + warp, leaving rotation/scale untouched.
+        app.call(|s| s.update_transform(
+            "l1".to_owned(), None, None, None,
+            Some(12), Some(-8), Some(true), None,
+            Some(r#"{"tl":[4,0],"tr":[0,0],"br":[0,0],"bl":[0,6]}"#.to_owned()),
+            2,
+        )).unwrap();
+
+        let l = app.view(|s| s.get_layer("l1".to_owned())).unwrap();
+        assert_eq!((l.rotation, l.scale_x), (15, 120), "untouched fields survive");
+        assert_eq!((l.skew_x, l.skew_y), (12, -8));
+        assert!(l.flip_h);
+        assert!(!l.flip_v);
+        assert!(l.warp.contains("\"bl\":[0,6]"));
+        assert_eq!(l.updated_at, 2);
+    }
+
+    /// A skew past vertical would make the layer's transform matrix singular, so
+    /// the contract clamps rather than trusting the client's number.
+    #[test]
+    fn update_transform_clamps_skew_to_a_renderable_range() {
+        let mut app = new_doc();
+        app.call(|s| s.add_layer(sample_layer("l1"))).unwrap();
+        app.call(|s| s.update_transform(
+            "l1".to_owned(), None, None, None, Some(400), Some(-999), None, None, None, 2,
+        )).unwrap();
+        let l = app.view(|s| s.get_layer("l1".to_owned())).unwrap();
+        assert_eq!((l.skew_x, l.skew_y), (80, -80));
+    }
+
+    #[test]
+    fn update_transform_with_an_empty_warp_clears_it() {
+        let mut app = new_doc();
+        app.call(|s| s.add_layer(sample_layer("l1"))).unwrap();
+        app.call(|s| s.update_transform(
+            "l1".to_owned(), None, None, None, None, None, None, None,
+            Some(r#"{"tl":[9,9],"tr":[0,0],"br":[0,0],"bl":[0,0]}"#.to_owned()), 2,
+        )).unwrap();
+        assert!(!app.view(|s| s.get_layer("l1".to_owned())).unwrap().warp.is_empty());
+
+        app.call(|s| s.update_transform(
+            "l1".to_owned(), None, None, None, None, None, None, None, Some(String::new()), 3,
+        )).unwrap();
+        assert!(app.view(|s| s.get_layer("l1".to_owned())).unwrap().warp.is_empty());
+    }
+
+    #[test]
+    fn viewer_cannot_transform_a_layer() {
+        let mut app = new_doc();
+        app.call(|s| s.add_layer(sample_layer("l1"))).unwrap();
+        assert!(app
+            .call_as_account(OTHER_ACCOUNT, OTHER, |s| s.update_transform(
+                "l1".to_owned(), Some(90), None, None, None, None, None, None, None, 2,
+            ))
+            .is_err());
+        assert_eq!(app.view(|s| s.get_layer("l1".to_owned())).unwrap().rotation, 0);
+    }
+
+    #[test]
+    fn move_layers_reparents_a_whole_selection_at_once() {
+        let mut app = new_doc();
+        let mut group = sample_layer("g1");
+        group.kind = "group".to_owned();
+        app.call(|s| s.add_layer(group)).unwrap();
+        app.call(|s| s.add_layer(sample_layer("a"))).unwrap();
+        app.call(|s| s.add_layer(sample_layer("b"))).unwrap();
+
+        app.call(|s| s.move_layers(
+            vec![("a".to_owned(), Some("g1".to_owned())), ("b".to_owned(), Some("g1".to_owned()))],
+            5,
+        )).unwrap();
+
+        for id in ["a", "b"] {
+            let l = app.view(|s| s.get_layer(id.to_owned())).unwrap();
+            assert_eq!(l.parent_id.as_deref(), Some("g1"));
+            assert_eq!(l.updated_at, 5);
+        }
+
+        // …and back out to the root.
+        app.call(|s| s.move_layers(vec![("a".to_owned(), None)], 6)).unwrap();
+        assert_eq!(app.view(|s| s.get_layer("a".to_owned())).unwrap().parent_id, None);
+    }
+
+    /// Dropping a group into its own child would make the tree unrenderable for
+    /// every peer, so the pair is refused instead of stored.
+    #[test]
+    fn move_layers_refuses_to_close_a_cycle() {
+        let mut app = new_doc();
+        for id in ["outer", "inner"] {
+            let mut g = sample_layer(id);
+            g.kind = "group".to_owned();
+            app.call(|s| s.add_layer(g)).unwrap();
+        }
+        app.call(|s| s.move_layers(vec![("inner".to_owned(), Some("outer".to_owned()))], 2)).unwrap();
+
+        // outer → inner would close the loop, and self-parenting is refused too.
+        app.call(|s| s.move_layers(
+            vec![("outer".to_owned(), Some("inner".to_owned())), ("inner".to_owned(), Some("inner".to_owned()))],
+            3,
+        )).unwrap();
+
+        assert_eq!(app.view(|s| s.get_layer("outer".to_owned())).unwrap().parent_id, None);
+        assert_eq!(
+            app.view(|s| s.get_layer("inner".to_owned())).unwrap().parent_id.as_deref(),
+            Some("outer"),
+        );
+    }
+
+    #[test]
+    fn move_layers_is_editor_gated_and_skips_unknown_ids() {
+        let mut app = new_doc();
+        app.call(|s| s.add_layer(sample_layer("a"))).unwrap();
+        assert!(app
+            .call_as_account(OTHER_ACCOUNT, OTHER, |s| s.move_layers(
+                vec![("a".to_owned(), Some("ghost".to_owned()))], 2,
+            ))
+            .is_err());
+        // An id nobody has heard of is a no-op, not a failure.
+        app.call(|s| s.move_layers(vec![("ghost".to_owned(), None)], 3)).unwrap();
+        assert_eq!(app.view(|s| s.get_layers()).len(), 1);
+    }
+
+    /// Nested groups: deleting the outer group must not leave a grandchild
+    /// pointing at a layer that no longer exists.
+    #[test]
+    fn deleting_a_nested_group_only_reparents_its_own_children() {
+        let mut app = new_doc();
+        for id in ["outer", "inner"] {
+            let mut g = sample_layer(id);
+            g.kind = "group".to_owned();
+            if id == "inner" { g.parent_id = Some("outer".to_owned()); }
+            app.call(|s| s.add_layer(g)).unwrap();
+        }
+        let mut leaf = sample_layer("leaf");
+        leaf.parent_id = Some("inner".to_owned());
+        app.call(|s| s.add_layer(leaf)).unwrap();
+
+        app.call(|s| s.delete_layer("outer".to_owned())).unwrap();
+        assert_eq!(app.view(|s| s.get_layer("inner".to_owned())).unwrap().parent_id, None);
+        assert_eq!(
+            app.view(|s| s.get_layer("leaf".to_owned())).unwrap().parent_id.as_deref(),
+            Some("inner"),
+            "the grandchild stays inside the group that still exists",
+        );
+    }
+
+    #[test]
+    fn layer_merge_uses_updated_at() {
+        let mut a = sample_layer("l");
+        a.opacity = 100; a.updated_at = 100;
+        let mut b = sample_layer("l");
+        b.opacity = 40; b.updated_at = 200;
+        a.merge(&b).unwrap();
+        assert_eq!(a.opacity, 40);
+    }
+
+    /// What `init` was given is readable before any owner edit — the `Ownable`
+    /// cell cannot be seeded at init on rc.20, so this pins the fallback.
+    #[test]
+    fn init_name_is_readable_before_and_after_an_owner_edit() {
+        let mut app = new_doc();
+        let doc = app.view(|s| s.get_document());
+        assert_eq!(doc.name, "Untitled");
+        assert_eq!(doc.description, "desc");
+
+        app.call(|s| s.update_document(Some("Renamed".to_owned()), None, None, None, None))
+            .unwrap();
+        assert_eq!(app.view(|s| s.get_document()).name, "Renamed");
+    }
+
+    #[test]
+    fn only_owner_renames_document() {
+        let mut app = new_doc();
+        app.call(|s| s.update_document(Some("Renamed".to_owned()), None, None, None, None)).unwrap();
+        assert_eq!(app.view(|s| s.get_document()).name, "Renamed");
+        // A second PERSON, not just a second device: ownership is account-keyed on
+        // rc.20 and `call_as` keeps the caller's account.
+        assert!(app
+            .call_as_account(OTHER_ACCOUNT, OTHER, |s| s
+                .update_document(Some("Hijacked".to_owned()), None, None, None, None))
+            .is_err());
+        assert_eq!(app.view(|s| s.get_document()).name, "Renamed");
+    }
+
+    #[test]
+    fn ownership_transfer_moves_control() {
+        let mut app = new_doc();
+        app.call_as_account(OTHER_ACCOUNT, OTHER, |s| s.join("bob".to_owned(), None, 1));
+        let other = member_id(OTHER_ACCOUNT);
+        app.call(|s| s.transfer_ownership(other.clone())).unwrap();
+        assert_eq!(app.view(|s| s.get_document()).owner, Some(other.clone()));
+        app.call_as_account(OTHER_ACCOUNT, OTHER, |s| s
+            .update_document(Some("Owned".to_owned()), None, None, None, None))
+            .unwrap();
+        assert_eq!(app.view(|s| s.get_document()).name, "Owned");
+        assert!(app.call(|s| s.update_document(Some("nope".to_owned()), None, None, None, None)).is_err());
+        assert_eq!(app.view(|s| s.get_role(other)), "admin");
+        assert_eq!(app.view(|s| s.my_role()), "viewer");
+        assert!(!app.view(|s| s.can_edit()));
+    }
+}

@@ -1,0 +1,313 @@
+# MeroPixArt — Build Tracker
+
+A collaborative, peer‑to‑peer raster image editor (a Photopea / Photoshop‑style
+app) built on the **Calimero** network. Layers, masks, adjustments, blend modes,
+transform/warp, text, folders, brush/eraser/fill, image upload, export, and a
+gallery — all collaborative across nodes the same way **MeroDesign** and
+**MeroChat** are: teams (namespaces) → projects (subgroups + contexts) →
+invitations → roles.
+
+Package: `com.calimero.meropixart` · crate `meropixart` · wasm `meropixart.wasm`
+Dev ports: node1 `2460`/`2560`, node2 `2461`/`2561` · frontend `5176`
+
+---
+
+## 0. Architecture (decisions)
+
+- **Contract holds metadata, blobs hold pixels.** WASM/CRDT state is too small &
+  expensive for raster data. Each raster layer's pixels are a **PNG blob**
+  (`PUT /admin-api/blobs`, announced to context). The contract stores the
+  `blobId` + layer metadata. Masks are grayscale PNG blobs too.
+- **Editing pipeline.** Destructive ops (brush, eraser, fill, crop, transform
+  bake, filters) are rendered in‑browser to an offscreen canvas → exported to a
+  new PNG blob → `update_layer_content(layerId, blobId, …)`. Non‑destructive
+  adjustments (brightness/contrast/saturation/hue/exposure/curves), opacity,
+  blend mode, visibility, and transform live as **layer params** applied at
+  composite/render time.
+- **Compositor.** Layers composited bottom→top honoring folder nesting, blend
+  mode, opacity, mask, and adjustments. 2D canvas first; WebGL optional later.
+- **Collaboration.** Same governance as MeroDesign: namespace=team,
+  subgroup+context=project, `AccessControl` roles (admin/editor/viewer), SSE for
+  realtime, live cursors. LWW merge on `updated_at`.
+- **Theme.** Calimero dark: bg `#0F1419`/`#131215`/`#0A0E13`, accent lime
+  `#A5FF11`, font Power Grotesk/Inter. Dark UI is correct for an image editor.
+
+---
+
+## 1. Backend — WASM contract (`logic/`)  ✓ DONE
+
+> **SDK pin:** `0.11.0-rc.6` for all Calimero crates (sdk, storage,
+> storage-macros), via **git tag** `https://github.com/calimero-network/core?tag=0.11.0-rc.6`
+> (commit `33f5763`) — rc.6 is published only as a git tag (crates.io stops at
+> rc.5) and the workspace package version at the tag is `0.0.0`, so a plain
+> version requirement can't match; the git-tag form is required. Uses **borsh
+> 1.6.1** (rc.6 needs borsh 1.x). The unused `calimero-wasm-abi` build-dep was
+> dropped (no `build.rs`; the crate was renamed `mero-abi` in core anyway).
+> 10/10 `cargo test` pass; WASM builds to `res/meropixart.wasm` (~1.17 MB).
+> Merobox/CI runtime image bumped to `merod:0.11.0-rc.24`. Verified end-to-end on
+> a live node (install + init + RPCs).
+
+- [x] `Cargo.toml`, `rust-toolchain.toml`, `build.sh`, `build-bundle.sh`, `calimero.json`
+- [x] State: doc name/desc (Ownable<LwwRegister>), canvas w/h/background,
+      `layers/members/cursors: UnorderedMap`, `roles: AccessControl`
+- [x] `Layer` (id,name,kind,parentId,layerIndex,visible,locked,opacity,blendMode,
+      x/y/w/h,rotation,scaleX/scaleY,blobId,maskBlobId,fill,adjustments,text,
+      createdBy/At,updatedAt) — LWW merge on updatedAt
+- [x] `Adjustments` (brightness,contrast,saturation,hue,exposure,blur,invert,curves)
+- [x] `TextProps` (content,fontFamily,fontSize,color,bold,italic,align)
+- [x] Events (LayerAdded/Updated/Deleted, LayersReordered, Member*, DocumentUpdated, CursorMoved, RoleUpdated, OwnerTransferred)
+- [x] RPC document/roles/members/layers/cursors (full surface incl. move_layer,
+      reorder_layers, bring_to_front, send_to_back, update_layer_content,
+      update_layer_mask, update_adjustments, update_text, clear_layers)
+- [x] Blob announce on content/mask/image layers
+- [x] Unit tests (roles, ownership, doc resize, layer LWW, group reparent, viewer gate)
+
+## 2. Frontend — app shell & infra (`app/`)  ✓ DONE
+
+- [ ] `package.json` (mero-js/react/ui, react 19, vite 6, vitest 4, playwright,
+      zustand, react-router 7, uuid, axios, clsx)
+- [ ] `vite.config.ts` (port 5176, vitest jsdom), `tsconfig*.json`, `eslint`, `index.html`
+- [ ] `playwright.config.ts` (mocked + integration projects, PW_PORT default 5176)
+- [ ] `src/main.tsx` (MeroProvider, Tauri-hash SSO), `src/App.tsx` (routes + guards)
+- [ ] `src/index.css` — Calimero dark theme tokens
+- [ ] `src/api/rpc.ts` (rpcCall, admin*, blobs), `src/api/appId.ts`, `src/api/namespaces`
+- [ ] `src/hooks/useSse.ts`, `src/contexts/ToastContext.tsx`
+- [ ] `src/types/index.ts` (Layer, Adjustments, TextProps, Member, Project, Team)
+- [ ] Pages: Landing, Login, Teams, Projects (+gallery), Editor
+
+## 3. Frontend — editor core  ✓ DONE
+
+- [ ] `store/editorStore.ts` (zustand: layers, selection, activeTool, zoom/pan,
+      color, brush settings, undo/redo history, clipboard)
+- [ ] **Compositor** `components/CanvasStage.tsx` — stacked layer render w/ blend
+      mode, opacity, mask, adjustments, transform; pan/zoom; selection overlay
+- [ ] `utils/raster.ts` — offscreen render, PNG export, adjustment→canvas filter,
+      mask apply, blob round‑trip; `utils/blobCache.ts` (IndexedDB)
+- [ ] **Toolbar** `components/Toolbar.tsx` — move, marquee/lasso select, crop,
+      brush, eraser, bucket fill, eyedropper, text, shapes, gradient, transform,
+      warp, clone stamp, zoom/hand
+- [ ] **LayersPanel** `components/LayersPanel.tsx` — list + folders (drag‑nest),
+      reorder, visibility, lock, opacity, blend mode, mask add/edit, group/ungroup,
+      add/delete/duplicate, rename
+- [ ] **AdjustmentsPanel** — brightness/contrast/saturation/hue/exposure/invert
+      sliders + **CurvesEditor** (canvas spline UI) + Levels
+- [ ] **ColorPicker**, brush size/hardness/opacity controls
+- [ ] **TopBar** — new/open/export(PNG·JPG), undo/redo, zoom, doc size, members, settings
+- [ ] **HistoryPanel** (undo/redo stack)
+- [ ] Collab: `CursorsOverlay`, presence, SSE refetch wiring
+- [ ] Image **upload** → new raster layer (blob); **export** flatten → download
+- [ ] Governance UI: `InviteModal`, `SettingsModal` (roles), `UsernameModal`
+
+## 4. Tools — image editing feature matrix  ◐ CORE DONE
+
+- [x] Brush / pencil (size, hardness, opacity, color) — destructive to active raster layer
+- [x] Eraser (destination-out)
+- [x] Bucket fill (flood fill w/ tolerance)
+- [x] Eyedropper (samples composited pixel)
+- [x] Move (translate via drag)
+- [x] Transform (scale + rotate handles on bounding box; shear via the edge grips)
+- [x] Shear / mirror / corner-pin warp — `skew_x`, `skew_y`, `flip_h`, `flip_v`, `warp`
+      on the contract, one matrix + triangle-mesh renderer in `utils/transform.ts`,
+      a numeric Transform panel, and `Apply` to bake into pixels
+- [x] Text layers (content, font, size, color, bold/italic, align)
+- [x] Fill layers (solid color)
+- [x] Layer masks (paint black=hide / white=reveal, grayscale blob)
+- [x] Blend modes (all 16 via globalCompositeOperation)
+- [x] Non-destructive adjustments (brightness/contrast/saturation/hue/exposure/blur/invert) — live CSS filter
+- [x] Curves (per-channel RGB/R/G/B spline editor, baked via LUT) + filter presets (grayscale/sepia/blur)
+- [x] Layer folders / groups (nesting, inherited visibility + opacity)
+- [x] Folders as a real tree in the panel — collapsible rows, drag-nest, a root
+      drop strip, rename, content counts, ⌘G / ⌘⇧G, and "selecting a folder
+      selects its contents" so a canvas drag moves the group as one
+      (`utils/layerTree.ts`, `move_layers` on the contract)
+- [x] Canvas resize (via Settings → update_document width/height)
+- [x] Image upload → raster layer; export flatten → PNG / JPG download
+- [x] Showcase projects — four bundled documents authored as paint recipes
+      (`src/showcase/`), loaded through the ordinary contract calls, offered from
+      *File ▸ Open Showcase Project…* and as a starter in the New Project modal
+- [ ] Marquee / lasso selection → crop-to-selection (FOLLOW-UP)
+- [ ] Dedicated crop tool (FOLLOW-UP — resize works via Settings)
+- [x] Warp — corner-pin (four handles, bilinear, drawn as a subdivided triangle
+      mesh because Canvas 2D has no projective transform). A finer mesh than 2×2
+      (Photoshop ships 4×4, which can bow an EDGE — four pins cannot) is a
+      follow-up; the preset names deliberately promise only what pins can do.
+- [ ] Gradient tool, Clone stamp, Shape-draw tool (FOLLOW-UP — shapes available as fill layers)
+- [ ] Standalone Levels UI + adjustment layers (FOLLOW-UP — curves covers tone)
+
+## 5. Scripts (`scripts/`)  ✓ DONE (dev-node verified on real merod rc.4)
+
+- [ ] `setup.sh` — prereqs, wasm target, build logic, install app deps
+- [ ] `dev-node.sh` — node1 on 2460/2560: build, init, CORS, install app, namespace+subgroup+context, write `app/.env.integration`
+- [ ] `dev-node2.sh` — node2 on 2461/2561: bootstrap‑to‑node1, install app
+- [ ] `dev-invite.sh` — invite node2 → join namespace + project context
+- [ ] `workflows.sh` — run merobox YAMLs with full pre/post cleanup
+
+## 6. Makefile  ✓ DONE
+
+- [ ] Targets: `help setup install build bundle dev restart frontend dev-node
+      dev-node2 dev-invite stop logic-build logic-bundle app-build
+      app-typecheck app-lint test unit e2e e2e-ui workflows logic-test clean`
+
+## 7. Merobox workflows (`workflows/`)  ✓ WRITTEN (run needs Docker — not available in this env)
+
+- [ ] `e2e.yml` — 2‑node: install, namespace, project context, invite/join, sync,
+      add layer from node1, verify layers on node2
+- [ ] `integration-setup.yml` — 2‑node seed for Playwright integration (nodes stay up)
+- [ ] `logic-test.yml` — single‑node RPC assertions over the contract surface
+
+## 8. CI (`.github/workflows/`)  ✓ DONE
+
+- [ ] `ci.yml` — typecheck + lint + vitest + build + mocked Playwright
+- [ ] `integration-ci.yml` — build wasm → merobox integration-setup → integration Playwright
+- [ ] `workflow-tests.yml` — build wasm → merobox e2e.yml + logic-test.yml (retries)
+
+## 9. Tests  ◐ (unit + mocked e2e green; integration/merobox need Docker)
+
+- [x] Rust unit tests (contract) — 10/10 `cargo test` pass
+- [x] Live-node RPC smoke test — get_document/my_role/join/get_members/add_layer/update_adjustments/get_layers all verified against real merod rc.4
+- [x] Vitest unit tests — 17/17 pass (raster math, color, curves, blend, store actions, undo/redo, role gate)
+- [x] Playwright **mocked** e2e — 11/11 pass (landing + editor: tools, brush controls, layers panel, role badge, doc name, canvas, colors)
+- [ ] Playwright **integration** e2e — FOLLOW-UP (dir scaffolded; needs 2 live nodes + seed)
+- [ ] Merobox workflow run — FOLLOW-UP (YAMLs written + YAML-valid; needs Docker)
+
+## 10. Docs  ✓ DONE
+
+- [x] `README.md` (rewritten for the editor), `.gitignore`, `.editorconfig`
+- [x] `TRACKER.md` (this file)
+
+---
+
+## Build status (verified this session)
+
+| Check | Result |
+|-------|--------|
+| `cargo test` (contract) | ✅ 10/10 |
+| WASM build | ✅ `res/meropixart.wasm` (~1.16 MB) |
+| `pnpm build` (tsc + vite) | ✅ clean |
+| `pnpm lint` | ✅ 0 errors (4 benign warnings) |
+| `pnpm test` (vitest) | ✅ 17/17 |
+| `pnpm e2e` (playwright mocked) | ✅ 11/11 |
+| Live merod rc.4: install + create project + RPC | ✅ verified |
+
+**SDK note:** pinned `0.11.0-rc.6` for all Calimero crates via git tag (crates.io
+stops at rc.5; rc.6 is a git tag only). borsh `1.6.1`. Merod runtime image in
+workflows = `merod:0.11.0-rc.24`. Contract verified live (the rc.6 build also runs
+on the locally-installed `merod 0.11.0-rc.4` — the host ABI is stable across RCs).
+
+## 2026-06-25 — UI pass (requirements.md)
+- [x] Professional color picker — RGB + HSL sliders (numeric inputs) on top of SV/hue/hex; now a **movable** floating dialog (drag by title bar).
+- [x] Layer color editing — fill/text layers expose a clickable Color swatch in LayersPanel props → opens the picker (live preview, single commit on close).
+- [x] Selection clipboard — right-click a marquee/lasso selection → **Cut / Copy / Paste**; paste creates a new raster layer with just the copied content; cut clears the region from a raster layer. Ctrl/Cmd+C/X/V too. `clipboard` added to the store.
+- [x] Removed the gradient tool icon from the rail (per request).
+- Still open from requirements.md (big-ticket): top menu bar (File/Edit/Image/…), precision rulers + crosshair guides, smaller 8px transparency checkerboard w/ size setting, Navigator panel, History panel UI, guides & snapping, status bar (zoom/coords/selection/doc/color), color wheel + opacity + current/previous swatches.
+
+## 2026-06-26 — Priority-backlog pass (requirements.md)
+Worked the `## Priority backlog` list top-down. Done this session:
+- **History panel** — `HistoryPanel.tsx` surfaces the undo/redo stack. History
+  entries now carry a `label` (Brush/Erase/Paint Bucket/Move/Transform/Crop/
+  Cut/Filter:…/Levels/Rasterize/Merge…). Click any state to `jumpHistory(n)`;
+  a per-layer restore-sequence guard prevents stale async decodes when jumping
+  multiple steps.
+- **Navigator** — `Navigator.tsx`: throttled `<img>` minimap (no extra
+  `<canvas>`, so the e2e canvas-count assumptions hold), red viewport box,
+  click/drag-to-pan, log-scale zoom slider.
+- **Grid / guides / snapping / crosshair** — store `view` settings + `guides`.
+  CanvasStage draws the grid + a DOM crosshair + guide lines; rulers drag out
+  guides (drag back past the ruler to delete; double-click to remove); Move
+  snaps layer edges/centre to grid lines, guides, doc edges & centre.
+- **Ruler units** (px/in/cm/mm/%) — rulers tick/label in the chosen unit;
+  **transparency-grid size** (Small/Medium/Large) drives the checkerboard.
+- **Layer ops** — Rasterize / Merge Down / Merge Visible / Flatten Image
+  (composite subset → one raster blob, replace + persist). Layer menu wired.
+- **Select** — Inverse (⌘⇧I, even-odd vs doc bounds) + Modify Expand/Contract.
+- **Filters** — Motion Blur, Add Noise, Pixelate added to `filters.ts`.
+- **Levels** — `LevelsEditor.tsx` + `applyLevels` LUT (in/out black-white +
+  gamma), baked into the active raster layer.
+- **Color picker** — hue/sat **wheel**, **alpha** slider (emits #rrggbbaa when
+  <255), **current/previous** compare swatch, **saveable swatches** library
+  (localStorage `mp-swatches`).
+- **Window menu** — toggles Navigator/Adjustments/History/Layers dock panels;
+  View/Window also toggle Rulers, Grid, Guides, Snap, Crosshair, units, checker.
+- **Status bar** — live colour readout under the cursor + unit-aware X/Y.
+
+Verified: `tsc -b` clean · `pnpm lint` 0 errors (warnings only) · `vite build`
+clean · vitest 17/17 · Playwright mocked **37/37** (7 new tests for the above).
+
+Still open from the backlog: marquee/lasso variants + Magic Wand (#5), layer
+styles/blending-options dialog (#6), Color Range (#7), adjustment layers (#8),
+free-floating/undockable panels (#10).
+
+## 2026-06-26 — Selections, multi-layer, dock + cross-project bug
+Follow-up to the backlog pass:
+- **Selections confined to the active layer** — Copy now samples only the
+  selected layer (was the full composite); paint/fill/cut/delete already
+  targeted the active layer.
+- **Multi-layer selection** — Cmd/Ctrl-click toggles, Shift-click range-selects
+  in the Layers panel (`selectedLayerIds`; `selectedLayerId` stays the primary
+  for props/adjustments/paint). Move drags all selected layers together with a
+  combined bounding box; Delete removes the whole selection.
+- **Collapsible dock + scroll** — each right-rail panel has a collapse chevron;
+  **History starts collapsed**; the dock itself scrolls (`overflow-y:auto`) so
+  panels never clip.
+- **BUG: every project showed the same image** — the editor route component
+  stays mounted across `:projectId` changes, so the global store + off-DOM
+  canvas registry + loaded-blob cache leaked one document's pixels into the
+  next. Fixed by a hard reset (`clearAllCanvases()` + store/layers/selection/
+  history/guides + `loadedBlobs`) at the top of the project-load effect.
+
+Verified: tsc clean · lint 0 errors · build clean · vitest 17/17 · Playwright
+mocked **38/38** (gallery thumbnails are still checkerboard placeholders — a
+separate follow-up).
+
+## Performance notes
+
+- **Compositor: prepared-layer cache.** Dragging in Sunset Ridge cost ~47ms a
+  frame because two reflection layers carry a `blur` adjustment and `ctx.filter`
+  re-ran the gaussian on every pointer move. Each layer's masked+filtered pixels
+  are now baked once and keyed by a signature that excludes position/rotation/
+  opacity. Measured drag cost: ridge 46.6→6.7ms, aurora 10.8→6.2ms, bauhaus
+  6.8→5.2ms, transform-lab 2.5→1.5ms.
+- **The warp is deliberately not baked.** One blit beats 288 clipped mesh draws
+  for a small layer but loses badly for a large one (Aurora's 900×520 card:
+  15.0ms baked vs 6.4ms live). Only a warp+blur layer bakes, because padding and
+  the mesh's source rect are incompatible.
+- **`draw()` reuses the flattened document** unless something the composite reads
+  changed, so pan and zoom no longer recomposite.
+- **Loading a showcase** runs its `add_layer` calls and its blob uploads at
+  bounded concurrency (`utils/concurrency.ts`) and writes the store once, instead
+  of ~90 sequential round-trips each triggering a recomposite.
+
+## Remaining work / follow-ups
+- Advanced tools: clone stamp polish, adjustment layers (crop tool, marquee/lasso,
+  gradient, shapes, standalone Levels and the corner-pin warp all shipped).
+- **Warp mesh finer than 2×2** — four corner pins cannot bow an edge; a 4×4 mesh
+  (Photoshop's) could. The preset list is honest about this today.
+- **Per-parent layer ordering.** `layer_index` is global, so nesting affects
+  inherited visibility/opacity but not paint order: dragging a row into a folder
+  does not re-slot it in the folder's own stack. Reordering renumbers the whole
+  flattened tree, hidden rows included, so nothing silently reshuffles.
+- Group compositing isolation (a folder's blend mode applies per member layer, not
+  to the folder's flattened result).
+- Playwright integration suite + merobox workflow execution (need Docker / live nodes).
+- Project thumbnails in the gallery (placeholder checkerboard today) — the showcase
+  picker now renders real previews through the compositor, which is the mechanism a
+  gallery thumbnail could reuse.
+
+---
+
+## Build / test commands
+
+```bash
+make setup            # prereqs + build wasm + install app deps
+make dev              # 2 nodes + invite + frontend (http://localhost:5176)
+make build            # logic wasm + frontend dist
+make unit             # vitest
+make e2e              # playwright (mocked)
+make workflows        # merobox e2e + logic-test
+make logic-test       # cargo-side contract assertions via merobox
+make stop             # kill dev nodes, free ports 2460/2461/2560/2561
+cd logic && cargo test
+```
+
+## Status legend
+▢ not started · ◐ in progress · ✓ done. Update this file as phases complete.

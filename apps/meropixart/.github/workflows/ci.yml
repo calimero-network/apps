@@ -1,0 +1,167 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit-tests:
+    name: Unit Tests (Vitest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: app/pnpm-lock.yaml
+
+      - name: Install dependencies
+        working-directory: app
+        run: pnpm install --frozen-lockfile
+
+      - name: Run unit tests
+        working-directory: app
+        run: pnpm test
+
+      # `tsc -b`, not `tsc --noEmit`: this app's tsconfig.json is a SOLUTION file
+      # (only `references`, no `files`/`include`), so `--noEmit` type-checks
+      # NOTHING and passes on genuinely broken code. `-b` walks the referenced
+      # projects. The mero-js 7 SSE union break was invisible to `--noEmit`.
+      - name: Type check
+        working-directory: app
+        run: pnpm exec tsc -b
+
+      - name: Lint
+        working-directory: app
+        run: pnpm lint
+
+  e2e-tests:
+    name: E2E Tests (Playwright)
+    runs-on: ubuntu-latest
+    # The mocked suite covers the editor chrome, the layer-folder tree, free
+    # transform and loading each bundled showcase end to end. A showcase load is
+    # ~30 sequential RPCs, so allow more headroom than a pure-UI suite needs.
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: app/pnpm-lock.yaml
+
+      - name: Install dependencies
+        working-directory: app
+        run: pnpm install --frozen-lockfile
+
+      - name: Resolve Playwright version
+        id: pw
+        working-directory: app
+        run: echo "version=$(pnpm exec playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        id: pw-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}-chromium
+
+      - name: Install Playwright browsers
+        if: steps.pw-cache.outputs.cache-hit != 'true'
+        timeout-minutes: 8
+        working-directory: app
+        run: pnpm exec playwright install --with-deps chromium
+
+      # A cache hit restores the browser but not the shared libraries it
+      # links against. This is the apt half alone — seconds, and it cannot
+      # pull a browser.
+      - name: Install browser system deps
+        if: steps.pw-cache.outputs.cache-hit == 'true'
+        timeout-minutes: 8
+        working-directory: app
+        run: pnpm exec playwright install-deps chromium
+
+      - name: Run mocked E2E tests
+        working-directory: app
+        run: pnpm exec playwright test --project=mocked
+        env:
+          CI: "true"
+          PW_PORT: "5176"
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: app/e2e-report/
+          retention-days: 7
+
+      # Full-resolution renders of every bundled showcase project, produced by
+      # e2e/showcase-render.spec.ts. Download these to review a change to a
+      # showcase recipe, the warp mesh or the compositor by eye — the alternative
+      # is booting a node and creating a project.
+      - name: Upload showcase renders
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: showcase-renders
+          path: app/e2e-artifacts/
+          retention-days: 14
+
+  rust-check:
+    name: Rust Type Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.89.0"
+          targets: wasm32-unknown-unknown
+
+      - name: Cache Cargo
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            logic/target
+          key: cargo-${{ runner.os }}-${{ hashFiles('logic/Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-
+
+      - name: Install cargo-mero
+        uses: ./.github/actions/install-cargo-mero
+
+      # Full `cargo mero build` rather than a bare `cargo check`: the ABI is
+      # emitted by a HOST build of the app, so a type that reaches the public API
+      # without an `AbiType` impl only fails here — a wasm-only check passes.
+      - name: Build Rust (+ ABI emit)
+        working-directory: logic
+        run: cargo mero build
+
+      - name: Contract tests
+        working-directory: logic
+        run: cargo test
