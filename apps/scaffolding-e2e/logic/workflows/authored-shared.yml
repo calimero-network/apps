@@ -648,12 +648,24 @@ steps:
     outputs:
       all_authored: result
 
-  - name: Assert a non-author sees the entry alice_key wrote
+  - name: Assert a non-author sees exactly the surviving entry
     type: json_assert
     statements:
-      # The exact map. `is_set` would pass on `{}`, which is precisely the
-      # regression an iterator scoped to the caller would produce.
-      - 'json_equal({{all_authored}}, {"output": {"alice_key": "owned_by_node1"}})'
+      # The EXACT map, and it is `bob_key` — not `alice_key`.
+      #
+      # By this point the scenario has inserted `alice_key` (node-1), updated it,
+      # and then REMOVED it; `authored_remove` really removes, which the earlier
+      # 'removed entry is gone' step already asserts returns null. So only
+      # `bob_key` survives, authored by NODE-2.
+      #
+      # That makes this read strictly stronger than it would have been on
+      # alice_key: node-3 authored neither entry, so listing bob_key proves both
+      # that the entry replicated across nodes AND that the iterator is not
+      # scoped to the caller's own authorship.
+      #
+      # Exact rather than `is_set`, because `is_set` passes on `{}` — which is
+      # precisely the regression a caller-scoped iterator would produce here.
+      - 'json_equal({{all_authored}}, {"output": {"bob_key": "owned_by_node2"}})'
 
   - name: node-3 lists every authored vector entry
     type: call

@@ -214,7 +214,11 @@ steps:
     context_id: '{{context_id}}'
     method: get_handler_execution_count
     outputs:
-      count_before_direct: result
+      # `result.output`, not `result`: merobox's `>` coerces both operands with
+      # float(), and a `{"output": N}` dict throws — which its `except` turns
+      # into a FALSE assertion rather than an error. So a comparison against the
+      # wrapped shape fails for a reason the report never names.
+      count_before_direct: result.output
 
   - name: Call insert_handler directly
     type: call
@@ -254,15 +258,20 @@ steps:
     context_id: '{{context_id}}'
     method: get_handler_execution_count
     outputs:
-      count_after_direct: result
+      count_after_direct: result.output
 
   - name: Assert all four direct handler calls were counted
     type: assert
     statements:
-      # A G-Counter only grows, so "after > before" plus the exact delta below is
-      # the whole property. Both reads are on the same node, so no sync is needed.
+      # Each of the four handlers increments `handler_counter` exactly once and
+      # does nothing else, so the count must have MOVED. `>` is the assertion
+      # merobox can actually make here — it has comparisons but no arithmetic, so
+      # "exactly +4" is not expressible; a strict increase plus four calls that
+      # each do one increment is the closest honest statement.
+      #
+      # Both reads are on the same node, so no sync is needed between them.
       - "is_set({{count_before_direct}})"
-      - "is_set({{count_after_direct}})"
+      - "{{count_after_direct}} > {{count_before_direct}}"
 
   - name: Wait for the handler counter to sync to node-2
     type: wait_for_sync
@@ -280,14 +289,17 @@ steps:
     context_id: '{{context_id}}'
     method: get_handler_execution_count
     outputs:
-      count_node2_after: result
+      count_node2_after: result.output
 
   - name: Assert the counter converged across nodes
-    type: json_assert
+    type: assert
     statements:
-      # G-Counter increments from node-1 must be visible on node-2 verbatim.
-      # Comparing the two reads (rather than a literal) is what makes this a
+      # G-Counter increments made on node-1 must be visible on node-2 verbatim.
+      # Comparing the two READS (rather than a literal) is what makes this a
       # convergence assertion rather than a restatement of the arithmetic.
-      - 'json_equal({{count_node2_after}}, {{count_after_direct}})'
+      #
+      # A plain `assert` with `==`, not `json_assert`: both operands are now bare
+      # numbers via `result.output`, so there is no JSON envelope left to compare.
+      - "{{count_node2_after}} == {{count_after_direct}}"
 
 stop_all_nodes: false
