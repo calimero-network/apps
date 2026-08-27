@@ -42,6 +42,9 @@ jobs:
       - uses: dorny/paths-filter@v3
         id: filter
         with:
+          # `list-files: shell` so the per-app mapping below reads real paths
+          # instead of re-deriving them from a boolean.
+          list-files: shell
           filters: |
             shared:
               # Add 'crates/**' and 'packages/**' here when those directories are
@@ -58,17 +61,36 @@ jobs:
               - 'apps/*/logic/**'
             frontend:
               - 'apps/*/app/**'
+            app:
+              - 'apps/**'
 
-      # One place that answers "which apps does this run cover". Kept as a
-      # script rather than a hand-maintained matrix so adding an app is adding a
-      # directory.
+      # WHICH APPS, not "are there any".
+      #
+      # This used to be `cargo metadata | .name` — every app in the workspace —
+      # while the filters above are repo-wide booleans. So touching ONE
+      # contract set `logic=true` and then built wasm and ran a two-node merobox
+      # e2e for EVERY app: cost O(apps) per PR, and the per-app filtering this
+      # file's header claims as the monorepo's new capability was never actually
+      # expressed. Found by a reviewer, not by CI, because with one app in the
+      # repo the two are indistinguishable.
+      #
+      # `shared` still means every app — an SDK or toolchain change really does
+      # change every contract's bytes.
       - name: Resolve the app matrix
         id: set
+        env:
+          SHARED: ${{ steps.filter.outputs.shared }}
+          APP_FILES: ${{ steps.filter.outputs.app_files }}
         run: |
-          apps=$(cargo metadata --no-deps --format-version 1 \
-            | jq -c '[.packages[] | select(.metadata.calimero != null) | .name]')
+          set -euo pipefail
+          if [ "$SHARED" = "true" ]; then
+            apps=$(bash scripts/app-packages.sh all)
+            echo "::notice::workspace-level change — covering every app: $apps"
+          else
+            apps=$(printf '%s' "$APP_FILES" | bash scripts/app-packages.sh from-paths)
+            echo "::notice::changed apps: $apps"
+          fi
           echo "apps=$apps" >> "$GITHUB_OUTPUT"
-          echo "apps: $apps"
 
   # ── workspace-wide, cheap, always ──────────────────────────────────────────
   metadata:
@@ -104,8 +126,17 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
-          restore-keys: cargo-${{ runner.os }}-
+          # `cargo-native-`, not a key shared with the wasm jobs.
+          #
+          # GitHub's cache is write-once per key: the first job to finish saves
+          # and every other save is REJECTED with a warning, not a failure. With
+          # one key across `rust`, `wasm`, `e2e` and publish-bundle, the stored
+          # tree was whichever job won the race — a native tree from
+          # `cargo test --workspace`, or a wasm32 `app-release` tree from
+          # `cargo mero build`, never both — so every later run restored the
+          # wrong half and recompiled the other.
+          key: cargo-native-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-native-${{ runner.os }}-
 
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
@@ -116,7 +147,9 @@ jobs:
   wasm:
     name: Build WASM (${{ matrix.app }})
     needs: changes
-    if: needs.changes.outputs.logic == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.frontend == 'true'
+    # `apps != '[]'` is what makes an empty matrix a skipped job rather than a
+    # job that silently succeeds having built nothing.
+    if: needs.changes.outputs.apps != '[]'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -136,8 +169,10 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
-          restore-keys: cargo-${{ runner.os }}-
+          # Separate from the native key — see the `rust` job. Shared between the
+          # wasm and e2e jobs on purpose: both build the same wasm32 tree.
+          key: cargo-wasm-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-wasm-${{ runner.os }}-
 
       - uses: ./.github/actions/install-cargo-mero
 
@@ -238,7 +273,10 @@ jobs:
   e2e:
     name: E2E (${{ matrix.app }})
     needs: changes
-    if: needs.changes.outputs.logic == 'true' || needs.changes.outputs.shared == 'true'
+    # Only when a CONTRACT moved: a frontend-only change cannot alter what a
+    # two-node merobox run does, and each of these pulls an image and starts two
+    # merod containers.
+    if: (needs.changes.outputs.logic == 'true' || needs.changes.outputs.shared == 'true') && needs.changes.outputs.apps != '[]'
     runs-on: ubuntu-latest
     timeout-minutes: 40
     strategy:
@@ -258,8 +296,10 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
-          restore-keys: cargo-${{ runner.os }}-
+          # Separate from the native key — see the `rust` job. Shared between the
+          # wasm and e2e jobs on purpose: both build the same wasm32 tree.
+          key: cargo-wasm-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-wasm-${{ runner.os }}-
 
       - uses: ./.github/actions/install-cargo-mero
 

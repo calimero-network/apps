@@ -265,6 +265,26 @@ steps:
     statements:
       - 'json_equal({{n2_entries}}, {"output": {"fresh": "inserted", "greeting": "hei"}})'
 
+  # `get_unchecked` is in the contract as the counter-example: it panics on a
+  # missing key, and a panic aborts the whole execution so nothing commits. Only
+  # the present-key path is asserted here — the panic path belongs in a scenario
+  # that expects a failed call, not in the middle of a convergence run.
+  - name: node-2 reads a present key without checking
+    type: call
+    node: kv-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_kv-node-2}}"
+    method: get_unchecked
+    args:
+      key: "greeting"
+    outputs:
+      n2_unchecked: result
+
+  - name: Assert get_unchecked returns the value for a present key
+    type: json_assert
+    statements:
+      - 'json_equal({{n2_unchecked}}, {"output": "hei"})'
+
   - name: node-2 reads the length
     type: call
     node: kv-node-2

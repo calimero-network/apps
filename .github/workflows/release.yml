@@ -64,8 +64,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          all=$(cargo metadata --no-deps --format-version 1 \
-            | jq -c '[.packages[] | select(.metadata.calimero != null) | .name]')
+          all=$(bash scripts/app-packages.sh all)
 
           if [ -n "$DISPATCH_APP" ]; then
             # An explicit dispatch must name a real app, or the run would
@@ -84,10 +83,20 @@ jobs:
             echo "::notice::workspace-level change — publishing every app: $apps"
 
           else
-            # Map the changed logic/ paths back to app directory names.
-            apps=$(printf '%s\n' $LOGIC_FILES \
-              | sed -n 's|^apps/\([^/]*\)/logic/.*|\1|p' \
-              | sort -u | jq -R . | jq -sc .)
+            # Map changed paths to CARGO PACKAGE NAMES via the shared script.
+            #
+            # This used to `sed` the directory name out of the path, while the
+            # two branches above take it from `cargo metadata | .name`. Those
+            # agree only while every app directory is named exactly like its
+            # crate — publish-bundle.yml uses the value as both a directory AND
+            # a package name, so the first app where they differ fails with
+            # "no [package.metadata.calimero].package", on this path only and
+            # never on a dispatch.
+            #
+            # `printf '%s'` quoted, not an unquoted expansion of $LOGIC_FILES:
+            # paths-filter shell-quotes its file list, so an unquoted expansion
+            # would re-split it and mangle any path containing a space.
+            apps=$(printf '%s' "$LOGIC_FILES" | bash scripts/app-packages.sh from-paths)
             echo "::notice::changed apps: $apps"
           fi
 
