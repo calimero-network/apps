@@ -8,6 +8,8 @@ import {
 } from "@calimero-network/mero-platform";
 import { __setDeepLinkController } from "@calimero-network/mero-platform-react";
 import { App } from "./App";
+import { adoptDesktopSession } from "./utils/desktopSso";
+import { APP_SLUG } from "./utils/invitation";
 import "./index.css";
 
 const root = document.getElementById("root");
@@ -62,6 +64,12 @@ if (!root) throw new Error("#root is missing from index.html");
   }
 })();
 
+// Before React mounts, for the same reason the capture above is: the provider
+// resolves the auth callback on its first render, so the initiated node has to
+// be in storage by then. Launcher-only, and it seeds the node URL and nothing
+// else — see utils/desktopSso.ts.
+adoptDesktopSession();
+
 // StrictMode in dev only. Double-invoking effects is useful for catching
 // missing cleanup and actively misleading when you are reading a call log.
 const Wrapper = import.meta.env.DEV
@@ -86,8 +94,22 @@ createRoot(root).render(
       2. `AppMode.MultiContext`. `SingleContext` is deprecated: the auth
          callback returns only tokens, application_id and node_url, and the app
          owns context selection — which is what `ContextPicker` below is.
+
+      `packageName` is NOT optional in practice for a hosted deployment.
+      The auth frontend only hands the minted tokens back to a callback origin
+      it trusts, and for anything that is not loopback or the node's own origin
+      that means asking the registry whether this package declares that origin
+      as its `links.frontend`. It reads the package from the `package-name`
+      login param, which mero-react sends only when this is set — with it unset
+      the lookup has nothing to ask about and FAILS CLOSED:
+
+          Login callback destination is not allowed.
+
+      Local dev cannot catch this: loopback short-circuits the whole check, so
+      localhost logs in fine and only the deployed origin breaks, after
+      credentials are already accepted.
     */}
-    <MeroProvider mode={AppMode.MultiContext}>
+    <MeroProvider mode={AppMode.MultiContext} packageName={APP_SLUG}>
       <App />
     </MeroProvider>
   </Wrapper>,

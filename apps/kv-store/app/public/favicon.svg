@@ -1,0 +1,7 @@
+<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="KV Store logo">
+  <rect width="64" height="64" rx="14" fill="#0f1417"/>
+  <rect x="12" y="18" width="14" height="10" rx="3" fill="#5eead4"/>
+  <rect x="30" y="18" width="22" height="10" rx="3" fill="#2a353b"/>
+  <rect x="12" y="36" width="14" height="10" rx="3" fill="#5eead4" fill-opacity="0.55"/>
+  <rect x="30" y="36" width="16" height="10" rx="3" fill="#2a353b"/>
+</svg>

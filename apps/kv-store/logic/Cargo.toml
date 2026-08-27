@@ -55,11 +55,12 @@ slug = "com.calimero.kv-store"
 # request: only the release workflow bundles, and that only runs on a push to
 # main. A missing icon is therefore a green PR that breaks the moment it merges.
 #
-# "default" is cargo-mero's own bundled mark, compiled into the tool, so it needs
-# no file and cannot go stale. That is the right answer for the reference app:
-# it has no branding of its own to assert, and shipping a real icon would mean
-# maintaining a PNG whose only purpose is to look intentional.
-icon = "default"
+# The app's own 512px mark, the path the rest of the fleet uses
+# (`../app/public/icon-512.png`). It was "default" — cargo-mero's built-in
+# Calimero mark — while the app had no icon of its own; now that the frontend
+# ships one, the desktop and the registry listing show the same mark the
+# browser tab does instead of a generic placeholder shared with every other app.
+icon = "../app/public/icon-512.png"
 tags = ["example", "reference", "kv", "crdt"]
 github = "https://github.com/calimero-network/apps"
 # Asserted equal to [workspace.metadata.mero-apps] in CI. Three bundles in the
