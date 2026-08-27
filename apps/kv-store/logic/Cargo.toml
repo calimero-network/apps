@@ -47,20 +47,43 @@ author = "Calimero"
 # The slug IS the package id: the desktop and links.calimero.network resolve a
 # deep link by `Application.package`, so these must never drift apart.
 slug = "com.calimero.kv-store"
+# ⚠️ REQUIRED. `cargo mero bundle` refuses to run without an icon decision —
+# a path, "default", or --no-icon — and errors with `no icon configured for
+# <package>`. That happens at BUNDLE time, so it cannot fail CI on a pull
+# request: only the release workflow bundles, and that only runs on a push to
+# main. A missing icon is therefore a green PR that breaks the moment it merges.
+#
+# "default" is cargo-mero's own bundled mark, compiled into the tool, so it needs
+# no file and cannot go stale. That is the right answer for the reference app:
+# it has no branding of its own to assert, and shipping a real icon would mean
+# maintaining a PNG whose only purpose is to look intentional.
+icon = "default"
 tags = ["example", "reference", "kv", "crdt"]
 github = "https://github.com/calimero-network/apps"
 # Asserted equal to [workspace.metadata.calimero] in CI. Three bundles in the
 # registry still advertise 0.1.0 — cargo-mero's placeholder floor, which nobody
 # verified — which is the failure that check exists to prevent.
 min-runtime-version = "0.11.0-rc.25"
-# ⚠️ NOT just a deep-link target. The auth frontend treats the registry-declared
-# frontend origin as this app's registered redirect URI, compared by EXACT
-# ORIGIN. Point it at the wrong host and hosted login fails *after* credentials
-# are accepted, while local and desktop login keep working (loopback is always
-# trusted) — which is how mero-stream shipped a guessed origin and nobody
-# noticed for weeks.
+# `frontend` is deliberately ABSENT until a real deployment exists.
 #
-# So this must be filled in only once the Vercel project exists and its
-# production URL is known, and changing it later requires REPUBLISHING the
-# bundle.
-frontend = "https://mero-kv-store.vercel.app/"
+# It is not just a deep-link target: the auth frontend treats the
+# registry-declared frontend origin as this app's registered redirect URI,
+# compared by EXACT ORIGIN. A wrong value breaks hosted login *after*
+# credentials are accepted, while local and desktop login keep working (loopback
+# is always trusted) — which is how mero-stream shipped a guessed origin and
+# nobody noticed for weeks.
+#
+# There is no correct value yet. `https://mero-kv-store.vercel.app/` was written
+# here as a placeholder and returns 404: the project does not exist. Declaring an
+# origin that resolves to nothing is worse than declaring none, because it is the
+# field that AUTHORIZES a login callback.
+#
+# Absent is also the cheaper direction to be wrong in. Adding the field later is
+# additive; correcting it means republishing and every installed copy keeps the
+# old value until it upgrades. The cost of omitting it is only that the desktop
+# cannot deep-link this app yet ("app has no frontend URL; cannot open"), which
+# is true.
+#
+# To fill it in: create the Vercel project with Root Directory
+# apps/kv-store/app, take its production origin verbatim, put it here, and let
+# the release workflow publish the next patch.

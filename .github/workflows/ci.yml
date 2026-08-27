@@ -158,6 +158,32 @@ jobs:
           fi
           echo "committed ABI matches the built contract"
 
+      # Prove the app is PUBLISHABLE, not merely compilable.
+      #
+      # This exists because of a gap it would have caught: kv-store had no `icon`
+      # in [package.metadata.calimero], and `cargo mero bundle` refuses to run
+      # without an icon decision — `no icon configured for <package>`. Nothing on
+      # a pull request bundles, and the release workflow only runs on a push to
+      # main, so that was a 12/12-green PR whose first act after merging would
+      # have been a failed publish.
+      #
+      # `--dev` signs with the well-known development key, which the registry
+      # REFUSES — so this can never publish anything by accident. It still
+      # exercises everything that is easy to get wrong offline: the icon
+      # decision, the package id's path-safety, the services list against the
+      # built wasm, and the manifest the registry will render.
+      #
+      # --app-version is fixed rather than resolved from the registry: this
+      # output is thrown away, and asking the registry for a number on every PR
+      # would make CI depend on it being reachable.
+      - name: Dry-run the bundle (dev key — never publishable)
+        run: |
+          cargo mero bundle \
+            --manifest-path apps/${{ matrix.app }}/logic/Cargo.toml \
+            --dev \
+            --app-version 0.0.0 \
+            --output "dist/dry-run-${{ matrix.app }}.mpk"
+
       # `always()` so a failing ABI gate still hands over the regenerated file —
       # which is exactly what the error asks you to commit. Withholding it makes
       # the error true and useless at the same time.
