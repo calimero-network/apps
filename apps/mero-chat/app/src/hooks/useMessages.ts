@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef, useCallback } from "react";
 import { ClientApiDataSource } from "../api/dataSource/clientApiDataSource";
 import type { ResponseData } from "../api/types";
 import type { FullMessageResponse } from "../api/clientApi";
@@ -485,22 +485,6 @@ export function useMessages() {
    * an in-place update rather than an insert — the row keeps its position and
    * its React key, and only its reactions change.
    */
-  // A background revalidation found a stored page out of date — a reaction or
-  // an edit that landed while this range was on disk. `MessageStore.append`
-  // merges by id, so handing it the changed rows updates them in place.
-  //
-  // Set on the shared engine rather than per-hook: there is one engine, and the
-  // last mount would otherwise silently win.
-  useEffect(() => {
-    messageSync.onRevalidated = (_contextId, changed) => {
-      if (changed.length === 0) return;
-      setIncomingMessages(transformMessagesToUI(changed));
-    };
-    return () => {
-      messageSync.onRevalidated = undefined;
-    };
-  }, []);
-
   const refreshReactedMessage = useCallback(
     async (contextId: string, messageId: string) => {
       try {

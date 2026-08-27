@@ -2,7 +2,10 @@ import "fake-indexeddb/auto";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { resetDbForTests } from "../core/db";
-import { IndexedDbMessageStore } from "./IndexedDbMessageStore";
+import {
+  IndexedDbMessageStore,
+  RETAINED_PER_CONTEXT,
+} from "./IndexedDbMessageStore";
 import {
   MessageSyncEngine,
   type MessagePage,
@@ -54,6 +57,39 @@ describe("IndexedDbMessageStore", () => {
       req.onerror = () => r();
       req.onblocked = () => r();
     });
+  });
+
+  it("keeps only the newest RETAINED_PER_CONTEXT messages", async () => {
+    // The store used to keep every message it ever saw, forever. It exists to
+    // make the first paint instant and to answer offline, and neither needs a
+    // year of conversation on disk.
+    const store = new IndexedDbMessageStore<Msg>();
+    const many = Array.from({ length: RETAINED_PER_CONTEXT + 50 }, (_, i) => ({
+      index: i,
+      text: `m${i}`,
+    }));
+
+    await store.put("ctx", many);
+
+    const oldest = await store.read("ctx", 0, 50);
+    expect(oldest, "rows past the bound should be gone").toEqual([]);
+
+    const kept = await store.read("ctx", 50, RETAINED_PER_CONTEXT);
+    expect(kept.length).toBe(RETAINED_PER_CONTEXT);
+    expect(kept[0].index).toBe(50);
+    expect(kept[kept.length - 1].index).toBe(RETAINED_PER_CONTEXT + 49);
+  });
+
+  it("prunes per context, not across them", async () => {
+    const store = new IndexedDbMessageStore<Msg>();
+    await store.put("a", Array.from({ length: RETAINED_PER_CONTEXT + 10 }, (_, i) => ({
+      index: i,
+      text: `a${i}`,
+    })));
+    await store.put("b", [{ index: 0, text: "b0" }]);
+
+    // Filling one channel must not evict another's history.
+    expect((await store.read("b", 0, 5)).map((m) => m.text)).toEqual(["b0"]);
   });
 
   it("round-trips messages through encryption", async () => {
