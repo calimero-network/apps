@@ -94,9 +94,3 @@ tracing   = "0.1.37"
 
 # `[profile.*]` lives at the workspace root. Cargo IGNORES a profile in a
 # member and then hard-errors on it, so this is not stylistic.
-[profile.app-profiling]
-inherits          = "release"
-codegen-units     = 1
-opt-level         = 2
-lto               = true
-debug             = true

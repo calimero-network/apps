@@ -1968,7 +1968,19 @@ impl E2eKvStore {
     // AUTHORED VECTOR
 
     pub fn authored_vec_push(&mut self, value: String) -> app::Result<usize> {
-        let index = self.authored_vec.push(LwwRegister::new(value.clone()))?;
+        // rc.26 changed `AuthoredVector::push` to return the entry's stable
+        // `Id` instead of a positional index, deliberately: "an index describes
+        // where an entry currently sits in a set other replicas insert into, so
+        // a remote insert ahead of it silently renumbers it".
+        //
+        // The index is recovered from `len()` here rather than surfacing the
+        // `Id`, so this method's ABI — and therefore the generated client, the
+        // frontend section and the two workflows that assert on it — is
+        // unchanged by the migration. Adopting the `Id` is the right end state
+        // and is a follow-up: it is an interface change to a public contract
+        // method, which is not something a repository move should smuggle in.
+        let _id = self.authored_vec.push(LwwRegister::new(value.clone()))?;
+        let index = self.authored_vec.len()?.saturating_sub(1);
         let owner = caller_account();
         app::emit!(Event::AuthoredVecPushed {
             index,
