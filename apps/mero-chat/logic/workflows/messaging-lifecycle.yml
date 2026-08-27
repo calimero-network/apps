@@ -1,0 +1,206 @@
+name: Curb — message lifecycle across two nodes
+description: >
+  Guards the claim the product is built on: a message sent on one node is
+  readable on another, and every subsequent mutation of it converges too.
+
+  This existed as a throwaway script before it existed as a test. Nothing in
+  CI verified that a message crossed the wire at all — e2e.yml covers a wide
+  surface but this narrow path is the one that must never regress.
+
+  Each assertion checks the RECEIVING node, never the sender. A sender can
+  always read its own write; that proves nothing about replication.
+
+  ISOLATION MATTERS HERE. The markers below are fixed strings, so a container
+  surviving from a previous run can satisfy an assertion with stale data and
+  the workflow passes while proving nothing. `merobox nuke --force` does NOT
+  reliably clear this — it reports "No Calimero node data directories found"
+  while data/ still holds state and -init containers survive. CI runs on fresh
+  runners so it is safe there; locally, remove the containers and data/ first:
+
+    docker rm -f $(docker ps -aq --filter name=msg-node); rm -rf data/
+
+force_pull_image: true
+
+nodes:
+  chain_id: testnet-1
+  count: 2
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.26
+  prefix: msg-node
+  # Clear of the defaults (2428/2528), which collide with a locally running
+  # Calimero Desktop node and with the scripts/setup-nodes.sh dev rig.
+  base_rpc_port: 4428
+  base_port: 4528
+
+steps:
+  # ── Bootstrap ─────────────────────────────────────────────────────────────
+  - name: Install Application on Node 1
+    type: install_application
+    node: msg-node-1
+    path: "../logic/res/curb.wasm"
+    dev: true
+    outputs:
+      app_id: applicationId
+
+  - name: Install Application on Node 2
+    type: install_application
+    node: msg-node-2
+    path: "../logic/res/curb.wasm"
+    dev: true
+
+  - name: Create Namespace
+    type: create_group
+    node: msg-node-1
+    application_id: "{{app_id}}"
+    outputs:
+      namespace_id: namespaceId
+
+  - name: Assert Namespace Created
+    type: assert
+    statements:
+      - "is_set({{namespace_id}})"
+
+  - name: Create Channel Context
+    type: create_context
+    node: msg-node-1
+    application_id: "{{app_id}}"
+    group_id: "{{namespace_id}}"
+    params: '{"name": "General", "context_type": "Channel", "description": "", "created_at": 1751953000, "creator_username": "Alice"}'
+    outputs:
+      channel_id: contextId
+      alice_key: memberPublicKey
+
+  - name: Assert Channel Created
+    type: assert
+    statements:
+      - "is_set({{channel_id}})"
+
+  - name: Create Identity on Node 2
+    type: create_identity
+    node: msg-node-2
+    outputs:
+      bob_key: publicKey
+
+  - name: Invite Node 2
+    type: create_group_invitation
+    node: msg-node-1
+    group_id: "{{namespace_id}}"
+    outputs:
+      invite_bob: invitation
+
+  - name: Node 2 Joins Namespace
+    type: join_group
+    node: msg-node-2
+    group_id: "{{namespace_id}}"
+    invitation: "{{invite_bob}}"
+
+  # No explicit join_context: auto-follow (AutoFollowFlags default
+  # `contexts: true`) already joined node-2 to every context in the namespace
+  # when it joined the namespace itself. Verified -- with this step removed,
+  # node-2 still owns an identity in the context. A join step here would look
+  # load-bearing while doing nothing.
+
+  - name: Wait for Membership to Settle
+    type: wait
+    seconds: 10
+
+  # ── 1. A message crosses the wire ─────────────────────────────────────────
+  - name: Node 1 Sends a Message
+    type: call
+    node: msg-node-1
+    context_id: "{{channel_id}}"
+    executor_public_key: "{{alice_key}}"
+    method: send_message
+    args:
+      message: "msg-lifecycle-from-alice"
+      mentions: []
+      mentions_usernames: []
+      parent_message: null
+      timestamp: 1751953100000
+      sender_username: "Alice"
+      files: null
+      images: null
+    outputs:
+      sent: result
+
+  - name: Wait for Replication
+    type: wait
+    seconds: 12
+
+  - name: Node 2 Reads the Channel
+    type: call
+    node: msg-node-2
+    context_id: "{{channel_id}}"
+    executor_public_key: "{{bob_key}}"
+    method: get_messages
+    args:
+      parent_message: null
+      limit: 50
+      offset: 0
+      search_term: null
+    outputs:
+      bob_view: result
+
+  - name: Assert Node 2 Received Node 1's Message
+    type: assert
+    statements:
+      - "contains({{bob_view}}, 'msg-lifecycle-from-alice')"
+
+  # ── 2. And back the other way ─────────────────────────────────────────────
+  # Asserted separately: replication working one way says nothing about the
+  # other, and the joiner is the side more likely to be misconfigured.
+  - name: Node 2 Replies
+    type: call
+    node: msg-node-2
+    context_id: "{{channel_id}}"
+    executor_public_key: "{{bob_key}}"
+    method: send_message
+    args:
+      message: "msg-lifecycle-from-bob"
+      mentions: []
+      mentions_usernames: []
+      parent_message: null
+      timestamp: 1751953200000
+      sender_username: "Bob"
+      files: null
+      images: null
+
+  - name: Wait for Reply to Replicate
+    type: wait
+    seconds: 12
+
+  - name: Node 1 Reads the Channel
+    type: call
+    node: msg-node-1
+    context_id: "{{channel_id}}"
+    executor_public_key: "{{alice_key}}"
+    method: get_messages
+    args:
+      parent_message: null
+      limit: 50
+      offset: 0
+      search_term: null
+    outputs:
+      alice_view: result
+
+  - name: Assert Node 1 Received Node 2's Reply
+    type: assert
+    statements:
+      - "contains({{alice_view}}, 'msg-lifecycle-from-bob')"
+      - "contains({{alice_view}}, 'msg-lifecycle-from-alice')"
+
+  # ── 3. Both sides can still answer for themselves ─────────────────────────
+  # A joiner that can read history but cannot compute its own unread count is
+  # a real failure mode -- it means the read cursor never replicated.
+  - name: Node 2 Unread Count
+    type: call
+    node: msg-node-2
+    context_id: "{{channel_id}}"
+    executor_public_key: "{{bob_key}}"
+    method: get_unread_count
+    outputs:
+      bob_unread: result
+
+  - name: Assert Unread Is Answerable on the Joiner
+    type: assert
+    statements:
+      - "is_set({{bob_unread}})"

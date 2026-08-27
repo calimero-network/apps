@@ -1086,12 +1086,20 @@ impl MeroChat {
                 }
             };
 
+            if normalized_search.is_none() {
+                return Ok(self.page_unfiltered(&thread_messages, limit, offset, false));
+            }
+
             let filtered = self.collect_messages_with_reactions(
                 &thread_messages,
                 normalized_search.as_deref(),
                 false,
             );
             return Ok(Self::paginate(filtered, limit, offset));
+        }
+
+        if normalized_search.is_none() {
+            return Ok(self.page_unfiltered(&self.messages, limit, offset, true));
         }
 
         let filtered = self.collect_messages_with_reactions(
@@ -1140,59 +1148,125 @@ impl MeroChat {
                 if !Self::message_matches_search(&message, search_term) {
                     continue;
                 }
-
-                let reactions = self.get_reactions_for_message(message.id.get());
-
-                let (thread_count, thread_last_timestamp) = if include_threads {
-                    self.get_thread_info(message.id.get())
-                } else {
-                    (0, 0)
-                };
-
-                let mentions_vec: Vec<UserId> = if let Ok(iter) = message.mentions.iter() {
-                    iter.collect()
-                } else {
-                    Vec::new()
-                };
-                let mentions_usernames_vec: Vec<String> =
-                    if let Ok(iter) = message.mentions_usernames.iter() {
-                        iter.map(|r| r.get().clone()).collect()
-                    } else {
-                        Vec::new()
-                    };
-
-                let msg_id = message.id.get().clone();
-                let is_deleted = message.deleted.as_ref().map(|r| **r).unwrap_or(false)
-                    || self
-                        .deleted_messages
-                        .contains(&msg_id)
-                        .unwrap_or(false);
-                let text = if is_deleted {
-                    String::new()
-                } else {
-                    message.text.get().clone()
-                };
-
-                result.push(MessageWithReactions {
-                    timestamp: *message.timestamp,
-                    sender: message.sender,
-                    sender_username: message.sender_username.get().clone(),
-                    id: msg_id,
-                    text,
-                    mentions: mentions_vec,
-                    mentions_usernames: mentions_usernames_vec,
-                    files: attachments_vector_to_public(&message.files),
-                    images: attachments_vector_to_public(&message.images),
-                    reactions,
-                    deleted: if is_deleted { Some(true) } else { message.deleted.as_ref().map(|r| **r) },
-                    edited_on: message.edited_on.as_ref().map(|r| **r),
-                    thread_count,
-                    thread_last_timestamp,
-                    parent_message_id: None,
-                });
+                result.push(self.message_to_public(&message, include_threads));
             }
         }
         result
+    }
+
+    /// One stored message rendered for the API.
+    ///
+    /// Split out of the scan above so the scanning path and the windowed path
+    /// below cannot drift in what they return.
+    fn message_to_public(&self, message: &Message, include_threads: bool) -> MessageWithReactions {
+        let reactions = self.get_reactions_for_message(message.id.get());
+
+        let (thread_count, thread_last_timestamp) = if include_threads {
+            self.get_thread_info(message.id.get())
+        } else {
+            (0, 0)
+        };
+
+        let mentions_vec: Vec<UserId> = if let Ok(iter) = message.mentions.iter() {
+            iter.collect()
+        } else {
+            Vec::new()
+        };
+        let mentions_usernames_vec: Vec<String> = if let Ok(iter) = message.mentions_usernames.iter()
+        {
+            iter.map(|r| r.get().clone()).collect()
+        } else {
+            Vec::new()
+        };
+
+        let msg_id = message.id.get().clone();
+        let is_deleted = message.deleted.as_ref().map(|r| **r).unwrap_or(false)
+            || self.deleted_messages.contains(&msg_id).unwrap_or(false);
+        let text = if is_deleted {
+            String::new()
+        } else {
+            message.text.get().clone()
+        };
+
+        MessageWithReactions {
+            timestamp: *message.timestamp,
+            sender: message.sender,
+            sender_username: message.sender_username.get().clone(),
+            id: msg_id,
+            text,
+            mentions: mentions_vec,
+            mentions_usernames: mentions_usernames_vec,
+            files: attachments_vector_to_public(&message.files),
+            images: attachments_vector_to_public(&message.images),
+            reactions,
+            deleted: if is_deleted {
+                Some(true)
+            } else {
+                message.deleted.as_ref().map(|r| **r)
+            },
+            edited_on: message.edited_on.as_ref().map(|r| **r),
+            thread_count,
+            thread_last_timestamp,
+            parent_message_id: None,
+        }
+    }
+
+    /// The page `paginate` would return, without materialising everything
+    /// before it.
+    ///
+    /// Only correct when nothing is filtered out, which is exactly the
+    /// no-search case: every stored message occupies a slot in the response
+    /// (a deleted one keeps its place with blanked text), so `total` is the
+    /// collection's length and the window is the same slice `paginate` takes.
+    ///
+    /// Worth stating why this matters, because the old path looked harmless:
+    /// it decoded every message, then did a nested reactions lookup and a
+    /// thread lookup per message, and only then threw away all but one page.
+    /// Cost grew with history until a single `get_messages` exhausted the gas
+    /// limit — measured at ~2,300 messages, while `send_message` stayed flat
+    /// past 20,000.
+    fn page_unfiltered(
+        &self,
+        messages: &AuthoredVector<Message>,
+        limit: Option<usize>,
+        offset: Option<usize>,
+        include_threads: bool,
+    ) -> FullMessageResponse {
+        let total = messages.len().unwrap_or(0);
+        if total == 0 {
+            return FullMessageResponse {
+                total_count: 0,
+                messages: Vec::new(),
+                start_position: 0,
+            };
+        }
+
+        let limit_value = limit.unwrap_or(total);
+        let offset_value = offset.unwrap_or(0);
+
+        if offset_value >= total {
+            return FullMessageResponse {
+                total_count: total as u32,
+                messages: Vec::new(),
+                start_position: offset_value as u32,
+            };
+        }
+
+        let end_idx = total - offset_value;
+        let start_idx = end_idx.saturating_sub(limit_value);
+
+        let mut page = Vec::with_capacity(end_idx - start_idx);
+        for idx in start_idx..end_idx {
+            if let Ok(Some(message)) = messages.get(idx) {
+                page.push(self.message_to_public(&message, include_threads));
+            }
+        }
+
+        FullMessageResponse {
+            total_count: total as u32,
+            messages: page,
+            start_position: offset_value as u32,
+        }
     }
 
     fn get_reactions_for_message(
@@ -1275,15 +1349,39 @@ impl MeroChat {
         }
     }
 
+    /// Add or remove the CALLER's reaction to a message.
+    ///
+    /// `user_supplied` is ignored — see below. It remains in the signature so
+    /// existing clients keep working.
     pub fn update_reaction(
         &mut self,
         message_id: MessageId,
         emoji: String,
-        user: String,
+        #[allow(unused_variables)] user: String,
         add: bool,
     ) -> app::Result<String> {
+        let user_supplied = user;
         self.require_not_banned()?;
         let action = if add { "added" } else { "removed" };
+
+        // `user` arrives from the caller and is therefore forgeable — not by a
+        // crafted delta, but through the plain public ABI: anyone could call
+        // this with someone else's name and attribute a reaction to them, or
+        // pass add:false to remove theirs. Derive the identity from the
+        // executor instead, exactly as `send_message` does for
+        // `sender_username`, so the stored value is the caller's own.
+        //
+        // The parameter is kept for ABI compatibility and deliberately ignored.
+        let executor_id = Self::executor_id();
+        let user = match self.profiles.get(&executor_id) {
+            Ok(Some(profile)) => profile.username.get().clone(),
+            // No profile yet: fall back to the caller's account id rather than
+            // to the supplied string. It is not a display name, but it is
+            // unforgeable, and a reaction attributed to the wrong person is
+            // worse than one attributed to a raw id.
+            _ => executor_id.to_string(),
+        };
+        let _ = user_supplied;
 
         let mut reactions_entry = self.reactions.entry(message_id.clone())?.or_insert(UnorderedMap::new())?;
         let mut emoji_entry = reactions_entry.entry(emoji)?.or_insert(UnorderedSet::new())?;
@@ -1531,6 +1629,128 @@ mod tests {
         // A banned caller's state-mutating action is rejected by the ban gate.
         let r = app.call_as_account(USER, USER, |s| s.save_draft("general".to_owned(), "hi".to_owned()));
         assert!(r.is_err());
+    }
+
+    #[test]
+    fn a_reaction_is_attributed_to_the_caller_not_the_argument() {
+        // `update_reaction` took the reacting user as a caller-supplied string
+        // and never compared it to the executor. That made impersonation
+        // reachable through the PLAIN PUBLIC ABI — no forged delta, no modified
+        // client: call it with someone else's name to add a reaction as them,
+        // or with add:false to remove theirs.
+        let mut app = new_chat();
+
+        // MODR reacts, but claims to be USER.
+        let claimed = UserId::new(USER).to_string();
+        app.call_as_account(MODR, MODR, |s| {
+            s.update_reaction("msg-1".to_owned(), "\u{1f44d}".to_owned(), claimed.clone(), true)
+        })
+        .unwrap();
+
+        let reactors = app
+            .view(|s| s.get_reactions_for_message(&"msg-1".to_owned()))
+            .unwrap_or_default();
+        let thumbs: Vec<String> = reactors.get("\u{1f44d}").cloned().unwrap_or_default();
+
+        assert!(
+            !thumbs.contains(&claimed),
+            "the caller must not be able to react as another user; got {thumbs:?}"
+        );
+        assert_eq!(
+            thumbs.len(),
+            1,
+            "exactly one reactor — the caller — should be recorded; got {thumbs:?}"
+        );
+    }
+
+    /// The windowed read must be a pure optimisation: same page, same
+    /// total_count, same start_position as the scan it replaces.
+    ///
+    /// Worth pinning every combination rather than one happy path, because
+    /// `paginate` counts its window from the END of the collection — offset 0
+    /// is the NEWEST page, not the oldest — and an off-by-one in that
+    /// arithmetic returns plausible-looking messages from the wrong place.
+    #[test]
+    fn the_windowed_page_matches_the_scan_it_replaces() {
+        let mut app = new_chat();
+
+        for i in 0..25 {
+            app.call(|s| {
+                s.send_message(
+                    format!("m{i}"),
+                    Vec::new(),
+                    Vec::new(),
+                    None,
+                    i as u64,
+                    "creator".to_owned(),
+                    None,
+                    None,
+                )
+            })
+            .unwrap();
+        }
+
+        for (limit, offset) in [
+            (None, None),
+            (Some(1), None),
+            (Some(5), None),
+            (Some(5), Some(0)),
+            (Some(5), Some(5)),
+            (Some(5), Some(23)),
+            (Some(5), Some(25)),
+            (Some(5), Some(100)),
+            (Some(100), Some(0)),
+            (Some(0), Some(0)),
+        ] {
+            let (windowed, scanned) = app.view(|s| {
+                let windowed = s.page_unfiltered(&s.messages, limit, offset, true);
+                let scanned = MeroChat::paginate(
+                    s.collect_messages_with_reactions(&s.messages, None, true),
+                    limit,
+                    offset,
+                );
+                (windowed, scanned)
+            });
+
+            assert_eq!(
+                windowed.total_count, scanned.total_count,
+                "total_count differs at limit={limit:?} offset={offset:?}"
+            );
+            assert_eq!(
+                windowed.start_position, scanned.start_position,
+                "start_position differs at limit={limit:?} offset={offset:?}"
+            );
+
+            let got: Vec<&str> = windowed.messages.iter().map(|m| m.text.as_str()).collect();
+            let want: Vec<&str> = scanned.messages.iter().map(|m| m.text.as_str()).collect();
+            assert_eq!(
+                got, want,
+                "page differs at limit={limit:?} offset={offset:?}"
+            );
+        }
+    }
+
+    /// An empty collection took a separate early-return in `paginate`
+    /// (start_position 0, not the requested offset); the windowed path must
+    /// keep that, not "improve" it.
+    #[test]
+    fn the_windowed_page_matches_the_scan_when_there_are_no_messages() {
+        let app = new_chat();
+
+        let (windowed, scanned) = app.view(|s| {
+            let windowed = s.page_unfiltered(&s.messages, Some(10), Some(7), true);
+            let scanned = MeroChat::paginate(
+                s.collect_messages_with_reactions(&s.messages, None, true),
+                Some(10),
+                Some(7),
+            );
+            (windowed, scanned)
+        });
+
+        assert_eq!(windowed.total_count, scanned.total_count);
+        assert_eq!(windowed.start_position, scanned.start_position);
+        assert!(windowed.messages.is_empty());
+        assert!(scanned.messages.is_empty());
     }
 
     #[test]
