@@ -259,7 +259,16 @@ export function useWorkspace(): UseWorkspaceReturn {
   // Both ids are 32 bytes and neither the client nor the node rejects the
   // wrong one (it just names a principal that exists nowhere), so this has to
   // be the account and never `publicKey`.
-  const { identity: nodeIdentity } = useNodeIdentity();
+  const { identity: nodeIdentity, refetch: refetchNodeIdentity } = useNodeIdentity();
+  // useNodeIdentity takes no key, so it resolves once on mount - and on the
+  // onboarding path the node has no account yet at that point, because it is
+  // creating/joining the namespace that enrols it. Re-ask on every namespace
+  // change or `selfIdentity` stays null for the whole first session, which
+  // silently hides the set-your-name gate (AliasGate returns null without an
+  // identity) and leaves every member lookup unresolved.
+  const refetchNodeIdentityRef = useRef(refetchNodeIdentity);
+  refetchNodeIdentityRef.current = refetchNodeIdentity;
+  useEffect(() => { if (activeNs) void refetchNodeIdentityRef.current(); }, [activeNs]);
   const selfIdentity = nodeIdentity?.accountId ?? null;
   const [membersLoaded, setMembersLoaded] = useState(false);
   useEffect(() => {
