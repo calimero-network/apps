@@ -246,6 +246,20 @@ jobs:
             --app-version 0.0.0 \
             --output "dist/dry-run-${{ matrix.app }}.mpk"
 
+      # A SEPARATE artifact on purpose. The upload below uses glob paths whose
+      # least-common-ancestor is `apps/`, which is what makes `path: apps`
+      # correct on the download side — adding a repo-root path like `dist/`
+      # here would move that ancestor to `.` and silently break the layout the
+      # e2e job depends on (see the note on that download step).
+      - name: Upload the dev bundle
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mpk-${{ matrix.app }}-${{ github.sha }}
+          path: dist/dry-run-${{ matrix.app }}.mpk
+          retention-days: 3
+          if-no-files-found: ignore
+
       # `always()` so a failing ABI gate still hands over the regenerated file —
       # which is exactly what the error asks you to commit. Withholding it makes
       # the error true and useless at the same time.
@@ -299,6 +313,114 @@ jobs:
 
       - run: pnpm -r test
       - run: pnpm -r build
+
+  browser:
+    name: Browser E2E (${{ matrix.app }})
+    # `needs: wasm` for the same reason the merobox e2e does: run the bundle
+    # that job already built and the ABI gate already validated, rather than
+    # paying for a second fat-LTO wasm build.
+    needs: [changes, wasm]
+    # Frontend OR contract: this drives the UI against a real node, so either
+    # side can break it — unlike the merobox e2e, which a frontend-only change
+    # cannot affect.
+    if: (needs.changes.outputs.frontend == 'true' || needs.changes.outputs.logic == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.tooling == 'true' || needs.changes.outputs.js_deps == 'true') && needs.changes.outputs.apps != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        app: ${{ fromJSON(needs.changes.outputs.apps) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: mpk-${{ matrix.app }}-${{ github.sha }}
+          path: bundle
+
+      - name: Verify the bundle arrived
+        run: |
+          set -euo pipefail
+          mpk=$(find bundle -name '*.mpk' -print -quit)
+          if [ -z "$mpk" ]; then
+            echo "::error::no .mpk in the downloaded artifact — the browser e2e would install nothing"
+            ls -la bundle || true
+            exit 1
+          fi
+          echo "KV_MPK_PATH=$PWD/$mpk" >> "$GITHUB_ENV"
+          echo "using $mpk ($(wc -c <"$mpk") bytes)"
+
+      # The merod the workspace declares, so the browser runs against the same
+      # release the contract is built for. Read from the merod-image pin rather
+      # than hard-coded, so a core bump stays one edit.
+      - name: Resolve and download merod
+        run: |
+          set -euo pipefail
+          ver=$(awk -F'"' '/^merod-image/{print $2}' Cargo.toml | sed 's/.*://')
+          test -n "$ver"
+          echo "merod $ver"
+          url="https://github.com/calimero-network/core/releases/download/${ver}/merod_x86_64-unknown-linux-gnu.tar.gz"
+          curl -fsSL "$url" -o /tmp/merod.tgz
+          mkdir -p "$HOME/.local/merod"
+          tar -xzf /tmp/merod.tgz -C "$HOME/.local/merod"
+          bin=$(find "$HOME/.local/merod" -type f -name merod -print -quit)
+          test -n "$bin"
+          chmod +x "$bin"
+          echo "MEROD_BINARY=$bin" >> "$GITHUB_ENV"
+
+      - name: Enable corepack (pnpm)
+        run: corepack enable
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Resolve the Playwright version
+        id: pw
+        working-directory: apps/${{ matrix.app }}/app
+        run: echo "version=$(npx playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+
+      # Keyed on the resolved version so a Playwright bump invalidates it.
+      - uses: actions/cache@v4
+        id: pw-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
+
+      # ⚠️ `playwright install --with-deps` has no timeout of its own and has
+      # been observed running to the 6-hour job default elsewhere in the fleet.
+      # Capped, and the OS deps are installed separately on a cache hit so the
+      # ~170 MB browser download is skipped.
+      - name: Install Chromium
+        if: steps.pw-cache.outputs.cache-hit != 'true'
+        timeout-minutes: 8
+        working-directory: apps/${{ matrix.app }}/app
+        run: npx playwright install --with-deps chromium
+
+      - name: Install Chromium OS deps (cache hit)
+        if: steps.pw-cache.outputs.cache-hit == 'true'
+        timeout-minutes: 8
+        working-directory: apps/${{ matrix.app }}/app
+        run: npx playwright install-deps chromium
+
+      - name: Run the browser e2e
+        working-directory: apps/${{ matrix.app }}/app
+        run: npx playwright test
+
+      - name: Upload the report and node log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-e2e-${{ matrix.app }}-${{ github.sha }}
+          path: |
+            apps/${{ matrix.app }}/app/playwright-report
+            apps/${{ matrix.app }}/app/test-results
+            apps/${{ matrix.app }}/app/.playwright-data/*.log
+          retention-days: 7
+          if-no-files-found: ignore
 
   e2e:
     name: E2E (${{ matrix.app }})

@@ -20,8 +20,21 @@ nodes:
   # lockstep: the wasm imports host functions that only exist from that release
   # on, and an older node installs it happily then dies at context creation
   # with `link error: unknown import`.
-  image: ghcr.io/calimero-network/merod:0.11.0-rc.25
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.26
   prefix: kv-node
+  # Stated, not inherited. core 0.11.0-rc.26 made mDNS opt-in (core#3620):
+  # `merod init` now writes `discovery.mdns = false`, where every earlier
+  # release left it on. merobox does not pass the flag — its default cluster
+  # mode "leaves mDNS on", meaning it relies on whatever the node's own default
+  # is — so this scenario's peer discovery silently changed behaviour at the
+  # image bump without a line of it changing.
+  #
+  # It still wires `bootstrap.nodes` with every sibling on one Docker bridge, so
+  # create_mesh likely converges either way. That is exactly why this is pinned:
+  # "probably still works" is not something a two-node convergence test should
+  # rest on, and the failure it would produce — nodes that never find each
+  # other — looks like a product bug, not a config default.
+  mdns: true
 
 steps:
   - name: Install application on node-1

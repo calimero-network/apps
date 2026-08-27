@@ -1,0 +1,13 @@
+{
+  "name": "KV Store",
+  "short_name": "KV Store",
+  "description": "The reference Calimero app: a key-value store in a WASM contract, driven from a client generated out of that contract's own ABI.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0b1012",
+  "theme_color": "#5eead4",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

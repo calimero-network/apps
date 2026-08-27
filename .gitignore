@@ -35,6 +35,8 @@ apps/*/logic/dist/
 # Playwright
 test-results/
 playwright-report/
+# Node home + logs the browser e2e global-setup creates.
+.playwright-data/
 blob-report/
 
 # OS
