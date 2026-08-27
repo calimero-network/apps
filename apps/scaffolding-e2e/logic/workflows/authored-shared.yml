@@ -22,6 +22,30 @@ steps:
     outputs:
       app_id: applicationId
 
+  # Installed explicitly rather than left to blob sync. The `path:` this step
+  # lost from `create_mesh` was not decoration in the older merobox: it put the
+  # wasm on the joining node directly. Without it the node has to pull the blob
+  # from the founder, and for a contract this size that loses the race against
+  # merobox's retry window — the run dies at `JSON-RPC Error: Uninitialized`
+  # with `error=blob share` in the node log, which names neither cause.
+  - name: Install application on e2e-node-2
+    type: install_application
+    node: e2e-node-2
+    path: res/scaffolding_e2e.wasm
+    dev: true
+
+  # Installed explicitly rather than left to blob sync. The `path:` this step
+  # lost from `create_mesh` was not decoration in the older merobox: it put the
+  # wasm on the joining node directly. Without it the node has to pull the blob
+  # from the founder, and for a contract this size that loses the race against
+  # merobox's retry window — the run dies at `JSON-RPC Error: Uninitialized`
+  # with `error=blob share` in the node log, which names neither cause.
+  - name: Install application on e2e-node-3
+    type: install_application
+    node: e2e-node-3
+    path: res/scaffolding_e2e.wasm
+    dev: true
+
   - name: Create mesh with node-2 and node-3
     type: create_mesh
     context_node: e2e-node-1
