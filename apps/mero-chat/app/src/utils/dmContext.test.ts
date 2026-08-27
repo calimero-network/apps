@@ -3,20 +3,44 @@ import {
   buildDmAlias,
   createDmContextInGroup,
   getDmDisplayName,
-  parseDmAlias,
   resolveSharedDmDiscovery,
 } from "./dmContext";
+import { MAX_GROUP_NAME_BYTES, groupNameError } from "./groupName";
 
 describe("dmContext", () => {
   it("builds the same alias regardless of member ordering", () => {
     const first = buildDmAlias("member-b", "member-a");
     const second = buildDmAlias("member-a", "member-b");
 
-    expect(first).toBe("DM_CONTEXT_member-a_member-b");
     expect(second).toBe(first);
-    expect(parseDmAlias(first)).toEqual({
-      memberIdentities: ["member-a", "member-b"],
-    });
+    expect(first.startsWith("DM_CONTEXT_")).toBe(true);
+  });
+
+  it("fits the group-name cap for real account ids", () => {
+    // The bug this guards: the alias used to be
+    // `DM_CONTEXT_<44-char account>_<44-char account>` = 100 bytes against a
+    // 64-byte server cap, so `createSubgroup` refused it and creating a DM did
+    // nothing visible at all.
+    const alias = buildDmAlias(
+      "D6Ey2whp8PEDj9B5Ws5KYn9KoqDLzDm214vkhEPTpYHC",
+      "7Cx9dHT2ZZaaj9B5Ws5KYn9KoqDLzDm214vkhEPTpABC",
+    );
+
+    expect(new TextEncoder().encode(alias).length).toBeLessThanOrEqual(
+      MAX_GROUP_NAME_BYTES,
+    );
+    expect(groupNameError(alias)).toBeNull();
+  });
+
+  it("does not carry either participant in the name", () => {
+    // The pairing is the social graph; a group name is not where it goes.
+    // Discovery reads subgroup membership instead.
+    const a = "D6Ey2whp8PEDj9B5Ws5KYn9KoqDLzDm214vkhEPTpYHC";
+    const b = "7Cx9dHT2ZZaaj9B5Ws5KYn9KoqDLzDm214vkhEPTpABC";
+    const alias = buildDmAlias(a, b);
+
+    expect(alias).not.toContain(a);
+    expect(alias).not.toContain(b);
   });
 
   it("prefers shared DM metadata before alias parsing", () => {
@@ -76,11 +100,14 @@ describe("dmContext", () => {
       },
     });
 
+    const expectedAlias = buildDmAlias("member-a", "member-b");
     expect(result.error).toBe("");
-    expect(result.alias).toBe("DM_CONTEXT_member-a_member-b");
+    expect(result.alias).toBe(expectedAlias);
     expect(createSubgroup).toHaveBeenCalledWith("namespace-1", {
-      groupName: "DM_CONTEXT_member-a_member-b",
+      groupName: expectedAlias,
     });
+    // The name it sends must be one the server will accept.
+    expect(groupNameError(expectedAlias)).toBeNull();
     expect(setSubgroupVisibility).toHaveBeenCalledWith("dm-sg-1", {
       subgroupVisibility: "restricted",
     });
@@ -88,7 +115,7 @@ describe("dmContext", () => {
     expect(createGroupContext).toHaveBeenCalledWith(
       expect.objectContaining({
         groupId: "dm-sg-1",
-        alias: "DM_CONTEXT_member-a_member-b",
+        alias: buildDmAlias("member-a", "member-b"),
         initializationParams: expect.objectContaining({
           context_type: "Dm",
           name: "DM: Alice",
