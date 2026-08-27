@@ -1,0 +1,368 @@
+# Two-node spec smoke test for the issue-tracker service.
+#
+# Exercises the spec's mutate methods end-to-end on real nodes (what the
+# in-process converge harness can't cover):
+#   - the issue-tracker service installed + a context created from the bundle
+#   - Board state (UnorderedMap<String, Issue> with LwwRegister fields and an
+#     UnorderedSet of labels) replicating across two peers
+#   - the authored-Comment gate: a non-author edit is rejected on a real signed
+#     delta path (the per-entry authorization the bare converge harness can't test)
+#
+# Usage (run from the chat project root, after a dev bundle has been built):
+#   merobox bootstrap run test/smoke.workflow.yml
+#
+# Pre-flight: `pnpm logic:build` must have produced
+# `logic/dist/network.calimero.mero-issue-tracker.mpk` (named after the package;
+# the version lives in the manifest).
+
+name: issue-tracker spec smoke
+description: Verify the issue-tracker service replicates issues/comments and gates comment edits across two nodes.
+log_level: info
+nodes:
+  count: 2
+  prefix: app-node
+  # ponytail: pinned off `:edge` to the rc-matching tag so the verify merod
+  # matches the SDK the logic pins. Bump in lockstep with logic/Cargo.toml's
+  # SDK tag, or bootstrap skews.
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.26
+  # High base ports to avoid colliding with a host-native merod on the
+  # defaults (2428 P2P / 2528 RPC). Each node gets base + i.
+  base_port: 12428      # P2P / swarm
+  base_rpc_port: 12528  # JSON-RPC / admin API
+nuke_on_start: true
+nuke_on_end: true
+wait_timeout: 90
+
+steps:
+  # --- Bootstrap application + namespace ---
+
+  - type: install_application
+    name: Install issue-tracker bundle on node 1
+    node: app-node-1
+    dev: true
+    path: ./logic/dist/network.calimero.mero-issue-tracker.mpk
+    outputs:
+      app_id: applicationId
+
+  - type: install_application
+    name: Install issue-tracker bundle on node 2
+    node: app-node-2
+    dev: true
+    path: ./logic/dist/network.calimero.mero-issue-tracker.mpk
+
+  - type: create_namespace
+    name: Create namespace on node 1
+    node: app-node-1
+    application_id: '{{app_id}}'
+    outputs:
+      namespace_id: namespaceId
+
+  - type: create_context
+    name: Create issue-tracker context on node 1
+    node: app-node-1
+    application_id: '{{app_id}}'
+    group_id: '{{namespace_id}}'
+    service_name: issue-tracker
+    outputs:
+      issue_tracker_ctx: contextId
+
+  - type: create_namespace_invitation
+    name: Issue namespace invitation
+    node: app-node-1
+    namespace_id: '{{namespace_id}}'
+    outputs:
+      invitation: invitation
+
+  - type: join_namespace
+    name: Node 2 joins namespace
+    node: app-node-2
+    namespace_id: '{{namespace_id}}'
+    invitation: '{{invitation}}'
+
+  # --- create_issue: a new issue replicates and starts Open ---
+
+  - type: call
+    name: Exercise create_issue on app-node-1
+    node: app-node-1
+    context_id: '{{issue_tracker_ctx}}'
+    method: create_issue
+    args:
+      title: "Login button broken"
+      description: "Clicking login does nothing on Safari"
+      priority: "high"
+      labels: ["bug"]
+    outputs:
+      issue_id: result.output       # unwrap: the new issue id string
+
+  - type: wait_for_sync
+    name: Wait for context sync after create_issue
+    context_id: '{{issue_tracker_ctx}}'
+    nodes: [app-node-1, app-node-2]
+    timeout: 30
+    trigger_sync: true
+
+  - type: call
+    name: Confirm the new issue is visible + Open on node-2
+    node: app-node-2
+    context_id: '{{issue_tracker_ctx}}'
+    method: list_issues
+    args:
+      status: "Open"
+      assignee: null
+      label: null
+    outputs:
+      open_issue_0: result.output.0
+
+  - type: json_assert
+    name: create_issue produced an Open issue visible on node-2
+    statements:
+      - 'json_subset({{open_issue_0}}, {"title": "Login button broken", "status": "Open", "priority": "high"})'
+
+  # --- set_status ---
+
+  - type: call
+    name: Exercise set_status on app-node-1
+    node: app-node-1
+    context_id: '{{issue_tracker_ctx}}'
+    method: set_status
+    args:
+      issue_id: '{{issue_id}}'
+      status: "In progress"
+
+  - type: wait_for_sync
+    name: Wait for context sync after set_status
+    context_id: '{{issue_tracker_ctx}}'
+    nodes: [app-node-1, app-node-2]
+    timeout: 30
+    trigger_sync: true
+
+  - type: call
+    name: Read the issue back on node-2 after set_status
+    node: app-node-2
+    context_id: '{{issue_tracker_ctx}}'
+    method: get_issue
+    args:
+      issue_id: '{{issue_id}}'
+    outputs:
+      issue_after_status: result.output.0
+
+  - type: json_assert
+    name: set_status moved the issue to In progress
+    statements:
+      - 'json_subset({{issue_after_status}}, {"status": "In progress"})'
+
+  # --- set_priority ---
+
+  - type: call
+    name: Exercise set_priority on app-node-1
+    node: app-node-1
+    context_id: '{{issue_tracker_ctx}}'
+    method: set_priority
+    args:
+      issue_id: '{{issue_id}}'
+      priority: "urgent"
+
+  - type: wait_for_sync
+    name: Wait for context sync after set_priority
+    context_id: '{{issue_tracker_ctx}}'
+    nodes: [app-node-1, app-node-2]
+    timeout: 30
+    trigger_sync: true
+
+  - type: call
+    name: Read the issue back on node-2 after set_priority
+    node: app-node-2
+    context_id: '{{issue_tracker_ctx}}'
+    method: get_issue
+    args:
+      issue_id: '{{issue_id}}'
+    outputs:
+      issue_after_priority: result.output.0
+
+  - type: json_assert
+    name: set_priority updated the priority to urgent
+    statements:
+      - 'json_subset({{issue_after_priority}}, {"priority": "urgent"})'
+
+  # --- set_assignee ---
+
+  - type: call
+    name: Exercise set_assignee on app-node-1
+    node: app-node-1
+    context_id: '{{issue_tracker_ctx}}'
+    method: set_assignee
+    args:
+      issue_id: '{{issue_id}}'
+      assignee: "alice"
+
+  - type: wait_for_sync
+    name: Wait for context sync after set_assignee
+    context_id: '{{issue_tracker_ctx}}'
+    nodes: [app-node-1, app-node-2]
+    timeout: 30
+    trigger_sync: true
+
+  - type: call
+    name: Read the issue back on node-2 after set_assignee
+    node: app-node-2
+    context_id: '{{issue_tracker_ctx}}'
+    method: get_issue
+    args:
+      issue_id: '{{issue_id}}'
+    outputs:
+      issue_after_assignee: result.output.0
+
+  - type: json_assert
+    name: set_assignee set the assignee to alice
+    statements:
+      - 'json_subset({{issue_after_assignee}}, {"assignee": "alice"})'
+
+  # --- add_label / remove_label ---
+  # Labels are an UnorderedSet; membership ordering is not deterministic, so we
+  # assert only that the mutations apply without error (no matching order-stable
+  # view assertion) and rely on the sync barrier.
+
+  - type: call
+    name: Exercise add_label on app-node-1
+    node: app-node-1
+    context_id: '{{issue_tracker_ctx}}'
+    method: add_label
+    args:
+      issue_id: '{{issue_id}}'
+      label: "frontend"
+
+  - type: wait_for_sync
+    name: Wait for context sync after add_label
+    context_id: '{{issue_tracker_ctx}}'
+    nodes: [app-node-1, app-node-2]
+    timeout: 30
+    trigger_sync: true
+
+  - type: call
+    name: Exercise remove_label on app-node-1
+    node: app-node-1
+    context_id: '{{issue_tracker_ctx}}'
+    method: remove_label
+    args:
+      issue_id: '{{issue_id}}'
+      label: "bug"
+
+  - type: wait_for_sync
+    name: Wait for context sync after remove_label
+    context_id: '{{issue_tracker_ctx}}'
+    nodes: [app-node-1, app-node-2]
+    timeout: 30
+    trigger_sync: true
+
+  # --- add_comment: replicates into the issue thread ---
+
+  - type: call
+    name: Exercise add_comment on app-node-1
+    node: app-node-1
+    context_id: '{{issue_tracker_ctx}}'
+    method: add_comment
+    args:
+      issue_id: '{{issue_id}}'
+      body: "Filed a fix in PR #42"
+    outputs:
+      comment_id: result.output       # unwrap: the new comment id string
+
+  - type: wait_for_sync
+    name: Wait for context sync after add_comment
+    context_id: '{{issue_tracker_ctx}}'
+    nodes: [app-node-1, app-node-2]
+    timeout: 30
+    trigger_sync: true
+
+  - type: call
+    name: Read the thread on node-2 after add_comment
+    node: app-node-2
+    context_id: '{{issue_tracker_ctx}}'
+    method: get_issue
+    args:
+      issue_id: '{{issue_id}}'
+    outputs:
+      comment_0: result.output.1.0
+
+  - type: json_assert
+    name: add_comment produced a visible comment on node-2
+    statements:
+      - 'json_subset({{comment_0}}, {"body": "Filed a fix in PR #42"})'
+
+  # --- authored-Comment gate: a non-author edit is rejected ---
+  # Node 2 did not author the comment, so its edit must be rejected on the
+  # signed-delta path.
+  - type: call
+    name: Non-author edit_comment from node-2 must be rejected
+    node: app-node-2
+    context_id: '{{issue_tracker_ctx}}'
+    method: edit_comment
+    args:
+      comment_id: '{{comment_id}}'
+      new_body: "malicious edit"
+    expect_error: true
+
+  # --- edit_comment: the author can edit ---
+
+  - type: call
+    name: Exercise edit_comment on app-node-1 (the author)
+    node: app-node-1
+    context_id: '{{issue_tracker_ctx}}'
+    method: edit_comment
+    args:
+      comment_id: '{{comment_id}}'
+      new_body: "Filed and merged fix in PR #42"
+
+  - type: wait_for_sync
+    name: Wait for context sync after edit_comment
+    context_id: '{{issue_tracker_ctx}}'
+    nodes: [app-node-1, app-node-2]
+    timeout: 30
+    trigger_sync: true
+
+  - type: call
+    name: Read the thread on node-2 after edit_comment
+    node: app-node-2
+    context_id: '{{issue_tracker_ctx}}'
+    method: get_issue
+    args:
+      issue_id: '{{issue_id}}'
+    outputs:
+      comment_edited: result.output.1.0
+
+  - type: json_assert
+    name: edit_comment updated the comment body
+    statements:
+      - 'json_subset({{comment_edited}}, {"body": "Filed and merged fix in PR #42"})'
+
+  # --- delete_comment: the thread empties ---
+
+  - type: call
+    name: Exercise delete_comment on app-node-1 (the author)
+    node: app-node-1
+    context_id: '{{issue_tracker_ctx}}'
+    method: delete_comment
+    args:
+      comment_id: '{{comment_id}}'
+
+  - type: wait_for_sync
+    name: Wait for context sync after delete_comment
+    context_id: '{{issue_tracker_ctx}}'
+    nodes: [app-node-1, app-node-2]
+    timeout: 30
+    trigger_sync: true
+
+  - type: call
+    name: Read the thread on node-2 after delete_comment
+    node: app-node-2
+    context_id: '{{issue_tracker_ctx}}'
+    method: get_issue
+    args:
+      issue_id: '{{issue_id}}'
+    outputs:
+      thread_after_delete: result.output.1
+
+  - type: json_assert
+    name: delete_comment emptied the issue's comment thread
+    statements:
+      - 'json_equal({{thread_after_delete}}, [])'

@@ -1,0 +1,49 @@
+[workspace]
+members = [
+    "crates/types",
+    "crates/issue-tracker"
+]
+resolver = "2"
+
+# Read by `cargo mero bundle`. `appVersion` is not here on purpose: it lives in
+# studio.config.json, which the e2e and smoke consumers also read, and is passed
+# through with --app-version so the two cannot drift.
+[workspace.metadata.calimero]
+package = "network.calimero.mero-issue-tracker"
+name = "mero-issue-tracker"
+description = "A private, real-time issue board for a small engineering team - create, triage, and discuss issues together"
+# Must match the registry username that owns the package; the registry returns
+# 403 not_owner on a mismatch.
+author = "calimero-network"
+min-runtime-version = "0.11.0-rc.26"
+frontend = "https://mero-issue-tracker-app.vercel.app/"
+# The tool's stock Calimero mark - the repo ships no icon of its own.
+icon = "default"
+
+[[workspace.metadata.calimero.services]]
+name = "issue-tracker"
+crate = "issue-tracker-issue-tracker"
+
+[workspace.dependencies]
+# OFFLINE FALLBACK ONLY — do not maintain by hand. Every fresh scaffold
+# rewrites these tags to the latest core release (sdkPin.js), and the verify
+# pipeline + worker image derive their merod from whatever tag ends up here,
+# so app and node stay in step automatically. Keep it a real release tag
+# (never `branch = "master"`): it's what builds use when the release lookup
+# is unreachable.
+calimero-sdk = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.26" }
+calimero-storage = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.26" }
+calimero-storage-macros = { git = "https://github.com/calimero-network/core", tag = "0.11.0-rc.26" }
+thiserror = "1.0.56"
+bs58 = "0.4"
+serial_test = "3"
+issue-tracker-types = { path = "crates/types" }
+
+[profile.app-release]
+inherits = "release"
+codegen-units = 1
+opt-level = "z"
+lto = true
+debug = false
+panic = "abort"
+overflow-checks = true

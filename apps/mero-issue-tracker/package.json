@@ -1,0 +1,13 @@
+{
+  "name": "mero-issue-tracker",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@10.14.0",
+  "scripts": {
+    "logic:build": "cargo mero bundle --manifest-path logic/Cargo.toml --key \"${MERO_SIGN_KEY_FILE:-${STUDIO_DEV_SIGNING_KEY:-$HOME/.calimero-studio/studio-dev-signing.key.json}}\" --app-version $(node -p \"require('./studio.config.json').appVersion\") --output logic/dist/$(node -p \"require('./studio.config.json').package\").mpk",
+    "app:dev": "pnpm --filter ./app dev",
+    "app:build": "pnpm --filter ./app build",
+    "app:codegen": "pnpm --filter ./app codegen",
+    "test:smoke": "merobox bootstrap run test/smoke.workflow.yml"
+  }
+}

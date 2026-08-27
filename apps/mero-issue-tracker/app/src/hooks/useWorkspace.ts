@@ -1,0 +1,491 @@
+/**
+ * useWorkspace - the single owner of workspace resolution.
+ *
+ * Namespace/repo model:
+ *  - A namespace is a team workspace. It is created or joined explicitly
+ *    (no silent auto-create). `activeNs` is persisted in localStorage.
+ *  - A context inside the namespace is ONE repo. Repos are added explicitly
+ *    (name + GitHub URL); `activeRepo` (a contextId) is persisted per
+ *    namespace and feeds every issue view.
+ *  - People names come from namespace member metadata (setMemberMetadata);
+ *    repo names are the context label passed at createContext.
+ *  - Desktop SSO: when the auth callback carries a contextId + identity, we
+ *    treat that context as the active repo and resolve its namespace, skipping
+ *    the pickers entirely.
+ */
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useMero,
+  useNamespacesForApplication,
+  useCreateNamespaceInvitation,
+  useJoinNamespace,
+  useGroupContexts,
+  useGroupMembers,
+  useNodeIdentity,
+  useSetMemberMetadata,
+  type Namespace,
+} from '@calimero-network/mero-react';
+import { useSubscription } from '@calimero-network/mero-react';
+import { PRIMARY_SERVICE } from '../config';
+import { decodeInvitation } from '../utils/invitation';
+import { IssueTrackerClient } from '../api/issue-tracker/IssueTrackerClient';
+import { buildAliasMap } from './useAliases';
+import {
+  readActiveNs,
+  writeActiveNs,
+  dropLegacyActiveNs,
+  readActiveRepo,
+  writeActiveRepo,
+  clearPersistedWorkspace,
+} from './workspacePersistence';
+
+const ENV_APPLICATION_ID = import.meta.env.VITE_APPLICATION_ID?.trim() || null;
+
+// Members can create per-namespace contexts + invite others. Mirrors core's
+// MemberCapabilities bits (CAN_CREATE_CONTEXT | CAN_INVITE_MEMBERS).
+const DEFAULT_CAPABILITIES = 1 | 2; // = 3
+
+export interface RepoEntry {
+  contextId: string;
+  /** Display name (context label) or a truncated id fallback. */
+  name: string;
+}
+
+export interface UseWorkspaceReturn {
+  applicationId: string | null;
+
+  // namespaces
+  namespaces: Namespace[];
+  activeNs: string | null;
+  /** True while an SSO-callback context's namespace is being resolved (a
+   *  desktop handoff in flight) - the caller should hold off on onboarding
+   *  UI until this settles, to avoid a flash into the picker. */
+  resolvingCallback: boolean;
+  selectNamespace: (id: string) => void;
+  createNamespace: (name: string) => Promise<string | null>;
+  createNamespaceLoading: boolean;
+  createNamespaceError: Error | null;
+  join: (code: string) => Promise<void>;
+  joinLoading: boolean;
+  invite: () => Promise<unknown>;
+  inviteLoading: boolean;
+
+  // repos (contexts inside the active namespace)
+  repos: RepoEntry[];
+  activeRepo: string | null;
+  selectRepo: (contextId: string) => void;
+  addRepo: (name: string, repoUrl: string) => Promise<string | null>;
+  addRepoLoading: boolean;
+  addRepoError: Error | null;
+  reposLoading: boolean;
+
+  // people (namespace members) + identity
+  contextId: string | null;
+  executorPublicKey: string | null;
+  selfIdentity: string | null;
+  members: string[];
+  memberNames: Map<string, string>;
+  membersLoading: boolean;
+  membersLoaded: boolean;
+  setMemberName: (name: string) => Promise<void>;
+  refetchMembers: () => Promise<void>;
+
+  // active repo metadata (shared state)
+  repoUrl: string;
+  setRepoUrl: (url: string) => Promise<void>;
+
+  // status
+  ready: boolean;
+  loading: boolean;
+  error: Error | null;
+  clearPersisted: () => void;
+}
+
+export function useWorkspace(): UseWorkspaceReturn {
+  const {
+    mero,
+    applicationId: authApplicationId,
+    contextId: callbackContextId,
+    contextIdentity: callbackContextIdentity,
+  } = useMero();
+  const applicationId = authApplicationId || ENV_APPLICATION_ID;
+
+  const { namespaces, loading: nsLoading, refetch: refetchNamespaces } =
+    useNamespacesForApplication(applicationId);
+  const { createNamespaceInvitation, loading: inviteLoading } = useCreateNamespaceInvitation();
+  const { joinNamespace, loading: joinLoading } = useJoinNamespace();
+  const { setMemberMetadata } = useSetMemberMetadata();
+
+  // Drop the pre-versioning key on load; it is never read for a value, only
+  // ever explicit selections (below) populate the versioned one.
+  useEffect(() => { dropLegacyActiveNs(); }, []);
+
+  // --- Active namespace (persisted; SSO callback context resolves its own) ---
+  const [activeNs, setActiveNs] = useState<string | null>(() => readActiveNs());
+  // True while an SSO-callback context is present but its namespace hasn't
+  // resolved yet - the caller holds off on the empty-state picker during this
+  // window so it doesn't flash in right before the desktop handoff lands.
+  const [resolvingCallback, setResolvingCallback] = useState(() => !!callbackContextId);
+  const userSelectedNs = useRef(false);
+
+  // Resolve the namespace of the SSO callback context (a context's group IS
+  // its namespace) so the desktop path skips the picker, and set it directly
+  // - a separate "apply the resolved id" effect would let resolvingCallback
+  // clear a render before activeNs catches up, flashing the empty state.
+  useEffect(() => {
+    if (!callbackContextId) { setResolvingCallback(false); return; }
+    if (!mero) { setResolvingCallback(true); return; }
+    let cancelled = false;
+    setResolvingCallback(true);
+    (async () => {
+      try {
+        const gid = await mero.admin.getContextGroup(callbackContextId);
+        if (!cancelled && gid) {
+          // Explicit external handoff - persist it like any other selection.
+          setActiveNs(gid);
+          writeActiveNs(gid);
+        }
+      } catch {
+        /* fall back to the discovered namespace list */
+      } finally {
+        if (!cancelled) setResolvingCallback(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [mero, callbackContextId]);
+
+  // Pick a workspace to show on load. A valid persisted/current selection wins;
+  // otherwise default to the first namespace (the list is already scoped to this
+  // app, so this is a friendly cold-start default, not a stale cross-app entry).
+  // The default is in-memory only - explicit switcher picks are what persist.
+  useEffect(() => {
+    if (userSelectedNs.current || resolvingCallback) return;
+    if (namespaces.length === 0) {
+      if (activeNs) { setActiveNs(null); writeActiveNs(null); }
+      return;
+    }
+    if (activeNs && namespaces.some((n) => n.namespaceId === activeNs)) return;
+    if (activeNs) writeActiveNs(null); // drop a stale persisted id before defaulting
+    setActiveNs(namespaces[0].namespaceId);
+  }, [namespaces, activeNs, resolvingCallback]);
+
+  const selectNamespace = useCallback((id: string) => {
+    userSelectedNs.current = true;
+    setActiveNs(id);
+    writeActiveNs(id);
+  }, []);
+
+  // --- Contexts (repos) in the active namespace ---
+  const { contexts, loading: reposLoading, refetch: refetchContexts } =
+    useGroupContexts(activeNs);
+  const repos = useMemo<RepoEntry[]>(
+    () => contexts.map((c) => ({ contextId: c.contextId, name: c.name?.trim() || c.contextId.slice(0, 8) })),
+    [contexts],
+  );
+
+  // --- Active repo (a contextId; persisted per namespace) ---
+  const [activeRepo, setActiveRepo] = useState<string | null>(callbackContextId);
+  const userSelectedRepo = useRef(false);
+
+  // On a namespace switch, drop the previous namespace's repo so a stale
+  // contextId never leaks into the new namespace's views before its context
+  // list resolves. The SSO path pins its own repo and is exempt.
+  useEffect(() => {
+    if (callbackContextId) return;
+    userSelectedRepo.current = false;
+    setActiveRepo(null);
+  }, [activeNs, callbackContextId]);
+
+  // Prefer the SSO callback context; otherwise auto-select the persisted repo
+  // if it still exists, else the first repo, else none (add-repo empty state).
+  useEffect(() => {
+    if (callbackContextId) { setActiveRepo(callbackContextId); return; }
+    if (!activeNs) { setActiveRepo(null); return; }
+    if (userSelectedRepo.current && activeRepo && repos.some((r) => r.contextId === activeRepo)) {
+      return;
+    }
+    const persisted = readActiveRepo(activeNs);
+    if (persisted && repos.some((r) => r.contextId === persisted)) {
+      setActiveRepo(persisted);
+      return;
+    }
+    if (activeRepo && repos.some((r) => r.contextId === activeRepo)) return;
+    setActiveRepo(repos[0]?.contextId ?? null);
+  }, [callbackContextId, activeNs, repos, activeRepo]);
+
+  const selectRepo = useCallback((contextId: string) => {
+    userSelectedRepo.current = true;
+    setActiveRepo(contextId);
+    if (activeNs) writeActiveRepo(activeNs, contextId);
+  }, [activeNs]);
+
+  // --- Executor identity for the active repo context (for RPC) ---
+  const [executorPublicKey, setExecutorPublicKey] = useState<string | null>(
+    callbackContextIdentity,
+  );
+  useEffect(() => {
+    if (callbackContextId && callbackContextIdentity) {
+      setExecutorPublicKey(callbackContextIdentity);
+    }
+  }, [callbackContextId, callbackContextIdentity]);
+
+  useEffect(() => {
+    if (!mero || !activeRepo) { setExecutorPublicKey(callbackContextIdentity); return; }
+    if (activeRepo === callbackContextId && callbackContextIdentity) return;
+    let cancelled = false;
+    setExecutorPublicKey(null);
+    (async () => {
+      try {
+        const { identities } = await mero.admin.getContextIdentitiesOwned(activeRepo);
+        if (!cancelled && identities.length > 0) setExecutorPublicKey(identities[0]);
+      } catch {
+        /* leave null - useItems stays not-ready until an identity resolves */
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [mero, activeRepo, callbackContextId, callbackContextIdentity]);
+
+  // --- Namespace members (people names live here) ---
+  const {
+    members: nsMembers,
+    loading: membersLoading,
+    refetch: refetchMembers,
+  } = useGroupMembers(activeNs);
+  // mero-react 6 dropped `selfIdentity` from useGroupMembers: identity belongs
+  // to the node, not to one group, so it moved to its own endpoint. Use
+  // `accountId` - core rc.21 rekeyed group members from a signing PublicKey to
+  // an AccountId, and it is what listGroupMembers keys entries by, so it is
+  // what locates us in `nsMembers` and what member-addressing endpoints take.
+  // Both ids are 32 bytes and neither the client nor the node rejects the
+  // wrong one (it just names a principal that exists nowhere), so this has to
+  // be the account and never `publicKey`.
+  const { identity: nodeIdentity, refetch: refetchNodeIdentity } = useNodeIdentity();
+  // useNodeIdentity takes no key, so it resolves once on mount - and on the
+  // onboarding path the node has no account yet at that point, because it is
+  // creating/joining the namespace that enrols it. Re-ask on every namespace
+  // change or `selfIdentity` stays null for the whole first session, which
+  // silently hides the set-your-name gate (AliasGate returns null without an
+  // identity) and leaves every member lookup unresolved.
+  const refetchNodeIdentityRef = useRef(refetchNodeIdentity);
+  refetchNodeIdentityRef.current = refetchNodeIdentity;
+  useEffect(() => { if (activeNs) void refetchNodeIdentityRef.current(); }, [activeNs]);
+  const selfIdentity = nodeIdentity?.accountId ?? null;
+  const [membersLoaded, setMembersLoaded] = useState(false);
+  useEffect(() => {
+    setMembersLoaded(false);
+  }, [activeNs]);
+  useEffect(() => {
+    if (!membersLoading) setMembersLoaded(true);
+  }, [membersLoading]);
+
+  // Live member list: the node emits a GroupMembership event on the namespace
+  // group id when someone joins/leaves, so refetch instead of making the user
+  // reload. Group events carry `groupId` (context events carry `contextId`).
+  useSubscription(
+    { groupIds: activeNs ? [activeNs] : [] },
+    (ev) => { if ('groupId' in ev && ev.groupId) void refetchMembers(); },
+  );
+
+  const members = useMemo(() => nsMembers.map((m) => m.identity), [nsMembers]);
+  const memberNames = useMemo(
+    () => buildAliasMap(nsMembers.filter((m) => m.name).map((m) => ({ name: m.name as string, value: m.identity }))),
+    [nsMembers],
+  );
+
+  const setMemberName = useCallback(
+    async (name: string) => {
+      if (!activeNs || !selfIdentity) throw new Error('Workspace not ready');
+      await setMemberMetadata(activeNs, selfIdentity, { name: name.trim(), data: {} });
+      await refetchMembers();
+    },
+    [activeNs, selfIdentity, setMemberMetadata, refetchMembers],
+  );
+
+  // --- Active repo's shared repo_url ---
+  const repoClient = useMemo(
+    () =>
+      mero && activeRepo && executorPublicKey
+        ? new IssueTrackerClient(mero, activeRepo, executorPublicKey)
+        : null,
+    [mero, activeRepo, executorPublicKey],
+  );
+  const [repoUrl, setRepoUrlState] = useState('');
+  useEffect(() => {
+    if (!repoClient) { setRepoUrlState(''); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const info = await repoClient.getRepoInfo();
+        if (!cancelled) setRepoUrlState(info?.repo_url ?? '');
+      } catch {
+        if (!cancelled) setRepoUrlState('');
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [repoClient]);
+
+  const setRepoUrl = useCallback(
+    async (url: string) => {
+      if (!repoClient) throw new Error('Workspace not ready');
+      await repoClient.setRepoUrl({ url });
+      setRepoUrlState(url);
+    },
+    [repoClient],
+  );
+
+  // --- Mutations: create namespace / add repo / join / invite ---
+  const [createNamespaceLoading, setCreateNamespaceLoading] = useState(false);
+  const [createNamespaceError, setCreateNamespaceError] = useState<Error | null>(null);
+  const createNamespace = useCallback(
+    async (name: string): Promise<string | null> => {
+      if (!mero || !applicationId) return null;
+      const trimmed = name.trim();
+      if (!trimmed) {
+        setCreateNamespaceError(new Error('Workspace name is required'));
+        return null;
+      }
+      setCreateNamespaceLoading(true);
+      setCreateNamespaceError(null);
+      try {
+        // No `upgradePolicy` here: core stopped accepting it on this endpoint
+        // and mero-js 13 dropped it from CreateNamespaceRequest. Upgrades are
+        // driven per-group now (useUpgradeGroup / useGroupUpgradeStatus), not
+        // fixed at namespace creation.
+        const ns = await mero.admin.createNamespace({
+          applicationId,
+          name: trimmed,
+        });
+        if (!ns?.namespaceId) throw new Error('createNamespace returned no namespaceId');
+        // Best-effort: the namespace is usable without it; an admin can re-set.
+        try {
+          await mero.admin.setDefaultCapabilities(ns.namespaceId, {
+            defaultCapabilities: DEFAULT_CAPABILITIES,
+          });
+        } catch { /* keep core's built-in default */ }
+        await refetchNamespaces();
+        selectNamespace(ns.namespaceId);
+        return ns.namespaceId;
+      } catch (err) {
+        setCreateNamespaceError(err instanceof Error ? err : new Error(String(err)));
+        return null;
+      } finally {
+        setCreateNamespaceLoading(false);
+      }
+    },
+    [mero, applicationId, refetchNamespaces, selectNamespace],
+  );
+
+  const [addRepoLoading, setAddRepoLoading] = useState(false);
+  const [addRepoError, setAddRepoError] = useState<Error | null>(null);
+  const addRepo = useCallback(
+    async (name: string, url: string): Promise<string | null> => {
+      if (!mero || !applicationId || !activeNs) return null;
+      const trimmedName = name.trim();
+      const trimmedUrl = url.trim();
+      if (!trimmedName) {
+        setAddRepoError(new Error('Repo name is required'));
+        return null;
+      }
+      setAddRepoLoading(true);
+      setAddRepoError(null);
+      try {
+        const ctx = await mero.admin.createContext({
+          applicationId,
+          groupId: activeNs,
+          serviceName: PRIMARY_SERVICE.name,
+          initializationParams: [],
+          name: trimmedName,
+        });
+        if (!ctx?.contextId) throw new Error('createContext returned no contextId');
+        // Save the repo URL into shared state (hard-fail: it's the whole point).
+        await new IssueTrackerClient(mero, ctx.contextId, ctx.memberPublicKey).setRepoUrl({
+          url: trimmedUrl,
+        });
+        // Best-effort node alias so tools can resolve the repo by name.
+        try {
+          await mero.admin.createContextAlias({ alias: trimmedName, contextId: ctx.contextId });
+        } catch { /* convenience only */ }
+        await refetchContexts();
+        selectRepo(ctx.contextId);
+        return ctx.contextId;
+      } catch (err) {
+        setAddRepoError(err instanceof Error ? err : new Error(String(err)));
+        return null;
+      } finally {
+        setAddRepoLoading(false);
+      }
+    },
+    [mero, applicationId, activeNs, refetchContexts, selectRepo],
+  );
+
+  const invite = useCallback(async () => {
+    if (!activeNs) throw new Error('No workspace yet - create one first.');
+    return createNamespaceInvitation(activeNs, { recursive: true });
+  }, [activeNs, createNamespaceInvitation]);
+
+  const join = useCallback(async (code: string) => {
+    const parsed = decodeInvitation(code) as any;
+
+    // Share codes wrap the raw namespace invitation; unwrap to {nsId, invitation}.
+    let nsId: string | null = null;
+    let invitation = parsed;
+    let groupName: string | undefined;
+    if (Array.isArray(parsed?.invitations) && parsed.invitations.length > 0) {
+      const first = parsed.invitations[0];
+      nsId = first.groupId;
+      invitation = first.invitation;
+      groupName = first.groupAlias || undefined;
+    } else if (parsed?.invitation?.groupId) {
+      const gid = parsed.invitation.groupId;
+      nsId = Array.isArray(gid)
+        ? gid.map((b: number) => b.toString(16).padStart(2, '0')).join('')
+        : String(gid);
+      groupName = parsed.groupAlias || undefined;
+    }
+    if (!nsId) throw new Error('Invalid invitation: cannot determine namespace.');
+
+    await joinNamespace(nsId, { invitation, groupName });
+    await refetchNamespaces();
+    selectNamespace(nsId);
+    await refetchContexts();
+  }, [joinNamespace, refetchNamespaces, refetchContexts, selectNamespace]);
+
+  const clearPersisted = useCallback(() => clearPersistedWorkspace(), []);
+
+  return {
+    applicationId,
+    namespaces,
+    activeNs,
+    resolvingCallback,
+    selectNamespace,
+    createNamespace,
+    createNamespaceLoading,
+    createNamespaceError,
+    join,
+    joinLoading,
+    invite,
+    inviteLoading,
+    repos,
+    activeRepo,
+    selectRepo,
+    addRepo,
+    addRepoLoading,
+    addRepoError,
+    reposLoading,
+    contextId: activeRepo,
+    executorPublicKey,
+    selfIdentity,
+    members,
+    memberNames,
+    membersLoading,
+    membersLoaded,
+    setMemberName,
+    refetchMembers,
+    repoUrl,
+    setRepoUrl,
+    ready: activeRepo !== null && executorPublicKey !== null,
+    loading: nsLoading || reposLoading,
+    error: null,
+    clearPersisted,
+  };
+}
