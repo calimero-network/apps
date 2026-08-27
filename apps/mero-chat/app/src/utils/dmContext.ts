@@ -115,12 +115,36 @@ function getMetadataValue(
   return typedEntry[key] ?? metadata?.[key];
 }
 
+/** A short, order-independent tag for a DM subgroup.
+ *
+ * This used to be `DM_CONTEXT_<identityA>_<identityB>`. Two account ids are 44
+ * characters each, so that name was **100 bytes against a 64-byte server cap** —
+ * `createSubgroup` refused it and DM creation failed with nothing on screen.
+ *
+ * It also does not want to be participant-derived at all. The pairing is the
+ * social graph, and a group name is not the place to publish it. Discovery moved
+ * to subgroup MEMBERSHIP (see `resolveDmCounterpart`), so nothing needs to read
+ * the participants back out of a name.
+ *
+ * The digest keeps the tag stable for a given pair, which makes a DM
+ * recognisable across reloads without naming anyone. It is not an identifier:
+ * the subgroup id is.
+ */
 export function buildDmAlias(identityA: string, identityB: string): string {
   const ordered = [identityA.trim(), identityB.trim()].sort((left, right) =>
     left.localeCompare(right),
   );
 
-  return `${DM_CONTEXT_ALIAS_PREFIX}${normalizeIdentityForAlias(ordered[0])}_${normalizeIdentityForAlias(ordered[1])}`;
+  // FNV-1a, 32-bit. Not a security boundary — a name nobody resolves an identity
+  // from does not need one — and synchronous, unlike crypto.subtle.
+  let hash = 0x811c9dc5;
+  const joined = ordered[0] + "\u0000" + ordered[1];
+  for (let i = 0; i < joined.length; i += 1) {
+    hash ^= joined.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+
+  return `${DM_CONTEXT_ALIAS_PREFIX}${hash.toString(16).padStart(8, "0")}`;
 }
 
 export function parseDmAlias(

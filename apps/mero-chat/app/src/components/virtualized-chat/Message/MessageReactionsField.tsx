@@ -4,7 +4,8 @@ import styled from "styled-components";
 import type { AccountId, CurbString, HashMap, Vec } from "../types/curbTypes";
 
 import MessageReactionsList from "./MessageReactionsList";
-import { getMessengerDisplayName } from "../../../utils/messengerName";
+import { getSelfAccountBase58, sameAccount } from "../../../utils/accountIdentity";
+import { useNameResolver } from "../../../repositories/names/useNames";
 
 const ReactionsWrapper = styled.div`
   display: flex;
@@ -135,12 +136,17 @@ const ReactionDescription = ({
   accounts,
   openMessageReactionsList,
 }: ReactionDescriptionProps) => {
-  const accountsCount = accounts.length;
+  // Accounts are addresses, not something to show a person. Names are member
+  // metadata resolved per account at render time, so this reads the same
+  // repository the message list does rather than printing the raw id.
+  const { displayName } = useNameResolver();
+  const names = accounts.map((account) => displayName(account));
+  const accountsCount = names.length;
 
   if (accountsCount <= 3) {
-    return <Text>{`reacted by ${accounts.join(", ")}`}</Text>;
+    return <Text>{`reacted by ${names.join(", ")}`}</Text>;
   } else {
-    const initialAccounts = accounts.slice(0, 3).join(", ");
+    const initialAccounts = names.slice(0, 3).join(", ");
     const othersCount = accountsCount - 3;
     return (
       <Text>
@@ -172,7 +178,10 @@ const ReactionEmojiComponentButton = ({
 }: EmojiComponentButtonProps) => {
   const [showWhoReacted, setShowWhoReacted] = useState(false);
   const [isRightSide, setIsRightSide] = useState(false);
-  const currentUsername = getMessengerDisplayName();
+  // An account, not a display name. This compared `accounts` against
+  // `getMessengerDisplayName()` — a name is not an identity, so it never
+  // matched and your own reaction never highlighted.
+  const selfAccount = getSelfAccountBase58();
   const containerRef = useRef<HTMLDivElement>(null);
 
   const handleMouseEnter = () => {
@@ -192,7 +201,9 @@ const ReactionEmojiComponentButton = ({
       onMouseLeave={() => setShowWhoReacted(false)}
     >
       <ReactionEmojiWrapper
-        $isOwnReaction={reaction.accounts.includes(currentUsername)}
+        $isOwnReaction={reaction.accounts.some(
+          (account) => account === selfAccount || sameAccount(account, selfAccount),
+        )}
         onClick={() => handleReaction(reaction.reaction)}
       >
         {reaction.reaction}
