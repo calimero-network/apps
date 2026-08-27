@@ -116,7 +116,6 @@ steps:
       mentions_usernames: []
       parent_message: null
       timestamp: 1751953100000
-      sender_username: "Alice"
       files: null
       images: null
     outputs:
@@ -160,7 +159,6 @@ steps:
       mentions_usernames: []
       parent_message: null
       timestamp: 1751953200000
-      sender_username: "Bob"
       files: null
       images: null
 

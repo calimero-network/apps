@@ -162,7 +162,6 @@ steps:
       mentions_usernames: []
       parent_message: null
       timestamp: 1751955010
-      sender_username: Alice
       files: null
       images: null
     executor_public_key: "{{alice_dm_key}}"
@@ -188,7 +187,6 @@ steps:
       mentions_usernames: []
       parent_message: null
       timestamp: 1751955011
-      sender_username: Bob
       files: null
       images: null
     executor_public_key: "{{bob_dm_key}}"
