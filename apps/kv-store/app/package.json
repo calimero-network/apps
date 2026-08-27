@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "typecheck": "tsc -b",
     "test": "vitest run",
-    "codegen": "node ../../../scripts/codegen.mjs --input ../logic/res/abi.json --out src/generated --client KvStoreClient"
+    "codegen": "calimero-abi-codegen -i ../logic/res/abi.json -o src/generated --client-name KvStoreClient --import-path @calimero-network/mero-js"
   },
   "dependencies": {
     "@calimero-network/mero-js": "catalog:",

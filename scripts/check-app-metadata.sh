@@ -9,10 +9,12 @@
 #
 # inside `[package.metadata.calimero]` does not resolve — `cargo metadata`
 # reports the literal `{"workspace": true}` and cargo-mero receives a JSON
-# object where it expects a version string. (Verified by running cargo, not
-# read in a doc.) So the fleet-wide values live in
-# `[workspace.metadata.calimero]`, which cargo DOES expose, and this asserts
-# each app matches.
+# object where it expects a version string. (Verified by running cargo.)
+#
+# The fleet-wide values live in `[workspace.metadata.mero-apps]` and NOT in
+# `[workspace.metadata.calimero]`: cargo-mero REPLACES an app's package table
+# with the workspace one when both exist, which masks every app's identity in a
+# multi-app workspace. See the comment in the root Cargo.toml.
 #
 # Not a style check. Three bundles in the registry still advertise
 # `minRuntimeVersion: 0.1.0` — cargo-mero's placeholder floor, which nobody
@@ -25,9 +27,9 @@ cd "$(dirname "$0")/.."
 
 meta=$(cargo metadata --no-deps --format-version 1)
 
-want_min=$(jq -r '.metadata.calimero["min-runtime-version"] // empty' <<<"$meta")
+want_min=$(jq -r '.metadata["mero-apps"]["min-runtime-version"] // empty' <<<"$meta")
 if [[ -z "$want_min" ]]; then
-  echo "::error::[workspace.metadata.calimero].min-runtime-version is not set in the root Cargo.toml"
+  echo "::error::[workspace.metadata.mero-apps].min-runtime-version is not set in the root Cargo.toml"
   exit 1
 fi
 echo "workspace min-runtime-version: $want_min"

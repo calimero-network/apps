@@ -287,5 +287,10 @@ jobs:
             echo "- **Package:** \`$PACKAGE\`"
             echo "- **Version:** \`$VERSION\`"
             echo "- **Core revision:** \`$CORE_REV\`"
-            echo "- **Registry:** https://apps.calimero.network"
+            # The app's own page, not the registry root: the point of a release
+            # summary is to be one click from what was released.
+            echo "- **App:** https://apps.calimero.network/apps/$PACKAGE"
+            echo "- **Bundle:** https://apps.calimero.network/api/v2/bundles/$PACKAGE/$VERSION"
           } >> "$GITHUB_STEP_SUMMARY"
+
+          echo "::notice title=Published::$PACKAGE $VERSION — https://apps.calimero.network/apps/$PACKAGE"

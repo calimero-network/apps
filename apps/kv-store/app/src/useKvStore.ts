@@ -14,8 +14,8 @@ import { KvStoreClient } from "./generated/KvStoreClient";
  * as the ABI, and the ABI loses `Option<T>`. `get(key) -> Option<String>` in
  * Rust arrives as `"kind": "string"` and generates `Promise<string>`, so a
  * missing key is typed as `string` and is actually `null`. Method names and
- * argument names are trustworthy; nullability is not. See
- * `scripts/codegen.mjs`.
+ * argument names are trustworthy; nullability is not — and that one needs fixing
+ * in core's ABI emitter, which drops the `Option` before codegen ever sees it.
  */
 export function useKvStore(contextId: string): KvStoreClient | null {
   const { mero, contextIdentity } = useMero();

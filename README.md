@@ -135,7 +135,7 @@ apps/                       one directory per application
     └── app/                Vite + React + TS. A pnpm workspace package.
         └── src/generated/  typed client, generated from res/abi.json
 
-scripts/                    check-app-metadata.sh, codegen.mjs
+scripts/                    check-app-metadata.sh
 .github/workflows/          ci.yml · release.yml · publish-bundle.yml (reusable)
 
 Cargo.toml                  ONE SDK pin, and the release profiles

@@ -42,40 +42,43 @@ hex       = "0.4.3"
 sha2      = "0.10.8"
 borsh     = "1.6.1"
 
-# ── fleet-wide values cargo CANNOT inherit ───────────────────────────────────
+# ── fleet-wide values, in a table cargo-mero does not claim ──────────────────
 #
-# `[package.metadata]` is NOT on cargo's inheritable list. Setting
-# `min-runtime-version.workspace = true` in an app does not resolve — cargo
-# passes the literal `{"workspace": true}` straight through, and cargo-mero
-# expects a version string. (Verified by running cargo, not assumed.)
+# `[package.metadata]` is NOT on cargo's inheritable list: setting
+# `min-runtime-version.workspace = true` in an app resolves to the literal
+# `{"workspace": true}`. So the fleet-wide value lives here and
+# `scripts/check-app-metadata.sh` asserts every app matches it. A check, not
+# inheritance.
 #
-# So these are the authority and `scripts/check-app-metadata.sh` asserts every
-# app matches them. A check, not inheritance.
+# ⚠️ It must NOT live in `[workspace.metadata.calimero]`, which is the obvious
+# place and is wrong. cargo-mero reads that table, with `deny_unknown_fields`,
+# and — the part that bites — it **REPLACES** the package table rather than
+# merging with it:
 #
-# ⚠️ `cargo mero` PARSES this table too, with `deny_unknown_fields` — CI proved
-# it by rejecting a `merod-image` key here:
+#     /// Workspace-level `[workspace.metadata.calimero]` wins over the crate's
+#     /// own `[package.metadata.calimero]` when both are present (multi-service
+#     /// apps configure services at the workspace root).
+#     — tools/cargo-mero/src/meta.rs
 #
-#     Error: invalid [..metadata.calimero] table: unknown field `merod-image`,
-#     expected one of `package`, `name`, `description`, `author`, `icon`,
-#     `slug`, `license`, `tags`, `github`, `docs`, `min-runtime-version`,
-#     `frontend`, `services`
+# That table exists for ONE multi-service app rooted at the workspace. In a
+# workspace of many independent apps it masks each app's own metadata, and
+# bundling fails with the confusing
 #
-# So only cargo-mero's own field names may appear here. Anything fleet-wide that
-# is NOT one of them lives in `[workspace.metadata.mero-apps]` below, which
-# cargo-mero does not read.
-[workspace.metadata.calimero]
+#     Error: add a `[package.metadata.calimero]` table ... with a reverse-DNS
+#     app id
+#
+# for an app that has one. Found by the dry-run bundle in ci.yml, which exists
+# because `cargo mero build` does NOT read this table and so stayed green.
+#
+# Hence a table of our own. Nothing calimero-owned belongs at workspace level in
+# this repo.
+[workspace.metadata.mero-apps]
 # Keep equal to the SDK tag above. A build imports host functions that only
 # exist from that release on; an older node installs the bundle happily and then
 # dies at context creation with `link error: unknown import`.
 min-runtime-version = "0.11.0-rc.25"
-
-# Fleet-wide values that are ours, not cargo-mero's. Read by
-# scripts/check-app-metadata.sh and by CI; ignored by every tool that does not
-# know the table name, which is the point.
-[workspace.metadata.mero-apps]
-# The merod image every merobox workflow runs against. Matched to the SDK tag so
-# contract and node always agree — the fleet ran three different images against
-# one SDK before this.
+# The merod image every merobox workflow runs against, matched to the SDK tag so
+# contract and node always agree.
 merod-image = "ghcr.io/calimero-network/merod:0.11.0-rc.25"
 
 # ── profiles MUST live here ──────────────────────────────────────────────────
