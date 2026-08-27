@@ -51,7 +51,12 @@
  *   CALL_SECONDS=30 node e2e/browser-call.mjs
  *   node e2e/browser-call.mjs --urls /tmp/mero-stream-dev-urls.txt
  */
-import { chromium } from "playwright";
+// From @playwright/test, not the raw `playwright` package. Two copies at
+// different versions makes the test runner fail with "Playwright Test did not
+// expect test.describe() to be called here" — the catalog pins @playwright/test
+// and this file pinned playwright itself, so a catalog bump desynced them.
+// @playwright/test re-exports chromium, so one dependency covers both uses.
+import { chromium } from "@playwright/test";
 import { readFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";

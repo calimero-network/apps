@@ -42,8 +42,12 @@ nodes:
   chain_id: testnet-1
   count: 4
   # rc.24 is a FLOOR, not a preference: `set_ephemeral` does not exist before it.
-  image: ghcr.io/calimero-network/merod:0.11.0-rc.25
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.26
   prefix: calimero-node
+  # Stated, not inherited. core 0.11.0-rc.26 made mDNS opt-in (core#3620), so
+  # `merod init` now writes `discovery.mdns = false`; merobox does not pass the
+  # flag, so peer discovery changed at the image bump with nothing here changing.
+  mdns: true
   log_level: info
   # Distinct from e2e.yml (2760/2660), tombstones (2780/2680), fanout
   # (2800/2700), live-chunks (2820/2720), ephemeral-frames (2840/2740). The
@@ -57,7 +61,7 @@ steps:
   - name: Install application on Node 1
     type: install_application
     node: calimero-node-1
-    path: "../logic/res/mero_stream.wasm"
+    path: ../res/mero_stream.wasm
     dev: true
     outputs:
       app_id: applicationId
@@ -66,12 +70,10 @@ steps:
     type: create_mesh
     context_node: calimero-node-1
     application_id: "{{app_id}}"
-    path: "../logic/res/mero_stream.wasm"
     nodes:
       - calimero-node-2
       - calimero-node-3
       - calimero-node-4
-    capability: member
     params: '{"name": "ladder"}'
 
   - name: Wait for the context on all four nodes
@@ -149,7 +151,7 @@ steps:
     # containing '..' as path traversal, so the .sh wrapper next door does the
     # hop up to app/e2e/.
     type: script
-    script: e2e-capacity-ladder.sh
+    script: workflows/probes/e2e-capacity-ladder.sh
     target: local
     # Positional args: node1..node4 RPC urls, then the context id.
     args:
@@ -158,7 +160,6 @@ steps:
       - "http://localhost:2762"
       - "http://localhost:2763"
       - "{{context_id}}"
-    timeout: 600
 
   # ── The rate-share rung (a NEGATIVE result, kept deliberately) ──────────────
   #
@@ -178,7 +179,7 @@ steps:
   # Deleting a disproving measurement is how a disproved theory comes back.
   - name: Measure two authors at the shared rate (expect ~60-70%, NOT 96%)
     type: script
-    script: e2e-capacity-ladder.sh
+    script: workflows/probes/e2e-capacity-ladder.sh
     target: local
     args:
       - "http://localhost:2760"
@@ -200,7 +201,6 @@ steps:
       - "13"
       - "12"
       - "750000"
-    timeout: 300
 
   - name: Assert no panics or fatal errors on any node
     type: assert_log_absent

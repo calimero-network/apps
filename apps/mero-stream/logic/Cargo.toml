@@ -1,131 +1,88 @@
 [package]
-name = "mero-stream"
+name        = "mero-stream"
 description = "Streaming media over Calimero — in-WASM codec capacity probe (Task 3)"
-# NOT the release version. cargo requires a version field, but
-# .github/workflows/deploy-bundle.yml ignores it: the registry owns the number —
-# the check job takes the highest published appVersion and increments the patch
-# (0.0.1 when nothing is published yet). Bumping this changes nothing about what
-# gets released, so do not read a shipped version out of the tree; read it from
-# the registry or the workflow's run summary.
-version = "0.0.2"
-edition = "2021"
+# NOT the release version. The registry owns the number: publish-bundle takes the
+# highest published appVersion and increments the patch. Do not read a shipped
+# version out of the tree.
+version     = "0.0.2"
+edition.workspace    = true
+authors.workspace    = true
+license.workspace    = true
+repository.workspace = true
 
 [lib]
 crate-type = ["cdylib", "rlib"]
 
-# Consumed by `cargo mero build` / `cargo mero bundle` (core rc.20
-# `tools/cargo-mero`). This table is what lets the tool derive manifest.json from
-# the node's own canonical `BundleManifest` type instead of us hand-writing JSON
-# that mirrors it — which is how the old build-bundle.sh shipped `"hash": null`
-# and unwritable `license` / `tags` / `links` slots.
+# Consumed by `cargo mero build` / `cargo mero bundle`. Parsed with
+# deny_unknown_fields and kebab-case keys, so a snake_case typo is a loud error
+# rather than a silently-ignored field.
 #
-# The table is parsed with `deny_unknown_fields` and kebab-case keys, so a
-# snake_case typo is a loud error rather than a silently-ignored field. `package`
-# is the only required key; it must be a reverse-DNS id and is validated as
-# path-safe because it becomes `dist/<package>.mpk`.
+# NOT inheritable: `[package.metadata]` is not on cargo's inheritable list, so
+# `min-runtime-version.workspace = true` resolves to the literal
+# `{"workspace": true}`. scripts/check-app-metadata.sh asserts the match instead.
 [package.metadata.calimero]
-package = "com.calimero.merostream"
-name = "Mero Stream"
+package     = "com.calimero.merostream"
+name        = "Mero Stream"
 description = "Capacity probe: streaming media OVER Calimero. /stream runs a toy codec inside the WASM app (approach 3); /live stores opaque browser-encoded H.264 (approach 2). Experimental; not shippable media."
-author = "Calimero"
+author      = "Calimero"
 # The desktop resolves a deep link (calimero://<slug>/…) by Application.package,
-# so the slug IS the package id.
-slug = "com.calimero.merostream"
+# so the slug IS the package id. Unchanged — it is in every invite link shared.
+slug        = "com.calimero.merostream"
 # Embedded into the manifest as a data: URI, which is what gives the app a real
-# icon in the registry and — via tauri-app's `ensure_app_launcher_icon` — in the
-# macOS Dock. The bundled icon is preferred over fetching the frontend's PWA
-# manifest because it is deterministic and works offline. Regenerate with
-# `node app/scripts/gen-icons.mjs`.
-icon = "../app/public/icon-512.png"
-tags = ["streaming", "video", "webcodecs", "capacity-probe"]
-github = "https://github.com/calimero-network/mero-stream"
-# rc.20 is where `device_id()` replaced `executor_id()` and AccessControl/Ownable
-# became account-keyed, so an older node cannot run this build.
-min-runtime-version = "0.11.0-rc.25"
-# MUST be the exact origin the frontend is deployed on. This is not cosmetic
-# metadata: the embedded auth frontend uses it as the registered-redirect-URI
-# equivalent. `callbackUrl.ts` compares `frontend.origin === callbackOrigin`, and a
-# mismatch fails the login with "Login callback destination is not allowed" AFTER
-# credentials are accepted — because the token pair is deliberately withheld rather
-# than handed to an origin the package never declared.
+# icon in the registry and — via tauri-app's ensure_app_launcher_icon — in the
+# macOS Dock. Regenerate with `node app/scripts/gen-icons.mjs`.
+icon        = "../app/public/icon-512.png"
+tags        = ["streaming", "video", "webcodecs", "capacity-probe"]
+github      = "https://github.com/calimero-network/apps"
+min-runtime-version = "0.11.0-rc.26"
+# MUST be the exact origin the frontend is deployed on, and a BARE one.
 #
-# A wrong value here therefore breaks hosted login completely while local/desktop
-# login keeps working (loopback is always trusted), which is exactly how it went
-# unnoticed: `https://mero-stream.vercel.app` was a guess and the real deployment
+# This is not cosmetic: the embedded auth frontend uses it as the
+# registered-redirect-URI equivalent. callbackUrl.ts compares
+# `frontend.origin === callbackOrigin`, and a mismatch fails hosted login with
+# "Login callback destination is not allowed" AFTER credentials are accepted —
+# so a wrong value breaks hosted login completely while local/desktop login keeps
+# working (loopback is always trusted). That is exactly how it went unnoticed
+# before: `https://mero-stream.vercel.app` was a guess, and the real deployment
 # is `-neon`.
 #
+# The standalone repo carried a `/streams` PATH here so a launcher would land on
+# the picker. Dropped: check-app-metadata.sh requires a bare origin, and the
+# trust check compares `frontend.origin` and ignores the path anyway — so the
+# path only ever affected where a launcher opened, and `/` redirects to /streams
+# on its own (App.tsx routes `/` -> /streams when no stored context).
+#
 # Only ONE origin can be declared, so Vercel PREVIEW deployments (unique URLs per
-# build) will never satisfy this — hosted login only works on the declared origin.
-# Changing this requires re-publishing the bundle before it takes effect.
-#
-# The `/streams` path is the app's real entry point (the stream picker). Carrying it
-# is safe for the trust check, which compares `frontend.origin` and so ignores the
-# path entirely, and it means a launcher opening this link lands on the picker
-# directly rather than on `/` and redirecting.
-frontend = "https://mero-stream-neon.vercel.app/streams"
+# build) will never satisfy this. Changing it requires re-publishing the bundle.
+frontend    = "https://mero-stream-neon.vercel.app"
 
-# Core is pinned to an explicit RELEASE TAG, matched to the merod image the e2e
-# runs (`workflows/e2e.yml`) so contract and node always agree.
-#
-# Two tempting alternatives are both wrong here:
-#
-#   branch = "master"  — what this file used to say. It rides UNRELEASED protocol
-#     work against a released merod image. Post-rc.19 master already carries the
-#     account-identity primitive (#3320), writer sets naming accounts instead of
-#     keys (#3344), and the alpha back-compat shims dropped with the migration
-#     gate now enforced (#3359). None of that is in any image we can pull.
-#
-#   tag = "latest"  — the moving-tag convention other contract repos use
-#     (core#3273). It does NOT work against core today: the remote has 166 tags
-#     and none of them is `latest`. A warm cargo git cache can still resolve a
-#     stale local `latest` (it resolved to rc.15 here) and build green, so this
-#     fails only on a cold cache — i.e. on CI. Revisit if/when core republishes
-#     the moving tag; until then an explicit rc is the honest pin.
-#
-# Bumping = edit these four tags + the e2e image together, then `cargo update`.
 [dependencies]
-base64 = "0.22"
-borsh = "1.6.1"
-borsh-derive = "1.6.1"
-bs58 = "0.5.1"
-calimero-sdk = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.25" }
-calimero-storage = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.25" }
-calimero-storage-macros = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.25" }
-thiserror = "1.0.56"
+base64                  = "0.22"
+borsh                   = { workspace = true }
+borsh-derive            = "1.6.1"
+bs58                    = { workspace = true }
+# One pin for the whole fleet, in the root Cargo.toml. All three SDK crates must
+# share the exact same tag — core's workspace version at a tag is 0.0.0, so a
+# plain version requirement can never match, and `branch = "master"` would ride
+# unreleased protocol work against nodes running the release.
+calimero-sdk            = { workspace = true }
+calimero-storage        = { workspace = true }
+calimero-storage-macros = { workspace = true }
+thiserror               = { workspace = true }
 
-# NOTE: there is deliberately no `[build-dependencies]` section, and this crate
-# has no build.rs. Core moved ABI emission out of per-app build scripts entirely
-# (#3319 deleted all 60 of them; #3364 derives the ABI from the type system), so
-# the emitter now lives in `cargo mero build` — it reads this crate's `src/*.rs`
-# directly, writes `res/abi.json` + `res/state-schema.json`, and embeds the
-# canonicalized ABI as the wasm `calimero_abi_v1` section. That migration is DONE
-# here (see build.sh / build-bundle.sh); the ABI section is what gives
-# meroctl/devtools introspection and what the identity-downgrade gate reads on a
-# migration upgrade.
+# NOTE: deliberately no [build-dependencies] and no build.rs. Core moved ABI
+# emission out of per-app build scripts entirely (#3319 deleted all 60 of them;
+# #3364 derives the ABI from the type system), so the emitter lives in
+# `cargo mero build`: it reads this crate's src/*.rs, writes res/abi.json +
+# res/state-schema.json, and embeds the canonicalized ABI as the wasm
+# `calimero_abi_v1` section.
 
 [dev-dependencies]
 # Enables the native mock host so TestHost can drive contract state under
-# `cargo test` (same as mero-meet).
-calimero-storage = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.25", features = ["testing"] }
+# `cargo test`.
+calimero-storage = { workspace = true, features = ["testing"] }
 
-[profile.app-release]
-inherits = "release"
-codegen-units = 1
-opt-level = "z"
-lto = true
-debug = false
-panic = "abort"
-overflow-checks = true
-
-# `cargo mero build --profiling` / `cargo mero bundle --profiling` select this
-# profile instead, and the tool errors if it is absent. Keeps debug info and skips
-# wasm-opt, which is what you want when reading a flamegraph of `encode_frame`
-# rather than shipping — the approach-3 WASM-CPU numbers came from a build like
-# this. Note core gates app wasm size in CI (#3370), so a profiling build is for
-# local measurement, not for install-on-a-shared-node.
-[profile.app-profiling]
-inherits = "release"
-debug = true
-strip = false
-panic = "abort"
-overflow-checks = true
+# NOTE: no [profile.*] here. Cargo IGNORES profiles in a workspace member and
+# `cargo mero build` then fails with `profile 'app-release' is not defined`.
+# app-release and app-profiling live in the root Cargo.toml — including
+# app-profiling, which `--profiling` selects and errors if absent.

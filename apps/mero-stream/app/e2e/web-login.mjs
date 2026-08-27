@@ -15,7 +15,12 @@
  * Usage (from app/):
  *   node e2e/web-login.mjs --url http://127.0.0.1:5199
  */
-import { chromium } from "playwright";
+// From @playwright/test, not the raw `playwright` package. Two copies at
+// different versions makes the test runner fail with "Playwright Test did not
+// expect test.describe() to be called here" — the catalog pins @playwright/test
+// and this file pinned playwright itself, so a catalog bump desynced them.
+// @playwright/test re-exports chromium, so one dependency covers both uses.
+import { chromium } from "@playwright/test";
 
 const argOf = (f) => {
   const i = process.argv.indexOf(f);

@@ -17,8 +17,12 @@ nodes:
   count: 2
   # Must match the `calimero-*` tag in logic/Cargo.toml — contract and node have
   # to agree. Bump both together.
-  image: ghcr.io/calimero-network/merod:0.11.0-rc.25
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.26
   prefix: calimero-node
+  # Stated, not inherited. core 0.11.0-rc.26 made mDNS opt-in (core#3620), so
+  # `merod init` now writes `discovery.mdns = false`; merobox does not pass the
+  # flag, so peer discovery changed at the image bump with nothing here changing.
+  mdns: true
   # Off the default 2428/2528 and off mero-meet's 2740 to avoid collisions.
   base_port: 2760
   base_rpc_port: 2660
@@ -33,7 +37,7 @@ steps:
   - name: Install application on Node 1
     type: install_application
     node: calimero-node-1
-    path: "../logic/res/mero_stream.wasm"
+    path: res/mero_stream.wasm
     dev: true
     outputs:
       app_id: applicationId
@@ -42,12 +46,8 @@ steps:
     type: create_mesh
     context_node: calimero-node-1
     application_id: "{{app_id}}"
-    # Pre-installs the same wasm on the joining node — the join protocol does not
-    # transfer application blobs.
-    path: "../logic/res/mero_stream.wasm"
     nodes:
       - calimero-node-2
-    capability: member
     params: '{"name": "probe"}'
     # No `outputs:` block on purpose — that is what makes create_mesh publish its
     # default names: {{context_id}}, {{member_public_key}} (Node 1's context

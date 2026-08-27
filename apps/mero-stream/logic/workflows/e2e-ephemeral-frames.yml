@@ -42,8 +42,12 @@ nodes:
   # Keep in step with logic/Cargo.toml's calimero-* tag. rc.24 is a FLOOR here,
   # not a preference: `set_ephemeral` does not exist before it, and an older node
   # fails this scenario at the publish step.
-  image: ghcr.io/calimero-network/merod:0.11.0-rc.25
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.26
   prefix: calimero-node
+  # Stated, not inherited. core 0.11.0-rc.26 made mDNS opt-in (core#3620), so
+  # `merod init` now writes `discovery.mdns = false`; merobox does not pass the
+  # flag, so peer discovery changed at the image bump with nothing here changing.
+  mdns: true
   # Distinct from e2e.yml (2760/2660), tombstones (2780/2680), fanout
   # (2800/2700), live-chunks (2820/2720). The script step builds its URLs by
   # hand, so these have to be pinned rather than auto-allocated: with
@@ -56,7 +60,7 @@ steps:
   - name: Install application on Node 1
     type: install_application
     node: calimero-node-1
-    path: "../logic/res/mero_stream.wasm"
+    path: res/mero_stream.wasm
     dev: true
     outputs:
       app_id: applicationId
@@ -65,10 +69,8 @@ steps:
     type: create_mesh
     context_node: calimero-node-1
     application_id: "{{app_id}}"
-    path: "../logic/res/mero_stream.wasm"
     nodes:
       - calimero-node-2
-    capability: member
     params: '{"name": "ephemeral"}'
 
   - name: Wait for the context on both nodes
@@ -120,9 +122,9 @@ steps:
     type: script
     # No '..' in this path: merobox rejects one as path traversal, which is why
     # the wrapper sits in this directory instead of alongside the repo's other
-    # shell helpers in scripts/. Resolved against merobox's CWD, which both the
-    # CI job and `make workflows` set to workflows/.
-    script: e2e-ephemeral-frames.sh
+    # shell helpers in scripts/. Resolved against merobox's CWD, which ci.yml
+    # sets to apps/<app>/logic, so the path is prefixed with workflows/.
+    script: workflows/e2e-ephemeral-frames.sh
     target: local
     # Positional args: $1=node1_url $2=node2_url $3=context_id $4=node1_key
     args:

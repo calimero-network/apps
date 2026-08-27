@@ -108,7 +108,7 @@ shots:
 # delivery ratio per rung. Results land in data/capacity-ladder/results.json.
 # Runs 4 merod containers -- CI territory, not a laptop.
 ladder: logic-build
-	@cd workflows && merobox bootstrap run e2e-capacity-ladder.yml
+	@cd logic && merobox bootstrap run workflows/probes/e2e-capacity-ladder.yml
 
 e2e-call:
 	@bash scripts/e2e-live-call.sh
@@ -153,11 +153,11 @@ e2e-call-prod:
 # nodes at once; the port bases differ (2760/2780/2800/2820/2840) so they would
 # not clash if you do parallelize them.
 workflows: logic-build
-	cd workflows && merobox bootstrap run e2e.yml
-	cd workflows && merobox bootstrap run e2e-tombstones.yml
-	cd workflows && merobox bootstrap run e2e-fanout.yml
-	cd workflows && merobox bootstrap run e2e-live-chunks.yml
-	cd workflows && merobox bootstrap run e2e-ephemeral-frames.yml
+	cd logic && merobox bootstrap run workflows/e2e.yml
+	cd logic && merobox bootstrap run workflows/e2e-tombstones.yml
+	cd logic && merobox bootstrap run workflows/e2e-fanout.yml
+	cd logic && merobox bootstrap run workflows/e2e-live-chunks.yml
+	cd logic && merobox bootstrap run workflows/e2e-ephemeral-frames.yml
 
 # P3: the load curve. Needs a running context — `make workflows` leaves two nodes
 # up and prints the context id + both member keys, or use `make dev-nodes`.

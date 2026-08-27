@@ -21,8 +21,12 @@ nodes:
   chain_id: testnet-1
   count: 2
   # Keep in step with logic/Cargo.toml's calimero-* tag.
-  image: ghcr.io/calimero-network/merod:0.11.0-rc.25
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.26
   prefix: calimero-node
+  # Stated, not inherited. core 0.11.0-rc.26 made mDNS opt-in (core#3620), so
+  # `merod init` now writes `discovery.mdns = false`; merobox does not pass the
+  # flag, so peer discovery changed at the image bump with nothing here changing.
+  mdns: true
   # Distinct from e2e.yml's 2760/2660 so the two scenarios can run concurrently.
   base_port: 2780
   base_rpc_port: 2680
@@ -31,7 +35,7 @@ steps:
   - name: Install application on Node 1
     type: install_application
     node: calimero-node-1
-    path: "../logic/res/mero_stream.wasm"
+    path: res/mero_stream.wasm
     dev: true
     outputs:
       app_id: applicationId
@@ -40,10 +44,8 @@ steps:
     type: create_mesh
     context_node: calimero-node-1
     application_id: "{{app_id}}"
-    path: "../logic/res/mero_stream.wasm"
     nodes:
       - calimero-node-2
-    capability: member
     params: '{"name": "tombstones"}'
 
   - name: Wait for the context on both nodes
