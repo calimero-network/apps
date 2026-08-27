@@ -1,19 +1,21 @@
 [package]
-name = "battleships-game"
+name    = "battleships-game"
 version = "0.3.2"
-edition = "2021"
+edition.workspace    = true
+authors.workspace    = true
+license.workspace    = true
+repository.workspace = true
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
 
+# No [package.metadata.calimero]: this is the SECOND service of the battleships
+# bundle, declared in ../../Cargo.toml's services list. check-app-metadata.sh only
+# requires the table for a manifest at `apps/*/logic/Cargo.toml`.
 [dependencies]
-battleships-types = { workspace = true }
-calimero-sdk = { workspace = true }
-calimero-storage = { workspace = true }
+battleships-types       = { path = "../types" }
+calimero-sdk            = { workspace = true }
+calimero-storage        = { workspace = true }
 calimero-storage-macros = { workspace = true }
-bs58 = { workspace = true }
-sha2 = "0.10"
-
-[build-dependencies]
-calimero-wasm-abi = { workspace = true }
-serde_json = { workspace = true }
+bs58                    = { workspace = true }
+sha2                    = { workspace = true }

@@ -1,22 +1,63 @@
-[workspace]
-members = ["crates/types", "crates/lobby", "crates/game"]
-resolver = "2"
+[package]
+# The LOBBY service crate, promoted to logic/ and renamed. `apps/*/logic` must be
+# a PACKAGE (a members-glob match cannot be a nested `[workspace]`), and the
+# directory / cargo package / npm package must be one value.
+#
+# Lobby rather than game because it is the entry service: the app bootstraps a
+# namespace with `serviceName: 'lobby'` before any game context exists. The
+# SERVICE names are unchanged (`lobby`, `game`) — the frontend passes them at
+# createContext and every scenario asserts on them.
+name        = "battleships"
+version     = "0.3.2"
+edition.workspace    = true
+authors.workspace    = true
+license.workspace    = true
+repository.workspace = true
 
-[workspace.dependencies]
-calimero-sdk = { git = "https://github.com/calimero-network/core", branch = "master" }
-calimero-storage = { git = "https://github.com/calimero-network/core", branch = "master" }
-calimero-storage-macros = { git = "https://github.com/calimero-network/core", branch = "master" }
-calimero-wasm-abi = { git = "https://github.com/calimero-network/core", branch = "master" }
-thiserror = "1.0.56"
-bs58 = "0.4"
-serde_json = "1.0.113"
-battleships-types = { path = "crates/types" }
+[lib]
+# `rlib` added alongside cdylib so TestHost tests can link the crate.
+crate-type = ["cdylib", "rlib"]
 
-[profile.app-release]
-inherits = "release"
-codegen-units = 1
-opt-level = "z"
-lto = true
-debug = false
-panic = "abort"
-overflow-checks = true
+# NEW. The standalone repo had NO [package.metadata.calimero] anywhere — not at
+# workspace level either — so this app was never bundled by cargo-mero and never
+# published. The registry has nothing under any battleships id, so the id below is
+# a FIRST publish with no installed copies and no invite links to orphan.
+[package.metadata.calimero]
+package     = "com.calimero.battleships"
+name        = "Battleships"
+description = "Two-player Battleships over Calimero: a lobby service for matchmaking and a game service per match, with commit-reveal ship placement."
+author      = "Calimero"
+slug        = "com.calimero.battleships"
+icon        = "default"
+tags        = ["game", "multiplayer", "turn-based"]
+github      = "https://github.com/calimero-network/apps"
+min-runtime-version = "0.11.0-rc.26"
+frontend    = "https://battleships.vercel.app"
+
+# Two services, one bundle. PACKAGE level, because cargo-mero REPLACES an app's
+# package table with `[workspace.metadata.calimero]` when both exist — which in a
+# many-app workspace masks every other app.
+[[package.metadata.calimero.services]]
+name  = "lobby"
+crate = "battleships"
+
+[[package.metadata.calimero.services]]
+name  = "game"
+crate = "battleships-game"
+
+[dependencies]
+battleships-types       = { path = "crates/types" }
+bs58                    = { workspace = true }
+# WAS `branch = "master"`, which rides unreleased protocol work against nodes
+# running a release and drifts silently between builds.
+calimero-sdk            = { workspace = true }
+calimero-storage        = { workspace = true }
+calimero-storage-macros = { workspace = true }
+
+# NOTE: build.rs and its calimero-wasm-abi [build-dependencies] are GONE, in both
+# service crates. Core deleted all 60 per-app ABI build scripts (#3319) and
+# derives the ABI from the type system (#3364); `cargo mero build` is the emitter.
+# calimero-wasm-abi is not even resolvable as an app dependency at the workspace
+# tag any more.
+#
+# NOTE: no [profile.*] — cargo ignores profiles in a workspace member.
