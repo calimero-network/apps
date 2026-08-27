@@ -1,0 +1,133 @@
+# Decide which apps to publish, then call the reusable pipeline once per app.
+#
+# The `shared` filter is the capability the per-repo setup could not express at
+# all: bumping the SDK changes EVERY contract's bytes, so a change to the
+# workspace root must fan out to every app. Before this, that meant remembering
+# to touch nine repos and hoping each one's own `paths:` filter fired.
+
+name: Release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      # Add "crates/**" when that directory exists.
+      - "apps/*/logic/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+  workflow_dispatch:
+    inputs:
+      app:
+        description: Publish this app only (empty = every app)
+        required: false
+        type: string
+      version:
+        description: Explicit X.Y.Z. Empty lets the registry decide.
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  select:
+    name: Select apps
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      apps: ${{ steps.pick.outputs.apps }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          # `list-files: shell` so the per-app decision below reads real paths
+          # rather than re-deriving them.
+          list-files: shell
+          filters: |
+            shared:
+              # Add 'crates/**' when that directory exists.
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+            logic:
+              - 'apps/*/logic/**'
+
+      - name: Pick the apps to publish
+        id: pick
+        env:
+          DISPATCH_APP: ${{ inputs.app }}
+          SHARED: ${{ steps.filter.outputs.shared }}
+          LOGIC_FILES: ${{ steps.filter.outputs.logic_files }}
+        run: |
+          set -euo pipefail
+
+          all=$(bash scripts/app-packages.sh all)
+
+          if [ -n "$DISPATCH_APP" ]; then
+            # An explicit dispatch must name a real app, or the run would
+            # silently publish nothing.
+            if ! jq -e --arg a "$DISPATCH_APP" 'index($a)' >/dev/null <<<"$all"; then
+              echo "::error::'$DISPATCH_APP' is not an app in this workspace: $all"
+              exit 1
+            fi
+            apps=$(jq -c --arg a "$DISPATCH_APP" '[$a]' <<<"$all")
+            echo "::notice::explicit dispatch — publishing $DISPATCH_APP only"
+
+          elif [ "$SHARED" = "true" ]; then
+            # The SDK pin or a shared crate moved, so every contract's bytes
+            # changed. Publish all of them.
+            apps="$all"
+            echo "::notice::workspace-level change — publishing every app: $apps"
+
+          else
+            # Map changed paths to CARGO PACKAGE NAMES via the shared script.
+            #
+            # This used to `sed` the directory name out of the path, while the
+            # two branches above take it from `cargo metadata | .name`. Those
+            # agree only while every app directory is named exactly like its
+            # crate — publish-bundle.yml uses the value as both a directory AND
+            # a package name, so the first app where they differ fails with
+            # "no [package.metadata.calimero].package", on this path only and
+            # never on a dispatch.
+            #
+            # `printf '%s'` quoted, not an unquoted expansion of $LOGIC_FILES:
+            # paths-filter shell-quotes its file list, so an unquoted expansion
+            # would re-split it and mangle any path containing a space.
+            apps=$(printf '%s' "$LOGIC_FILES" | bash scripts/app-packages.sh from-paths)
+            echo "::notice::changed apps: $apps"
+          fi
+
+          # An empty matrix would make the publish job vanish, which reads as
+          # success. Say so instead.
+          if [ "$apps" = "[]" ]; then
+            echo "::notice::no app logic changed — nothing to publish"
+          fi
+          echo "apps=$apps" >> "$GITHUB_OUTPUT"
+
+  publish:
+    name: Publish
+    needs: select
+    if: needs.select.outputs.apps != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        app: ${{ fromJSON(needs.select.outputs.apps) }}
+    uses: ./.github/workflows/publish-bundle.yml
+    with:
+      app: ${{ matrix.app }}
+      version: ${{ inputs.version || '' }}
+    # Only the two the publish needs — not `inherit`, which would forward every
+    # org secret into a job holding a production signing key.
+    #
+    # NOTE for whoever owns this repo: a publish here is irreversible (the
+    # registry rejects a duplicate version, so a mistaken release can only be
+    # superseded, never withdrawn) and any account with write access can trigger
+    # one by merging. An `environment:` with required reviewers on the deploy job
+    # is the gate for that, and it has to be configured in repo settings — it
+    # cannot be added from here alone.
+    secrets:
+      MERO_SIGN_KEY: ${{ secrets.MERO_SIGN_KEY }}
+      CALIMERO_REGISTRY_API_KEY: ${{ secrets.CALIMERO_REGISTRY_API_KEY }}

@@ -1,0 +1,93 @@
+[package]
+name = "kv-store"
+description = "Calimero KV Store — the reference app"
+# NOT the release version. Cargo requires a version field; the release workflow
+# ignores it, because the REGISTRY owns the number: it takes the highest
+# published appVersion for this package and increments the patch (0.0.1 when
+# nothing is published). Bumping this changes nothing about what ships, so never
+# read a shipped version out of the tree.
+version = "0.0.1"
+edition.workspace      = true
+authors.workspace      = true
+license.workspace      = true
+repository.workspace    = true
+publish = false
+
+[lib]
+# `cdylib` for the wasm the node loads. `rlib` as well so `cargo test` can link
+# the crate — without it `tests/converge.rs` cannot `use kv_store::KvStore`.
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+calimero-sdk.workspace     = true
+calimero-storage.workspace = true
+thiserror.workspace        = true
+
+[dev-dependencies]
+# The `testing` feature enables the native mock host, which is what lets
+# `TestHost` and `converge_app` drive real CRDT state under `cargo test` with no
+# node and no wasm.
+calimero-storage = { workspace = true, features = ["testing"] }
+
+# Read by `cargo mero build` / `cargo mero bundle`. Every field the node and the
+# registry render has a producer here, so nothing hand-writes a manifest.json.
+#
+# `appVersion` is deliberately absent — the release workflow resolves it from
+# the registry and passes `--app-version`.
+#
+# NOTE: none of this can be inherited from the workspace. `[package.metadata]`
+# is not on cargo's inheritable list, so `min-runtime-version.workspace = true`
+# resolves to the literal `{"workspace": true}`. `scripts/check-app-metadata.sh`
+# asserts the fleet-wide values match `[workspace.metadata.mero-apps]` instead —
+# NOT `[workspace.metadata.calimero]`, which cargo-mero reads and would use to
+# REPLACE this whole table. See the root Cargo.toml.
+[package.metadata.calimero]
+package = "com.calimero.kv-store"
+name = "KV Store"
+description = "The reference Calimero app: an UnorderedMap<String, LwwRegister<String>> exercised end to end, with a typed client generated from the contract's own ABI."
+author = "Calimero"
+# The slug IS the package id: the desktop and links.calimero.network resolve a
+# deep link by `Application.package`, so these must never drift apart.
+slug = "com.calimero.kv-store"
+# ⚠️ REQUIRED. `cargo mero bundle` refuses to run without an icon decision —
+# a path, "default", or --no-icon — and errors with `no icon configured for
+# <package>`. That happens at BUNDLE time, so it cannot fail CI on a pull
+# request: only the release workflow bundles, and that only runs on a push to
+# main. A missing icon is therefore a green PR that breaks the moment it merges.
+#
+# "default" is cargo-mero's own bundled mark, compiled into the tool, so it needs
+# no file and cannot go stale. That is the right answer for the reference app:
+# it has no branding of its own to assert, and shipping a real icon would mean
+# maintaining a PNG whose only purpose is to look intentional.
+icon = "default"
+tags = ["example", "reference", "kv", "crdt"]
+github = "https://github.com/calimero-network/apps"
+# Asserted equal to [workspace.metadata.mero-apps] in CI. Three bundles in the
+# registry still advertise 0.1.0 — cargo-mero's placeholder floor, which nobody
+# verified — which is the failure that check exists to prevent.
+min-runtime-version = "0.11.0-rc.25"
+# Doubles as this app's registered redirect URI: the auth frontend treats the
+# registry-declared frontend origin as the only callback it will authorize, and
+# compares it by EXACT ORIGIN. Get it wrong and hosted login breaks *after*
+# credentials are accepted, while local and desktop login keep working (loopback
+# is always trusted) — which is how mero-stream shipped a guessed origin and
+# nobody noticed for weeks.
+#
+# Written WITHOUT a trailing slash on purpose. An origin is scheme + host
+# (+ port) and nothing else; `window.location.origin` never carries a trailing
+# slash, so the bare form is what a literal comparison against it matches.
+# `scripts/check-app-metadata.sh` tolerates either, but only this form is
+# actually an origin.
+#
+# ⚠️ This resolves to nothing until the Vercel project exists. It is declared
+# ahead of the deployment deliberately: the release workflow only publishes on a
+# push to main, and the project is being linked as part of that same merge, so
+# no bundle carrying this value reaches the registry before the origin is live.
+# If that merge happens WITHOUT the Vercel project being created, this field is
+# worse than absent — it is the field that authorizes a login callback, so it
+# would authorize an origin nobody controls.
+#
+# Vercel project settings: Root Directory `apps/kv-store/app`, and the project
+# name decides the domain — a project named anything else yields a different
+# `<project>.vercel.app` and silently invalidates this value.
+frontend = "https://mero-kv-store.vercel.app"

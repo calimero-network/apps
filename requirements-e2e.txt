@@ -1,0 +1,33 @@
+# The merobox toolchain for every app's e2e, pinned in ONE place.
+#
+# ⚠️ Pinning merobox alone pins NOTHING. `calimero-client-py` is a transitive
+# dependency that tracks core master, so an unpinned install silently picks up
+# whatever landed there today: 0.6.27 broke `create_namespace`, 0.6.26 broke
+# `join_namespace`. A commit that changes nothing can turn the e2e red, and
+# merobox's Rich renderer hides the real error. Eight of the nine app repos had
+# it unpinned.
+#
+# Install from PyPI, not the apt repo at calimero-network.github.io/merobox —
+# that no longer serves a Release file and 404s at install, which reads like a
+# contract break rather than a dead mirror.
+#
+# Cache ~/.cache/pip in CI: calimero-client-py ships an sdist only, so every
+# uncached job compiles a Rust wheel (~70s measured).
+# ⚠️ 0.6.59 is a FLOOR against an rc.25 node, not a preference. rc.25 renamed
+# the namespace-join response field `groupId` -> `namespaceId`; merobox picked
+# that up in 0.6.59. On 0.6.55 (which the rest of the fleet pins) a two-node
+# `create_mesh` dies at the join with a truncated
+#
+#     Join namespace failed for <node>: join_namespace failed: Client error:
+#
+# which names neither the field nor the version. Found by this repo's own CI.
+#
+# 0.6.66 is what mero-design, mero-pixart, mero-calendar, mero-blocks and
+# merraria all run GREEN against rc.25 nodes, so the fleet and this repo agree on
+# one pair rather than two.
+#
+# calimero-client-py is the layer that actually builds the request, and merobox
+# 0.6.66 only requires `>=0.6.33` — so leaving it unpinned tracks core master
+# and can break a no-op commit.
+merobox==0.6.66
+calimero-client-py==0.6.33

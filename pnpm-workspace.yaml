@@ -1,0 +1,50 @@
+# The pnpm workspace for every app's frontend.
+#
+# `catalog:` is the npm answer to Cargo's `[workspace.dependencies]` (pnpm
+# >= 9.5). An app writes `"react": "catalog:"` and the version lives here, once.
+#
+# Before the monorepo the nine app repos held three TypeScript versions, three
+# Vites, four vitests, three Playwrights and four Reacts between them, and a
+# mero-js release opened N pull requests that all conflicted with each other on
+# the lockfile. One line here replaces that.
+
+packages:
+  - "apps/*/app"
+  # Add "packages/*" back alongside the first shared frontend package. Unlike
+  # Cargo, pnpm tolerates a glob that matches nothing, so this is housekeeping
+  # rather than a break waiting to happen.
+
+catalog:
+  # ── Calimero ───────────────────────────────────────────────────────────────
+  "@calimero-network/mero-js": ^13.2.5
+  "@calimero-network/mero-react": ^6.0.4
+  "@calimero-network/mero-ui": ^1.5.1
+  "@calimero-network/mero-platform": ^0.1.0
+  "@calimero-network/mero-platform-react": ^0.1.0
+  "@calimero-network/abi-codegen": ^1.2.2
+
+  # ── runtime ────────────────────────────────────────────────────────────────
+  react: ^19.2.8
+  react-dom: ^19.2.8
+  # Invitation payload codec: deflate + base58 keeps a shared link short enough
+  # to paste into a chat message.
+  bs58: ^6.0.0
+  fflate: ^0.8.2
+
+  # ── build / test ───────────────────────────────────────────────────────────
+  typescript: ~5.8.3
+  vite: ^6.4.3
+  vitest: ^4.1.10
+  "@vitejs/plugin-react": ^4.3.4
+  "@playwright/test": ^1.62.1
+  jsdom: ^25.0.1
+
+  # ── types ──────────────────────────────────────────────────────────────────
+  "@types/react": ^19.0.0
+  "@types/react-dom": ^19.0.0
+  "@types/node": ^22.10.0
+
+# esbuild's postinstall needs approving explicitly under pnpm 10+; pnpm 11
+# renamed the key to `allowBuilds`, so this may need updating with the toolchain.
+onlyBuiltDependencies:
+  - esbuild

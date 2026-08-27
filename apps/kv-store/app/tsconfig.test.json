@@ -1,0 +1,17 @@
+{
+  "// note": "Unit tests. Node types on purpose: generated.test.ts reads logic/res/abi.json off disk to assert the client covers the contract.",
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist-types/test",
+    "tsBuildInfoFile": "./dist-types/test.tsbuildinfo",
+    "types": ["node", "vite/client"]
+  },
+  "// include": "Tests plus everything they import. tsc -b will not let a test reference a file the project does not list, and `src/utils` is where the pure, unit-testable code lives.",
+  "include": [
+    "src/**/*.test.ts",
+    "src/**/*.test.tsx",
+    "src/test",
+    "src/generated",
+    "src/utils"
+  ]
+}

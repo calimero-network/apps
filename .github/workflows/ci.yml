@@ -1,0 +1,412 @@
+# Per-app CI, path-filtered.
+#
+# The filter is the point. A frontend-only change must not pay for a WASM build
+# or spin up merobox containers, and a change to the workspace root must fan out
+# to EVERY app — because bumping the SDK changes every contract's bytes. The
+# per-repo setup this replaces could not express the second half at all.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  # ── what changed ───────────────────────────────────────────────────────────
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      apps: ${{ steps.set.outputs.apps }}
+      logic: ${{ steps.filter.outputs.logic }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+      shared: ${{ steps.filter.outputs.shared }}
+      tooling: ${{ steps.filter.outputs.tooling }}
+      js_deps: ${{ steps.filter.outputs.js_deps }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          # `list-files: shell` so the per-app mapping below reads real paths
+          # instead of re-deriving them from a boolean.
+          list-files: shell
+          filters: |
+            # `shared` means "this can change a CONTRACT's bytes", which is what
+            # justifies fanning out to every app AND running the 40-minute
+            # merobox matrix.
+            #
+            # It used to include `.github/**`, `scripts/**` and the JS
+            # workspace files, so editing a COMMENT in this very file triggered
+            # the most expensive path in the pipeline. Those still need to run
+            # something — they just do not change any wasm — so they are their
+            # own filters below.
+            #
+            # Add 'crates/**' here when that directory is created.
+            shared:
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+            # The pipeline itself changed, so the pipeline has to be exercised —
+            # including the e2e, since these are what drive it.
+            tooling:
+              - '.github/**'
+              - 'scripts/**'
+              - 'requirements-e2e.txt'
+            # JS-only: a catalog bump or a tsconfig change cannot alter a
+            # contract, so it must not start merod containers.
+            js_deps:
+              - 'pnpm-workspace.yaml'
+              - 'pnpm-lock.yaml'
+              - 'tsconfig.base.json'
+            logic:
+              - 'apps/*/logic/**'
+            frontend:
+              - 'apps/*/app/**'
+            app:
+              - 'apps/**'
+
+      # WHICH APPS, not "are there any".
+      #
+      # This used to be `cargo metadata | .name` — every app in the workspace —
+      # while the filters above are repo-wide booleans. So touching ONE
+      # contract set `logic=true` and then built wasm and ran a two-node merobox
+      # e2e for EVERY app: cost O(apps) per PR, and the per-app filtering this
+      # file's header claims as the monorepo's new capability was never actually
+      # expressed. Found by a reviewer, not by CI, because with one app in the
+      # repo the two are indistinguishable.
+      #
+      # `shared` still means every app — an SDK or toolchain change really does
+      # change every contract's bytes.
+      - name: Resolve the app matrix
+        id: set
+        env:
+          SHARED: ${{ steps.filter.outputs.shared }}
+          TOOLING: ${{ steps.filter.outputs.tooling }}
+          JS_DEPS: ${{ steps.filter.outputs.js_deps }}
+          APP_FILES: ${{ steps.filter.outputs.app_files }}
+        run: |
+          set -euo pipefail
+          if [ "$SHARED" = "true" ] || [ "$TOOLING" = "true" ] || [ "$JS_DEPS" = "true" ]; then
+            apps=$(bash scripts/app-packages.sh all)
+            echo "::notice::workspace-level change — covering every app: $apps"
+          else
+            apps=$(printf '%s' "$APP_FILES" | bash scripts/app-packages.sh from-paths)
+            echo "::notice::changed apps: $apps"
+          fi
+          echo "apps=$apps" >> "$GITHUB_OUTPUT"
+
+  # ── workspace-wide, cheap, always ──────────────────────────────────────────
+  metadata:
+    name: App metadata
+    needs: changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash scripts/check-app-metadata.sh
+
+  rust:
+    name: Rust (fmt, clippy, test)
+    needs: changes
+    if: needs.changes.outputs.logic == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.tooling == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+          components: rustfmt, clippy
+
+      # ONE cache for the whole workspace, keyed on the single Cargo.lock. This
+      # is where the monorepo pays for itself: `calimero-sdk` is compiled once
+      # and every app links the same artifacts, instead of nine repos each
+      # building it into nine separate caches.
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          # `cargo-native-`, not a key shared with the wasm jobs.
+          #
+          # GitHub's cache is write-once per key: the first job to finish saves
+          # and every other save is REJECTED with a warning, not a failure. With
+          # one key across `rust`, `wasm`, `e2e` and publish-bundle, the stored
+          # tree was whichever job won the race — a native tree from
+          # `cargo test --workspace`, or a wasm32 `app-release` tree from
+          # `cargo mero build`, never both — so every later run restored the
+          # wrong half and recompiled the other.
+          key: cargo-native-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-native-${{ runner.os }}-
+
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+      # Covers every app's TestHost tests and tests/converge.rs in one
+      # invocation, sharing the compiled SDK.
+      - run: cargo test --workspace
+
+  wasm:
+    name: Build WASM (${{ matrix.app }})
+    needs: changes
+    # Only when a CONTRACT moved. A frontend-only change cannot alter the wasm or
+    # the ABI, so building it proves nothing — and the frontend job's codegen
+    # gate reads the COMMITTED ABI, which this job is what validates.
+    #
+    # `apps != '[]'` is what makes an empty matrix a skipped job rather than a
+    # job that silently succeeds having built nothing.
+    if: (needs.changes.outputs.logic == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.tooling == 'true') && needs.changes.outputs.apps != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        app: ${{ fromJSON(needs.changes.outputs.apps) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          # Separate from the native key — see the `rust` job. Shared between the
+          # wasm and e2e jobs on purpose: both build the same wasm32 tree.
+          key: cargo-wasm-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-wasm-${{ runner.os }}-
+
+      - uses: ./.github/actions/install-cargo-mero
+
+      - name: Build
+        run: cargo mero build -p ${{ matrix.app }}
+
+      # `cargo mero build` resolves the ABI from the compiled `__calimero_abi()`,
+      # so this is the authoritative copy. A stale committed ABI would let the
+      # generated-client check validate against a snapshot of a contract that no
+      # longer exists and report success.
+      - name: Assert the committed ABI matches the built contract
+        run: |
+          # `git add --intent-to-add` first: plain `git diff` ignores UNTRACKED
+          # files, so a new app with no committed ABI at all would sail through
+          # the gate that exists to notice exactly that.
+          git add --intent-to-add -- 'apps/*/logic/res/abi.json' 'apps/*/logic/res/state-schema.json' 2>/dev/null || true
+          if ! git diff --quiet -- 'apps/*/logic/res/abi.json' 'apps/*/logic/res/state-schema.json'; then
+            echo "::error::a committed ABI is stale. Run 'cargo mero build -p ${{ matrix.app }}' and 'pnpm -F ${{ matrix.app }} codegen', then commit."
+            git --no-pager diff --stat -- 'apps/*/logic/res/'
+            git --no-pager diff -- 'apps/*/logic/res/abi.json' | head -200
+            exit 1
+          fi
+          echo "committed ABI matches the built contract"
+
+      # Prove the app is PUBLISHABLE, not merely compilable.
+      #
+      # This exists because of a gap it would have caught: kv-store had no `icon`
+      # in [package.metadata.calimero], and `cargo mero bundle` refuses to run
+      # without an icon decision — `no icon configured for <package>`. Nothing on
+      # a pull request bundles, and the release workflow only runs on a push to
+      # main, so that was a 12/12-green PR whose first act after merging would
+      # have been a failed publish.
+      #
+      # `--dev` signs with the well-known development key, which the registry
+      # REFUSES — so this can never publish anything by accident. It still
+      # exercises everything that is easy to get wrong offline: the icon
+      # decision, the package id's path-safety, the services list against the
+      # built wasm, and the manifest the registry will render.
+      #
+      # --app-version is fixed rather than resolved from the registry: this
+      # output is thrown away, and asking the registry for a number on every PR
+      # would make CI depend on it being reachable.
+      - name: Dry-run the bundle (dev key — never publishable)
+        run: |
+          cargo mero bundle \
+            --manifest-path apps/${{ matrix.app }}/logic/Cargo.toml \
+            --dev \
+            --app-version 0.0.0 \
+            --output "dist/dry-run-${{ matrix.app }}.mpk"
+
+      # `always()` so a failing ABI gate still hands over the regenerated file —
+      # which is exactly what the error asks you to commit. Withholding it makes
+      # the error true and useless at the same time.
+      - name: Upload wasm + ABI
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wasm-${{ matrix.app }}-${{ github.sha }}
+          path: |
+            apps/*/logic/res/*.wasm
+            apps/*/logic/res/abi.json
+            apps/*/logic/res/state-schema.json
+          retention-days: 3
+
+  frontend:
+    name: Frontend (typecheck, test, build)
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.logic == 'true' || needs.changes.outputs.tooling == 'true' || needs.changes.outputs.js_deps == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # `tsc -b`, never `tsc --noEmit`: the app tsconfig is a solution file, and
+      # --noEmit on a solution file checks nothing and exits 0.
+      - run: pnpm -r typecheck
+
+      # Regenerating and diffing is what turns a contract/frontend mismatch into
+      # a failed build rather than a runtime 500. It needs no node and no wasm —
+      # it reads the committed ABI, which the `wasm` job proves is current.
+      - name: Assert the generated clients are current
+        run: |
+          pnpm -r codegen
+          # Same reason as the ABI gate: untracked generated output is invisible
+          # to `git diff`, so a new app could pass with no client committed.
+          git add --intent-to-add -- 'apps/*/app/src/generated' 2>/dev/null || true
+          if ! git diff --quiet -- 'apps/*/app/src/generated'; then
+            echo "::error::a generated client is stale. Run 'pnpm -r codegen' and commit."
+            git --no-pager diff -- 'apps/*/app/src/generated'
+            exit 1
+          fi
+          echo "generated clients match the committed ABIs"
+
+      - run: pnpm -r test
+      - run: pnpm -r build
+
+  e2e:
+    name: E2E (${{ matrix.app }})
+    # `needs: wasm` so the contract is DOWNLOADED, not rebuilt. This job used to
+    # run `cargo mero build -p` itself, duplicating a fat-LTO wasm build the
+    # `wasm` job had already done and uploaded — and it needed a Rust toolchain,
+    # a cargo cache and cargo-mero to do it.
+    needs: [changes, wasm]
+    # Only when a CONTRACT or the pipeline moved. A frontend-only change cannot
+    # alter what a two-node merobox run does, and each of these pulls an image
+    # and starts two merod containers.
+    if: (needs.changes.outputs.logic == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.tooling == 'true') && needs.changes.outputs.apps != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        app: ${{ fromJSON(needs.changes.outputs.apps) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # The exact artifact the wasm job built and the ABI gate validated, so the
+      # e2e runs the same bytes rather than a second independent build.
+      #
+      # `path: apps`, and that is not a guess — it is what the archive layout
+      # actually is, established by getting it wrong twice.
+      #
+      # The upload uses GLOB paths (`apps/*/logic/res/*.wasm`). upload-artifact
+      # takes the least-common-ancestor of the pattern's literal prefix, which is
+      # `apps/`, so the archive contains `<app-dir>/logic/res/<name>.wasm`.
+      # Therefore:
+      #
+      #   path: .                    -> ./kv-store/logic/res/…   (wrong: no apps/)
+      #   path: apps/<app>/logic/res -> apps/<app>/logic/res/<app>/logic/res/…
+      #   path: apps                 -> apps/<app>/logic/res/…   ✓
+      #
+      # Both wrong versions were caught in one line by the verification step
+      # below rather than by merobox failing inside `install_application`, which
+      # is the whole reason that step exists.
+      - uses: actions/download-artifact@v4
+        with:
+          name: wasm-${{ matrix.app }}-${{ github.sha }}
+          path: apps
+
+      - name: Verify the contract arrived
+        run: |
+          set -euo pipefail
+          res="apps/${{ matrix.app }}/logic/res"
+          # ⚠️ This job — and publish-bundle.yml — index a DIRECTORY by cargo
+          # PACKAGE name. That holds while every app directory is named like its
+          # crate, which scripts/app-packages.sh no longer assumes for the
+          # path->app mapping. Assert it here so the first app where they differ
+          # says so, rather than failing as "no wasm".
+          if [ ! -d "apps/${{ matrix.app }}/logic" ]; then
+            echo "::error::no apps/${{ matrix.app }}/logic — this app's directory is not named after its cargo package, which this job assumes"
+            exit 1
+          fi
+          wasm=$(find "$res" -name '*.wasm' -print -quit)
+          if [ -z "$wasm" ]; then
+            echo "::error::no wasm in the downloaded artifact — the e2e would run against nothing"
+            ls -la "$res" || true
+            exit 1
+          fi
+          echo "using $wasm ($(wc -c <"$wasm") bytes)"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # calimero-client-py ships an sdist ONLY, so an uncached job compiles a
+      # Rust wheel (~70s measured).
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ runner.os }}-${{ hashFiles('requirements-e2e.txt') }}
+
+      # Both pins come from ONE file. Pinning merobox alone pins nothing:
+      # calimero-client-py is a transitive dep that tracks core master.
+      - run: pip install -r requirements-e2e.txt && merobox --version
+
+      # Free schema gate. Catches a YAML mistake before fourteen containers
+      # start, instead of after.
+      - name: Validate workflows
+        working-directory: apps/${{ matrix.app }}/logic
+        run: |
+          shopt -s nullglob
+          for f in workflows/*.yml; do merobox bootstrap validate "$f"; done
+
+      - name: Run workflows
+        working-directory: apps/${{ matrix.app }}/logic
+        run: |
+          shopt -s nullglob
+          for f in workflows/*.yml; do
+            echo "::group::$f"
+            merobox bootstrap run "$f" --log-level info
+            echo "::endgroup::"
+          done
+
+      # `merobox logs` takes a NODE_NAME argument — with only `--tail` it exits
+      # `Error: Missing argument 'NODE_NAME'`, so the first version of this step
+      # produced no diagnostics at all on the failure it existed to explain.
+      # `merobox bootstrap run` already exports each node's log to
+      # data/container-logs/, so upload that instead of re-deriving it.
+      - name: Collect node logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: node-logs-${{ matrix.app }}-${{ github.run_attempt }}
+          path: apps/${{ matrix.app }}/logic/data/container-logs/
+          if-no-files-found: ignore
+          retention-days: 3

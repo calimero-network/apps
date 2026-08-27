@@ -1,0 +1,50 @@
+name: Install cargo-mero
+description: >
+  Install the cargo-mero toolchain, from cache when possible. One copy for the
+  whole repo — the fleet had this action duplicated across seven repos plus an
+  eighth under a different name.
+
+inputs:
+  version:
+    description: The core tag to install cargo-mero from. Keep matched to the SDK tag in the root Cargo.toml.
+    required: false
+    default: "0.11.0-rc.25"
+
+runs:
+  using: composite
+  steps:
+    - name: Cache cargo-mero
+      id: cache
+      uses: actions/cache@v4
+      with:
+        path: ~/.cargo/bin/cargo-mero
+        key: cargo-mero-${{ runner.os }}-${{ inputs.version }}
+
+    - name: Install cargo-mero
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      # Installed from the same tag the SDK is pinned to, so the bundler and the
+      # contract cannot disagree about the manifest format.
+      #
+      # Through `env:`, never inlined as `--tag "${{ inputs.version }}"`. A
+      # template expression is substituted into the script BEFORE the shell sees
+      # it, so a crafted input runs as code — publish-bundle.yml in this same
+      # repo documents that rule and this file was breaking it. Validated too:
+      # an input that is not a plausible tag should fail here, not at `cargo
+      # install`.
+      env:
+        VERSION: ${{ inputs.version }}
+      run: |
+        set -euo pipefail
+        if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
+          echo "::error::cargo-mero version '$VERSION' is not a semver tag"
+          exit 1
+        fi
+        cargo install --locked \
+          --git https://github.com/calimero-network/core.git \
+          --tag "$VERSION" \
+          cargo-mero
+
+    - name: Report the version
+      shell: bash
+      run: cargo mero --version
