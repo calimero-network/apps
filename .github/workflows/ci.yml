@@ -323,16 +323,25 @@ jobs:
       # The exact artifact the wasm job built and the ABI gate validated, so the
       # e2e runs the same bytes rather than a second independent build.
       #
-      # `path:` is the app's res/ directory, NOT the repo root. upload-artifact
-      # strips the least-common-ancestor of the paths it was given — all three
-      # were under `apps/<app>/logic/res/`, so the archive holds bare filenames
-      # and downloading to `.` scattered them across the repo root. The
-      # verification step below is what turned that into a one-line error
-      # instead of a merobox failure deep inside `install_application`.
+      # `path: apps`, and that is not a guess — it is what the archive layout
+      # actually is, established by getting it wrong twice.
+      #
+      # The upload uses GLOB paths (`apps/*/logic/res/*.wasm`). upload-artifact
+      # takes the least-common-ancestor of the pattern's literal prefix, which is
+      # `apps/`, so the archive contains `<app-dir>/logic/res/<name>.wasm`.
+      # Therefore:
+      #
+      #   path: .                    -> ./kv-store/logic/res/…   (wrong: no apps/)
+      #   path: apps/<app>/logic/res -> apps/<app>/logic/res/<app>/logic/res/…
+      #   path: apps                 -> apps/<app>/logic/res/…   ✓
+      #
+      # Both wrong versions were caught in one line by the verification step
+      # below rather than by merobox failing inside `install_application`, which
+      # is the whole reason that step exists.
       - uses: actions/download-artifact@v4
         with:
           name: wasm-${{ matrix.app }}-${{ github.sha }}
-          path: apps/${{ matrix.app }}/logic/res
+          path: apps
 
       - name: Verify the contract arrived
         run: |
