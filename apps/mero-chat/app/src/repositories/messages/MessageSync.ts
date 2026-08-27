@@ -176,6 +176,37 @@ export class MessageSyncEngine<M extends { index: number }> {
   }
 
   /**
+   * Re-read messages the store already holds.
+   *
+   * `catchUp` walks FORWARD from the cursor and stops as soon as nothing is
+   * newer. That is right for appends, and wrong for the one thing in a chat
+   * that is not an append: a reaction changes an EXISTING message without
+   * changing the count, so `catchUp` asks for the length, sees no gap, fetches
+   * nothing, and the stored copy keeps its old reactions for as long as the
+   * channel stays open.
+   *
+   * Reactions arrive inside `MessageWithReactions`, so refreshing the message
+   * refreshes them. Bounded to the newest `limit` because that is where
+   * reactions land — dragging the whole history back for one emoji would undo
+   * the point of storing it.
+   *
+   * Deliberately writes through the node rather than reading the store first:
+   * serving the local copy is exactly the staleness this exists to clear.
+   */
+  async refreshNewest(contextId: string, limit: number): Promise<M[]> {
+    const cursor = await this.store.cursor(contextId);
+    if (!cursor) return [];
+
+    const start = Math.max(cursor.lowestIndex, cursor.highestIndex - limit + 1);
+    const wanted = cursor.highestIndex - start + 1;
+    if (wanted <= 0) return [];
+
+    const page = await this.source.range(contextId, start, wanted);
+    await this.store.put(contextId, page.messages);
+    return page.messages;
+  }
+
+  /**
    * Older messages, for scrolling up.
    *
    * Local storage answers first, and the node is asked only when the local copy

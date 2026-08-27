@@ -16,7 +16,9 @@ interface Msg {
 }
 
 /** A channel on the node, as an ordered list. */
-function nodeWith(count: number): MessageSource<Msg> & { calls: string[] } {
+function nodeWith(
+  count: number,
+): MessageSource<Msg> & { calls: string[]; mutate: (i: number, t: string) => void } {
   const all: Msg[] = Array.from({ length: count }, (_, i) => ({
     index: i,
     text: `m${i}`,
@@ -24,6 +26,10 @@ function nodeWith(count: number): MessageSource<Msg> & { calls: string[] } {
   const calls: string[] = [];
   return {
     calls,
+    mutate(index: number, text: string) {
+      const row = all[index];
+      if (row) row.text = text;
+    },
     async count() {
       calls.push("count");
       return all.length;
@@ -31,7 +37,10 @@ function nodeWith(count: number): MessageSource<Msg> & { calls: string[] } {
     async range(_ctx, start, limit): Promise<MessagePage<Msg>> {
       calls.push(`range(${start},${limit})`);
       return {
-        messages: all.slice(start, start + limit),
+        // Copies, not references: a real store serialises, so it cannot see a
+        // later mutation of the node's own row. Sharing the object made the
+        // store look self-updating and hid the staleness under test.
+        messages: all.slice(start, start + limit).map((m) => ({ ...m })),
         totalCount: all.length,
       };
     },
@@ -66,6 +75,72 @@ function memoryStore(): MessageStore<Msg> & { rows: Map<number, Msg> } {
 const CTX = "ctx-1";
 
 describe("MessageSyncEngine", () => {
+  it("catchUp does not notice a message that changed in place", async () => {
+    // The gap this pins: catchUp walks FORWARD from the cursor. A reaction
+    // mutates an existing message without changing the count, so catchUp sees
+    // nothing newer, fetches nothing, and the stored copy keeps its old
+    // reactions for as long as the channel stays open.
+    const store = memoryStore();
+    const node = nodeWith(3);
+    const engine = new MessageSyncEngine<Msg>(store, node);
+
+    await engine.catchUp(CTX);
+    expect(store.rows.get(1)?.text).toBe("m1");
+
+    // Someone reacts to message 1: same index, same count, new content.
+    node.mutate(1, "m1-reacted");
+    node.calls.length = 0;
+
+    const result = await engine.catchUp(CTX);
+
+    expect(result.fetched).toBe(0);
+    expect(node.calls).toEqual(["count"]);
+    expect(store.rows.get(1)?.text).toBe("m1");
+  });
+
+  it("refreshNewest re-reads what the store already holds", async () => {
+    const store = memoryStore();
+    const node = nodeWith(3);
+    const engine = new MessageSyncEngine<Msg>(store, node);
+
+    await engine.catchUp(CTX);
+    node.mutate(1, "m1-reacted");
+    node.calls.length = 0;
+
+    const refreshed = await engine.refreshNewest(CTX, 10);
+
+    expect(store.rows.get(1)?.text).toBe("m1-reacted");
+    expect(refreshed.map((m) => m.text)).toContain("m1-reacted");
+    // It must go to the node: serving the local copy is the bug it fixes.
+    expect(node.calls.some((c) => c.startsWith("range("))).toBe(true);
+  });
+
+  it("refreshNewest is bounded by the limit it is given", async () => {
+    const store = memoryStore();
+    const node = nodeWith(50);
+    const engine = new MessageSyncEngine<Msg>(store, node);
+
+    await engine.catchUp(CTX);
+    node.calls.length = 0;
+
+    await engine.refreshNewest(CTX, 5);
+
+    // Only the tail is re-read — a reaction should not drag the whole history
+    // back across the wire.
+    expect(node.calls).toEqual(["range(45,5)"]);
+  });
+
+  it("refreshNewest on a channel with no cursor does nothing", async () => {
+    const store = memoryStore();
+    const node = nodeWith(3);
+    const engine = new MessageSyncEngine<Msg>(store, node);
+
+    const refreshed = await engine.refreshNewest(CTX, 10);
+
+    expect(refreshed).toEqual([]);
+    expect(node.calls).toEqual([]);
+  });
+
   it("on a first visit stores the newest page, not the whole history", async () => {
     // Opening a channel with years of history must not download all of it
     // before the first paint. The newest page is what the user is looking at.
