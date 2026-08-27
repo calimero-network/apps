@@ -13,5 +13,26 @@ export default defineConfig({
     // discovers the compiled copies of the test files and runs them a second
     // time, from a directory where their relative paths no longer resolve.
     exclude: ["**/node_modules/**", "**/dist/**", "**/dist-types/**"],
+    server: {
+      deps: {
+        // ⚠️ @calimero-network/mero-platform@0.1.0 ships DIRECTORY imports
+        // (`from "./bridge"` with no /index.js), which Node's ESM resolver
+        // rejects outright:
+        //
+        //     Error: Directory import '.../dist/bridge' is not supported
+        //     resolving ES modules
+        //
+        // Vite's dev server and its build both resolve them fine, so this only
+        // ever breaks under vitest — i.e. the app runs and only the tests fail,
+        // which reads like a test-harness problem rather than a packaging one.
+        // Inlining routes the package through Vite's resolver instead of Node's.
+        //
+        // Remove when mero-platform publishes explicit file extensions.
+        inline: [
+          "@calimero-network/mero-platform",
+          "@calimero-network/mero-platform-react",
+        ],
+      },
+    },
   },
 });

@@ -13,8 +13,12 @@
   },
   "dependencies": {
     "@calimero-network/mero-js": "catalog:",
+    "@calimero-network/mero-platform": "catalog:",
+    "@calimero-network/mero-platform-react": "catalog:",
     "@calimero-network/mero-react": "catalog:",
     "@calimero-network/mero-ui": "catalog:",
+    "bs58": "catalog:",
+    "fflate": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:"
   },

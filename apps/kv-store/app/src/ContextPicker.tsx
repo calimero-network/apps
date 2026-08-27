@@ -3,7 +3,6 @@ import {
   setContextId,
   useApplicationContexts,
   useCreateContext,
-  useCreateGroupInNamespace,
   useCreateNamespace,
 } from "@calimero-network/mero-react";
 
@@ -15,13 +14,12 @@ import {
  * is the smallest honest version of it.
  *
  * A context lives inside a namespace — there is no bare-context path since
- * rc.21, and `createContext` requires a group id. So "create" here is three
- * calls, not one: namespace → group → context.
+ * rc.21, and `createContext` requires a group id. So "create" is two calls:
+ * namespace, then a context whose group IS that namespace.
  */
 export function ContextPicker({ applicationId }: { applicationId: string | null }) {
   const { contexts, loading, error, refetch } = useApplicationContexts(applicationId);
   const { createNamespace } = useCreateNamespace();
-  const { createGroupInNamespace } = useCreateGroupInNamespace();
   const { createContext } = useCreateContext();
 
   const [busy, setBusy] = useState(false);
@@ -41,13 +39,13 @@ export function ContextPicker({ applicationId }: { applicationId: string | null 
         (ns as { groupId?: string } | null)?.groupId;
       if (!namespaceId) throw new Error("namespace created but no id came back");
 
-      const group = await createGroupInNamespace(namespaceId, { name: "kv-store" });
-      const groupId =
-        (group as { groupId?: string; id?: string } | null)?.groupId ??
-        (group as { id?: string } | null)?.id ??
-        namespaceId;
-
-      const ctx = await createContext({ applicationId, groupId });
+      // Directly in the namespace, NOT in a subgroup of it. Two reasons:
+      // it is what the merobox scenarios do (`create_context` with
+      // `group_id: namespace_id`), and it keeps a context's group equal to its
+      // namespace — which is what lets `InviteCard` mint a namespace invitation
+      // from `useContextGroup` alone. A subgroup here would hand
+      // `createNamespaceInvitation` a subgroup id and fail confusingly.
+      const ctx = await createContext({ applicationId, groupId: namespaceId });
       const newContextId = (ctx as { contextId?: string } | null)?.contextId;
       if (!newContextId) throw new Error("context created but no contextId came back");
 

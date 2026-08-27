@@ -1,9 +1,16 @@
 import { ConnectButton, useMero } from "@calimero-network/mero-react";
 import { ContextPicker } from "./ContextPicker";
+import { InviteCard } from "./InviteCard";
+import { JoinCard } from "./JoinCard";
 import { KvPanel } from "./KvPanel";
+import { useJoinFromInvitation } from "./useJoinFromInvitation";
 
 export function App() {
   const { isAuthenticated, isLoading, applicationId, contextId, nodeUrl, logout } = useMero();
+  // Mounted at the root, unconditionally: an invitation captured before login
+  // has to be redeemed as soon as the session exists, which means this cannot
+  // live inside a branch that only renders once a context is chosen.
+  const { state: joinState, redeemPasted } = useJoinFromInvitation();
 
   return (
     <div className="wrap">
@@ -30,9 +37,15 @@ export function App() {
           <ConnectButton />
         </div>
       ) : !contextId ? (
-        <ContextPicker applicationId={applicationId} />
+        <>
+          <ContextPicker applicationId={applicationId} />
+          <JoinCard state={joinState} onSubmit={redeemPasted} />
+        </>
       ) : (
-        <KvPanel contextId={contextId} />
+        <>
+          <KvPanel contextId={contextId} />
+          <InviteCard contextId={contextId} />
+        </>
       )}
 
       {isAuthenticated && (

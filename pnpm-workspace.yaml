@@ -20,11 +20,16 @@ catalog:
   "@calimero-network/mero-react": ^6.0.4
   "@calimero-network/mero-ui": ^1.5.1
   "@calimero-network/mero-platform": ^0.1.0
+  "@calimero-network/mero-platform-react": ^0.1.0
   "@calimero-network/abi-codegen": ^1.2.2
 
   # ── runtime ────────────────────────────────────────────────────────────────
   react: ^19.2.8
   react-dom: ^19.2.8
+  # Invitation payload codec: deflate + base58 keeps a shared link short enough
+  # to paste into a chat message.
+  bs58: ^6.0.0
+  fflate: ^0.8.2
 
   # ── build / test ───────────────────────────────────────────────────────────
   typescript: ~5.8.3

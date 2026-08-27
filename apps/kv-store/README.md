@@ -54,6 +54,60 @@ Easy to get subtly wrong, and all three pass a naive test:
 - **`remove` and `clear` emit nothing for a no-op.** Emitting for an absent key
   broadcasts a change that never happened.
 
+## Invitations and deep links
+
+Ported from `mero-chat-pwa`, which is the reference implementation, with the
+payload adapted: chat invites you to a chat group, this invites you to a KV
+**context**, so the payload carries the signed namespace invitation plus the
+namespace and context ids.
+
+```
+InviteCard   createNamespaceInvitation → payload → deflate → base58 → createLink
+             → https://links.calimero.network/com.calimero.kv-store/join?invitation=…
+
+main.tsx     primeDeepLinkCapture() — an IIFE at module scope, BEFORE createRoot
+JoinCard     paste path, for a link that arrived some other way
+```
+
+Four things here are deliberate, and each exists because the naive version
+breaks:
+
+- **Capture happens before React mounts.** On a cold invite open the user is not
+  authenticated, so the component that would read the invitation never mounts
+  until after the auth reload — by which point the URL is gone. A component
+  effect is always too late.
+- **The intent is durable and only acked on success.** `PendingIntentStore`
+  keeps it in localStorage across the login reload, and
+  `isTerminalInvitationError` discards it *only* for errors that can never
+  succeed (expired, invalid, bad signature, already a member). Anything
+  unrecognised — a timeout, "no online member" — is kept and retried. The
+  asymmetry is the point: a dropped invitation is unrecoverable for the user, a
+  retried one costs a round trip.
+- **The invitation object is passed through opaquely.** It carries a signature
+  over a signed body plus unsigned bootstrap fields that sit outside it, so
+  re-modelling it through a local type drops fields and invalidates the
+  signature. `parseInvitationPayload` shape-checks only far enough to see the
+  envelope, and a unit test asserts an unknown field survives the round trip.
+- **One link, HTTPS.** The https link already hands off to the desktop launcher;
+  a second `calimero://` link would ask the user to choose between two things
+  they cannot tell apart.
+
+### ⚠️ The launcher path needs a deployed frontend
+
+The code is complete, and the **paste** path works now. Opening a link from a
+browser or Calimero Desktop additionally needs the published bundle to declare
+`links.frontend`: the launcher resolves the link to an installed app, reads that
+field, and **forgets the link** when it is missing — `"app has no frontend URL;
+cannot open"`.
+
+That field is absent on purpose (see `logic/Cargo.toml`) because there is no
+deployment yet and an origin that 404s is worse than none — it is also the
+registered redirect URI for login, compared by exact origin.
+
+To finish it: create the Vercel project with Root Directory `apps/kv-store/app`,
+put its production origin in `frontend`, and let the release workflow publish the
+next patch.
+
 ## Two caveats worth carrying to the next app
 
 **The ABI loses `Option<T>`.** `get(key) -> Option<String>` is recorded as
