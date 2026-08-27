@@ -106,6 +106,31 @@ steps:
     outputs:
       ctx_b_key_node2: memberPublicKey
 
+  # Same reason as the wait in group-context-isolation.yml, and the same latent
+  # failure: a join gives node-2 MEMBERSHIP, not state. Until the first state sync
+  # lands, `get` on context-B returns
+  #
+  #     err=context state not initialized, awaiting state sync
+  #     HandlerError({"type": "Uninitialized"})
+  #
+  # which merobox reports as a failed step, not as a null result — so
+  # 'Node-2 reads service_key from store-b (must also be absent)' below could not
+  # distinguish "absent" (what it asserts) from "no state yet". Node-1 is not
+  # exposed because it CREATED context-B.
+  #
+  # This one had not gone red yet; it is the same race that did fail in
+  # group-context-isolation.yml, found by auditing every scenario for a `call`
+  # that follows a `join_context` with no `wait_for_sync` in between.
+  - name: Wait for both contexts to initialize on node-2
+    type: wait_for_sync
+    context_id: '{{ctx_b_id}}'
+    nodes:
+      - e2e-node-1
+      - e2e-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
   # --- SCENARIO 1: Write to store-a, verify isolation from store-b ---
 
   - name: Node-1 writes to store-a context

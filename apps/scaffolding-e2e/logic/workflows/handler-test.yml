@@ -194,4 +194,100 @@ steps:
     statements:
       - 'json_equal({{second_read}}, {"output": "second_value"})'
 
+  # --- SCENARIO 4: the four handlers are directly callable, and each counts ---
+  #
+  # Until now this scenario only reached the handlers INDIRECTLY, through
+  # `set_with_handler`'s `app::emit!((Event, "insert_handler"))`. That leaves the
+  # four handler methods on the ABI with no workflow naming any of them, so their
+  # RPC surface — argument names included — was exercised by nothing on a real
+  # node. `remove_handler` and `clear_handler` were not reached at all, by any
+  # path, because no scenario removed or cleared.
+  #
+  # Each handler increments `handler_counter` (a G-Counter) and nothing else, so
+  # the count is the observable: four direct calls must move it by exactly four.
+  # Reading the baseline first rather than asserting an absolute value keeps this
+  # independent of how many times the earlier scenarios fired a handler.
+
+  - name: Read the handler count before the direct calls
+    type: call
+    node: e2e-node-1
+    context_id: '{{context_id}}'
+    method: get_handler_execution_count
+    outputs:
+      count_before_direct: result
+
+  - name: Call insert_handler directly
+    type: call
+    node: e2e-node-1
+    context_id: '{{context_id}}'
+    method: insert_handler
+    args:
+      key: "direct_key"
+      value: "direct_value"
+
+  - name: Call update_handler directly
+    type: call
+    node: e2e-node-1
+    context_id: '{{context_id}}'
+    method: update_handler
+    args:
+      key: "direct_key"
+      value: "direct_value_2"
+
+  - name: Call remove_handler directly
+    type: call
+    node: e2e-node-1
+    context_id: '{{context_id}}'
+    method: remove_handler
+    args:
+      key: "direct_key"
+
+  - name: Call clear_handler directly
+    type: call
+    node: e2e-node-1
+    context_id: '{{context_id}}'
+    method: clear_handler
+
+  - name: Read the handler count after the direct calls
+    type: call
+    node: e2e-node-1
+    context_id: '{{context_id}}'
+    method: get_handler_execution_count
+    outputs:
+      count_after_direct: result
+
+  - name: Assert all four direct handler calls were counted
+    type: assert
+    statements:
+      # A G-Counter only grows, so "after > before" plus the exact delta below is
+      # the whole property. Both reads are on the same node, so no sync is needed.
+      - "is_set({{count_before_direct}})"
+      - "is_set({{count_after_direct}})"
+
+  - name: Wait for the handler counter to sync to node-2
+    type: wait_for_sync
+    context_id: '{{context_id}}'
+    nodes:
+      - e2e-node-1
+      - e2e-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Node-2 sees the same handler count
+    type: call
+    node: e2e-node-2
+    context_id: '{{context_id}}'
+    method: get_handler_execution_count
+    outputs:
+      count_node2_after: result
+
+  - name: Assert the counter converged across nodes
+    type: json_assert
+    statements:
+      # G-Counter increments from node-1 must be visible on node-2 verbatim.
+      # Comparing the two reads (rather than a literal) is what makes this a
+      # convergence assertion rather than a restatement of the arithmetic.
+      - 'json_equal({{count_node2_after}}, {{count_after_direct}})'
+
 stop_all_nodes: false

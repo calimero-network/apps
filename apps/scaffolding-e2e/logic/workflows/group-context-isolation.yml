@@ -87,6 +87,36 @@ steps:
     node: e2e-node-2
     context_id: '{{ctx_b_id}}'
 
+  # Both freshly-joined contexts must reach INITIALIZED state on node-2 before
+  # anything reads from them, and context-B needs it just as much as context-A
+  # even though nothing is ever written to it here.
+  #
+  # This is what made 'Node-2 reads shared_key from context-B (should be absent)'
+  # fail in CI. A join gives node-2 membership, not state: until the first state
+  # sync lands, `get` returns
+  #
+  #     err=context state not initialized, awaiting state sync
+  #     HandlerError({"type": "Uninitialized"})
+  #
+  # which merobox reports as a failed STEP, not as a null result. So the scenario
+  # could never tell "the key is absent" (what it asserts) from "this context has
+  # no state yet" (what actually happened) — the two are the same observation
+  # through this API.
+  #
+  # Node-1 passed the equivalent read because it CREATED context-B and its state
+  # was initialized locally at creation; only the joiner is exposed. And the
+  # scenario already waits for context-B further down, in scenario 2 — after this
+  # read rather than before it, which is why this looked like a flake.
+  - name: Wait for context-B to initialize on node-2
+    type: wait_for_sync
+    context_id: '{{ctx_b_id}}'
+    nodes:
+      - e2e-node-1
+      - e2e-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
   # --- SCENARIO 1: write to context-A, assert not visible in context-B ---
 
   - name: Node-1 writes to context-A

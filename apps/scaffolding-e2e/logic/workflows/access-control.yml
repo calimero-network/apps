@@ -634,6 +634,174 @@ steps:
     statements:
       - 'json_equal({{owned_final}}, {"output": "written_by_the_new_owner"})'
 
+  # ─── acl_members_of and acl_revoke_admin ──────────────────────────────────
+  #
+  # Both are on the ABI and the frontend calls both, but no workflow named
+  # either — so the admin-rotation path had never run against a real node. It is
+  # the last place that should be true of: the AccessControl writer set IS the
+  # admin tier, so a bug here is "who may grant a role" going wrong, silently.
+
+  - name: node-1 grants node-2 the editor role again for the roster read
+    type: call
+    node: e2e-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: acl_grant
+    args:
+      role: "editor"
+      account_hex: "{{n2_account}}"
+
+  - name: node-1 lists the members of the editor role
+    type: call
+    node: e2e-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: acl_members_of
+    args:
+      role: "editor"
+    outputs:
+      editor_members: result
+
+  - name: Assert the roster names node-2 and only node-2
+    type: json_assert
+    statements:
+      # The exact list, not `is_set`: a members_of that returned every account,
+      # or an empty list, would both pass a set-ness check while meaning the
+      # opposite of what the roster is for.
+      - 'json_equal({{editor_members}}, {"output": ["{{n2_account}}"]})'
+
+  - name: node-1 lists the members of a role nobody holds
+    type: call
+    node: e2e-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: acl_members_of
+    args:
+      role: "role_that_does_not_exist"
+    outputs:
+      empty_members: result
+
+  - name: Assert an unheld role is empty rather than an error
+    type: json_assert
+    statements:
+      - 'json_equal({{empty_members}}, {"output": []})'
+
+  # --- the last-admin guard ---
+  #
+  # `acl_revoke_admin` refuses to remove the final admin: "the registry would be
+  # frozen". That guard is the difference between a recoverable mistake and a
+  # context nobody can ever administer again, and it is exactly the kind of
+  # branch that unit tests skip because it needs two real accounts.
+
+  - name: node-1 tries to revoke ITSELF as the only admin
+    type: call
+    node: e2e-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: acl_revoke_admin
+    args:
+      account_hex: "{{n1_account}}"
+    expected_failure: true
+    outputs:
+      last_admin_error: error
+
+  - name: Assert the last admin cannot be revoked
+    type: assert
+    statements:
+      # `expected_failure: true` alone can NEVER fail a call step — it marks the
+      # step allowed-to-fail, so a revoke that wrongly SUCCEEDED (the regression
+      # this guards: a frozen registry) would still pass. Capturing the error and
+      # asserting it is set is what makes this a real assertion.
+      - "is_set({{last_admin_error}})"
+
+  - name: node-1 confirms it is still an admin
+    type: call
+    node: e2e-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: acl_is_admin
+    args:
+      account_hex: "{{n1_account}}"
+    outputs:
+      still_admin: result
+
+  - name: Assert the refused revoke changed nothing
+    type: json_assert
+    statements:
+      - 'json_equal({{still_admin}}, {"output": true})'
+
+  # --- a real rotation: promote node-2, then revoke it ---
+
+  - name: node-1 promotes node-2 to admin
+    type: call
+    node: e2e-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: acl_grant_admin
+    args:
+      account_hex: "{{n2_account}}"
+
+  - name: Wait for the promotion to reach node-2
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - e2e-node-1
+      - e2e-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: node-1 lists admins after the promotion
+    type: call
+    node: e2e-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: acl_admins
+    args: {}
+    outputs:
+      admins_two: result
+
+  - name: Assert there are now two admins
+    type: assert
+    statements:
+      - "is_set({{admins_two}})"
+      - "contains({{admins_two}}, {{n2_account}})"
+
+  - name: node-1 revokes node-2's admin now that it is not the last one
+    type: call
+    node: e2e-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: acl_revoke_admin
+    args:
+      account_hex: "{{n2_account}}"
+
+  - name: Wait for the revoke to reach node-2
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - e2e-node-1
+      - e2e-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: node-2 checks whether it is still an admin
+    type: call
+    node: e2e-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_e2e-node-2}}"
+    method: acl_is_admin
+    args:
+      account_hex: "{{n2_account}}"
+    outputs:
+      n2_admin_after_revoke: result
+
+  - name: Assert the admin revoke actually landed on the other node
+    type: json_assert
+    statements:
+      - 'json_equal({{n2_admin_after_revoke}}, {"output": false})'
+
 stop_all_nodes: false
 restart: false
 wait_timeout: 180

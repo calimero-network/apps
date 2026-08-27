@@ -7,14 +7,20 @@ name = "scaffolding-e2e"
 # gets released, so do not read a shipped version out of the tree; read it from
 # the registry or the workflow's run summary.
 version = "0.0.2"
-authors = ["Calimero Limited <info@calimero.network>"]
-edition = "2021"
-repository = "https://github.com/calimero-network/scaffolding-e2e-application"
-license = "MIT OR Apache-2.0"
+# Inherited from [workspace.package] rather than repeated: the monorepo owns
+# edition/authors/license/repository for every app, so a change is one edit.
+edition.workspace    = true
+authors.workspace    = true
+license.workspace    = true
+repository.workspace = true
 publish = false
 
 [lib]
-crate-type = ["cdylib"]
+# `rlib` alongside `cdylib`: cdylib is the wasm artifact the bundle ships, and
+# rlib is what lets tests/converge.rs link this crate as a normal Rust library.
+# Without it an integration test cannot `use scaffolding_e2e::…` at all — which
+# is part of why this 130-method contract had no hand-written tests.
+crate-type = ["cdylib", "rlib"]
 
 # Read by `cargo mero bundle` (core #3374): every field the node and the registry
 # render has a producer here, so nothing hand-writes a manifest.json any more.
@@ -36,7 +42,7 @@ slug = "com.calimero.scaffolding-e2e"
 # Regenerate with `logic/gen-icon.sh`.
 icon = "res/icon-512.png"
 tags = ["scaffold", "example", "crdt", "testing"]
-github = "https://github.com/calimero-network/scaffolding-e2e-application"
+github = "https://github.com/calimero-network/apps"
 # Keep this equal to the calimero-sdk tag below. It is NOT decoration: this
 # build imports host functions that only exist from that release on, so a node
 # older than this installs the bundle happily and then dies at context creation
@@ -85,6 +91,15 @@ bs58      = "0.5.0"
 # instance, so two semver-incompatible copies would leave this crate's macros
 # talking to a subscriber that forwards nowhere.
 tracing   = "0.1.37"
+
+# Integration tests in tests/ do NOT inherit the crate's [dependencies] — only
+# dev-dependencies and the crate itself — so anything tests/converge.rs uses has
+# to be listed again here even though [dependencies] already has it.
+[dev-dependencies]
+# `testing` enables register_crdt_merge + the native mock host, which is what
+# makes `calimero_storage::testing::converge_app` able to drive CRDT state under
+# `cargo test`. Without the feature the module does not exist.
+calimero-storage = { workspace = true, features = ["testing"] }
 
 # No [build-dependencies] / build.rs any more: the old build.rs re-parsed
 # src/lib.rs with calimero-wasm-abi's syn emitter to produce res/abi.json.

@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "typecheck": "tsc -b",
     "preview": "vite preview",
     "sync-wasm": "mkdir -p public && cp ../logic/res/scaffolding_e2e.wasm public/app.wasm && echo 'Copied to public/app.wasm'",
     "test": "vitest run",
@@ -21,8 +22,8 @@
     "test:e2e:ci": "playwright test --config=playwright.mocked.config.ts"
   },
   "dependencies": {
-    "@calimero-network/mero-js": "^7.3.2",
-    "@calimero-network/mero-react": "^4.6.1",
+    "@calimero-network/mero-js": "catalog:",
+    "@calimero-network/mero-react": "catalog:",
     "bootstrap": "^5.3.7",
     "react": "catalog:",
     "react-dom": "catalog:",
@@ -35,9 +36,9 @@
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "@vitejs/plugin-react-swc": "^3.9.0",
-    "jsdom": "^28.1.0",
+    "jsdom": "catalog:",
     "typescript": "catalog:",
     "vite": "catalog:",
-    "vitest": "^4.0.18"
+    "vitest": "catalog:"
   }
 }

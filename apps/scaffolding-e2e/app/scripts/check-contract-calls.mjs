@@ -235,14 +235,49 @@ export function checkContractCalls(root = REPO_ROOT) {
     .filter((m) => !called.has(m) && !(m in UNCALLED_BY_DESIGN))
     .sort();
 
+  // Direction 3, tightened: BOTH layers, not either one.
+  //
+  // `uncalled` above asks "does anything call this method", which a
+  // frontend-only caller satisfies. That is too weak for this repo, and
+  // measurably so: when this split was added, eight methods had a frontend
+  // caller and no merobox workflow — acl_members_of, acl_revoke_admin,
+  // authored_entries, authored_vec_entries and the four *_handler methods — so
+  // the admin-rotation path and both authored ITERATORS had never executed
+  // against a real node. The frontend call sites proved nothing about them,
+  // because the Playwright suite mocks the RPC layer; that is the same blind
+  // spot that let 13 phantom `ws_*` methods ship.
+  //
+  // So the two layers are now reported separately:
+  //
+  //   * uncalledByFrontend — the scaffold's job is to demonstrate its own
+  //     contract surface in the UI, so a method with no UI caller is a missing
+  //     demo.
+  //   * uncoveredByWorkflow — a method no merobox scenario runs has never been
+  //     executed by a real node against a real ABI. This is the half that
+  //     actually catches drift.
+  const frontendMethods = new Set(frontend.map((s) => s.method));
+  const workflowMethods = new Set(workflows.map((s) => s.method));
+  const abiMethods = [...abi.keys()].filter((m) => !(m in UNCALLED_BY_DESIGN));
+  const uncalledByFrontend = abiMethods.filter((m) => !frontendMethods.has(m)).sort();
+  const uncoveredByWorkflow = abiMethods.filter((m) => !workflowMethods.has(m)).sort();
+
   return {
     abiMethodCount: abi.size,
     frontendCallCount: frontend.length,
     workflowCallCount: workflows.length,
+    frontendMethodCount: frontendMethods.size,
+    workflowMethodCount: workflowMethods.size,
     unknownMethod,
     wrongArgs,
     uncalled,
-    ok: !unknownMethod.length && !wrongArgs.length && !uncalled.length,
+    uncalledByFrontend,
+    uncoveredByWorkflow,
+    ok:
+      !unknownMethod.length &&
+      !wrongArgs.length &&
+      !uncalled.length &&
+      !uncalledByFrontend.length &&
+      !uncoveredByWorkflow.length,
   };
 }
 
@@ -277,7 +312,34 @@ export function formatReport(r) {
     for (const m of r.uncalled) out.push(`    ${m}`);
   }
 
-  if (r.ok) out.push("", "✓ the frontend, the workflows and the contract agree");
+  if (r.uncalledByFrontend?.length) {
+    out.push(
+      "",
+      `✗ ${r.uncalledByFrontend.length} contract method(s) with NO frontend caller.`,
+      "  This scaffold exists to demonstrate its own contract surface, so a method the UI",
+      "  never calls is a missing demo. Add a call site, or UNCALLED_BY_DESIGN with the reason:",
+    );
+    for (const m of r.uncalledByFrontend) out.push(`    ${m}`);
+  }
+
+  if (r.uncoveredByWorkflow?.length) {
+    out.push(
+      "",
+      `✗ ${r.uncoveredByWorkflow.length} contract method(s) that NO merobox workflow runs.`,
+      "  A frontend call site is not coverage: the Playwright suite mocks the RPC layer, so a",
+      "  method only the UI calls has never executed against a real node. Add it to a scenario",
+      "  in logic/workflows/, or UNCALLED_BY_DESIGN with the reason:",
+    );
+    for (const m of r.uncoveredByWorkflow) out.push(`    ${m}`);
+  }
+
+  if (r.ok) {
+    out.push(
+      "",
+      `✓ the frontend, the workflows and the contract agree — all ${r.frontendMethodCount} callable ` +
+        `method(s) have BOTH a frontend caller and merobox coverage`,
+    );
+  }
   return out.join("\n");
 }
 

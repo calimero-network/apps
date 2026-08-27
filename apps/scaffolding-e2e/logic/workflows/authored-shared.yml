@@ -624,6 +624,76 @@ steps:
     statements:
       - 'json_equal({{vec_len}}, {"output": 2})'
 
+  # ─── authored_entries / authored_vec_entries ──────────────────────────────
+  #
+  # The two list-ALL accessors. Every other authored method here is
+  # single-entry (`authored_get`, `authored_get_owner`, `authored_vec_get`), so
+  # the iteration paths — `AuthoredMap::entries()` and `AuthoredVector::iter()`
+  # — were exercised by no workflow at all. They are the interesting ones on a
+  # real node, because an authored collection stores per-entry authorship and a
+  # broken iterator can drop or duplicate another writer's entries: a single-key
+  # read looks up its own entry and never notices.
+  #
+  # These run on node-3, which authored NEITHER of the earlier writes, so a
+  # result that only lists the caller's own entries fails here and would pass on
+  # node-1 or node-2.
+
+  - name: node-3 lists every authored map entry
+    type: call
+    node: e2e-node-3
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_e2e-node-3}}"
+    method: authored_entries
+    args: {}
+    outputs:
+      all_authored: result
+
+  - name: Assert a non-author sees the entry alice_key wrote
+    type: json_assert
+    statements:
+      # The exact map. `is_set` would pass on `{}`, which is precisely the
+      # regression an iterator scoped to the caller would produce.
+      - 'json_equal({{all_authored}}, {"output": {"alice_key": "owned_by_node1"}})'
+
+  - name: node-3 lists every authored vector entry
+    type: call
+    node: e2e-node-3
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_e2e-node-3}}"
+    method: authored_vec_entries
+    args: {}
+    outputs:
+      all_authored_vec: result
+
+  - name: Assert the vector lists both slots, tombstone included
+    type: assert
+    statements:
+      # Two slots were pushed and slot1 was tombstoned earlier in this scenario,
+      # which `authored_vec_len` already asserts is still length 2 — a tombstone
+      # empties a slot rather than removing it. So the iterator must yield TWO
+      # elements, with the tombstoned one as an empty string. Asserting the count
+      # via the length method keeps the two views honest with each other.
+      - "is_set({{all_authored_vec}})"
+
+  - name: node-3 re-reads the vector length alongside the entries
+    type: call
+    node: e2e-node-3
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_e2e-node-3}}"
+    method: authored_vec_len
+    args: {}
+    outputs:
+      vec_len_for_entries: result
+
+  - name: Assert the iterator and the length agree
+    type: json_assert
+    statements:
+      # The property worth having: iter() and len() are two different code paths
+      # over the same authored vector, and a tombstone is exactly where they can
+      # disagree (one skipping it, the other counting it).
+      - 'json_equal({{vec_len_for_entries}}, {"output": 2})'
+      - 'json_equal({{all_authored_vec}}, {"output": ["slot0_updated_by_node1", ""]})'
+
 stop_all_nodes: false
 restart: false
 wait_timeout: 120

@@ -25,6 +25,63 @@ describe("frontend ↔ contract ↔ workflows", () => {
     expect(report.wrongArgs).toEqual([]);
     expect(report.uncalled).toEqual([]);
   });
+
+  // Direction 3 is split in two, and BOTH halves have to hold. `uncalled` alone
+  // is satisfied by a frontend caller, which is not coverage: the Playwright
+  // suite mocks the RPC layer, so a method only the UI calls has never executed
+  // against a real node. Eight methods were in exactly that state — the four
+  // *_handler methods, acl_members_of, acl_revoke_admin, authored_entries and
+  // authored_vec_entries — so this is a regression test, not a formality.
+  it("has a frontend caller for every callable method", () => {
+    expect(checkContractCalls().uncalledByFrontend).toEqual([]);
+  });
+
+  it("has merobox coverage for every callable method", () => {
+    expect(checkContractCalls().uncoveredByWorkflow).toEqual([]);
+  });
+
+  it("counts distinct methods, not call sites, on both sides", () => {
+    const report = checkContractCalls();
+    const callable = readAbi().size - Object.keys(UNCALLED_BY_DESIGN).length;
+    // Every callable method appears on both sides, so both distinct-method
+    // counts must equal the callable surface exactly. A drift here means one of
+    // the two collectors silently stopped matching call sites — which would make
+    // the two assertions above pass vacuously.
+    expect(report.frontendMethodCount).toBe(callable);
+    expect(report.workflowMethodCount).toBe(callable);
+  });
+});
+
+describe("the two coverage directions fail independently", () => {
+  // Guards the gate itself. A checker whose failure path is never exercised is
+  // indistinguishable from one that always returns ok — which is the failure
+  // mode this whole file exists to prevent, one level up.
+  it("reports a method the frontend never calls", () => {
+    const report = checkContractCalls();
+    const withGap = {
+      ...report,
+      uncalledByFrontend: ["ghost_method"],
+      ok: false,
+    };
+    const text = formatReport(withGap);
+    expect(text).toContain("NO frontend caller");
+    expect(text).toContain("ghost_method");
+    expect(text).not.toContain("agree");
+  });
+
+  it("reports a method no workflow runs, and says why a UI call is not coverage", () => {
+    const report = checkContractCalls();
+    const withGap = {
+      ...report,
+      uncoveredByWorkflow: ["untested_method"],
+      ok: false,
+    };
+    const text = formatReport(withGap);
+    expect(text).toContain("NO merobox workflow runs");
+    expect(text).toContain("untested_method");
+    expect(text).toContain("mocks the RPC layer");
+    expect(text).not.toContain("agree");
+  });
 });
 
 describe("the checker itself", () => {
