@@ -74,7 +74,7 @@ jobs:
       # 0.6.29 is the version the rest of the fleet ran green against rc.24
       # nodes. Moving the node to rc.25 means moving BOTH pins and migrating the
       # scenario schema (see logic/Cargo.toml's min-runtime-version note).
-        run: pip install merobox==0.6.24 calimero-client-py==0.6.29 && merobox --version
+        run: pip install merobox==0.6.66 calimero-client-py==0.6.33 && merobox --version
 
       - name: Run E2E workflow (3-node)
         working-directory: workflows
