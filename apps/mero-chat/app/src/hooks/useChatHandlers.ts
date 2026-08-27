@@ -482,10 +482,6 @@ export function useChatHandlers(
               }
             }
             break;
-          case "MessageReceived":
-            // Fetch new messages for current chat
-            actions.fetchMessages = true;
-            break;
 
           case "ReactionUpdated": {
             // Fetch messages to get updated reactions
@@ -531,43 +527,21 @@ export function useChatHandlers(
             break;
           }
 
-          case "ChannelCreated":
-            // Refresh channel list only
+          case "InfoUpdated":
+            // Channel name/description/avatar changed. Emitted by the contract
+            // on every change and, until now, listened for by nothing — so a
+            // peer's rename of a channel sat stale until the 30s channel poll
+            // happened to pick it up.
             actions.fetchChannels = true;
             break;
 
-          case "ChannelJoined":
+          case "Initialized":
+            // A context finished initialising. Everything the app shows for it
+            // is derived from lists it has not fetched yet, so refresh them all
+            // rather than guessing which one is now wrong.
             actions.fetchChannels = true;
+            actions.fetchDMs = true;
             actions.fetchMembers = true;
-            if (executionEvent.data) {
-              try {
-                const parsed = JSON.parse(bytesParser(executionEvent.data));
-                if (parsed.context_id) refs.subscribeToContext.current(parsed.context_id);
-              } catch { /* ignore parse errors */ }
-            }
-            log.debug("ChatHandlers", "Channel joined, refreshing channel list and members");
-            break;
-
-          case "ChannelLeft":
-          case "ChannelDeleted":
-            actions.fetchChannels = true;
-            actions.fetchMembers = true;
-            if (contextId === activeChatRef.current?.contextId) {
-              refs.onLeftChannel.current(contextId);
-            }
-            log.debug("ChatHandlers", `${executionEvent.kind}, refreshing channel list and members`);
-            break;
-
-          case "ChannelInvited":
-            actions.fetchChannels = true;
-            actions.fetchMembers = true;
-            if (executionEvent.data) {
-              try {
-                const parsed = JSON.parse(bytesParser(executionEvent.data));
-                if (parsed.context_id) refs.subscribeToContext.current(parsed.context_id);
-              } catch { /* ignore parse errors */ }
-            }
-            log.debug("ChatHandlers", "User invited to channel, refreshing channel list and members");
             break;
 
           case "RoleUpdated":
@@ -575,55 +549,7 @@ export function useChatHandlers(
             // useMyChannelRole also subscribes to this event directly to re-fetch
             // the current user's own role without waiting for the 30s poll.
             actions.fetchMembers = true;
-            break;
-
-          case "ChatJoined":
-            actions.fetchMembers = true;
-            refs.fetchGroupMembers.current();
-            break;
-
-          case "DMCreated":
-            actions.fetchDMs = true;
-            if (executionEvent.data) {
-              try {
-                const parsed = JSON.parse(bytesParser(executionEvent.data));
-                if (parsed.context_id) refs.subscribeToContext.current(parsed.context_id);
-              } catch { /* ignore parse errors */ }
-            }
-            log.debug("ChatHandlers", "DM created, refreshing DM list");
-            break;
-          case "DMDeleted":
-            actions.fetchDMs = true;
-            actions.dmDeleted = true;
-            log.debug("ChatHandlers", "DM deleted, refreshing DM list");
-            break;
-
-          case "InvitationAccepted":
-            // Refresh DM list and potentially trigger DM selection
-            actions.fetchDMs = true;
-            log.debug(
-              "ChatHandlers",
-              "Invitation accepted, refreshing DM list"
-            );
-            break;
-
-          case "NewIdentityUpdated":
-          case "InvitationPayloadUpdated":
-            // Refresh DM list to update metadata and trigger state updates
-            actions.fetchDMs = true;
-            log.debug(
-              "ChatHandlers",
-              "DM metadata updated, refreshing DM list"
-            );
-            break;
-
-          case "ChatInitialized":
-            // Full refresh on initialization
-            actions.fetchChannels = true;
-            actions.fetchDMs = true;
-            actions.fetchMembers = true;
-            break;
-        }
+            break;}
       }
       // Execute only the necessary actions with proper sequencing
       if (actions.fetchMessages) {
