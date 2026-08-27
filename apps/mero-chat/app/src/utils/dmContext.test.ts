@@ -3,7 +3,6 @@ import {
   buildDmAlias,
   createDmContextInGroup,
   getDmDisplayName,
-  parseDmAlias,
   resolveSharedDmDiscovery,
 } from "./dmContext";
 import { MAX_GROUP_NAME_BYTES, groupNameError } from "./groupName";

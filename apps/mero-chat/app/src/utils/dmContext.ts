@@ -58,10 +58,6 @@ export interface CreateDmContextResult {
   alias: string;
 }
 
-function normalizeIdentityForAlias(identity: string): string {
-  return encodeURIComponent(identity.trim()).split("_").join("%5F");
-}
-
 function decodeIdentityFromAlias(value: string): string {
   return decodeURIComponent(value.split("%5F").join("_"));
 }
@@ -147,6 +143,12 @@ export function buildDmAlias(identityA: string, identityB: string): string {
   return `${DM_CONTEXT_ALIAS_PREFIX}${hash.toString(16).padStart(8, "0")}`;
 }
 
+/// Recovers the pair from a LEGACY `DM_CONTEXT_<a>_<b>` alias.
+///
+/// Nothing writes that shape any more — see `buildDmAlias`, where the name
+/// stopped carrying participants — so for a DM created by this build it returns
+/// null and callers fall through to subgroup membership, which is the source of
+/// truth. Kept for aliases written before the change.
 export function parseDmAlias(
   alias?: string,
 ): { memberIdentities: [string, string] } | null {
