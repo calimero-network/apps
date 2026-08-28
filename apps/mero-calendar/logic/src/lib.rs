@@ -322,11 +322,36 @@ impl CalendarState {
         Ok(events)
     }
 
+    /// Create an event, routing it to private or shared storage BY WHETHER
+    /// ANYONE ELSE IS IN IT.
+    ///
+    /// An event with no peers is one person's own entry. Writing it to
+    /// `#[app::state]` would replicate it to every node in the context and put
+    /// it in the DAG permanently — for data that, by definition, nobody else is
+    /// party to. So it goes to `#[app::private]` instead: node-local, never
+    /// gossiped, no DAG growth.
+    ///
+    /// Peers are what make an event shared. The moment there is someone to share
+    /// it WITH, replication is the point, and it goes to the DAG.
+    ///
+    /// ⚠️ This is enforced HERE and not in the client, deliberately. The
+    /// frontend already had a `private` flag it could route on, but a client
+    /// choosing whether data enters the permanent replicated log is a client
+    /// deciding someone else's privacy. The contract is the only place that
+    /// cannot be bypassed.
+    ///
+    /// `create_private_event` remains for "private even though peers were
+    /// named" — an explicit override rather than the default path.
     pub fn create_event(
         &mut self,
         event_data: CreateCalendarEvent,
         timestamp: u64,
     ) -> app::Result<String> {
+        if event_data.peers.is_empty() {
+            app::log!("No peers — keeping this event in private storage");
+            return self.create_private_event(event_data, timestamp);
+        }
+
         app::log!("Creating calendar event {:?}", event_data);
 
         let id = self.generate_id();
@@ -351,6 +376,18 @@ impl CalendarState {
         Ok(id)
     }
 
+    /// Update a shared event.
+    ///
+    /// ⚠️ Emptying `peers` does NOT move the event back to private storage.
+    /// Once shared, the event is in the DAG on every node in the context, and the
+    /// DAG is append-only — nothing here can retract it. Moving the local copy
+    /// into private storage would leave that replicated history in place while
+    /// making the UI report the event as private, which is worse than saying
+    /// plainly that sharing is one-way.
+    ///
+    /// Removing peers still does the useful part: `get_events` gates reads on
+    /// owner-or-peer, so a removed peer stops SEEING it. It just cannot unsee
+    /// what already synced.
     pub fn update_event(
         &mut self,
         event_id: String,
@@ -473,12 +510,82 @@ impl CalendarState {
         Ok(events)
     }
 
+    /// Move a private event into shared storage, applying `event_data` as it
+    /// goes. Called only from `update_private_event`, when an update names peers.
+    fn promote_private_event(
+        &mut self,
+        event_id: String,
+        event_data: UpdateCalendarEvent,
+        peers: Vec<UserId>,
+        timestamp: u64,
+    ) -> app::Result<String> {
+        let caller = Self::caller();
+
+        // Read the private event out, then REMOVE it, so the same event does not
+        // exist in both stores. A copy left behind would show up twice in the
+        // merged calendar the frontend builds from get_events + get_private_events.
+        let mut private = PrivateCalendar::private_load_or_default()?;
+        let existing = {
+            let mut private_mut = private.as_mut();
+            let Some(found) = private_mut.events.get(&event_id)? else {
+                app::bail!(Error::NotFound(event_id));
+            };
+            let snapshot = found.clone();
+            drop(found);
+            private_mut.events.remove(&event_id)?;
+            snapshot
+        };
+
+        let shared = CalendarEventState {
+            title: event_data.title.unwrap_or(existing.title),
+            description: event_data.description.unwrap_or(existing.description),
+            owner: caller,
+            start: event_data.start.unwrap_or(existing.start),
+            end: event_data.end.unwrap_or(existing.end),
+            event_type: event_data.event_type.unwrap_or(existing.event_type),
+            color: event_data.color.unwrap_or(existing.color),
+            peers,
+            created_at: existing.created_at,
+            updated_at: timestamp,
+        };
+
+        // Keeping the SAME id across the move: the frontend holds it, and a new
+        // id would read as "the private one vanished and an unrelated shared one
+        // appeared".
+        self.events.insert(event_id.clone(), shared)?;
+        app::log!("Promoted private event {} to shared storage", event_id);
+        app::emit!(Event::CalendarEventCreated(event_id.clone()));
+
+        Ok(event_id)
+    }
+
+    /// Update a private event — and PROMOTE it to shared storage if this update
+    /// is what adds the first peer.
+    ///
+    /// This is the other half of `create_event`'s routing. Without it, an event
+    /// created alone and later shared with someone would stay node-local, so the
+    /// peer would never receive it and the share would silently do nothing.
+    ///
+    /// Promotion is one-way, and that is not an omission. Removing every peer
+    /// from a shared event does NOT move it back: by then the event is already in
+    /// the DAG on every node in the context, and the DAG is append-only. Moving
+    /// the local copy into private storage would leave the replicated history
+    /// untouched while making the UI claim the event had become private — which
+    /// is a worse outcome than being honest that sharing cannot be undone. See
+    /// `update_event`.
     pub fn update_private_event(
         &mut self,
         event_id: String,
         event_data: UpdateCalendarEvent,
         timestamp: u64,
     ) -> app::Result<String> {
+        // Peers named in this update? Then this event stops being private, and
+        // the move has to happen before the field-by-field edit below — the
+        // shared and private states are different types.
+        if let Some(peers) = event_data.peers.clone().filter(|p| !p.is_empty()) {
+            return self.promote_private_event(event_id, event_data, peers, timestamp);
+        }
+
         let mut private = PrivateCalendar::private_load_or_default()?;
         let mut private_mut = private.as_mut();
 
@@ -598,9 +705,16 @@ mod tests {
 
     #[test]
     fn owner_can_create_and_see_event() {
+        // Now created WITH a peer. `create_event` routes on the peer list, so an
+        // empty one no longer lands in shared storage at all — this test was
+        // asserting `get_events().len() == 1` for a peerless event, which is
+        // exactly the behaviour that changed. The peerless case has its own test
+        // (`event_with_no_peers_never_reaches_the_dag`).
         let mut app = new_app();
         let me = UserId::new(app.account_id());
-        let id = app.call(|s| s.create_event(event(vec![]), 10)).unwrap();
+        let id = app
+            .call(|s| s.create_event(event(vec![UserId::new(OTHER)]), 10))
+            .unwrap();
         let events = app.view(|s| s.get_events()).unwrap();
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].id, id);
@@ -684,9 +798,160 @@ mod tests {
     // ── Private events (node-local) ─────────────────────────────────────────────
 
     #[test]
+    fn event_with_no_peers_never_reaches_the_dag() {
+        // The requirement: an event nobody else is in stays node-local. Asserted
+        // through BOTH accessors, because "not in the shared map" and "in the
+        // private one" are different claims and only the pair rules out a copy
+        // sitting in each.
+        let mut app = new_app();
+        let id = app.call(|s| s.create_event(event(vec![]), 1)).unwrap();
+
+        let shared = app.view(|s| s.get_events()).unwrap();
+        assert!(
+            shared.iter().all(|e| e.id != id),
+            "an event with no peers must not enter shared (DAG) storage"
+        );
+
+        let private = app.view(|s| s.get_private_events()).unwrap();
+        assert_eq!(private.len(), 1, "it must be in private storage instead");
+        assert_eq!(private[0].id, id);
+        assert!(private[0].private, "and must report itself as private");
+    }
+
+    #[test]
+    fn event_with_peers_goes_to_shared_storage() {
+        // The counterpart, so the test above is not passing merely because
+        // create_event is broken for everything.
+        let mut app = new_app();
+        let peer = UserId::from([9u8; 32]);
+        let id = app.call(|s| s.create_event(event(vec![peer]), 1)).unwrap();
+
+        let shared = app.view(|s| s.get_events()).unwrap();
+        assert!(
+            shared.iter().any(|e| e.id == id),
+            "an event with a peer belongs in shared storage"
+        );
+        assert!(
+            app.view(|s| s.get_private_events()).unwrap().is_empty(),
+            "and must not also sit in private storage"
+        );
+    }
+
+    #[test]
+    fn adding_a_peer_promotes_a_private_event_keeping_its_id() {
+        // Without promotion, sharing an event created alone would silently do
+        // nothing: it would stay node-local and the peer would never see it.
+        let mut app = new_app();
+        let id = app.call(|s| s.create_event(event(vec![]), 1)).unwrap();
+        assert_eq!(app.view(|s| s.get_private_events()).unwrap().len(), 1);
+
+        let peer = UserId::from([7u8; 32]);
+        let returned = app
+            .call(|s| {
+                s.update_private_event(
+                    id.clone(),
+                    UpdateCalendarEvent {
+                        title: None,
+                        description: None,
+                        start: None,
+                        end: None,
+                        event_type: None,
+                        color: None,
+                        peers: Some(vec![peer]),
+                    },
+                    2,
+                )
+            })
+            .unwrap();
+
+        // The id survives the move — the frontend holds it, and a fresh id would
+        // read as "the private one vanished and an unrelated shared one appeared".
+        assert_eq!(returned, id);
+        assert!(
+            app.view(|s| s.get_private_events()).unwrap().is_empty(),
+            "the private copy must be REMOVED, or the merged calendar shows it twice"
+        );
+        let shared = app.view(|s| s.get_events()).unwrap();
+        assert_eq!(shared.len(), 1);
+        assert_eq!(shared[0].id, id);
+        assert_eq!(shared[0].peers.len(), 1);
+    }
+
+    #[test]
+    fn an_update_with_an_empty_peer_list_stays_private() {
+        // `Some(vec![])` is "peers, but none" — it must NOT promote. Only a
+        // non-empty list means there is someone to share with.
+        let mut app = new_app();
+        let id = app.call(|s| s.create_event(event(vec![]), 1)).unwrap();
+        app.call(|s| {
+            s.update_private_event(
+                id.clone(),
+                UpdateCalendarEvent {
+                    title: Some("still mine".into()),
+                    description: None,
+                    start: None,
+                    end: None,
+                    event_type: None,
+                    color: None,
+                    peers: Some(vec![]),
+                },
+                2,
+            )
+        })
+        .unwrap();
+
+        let private = app.view(|s| s.get_private_events()).unwrap();
+        assert_eq!(private.len(), 1);
+        assert_eq!(private[0].title, "still mine");
+        assert!(app.view(|s| s.get_events()).unwrap().is_empty());
+    }
+
+    #[test]
+    fn removing_every_peer_does_not_demote_a_shared_event() {
+        // Pins the one-way constraint so nobody "fixes" it into a demotion that
+        // cannot actually retract the replicated history. Removing peers still
+        // hides the event from them via get_events' owner-or-peer gate; it just
+        // does not unshare what already synced.
+        let mut app = new_app();
+        let peer = UserId::from([5u8; 32]);
+        let id = app.call(|s| s.create_event(event(vec![peer]), 1)).unwrap();
+
+        app.call(|s| {
+            s.update_event(
+                id.clone(),
+                UpdateCalendarEvent {
+                    title: None,
+                    description: None,
+                    start: None,
+                    end: None,
+                    event_type: None,
+                    color: None,
+                    peers: Some(vec![]),
+                },
+                2,
+            )
+        })
+        .unwrap();
+
+        let shared = app.view(|s| s.get_events()).unwrap();
+        assert_eq!(shared.len(), 1, "it stays in shared storage");
+        assert!(shared[0].peers.is_empty(), "with its peer list emptied");
+        assert!(
+            app.view(|s| s.get_private_events()).unwrap().is_empty(),
+            "and is NOT copied into private storage"
+        );
+    }
+
+    #[test]
     fn private_events_are_separate_from_shared() {
         let mut app = new_app();
-        app.call(|s| s.create_event(event(vec![]), 10)).unwrap();
+        // The shared one needs a PEER now: `create_event` routes a peerless event
+        // into private storage, so `event(vec![])` here would have produced two
+        // private events and nothing shared.
+        app.call(|s| s.create_event(event(vec![UserId::new(OTHER)]), 10))
+            .unwrap();
+        // `create_private_event` still ignores peers — it is the explicit
+        // "private regardless" path — so an empty list is right here.
         let pid = app
             .call(|s| s.create_private_event(event(vec![]), 11))
             .unwrap();
