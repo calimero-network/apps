@@ -29,6 +29,7 @@ import { CrdtMetrics } from "./sections/CrdtMetrics";
 import { CrdtTags } from "./sections/CrdtTags";
 import { SortedCollections } from "./sections/SortedCollections";
 import { RgaDocument } from "./sections/RgaDocument";
+import { EphemeralPresence } from "./sections/EphemeralPresence";
 import { WorkspaceManager } from "./sections/WorkspaceManager";
 import { AuthoredMap } from "./sections/AuthoredMap";
 import { AuthoredVector } from "./sections/AuthoredVector";
@@ -64,7 +65,8 @@ type SectionId =
   | "metrics"
   | "tags"
   | "sorted"
-  | "rga";
+  | "rga"
+  | "ephemeral";
 
 interface NavItem {
   id: SectionId;
@@ -99,9 +101,13 @@ const NAV_ITEMS: NavItem[] = [
   { id: "tags", label: "Tags Set", icon: "🏷", group: "CRDT" },
   { id: "sorted", label: "Sorted Collections", icon: "🔤", group: "CRDT" },
   { id: "rga", label: "RGA Document", icon: "📄", group: "CRDT" },
+  // Its own group on purpose: everything above is a contract call that lands
+  // in the DAG. Presence runs no WASM, grows no DAG, and expires — filing it
+  // under "CRDT" would say the opposite of what it is.
+  { id: "ephemeral", label: "Ephemeral Presence", icon: "◌", group: "Transient" },
 ];
 
-const GROUPS = ["Guide", "Core", "Storage", "Access", "CRDT"];
+const GROUPS = ["Guide", "Core", "Storage", "Access", "CRDT", "Transient"];
 
 function renderSection(id: SectionId) {
   switch (id) {
@@ -130,6 +136,7 @@ function renderSection(id: SectionId) {
     case "tags": return <CrdtTags />;
     case "sorted": return <SortedCollections />;
     case "rga": return <RgaDocument />;
+    case "ephemeral": return <EphemeralPresence />;
   }
 }
 

@@ -303,6 +303,13 @@ const GLOSSARY_ITEMS: {
       "Conflict-free Replicated Data Type. Data structures that merge automatically when two nodes have concurrent writes. No conflicts, no coordination needed, no central authority. The node daemon handles merge logic transparently.",
   },
   {
+    term: "Ephemeral presence",
+    tag: "Transient",
+    tagColor: "#a855f7",
+    definition:
+      "Transient state that never persists: cursors, typing indicators, who is online. It gossips node-to-node encrypted, runs NO WASM and adds NOTHING to the DAG, and it expires — the node keeps a 7 second TTL per author. Deliberately not a CRDT: the store is N independent single-writer registers keyed by author, so two authors never merge, they sit side by side. The write/read shape follows from that — mero.ephemeral.set(contextId, state) takes no author because you can only write your own slot (the node resolves it from its owned context identity, so a client cannot publish as someone else), while subscribe(contextId, handler) yields everyone's. Subscribing replays the context's current presence to that connection before any live deltas; a replayed entry carries ageMs and a live one does not, which is how you tell them apart without the two machines agreeing on a clock. Reach for it when the data is worthless a second later — and for anything you would be upset to lose, use a CRDT collection instead.",
+  },
+  {
     term: "xcall",
     tag: "Cross-Context",
     tagColor: "#ec4899",
@@ -828,7 +835,7 @@ const ID_FORMATS: {
     encoding: "base58",
     size: "32 bytes",
     description:
-      "Ed25519 public key identifying one installation. Passed as executorPublicKey on a call, and used by the CRDT layer as the replica id. Never an authorization subject.",
+      "Ed25519 public key identifying one installation, and what the CRDT layer uses as the replica id. Never an authorization subject — that is the account. NOT sent with a call: it used to travel as executorPublicKey, but the node reads the caller from the bearer token and ignores anything passed alongside, so this app does not send it (see the assertion in api/rpc.test.ts).",
   },
   {
     label: "Account ID",

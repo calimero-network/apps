@@ -416,6 +416,7 @@ test.describe("Sidebar navigation", () => {
     { item: "Tags Set", heading: "CRDT Tags Set" },
     { item: "Sorted Collections", heading: "Sorted Collections" },
     { item: "RGA Document", heading: "RGA Document" },
+    { item: "Ephemeral Presence", heading: "Ephemeral Presence" },
   ];
 
   for (const { item, heading } of SECTIONS) {
@@ -1192,5 +1193,71 @@ test.describe("Tutorial", () => {
     await page.locator("button[title='Close tutorial']").click();
     await expect(page.locator("button[title='Close tutorial']")).not.toBeVisible({ timeout: 3_000 });
     await expect(page.locator("button[title='Open tutorial']")).toBeVisible();
+  });
+});
+
+test.describe("Ephemeral Presence", () => {
+  // The only section that is NOT a contract call: presence gossips node-to-node,
+  // runs no WASM and adds nothing to the DAG. Nothing about it appears in the
+  // ABI, which is exactly why the contract-call checker could never have noticed
+  // it was missing from this scaffold — and why it needs its own coverage here.
+  test("section renders with the set and subscribe cards", async ({ page }) => {
+    await navigateTo(page, "Ephemeral Presence");
+    await expect(page.locator(".section-title").first()).toContainText("Ephemeral Presence");
+    await expect(page.getByText("mero.ephemeral.set(contextId, state)")).toBeVisible();
+    await expect(page.getByText("mero.ephemeral.subscribe(contextId, handler)")).toBeVisible();
+  });
+
+  test("explains that it is transient and not a CRDT", async ({ page }) => {
+    await navigateTo(page, "Ephemeral Presence");
+    // The two facts that stop someone reaching for it as a store: it expires,
+    // and authors do not merge.
+    await expect(page.locator(".section-desc")).toContainText("7");
+    await expect(page.getByText(/single-writer registers keyed by author/)).toBeVisible();
+  });
+
+  test("set takes no author, and says so", async ({ page }) => {
+    await navigateTo(page, "Ephemeral Presence");
+    // The write/read asymmetry is the model. If this hint ever disappears, the
+    // section stops explaining why you cannot publish as somebody else.
+    await expect(page.getByText(/Takes no author/)).toBeVisible();
+    await expect(page.getByTestId("ephemeral-set")).toBeVisible();
+  });
+
+  test("subscribe toggles, and starts at zero events", async ({ page }) => {
+    await navigateTo(page, "Ephemeral Presence");
+    const stats = page.getByTestId("ephemeral-stats");
+    await expect(stats).toContainText("events: 0");
+    await expect(stats).toContainText("authors: 0");
+    const btn = page.getByTestId("ephemeral-subscribe");
+    await expect(btn).toHaveText("Subscribe");
+    await btn.click();
+    // Mocked SSE never delivers, so this asserts the TOGGLE, not delivery —
+    // delivery needs two real nodes and belongs in a live run.
+    await expect(btn).toHaveText("Unsubscribe");
+    await btn.click();
+    await expect(btn).toHaveText("Subscribe");
+  });
+
+  test("documents ageMs as the replayed-vs-live discriminator", async ({ page }) => {
+    await navigateTo(page, "Ephemeral Presence");
+    // Absent on a live delta, present on a replayed seed entry — and never
+    // synthesized as 0, because absent and 0 mean different things.
+    await expect(page.getByText(/replays/)).toBeVisible();
+    await expect(page.locator("code", { hasText: "ageMs" }).first()).toBeVisible();
+  });
+});
+
+test.describe("Concepts — ephemeral is documented", () => {
+  test("the glossary defines ephemeral presence", async ({ page }) => {
+    await navigateTo(page, "How It Works");
+    await expect(page.getByText("Ephemeral presence", { exact: true }).first()).toBeVisible();
+  });
+
+  test("the Device Key entry no longer claims executorPublicKey is sent", async ({ page }) => {
+    await navigateTo(page, "How It Works");
+    // Regression: it used to say "Passed as executorPublicKey on a call", which
+    // contradicted api/rpc.ts and the test asserting the field is NOT sent.
+    await expect(page.getByText(/Passed as executorPublicKey on a call/)).toHaveCount(0);
   });
 });
