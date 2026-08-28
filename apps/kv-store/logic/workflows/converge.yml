@@ -255,6 +255,28 @@ steps:
 
   # ─── a late joiner cold-syncs everything ──────────────────────────────────
 
+  # Namespace membership FIRST. `join_context` alone fails with a bare 500 —
+  #
+  #     calimero_server::admin::handlers::context::join_context:
+  #       Failed to join context via group  error=ApiError { status_code: 500 }
+  #
+  # — because a context is joined THROUGH its group, and node-3 was deliberately
+  # left out of `create_mesh` above so that its arrival is a genuine cold sync.
+  # `create_mesh` publishes the namespace it created as `{{namespace_id}}`, which
+  # is what makes inviting a node it never included possible at all.
+  - name: Invite node-3 into the namespace
+    type: create_namespace_invitation
+    node: kvc-node-1
+    namespace_id: "{{namespace_id}}"
+    outputs:
+      node3_invitation: invitation
+
+  - name: node-3 joins the namespace
+    type: join_namespace
+    node: kvc-node-3
+    namespace_id: "{{namespace_id}}"
+    invitation: "{{node3_invitation}}"
+
   - name: node-3 joins the context after all the writes
     type: join_context
     node: kvc-node-3
