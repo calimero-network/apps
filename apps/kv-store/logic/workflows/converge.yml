@@ -1,0 +1,318 @@
+name: KV Store convergence
+description: >
+  What `simple-store.yml` cannot show: the CRDT properties.
+
+  That scenario walks the whole RPC surface, but it does so SEQUENTIALLY on one
+  node and reads back on the other — which proves replication, not convergence.
+  Every write there is already ordered before the next one, so a merge that
+  simply kept the last delta to arrive would pass it end to end.
+
+  This one writes from BOTH nodes without an intervening sync and asserts the
+  two properties that separates a CRDT from a race:
+
+    * distinct keys written concurrently must ALL survive — the map is a union,
+      not a last-writer-wins cell holding one key
+    * one key written concurrently by two nodes must converge to ONE value, the
+      same value on both, and must not split into two entries
+
+  It then adds a THIRD node that joins after all of it, which is the cold-sync
+  path: a joiner has no history, so everything it sees has to arrive by sync
+  rather than by having been present at write time.
+
+force_pull_image: false
+nuke_on_start: true
+near_devnet: false
+
+nodes:
+  count: 3
+  # Matched to the calimero-sdk tag in the root Cargo.toml — the wasm imports
+  # host functions that only exist from that release on.
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.26
+  prefix: kvc-node
+  # Stated, not inherited: rc.26 made mDNS opt-in (core#3620), `merod init` now
+  # writes `discovery.mdns = false`, and merobox does not pass the flag.
+  mdns: true
+
+steps:
+  - name: Install application on node-1
+    type: install_application
+    node: kvc-node-1
+    path: res/kv_store.wasm
+    dev: true
+    outputs:
+      app_id: applicationId
+
+  - name: Assert application installed
+    type: assert
+    statements:
+      - "is_set({{app_id}})"
+
+  # Only node-2 joins here. node-3 is deliberately left out until the end, so
+  # that its join is a genuine COLD sync of state it never witnessed.
+  - name: Create mesh with node-2
+    type: create_mesh
+    context_node: kvc-node-1
+    application_id: "{{app_id}}"
+    nodes:
+      - kvc-node-2
+    outputs:
+      context_id: contextId
+      node1_key: memberPublicKey
+
+  - name: Verify mesh keys are populated
+    type: assert
+    statements:
+      - "is_set({{context_id}})"
+      - "is_set({{node1_key}})"
+      - "is_set({{public_key_kvc-node-2}})"
+
+  # ─── distinct keys written concurrently must all survive ──────────────────
+  #
+  # No `wait_for_sync` BETWEEN these two. That is the entire point: they are
+  # issued back to back so the deltas are in flight together, which is the
+  # ordering a sequential scenario can never produce.
+
+  - name: node-1 writes alpha
+    type: call
+    node: kvc-node-1
+    context_id: "{{context_id}}"
+    method: set
+    args:
+      key: "alpha"
+      value: "from-node-1"
+
+  - name: node-2 writes beta at the same time
+    type: call
+    node: kvc-node-2
+    context_id: "{{context_id}}"
+    method: set
+    args:
+      key: "beta"
+      value: "from-node-2"
+
+  - name: Let the concurrent writes settle
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - kvc-node-1
+      - kvc-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: node-1 reads the key it did NOT write
+    type: call
+    node: kvc-node-1
+    context_id: "{{context_id}}"
+    method: get
+    args:
+      key: "beta"
+    outputs:
+      n1_beta: result
+
+  - name: node-2 reads the key it did NOT write
+    type: call
+    node: kvc-node-2
+    context_id: "{{context_id}}"
+    method: get
+    args:
+      key: "alpha"
+    outputs:
+      n2_alpha: result
+
+  - name: Assert neither concurrent write was lost
+    type: json_assert
+    statements:
+      # A map union keeps both. A merge that took one delta and discarded the
+      # other would leave exactly one of these null — and reading each key on
+      # the node that did NOT write it is what makes that visible.
+      - 'json_equal({{n1_beta}}, {"output": "from-node-2"})'
+      - 'json_equal({{n2_alpha}}, {"output": "from-node-1"})'
+
+  - name: node-1 counts the entries
+    type: call
+    node: kvc-node-1
+    context_id: "{{context_id}}"
+    method: len
+    outputs:
+      n1_len: result.output
+
+  - name: node-2 counts the entries
+    type: call
+    node: kvc-node-2
+    context_id: "{{context_id}}"
+    method: len
+    outputs:
+      n2_len: result.output
+
+  - name: Assert both nodes agree on the size
+    type: assert
+    statements:
+      # `result.output`, not `result`: merobox coerces comparison operands with
+      # float(), and a `{"output": N}` dict throws into a FALSE assertion that
+      # names the comparison and never the shape.
+      - "{{n1_len}} == 2"
+      - "{{n2_len}} == {{n1_len}}"
+
+  # ─── one key written concurrently must converge, not split ────────────────
+
+  - name: node-1 writes contended
+    type: call
+    node: kvc-node-1
+    context_id: "{{context_id}}"
+    method: set
+    args:
+      key: "contended"
+      value: "written-by-node-1"
+
+  - name: node-2 writes contended at the same time
+    type: call
+    node: kvc-node-2
+    context_id: "{{context_id}}"
+    method: set
+    args:
+      key: "contended"
+      value: "written-by-node-2"
+
+  - name: Let the contended write settle
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - kvc-node-1
+      - kvc-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: node-1 reads the contended key
+    type: call
+    node: kvc-node-1
+    context_id: "{{context_id}}"
+    method: get
+    args:
+      key: "contended"
+    outputs:
+      n1_contended: result.output
+
+  - name: node-2 reads the contended key
+    type: call
+    node: kvc-node-2
+    context_id: "{{context_id}}"
+    method: get
+    args:
+      key: "contended"
+    outputs:
+      n2_contended: result.output
+
+  - name: Assert the contended key converged to ONE value on BOTH nodes
+    type: assert
+    statements:
+      # Which value wins is LwwRegister's business and depends on the HLC, so
+      # asserting a specific one would be asserting a race. What must hold is
+      # that the two nodes agree, and that a value survived at all.
+      - "is_set({{n1_contended}})"
+      - "{{n1_contended}} == {{n2_contended}}"
+
+  - name: node-1 counts the entries again
+    type: call
+    node: kvc-node-1
+    context_id: "{{context_id}}"
+    method: len
+    outputs:
+      n1_len_after: result.output
+
+  - name: Assert the contended key did not split into two entries
+    type: assert
+    statements:
+      # alpha + beta + contended. A per-writer split would give 4 here and every
+      # value-level read above would still pass.
+      - "{{n1_len_after}} == 3"
+
+  # ─── a late joiner cold-syncs everything ──────────────────────────────────
+
+  - name: node-3 joins the context after all the writes
+    type: join_context
+    node: kvc-node-3
+    context_id: "{{context_id}}"
+
+  - name: Wait for node-3 to receive the state
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - kvc-node-1
+      - kvc-node-2
+      - kvc-node-3
+    timeout: 90
+    check_interval: 2
+    trigger_sync: true
+
+  # A join confers MEMBERSHIP, not state. Reading before the sync above lands
+  # returns `context state not initialized, awaiting state sync`, which merobox
+  # reports as a FAILED STEP rather than as an empty result — so a read placed
+  # before that wait cannot tell "nothing synced" from "nothing was there".
+  - name: node-3 lists everything it cold-synced
+    type: call
+    node: kvc-node-3
+    context_id: "{{context_id}}"
+    method: entries
+    outputs:
+      n3_entries: result
+
+  - name: node-3 counts the entries
+    type: call
+    node: kvc-node-3
+    context_id: "{{context_id}}"
+    method: len
+    outputs:
+      n3_len: result.output
+
+  - name: Assert the joiner received the whole map
+    type: assert
+    statements:
+      - "is_set({{n3_entries}})"
+      - "{{n3_len}} == 3"
+      # Written before node-3 existed in this context, so these can only have
+      # arrived by sync.
+      - "contains({{n3_entries}}, alpha)"
+      - "contains({{n3_entries}}, beta)"
+      - "contains({{n3_entries}}, from-node-1)"
+      - "contains({{n3_entries}}, from-node-2)"
+
+  - name: node-3 writes, proving the joiner is a full member
+    type: call
+    node: kvc-node-3
+    context_id: "{{context_id}}"
+    method: set
+    args:
+      key: "gamma"
+      value: "from-node-3"
+
+  - name: Wait for the joiner's write to propagate back
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - kvc-node-1
+      - kvc-node-2
+      - kvc-node-3
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: node-1 reads the joiner's write
+    type: call
+    node: kvc-node-1
+    context_id: "{{context_id}}"
+    method: get
+    args:
+      key: "gamma"
+    outputs:
+      n1_gamma: result
+
+  - name: Assert sync is bidirectional for a late joiner
+    type: json_assert
+    statements:
+      # The half that is easy to miss: a joiner that can READ but whose writes
+      # never propagate looks healthy from its own side.
+      - 'json_equal({{n1_gamma}}, {"output": "from-node-3"})'
+
+stop_all_nodes: true

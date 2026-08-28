@@ -3,10 +3,25 @@ import { useKvStore } from "./useKvStore";
 
 type Result = { ok: unknown } | { err: string } | null;
 
-function show(r: Result) {
-  if (!r) return null;
-  if ("err" in r) return <pre className="err">{r.err}</pre>;
-  return <pre>{JSON.stringify(r.ok, null, 2)}</pre>;
+/**
+ * Which panel a call's output belongs under.
+ *
+ * Results used to be ONE piece of state rendered once, at the bottom of the
+ * Remove card. So pressing `set` in Write printed `{"set": null}` two cards
+ * further down, under a heading that had nothing to do with it — and pressing
+ * `get` replaced it in the same faraway place. The output was correct and read
+ * as noise.
+ *
+ * Keyed by section instead: every card shows its own last result, directly under
+ * the buttons that produced it, and one section's call no longer wipes another's
+ * output.
+ */
+type Section = "write" | "read" | "remove" | "entries";
+
+function ResultView({ result }: { result: Result }) {
+  if (!result) return null;
+  if ("err" in result) return <pre className="err">{result.err}</pre>;
+  return <pre>{JSON.stringify(result.ok, null, 2)}</pre>;
 }
 
 export function KvPanel({ contextId }: { contextId: string }) {
@@ -20,8 +35,17 @@ export function KvPanel({ contextId }: { contextId: string }) {
   // meant you could not look up one entry while composing another, and the
   // read buttons went disabled the moment the write field was cleared.
   const [readKey, setReadKey] = useState("");
-  const [result, setResult] = useState<Result>(null);
+  // Remove owns its key for the same reason, and it is the more surprising of
+  // the two: `remove` was wired to the WRITE field, so deleting an entry meant
+  // typing its name into a box labelled "key" under a heading called Write,
+  // three cards above the button you were about to press.
+  const [removeKey, setRemoveKey] = useState("");
+  const [results, setResults] = useState<Partial<Record<Section, Result>>>({});
   const [busy, setBusy] = useState(false);
+  // Two-step, because this button now sits next to Refresh under the table
+  // where a mis-click is a plausible way to lose every entry. It resets on any
+  // other call, so it cannot stay armed by accident.
+  const [confirmClear, setConfirmClear] = useState(false);
 
   const refresh = useCallback(async () => {
     if (!kv) return;
@@ -39,14 +63,18 @@ export function KvPanel({ contextId }: { contextId: string }) {
 
   // Every call refreshes the listing afterwards. A KV store where the table
   // disagrees with the contract is worse than one that reloads too often.
-  async function run(label: string, fn: () => Promise<unknown>) {
+  async function run(section: Section, label: string, fn: () => Promise<unknown>) {
     setBusy(true);
-    setResult(null);
+    setConfirmClear(false);
+    setResults((r) => ({ ...r, [section]: null }));
     try {
       const ok = await fn();
-      setResult({ ok: { [label]: ok ?? null } });
+      setResults((r) => ({ ...r, [section]: { ok: { [label]: ok ?? null } } }));
     } catch (e) {
-      setResult({ err: e instanceof Error ? e.message : String(e) });
+      setResults((r) => ({
+        ...r,
+        [section]: { err: e instanceof Error ? e.message : String(e) },
+      }));
     } finally {
       setBusy(false);
       await refresh();
@@ -82,7 +110,10 @@ export function KvPanel({ contextId }: { contextId: string }) {
           />
         </div>
         <div className="row" style={{ marginTop: 10 }}>
-          <button disabled={busy || !key} onClick={() => run("set", () => kv.set({ key, value }))}>
+          <button
+            disabled={busy || !key}
+            onClick={() => run("write", "set", () => kv.set({ key, value }))}
+          >
             set
           </button>
           {/*
@@ -92,7 +123,9 @@ export function KvPanel({ contextId }: { contextId: string }) {
           <button
             className="ghost"
             disabled={busy || !key}
-            onClick={() => run("update_if_exists", () => kv.updateIfExists({ key, value }))}
+            onClick={() =>
+              run("write", "update_if_exists", () => kv.updateIfExists({ key, value }))
+            }
           >
             update_if_exists
           </button>
@@ -100,11 +133,12 @@ export function KvPanel({ contextId }: { contextId: string }) {
           <button
             className="ghost"
             disabled={busy || !key}
-            onClick={() => run("get_or_insert", () => kv.getOrInsert({ key, value }))}
+            onClick={() => run("write", "get_or_insert", () => kv.getOrInsert({ key, value }))}
           >
             get_or_insert
           </button>
         </div>
+        <ResultView result={results.write ?? null} />
       </div>
 
       <div className="card">
@@ -122,7 +156,7 @@ export function KvPanel({ contextId }: { contextId: string }) {
           <button
             className="ghost"
             disabled={busy || !readKey}
-            onClick={() => run("get", () => kv.get({ key: readKey }))}
+            onClick={() => run("read", "get", () => kv.get({ key: readKey }))}
           >
             get
           </button>
@@ -130,7 +164,7 @@ export function KvPanel({ contextId }: { contextId: string }) {
           <button
             className="ghost"
             disabled={busy || !readKey}
-            onClick={() => run("get_result", () => kv.getResult({ key: readKey }))}
+            onClick={() => run("read", "get_result", () => kv.getResult({ key: readKey }))}
           >
             get_result
           </button>
@@ -142,31 +176,41 @@ export function KvPanel({ contextId }: { contextId: string }) {
           <button
             className="ghost"
             disabled={busy || !readKey}
-            onClick={() => run("get_unchecked", () => kv.getUnchecked({ key: readKey }))}
+            onClick={() => run("read", "get_unchecked", () => kv.getUnchecked({ key: readKey }))}
           >
             get_unchecked
           </button>
-          <button className="ghost" disabled={busy} onClick={() => run("len", () => kv.len())}>
+          <button
+            className="ghost"
+            disabled={busy}
+            onClick={() => run("read", "len", () => kv.len())}
+          >
             len
           </button>
         </div>
+        <ResultView result={results.read ?? null} />
       </div>
 
       <div className="card">
         <h2>Remove</h2>
         <div className="row">
+          <input
+            placeholder="key"
+            value={removeKey}
+            onChange={(e) => setRemoveKey(e.target.value)}
+            aria-label="remove key"
+          />
+        </div>
+        <div className="row" style={{ marginTop: 10 }}>
           <button
             className="ghost"
-            disabled={busy || !key}
-            onClick={() => run("remove", () => kv.remove({ key }))}
+            disabled={busy || !removeKey}
+            onClick={() => run("remove", "remove", () => kv.remove({ key: removeKey }))}
           >
             remove
           </button>
-          <button className="ghost" disabled={busy} onClick={() => run("clear", () => kv.clear())}>
-            clear
-          </button>
         </div>
-        {show(result)}
+        <ResultView result={results.remove ?? null} />
       </div>
 
       <div className="card">
@@ -196,7 +240,36 @@ export function KvPanel({ contextId }: { contextId: string }) {
           <button className="ghost" onClick={() => void refresh()}>
             Refresh
           </button>
+          {/*
+            `clear` lives here, next to Refresh, because it acts on the TABLE
+            above it. It used to sit in the Remove card beside a single-key
+            delete, which put "delete this one entry" and "delete all of them"
+            one tab-stop apart.
+          */}
+          {confirmClear ? (
+            <>
+              <button
+                className="danger"
+                disabled={busy}
+                onClick={() => run("entries", "clear", () => kv.clear())}
+              >
+                Confirm — remove all
+              </button>
+              <button className="ghost" disabled={busy} onClick={() => setConfirmClear(false)}>
+                Cancel
+              </button>
+            </>
+          ) : (
+            <button
+              className="ghost danger-text"
+              disabled={busy || rows.length === 0}
+              onClick={() => setConfirmClear(true)}
+            >
+              Remove all
+            </button>
+          )}
         </div>
+        <ResultView result={results.entries ?? null} />
       </div>
     </>
   );
