@@ -1,5 +1,5 @@
 [package]
-name        = "merocalendar"
+name        = "mero-calendar"
 description = "Mero Calendar — collaborative p2p calendar on Calimero"
 # NOT the release version. cargo requires the field, but nothing reads it for a
 # release: the registry owns the number, and `cargo mero bundle --bump patch`

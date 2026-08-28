@@ -20,16 +20,16 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-NODE_NAME="merocalendar-dev"
-NODE_HOME="${MEROCALENDAR_DEV_NODE_HOME:-$HOME/.calimero/merocalendar-dev}"
-NODE_PORT="${MEROCALENDAR_DEV_PORT:-2470}"
-NODE_P2P_PORT="${MEROCALENDAR_DEV_P2P_PORT:-2570}"
+NODE_NAME="mero-calendar-dev"
+NODE_HOME="${MERO_CALENDAR_DEV_NODE_HOME:-$HOME/.calimero/mero-calendar-dev}"
+NODE_PORT="${MERO_CALENDAR_DEV_PORT:-2470}"
+NODE_P2P_PORT="${MERO_CALENDAR_DEV_P2P_PORT:-2570}"
 NODE_URL="http://localhost:${NODE_PORT}"
 
 ADMIN_USER="${E2E_ADMIN_USER:-admin}"
 ADMIN_PASS="${E2E_ADMIN_PASS:-calimero1234}"
 
-WASM_PATH="$REPO_ROOT/logic/res/merocalendar.wasm"
+WASM_PATH="$REPO_ROOT/logic/res/mero_calendar.wasm"
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -50,7 +50,7 @@ wait_for_node() {
   printf '\n'; red "Node did not become healthy after 60s"; exit 1
 }
 
-pid_file() { echo "/tmp/merocalendar-dev-node.pid"; }
+pid_file() { echo "/tmp/mero-calendar-dev-node.pid"; }
 
 # ── Parse args ────────────────────────────────────────────────────────────────
 
@@ -122,7 +122,7 @@ else
   # `cargo mero build`, not the old `logic/build.sh`. cargo-mero replaced the
   # per-app build scripts: it applies the release profile, runs the wasm-opt it
   # bundles (never one off PATH), emits the ABI from a HOST build and embeds it as
-  # the `calimero_abi_v1` section, then writes logic/res/merocalendar.wasm — the
+  # the `calimero_abi_v1` section, then writes logic/res/mero_calendar.wasm — the
   # same path build.sh used, so nothing downstream moves. The ABI section is not
   # cosmetic: the node reads it to plan an upgrade, so a wasm built the old way is
   # not the artifact CI and the registry publish produce.
@@ -131,7 +131,7 @@ else
   command -v cargo-mero >/dev/null 2>&1 \
     || { red "cargo-mero not found — install it (see comment above)"; exit 1; }
   (cd "$REPO_ROOT/logic" && cargo mero build)
-  green "merocalendar.wasm built"
+  green "mero_calendar.wasm built"
 fi
 
 # ── Init node ─────────────────────────────────────────────────────────────────
@@ -175,9 +175,9 @@ step "Starting node"
 export RUST_LOG="${RUST_LOG:-debug,h2=warn,hyper=warn,tower=warn,rustls=warn,tokio=warn,mio=warn}"
 merod --node "$NODE_NAME" --home "$NODE_HOME" run \
   --auth-mode embedded \
-  > "/tmp/merocalendar-dev-node.log" 2>&1 &
+  > "/tmp/mero-calendar-dev-node.log" 2>&1 &
 echo $! > "$(pid_file)"
-green "Node started (pid $!  logs: /tmp/merocalendar-dev-node.log)"
+green "Node started (pid $!  logs: /tmp/mero-calendar-dev-node.log)"
 wait_for_node
 
 # ── Authenticate ──────────────────────────────────────────────────────────────
@@ -360,7 +360,7 @@ printf '  Password:   \033[1m%s\033[0m\n' "$ADMIN_PASS"
 printf '  App ID:     %s\n' "$APP_ID"
 [ -n "${NAMESPACE_ID:-}" ] && printf '  Workspace:  %s\n' "$NAMESPACE_ID"
 [ -n "${CONTEXT_ID:-}"   ] && printf '  Project:    %s\n' "$CONTEXT_ID"
-printf '  Logs:       /tmp/merocalendar-dev-node.log\n'
+printf '  Logs:       /tmp/mero-calendar-dev-node.log\n'
 printf '\n'
 printf '  Next step:\n'
 printf '    \033[36mmake dev\033[0m   →  open http://localhost:5174\n'

@@ -40,7 +40,7 @@ steps:
   - name: Install Application
     type: install_application
     node: calimero-node-1
-    path: res/merocalendar.wasm
+    path: res/mero_calendar.wasm
     dev: true
     outputs:
       app_id: applicationId

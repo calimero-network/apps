@@ -5,7 +5,7 @@
 # (success, failure, Ctrl-C, kill -9):
 #
 #   1. Pre-flight: kill any host-side `merod` processes that bind the ports
-#      merobox needs (merocalendar-dev / merocalendar-dev-2 from `make dev-node`,
+#      merobox needs (mero-calendar-dev / mero-calendar-dev-2 from `make dev-node`,
 #      etc.) — without this, container init fails with "address already in
 #      use".
 #   2. Pre-flight: stop+nuke any merobox containers (running OR stopped) and

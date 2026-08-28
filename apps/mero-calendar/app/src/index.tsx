@@ -30,7 +30,7 @@ primeInvitationCapture();
 // ── Tauri desktop SSO ─────────────────────────────────────────────────────────
 //
 // tauri-app opens this app in a window with auth + calendar context in the hash:
-//   merocalendar://…#node_url=…&access_token=…&refresh_token=…&application_id=…
+//   mero-calendar://…#node_url=…&access_token=…&refresh_token=…&application_id=…
 //
 // The tokens are MeroProvider's business, NOT ours. It runs `parseAuthCallback`
 // on first render and decides whether to adopt the hash bundle via

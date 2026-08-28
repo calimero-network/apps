@@ -62,7 +62,7 @@ Open the app, connect your node, create or join a team, and start scheduling.
 ## Build
 
 ```bash
-make logic-build     # logic/src → logic/res/{merocalendar.wasm,abi.json,state-schema.json}
+make logic-build     # logic/src → logic/res/{mero_calendar.wasm,abi.json,state-schema.json}
 make app-build       # frontend → app/dist
 make build           # both
 make bundle          # dev-signed .mpk → logic/dist/ (fine locally, refused by the registry)

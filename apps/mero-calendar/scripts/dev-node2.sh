@@ -16,18 +16,18 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-NODE_NAME="merocalendar-dev-2"
-NODE_HOME="${MEROCALENDAR_DEV_NODE2_HOME:-$HOME/.calimero/merocalendar-dev-2}"
-NODE_PORT="${MEROCALENDAR_DEV_PORT2:-2471}"
-NODE_P2P_PORT="${MEROCALENDAR_DEV_P2P_PORT2:-2571}"
+NODE_NAME="mero-calendar-dev-2"
+NODE_HOME="${MERO_CALENDAR_DEV_NODE2_HOME:-$HOME/.calimero/mero-calendar-dev-2}"
+NODE_PORT="${MERO_CALENDAR_DEV_PORT2:-2471}"
+NODE_P2P_PORT="${MERO_CALENDAR_DEV_P2P_PORT2:-2571}"
 NODE_URL="http://localhost:${NODE_PORT}"
 
-NODE1_P2P_PORT="${MEROCALENDAR_DEV_P2P_PORT:-2570}"
+NODE1_P2P_PORT="${MERO_CALENDAR_DEV_P2P_PORT:-2570}"
 
 ADMIN_USER="${E2E_ADMIN_USER:-admin}"
 ADMIN_PASS="${E2E_ADMIN_PASS:-calimero1234}"
 
-WASM_PATH="$REPO_ROOT/logic/res/merocalendar.wasm"
+WASM_PATH="$REPO_ROOT/logic/res/mero_calendar.wasm"
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -47,7 +47,7 @@ wait_for_node() {
   printf '\n'; red "Node2 did not become healthy after 60s"; exit 1
 }
 
-pid_file() { echo "/tmp/merocalendar-dev-node2.pid"; }
+pid_file() { echo "/tmp/mero-calendar-dev-node2.pid"; }
 
 # ── Parse args ────────────────────────────────────────────────────────────────
 
@@ -102,7 +102,7 @@ for cmd in merod jq curl; do
   command -v "$cmd" &>/dev/null || { red "'$cmd' not found in PATH"; exit 1; }
 done
 
-[ -f "$WASM_PATH" ] || { red "merocalendar.wasm not found — run 'make dev-node' first"; exit 1; }
+[ -f "$WASM_PATH" ] || { red "mero_calendar.wasm not found — run 'make dev-node' first"; exit 1; }
 
 # ── Nuke existing node2 ───────────────────────────────────────────────────────
 
@@ -134,7 +134,7 @@ green "Node2 initialised"
 # Two merods on the same host race over UDP/5353 (mDNS), so mDNS discovery is
 # unreliable. Skip it by injecting node1's loopback multiaddr with peer ID.
 
-NODE1_LOG="/tmp/merocalendar-dev-node.log"
+NODE1_LOG="/tmp/mero-calendar-dev-node.log"
 NODE1_PEER_ID=""
 if [ -f "$NODE1_LOG" ]; then
   for _ in $(seq 1 10); do
@@ -189,9 +189,9 @@ step "Starting node2"
 export RUST_LOG="${RUST_LOG:-debug,h2=warn,hyper=warn,tower=warn,rustls=warn,tokio=warn,mio=warn}"
 merod --node "$NODE_NAME" --home "$NODE_HOME" run \
   --auth-mode embedded \
-  > "/tmp/merocalendar-dev-node2.log" 2>&1 &
+  > "/tmp/mero-calendar-dev-node2.log" 2>&1 &
 echo $! > "$(pid_file)"
-green "Node2 started (pid $!  logs: /tmp/merocalendar-dev-node2.log)"
+green "Node2 started (pid $!  logs: /tmp/mero-calendar-dev-node2.log)"
 wait_for_node
 
 # ── Authenticate ──────────────────────────────────────────────────────────────
@@ -259,7 +259,7 @@ printf '\n'
 printf '  Node2 URL:  \033[1m%s\033[0m\n' "$NODE_URL"
 printf '  Username:   \033[1m%s\033[0m\n' "$ADMIN_USER"
 printf '  Password:   \033[1m%s\033[0m\n' "$ADMIN_PASS"
-printf '  Logs:       /tmp/merocalendar-dev-node2.log\n'
+printf '  Logs:       /tmp/mero-calendar-dev-node2.log\n'
 printf '\n'
 printf '  Next step:\n'
 printf '    \033[36mmake dev-invite\033[0m  →  invite node2 into node1'\''s workspace\n'

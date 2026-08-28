@@ -17,7 +17,7 @@ help:
 	@echo ""
 	@echo "  Build"
 	@echo "    build          Build Rust WASM logic + frontend"
-	@echo "    logic-build    Compile logic/src → logic/res/merocalendar.wasm (+ abi.json)"
+	@echo "    logic-build    Compile logic/src → logic/res/mero_calendar.wasm (+ abi.json)"
 	@echo "    bundle         Dev-signed .mpk for local installs (logic/dist/)"
 	@echo "    bundle-release Publishable .mpk signed with \$$MERO_SIGN_KEY_FILE"
 	@echo "    publish        Push a built .mpk to the Calimero App Registry"
@@ -148,15 +148,15 @@ logic-test: logic-build
 # ── Stop dev nodes ─────────────────────────────────────────────────────────────
 
 stop:
-	@-pkill -f 'merod --node merocalendar-dev'   2>/dev/null || true
-	@-pkill -f 'merod --node merocalendar-dev-2' 2>/dev/null || true
+	@-pkill -f 'merod --node mero-calendar-dev'   2>/dev/null || true
+	@-pkill -f 'merod --node mero-calendar-dev-2' 2>/dev/null || true
 	@for p in 2470 2471 2570 2571; do \
 	  for proto in tcp udp; do \
 	    pids=$$(lsof -ti $$proto:$$p 2>/dev/null); \
 	    [ -n "$$pids" ] && { echo "  killing pid(s) on $$proto:$$p: $$pids"; kill -9 $$pids 2>/dev/null || true; } || true; \
 	  done; \
 	done
-	@rm -f /tmp/merocalendar-dev-node.pid /tmp/merocalendar-dev-node2.pid
+	@rm -f /tmp/mero-calendar-dev-node.pid /tmp/mero-calendar-dev-node2.pid
 	@printf '\033[32m  ✓  dev nodes stopped & cleaned\033[0m\n'
 
 # ── Clean ──────────────────────────────────────────────────────────────────
