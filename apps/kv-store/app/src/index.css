@@ -80,3 +80,54 @@ th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--bor
 th { color: var(--text-dim); font-weight: 600; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; }
 td.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .empty { color: var(--text-dim); font-size: 0.88rem; }
+
+/* ── the invite link ──────────────────────────────────────────────────────
+   An invitation payload is a few hundred base58 characters. Rendered as a
+   wrapping <pre> it became a wall of text taller than the rest of the card, so
+   it is one ellipsised line instead.
+
+   `min-width: 0` is the load-bearing part: this sits in a flex row, and a flex
+   ITEM defaults to `min-width: auto`, which refuses to shrink below its content
+   — so `text-overflow: ellipsis` would never trigger and the row would simply
+   overflow. Truncation here is purely visual: textContent is still the whole
+   link, so selecting it or copying it yields the full value. */
+.invite-link {
+  display: block;
+  margin-top: 12px;
+  padding: 9px 11px;
+  background: #0b1012;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-dim);
+  font-size: 0.8rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+/* ── destructive actions ──────────────────────────────────────────────────
+   "Remove all" sits next to Refresh under the entries table, so it needs to
+   read as the dangerous one of the pair without becoming the loudest thing on
+   the page. The armed state is filled; the resting state is only tinted. */
+button.danger {
+  background: var(--danger);
+  color: #2a0b0b;
+}
+button.ghost.danger-text {
+  color: var(--danger);
+}
+button.ghost.danger-text:hover:not(:disabled) {
+  border-color: var(--danger);
+}
+
+/* ── the context bar ──────────────────────────────────────────────────────
+   Slimmer than a normal card: it is a status strip with one action, not a
+   section, and it should not compete with Write/Read/Remove below it. */
+.card.context-bar {
+  padding: 12px 18px;
+}
+.card.context-bar code {
+  color: var(--text);
+  word-break: break-all;
+}
