@@ -83,11 +83,19 @@ steps:
     args: {}
     outputs:
       members: result
+      # Alice's account-derived UserId, which is what a peer list is made of.
+      # `Member.id` is `UserId::new(env::account_id())` stringified — NOT
+      # `executor_public_key`, which is a context member (device) key. Alice is
+      # the only member here, so `output.0` is unambiguous.
+      alice_user_id: result.output.0.id
 
   - name: Assert Alice is a Member
     type: assert
     statements:
       - "contains({{members}}, 'Alice')"
+      # A peer list built from an empty capture is a list of one empty string,
+      # which routes as non-empty while matching no caller.
+      - "is_set({{alice_user_id}})"
 
   # ── Shared events ───────────────────────────────────────────────────────────
   - name: Create Shared Event
@@ -104,7 +112,12 @@ steps:
         end: "2026-07-01T09:30:00"
         event_type: "event"
         color: "rgb(51, 182, 121)"
-        peers: []
+        # A peer is what makes this a SHARED event. `create_event` routes on the
+        # peer list — an empty one means nobody else is involved, so the event is
+        # written to private storage and never enters the DAG. This step is named
+        # for the shared path, so it has to name someone; the peerless path is
+        # covered by private-routing.yml.
+        peers: ["{{alice_user_id}}"]
       timestamp: 1000001
     # `result.output` extracts the bare id string from the JSON-RPC envelope
     # ({id, jsonrpc, result: {output: "<id>"}}); plain `result` would capture the
