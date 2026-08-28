@@ -56,6 +56,9 @@ import { useNamespaceMembershipWatch } from "../../hooks/useNamespaceMembershipW
 import { buildDmMemberOptions } from "../../utils/dmMemberOptions";
 import { useUnreadCounts } from "../../hooks/useUnreadCounts";
 import { useAppBadge } from "../../hooks/useAppBadge";
+import { useReconnectResync } from "../../hooks/useReconnectResync";
+import { messageSync } from "../../repositories/messages";
+import { MESSAGE_PAGE_SIZE } from "../../constants/app";
 import { useToast } from "../../contexts/ToastContext";
 import {
   messagePermalink,
@@ -65,7 +68,7 @@ import {
 import type { MessageLink } from "../../utils/permalink";
 
 export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
-  const { mero: app } = useCalimero();
+  const { mero: app, isOnline } = useCalimero();
   const currentGroupId = getGroupId();
 
   // Hard guard: if no namespace/group is actually selected, bounce back to
@@ -969,7 +972,7 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
           initialFetchDone.current = true;
           isFetchingInitial.current = false;
         })
-        .catch((error) => {
+        .catch((error: unknown) => {
           log.error("Home", "Error fetching initial data", error);
           isFetchingInitial.current = false;
         });
@@ -1044,6 +1047,40 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
     log.info("Home", `Subscribing to ${contextIds.length} contexts`, { totalContexts: contextIds.length });
     webSocket.subscribeToContexts(contextIds);
   }, [app, allContextIdsKey, webSocket]);
+
+  // Refill the hole a dropped event stream leaves behind.
+  //
+  // The node does not buffer: "Events that occur during disconnection are not
+  // buffered and will be skipped" (core, sse/events.rs). So a drop is not a
+  // delay, it is a gap — every message, edit, reaction and role change in that
+  // window is lost to this client, and nothing re-reads afterwards because
+  // every refresh path is driven by an event that will now never arrive.
+  //
+  // Closing a laptop lid is enough to open one.
+  //
+  // Re-read the same surface an open re-reads: the conversation on screen, and
+  // the lists that decide what is on screen. This is what makes "fresh for what
+  // you are looking at" true rather than true-while-connected.
+  useReconnectResync(isOnline, () => {
+    log.info("Home", "[SSE] stream reconnected — resyncing");
+
+    const active = activeChatRef.current;
+    if (active?.contextId) {
+      // The window, not the whole history: reads go to the node now, so
+      // scrolling back is already correct. This is the visible page.
+      void messageSync
+        .refreshNewest(active.contextId, MESSAGE_PAGE_SIZE)
+        .catch((error: unknown) => {
+          // Still offline, or offline again. The next reconnect retries; a
+          // failure here must not take the app down with it.
+          log.debug("Home", "reconnect resync failed", error);
+        });
+    }
+
+    void fetchChannelsRef.current();
+    void fetchDmsRef.current();
+    void fetchMembersRef.current();
+  });
 
   // Poll DMs every 30s — catches deletions and new DMs on both nodes
   useEffect(() => {
