@@ -246,6 +246,22 @@ jobs:
             --app-version 0.0.0 \
             --output "dist/dry-run-${{ matrix.app }}.mpk"
 
+      # An app may ship a hand-rolled bundle FIXTURE its scenarios install —
+      # scaffolding-e2e's two-service .mpk, which exists to exercise merod's
+      # multi-service install and `service_name` selection. It has to be built
+      # HERE: this is the only job with a Rust toolchain, and the e2e job
+      # deliberately downloads the contract rather than rebuilding it. Without
+      # this the scenario fails at `Application path not found`.
+      - name: Build any bundle fixtures this app ships
+        run: |
+          script="apps/${{ matrix.app }}/logic/build-multi-service-bundle.sh"
+          if [ -x "$script" ]; then
+            echo "running $script"
+            (cd "apps/${{ matrix.app }}/logic" && ./build-multi-service-bundle.sh)
+          else
+            echo "no bundle fixture for ${{ matrix.app }} — nothing to build"
+          fi
+
       # A SEPARATE artifact on purpose. The upload below uses glob paths whose
       # least-common-ancestor is `apps/`, which is what makes `path: apps`
       # correct on the download side — adding a repo-root path like `dist/`
@@ -272,6 +288,7 @@ jobs:
             apps/*/logic/res/*.wasm
             apps/*/logic/res/abi.json
             apps/*/logic/res/state-schema.json
+            apps/*/logic/res/*.mpk
           retention-days: 3
 
   frontend:
@@ -406,9 +423,20 @@ jobs:
         working-directory: apps/${{ matrix.app }}/app
         run: npx playwright install-deps chromium
 
+      # An app opts into a specific CI suite with `test:e2e:ci`; otherwise the
+      # default projects run. scaffolding-e2e needs this: its default config has
+      # a globalSetup that drives a real hosted login, which on a runner ends at
+      # `chrome-error://chromewebdata/`, while its mocked config injects auth in
+      # the page and needs no node.
       - name: Run the browser e2e
         working-directory: apps/${{ matrix.app }}/app
-        run: npx playwright test
+        run: |
+          if node -e "process.exit(require('./package.json').scripts?.['test:e2e:ci']?0:1)"; then
+            echo "using this app's test:e2e:ci"
+            pnpm run test:e2e:ci
+          else
+            npx playwright test
+          fi
 
       - name: Upload the report and node log
         if: always()
@@ -509,6 +537,17 @@ jobs:
           shopt -s nullglob
           for f in workflows/*.yml; do merobox bootstrap validate "$f"; done
 
+      # ⚠️ Tear the containers down BETWEEN scenarios, not just at the end.
+      # `nuke_on_start` in a scenario clears DATA, not a previous scenario's
+      # running containers, and scenarios pick their own node prefix while
+      # sharing the default host ports. So the second scenario to want 2428
+      # dies at:
+      #
+      #     Bind for 0.0.0.0:2428 failed: port is already allocated
+      #
+      # which reads like a runner problem rather than a missing teardown. Any
+      # app with ONE scenario — kv-store, merodesign, merraria — never sees it;
+      # scaffolding-e2e has 18.
       - name: Run workflows
         working-directory: apps/${{ matrix.app }}/logic
         run: |
@@ -516,7 +555,10 @@ jobs:
           for f in workflows/*.yml; do
             echo "::group::$f"
             merobox bootstrap run "$f" --log-level info
+            status=$?
+            merobox stop --all >/dev/null 2>&1 || true
             echo "::endgroup::"
+            [ $status -eq 0 ] || exit $status
           done
 
       # `merobox logs` takes a NODE_NAME argument — with only `--tail` it exits

@@ -1,0 +1,560 @@
+name: Workspace Registry E2E
+description: >
+  The app-level directory: channels, groups, member roles, and the cross-context
+  xcall ping. Covers the two-layer membership model — a node member with no
+  workspace role can read the directory but not write to it — and the
+  account-vs-device-key trap that makes a role grant look like it worked when it
+  did not.
+
+force_pull_image: false
+nuke_on_start: true
+near_devnet: false
+
+nodes:
+  count: 2
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.26
+  # rc.26 made mDNS opt-in (core#3620) and merobox does not pass the flag,
+  # so discovery changed at the image bump. Stated, not inherited.
+  mdns: true
+  prefix: e2e-node
+
+steps:
+  - name: Install application on node-1
+    type: install_application
+    node: e2e-node-1
+    path: res/scaffolding_e2e.wasm
+    dev: true
+    outputs:
+      app_id: applicationId
+
+  - name: Assert application installed
+    type: assert
+    statements:
+      - "is_set({{app_id}})"
+
+  # A namespace, so the xcall half at the end has two contexts running the SAME
+  # application to talk between — which is exactly what
+  # `#[app::xcall(from_same_app)]` on `ws_pong` requires.
+  - name: Create namespace on node-1
+    type: create_namespace
+    node: e2e-node-1
+    application_id: "{{app_id}}"
+    outputs:
+      namespace_id: namespaceId
+
+  - name: Create the workspace context
+    type: create_context
+    node: e2e-node-1
+    application_id: "{{app_id}}"
+    group_id: "{{namespace_id}}"
+    outputs:
+      ws_ctx: contextId
+      ws_key_node1: memberPublicKey
+
+  - name: Create the channel context (the xcall target)
+    type: create_context
+    node: e2e-node-1
+    application_id: "{{app_id}}"
+    group_id: "{{namespace_id}}"
+    outputs:
+      chan_ctx: contextId
+      chan_key_node1: memberPublicKey
+
+  - name: Assert both contexts created
+    type: assert
+    statements:
+      - "is_set({{ws_ctx}})"
+      - "is_set({{chan_ctx}})"
+
+  # ─── Claiming the workspace ─────────────────────────────────────────────────
+
+  # `init` deliberately does NOT seed an admin: a context can exist before anyone
+  # decides to run a workspace in it. The claim is what creates the admin.
+  - name: node-1 claims the workspace
+    type: call
+    node: e2e-node-1
+    context_id: "{{ws_ctx}}"
+    executor_public_key: "{{ws_key_node1}}"
+    method: ws_init
+    args:
+      name: "E2E Workspace"
+
+  - name: node-1 reports its own account id
+    type: call
+    node: e2e-node-1
+    context_id: "{{ws_ctx}}"
+    executor_public_key: "{{ws_key_node1}}"
+    method: whoami
+    args: {}
+    outputs:
+      n1_account: result.output.account_id
+
+  - name: Assert node-1 account id is populated
+    type: assert
+    statements:
+      - "is_set({{n1_account}})"
+
+  # The claimer is the admin, and the role is keyed by ACCOUNT — the same
+  # subject `shared_*` uses. `ws_my_role` resolves the caller through
+  # `caller_account()`, so this is the assertion that proves the grant in
+  # `ws_init` landed under a key the caller can actually present.
+  - name: node-1 reads its own role
+    type: call
+    node: e2e-node-1
+    context_id: "{{ws_ctx}}"
+    executor_public_key: "{{ws_key_node1}}"
+    method: ws_my_role
+    args: {}
+    outputs:
+      n1_role: result
+
+  - name: Assert node-1 is the admin
+    type: json_assert
+    statements:
+      - 'json_equal({{n1_role}}, {"output": "admin"})'
+
+  - name: node-1 reads the workspace summary
+    type: call
+    node: e2e-node-1
+    context_id: "{{ws_ctx}}"
+    executor_public_key: "{{ws_key_node1}}"
+    method: ws_get_info
+    args: {}
+    outputs:
+      ws_info_name: result.output.name
+      ws_info_admin: result.output.admin
+      ws_info_members: result.output.member_count
+
+  - name: Assert the summary reports the claimer as admin
+    type: json_assert
+    statements:
+      - 'json_equal({{ws_info_name}}, "E2E Workspace")'
+      - 'json_equal({{ws_info_admin}}, "{{n1_account}}")'
+      - 'json_equal({{ws_info_members}}, 1)'
+
+  # ─── The directory ──────────────────────────────────────────────────────────
+
+  - name: node-1 registers the channel context
+    type: call
+    node: e2e-node-1
+    context_id: "{{ws_ctx}}"
+    executor_public_key: "{{ws_key_node1}}"
+    method: ws_register_channel
+    args:
+      context_id: "{{chan_ctx}}"
+      name: "#general"
+      topic: "Announcements"
+
+  - name: node-1 registers a group
+    type: call
+    node: e2e-node-1
+    context_id: "{{ws_ctx}}"
+    executor_public_key: "{{ws_key_node1}}"
+    method: ws_register_group
+    args:
+      group_id: "{{namespace_id}}"
+      name: "Engineering"
+      description: "the namespace, mirrored into app state"
+
+  - name: node-1 lists channels
+    type: call
+    node: e2e-node-1
+    context_id: "{{ws_ctx}}"
+    executor_public_key: "{{ws_key_node1}}"
+    method: ws_list_channels
+    args: {}
+    outputs:
+      chan0_ctx: result.output.0.context_id
+      chan0_name: result.output.0.name
+      chan0_by: result.output.0.created_by
+
+  # `created_by` is an ACCOUNT, like every other "who did this" field in this
+  # contract. Asserting it against `ws_key_node1` — the base58 DEVICE key
+  # merobox knows — would compare two different id kinds and could only ever
+  # be vacuously false, which is why `whoami` runs above.
+  - name: Assert the registered channel round-trips
+    type: json_assert
+    statements:
+      - 'json_equal({{chan0_ctx}}, "{{chan_ctx}}")'
+      - 'json_equal({{chan0_name}}, "#general")'
+      - 'json_equal({{chan0_by}}, "{{n1_account}}")'
+
+  - name: node-1 lists groups
+    type: call
+    node: e2e-node-1
+    context_id: "{{ws_ctx}}"
+    executor_public_key: "{{ws_key_node1}}"
+    method: ws_list_groups
+    args: {}
+    outputs:
+      grp0_id: result.output.0.group_id
+      grp0_name: result.output.0.name
+
+  - name: Assert the registered group round-trips
+    type: json_assert
+    statements:
+      - 'json_equal({{grp0_id}}, "{{namespace_id}}")'
+      - 'json_equal({{grp0_name}}, "Engineering")'
+
+  # ─── A second node: node membership is not a workspace role ─────────────────
+
+  - name: Invite node-2 into the namespace
+    type: create_namespace_invitation
+    node: e2e-node-1
+    namespace_id: "{{namespace_id}}"
+    outputs:
+      ns_invitation: invitation
+
+  - name: node-2 joins the namespace
+    type: join_namespace
+    node: e2e-node-2
+    namespace_id: "{{namespace_id}}"
+    invitation: "{{ns_invitation}}"
+    outputs:
+      n2_ns_identity: memberIdentity
+
+  - name: node-2 joins the workspace context
+    type: join_context
+    node: e2e-node-2
+    context_id: "{{ws_ctx}}"
+    outputs:
+      n2_ws_key: memberPublicKey
+
+  - name: Assert node-2 is in the namespace and the context
+    type: assert
+    statements:
+      - "is_set({{n2_ns_identity}})"
+      - "is_set({{n2_ws_key}})"
+
+  - name: Wait for the directory to reach node-2
+    type: wait_for_sync
+    context_id: "{{ws_ctx}}"
+    nodes:
+      - e2e-node-1
+      - e2e-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  # node-2 is a NODE member: the node admits its calls, so it can read the
+  # directory. That is the first of the two membership layers.
+  - name: node-2 lists channels
+    type: call
+    node: e2e-node-2
+    context_id: "{{ws_ctx}}"
+    executor_public_key: "{{n2_ws_key}}"
+    method: ws_list_channels
+    args: {}
+    outputs:
+      n2_chan0_ctx: result.output.0.context_id
+
+  - name: Assert node-2 sees the synced channel
+    type: json_assert
+    statements:
+      - 'json_equal({{n2_chan0_ctx}}, "{{chan_ctx}}")'
+
+  - name: node-2 reports its own account id
+    type: call
+    node: e2e-node-2
+    context_id: "{{ws_ctx}}"
+    executor_public_key: "{{n2_ws_key}}"
+    method: whoami
+    args: {}
+    outputs:
+      n2_account: result.output.account_id
+
+  # ...and it has NO workspace role, which is the second layer. An empty string,
+  # not an error: "not a member of this workspace" is a normal answer.
+  - name: node-2 reads its own role before any grant
+    type: call
+    node: e2e-node-2
+    context_id: "{{ws_ctx}}"
+    executor_public_key: "{{n2_ws_key}}"
+    method: ws_my_role
+    args: {}
+    outputs:
+      n2_role_pre: result
+
+  - name: Assert node-2 has no workspace role yet
+    type: json_assert
+    statements:
+      - 'json_equal({{n2_role_pre}}, {"output": ""})'
+
+  # ─── The grant, under the id that actually works ───────────────────────────
+
+  # ⚠️ This is the trap the whole workflow exists for. `ws_set_member_role`
+  # takes a free-form `String`, so granting a role to node-2's base58 DEVICE key
+  # — `n2_ws_key`, the id the admin API's membership listing hands you — is
+  # accepted, stored, and returned by `ws_get_member_role`. It authorizes
+  # nobody: `ws_my_role` resolves the caller by ACCOUNT, so node-2 would still
+  # read "". Granting to `n2_account` is what makes the role real.
+  - name: node-1 grants node-2 the member role, keyed by ACCOUNT
+    type: call
+    node: e2e-node-1
+    context_id: "{{ws_ctx}}"
+    executor_public_key: "{{ws_key_node1}}"
+    method: ws_set_member_role
+    args:
+      identity: "{{n2_account}}"
+      role: "member"
+
+  - name: Wait for the grant to reach node-2
+    type: wait_for_sync
+    context_id: "{{ws_ctx}}"
+    nodes:
+      - e2e-node-1
+      - e2e-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: node-2 reads its own role after the grant
+    type: call
+    node: e2e-node-2
+    context_id: "{{ws_ctx}}"
+    executor_public_key: "{{n2_ws_key}}"
+    method: ws_my_role
+    args: {}
+    outputs:
+      n2_role_post: result
+
+  - name: Assert the grant reached the account the caller presents
+    type: json_assert
+    statements:
+      - 'json_equal({{n2_role_post}}, {"output": "member"})'
+
+  - name: node-1 reads node-2's role by account
+    type: call
+    node: e2e-node-1
+    context_id: "{{ws_ctx}}"
+    executor_public_key: "{{ws_key_node1}}"
+    method: ws_get_member_role
+    args:
+      identity: "{{n2_account}}"
+    outputs:
+      n2_role_by_admin: result
+
+  - name: Assert both sides agree on the role
+    type: json_assert
+    statements:
+      - 'json_equal({{n2_role_by_admin}}, {"output": "member"})'
+
+  # ⚠️ NOT `result.output.0.role`. `ws_list_members` sorts by identity, and both
+  # identities here are hex account ids derived from random keys — so which one
+  # is at index 0 is a coin flip per run. That assertion passed twice and then
+  # failed with left='member' right='admin', which is the whole tell.
+  #
+  # `ws_get_member_role` asks the same question positionally-independently: does
+  # node-2, reading the registry it synced, agree that the CLAIMER is the admin.
+  - name: node-2 reads the admin's role from the synced registry
+    type: call
+    node: e2e-node-2
+    context_id: "{{ws_ctx}}"
+    executor_public_key: "{{n2_ws_key}}"
+    method: ws_get_member_role
+    args:
+      identity: "{{n1_account}}"
+    outputs:
+      n2_sees_admin_role: result
+
+  - name: Assert node-2 agrees the claimer is the admin
+    type: json_assert
+    statements:
+      - 'json_equal({{n2_sees_admin_role}}, {"output": "admin"})'
+
+  # The listing itself is still exercised — `member_count` below comes from
+  # `ws_get_info`, and `ws_list_members` is called here for its own sake.
+  - name: node-2 lists members
+    type: call
+    node: e2e-node-2
+    context_id: "{{ws_ctx}}"
+    executor_public_key: "{{n2_ws_key}}"
+    method: ws_list_members
+    args: {}
+    outputs:
+      n2_members: result
+
+  - name: Assert the listing is populated
+    type: assert
+    statements:
+      - "is_set({{n2_members}})"
+
+  - name: Assert the workspace now has two members
+    type: call
+    node: e2e-node-2
+    context_id: "{{ws_ctx}}"
+    executor_public_key: "{{n2_ws_key}}"
+    method: ws_get_info
+    args: {}
+    outputs:
+      member_count_post: result.output.member_count
+
+  - name: Assert member_count reflects the grant
+    type: json_assert
+    statements:
+      - 'json_equal({{member_count_post}}, 2)'
+
+  # A `member` may write to the directory — the tier that separates it from
+  # `read-only`.
+  - name: node-2 registers a channel of its own
+    type: call
+    node: e2e-node-2
+    context_id: "{{ws_ctx}}"
+    executor_public_key: "{{n2_ws_key}}"
+    method: ws_register_channel
+    args:
+      context_id: "{{ws_ctx}}"
+      name: "#node2"
+      topic: ""
+
+  - name: Wait for node-2's channel to reach node-1
+    type: wait_for_sync
+    context_id: "{{ws_ctx}}"
+    nodes:
+      - e2e-node-1
+      - e2e-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: node-1 reads the channel count
+    type: call
+    node: e2e-node-1
+    context_id: "{{ws_ctx}}"
+    executor_public_key: "{{ws_key_node1}}"
+    method: ws_get_info
+    args: {}
+    outputs:
+      chan_count_post: result.output.channel_count
+
+  - name: Assert a member's write propagated
+    type: json_assert
+    statements:
+      - 'json_equal({{chan_count_post}}, 2)'
+
+  # ─── Unregistering ─────────────────────────────────────────────────────────
+
+  - name: node-1 unregisters node-2's channel
+    type: call
+    node: e2e-node-1
+    context_id: "{{ws_ctx}}"
+    executor_public_key: "{{ws_key_node1}}"
+    method: ws_unregister_channel
+    args:
+      context_id: "{{ws_ctx}}"
+
+  - name: node-1 unregisters the group
+    type: call
+    node: e2e-node-1
+    context_id: "{{ws_ctx}}"
+    executor_public_key: "{{ws_key_node1}}"
+    method: ws_unregister_group
+    args:
+      group_id: "{{namespace_id}}"
+
+  - name: Wait for the removals to reach node-2
+    type: wait_for_sync
+    context_id: "{{ws_ctx}}"
+    nodes:
+      - e2e-node-1
+      - e2e-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: node-2 reads the counts after the removals
+    type: call
+    node: e2e-node-2
+    context_id: "{{ws_ctx}}"
+    executor_public_key: "{{n2_ws_key}}"
+    method: ws_get_info
+    args: {}
+    outputs:
+      chan_count_final: result.output.channel_count
+      grp_count_final: result.output.group_count
+
+  - name: Assert the removals propagated
+    type: json_assert
+    statements:
+      - 'json_equal({{chan_count_final}}, 1)'
+      - 'json_equal({{grp_count_final}}, 0)'
+
+  - name: node-2 lists groups after the removal
+    type: call
+    node: e2e-node-2
+    context_id: "{{ws_ctx}}"
+    executor_public_key: "{{n2_ws_key}}"
+    method: ws_list_groups
+    args: {}
+    outputs:
+      groups_final: result
+
+  - name: Assert the group listing is empty
+    type: json_assert
+    statements:
+      - 'json_equal({{groups_final}}, {"output": []})'
+
+  # ─── The cross-context xcall ───────────────────────────────────────────────
+
+  # The channel context needs its own claim: workspace state is per-context, and
+  # `ws_ping_channel` requires the CALLER to hold a role in the context it is
+  # calling from — not in the one it is pinging.
+  - name: node-1 claims the channel context too
+    type: call
+    node: e2e-node-1
+    context_id: "{{chan_ctx}}"
+    executor_public_key: "{{chan_key_node1}}"
+    method: ws_init
+    args:
+      name: "Channel Workspace"
+
+  - name: The channel context starts with zero pongs
+    type: call
+    node: e2e-node-1
+    context_id: "{{chan_ctx}}"
+    executor_public_key: "{{chan_key_node1}}"
+    method: ws_ping_count
+    args: {}
+    outputs:
+      pongs_pre: result
+
+  - name: Assert no pongs yet
+    type: json_assert
+    statements:
+      - 'json_equal({{pongs_pre}}, {"output": 0})'
+
+  # Fire-and-forget: `env::xcall` only QUEUES the call, so this returning Ok
+  # means "queued", not "delivered". The proof is the counter on the TARGET.
+  - name: node-1 pings the channel context from the workspace context
+    type: call
+    node: e2e-node-1
+    context_id: "{{ws_ctx}}"
+    executor_public_key: "{{ws_key_node1}}"
+    method: ws_ping_channel
+    args:
+      target_context_id_b58: "{{chan_ctx}}"
+
+  - name: Give the node a proposal cycle to dispatch the xcall
+    type: wait
+    seconds: 10
+
+  - name: The channel context reports its pongs
+    type: call
+    node: e2e-node-1
+    context_id: "{{chan_ctx}}"
+    executor_public_key: "{{chan_key_node1}}"
+    method: ws_ping_count
+    args: {}
+    outputs:
+      pongs_post: result
+
+  # If this is still 0 the xcall was queued and then denied, and the node log is
+  # the only place that says why — `ws_pong` itself never ran.
+  - name: Assert the xcall landed on ws_pong
+    type: json_assert
+    statements:
+      - 'json_equal({{pongs_post}}, {"output": 1})'
+
+stop_all_nodes: false
+restart: false
+wait_timeout: 180
