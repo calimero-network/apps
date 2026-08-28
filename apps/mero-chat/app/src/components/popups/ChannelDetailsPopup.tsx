@@ -60,7 +60,26 @@ export default function ChannelDetailsPopup({
 
   const groupId = getGroupId();
   const { members: groupMembers, fetchAll } = useGroupAdmin();
-  const { isAdmin } = useCurrentGroupPermissions(groupId ?? "");
+
+  // Membership authority over a channel belongs to the CHANNEL's own group,
+  // never to the namespace root.
+  //
+  // The node enforces exactly that: `add_group_members` calls the direct
+  // `require_admin` on the subgroup, and a namespace admin does not inherit
+  // admin over a restricted one — `is_inherited_admin` stops walking the moment
+  // visibility is not Open. Asking the root instead made the UI disagree with
+  // the node in BOTH directions: it hid the controls from the person who
+  // created a private channel (Admin of that subgroup, Member at the root), and
+  // offered them to a namespace admin whose write the node then refused. That
+  // refusal arrived as a 500, so it read as a broken node rather than a
+  // deliberate no.
+  //
+  // `contextSubgroupId ?? groupId` is the same target `DetailsContainer` writes
+  // to, so the gate and the write can never disagree about which group is being
+  // changed.
+  const contextSubgroupId = chat.contextId ? getSubgroupForContext?.(chat.contextId) : undefined;
+  const membershipGroupId = contextSubgroupId ?? groupId;
+  const { isAdmin: canAdminChannelGroup } = useCurrentGroupPermissions(membershipGroupId ?? "");
   const { addToast } = useToast();
   const [isDeleting, setIsDeleting] = useState(false);
   const isBusy = isDeleting;
@@ -94,7 +113,6 @@ export default function ChannelDetailsPopup({
 
   const currentIdentity = getContextIdentity() as string;
   const isOwner = !!channelMeta.createdBy && channelMeta.createdBy === currentIdentity;
-  const contextSubgroupId = chat.contextId ? getSubgroupForContext?.(chat.contextId) : undefined;
 
   const handleDeleteChannel = async () => {
     if (!chat.contextId || isBusy) return;
@@ -173,7 +191,7 @@ export default function ChannelDetailsPopup({
       nonChannelMembers={nonChannelMembers}
       channelMeta={channelMeta}
       isOwner={isOwner}
-      canManageMembers={isOwner || isAdmin}
+      canManageMembers={canAdminChannelGroup}
       handleDeleteChannel={handleDeleteChannel}
       isDeleting={isDeleting}
       promoteModerator={() => {}}
