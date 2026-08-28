@@ -8,6 +8,7 @@ import {
   type ContextRecord as AdminContextRecord,
   type GroupRecord,
 } from "../api/adminApi";
+import { namespacesForThisApp } from "../api/appScope";
 import {
   wsInit,
   wsGetInfo,
@@ -667,7 +668,11 @@ function WsGroups({ onRefresh }: { onRefresh: () => void }) {
     load();
     setGroupLoading(true);
     listNamespaces()
-      .then(async (ns) => {
+      .then(async (allNs) => {
+        // Only THIS application's namespaces. Node-wide otherwise, so the group
+        // dropdown listed subgroups belonging to other apps' namespaces —
+        // selectable, and guaranteed to fail once used.
+        const ns = namespacesForThisApp(allNs);
         const all: GroupRecord[] = [];
         await Promise.all(ns.map(async (n) => {
           try {

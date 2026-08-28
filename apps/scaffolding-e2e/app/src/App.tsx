@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useMero } from "@calimero-network/mero-react";
+import { contextsForThisApp, currentApplicationId } from "./api/appScope";
 import {
   clearContextId,
   discoverLocalNodes,
@@ -548,25 +549,49 @@ export default function App() {
   }
   const [contextId, setContextIdState] = useState<string | null>(getContextId);
   const [contexts, setContexts] = useState<ContextRecord[]>([]);
+  // How many contexts on this node belong to OTHER applications. Shown rather
+  // than hidden: "no contexts" and "no contexts for this app, but 3 for others"
+  // send you to completely different places.
+  const [foreignContextCount, setForeignContextCount] = useState(0);
 
   const nodeUrl = getNodeUrl();
 
-  // After auth, fetch all contexts and auto-select the preferred one.
+  // After auth, fetch the contexts belonging to THIS application and auto-select
+  // one of them.
+  //
+  // ⚠️ Scoped to this app, and it matters. `listContexts()` is node-wide, and a
+  // node routinely hosts several applications. This used to keep every context it
+  // returned and then auto-select
+  //
+  //     (appId ? all.find(c => c.applicationId === appId) : null) ?? all[0]
+  //
+  // where `appId` came from `import.meta.env.VITE_APP_ID` — a BUILD-TIME
+  // variable that is empty in every normal run. So `appId` was undefined, the
+  // `?? all[0]` took over, and with kv-store also installed the app silently
+  // adopted a KV-STORE context and ran its whole suite against a contract with
+  // 11 methods instead of 130: 12 passed, 110 failed, every failure reported as
+  // a contract error rather than as the wrong app.
+  //
+  // `currentApplicationId()` reads the session (mero-react's stored id) and only
+  // falls back to the env pin, and there is NO positional fallback: if this app
+  // has no context, the UI says so rather than borrowing someone else's.
   useEffect(() => {
     if (!isAuthenticated) return;
-
-    const appId = (import.meta.env.VITE_APP_ID as string | undefined)?.trim();
 
     (async () => {
       try {
         const all = await listContexts();
-        setContexts(all);
-        if (!all.length) return;
+        const mine = contextsForThisApp(all);
+        setContexts(mine);
+        setForeignContextCount(all.length - mine.length);
+        if (!mine.length) return;
 
-        // If we already have a contextId that exists in the list, keep it.
-        if (contextId && all.some((c) => c.id === contextId)) return;
+        // Keep the stored context only if it belongs to THIS app. A context id
+        // left over from another app on the same node would otherwise survive
+        // here and defeat the whole filter.
+        if (contextId && mine.some((c) => c.id === contextId)) return;
 
-        const preferred = (appId ? all.find((c) => c.applicationId === appId) : null) ?? all[0];
+        const preferred = mine[0];
         await applyContext(preferred);
         setContextIdState(preferred.id);
       } catch (err) {
@@ -677,14 +702,50 @@ export default function App() {
                 flexShrink: 0,
               }}
             >
+              {/*
+                No `(app: …)` suffix any more. Every option in this list now
+                belongs to THIS application, so printing the app id on each one
+                repeated the same value on every row — and it was the only hint
+                that foreign contexts were being offered at all, which is the bug
+                this filter removes.
+              */}
               {contexts.map((c) => (
                 <option key={c.id} value={c.id}>
-                  {c.id.slice(0, 16)}… (app: {c.applicationId.slice(0, 8)}…)
+                  {c.id.slice(0, 16)}…
                 </option>
               ))}
             </select>
           )}
         </ContextBar>
+
+        {/*
+          Said out loud rather than left as an empty screen. "This app has no
+          context" and "this app has no context, but the node holds 3 for other
+          applications" send you to completely different places — and before the
+          filter above, the second case silently became "running against someone
+          else's contract".
+        */}
+        {contexts.length === 0 && (
+          <div className="alert alert-warning" style={{ margin: "12px 16px" }}>
+            <strong>No context for this application on this node.</strong>{" "}
+            {foreignContextCount > 0 ? (
+              <>
+                The node has {foreignContextCount} context
+                {foreignContextCount === 1 ? "" : "s"} belonging to other
+                applications; they are deliberately not listed, because running
+                this app&apos;s calls against another app&apos;s contract fails on
+                every method it does not export.
+              </>
+            ) : (
+              <>The node has no contexts at all yet.</>
+            )}{" "}
+            Create one in <strong>Setup Wizard</strong>
+            {currentApplicationId()
+              ? <> for application <code>{currentApplicationId()!.slice(0, 12)}…</code></>
+              : null}
+            .
+          </div>
+        )}
 
         <main className="main-content">{renderSection(active)}</main>
       </div>

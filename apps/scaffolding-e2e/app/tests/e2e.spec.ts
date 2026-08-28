@@ -15,7 +15,13 @@
 
 import { test, expect, Page } from "@playwright/test";
 
-const TOTAL_TESTS = 95; // keep in sync with TestRunner.tsx TESTS array length
+// Derived from the DOM, NOT hardcoded.
+//
+// This was `const TOTAL_TESTS = 95; // keep in sync with TestRunner.tsx` and it
+// was not kept in sync — the runner is at 122. A hardcoded LOWER bound makes the
+// wait succeed as soon as 95 of 122 tests have finished, so the spec could pass
+// while 27 tests were still running and any of them still failing. A comment
+// asking a human to keep two numbers in step is not a mechanism.
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -30,17 +36,23 @@ async function navigateToTestRunner(page: Page) {
 }
 
 async function waitForAllComplete(page: Page) {
-  // Wait until no test has status="running" and all have pass or fail
+  // Wait until every rendered test has settled into pass or fail.
+  //
+  // Compared against the number of test elements actually PRESENT, so it cannot
+  // drift from the TESTS array the way a hardcoded total did. `> 0` guards the
+  // moment before the list renders, when both sides would be 0 and the wait
+  // would return immediately.
   await page.waitForFunction(
-    (total) => {
-      const items = document.querySelectorAll("[data-testid^='test-']");
-      const done = [...items].filter(
+    () => {
+      const items = [...document.querySelectorAll("[data-testid^='test-'][data-status]")];
+      if (items.length === 0) return false;
+      const done = items.filter(
         (el) => el.getAttribute("data-status") === "pass" || el.getAttribute("data-status") === "fail",
       );
-      return done.length >= total;
+      return done.length === items.length;
     },
-    TOTAL_TESTS,
-    { timeout: 90_000, polling: 500 },
+    null,
+    { timeout: 180_000, polling: 500 },
   );
 }
 

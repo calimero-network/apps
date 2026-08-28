@@ -36,8 +36,14 @@ describe("parseRpcOutput", () => {
     expect(parseRpcOutput(rows)).toEqual(rows);
   });
 
-  it("treats an empty array as no value", () => {
-    expect(parseRpcOutput([])).toBeNull();
+  it("keeps an empty array as an empty array, NOT null", () => {
+    // Regression: this used to return `null`, which broke every list-returning
+    // method on an empty collection. `typeof null === "object"`, so the failure
+    // surfaced as "expected array, got object" — naming neither the method nor
+    // the cause — and the file panels assigned `null` into state typed
+    // `FileRecord[]`.
+    expect(parseRpcOutput([])).toEqual([]);
+    expect(Array.isArray(parseRpcOutput([]))).toBe(true);
   });
 
   it("parses a JSON string, and keeps a non-JSON string as-is", () => {

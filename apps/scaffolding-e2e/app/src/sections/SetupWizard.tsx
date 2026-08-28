@@ -23,6 +23,7 @@ import {
   type NamespaceRecord,
   type GroupRecord,
 } from "../api/adminApi";
+import { currentApplicationId, namespacesForThisApp } from "../api/appScope";
 import { wsInit, wsGetInfo, type WorkspaceInfo } from "../api/kvStore";
 import { FieldHelp } from "../components/FieldHelp";
 
@@ -368,7 +369,13 @@ function OwnerStep1Namespace({
   const [namespaces, setNamespaces] = useState<NamespaceRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
-  const [appId, setAppId] = useState((import.meta.env.VITE_APP_ID as string | undefined)?.trim() ?? "");
+  // Defaults to the application this SESSION is bound to. It used to default to
+  // `VITE_APP_ID` alone — a build-time variable that is empty in a normal run —
+  // so the field came up blank and "Create namespace" was disabled until you
+  // pasted an id by hand, which is the manual step that should never have been
+  // necessary.
+  const [appId, setAppId] = useState(currentApplicationId() ?? "");
+  const [foreignNamespaceCount, setForeignNamespaceCount] = useState(0);
   const [selectedNs, setSelectedNs] = useState<NamespaceRecord | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -376,12 +383,18 @@ function OwnerStep1Namespace({
 
   useEffect(() => {
     listNamespaces()
-      .then((ns) => {
-        setNamespaces(ns);
-        if (!ns.length) return;
-        const envAppId = (import.meta.env.VITE_APP_ID as string | undefined)?.trim();
-        const preferred = (envAppId ? ns.find((n) => n.targetApplicationId === envAppId) : null) ?? ns[0];
-        setSelectedNs(preferred);
+      .then((all) => {
+        // Scoped to THIS application. `listNamespaces()` is node-wide, so this
+        // list used to include namespaces targeting other apps — and then
+        // auto-selected `?? ns[0]`, which on a node with more than one app
+        // installed is somebody else's namespace. Creating a context in it
+        // produces an app that answers none of this one's methods.
+        const mine = namespacesForThisApp(all);
+        setNamespaces(mine);
+        setForeignNamespaceCount(all.length - mine.length);
+        if (!mine.length) return;
+        // No positional fallback across apps: every entry here is already ours.
+        setSelectedNs(mine[0]);
       })
       .catch((e) => setErr(String(e)))
       .finally(() => setLoading(false));
@@ -389,7 +402,11 @@ function OwnerStep1Namespace({
 
   async function reload() {
     const fresh = await listNamespaces().catch(() => null);
-    if (fresh) setNamespaces(fresh);
+    if (fresh) {
+      const mine = namespacesForThisApp(fresh);
+      setNamespaces(mine);
+      setForeignNamespaceCount(fresh.length - mine.length);
+    }
   }
 
   async function create() {

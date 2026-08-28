@@ -86,7 +86,28 @@ export function parseRpcOutput<T>(output: unknown): T {
     }
   }
   if (Array.isArray(output)) {
-    if (output.length === 0) return null as T;
+    // An EMPTY array stays an empty array. It used to become `null`, and that is
+    // wrong for every list-returning method in this contract — `list_files`,
+    // `search_files`, `acl_members_of`, `sorted_keys`, `authored_vec_entries`
+    // and the rest all legitimately return `[]`.
+    //
+    // The symptom was almost unreadable: `typeof null === "object"`, so the
+    // TestRunner's `isArray()` reported "expected array, got object" for a
+    // method that had returned a perfectly good `[]`. And the two file panels do
+    //
+    //     const files = res?.result?.output;
+    //     if (files !== undefined) setLiveFiles(files);
+    //
+    // so on an empty store they were assigning `null` into state typed
+    // `FileRecord[]`.
+    //
+    // `[]` is ALSO what an empty byte payload arrives as, and the two are
+    // genuinely indistinguishable from the value alone — only the ABI knows, and
+    // this function is generic. Preserving the array is the better default: a
+    // list is the common case here, and a byte-payload consumer decoding `[]`
+    // gets `""`, which is a truer answer for "no bytes" than `null` is for
+    // "no elements".
+    if (output.length === 0) return output as T;
     // A byte array is all numbers; anything else is already parsed JSON.
     if (typeof output[0] !== "number") return output as T;
     const text = new TextDecoder().decode(new Uint8Array(output as number[]));
