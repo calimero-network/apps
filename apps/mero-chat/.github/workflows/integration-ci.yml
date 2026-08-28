@@ -87,7 +87,15 @@ jobs:
         run: |
           merobox stop --all 2>/dev/null || true
           merobox nuke --force 2>/dev/null || true
-          merobox bootstrap run integration-setup.yml
+          # --e2e-mode: without it merod keeps its DEFAULT bootstrap nodes, so
+          # these containers join the public network, discover each other's
+          # public and relay addresses through the shared rendezvous, and dial
+          # those instead of the local ones — 'Failed to negotiate transport
+          # protocol(s): Handshake with the remote timed out'. It passed or
+          # failed depending on whether the local path won that race, which is
+          # why it read as flake. It also gives the run its own rendezvous
+          # namespace, so concurrent CI runs stop finding each other's nodes.
+          merobox bootstrap run integration-setup.yml --e2e-mode
 
       # ── Bootstrap JWT auth + discover IDs + write app/.env.integration ────────
 

@@ -552,6 +552,8 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
   }, [fetchDmsWithGroup]);
 
   const mainMessagesRef = useRef(mainMessages);
+  const refreshReactedMessageRef = useRef(mainMessages.refreshReactedMessage);
+  refreshReactedMessageRef.current = mainMessages.refreshReactedMessage;
   const threadMessagesRef = useRef(threadMessages);
   const playSoundForMessageRef = useRef(playSoundForMessage);
   const notifyMessageRef = useRef(notifyMessage);
@@ -613,6 +615,7 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
     fetchGroupMembers: { current: debouncedFetchGroupMembers },
     onLeftChannel: onLeftChannelRef,
     subscribeToContext: subscribeToContextRef,
+    refreshReactedMessage: refreshReactedMessageRef,
     contextIdentityMap: contextIdentityMapRef,
     contextNameMap: contextNameMapRef,
     dmContextIds: dmContextIdsRef,

@@ -12,18 +12,30 @@ import {
 
 interface Msg {
   index: number;
+  id: string;
   text: string;
 }
 
 /** A channel on the node, as an ordered list. */
-function nodeWith(count: number): MessageSource<Msg> & { calls: string[] } {
+function nodeWith(
+  count: number,
+): MessageSource<Msg> & {
+  calls: string[];
+  mutate: (i: number, t: string) => void;
+  range: MessageSource<Msg>["range"];
+} {
   const all: Msg[] = Array.from({ length: count }, (_, i) => ({
     index: i,
+    id: `id-${i}`,
     text: `m${i}`,
   }));
   const calls: string[] = [];
   return {
     calls,
+    mutate(index: number, text: string) {
+      const row = all[index];
+      if (row) row.text = text;
+    },
     async count() {
       calls.push("count");
       return all.length;
@@ -31,7 +43,10 @@ function nodeWith(count: number): MessageSource<Msg> & { calls: string[] } {
     async range(_ctx, start, limit): Promise<MessagePage<Msg>> {
       calls.push(`range(${start},${limit})`);
       return {
-        messages: all.slice(start, start + limit),
+        // Copies, not references: a real store serialises, so it cannot see a
+        // later mutation of the node's own row. Sharing the object made the
+        // store look self-updating and hid the staleness under test.
+        messages: all.slice(start, start + limit).map((m) => ({ ...m })),
         totalCount: all.length,
       };
     },
@@ -66,6 +81,198 @@ function memoryStore(): MessageStore<Msg> & { rows: Map<number, Msg> } {
 const CTX = "ctx-1";
 
 describe("MessageSyncEngine", () => {
+  it("reads older messages from the node even when the store holds them", async () => {
+    // The rule this pins: the store may accelerate a paint, it may not ANSWER a
+    // read. A stored row froze its reactions and its text at write time, so
+    // returning it as the answer is how an edit or a reaction on an old message
+    // stays invisible. The node is the truth; the store is a fallback.
+    const store = memoryStore();
+    const node = nodeWith(200);
+    const engine = new MessageSyncEngine<Msg>(store, node);
+
+    await engine.catchUp(CTX);
+    await engine.loadOlder(CTX, 20, 100);
+    node.mutate(85, "m85-edited");
+    node.calls.length = 0;
+
+    const older = await engine.loadOlder(CTX, 20, 100);
+
+    expect(node.calls).toEqual(["range(80,20)"]);
+    expect(older.find((m) => m.index === 85)?.text).toBe("m85-edited");
+  });
+
+  it("falls back to stored history when the node cannot be reached", async () => {
+    // Offline is the one case the store exists for. It must serve the read
+    // rather than fail it.
+    const store = memoryStore();
+    const node = nodeWith(200);
+    const engine = new MessageSyncEngine<Msg>(store, node);
+
+    await engine.catchUp(CTX);
+    await engine.loadOlder(CTX, 20, 100);
+
+    const realRange = node.range;
+    node.range = async () => {
+      throw new Error("offline");
+    };
+
+    const older = await engine.loadOlder(CTX, 20, 100);
+    expect(older.map((m) => m.index)).toEqual(
+      Array.from({ length: 20 }, (_, i) => 80 + i),
+    );
+
+    node.range = realRange;
+  });
+
+  it("fails rather than reporting an empty page when offline and unstored", async () => {
+    const store = memoryStore();
+    const node = nodeWith(200);
+    const engine = new MessageSyncEngine<Msg>(store, node);
+
+    await engine.catchUp(CTX);
+    node.range = async () => {
+      throw new Error("offline");
+    };
+
+    await expect(engine.loadOlder(CTX, 20, 50)).rejects.toThrow("offline");
+  });
+
+  it("refreshes one message by id, without dragging the window back", async () => {
+    // A reaction names the message it changed. Refreshing THAT message is the
+    // difference between a reaction appearing wherever it lands and appearing
+    // only if it happens to be near the bottom.
+    const store = memoryStore();
+    const node = nodeWith(60);
+    const engine = new MessageSyncEngine<Msg>(store, node);
+
+    await engine.catchUp(CTX);
+    node.mutate(12, "m12-reacted");
+    node.calls.length = 0;
+
+    const refreshed = await engine.refreshMessage(CTX, "id-12");
+
+    expect(refreshed?.text).toBe("m12-reacted");
+    expect(store.rows.get(12)?.text).toBe("m12-reacted");
+    // Exactly the one row, not the tail.
+    expect(node.calls).toEqual(["range(12,1)"]);
+  });
+
+  it("falls back to the newest window for an id it has never seen", async () => {
+    // After a reload the engine has no id map — the rows are on disk, their
+    // ids are not. Refreshing the window is strictly better than doing
+    // nothing, and bounded.
+    const store = memoryStore();
+    const node = nodeWith(30);
+    const engine = new MessageSyncEngine<Msg>(store, node);
+
+    await engine.catchUp(CTX);
+    const cold = new MessageSyncEngine<Msg>(store, node);
+    node.mutate(29, "m29-reacted");
+    node.calls.length = 0;
+
+    const refreshed = await cold.refreshMessage(CTX, "id-29", 5);
+
+    expect(node.calls).toEqual(["range(25,5)"]);
+    expect(refreshed?.text).toBe("m29-reacted");
+  });
+
+  it("returns null when the id is unknown and not in the fallback window", async () => {
+    const store = memoryStore();
+    const node = nodeWith(30);
+    const engine = new MessageSyncEngine<Msg>(store, node);
+
+    await engine.catchUp(CTX);
+    const cold = new MessageSyncEngine<Msg>(store, node);
+
+    const refreshed = await cold.refreshMessage(CTX, "id-2", 3);
+
+    // Honest about not having found it, rather than returning something else.
+    expect(refreshed).toBeNull();
+  });
+
+  it("learns ids from every path that yields messages", async () => {
+    const store = memoryStore();
+    const node = nodeWith(200);
+    const engine = new MessageSyncEngine<Msg>(store, node);
+
+    await engine.catchUp(CTX);
+    // Scrolling back is how an older message becomes addressable.
+    await engine.loadOlder(CTX, 20, 100);
+    node.mutate(85, "m85-reacted");
+    node.calls.length = 0;
+
+    const refreshed = await engine.refreshMessage(CTX, "id-85");
+
+    expect(node.calls).toEqual(["range(85,1)"]);
+    expect(refreshed?.text).toBe("m85-reacted");
+  });
+
+  it("catchUp does not notice a message that changed in place", async () => {
+    // The gap this pins: catchUp walks FORWARD from the cursor. A reaction
+    // mutates an existing message without changing the count, so catchUp sees
+    // nothing newer, fetches nothing, and the stored copy keeps its old
+    // reactions for as long as the channel stays open.
+    const store = memoryStore();
+    const node = nodeWith(3);
+    const engine = new MessageSyncEngine<Msg>(store, node);
+
+    await engine.catchUp(CTX);
+    expect(store.rows.get(1)?.text).toBe("m1");
+
+    // Someone reacts to message 1: same index, same count, new content.
+    node.mutate(1, "m1-reacted");
+    node.calls.length = 0;
+
+    const result = await engine.catchUp(CTX);
+
+    expect(result.fetched).toBe(0);
+    expect(node.calls).toEqual(["count"]);
+    expect(store.rows.get(1)?.text).toBe("m1");
+  });
+
+  it("refreshNewest re-reads what the store already holds", async () => {
+    const store = memoryStore();
+    const node = nodeWith(3);
+    const engine = new MessageSyncEngine<Msg>(store, node);
+
+    await engine.catchUp(CTX);
+    node.mutate(1, "m1-reacted");
+    node.calls.length = 0;
+
+    const refreshed = await engine.refreshNewest(CTX, 10);
+
+    expect(store.rows.get(1)?.text).toBe("m1-reacted");
+    expect(refreshed.map((m) => m.text)).toContain("m1-reacted");
+    // It must go to the node: serving the local copy is the bug it fixes.
+    expect(node.calls.some((c) => c.startsWith("range("))).toBe(true);
+  });
+
+  it("refreshNewest is bounded by the limit it is given", async () => {
+    const store = memoryStore();
+    const node = nodeWith(50);
+    const engine = new MessageSyncEngine<Msg>(store, node);
+
+    await engine.catchUp(CTX);
+    node.calls.length = 0;
+
+    await engine.refreshNewest(CTX, 5);
+
+    // Only the tail is re-read — a reaction should not drag the whole history
+    // back across the wire.
+    expect(node.calls).toEqual(["range(45,5)"]);
+  });
+
+  it("refreshNewest on a channel with no cursor does nothing", async () => {
+    const store = memoryStore();
+    const node = nodeWith(3);
+    const engine = new MessageSyncEngine<Msg>(store, node);
+
+    const refreshed = await engine.refreshNewest(CTX, 10);
+
+    expect(refreshed).toEqual([]);
+    expect(node.calls).toEqual([]);
+  });
+
   it("on a first visit stores the newest page, not the whole history", async () => {
     // Opening a channel with years of history must not download all of it
     // before the first paint. The newest page is what the user is looking at.
@@ -128,33 +335,6 @@ describe("MessageSyncEngine", () => {
     expect(result.upToDate).toBe(false);
   });
 
-  it("serves older messages from the store without asking the node", async () => {
-    // The reopen case: an earlier session backfilled further than the window
-    // being rendered now, so scrolling up must read disk rather than the node.
-    // Note this needs the store to actually HOLD those messages — after a first
-    // catch-up it does not, and going to the node then is correct, not a miss.
-    const store = memoryStore();
-    const node = nodeWith(200);
-    const sync = new MessageSyncEngine(store, node);
-
-    for (let i = 0; i < 200; i++) store.rows.set(i, { index: i, text: `m${i}` });
-    await store.saveCursor({
-      contextId: CTX,
-      lowestIndex: 100,
-      highestIndex: 199,
-      knownTotal: 200,
-    });
-
-    node.calls.length = 0;
-    const older = await sync.loadOlder(CTX, 20);
-
-    expect(older.map((m) => m.index)).toEqual(
-      Array.from({ length: 20 }, (_, i) => 80 + i),
-    );
-    expect(node.calls).toEqual([]);
-    expect((await store.cursor(CTX))?.lowestIndex).toBe(80);
-  });
-
   it("goes to the node for older messages the store does not hold", async () => {
     // The first backfill after a fresh catch-up: nothing below the window is on
     // disk yet, so this SHOULD be a fetch.
@@ -201,7 +381,7 @@ describe("MessageSyncEngine", () => {
     await sync.catchUp(CTX);
 
     node.calls.length = 0;
-    const outcome = await sync.applyLive(CTX, { index: 5, text: "live" });
+    const outcome = await sync.applyLive(CTX, { index: 5, id: "id-5", text: "live" });
 
     expect(outcome).toBe("applied");
     expect(node.calls).toEqual([]);
@@ -219,7 +399,7 @@ describe("MessageSyncEngine", () => {
     const later = nodeWith(9);
     const resumed = new MessageSyncEngine(store, later);
 
-    const outcome = await resumed.applyLive(CTX, { index: 8, text: "ahead" });
+    const outcome = await resumed.applyLive(CTX, { index: 8, id: "id-8", text: "ahead" });
 
     expect(outcome).toBe("resynced");
     // Everything in between is present, not just the message that arrived.
@@ -368,8 +548,10 @@ describe("MessageSyncEngine backfill de-duplication", () => {
     node.calls.length = 0;
     const again = await sync.loadOlder(CTX, 20, 100);
 
-    // Served from the store this time — stored by the first call.
-    expect(node.calls).toEqual([]);
+    // Fetched again: the node answers reads now. What this pins is that the
+    // second call RUNS at all — the single-flight guard must release once the
+    // first settles, or a range could never be re-read.
+    expect(node.calls).toEqual(["range(80,20)"]);
     expect(again.map((m) => m.index)).toEqual(
       Array.from({ length: 20 }, (_, i) => 80 + i),
     );

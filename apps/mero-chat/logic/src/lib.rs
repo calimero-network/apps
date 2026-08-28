@@ -142,6 +142,14 @@ pub enum Event {
     MessageSent(MessageSentEvent),
     MessageSentThread(MessageSentEvent),
     ReactionUpdated(String),
+    /// Payload: the id of the message whose TEXT changed.
+    ///
+    /// Editing used to emit `MessageSent`, which is what a brand-new message
+    /// emits. A peer could not tell the two apart, so it announced an edit as
+    /// "X sent a message" and refreshed the newest page looking for it — and an
+    /// edit to an older message is not in that page, so the change never
+    /// appeared. Naming the message lets a reader refresh exactly it.
+    MessageEdited(String),
     ProfileUpdated(String),
     InfoUpdated(),
     /// Payload: target identity (base58) whose role just changed.
@@ -1527,14 +1535,35 @@ impl MeroChat {
         let executor_id = Self::executor_id();
 
         let mut reactions_entry = self.reactions.entry(message_id.clone())?.or_insert(UnorderedMap::new())?;
-        let mut emoji_entry = reactions_entry.entry(emoji)?.or_insert(UnorderedSet::new())?;
+        let mut emoji_entry = reactions_entry.entry(emoji.clone())?.or_insert(UnorderedSet::new())?;
         if add {
             let _ = emoji_entry.insert(executor_id);
         } else {
             let _ = emoji_entry.remove(&executor_id);
         }
+        let emoji_now_empty = !add && emoji_entry.is_empty()?;
         drop(emoji_entry);
+
+        // Removing the last reaction of a kind removes the KIND, not just the
+        // account. `or_insert` created the set on the way in, so without this a
+        // reaction that has been added and taken away again reads back as
+        // `{"👍": []}` — a pill with a count of zero, indistinguishable to a
+        // client from one nobody has pressed yet. The reader should not have to
+        // know that an empty set means absent.
+        if emoji_now_empty {
+            let _ = reactions_entry.remove(&emoji)?;
+        }
+
+        // Same reasoning one level up: a message whose last reaction is gone
+        // holds an empty map, and that is not the same as never having been
+        // reacted to. `get_messages` returns the map as-is, so leaving it
+        // behind makes "no reactions" arrive in two different shapes.
+        let message_now_empty = !add && reactions_entry.is_empty()?;
         drop(reactions_entry);
+
+        if message_now_empty {
+            let _ = self.reactions.remove(&message_id)?;
+        }
 
         app::emit!(Event::ReactionUpdated(message_id.to_string()));
         Ok(format!("Reaction {} successfully", action))
@@ -1563,9 +1592,11 @@ impl MeroChat {
             )?;
             drop(thread_entry);
 
-            app::emit!(Event::MessageSentThread(MessageSentEvent {
-                message_id: updated.id.get().clone(),
-            }));
+            // An edit, not a send. Emitting `MessageSent` here told every peer
+            // a new message had arrived: they announced "X sent a message" for
+            // text that was already on screen, and went looking for it in the
+            // newest page — where an edit to an older message is not.
+            app::emit!(Event::MessageEdited(updated.id.get().clone()));
             Ok(updated)
         } else {
             let updated = Self::find_and_edit(
@@ -1576,9 +1607,7 @@ impl MeroChat {
                 &executor_id,
             )?;
 
-            app::emit!(Event::MessageSent(MessageSentEvent {
-                message_id: updated.id.get().clone(),
-            }));
+            app::emit!(Event::MessageEdited(updated.id.get().clone()));
             Ok(updated)
         }
     }
@@ -1717,6 +1746,71 @@ mod tests {
                 "creator".to_owned(),
             )
         })
+    }
+
+    #[test]
+    fn removing_the_last_reaction_of_a_kind_removes_the_kind() {
+        // `or_insert` creates the set on the way in, so taking the reaction
+        // away again used to leave `{"👍": []}` behind: a pill with a count of
+        // zero, which a client cannot tell apart from one nobody has pressed.
+        // "No reactions" must arrive in one shape, not two.
+        let mut app = new_chat();
+
+        let sent = app
+            .call(|c| {
+                c.send_message(
+                    "hello".to_owned(),
+                    vec![],
+                    vec![],
+                    None,
+                    0,
+                    None,
+                    None,
+                )
+            })
+            .expect("send");
+        let id = sent.id.to_string();
+
+        app.call(|c| c.update_reaction(id.clone(), "👍".to_owned(), true))
+            .expect("add");
+
+        let with_reaction = app
+            .call(|c| c.get_messages(None, Some(10), Some(0), None))
+            .expect("read");
+        let reacted = with_reaction
+            .messages
+            .iter()
+            .find(|m| m.id.to_string() == id)
+            .expect("message present");
+        assert!(
+            reacted
+                .reactions
+                .as_ref()
+                .is_some_and(|r| r.contains_key("👍")),
+            "the reaction should be there once added",
+        );
+
+        app.call(|c| c.update_reaction(id.clone(), "👍".to_owned(), false))
+            .expect("remove");
+
+        let after = app
+            .call(|c| c.get_messages(None, Some(10), Some(0), None))
+            .expect("read");
+        let cleared = after
+            .messages
+            .iter()
+            .find(|m| m.id.to_string() == id)
+            .expect("message present");
+
+        let leftover = cleared
+            .reactions
+            .as_ref()
+            .map(|r| r.keys().cloned().collect::<Vec<_>>())
+            .unwrap_or_default();
+        assert!(
+            leftover.is_empty(),
+            "an emptied reaction kind lingered: {leftover:?}",
+        );
     }
 
     #[test]

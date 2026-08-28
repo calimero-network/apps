@@ -75,7 +75,7 @@ export const CATCH_UP_PAGE = 100;
  */
 export const MAX_CATCH_UP_PAGES = 5;
 
-export class MessageSyncEngine<M extends { index: number }> {
+export class MessageSyncEngine<M extends { index: number; id?: string }> {
   /**
    * Backfills in flight, keyed by channel and anchor.
    *
@@ -85,6 +85,29 @@ export class MessageSyncEngine<M extends { index: number }> {
    * second round trip.
    */
   private readonly inFlight = new Map<string, Promise<M[]>>();
+
+  /**
+   * `contextId:messageId` → absolute index, for messages this engine has seen.
+   *
+   * A reaction event names a message, and the store is keyed by position, so
+   * something has to bridge the two. This does, in memory and for free: every
+   * path that yields messages already has both halves in hand.
+   *
+   * Deliberately NOT persisted. The row on disk is sealed precisely so a
+   * message's content does not sit in plaintext, and an id-to-position table
+   * beside it would describe the same conversation in the clear. The cost of
+   * keeping it in memory is that a reload starts empty — handled by falling
+   * back to a bounded window refresh rather than by weakening the store.
+   */
+  private readonly indexById = new Map<string, number>();
+
+  private remember(contextId: string, messages: readonly M[]): void {
+    for (const message of messages) {
+      if (message.id) {
+        this.indexById.set(`${contextId}:${message.id}`, message.index);
+      }
+    }
+  }
 
   constructor(
     private readonly store: MessageStore<M>,
@@ -108,6 +131,7 @@ export class MessageSyncEngine<M extends { index: number }> {
       const start = Math.max(0, total - CATCH_UP_PAGE);
       const page = await this.source.range(contextId, start, CATCH_UP_PAGE);
       await this.store.put(contextId, page.messages);
+      this.remember(contextId, page.messages);
       await this.store.saveCursor({
         contextId,
         lowestIndex: start,
@@ -135,6 +159,7 @@ export class MessageSyncEngine<M extends { index: number }> {
       if (page.messages.length === 0) break;
 
       await this.store.put(contextId, page.messages);
+      this.remember(contextId, page.messages);
       fetched += page.messages.length;
       cursorIndex = Math.max(...page.messages.map((m) => m.index)) + 1;
       pages += 1;
@@ -172,7 +197,82 @@ export class MessageSyncEngine<M extends { index: number }> {
     const cursor = await this.store.cursor(contextId);
     if (!cursor) return [];
     const start = Math.max(cursor.lowestIndex, cursor.highestIndex - limit + 1);
-    return this.store.read(contextId, start, cursor.highestIndex - start + 1);
+    const stored = await this.store.read(
+      contextId,
+      start,
+      cursor.highestIndex - start + 1,
+    );
+    this.remember(contextId, stored);
+    return stored;
+  }
+
+  /**
+   * Re-read messages the store already holds.
+   *
+   * `catchUp` walks FORWARD from the cursor and stops as soon as nothing is
+   * newer. That is right for appends, and wrong for the one thing in a chat
+   * that is not an append: a reaction changes an EXISTING message without
+   * changing the count, so `catchUp` asks for the length, sees no gap, fetches
+   * nothing, and the stored copy keeps its old reactions for as long as the
+   * channel stays open.
+   *
+   * Reactions arrive inside `MessageWithReactions`, so refreshing the message
+   * refreshes them. Bounded to the newest `limit` because that is where
+   * reactions land — dragging the whole history back for one emoji would undo
+   * the point of storing it.
+   *
+   * Deliberately writes through the node rather than reading the store first:
+   * serving the local copy is exactly the staleness this exists to clear.
+   */
+  async refreshNewest(contextId: string, limit: number): Promise<M[]> {
+    const cursor = await this.store.cursor(contextId);
+    if (!cursor) return [];
+
+    const start = Math.max(cursor.lowestIndex, cursor.highestIndex - limit + 1);
+    const wanted = cursor.highestIndex - start + 1;
+    if (wanted <= 0) return [];
+
+    const page = await this.source.range(contextId, start, wanted);
+    await this.store.put(contextId, page.messages);
+    this.remember(contextId, page.messages);
+    return page.messages;
+  }
+
+  /**
+   * Re-read ONE message, named by its id.
+   *
+   * This is what a reaction event asks for. `refreshNewest` answers "something
+   * near the bottom changed" and is wrong for anything else: react to a message
+   * far enough up and it is not in the refreshed window, so nothing merges and
+   * nothing re-renders. The result looks intermittent — it works or not
+   * depending on how far the message has scrolled — which is worse than a
+   * clean failure, because it reads as flakiness rather than as a bug.
+   *
+   * Falls back to a bounded window when the id is unknown, which is the state
+   * after a reload: the rows are on disk but their ids are not (see
+   * `indexById`). Refreshing the window is strictly better than doing nothing
+   * and cannot cost more than one page.
+   *
+   * Returns the refreshed message, or null when it could not be found — an
+   * honest null rather than some other message.
+   */
+  async refreshMessage(
+    contextId: string,
+    messageId: string,
+    fallbackLimit = 20,
+  ): Promise<M | null> {
+    const known = this.indexById.get(`${contextId}:${messageId}`);
+
+    if (known !== undefined) {
+      const page = await this.source.range(contextId, known, 1);
+      if (page.messages.length === 0) return null;
+      await this.store.put(contextId, page.messages);
+      this.remember(contextId, page.messages);
+      return page.messages.find((m) => m.id === messageId) ?? null;
+    }
+
+    const window = await this.refreshNewest(contextId, fallbackLimit);
+    return window.find((m) => m.id === messageId) ?? null;
   }
 
   /**
@@ -220,16 +320,32 @@ export class MessageSyncEngine<M extends { index: number }> {
     // never shrink.
     const widen = { ...cursor, lowestIndex: Math.min(cursor.lowestIndex, start) };
 
-    const local = await this.store.read(contextId, start, wanted);
-    if (local.length === wanted) {
+    // The node answers the read. The store may accelerate a paint; it may not
+    // BE the answer.
+    //
+    // It held that authority until now, and that is what made an edit or a
+    // reaction on an old message invisible: a stored row freezes its content at
+    // write time, and nothing re-read it. `catchUp` could not help — it walks
+    // forward from the cursor and only ever learns about appends.
+    //
+    // The cost is one page fetch per scroll-back, which is what the app did
+    // before history was stored at all. What storing history buys is the first
+    // paint and the offline case below, not fewer reads.
+    try {
+      const page = await this.source.range(contextId, start, wanted);
+      await this.store.put(contextId, page.messages);
       await this.store.saveCursor(widen);
+      this.remember(contextId, page.messages);
+      return page.messages;
+    } catch (error) {
+      // Unreachable node: fall back to whatever was stored. This is the case
+      // the store exists for, and a stale page beats an empty one.
+      const local = await this.store.read(contextId, start, wanted);
+      if (local.length === 0) throw error;
+      await this.store.saveCursor(widen);
+      this.remember(contextId, local);
       return local;
     }
-
-    const page = await this.source.range(contextId, start, wanted);
-    await this.store.put(contextId, page.messages);
-    await this.store.saveCursor(widen);
-    return page.messages;
   }
 
   /**
@@ -255,12 +371,16 @@ export class MessageSyncEngine<M extends { index: number }> {
     const wanted = index + radius + 1 - start;
 
     const local = await this.store.read(contextId, start, wanted);
-    if (local.length === wanted) return local;
+    if (local.length === wanted) {
+      this.remember(contextId, local);
+      return local;
+    }
 
     // A short local read is not proof the node has more: near the end of a
     // channel the window legitimately runs past the last message.
     const page = await this.source.range(contextId, start, wanted);
     await this.store.put(contextId, page.messages);
+    this.remember(contextId, page.messages);
     return page.messages;
   }
 
@@ -287,6 +407,7 @@ export class MessageSyncEngine<M extends { index: number }> {
     }
 
     await this.store.put(contextId, [message]);
+    this.remember(contextId, [message]);
     await this.store.saveCursor({
       ...cursor,
       highestIndex: message.index,

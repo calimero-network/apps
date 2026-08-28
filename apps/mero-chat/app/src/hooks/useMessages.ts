@@ -14,7 +14,6 @@ import {
 } from "../utils/messageTransformers";
 import {
   MESSAGE_PAGE_SIZE,
-  RECENT_MESSAGES_CHECK_SIZE,
 } from "../constants/app";
 
 /**
@@ -83,6 +82,18 @@ export function useMessages() {
         // Then reconcile. On a current channel this costs one count call and
         // transfers nothing.
         await messageSync.catchUp(contextId);
+
+        // And re-read the window, which catchUp cannot do. catchUp walks
+        // forward from the cursor, so it only ever learns about APPENDS — but
+        // a message is not immutable. A reaction changes an existing message
+        // without changing the count, so catchUp fetches nothing and the
+        // stored copy keeps whatever reactions it had when it was written.
+        //
+        // That is what made reactions vanish on reload: the row was painted
+        // from disk, catchUp saw no gap, and the reaction added after the row
+        // was stored existed only on the node. Before history was stored at
+        // all, every open re-fetched and the question never arose.
+        await messageSync.refreshNewest(contextId, MESSAGE_PAGE_SIZE);
       } catch (error) {
         // The node is unreachable. What was painted above is still the best
         // answer available, so this is not a failure of the open — it is a
@@ -239,12 +250,19 @@ export function useMessages() {
 
       // Removed throttling to allow real-time message updates
 
+      // Wide enough to cover what is on screen, not just the newest few.
+      // This asked for RECENT_MESSAGES_CHECK_SIZE (5), which is right for "did
+      // anything arrive" and wrong for "did anything CHANGE": a reaction on a
+      // message older than the last five was never in the refreshed page, so
+      // there was nothing to merge and the reaction never appeared. It updated
+      // or not depending on how far up the message was, which is what made it
+      // look intermittent.
       const response: ResponseData<FullMessageResponse> =
         await new ClientApiDataSource().getMessages({
           group: {
             name: (isDM ? "private_dm" : group) || "",
           },
-          limit: RECENT_MESSAGES_CHECK_SIZE,
+          limit: MESSAGE_PAGE_SIZE,
           offset: 0,
           is_dm: isDM,
           dm_identity: activeChat.contextIdentity,
@@ -456,6 +474,39 @@ export function useMessages() {
   }, []);
 
   /**
+   * Re-read one message the node says changed, and merge it into the open chat.
+   *
+   * Driven by `ReactionUpdated`, which names the message it changed. Going
+   * straight to that message is what makes a reaction appear wherever it
+   * lands: refreshing the newest page only works when the message happens to
+   * be near the bottom, and reads as flakiness when it is not.
+   *
+   * `MessageStore.append` merges by id, so handing it one refreshed message is
+   * an in-place update rather than an insert — the row keeps its position and
+   * its React key, and only its reactions change.
+   */
+  const refreshReactedMessage = useCallback(
+    async (contextId: string, messageId: string) => {
+      try {
+        const refreshed = await messageSync.refreshMessage(
+          contextId,
+          messageId,
+          MESSAGE_PAGE_SIZE,
+        );
+        if (!refreshed) return;
+        const [ui] = transformMessagesToUI([refreshed]);
+        if (ui) setIncomingMessages([ui]);
+      } catch (error) {
+        // The node is unreachable, so the reaction stays as it was. The next
+        // open re-reads the window anyway; a failure here is a delay, not a
+        // lost update.
+        console.warn("refreshReactedMessage failed", error);
+      }
+    },
+    [],
+  );
+
+  /**
    * Add optimistic message (for messages being sent)
    */
   const addOptimistic = useCallback((message: CurbMessage) => {
@@ -498,6 +549,7 @@ export function useMessages() {
     openMessageLink,
     checkForNewMessages,
     addIncoming,
+    refreshReactedMessage,
     addOptimistic,
     clear,
     getCurrent,
