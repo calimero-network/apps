@@ -72,7 +72,7 @@ steps:
   # group-late-joiner.yml for the full write-up.
   - name: Settle before node-2 joins the namespace
     type: wait
-    seconds: 5
+    seconds: 12
 
   - name: Node-2 joins namespace
     type: join_namespace
@@ -100,7 +100,7 @@ steps:
   # group-late-joiner.yml for the full write-up.
   - name: Settle before node-3 joins the namespace
     type: wait
-    seconds: 5
+    seconds: 12
 
   - name: Node-3 joins namespace
     type: join_namespace

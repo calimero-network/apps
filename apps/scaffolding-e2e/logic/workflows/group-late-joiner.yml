@@ -105,9 +105,30 @@ steps:
   # is why this passed locally and failed on busy runners — and it fails as a
   # bare 500 that reads like a contract or permission problem rather than a
   # timing one.
+  #
+  # MEASURED, on the run that failed handler-test.yml the same way:
+  #
+  #   12:03:11.95  node-2 container starts
+  #   12:03:17.61  invitation created
+  #   12:03:17.61  join_namespace issued   <- node-2 is 5.7s old
+  #        +5s     KeyDelivery times out
+  #
+  # Every scenario boots fresh nodes, and the steps before the join (install,
+  # create namespace, create context) take only a few seconds — so mDNS
+  # discovery AND the key transfer had under 6 seconds between them. mDNS is
+  # already on (`mdns: true`, required since rc.26 made it opt-in via
+  # core#3620), so this is discovery LATENCY, not discovery being disabled.
+  #
+  # 12s and not 5s, because 5s merely doubled a budget that was already too
+  # small; the total cost is ~12s x 15 joins against a 22-minute job. There is
+  # no better instrument available today: merobox steps take no retry config,
+  # and `api_assertion` asserts once rather than polling, so a genuine
+  # wait-for-peer-connectivity gate does not exist. If joins still flake at 12s,
+  # stop widening this and fix core — the 5s KeyDelivery fallback window in
+  # join_group.rs is not reachable from a workflow.
   - name: Settle before node-2 joins
     type: wait
-    seconds: 5
+    seconds: 12
 
   - name: Node-2 joins namespace
     type: join_namespace
