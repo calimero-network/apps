@@ -31,11 +31,21 @@ author      = "Calimero"
 # the package id. Unchanged from the standalone repo: it is in every invite link
 # already shared.
 slug        = "com.calimero.merocalendar"
-# `bundle` refuses to run without an icon decision, and it fails at BUNDLE time —
-# i.e. after a green PR, on the release run. The repo ships no PNG app icon
-# (app/src/assets carries SVGs and a .ico), so take the sentinel that ships the
-# Calimero mark. Swap for a path once app/public gains an icon-512.png.
-icon        = "default"
+# The app's OWN icon, embedded into the manifest as a data: URI. That is what
+# gives it a real icon in the registry listing and — via tauri-app's
+# `ensure_app_launcher_icon` — in the macOS Dock when the desktop opens it.
+#
+# ⚠️ This said `icon = "default"` (the generic Calimero mark) with a comment
+# claiming "the repo ships no PNG app icon (app/src/assets carries SVGs and a
+# .ico)". That was wrong: app/public/icon-512.png is a valid 512x512 PNG and had
+# been there the whole time — the migration checked app/src/assets and stopped.
+# So the app would have published, and appeared in the Dock, wearing the platform
+# logo instead of its own.
+#
+# Path is relative to THIS manifest's directory (logic/), hence the ../ — the
+# same form kv-store uses. The bundled icon is preferred over fetching the
+# frontend's PWA manifest because it is deterministic and works offline.
+icon        = "../app/public/icon-512.png"
 tags        = ["calendar", "scheduling", "collaboration"]
 github      = "https://github.com/calimero-network/apps"
 # Kept equal to the workspace SDK tag — that is what this is built and tested
