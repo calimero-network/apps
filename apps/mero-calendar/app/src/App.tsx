@@ -4,6 +4,7 @@ import { useMero } from "@calimero-network/mero-react";
 import LandingPage from "./pages/landing/LandingPage";
 import { LoginPage } from "./pages/login";
 import TeamsPage from "./pages/teams/TeamsPage";
+import TeamCalendarsPage from "./pages/teams/TeamCalendarsPage";
 import CalendarPage from "./pages/calendar";
 import { ToastProvider } from "./contexts/ToastContext";
 
@@ -41,6 +42,15 @@ export default function App() {
           element={
             <RequireAuth>
               <TeamsPage />
+            </RequireAuth>
+          }
+        />
+        {/* Which calendar inside a team to open, and removing the stale ones. */}
+        <Route
+          path="/teams/:teamId"
+          element={
+            <RequireAuth>
+              <TeamCalendarsPage />
             </RequireAuth>
           }
         />

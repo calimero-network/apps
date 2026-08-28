@@ -168,3 +168,39 @@
   .createInput { max-width: 100%; }
   .joinRow { flex-direction: column; }
 }
+
+/* ── calendar picker (TeamCalendarsPage) ─────────────────────────────────── */
+
+.backLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 18px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: 12px;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.backLink:hover { color: var(--text); }
+
+.confirmBox {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 30;
+  padding: 14px;
+  border: 1px solid var(--danger);
+  border-radius: 10px;
+  background: var(--bg-2);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+}
+.confirmText {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text);
+  margin-bottom: 12px;
+}
+.confirmRow { display: flex; gap: 8px; justify-content: flex-end; }

@@ -58,7 +58,6 @@ export default function TeamsPage() {
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
-  const [opening, setOpening] = useState<string | null>(null);
   const [joinCode, setJoinCode] = useState("");
   const [joining, setJoining] = useState(false);
   const [joinError, setJoinError] = useState("");
@@ -93,7 +92,7 @@ export default function TeamsPage() {
     let cancelled = false;
     async function loadTeams() {
       const appId = await ensureAppId();
-      listNamespaces<NamespaceRaw[]>(appId)
+      listNamespaces(appId)
         .then((items) => {
           if (cancelled) return;
           const arr = Array.isArray(items) ? items : [];
@@ -195,7 +194,7 @@ export default function TeamsPage() {
 
       await adminPost(`/namespaces/${namespaceId}/join`, { invitation: outer });
 
-      const items = await listNamespaces<NamespaceRaw[]>(await ensureAppId());
+      const items = await listNamespaces(await ensureAppId());
       const arr = Array.isArray(items) ? items : [];
       setTeams(
         arr.map((n) => {
@@ -254,90 +253,17 @@ export default function TeamsPage() {
     [],
   );
 
-  async function openTeam(teamId: string) {
+  /**
+   * Open a team by showing its calendars, not by guessing one.
+   *
+   * This used to walk the team's subgroups, take `contexts[0]`, and create a
+   * context when it found none — so a team with two calendars could only ever
+   * open the first, and a mistakenly created one had nowhere to be deleted
+   * from. Navigation is now unconditional and the picker owns both.
+   */
+  function openTeam(teamId: string) {
     setMenuOpenId(null);
-    setOpening(teamId);
-    try {
-      const appId = await ensureAppId();
-      const name = teamLabel(teamId, "");
-
-      // 1) Look for an existing calendar context in any of the team's subgroups.
-      let contextId = "";
-      try {
-        const raw = await adminGet<
-          { subgroups?: SubgroupRaw[]; data?: SubgroupRaw[] } | SubgroupRaw[]
-        >(`/groups/${teamId}/subgroups`);
-        const subgroups: SubgroupRaw[] = Array.isArray(raw)
-          ? raw
-          : (raw as { subgroups?: SubgroupRaw[] }).subgroups ??
-            (raw as { data?: SubgroupRaw[] }).data ??
-            [];
-        for (const sg of subgroups) {
-          const sgId = sg.groupId ?? sg.group_id ?? sg.id ?? "";
-          if (!sgId) continue;
-          const ctxRaw = await adminGet<
-            { contexts?: ContextRaw[]; items?: ContextRaw[] } | ContextRaw[]
-          >(`/groups/${sgId}/contexts`);
-          const ctxs: ContextRaw[] = Array.isArray(ctxRaw)
-            ? ctxRaw
-            : (ctxRaw as { contexts?: ContextRaw[] }).contexts ??
-              (ctxRaw as { items?: ContextRaw[] }).items ??
-              [];
-          if (ctxs.length > 0) {
-            const c = ctxs[0];
-            contextId = c.contextId ?? c.context_id ?? c.id ?? "";
-            if (contextId) break;
-          }
-        }
-      } catch {
-        /* no subgroups/contexts yet — fall through to create */
-      }
-
-      // 2) Create the single calendar context if none exists.
-      if (!contextId) {
-        if (!appId) {
-          showToast("Select or install the Mero Calendar application first.");
-          return;
-        }
-        const sgData = await adminPost<{
-          groupId?: string;
-          group_id?: string;
-          id?: string;
-        }>(`/namespaces/${teamId}/groups`, {
-          groupAlias: name,
-          groupName: name,
-        });
-        const subgroupId = sgData.groupId ?? sgData.group_id ?? sgData.id ?? "";
-        if (subgroupId) {
-          await adminPut(`/groups/${subgroupId}/settings/subgroup-visibility`, {
-            subgroupVisibility: "open",
-          }).catch(() => {});
-        }
-        // The calendar contract's init() takes no args → empty init params.
-        const ctxData = await adminPost<{ contextId?: string; id?: string }>(
-          "/contexts",
-          {
-            applicationId: appId,
-            protocol: "near",
-            groupId: subgroupId || teamId,
-            alias: name,
-            name,
-            initializationParams: [],
-          },
-        );
-        contextId = ctxData.contextId ?? ctxData.id ?? "";
-      }
-
-      if (!contextId) throw new Error("Could not open the team calendar.");
-
-      // 3) Ensure this node has joined the context (idempotent), then navigate.
-      await joinContext(contextId).catch(() => {});
-      navigate(`/teams/${teamId}/calendar/${contextId}`);
-    } catch (err) {
-      showToast(humanizeError(extractErrorMessage(err, "Could not open team.")));
-    } finally {
-      setOpening(null);
-    }
+    navigate(`/teams/${teamId}`);
   }
 
   async function generateInvite(teamId: string) {
@@ -425,7 +351,6 @@ export default function TeamsPage() {
                 <button
                   className={styles.card}
                   onClick={() => openTeam(t.groupId)}
-                  disabled={opening === t.groupId}
                   data-testid={`team-card-${t.groupId}`}
                 >
                   <span className={styles.cardIcon}>
@@ -434,9 +359,7 @@ export default function TeamsPage() {
                   <span className={styles.cardName}>
                     {teamLabel(t.groupId, t.name)}
                   </span>
-                  <span className={styles.cardSub}>
-                    {opening === t.groupId ? "Opening calendar…" : "Shared calendar"}
-                  </span>
+                  <span className={styles.cardSub}>Shared calendars</span>
                 </button>
                 <button
                   className={styles.menuBtn}

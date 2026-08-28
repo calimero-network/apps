@@ -150,3 +150,74 @@ test("private events stay out of the shared calendar", async () => {
 
   await rpc("delete_private_event", { event_id: id });
 });
+
+/**
+ * The two scoped admin routes the teams and calendar pickers are built on.
+ *
+ * The frontend refuses to list anything when it cannot scope to its own
+ * application (see app/src/api/appScope.ts), which makes these endpoints load
+ * bearing: if either stops filtering, or renames the field it filters on, the
+ * pickers go silently empty rather than wrong — and nothing else here would
+ * notice. That is the exact shape of the rc.25 break where a namespace's
+ * `groupId` became `namespaceId` and simply read as `undefined`.
+ */
+test.describe("application-scoped admin listings", () => {
+  /** This context's application, read from the node rather than assumed. */
+  async function appId(): Promise<string> {
+    const res = await api.get(`/admin-api/contexts/${ctxId}`);
+    expect(res.ok()).toBeTruthy();
+    const body = await res.json();
+    const ctx = body?.data ?? body;
+    const id = ctx?.applicationId ?? ctx?.application_id ?? "";
+    expect(id, "the context must name an application").toBeTruthy();
+    return String(id);
+  }
+
+  test("every context for this application really runs it", async () => {
+    const id = await appId();
+    const res = await api.get(`/admin-api/contexts/for-application/${id}`);
+    expect(res.ok()).toBeTruthy();
+    const body = await res.json();
+    const contexts = body?.data?.contexts ?? body?.contexts ?? [];
+    expect(Array.isArray(contexts)).toBeTruthy();
+    // The seeded context is this application's, so the list cannot be empty —
+    // an empty list here would mean the route filters everything out, which is
+    // indistinguishable from "no contexts" to the UI.
+    expect(contexts.length, "the seeded context should be listed").toBeGreaterThan(0);
+    for (const ctx of contexts) {
+      expect(ctx?.applicationId ?? ctx?.application_id).toBe(id);
+    }
+    expect(contexts.map((c: Record<string, unknown>) => c.id ?? c.contextId)).toContain(ctxId);
+  });
+
+  test("every namespace for this application targets it, under the name the UI reads", async () => {
+    const id = await appId();
+    const res = await api.get(`/admin-api/namespaces/for-application/${id}`);
+    expect(res.ok()).toBeTruthy();
+    const body = await res.json();
+    const namespaces = body?.data ?? body?.namespaces ?? [];
+    expect(Array.isArray(namespaces)).toBeTruthy();
+    for (const ns of namespaces) {
+      // `targetApplicationId` is the field appScope.ts filters on. A rename
+      // makes it undefined, the filter drops every row, and the teams list
+      // empties out with no error anywhere.
+      expect(
+        ns?.targetApplicationId ?? ns?.target_application_id,
+        "a namespace must name its target application",
+      ).toBe(id);
+      expect(ns?.namespaceId ?? ns?.groupId ?? ns?.id, "a namespace must carry an id").toBeTruthy();
+    }
+  });
+
+  test("an application nobody installed lists nothing, rather than everything", async () => {
+    // The failure mode worth pinning: a scoped route that quietly ignores its
+    // filter would answer this with the whole node, and the UI would show
+    // another application's teams as though they were calendars.
+    const bogus = "11111111111111111111111111111111";
+    const res = await api.get(`/admin-api/contexts/for-application/${bogus}`);
+    if (res.status() >= 400) return; // rejecting an unknown id is also correct
+    const body = await res.json();
+    const contexts = body?.data?.contexts ?? body?.contexts ?? [];
+    expect(contexts, "an unknown application must not inherit this node's contexts").toHaveLength(0);
+  });
+});

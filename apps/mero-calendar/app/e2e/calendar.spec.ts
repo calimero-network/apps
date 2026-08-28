@@ -16,4 +16,12 @@ test.describe("Route guards", () => {
     await page.goto("/teams/team-x/calendar/ctx-x");
     await expect(page).toHaveURL(/\/login$/, { timeout: 10_000 });
   });
+
+  // The calendar picker is a THIRD protected route, added after the two above.
+  // A route registered without RequireAuth renders for anyone and reads as
+  // working, because it is only the node calls behind it that fail.
+  test("redirects unauthenticated users away from a team's calendar picker", async ({ page }) => {
+    await page.goto("/teams/team-x");
+    await expect(page).toHaveURL(/\/login$/, { timeout: 10_000 });
+  });
 });
