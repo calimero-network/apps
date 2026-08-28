@@ -86,11 +86,68 @@ steps:
     outputs:
       namespace_invitation: invitation
 
+  # Let the two nodes actually find each other before the join.
+  #
+  # This is the fix for an intermittent HTTP 500 on the step below, whose node
+  # side reads:
+  #
+  #   KeyDelivery timed out for group ContextGroupId(..): no group key arrived
+  #   within 5s via the gossip fallback path; join cannot proceed without a
+  #   usable group key                              (join_group.rs:557)
+  #
+  # Note what that error is NOT: the accompanying log line says
+  # `projected=Some(Member) live=Some(Member)`, so the membership is fine. Only
+  # the group KEY missed its window — and core allows exactly 5s for it to
+  # arrive over gossip. Before this wait, node-2 was never touched by any
+  # earlier step: `join_namespace` was its FIRST action, issued milliseconds
+  # after the invitation was minted, so those 5s had to cover cold peer
+  # discovery as well as the key transfer. On an unloaded machine they do, which
+  # is why this passed locally and failed on busy runners — and it fails as a
+  # bare 500 that reads like a contract or permission problem rather than a
+  # timing one.
+  #
+  # MEASURED, on the run that failed handler-test.yml the same way:
+  #
+  #   12:03:11.95  node-2 container starts
+  #   12:03:17.61  invitation created
+  #   12:03:17.61  join_namespace issued   <- node-2 is 5.7s old
+  #        +5s     KeyDelivery times out
+  #
+  # Every scenario boots fresh nodes, and the steps before the join (install,
+  # create namespace, create context) take only a few seconds — so mDNS
+  # discovery AND the key transfer had under 6 seconds between them. mDNS is
+  # already on (`mdns: true`, required since rc.26 made it opt-in via
+  # core#3620), so this is discovery LATENCY, not discovery being disabled.
+  #
+  # 12s and not 5s, because 5s merely doubled a budget that was already too
+  # small; the total cost is ~12s x 15 joins against a 22-minute job. There is
+  # no better instrument available today: merobox steps take no retry config,
+  # and `api_assertion` asserts once rather than polling, so a genuine
+  # wait-for-peer-connectivity gate does not exist. If joins still flake at 12s,
+  # stop widening this and fix core — the 5s KeyDelivery fallback window in
+  # join_group.rs is not reachable from a workflow.
+  - name: Settle before node-2 joins
+    type: wait
+    seconds: 12
+
   - name: Node-2 joins namespace
     type: join_namespace
     node: e2e-node-2
     namespace_id: '{{namespace_id}}'
     invitation: '{{namespace_invitation}}'
+
+  # The context was created before node-2 knew the namespace existed, so pull
+  # namespace state explicitly rather than hoping the join carried it. Without
+  # this, join_context below can fail with "context not found" — the same race
+  # one level down.
+  - name: Force node-2 to sync namespace state
+    type: sync_group
+    node: e2e-node-2
+    group_id: '{{namespace_id}}'
+
+  - name: Settle after namespace sync
+    type: wait
+    seconds: 5
 
   - name: Node-2 joins context via group membership
     type: join_context

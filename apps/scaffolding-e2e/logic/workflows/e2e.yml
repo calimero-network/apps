@@ -140,6 +140,14 @@ steps:
     outputs:
       open_invitation_3: invitation
 
+  # Settle so peer discovery is done before the join. Core gives the group key
+  # 5s to arrive over gossip (join_group.rs:557) and answers a miss with a bare
+  # HTTP 500; without this, that budget also has to cover finding the peer. See
+  # group-late-joiner.yml for the full write-up.
+  - name: Settle before node-3 joins the namespace
+    type: wait
+    seconds: 12
+
   - name: Join namespace - node-3
     type: join_namespace
     node: e2e-node-3
