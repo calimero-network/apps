@@ -6,6 +6,8 @@ import {
 import type { ExecuteParams } from "@calimero-network/mero-js";
 import type { ApiResponse } from "../types";
 import { rpcExec } from "../meroJsClient";
+import { nameRepository } from "../../repositories/names/useNames";
+import { GroupApiDataSource } from "./groupApiDataSource";
 import {
   type AcceptInvitationProps,
   type ChannelInfo,
@@ -326,13 +328,32 @@ export class ClientApiDataSource implements ClientApi {
   ): ApiResponse<Map<string, string>> {
     try {
       const contextId = getContextId() || "";
-      const executorPublicKey = getExecutorPublicKey() || "";
-      if (!contextId || !executorPublicKey) return { data: new Map(), error: null };
-      const profilesRes = await this.getProfiles(contextId, executorPublicKey);
+      if (!contextId) return { data: new Map(), error: null };
+
+      // Who is in the channel comes from the channel's own group; what to call
+      // them comes from the name repository.
+      //
+      // This used to read the contract's `get_profiles` and keep only rows with
+      // both an identity and a username — which is not the membership at all,
+      // but "people who have written a profile in THIS context". A member who
+      // never set one could not be @-mentioned, and since every channel is its
+      // own context, a name set in one channel was missing in the next.
+      //
+      // Deliberately NOT re-merging namespace members, subgroup aliases and
+      // profiles here: `useChannelMembers` used to do exactly that and it was
+      // removed, because a second resolver with its own precedence is how the
+      // same person ends up named one way in the member list and another way in
+      // the messages beside it. `nameRepository` is the one resolver — it owns
+      // account canonicalisation, batches these calls into a single request,
+      // and falls back to a short account when nobody has a name.
+      const roster = await new GroupApiDataSource().listContextMembers(contextId);
+
       const memberMap = new Map<string, string>();
-      for (const p of profilesRes.data ?? []) {
-        if (p.identity && p.username) memberMap.set(p.identity, p.username);
-      }
+      await Promise.all(
+        (roster.data ?? []).map(async (m) => {
+          memberMap.set(m.identity, await nameRepository.resolve(m.identity));
+        }),
+      );
       return { data: memberMap, error: null };
     } catch {
       return { data: new Map(), error: null };

@@ -726,6 +726,30 @@ export class GroupApiDataSource implements GroupApi {
    * of the context's OWN group, reached through that group rather than through
    * a (group, context) pair.
    */
+  /**
+   * The members of the group backing `contextId`, with the names governance
+   * holds for them.
+   *
+   * Exists so callers can get a channel's roster without reaching for
+   * `contextGroupId`, which stays private — the context-to-group mapping is an
+   * implementation detail of this data source, and every caller that has
+   * grabbed it so far has had to remember the hex/base58 normalisation that
+   * goes with it.
+   *
+   * Returns an empty list rather than throwing when no group backs the context
+   * (legacy channels predate the 1-group-per-context model): the caller's
+   * fallback is the contract's profiles, which still work.
+   */
+  async listContextMembers(contextId: string): ApiResponse<GroupMember[]> {
+    try {
+      const cgid = await this.contextGroupId(contextId);
+      const listed = await this.listMembers(cgid);
+      return ok(listed.data?.members ?? []);
+    } catch (error) {
+      return catchError("listContextMembers", error);
+    }
+  }
+
   private async contextGroupId(contextId: string): Promise<string> {
     const groupId = await getMeroJs().admin.getContextGroup(
       normalizeContextId(contextId),
