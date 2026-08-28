@@ -32,7 +32,10 @@ export default function CalendarPage() {
   // wires them up. Everything downstream (redux thunks, SSE) needs no contextId.
   useEffect(() => {
     if (!contextId) {
-      navigate("/teams");
+      // Back to the team's calendar picker when we know the team, since that is
+      // where a missing context is actually chosen; only a URL with no team at
+      // all sends you all the way out to the teams list.
+      navigate(teamId ? `/teams/${teamId}` : "/teams");
       return;
     }
     if (setupDone.current) return;
@@ -117,7 +120,12 @@ export default function CalendarPage() {
         />
       )}
       {ready && (
-        <Calendar onBack={teamId ? () => navigate("/teams") : undefined} />
+        <Calendar
+          // One level up is the team's OTHER calendars, not the teams list. A
+          // team can hold several, so jumping straight out made switching
+          // between two calendars a two-step trip through an unrelated page.
+          onBack={teamId ? () => navigate(`/teams/${teamId}`) : undefined}
+        />
       )}
     </div>
   );
