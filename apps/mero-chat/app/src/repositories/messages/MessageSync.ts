@@ -239,6 +239,53 @@ export class MessageSyncEngine<M extends { index: number; id?: string }> {
   }
 
   /**
+   * Re-read everything from `fromIndex` to the end of the channel.
+   *
+   * The repair path for a change this client cannot locate. An event names a
+   * message by id, and `refreshMessage` needs an index to fetch it — which it
+   * only has for messages this session has seen. For anything else it fell back
+   * to the newest page, which misses exactly the case that matters: a message
+   * the user scrolled back to, edited elsewhere.
+   *
+   * Scrolling will not repair it either. `loadOlder` fetches BEFORE what is
+   * already displayed, so a message inside the loaded window is never re-read —
+   * only a reload fixed it, which is what made this look like "updates arrive
+   * after reloading, not if I scroll up".
+   *
+   * So refresh what is loaded. The caller passes the oldest index it is
+   * showing, which bounds this to what a person can actually see rather than to
+   * the whole history.
+   *
+   * Returns only the messages that differ, so an unchanged window costs one
+   * fetch and no re-render.
+   */
+  async refreshLoaded(contextId: string, fromIndex: number): Promise<M[]> {
+    const cursor = await this.store.cursor(contextId);
+    if (!cursor) return [];
+
+    const start = Math.max(0, Math.min(fromIndex, cursor.highestIndex));
+    const wanted = cursor.highestIndex - start + 1;
+    if (wanted <= 0) return [];
+
+    const before = new Map(
+      (await this.store.read(contextId, start, wanted)).map((m) => [
+        m.index,
+        JSON.stringify(m),
+      ]),
+    );
+
+    const page = await this.source.range(contextId, start, wanted);
+    if (page.messages.length === 0) return [];
+
+    await this.store.put(contextId, page.messages);
+    this.remember(contextId, page.messages);
+
+    return page.messages.filter(
+      (m) => before.get(m.index) !== JSON.stringify(m),
+    );
+  }
+
+  /**
    * Re-read ONE message, named by its id.
    *
    * This is what a reaction event asks for. `refreshNewest` answers "something

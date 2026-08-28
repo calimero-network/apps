@@ -81,6 +81,48 @@ function memoryStore(): MessageStore<Msg> & { rows: Map<number, Msg> } {
 const CTX = "ctx-1";
 
 describe("MessageSyncEngine", () => {
+  it("refreshes the whole loaded range when the id is unknown", async () => {
+    // The case that bit in practice: an edit names a message this session
+    // never loaded, so there is no index for it. Falling back to the NEWEST
+    // page misses anything the user has scrolled back to — and scrolling back
+    // will not repair it either, because `loadOlder` only fetches BEFORE what
+    // is already displayed. Refresh what is on screen instead.
+    const store = memoryStore();
+    const node = nodeWith(200);
+    const engine = new MessageSyncEngine<Msg>(store, node);
+
+    await engine.catchUp(CTX);
+    const cold = new MessageSyncEngine<Msg>(store, node);
+    node.mutate(120, "m120-edited");
+    node.calls.length = 0;
+
+    const changed = await cold.refreshLoaded(CTX, 120);
+
+    expect(node.calls).toEqual(["range(120,80)"]);
+    expect(changed.find((m) => m.index === 120)?.text).toBe("m120-edited");
+  });
+
+  it("reports only what actually changed", async () => {
+    const store = memoryStore();
+    const node = nodeWith(200);
+    const engine = new MessageSyncEngine<Msg>(store, node);
+
+    await engine.catchUp(CTX);
+    const changed = await engine.refreshLoaded(CTX, 190);
+
+    // Nothing moved, so nothing to re-render.
+    expect(changed).toEqual([]);
+  });
+
+  it("refreshLoaded on an unknown channel does nothing", async () => {
+    const store = memoryStore();
+    const node = nodeWith(200);
+    const engine = new MessageSyncEngine<Msg>(store, node);
+
+    expect(await engine.refreshLoaded(CTX, 0)).toEqual([]);
+    expect(node.calls).toEqual([]);
+  });
+
   it("reads older messages from the node even when the store holds them", async () => {
     // The rule this pins: the store may accelerate a paint, it may not ANSWER a
     // read. A stored row froze its reactions and its text at write time, so

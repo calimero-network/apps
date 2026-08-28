@@ -493,9 +493,23 @@ export function useMessages() {
           messageId,
           MESSAGE_PAGE_SIZE,
         );
-        if (!refreshed) return;
-        const [ui] = transformMessagesToUI([refreshed]);
-        if (ui) setIncomingMessages([ui]);
+        if (refreshed) {
+          const [ui] = transformMessagesToUI([refreshed]);
+          if (ui) setIncomingMessages([ui]);
+          return;
+        }
+
+        // The id resolved to nothing: this session never loaded that message,
+        // so there is no index to fetch it by. It can still be ON SCREEN —
+        // scrolled back to in an earlier session, or painted from the store —
+        // and scrolling will not repair it, because `loadOlder` only fetches
+        // BEFORE what is displayed. Refresh the loaded window instead, bounded
+        // by the oldest row the view is showing.
+        const changed = await messageSync.refreshLoaded(
+          contextId,
+          oldestShownRef.current ?? 0,
+        );
+        if (changed.length > 0) setIncomingMessages(transformMessagesToUI(changed));
       } catch (error) {
         // The node is unreachable, so the reaction stays as it was. The next
         // open re-reads the window anyway; a failure here is a delay, not a
