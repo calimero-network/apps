@@ -66,6 +66,31 @@ steps:
       - "is_set({{node1_key}})"
       - "is_set({{public_key_kvc-node-2}})"
 
+  # ⚠️ REQUIRED before node-2's first call, and easy to leave out because the
+  # concurrent writes below are the point of the scenario.
+  #
+  # `create_mesh` gives node-2 MEMBERSHIP, not state. Until its first state sync
+  # lands, ANY execution on it — a write just as much as a read — fails with
+  #
+  #     err=context state not initialized, awaiting state sync
+  #     HandlerError({"type": "Uninitialized"})
+  #
+  # which merobox reports as a failed step. That is exactly what happened here on
+  # the first CI run: 'node-2 writes beta at the same time' died on it.
+  #
+  # This wait does NOT weaken the concurrency being tested. It settles the JOIN;
+  # the two writes below still go out back to back with no sync between them,
+  # which is the interleaving the scenario exists to produce.
+  - name: Wait for node-2 to initialize before it writes
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - kvc-node-1
+      - kvc-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
   # ─── distinct keys written concurrently must all survive ──────────────────
   #
   # No `wait_for_sync` BETWEEN these two. That is the entire point: they are
