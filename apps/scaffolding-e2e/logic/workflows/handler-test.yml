@@ -1,0 +1,305 @@
+name: E2E KV Store - Event Handler Dispatch
+description: >
+  Tests the app::emit! / insert_handler path in the namespace model.
+  set_with_handler emits an event that merod dispatches back to all
+  context members as an execute call. The test verifies:
+    1. set_with_handler writes the value and fires the event.
+    2. The handler-inserted value syncs to both nodes via CRDT.
+    3. get_handler_execution_count reflects handler invocations.
+
+force_pull_image: false
+nuke_on_start: true
+near_devnet: false
+
+nodes:
+  count: 2
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.26
+  # rc.26 made mDNS opt-in (core#3620) and merobox does not pass the flag,
+  # so discovery changed at the image bump. Stated, not inherited.
+  mdns: true
+  prefix: e2e-node
+
+steps:
+  - name: Install application on node-1
+    type: install_application
+    node: e2e-node-1
+    path: res/scaffolding_e2e.wasm
+    dev: true
+    outputs:
+      app_id: applicationId
+
+  - name: Assert application installed
+    type: assert
+    statements:
+      - "is_set({{app_id}})"
+
+  - name: Create namespace on node-1
+    type: create_namespace
+    node: e2e-node-1
+    application_id: '{{app_id}}'
+    outputs:
+      namespace_id: namespaceId
+
+  - name: Assert namespace created
+    type: assert
+    statements:
+      - "is_set({{namespace_id}})"
+
+  - name: Create context in namespace on node-1
+    type: create_context
+    node: e2e-node-1
+    application_id: '{{app_id}}'
+    group_id: '{{namespace_id}}'
+    outputs:
+      context_id: contextId
+      ctx_key_node1: memberPublicKey
+
+  - name: Assert context created
+    type: assert
+    statements:
+      - "is_set({{context_id}})"
+
+  - name: Create namespace invitation for node-2
+    type: create_namespace_invitation
+    node: e2e-node-1
+    namespace_id: '{{namespace_id}}'
+    outputs:
+      namespace_invitation: invitation
+
+  - name: Node-2 joins namespace
+    type: join_namespace
+    node: e2e-node-2
+    namespace_id: '{{namespace_id}}'
+    invitation: '{{namespace_invitation}}'
+
+  - name: Node-2 joins context via namespace membership
+    type: join_context
+    node: e2e-node-2
+    context_id: '{{context_id}}'
+    outputs:
+      ctx_key_node2: memberPublicKey
+
+  # --- SCENARIO 1: set_with_handler fires event; value syncs ---
+
+  - name: Node-1 calls set_with_handler
+    type: call
+    node: e2e-node-1
+    context_id: '{{context_id}}'
+    method: set_with_handler
+    args:
+      key: "test_key"
+      value: "test_value"
+
+  - name: Wait for handler sync
+    type: wait_for_sync
+    context_id: '{{context_id}}'
+    nodes:
+      - e2e-node-1
+      - e2e-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Node-2 reads the handler-written value
+    type: call
+    node: e2e-node-2
+    context_id: '{{context_id}}'
+    method: get
+    args:
+      key: "test_key"
+    outputs:
+      read_result: result
+
+  - name: Assert handler value synced to node-2
+    type: json_assert
+    statements:
+      - 'json_equal({{read_result}}, {"output": "test_value"})'
+
+  - name: Node-1 reads back handler-written value
+    type: call
+    node: e2e-node-1
+    context_id: '{{context_id}}'
+    method: get
+    args:
+      key: "test_key"
+    outputs:
+      read_result_node1: result
+
+  - name: Assert handler value present on node-1
+    type: json_assert
+    statements:
+      - 'json_equal({{read_result_node1}}, {"output": "test_value"})'
+
+  # --- SCENARIO 2: Handler execution count is tracked ---
+
+  - name: Node-1 gets handler execution count
+    type: call
+    node: e2e-node-1
+    context_id: '{{context_id}}'
+    method: get_handler_execution_count
+    outputs:
+      handler_count_node1: result
+
+  - name: Assert handler was executed at least once on node-1
+    type: assert
+    statements:
+      - "is_set({{handler_count_node1}})"
+
+  - name: Node-2 gets handler execution count
+    type: call
+    node: e2e-node-2
+    context_id: '{{context_id}}'
+    method: get_handler_execution_count
+    outputs:
+      handler_count_node2: result
+
+  - name: Assert handler was executed at least once on node-2
+    type: assert
+    statements:
+      - "is_set({{handler_count_node2}})"
+
+  # --- SCENARIO 3: Second call accumulates handler invocations ---
+
+  - name: Node-2 calls set_with_handler a second time
+    type: call
+    node: e2e-node-2
+    context_id: '{{context_id}}'
+    method: set_with_handler
+    args:
+      key: "test_key2"
+      value: "second_value"
+
+  - name: Wait for second handler sync
+    type: wait_for_sync
+    context_id: '{{context_id}}'
+    nodes:
+      - e2e-node-1
+      - e2e-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Node-1 reads second handler-written value
+    type: call
+    node: e2e-node-1
+    context_id: '{{context_id}}'
+    method: get
+    args:
+      key: "test_key2"
+    outputs:
+      second_read: result
+
+  - name: Assert second handler value synced to node-1
+    type: json_assert
+    statements:
+      - 'json_equal({{second_read}}, {"output": "second_value"})'
+
+  # --- SCENARIO 4: the four handlers are directly callable, and each counts ---
+  #
+  # Until now this scenario only reached the handlers INDIRECTLY, through
+  # `set_with_handler`'s `app::emit!((Event, "insert_handler"))`. That leaves the
+  # four handler methods on the ABI with no workflow naming any of them, so their
+  # RPC surface — argument names included — was exercised by nothing on a real
+  # node. `remove_handler` and `clear_handler` were not reached at all, by any
+  # path, because no scenario removed or cleared.
+  #
+  # Each handler increments `handler_counter` (a G-Counter) and nothing else, so
+  # the count is the observable: four direct calls must move it by exactly four.
+  # Reading the baseline first rather than asserting an absolute value keeps this
+  # independent of how many times the earlier scenarios fired a handler.
+
+  - name: Read the handler count before the direct calls
+    type: call
+    node: e2e-node-1
+    context_id: '{{context_id}}'
+    method: get_handler_execution_count
+    outputs:
+      # `result.output`, not `result`: merobox's `>` coerces both operands with
+      # float(), and a `{"output": N}` dict throws — which its `except` turns
+      # into a FALSE assertion rather than an error. So a comparison against the
+      # wrapped shape fails for a reason the report never names.
+      count_before_direct: result.output
+
+  - name: Call insert_handler directly
+    type: call
+    node: e2e-node-1
+    context_id: '{{context_id}}'
+    method: insert_handler
+    args:
+      key: "direct_key"
+      value: "direct_value"
+
+  - name: Call update_handler directly
+    type: call
+    node: e2e-node-1
+    context_id: '{{context_id}}'
+    method: update_handler
+    args:
+      key: "direct_key"
+      value: "direct_value_2"
+
+  - name: Call remove_handler directly
+    type: call
+    node: e2e-node-1
+    context_id: '{{context_id}}'
+    method: remove_handler
+    args:
+      key: "direct_key"
+
+  - name: Call clear_handler directly
+    type: call
+    node: e2e-node-1
+    context_id: '{{context_id}}'
+    method: clear_handler
+
+  - name: Read the handler count after the direct calls
+    type: call
+    node: e2e-node-1
+    context_id: '{{context_id}}'
+    method: get_handler_execution_count
+    outputs:
+      count_after_direct: result.output
+
+  - name: Assert all four direct handler calls were counted
+    type: assert
+    statements:
+      # Each of the four handlers increments `handler_counter` exactly once and
+      # does nothing else, so the count must have MOVED. `>` is the assertion
+      # merobox can actually make here — it has comparisons but no arithmetic, so
+      # "exactly +4" is not expressible; a strict increase plus four calls that
+      # each do one increment is the closest honest statement.
+      #
+      # Both reads are on the same node, so no sync is needed between them.
+      - "is_set({{count_before_direct}})"
+      - "{{count_after_direct}} > {{count_before_direct}}"
+
+  - name: Wait for the handler counter to sync to node-2
+    type: wait_for_sync
+    context_id: '{{context_id}}'
+    nodes:
+      - e2e-node-1
+      - e2e-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Node-2 sees the same handler count
+    type: call
+    node: e2e-node-2
+    context_id: '{{context_id}}'
+    method: get_handler_execution_count
+    outputs:
+      count_node2_after: result.output
+
+  - name: Assert the counter converged across nodes
+    type: assert
+    statements:
+      # G-Counter increments made on node-1 must be visible on node-2 verbatim.
+      # Comparing the two READS (rather than a literal) is what makes this a
+      # convergence assertion rather than a restatement of the arithmetic.
+      #
+      # A plain `assert` with `==`, not `json_assert`: both operands are now bare
+      # numbers via `result.output`, so there is no JSON envelope left to compare.
+      - "{{count_node2_after}} == {{count_after_direct}}"
+
+stop_all_nodes: false

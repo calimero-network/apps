@@ -1,0 +1,232 @@
+name: E2E KV Store - Group Nesting
+description: >
+  Tests subgroup tree-shape operations using the strict-tree
+  reparent_group primitive. The old nest_group / unnest_group steps were
+  removed because orphan state was reachable through them; reparent_group
+  is the single atomic edge swap that replaces both.
+
+    1. Create child group via create_group_in_namespace, verify in listing
+    2. Create a sibling group, then reparent the child under it ("unnest"
+       from namespace), verify the child is no longer a namespace child
+    3. Reparent the child back under the namespace ("re-nest"), verify it
+       reappears in the namespace's subgroup list
+    4. Verify namespace root context is unaffected through all transitions
+
+force_pull_image: false
+nuke_on_start: true
+near_devnet: false
+
+nodes:
+  count: 2
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.26
+  # rc.26 made mDNS opt-in (core#3620) and merobox does not pass the flag,
+  # so discovery changed at the image bump. Stated, not inherited.
+  mdns: true
+  prefix: e2e-node
+
+steps:
+  # --- Setup ---
+
+  - name: Install application on node-1
+    type: install_application
+    node: e2e-node-1
+    path: res/scaffolding_e2e.wasm
+    dev: true
+    outputs:
+      app_id: applicationId
+
+  - name: Assert application installed
+    type: assert
+    statements:
+      - "is_set({{app_id}})"
+
+  - name: Create namespace (parent group)
+    type: create_namespace
+    node: e2e-node-1
+    application_id: '{{app_id}}'
+    outputs:
+      parent_id: namespaceId
+
+  - name: Assert namespace created
+    type: assert
+    statements:
+      - "is_set({{parent_id}})"
+
+  - name: Invite node-2
+    type: create_namespace_invitation
+    node: e2e-node-1
+    namespace_id: '{{parent_id}}'
+    outputs:
+      invite: invitation
+
+  - name: Node-2 joins namespace
+    type: join_namespace
+    node: e2e-node-2
+    namespace_id: '{{parent_id}}'
+    invitation: '{{invite}}'
+
+  # Create a root context to verify it survives nest/unnest
+  - name: Create root context
+    type: create_context
+    node: e2e-node-1
+    application_id: '{{app_id}}'
+    group_id: '{{parent_id}}'
+    outputs:
+      root_ctx_id: contextId
+
+  - name: Node-2 joins root context
+    type: join_context
+    node: e2e-node-2
+    context_id: '{{root_ctx_id}}'
+
+  - name: Write baseline to root context
+    type: call
+    node: e2e-node-1
+    context_id: '{{root_ctx_id}}'
+    method: set
+    args:
+      key: "baseline"
+      value: "before_nesting"
+
+  - name: Wait for baseline sync
+    type: wait_for_sync
+    context_id: '{{root_ctx_id}}'
+    nodes:
+      - e2e-node-1
+      - e2e-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Node-2 reads baseline
+    type: call
+    node: e2e-node-2
+    context_id: '{{root_ctx_id}}'
+    method: get
+    args:
+      key: "baseline"
+    outputs:
+      baseline_read: result
+
+  - name: Assert baseline synced
+    type: json_assert
+    statements:
+      - 'json_equal({{baseline_read}}, {"output": "before_nesting"})'
+
+  # --- SCENARIO 1: Create child group, verify in listing ---
+
+  - name: Create child group via namespace
+    type: create_group_in_namespace
+    node: e2e-node-1
+    namespace_id: '{{parent_id}}'
+    group_name: nestable-child
+    outputs:
+      child_id: groupId
+
+  - name: Assert child group created
+    type: assert
+    statements:
+      - "is_set({{child_id}})"
+
+  - name: List subgroups after creation
+    type: list_subgroups
+    node: e2e-node-1
+    group_id: '{{parent_id}}'
+    outputs:
+      subs_after_create: subgroups
+
+  - name: Assert child is listed as subgroup
+    type: assert
+    statements:
+      - "is_set({{subs_after_create}})"
+
+  # --- SCENARIO 2: Unnest by reparenting child under a sibling group ---
+
+  - name: Create sibling group under namespace
+    type: create_group_in_namespace
+    node: e2e-node-1
+    namespace_id: '{{parent_id}}'
+    group_name: sibling
+    outputs:
+      sibling_id: groupId
+
+  - name: Assert sibling created
+    type: assert
+    statements:
+      - "is_set({{sibling_id}})"
+
+  - name: Reparent child under sibling (unnest from namespace)
+    type: reparent_group
+    node: e2e-node-1
+    child_group_id: '{{child_id}}'
+    new_parent_id: '{{sibling_id}}'
+
+  - name: List subgroups of sibling after reparent
+    type: list_subgroups
+    node: e2e-node-1
+    group_id: '{{sibling_id}}'
+    outputs:
+      subs_under_sibling: subgroups
+
+  - name: Assert child is now under sibling
+    type: assert
+    statements:
+      - "is_set({{subs_under_sibling}})"
+
+  # --- SCENARIO 3: Re-nest by reparenting child back under namespace ---
+
+  - name: Reparent child back under namespace
+    type: reparent_group
+    node: e2e-node-1
+    child_group_id: '{{child_id}}'
+    new_parent_id: '{{parent_id}}'
+
+  - name: List subgroups after re-nest
+    type: list_subgroups
+    node: e2e-node-1
+    group_id: '{{parent_id}}'
+    outputs:
+      subs_after_renest: subgroups
+
+  - name: Assert child reappears as namespace subgroup
+    type: assert
+    statements:
+      - "is_set({{subs_after_renest}})"
+
+  # --- SCENARIO 4: Root context unaffected by nest/unnest ---
+
+  - name: Write after nest/unnest cycle
+    type: call
+    node: e2e-node-1
+    context_id: '{{root_ctx_id}}'
+    method: set
+    args:
+      key: "after_nesting"
+      value: "still_works"
+
+  - name: Wait for sync after nesting ops
+    type: wait_for_sync
+    context_id: '{{root_ctx_id}}'
+    nodes:
+      - e2e-node-1
+      - e2e-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Node-2 reads after nesting cycle
+    type: call
+    node: e2e-node-2
+    context_id: '{{root_ctx_id}}'
+    method: get
+    args:
+      key: "after_nesting"
+    outputs:
+      after_nest_read: result
+
+  - name: Assert root context works after nest/unnest
+    type: json_assert
+    statements:
+      - 'json_equal({{after_nest_read}}, {"output": "still_works"})'
+
+stop_all_nodes: false

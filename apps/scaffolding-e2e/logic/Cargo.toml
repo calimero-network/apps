@@ -1,0 +1,111 @@
+[package]
+name = "scaffolding-e2e"
+# NOT the release version. cargo requires a version field, but
+# .github/workflows/deploy-bundle.yml ignores it: the registry owns the number —
+# the check job takes the highest published appVersion and increments the patch
+# (0.0.1 when nothing is published yet). Bumping this changes nothing about what
+# gets released, so do not read a shipped version out of the tree; read it from
+# the registry or the workflow's run summary.
+version = "0.0.2"
+# Inherited from [workspace.package] rather than repeated: the monorepo owns
+# edition/authors/license/repository for every app, so a change is one edit.
+edition.workspace    = true
+authors.workspace    = true
+license.workspace    = true
+repository.workspace = true
+publish = false
+
+[lib]
+# `rlib` alongside `cdylib`: cdylib is the wasm artifact the bundle ships, and
+# rlib is what lets tests/converge.rs link this crate as a normal Rust library.
+# Without it an integration test cannot `use scaffolding_e2e::…` at all — which
+# is part of why this 130-method contract had no hand-written tests.
+crate-type = ["cdylib", "rlib"]
+
+# Read by `cargo mero bundle` (core #3374): every field the node and the registry
+# render has a producer here, so nothing hand-writes a manifest.json any more.
+# `appVersion` is deliberately absent — deploy-bundle.yml resolves it from the
+# registry and passes it as --app-version.
+[package.metadata.calimero]
+package = "com.calimero.scaffolding-e2e"
+name = "Scaffolding E2E"
+description = "Calimero full-stack scaffold — KV, CRDTs, blobs, private storage, and namespace management with an interactive test suite."
+author = "Calimero"
+license = "MIT OR Apache-2.0"
+# Defaults to the package id anyway; spelled out because the desktop and
+# links.calimero.network resolve a deep link by Application.package, so the two
+# must never drift apart.
+slug = "com.calimero.scaffolding-e2e"
+# `cargo mero bundle` REQUIRES an icon decision at rc.20 — a path, "default", or
+# --no-icon. This is the frontend's own favicon rasterized to 512x512 (the
+# 32x32 favicon.png is too small), embedded into the manifest as a data: URI.
+# Regenerate with `logic/gen-icon.sh`.
+icon = "res/icon-512.png"
+tags = ["scaffold", "example", "crdt", "testing"]
+github = "https://github.com/calimero-network/apps"
+# Keep this equal to the calimero-sdk tag below. It is NOT decoration: this
+# build imports host functions that only exist from that release on, so a node
+# older than this installs the bundle happily and then dies at context creation
+# with `link error: unknown import`.
+min-runtime-version = "0.11.0-rc.26"
+# Where the desktop app and links.calimero.network send a deep link for this
+# package. The hosted build is the same `frontend/` in this repo (Vercel project
+# root = `frontend`); it still talks to whatever node the user connects to from
+# its own connect screen, so hosting it does not tie it to any node. Running it
+# locally (`cd frontend && pnpm dev`) stays fully supported and is what the
+# README walks through.
+#
+# ⚠️ This is NOT only a deep link. The auth frontend treats the registry-declared
+# frontend origin as this app's registered redirect URI: a hosted page is trusted
+# to receive tokens only when its origin matches this URL (loopback and the node's
+# own origin are always trusted, so local development never notices). Point this at
+# the wrong host and login on the hosted build dies with
+#
+#     Login callback destination is not allowed.
+#
+# …which is exactly what happened while this said `scaffolding-e2e.vercel.app`, a
+# project that does not exist, and the app was deployed as
+# `scaffolding-e2e-application.vercel.app`. If the Vercel project is ever renamed,
+# this must be updated AND the bundle republished — the manifest in the registry is
+# what auth reads, not this file.
+frontend = "https://scaffolding-e2e-application.vercel.app/"
+
+[dependencies]
+# Pin a real release tag, never `branch = "master"`: master rides unreleased
+# protocol work against nodes that run the release. All SDK crates must share
+# the exact same tag (the workspace version at a tag is 0.0.0, so version
+# strings cannot express this).
+# `tracing` routes the `tracing` macros — this crate's and `calimero-storage`'s
+# — through the host log, which is what `tracing_probe` exists to prove. Off by
+# default upstream because the subscriber costs wasm size; this is a scaffold, so
+# covering the surface wins over the bytes.
+calimero-sdk            = { workspace = true, features = ["tracing"] }
+calimero-storage        = { workspace = true }
+calimero-storage-macros = { workspace = true }
+thiserror = "1.0.56"
+sha2      = "0.10.8"
+hex       = "0.4.3"
+bs58      = "0.5.0"
+# Same pin core's workspace uses at 0.11.0-rc.25. It has to resolve to the SAME
+# `tracing` as the SDK's: the subscriber is registered per `tracing` crate
+# instance, so two semver-incompatible copies would leave this crate's macros
+# talking to a subscriber that forwards nowhere.
+tracing   = "0.1.37"
+
+# Integration tests in tests/ do NOT inherit the crate's [dependencies] — only
+# dev-dependencies and the crate itself — so anything tests/converge.rs uses has
+# to be listed again here even though [dependencies] already has it.
+[dev-dependencies]
+# `testing` enables register_crdt_merge + the native mock host, which is what
+# makes `calimero_storage::testing::converge_app` able to drive CRDT state under
+# `cargo test`. Without the feature the module does not exist.
+calimero-storage = { workspace = true, features = ["testing"] }
+
+# No [build-dependencies] / build.rs any more: the old build.rs re-parsed
+# src/lib.rs with calimero-wasm-abi's syn emitter to produce res/abi.json.
+# `cargo mero build` emits res/abi.json and res/state-schema.json itself, from
+# the compiler-resolved `__calimero_abi()` — which is why type aliases and
+# re-exports now resolve correctly instead of silently dropping types.
+
+# `[profile.*]` lives at the workspace root. Cargo IGNORES a profile in a
+# member and then hard-errors on it, so this is not stylistic.
