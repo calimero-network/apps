@@ -157,16 +157,34 @@ export function useAppNotifications(currentChatId?: string) {
    * Notify for a new channel message
    */
   const notifyChannel = useCallback(
-    (messageId: string, channelName: string, sender: string, text: string) => {
+    (
+      messageId: string,
+      channelName: string,
+      sender: string,
+      text: string,
+      /**
+       * Whether this message mentions the reader — directly or via
+       * `@everyone`/`@here`.
+       *
+       * A mention was previously indistinguishable from any other message
+       * here: same title, same low priority, same easily-missed toast. The
+       * channel badge counted it, but nothing announced it. `notify` already
+       * treats "mention" as directed — higher priority, and it breaks through
+       * when the app is unfocused — so this only needed telling.
+       */
+      isMention: boolean = false,
+    ) => {
       const truncatedText = notificationPreview(text);
 
       notify({
-        title: `${sender} in #${channelName}`,
+        title: isMention
+          ? `${sender} mentioned you in #${channelName}`
+          : `${sender} in #${channelName}`,
         message: truncatedText,
-        type: "channel",
+        type: isMention ? "mention" : "channel",
       });
 
-      playSoundForMessage(messageId, "channel", false);
+      playSoundForMessage(messageId, isMention ? "mention" : "channel", isMention);
     },
     [notify, playSoundForMessage],
   );

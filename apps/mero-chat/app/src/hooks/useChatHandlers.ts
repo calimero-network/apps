@@ -12,6 +12,7 @@ import type {
 } from "../types/WebSocketTypes";
 import { nameRepository } from "../repositories/names/useNames";
 import { bytesParser } from "../utils/bytesParser";
+import { messageMentionsMe } from "../utils/mentionsMe";
 import { isSelfSender } from "../utils/selfIdentity";
 
 /**
@@ -59,7 +60,8 @@ interface ChatHandlersRefs {
       messageId: string,
       channelName: string,
       sender: string,
-      text: string
+      text: string,
+      isMention?: boolean
     ) => void
   >;
   notifyThread: React.MutableRefObject<
@@ -198,7 +200,8 @@ export function useChatHandlers(
                   lastMessage.id,
                   channelName,
                   resolveSenderName(lastMessage.sender),
-                  lastMessage.text
+                  lastMessage.text,
+                  messageMentionsMe(lastMessage, contextId)
                 );
               }
             }
@@ -346,12 +349,13 @@ export function useChatHandlers(
                 contextName,
                 resolveSenderName(msg.sender),
                 msg.text,
+                messageMentionsMe(msg, contextId),
               );
             }
             refs.playSoundForMessage.current(
               msg.id,
               isDMContext ? "dm" : "channel",
-              false,
+              !isDMContext && messageMentionsMe(msg, contextId),
             );
           }
         }

@@ -20,6 +20,7 @@ import type { ResponseData } from "../api/types";
 import { getMeroJs } from "../api/meroJsClient";
 import { ClientApiDataSource } from "../api/dataSource/clientApiDataSource";
 import { extractUsernames } from "../utils/mentions";
+import { mentionCandidates } from "../utils/mentionCandidates";
 import { RichTextEditor } from "@calimero-network/mero-ui";
 
 import { formatTyping, useEphemeralPresence } from "../hooks/useEphemeralPresence";
@@ -718,7 +719,11 @@ export default function MessageInput({
       .getChannelMembers({ channel: { name: selectedChat } })
       .then((resp) => {
         if (resp.data) {
-          channelMembersRef.current = Array.from(resp.data.values());
+          // Everyone in the channel EXCEPT you — see mentionCandidates.
+          channelMembersRef.current = mentionCandidates(
+            resp.data,
+            getContextId() || "",
+          );
         }
       });
   }, [selectedChat, clearUploadedFile, clearUploadedImage]);

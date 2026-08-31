@@ -107,6 +107,17 @@ export interface Message {
   files?: AttachmentResponse[];
   images?: AttachmentResponse[];
   parent_message_id?: string;
+  /**
+   * Accounts this message mentions directly. Sent by the contract on every
+   * message and previously untyped here, which is why it was dropped on
+   * arrival even though the sender had carefully recorded it.
+   */
+  mentions?: UserId[];
+  /**
+   * Display names this message mentions, plus the reserved broadcast words
+   * `everyone` / `here` — the contract stores both in one list.
+   */
+  mentions_usernames?: string[];
 }
 
 export interface MessageWithReactions extends Message {
