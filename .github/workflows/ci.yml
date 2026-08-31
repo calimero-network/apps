@@ -360,7 +360,17 @@ jobs:
       - uses: ./.github/actions/install-cargo-mero
 
       - name: Build
-        run: cargo mero build -p ${{ matrix.app }}
+        # Per-app wasm RUSTFLAGS, if the app ships a `logic/wasm-rustflags` file.
+        # cargo-mero blanks RUSTFLAGS when unset (so a .cargo/config.toml is
+        # ignored) but respects an ambient one. p2p-sheets needs
+        # `-Ctarget-feature=-nontrapping-fptoint`: its recalc engine casts
+        # f64->i64, which lowers to the `i64.trunc_sat_f64_s` opcode that
+        # cargo-mero's bundled wasm-opt rejects. The flag lowers the SAME
+        # saturating cast without that opcode. Additive — other apps have no file.
+        run: |
+          f="apps/${{ matrix.app }}/logic/wasm-rustflags"
+          [ -f "$f" ] && export RUSTFLAGS="$(tr -d '\n' < "$f")"
+          cargo mero build -p ${{ matrix.app }}
 
       # `cargo mero build` resolves the ABI from the compiled `__calimero_abi()`,
       # so this is the authoritative copy. A stale committed ABI would let the

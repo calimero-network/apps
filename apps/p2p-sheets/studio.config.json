@@ -16,7 +16,7 @@
   "services": [
     {
       "name": "spreadsheet",
-      "crate": "p2p-sheets-spreadsheet"
+      "crate": "p2p-sheets"
     }
   ]
 }

@@ -12,7 +12,7 @@
 //! registry per run.
 
 use calimero_storage::testing::converge_app;
-use p2p_sheets_spreadsheet::Spreadsheet;
+use p2p_sheets::Spreadsheet;
 use serial_test::serial;
 
 #[test]

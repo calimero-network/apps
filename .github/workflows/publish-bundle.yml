@@ -284,6 +284,11 @@ jobs:
           PACKAGE: ${{ needs.check.outputs.package }}
           VERSION: ${{ needs.check.outputs.version }}
         run: |
+          # Per-app wasm RUSTFLAGS (see ci.yml Build). p2p-sheets needs
+          # -Ctarget-feature=-nontrapping-fptoint or wasm-opt rejects its
+          # recalc engine's trunc_sat. Additive: no file, no flag.
+          f="apps/$APP/logic/wasm-rustflags"
+          [ -f "$f" ] && export RUSTFLAGS="$(tr -d '\n' < "$f")"
           cargo mero bundle \
             --manifest-path "apps/$APP/logic/Cargo.toml" \
             --key "$RUNNER_TEMP/mero-sign-key.json" \

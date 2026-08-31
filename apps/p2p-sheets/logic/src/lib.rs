@@ -166,7 +166,11 @@ pub struct Cell {
 
 #[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
 #[serde(crate = "calimero_sdk::serde")]
-#[serde(tag = "kind")]
+// Adjacently tagged as {name, payload} — the canonical calimero enum wire form
+// that `AbiType` describes and `calimero-abi-codegen` generates a client for.
+// (`tag = "kind"` produced a flat {kind, ...} wire the ABI never reflected, so
+// the generated client and the contract disagreed on the wire.)
+#[serde(tag = "name", content = "payload")]
 pub enum CellOp {
     Set {
         row: u32,

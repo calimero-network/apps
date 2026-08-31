@@ -18,7 +18,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMero, useSubscription } from '@calimero-network/mero-react';
 import { SpreadsheetClient } from '../api/spreadsheet/SpreadsheetClient';
-import type { Sheet, Cell, Cursor, FunctionDef, CellOp } from '../api/spreadsheet/SpreadsheetClient';
+import type { Sheet, Cell, Cursor, FunctionDef } from '../api/spreadsheet/SpreadsheetClient';
+import { CellOp as CellOpWire } from '../api/spreadsheet/SpreadsheetClient';
+import type { CellOp } from '../spreadsheet/ops';
 import { initEngine, engineReady, evaluate as engineEvaluate } from '../engine/engine';
 import {
   snapshotFromCells, retireOverlay, deriveActiveCells, diffComputed, cellKey,
@@ -355,7 +357,13 @@ export function useSpreadsheet({
         : op.kind === 'Format' ? { row: op.row, col: op.col, format: op.format }
         : { row: op.row, col: op.col, clear: true },
       ));
-      await enqueue(() => client.applyCellOps({ sheet_id: sheetId, ops }));
+      const wire = ops.map((op) =>
+        op.kind === 'Set'
+          ? CellOpWire.Set({ row: op.row, col: op.col, raw_value: op.raw_value })
+          : op.kind === 'Format'
+            ? CellOpWire.Format({ row: op.row, col: op.col, format: op.format })
+            : CellOpWire.Clear({ row: op.row, col: op.col }));
+      await enqueue(() => client.applyCellOps({ sheet_id: sheetId, ops: wire }));
     },
     [client, applyOverlay, enqueue],
   );
