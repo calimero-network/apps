@@ -310,9 +310,80 @@ def test_pnpm() -> None:
     )
 
 
+# ── pnpm-workspace.yaml (the catalog source) ────────────────────────────────
+#
+# The negative cases carry the weight here. This file is heavily commented, and
+# every migration PR adds catalog entries for dependencies only the arriving app
+# has — so a rule that answered "all" for those would be indistinguishable from
+# the flat trigger this replaced, while still passing any test that only asserts
+# the positive direction.
+
+WS_BASE = """\
+packages:
+  - "apps/*/app"
+
+catalog:
+  # ── Calimero ──
+  "@calimero-network/mero-js": ^13.2.5
+  react: ^19.0.0
+  vite: ^6.4.3
+
+onlyBuiltDependencies:
+  - esbuild
+"""
+
+
+def test_catalog() -> None:
+    print("pnpm-workspace.yaml")
+    check(
+        "catalog: identical file does not fan out",
+        lf.catalog_fanout(WS_BASE, WS_BASE),
+        [],
+    )
+    check(
+        "catalog: a NEW entry an arriving app needs does not fan out",
+        lf.catalog_fanout(WS_BASE, WS_BASE.replace("  vite: ^6.4.3", "  vite: ^6.4.3\n  zustand: ^5.0.5")),
+        [],
+    )
+    check(
+        "catalog: a reworded comment does not fan out",
+        lf.catalog_fanout(WS_BASE, WS_BASE.replace("  # ── Calimero ──", "  # ── Calimero SDK ──")),
+        [],
+    )
+    check(
+        "catalog: bumping an existing entry fans out",
+        lf.catalog_fanout(WS_BASE, WS_BASE.replace("vite: ^6.4.3", "vite: ^7.0.0")),
+        [lf.ALL],
+    )
+    check(
+        "catalog: deleting an existing entry fans out",
+        lf.catalog_fanout(WS_BASE, WS_BASE.replace("  react: ^19.0.0\n", "")),
+        [lf.ALL],
+    )
+    check(
+        "catalog: changing the workspace globs fans out",
+        lf.catalog_fanout(WS_BASE, WS_BASE.replace('  - "apps/*/app"', '  - "apps/*/app"\n  - "packages/*"')),
+        [lf.ALL],
+    )
+    check(
+        "catalog: changing build settings fans out",
+        lf.catalog_fanout(WS_BASE, WS_BASE.replace("  - esbuild", "  - esbuild\n  - sharp")),
+        [lf.ALL],
+    )
+    check(
+        "catalog: a named catalog keeps its entries distinct",
+        lf.catalog_fanout(
+            WS_BASE + "\ncatalogs:\n  legacy:\n    react: ^18.0.0\n",
+            WS_BASE + "\ncatalogs:\n  legacy:\n    react: ^18.3.0\n",
+        ),
+        [lf.ALL],
+    )
+
+
 if __name__ == "__main__":
     test_cargo()
     test_pnpm()
+    test_catalog()
     print()
     if FAILURES:
         print(f"{len(FAILURES)} failure(s): {', '.join(FAILURES)}")
