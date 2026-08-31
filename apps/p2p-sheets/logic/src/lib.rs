@@ -142,7 +142,7 @@ impl Mergeable for CursorData {
 // View types returned to callers (must derive Serialize + Deserialize)
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct Sheet {
     pub id: String,
@@ -151,7 +151,7 @@ pub struct Sheet {
     pub created_at: u64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct Cell {
     pub id: String,
@@ -164,7 +164,7 @@ pub struct Cell {
     pub updated_at: u64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
 #[serde(crate = "calimero_sdk::serde")]
 #[serde(tag = "kind")]
 pub enum CellOp {
@@ -184,7 +184,7 @@ pub enum CellOp {
     },
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct Cursor {
     /// Same as `author` — the pubkey b58 that uniquely identifies this cursor.
@@ -197,7 +197,7 @@ pub struct Cursor {
     pub updated_at: u64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct FunctionDef {
     pub name: String,
