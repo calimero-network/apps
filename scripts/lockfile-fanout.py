@@ -27,11 +27,20 @@ importer's own block, or a version disappearing from the shared `packages:` /
 `snapshots:` maps (a bump removes the old line; a pure addition removes nothing).
 `catalogs:`, `settings:` and `overrides:` are workspace-wide by definition.
 
+pnpm-workspace.yaml is the catalog SOURCE, and it was a flat trigger for the same
+reason the lockfiles were: any edit covered every app. But the catalog is a map,
+and an app arriving with dependencies no one else has only ADDS keys to it —
+which cannot change what another app resolves, exactly like a new importer block.
+What can: an existing entry's version moving or being deleted, and any change
+outside the catalog (`packages:` globs, `onlyBuiltDependencies`, …), which is
+workspace configuration by definition.
+
 USAGE
 
-  lockfile-fanout.py cargo --base-file A --head-file B
-  lockfile-fanout.py pnpm  --base-file A --head-file B
-  lockfile-fanout.py {cargo,pnpm} --base REV --head REV [--path FILE]
+  lockfile-fanout.py cargo   --base-file A --head-file B
+  lockfile-fanout.py pnpm    --base-file A --head-file B
+  lockfile-fanout.py catalog --base-file A --head-file B
+  lockfile-fanout.py {cargo,pnpm,catalog} --base REV --head REV [--path FILE]
 
 Prints either the single word `all`, or zero or more paths whose apps this
 change reaches (for pnpm: the importer directories), one per line. Empty output
@@ -194,15 +203,100 @@ def pnpm_fanout(base: str, head: str) -> list[str]:
     return sorted(touched)
 
 
+# ── pnpm-workspace.yaml (the catalog source) ────────────────────────────────
+
+# The only sections whose contents are a map of name -> version that an app may
+# extend without consequence. `catalogs:` is the named-catalog form of the same
+# thing. Everything else at top level — `packages:`, `onlyBuiltDependencies:`,
+# `allowBuilds:`, `overrides:` — is workspace configuration, where any edit is
+# everyone's business.
+CATALOG_SECTIONS = ("catalog", "catalogs")
+
+
+def catalog_entries(section_lines: list[str]) -> dict[str, str]:
+    """{dependency: version} out of a catalog section, ignoring comments.
+
+    Comments are dropped on purpose: a reworded comment above a catalog entry
+    changes no resolution, and treating it as one would put this right back to
+    fanning out on every edit.
+
+    Named catalogs (`catalogs: <name>: <dep>: <ver>`) are flattened with the
+    catalog name in the key, so two catalogs pinning the same dependency to
+    different versions stay distinct.
+    """
+    entries: dict[str, str] = {}
+    group = ""
+    for line in section_lines:
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        indent = len(line) - len(line.lstrip())
+        if indent == 0:
+            continue  # the section key itself
+        if ":" not in stripped:
+            continue
+        key, _, value = stripped.partition(":")
+        key = key.strip().strip("'\"")
+        value = value.strip()
+        if not value:
+            # A named catalog opens a nested block; remember whose it is.
+            group = key
+            continue
+        entries[f"{group}/{key}" if group else key] = value
+    return entries
+
+
+def _strip_comments(text: str) -> str:
+    """Drop comment-only and blank lines.
+
+    Needed before sectioning, not just when comparing: a comment at column 0
+    looks exactly like a top-level key to `pnpm_sections`, so a reworded comment
+    above `catalog:` would invent a section and fan out to every app. This file
+    is heavily commented by design, which makes that the common case rather than
+    a corner one.
+    """
+    return "\n".join(
+        line
+        for line in text.splitlines()
+        if line.strip() and not line.strip().startswith("#")
+    )
+
+
+def catalog_fanout(base: str, head: str) -> list[str]:
+    before = pnpm_sections(_strip_comments(base))
+    after = pnpm_sections(_strip_comments(head))
+
+    # Anything that is not a catalog is workspace configuration.
+    for key in set(before) | set(after):
+        if key in CATALOG_SECTIONS:
+            continue
+        if before.get(key) != after.get(key):
+            return [ALL]
+
+    for key in CATALOG_SECTIONS:
+        b = catalog_entries(before.get(key, []))
+        a = catalog_entries(after.get(key, []))
+        for dep, version in b.items():
+            # Moved or removed. A pure addition leaves every existing pin alone,
+            # so no other app's resolution can have changed.
+            if a.get(dep) != version:
+                return [ALL]
+    return []
+
+
 # ── entry point ─────────────────────────────────────────────────────────────
 
 
-DEFAULT_PATHS = {"cargo": "Cargo.lock", "pnpm": "pnpm-lock.yaml"}
+DEFAULT_PATHS = {
+    "cargo": "Cargo.lock",
+    "pnpm": "pnpm-lock.yaml",
+    "catalog": "pnpm-workspace.yaml",
+}
 
 
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("kind", choices=["cargo", "pnpm"])
+    parser.add_argument("kind", choices=["cargo", "pnpm", "catalog"])
     parser.add_argument("--base")
     parser.add_argument("--head", default="HEAD")
     parser.add_argument("--path")
@@ -235,7 +329,11 @@ def main(argv: list[str]) -> int:
             return 0
         base, head = base_text, head_text
 
-    fanout = cargo_fanout(base, head) if args.kind == "cargo" else pnpm_fanout(base, head)
+    fanout = {
+        "cargo": cargo_fanout,
+        "pnpm": pnpm_fanout,
+        "catalog": catalog_fanout,
+    }[args.kind](base, head)
     for line in fanout:
         print(line)
     return 0
