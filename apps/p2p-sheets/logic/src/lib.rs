@@ -9,7 +9,9 @@ use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use calimero_sdk::env;
 use calimero_sdk::serde::{Deserialize, Serialize};
 use calimero_sdk::types::Error as AppError;
+use calimero_storage::address::Id;
 use calimero_storage::collections::crdt_meta::MergeError;
+use calimero_storage::collections::rekey::RekeyTarget;
 use calimero_storage::collections::{AuthoredMap, LwwRegister, Mergeable, UnorderedMap};
 use calimero_storage::env as storage_env;
 use p2p_sheets_recalc::recalc;
@@ -33,6 +35,12 @@ pub struct SheetData {
     pub created_at: u64,
     /// Timestamp of the last rename — used for LWW name merge.
     pub updated_at: u64,
+}
+
+// Flat record (no nested Calimero collections) -> no-op re-key; required by
+// the `Mergeable: RekeyTarget` supertrait bound (rc.9+).
+impl RekeyTarget for SheetData {
+    fn rekey_relative_to(&mut self, _parent_id: Id) {}
 }
 
 impl Mergeable for SheetData {
@@ -75,6 +83,12 @@ pub struct CellData {
     pub updated_at: u64,
 }
 
+// Flat record (no nested Calimero collections) -> no-op re-key; required by
+// the `Mergeable: RekeyTarget` supertrait bound (rc.9+).
+impl RekeyTarget for CellData {
+    fn rekey_relative_to(&mut self, _parent_id: Id) {}
+}
+
 impl Mergeable for CellData {
     fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
         // LWW: newer update wins; deterministic tie-break by raw_value.
@@ -99,6 +113,12 @@ pub struct CursorData {
     /// Hex colour assigned deterministically from the author pubkey.
     pub color: String,
     pub updated_at: u64,
+}
+
+// Flat record (no nested Calimero collections) -> no-op re-key; required by
+// the `Mergeable: RekeyTarget` supertrait bound (rc.9+).
+impl RekeyTarget for CursorData {
+    fn rekey_relative_to(&mut self, _parent_id: Id) {}
 }
 
 impl Mergeable for CursorData {
