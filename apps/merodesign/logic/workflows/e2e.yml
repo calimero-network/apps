@@ -10,7 +10,7 @@ wait_timeout: 120
 nodes:
   chain_id: testnet-1
   count: 2
-  image: ghcr.io/calimero-network/merod:0.11.0-rc.26
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.28
   # rc.26 made mDNS opt-in (core#3620) and merobox does not pass the flag,
   # so discovery changed at the image bump. Stated, not inherited.
   mdns: true
@@ -20,7 +20,7 @@ steps:
   - name: Install Application on Node 1
     type: install_application
     node: calimero-node-1
-    path: "../logic/res/merodesign.wasm"
+    path: res/merodesign.wasm
     dev: true
     outputs:
       app_id: applicationId
@@ -28,7 +28,7 @@ steps:
   - name: Install Application on Node 2
     type: install_application
     node: calimero-node-2
-    path: "../logic/res/merodesign.wasm"
+    path: res/merodesign.wasm
     dev: true
 
   # `create_namespace`, not `create_group`: merobox renamed the namespace verbs

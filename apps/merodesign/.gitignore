@@ -1,7 +1,10 @@
 # Rust / WASM
 logic/target/
-# `cargo mero build` output (wasm + emitted ABI/state schema)
-logic/res/
+# NOT `logic/res/`. That is what this file said, inherited from the standalone
+# repo, and it hid `logic/res/abi.json` and `logic/res/state-schema.json` from
+# git — so ci.yml's ABI-staleness gate had nothing to diff and passed while
+# checking nothing (`git add --intent-to-add` skips IGNORED files silently).
+# The root .gitignore already ignores the build output, `apps/*/logic/res/*.wasm`.
 # `cargo mero bundle` output (signed .mpk)
 logic/dist/
 *.wasm

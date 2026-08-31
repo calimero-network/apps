@@ -39,7 +39,7 @@ interface Props {
   /**
    * The group id (hex 32 bytes) to query members/roles against. For a team this
    * is the namespace id (same as `id`). For a project this is the subgroup id —
-   * NOT the base58 context id, which the /groups/{id}/members endpoint rejects
+   * NOT the context id, which the /groups/{id}/members endpoint rejects
    * with "Invalid group id format: expected hex-encoded 32 bytes".
    */
   groupId?: string;

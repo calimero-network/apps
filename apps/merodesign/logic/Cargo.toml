@@ -38,7 +38,7 @@ github = "https://github.com/calimero-network/mero-design"
 # placeholder floor, not a claim anyone verified — while the contract called
 # host functions no runtime that old has, so the bundle advertised that it ran
 # on a node where it cannot even instantiate.
-min-runtime-version = "0.11.0-rc.26"
+min-runtime-version = "0.11.0-rc.28"
 frontend = "https://mero-design.vercel.app/"
 
 [dependencies]

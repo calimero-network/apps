@@ -145,7 +145,8 @@ export default function ProjectsPage() {
     setCreating(true);
     try {
       // Resolve the app id up front. Never POST an empty one — the node rejects
-      // it ("applicationId: invalid length 0, expected a base58 encoded hash").
+      // it ("applicationId: invalid length 0" — the node said "base58 encoded
+      // hash" before rc.27; it is hex now, but an empty id is rejected either way).
       const appId = await ensureAppId();
       if (!appId) {
         showToast("Select or install the MeroDesign application first.");
@@ -181,7 +182,7 @@ export default function ProjectsPage() {
       const id = ctxData.contextId ?? ctxData.id ?? "";
       // Store the same group the context was created under (`subgroupId || teamId`).
       // If the subgroup create returned no id, an empty groupId would make Settings
-      // fall back to the base58 contextId for `/groups/{id}/members`, which the admin
+      // fall back to the contextId for `/groups/{id}/members`, which the admin
       // API rejects.
       setProjects((prev) => [
         ...prev,

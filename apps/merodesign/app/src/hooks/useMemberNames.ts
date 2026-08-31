@@ -10,7 +10,7 @@ import type { Member } from "../types";
  * maintains it. Nothing was joining the two.
  *
  * Falls back to a shortened id so an identity with no member record still renders
- * something recognisable instead of crashing or showing 44 characters of base58.
+ * something recognisable instead of crashing or showing 64 characters of hex.
  */
 export function shortIdentity(identity: string): string {
   if (!identity) return "unknown";
