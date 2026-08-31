@@ -1,0 +1,119 @@
+.editor {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+  background: var(--bg-0);
+}
+
+.body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+/* Canvas area: optionally wrapped by top/left precision rulers (a 2×2 grid). */
+.canvasArea {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+}
+.canvasArea.withRulers {
+  --ruler: 22px;
+  display: grid;
+  grid-template-columns: var(--ruler) 1fr;
+  grid-template-rows: var(--ruler) 1fr;
+}
+.rulerCorner {
+  background: #15191f;
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.rulerTop { border-bottom: 1px solid var(--border); overflow: hidden; }
+.rulerLeft { border-right: 1px solid var(--border); overflow: hidden; }
+.canvasCell {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  position: relative;
+}
+.canvasArea:not(.withRulers) .canvasCell { flex: 1; }
+
+.rightDock {
+  display: flex;
+  flex-direction: column;
+  width: var(--panel-w);
+  flex-shrink: 0;
+  border-left: 1px solid var(--border);
+  background: var(--bg-1);
+  min-height: 0;
+  /* the whole dock scrolls when its panels don't fit (collapsed panels shrink
+     to just their header so this rarely triggers, but it never clips) */
+  overflow-y: auto;
+}
+
+/* Each dockable panel is its own section; sections size to content, the Layers
+   section grows to fill any leftover height. */
+.dockSection {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+  border-bottom: 1px solid var(--border);
+}
+.dockSection:last-child { border-bottom: none; }
+
+.dockGrow {
+  flex: 1 1 auto;
+  min-height: 180px;
+}
+
+.loading {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(10, 14, 19, 0.85);
+  color: var(--text-dim);
+  font-size: 14px;
+  z-index: 2000;
+}
+
+.fatal {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-dim);
+  text-align: center;
+  padding: 24px;
+}
+
+.maskBanner {
+  position: fixed;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--accent);
+  color: var(--accent-text);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 8px 14px;
+  border-radius: 20px;
+  box-shadow: var(--shadow);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  z-index: 1500;
+}
+.maskBanner button {
+  background: rgba(10, 14, 19, 0.2);
+  color: var(--accent-text);
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 12px;
+}
