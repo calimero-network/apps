@@ -10,7 +10,7 @@ export function shortPk(pk: string): string {
 
 /**
  * FEATURE (missing names): expose team members + a pubkey→display-name resolver.
- * Owners and peers are stored as base58 public keys; `displayName(pk)` returns
+ * Owners and peers are stored as hex account ids; `displayName(pk)` returns
  * the member's username when known, falling back to a short pubkey.
  */
 export function useMembers() {

@@ -5,7 +5,7 @@ export interface IModalValues extends IValidatorData {
   title: string;
   startDate: Date;
   endDate: Date;
-  // peers are a real string[] of base58 public keys (see types/event.ts bugfix)
+  // peers are a real string[] of hex account ids (see types/event.ts bugfix)
   peers: string[];
   startTime: string;
   endTime: string;

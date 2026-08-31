@@ -19,13 +19,18 @@ pub struct Id<const N: usize, const S: usize = 0> {
 impl<const N: usize, const S: usize> Id<N, S> {
     #[doc(hidden)]
     pub const SIZE_GUARD: () = {
-        let expected_size = (N + 1) * 4 / 3;
+        // Hex, exactly two characters per byte. This was `(N + 1) * 4 / 3`, the
+        // base58 upper bound, until core 0.11.0-rc.27 removed base58 (core#3691).
+        // Hex is not a bound but an identity, so `S` is now determined rather
+        // than merely sufficient — an S that does not match underflows here at
+        // compile time, which is the point of naming the const.
+        let expected_size = N * 2;
         let _guard = S - expected_size;
     };
 
     pub const fn new(id: [u8; N]) -> Self {
         // Naming the const is what forces its const-eval, i.e. the compile-time
-        // check that S can hold the base58 form of N bytes. Bound to `()` and
+        // check that S is exactly the hex form of N bytes. Bound to `()` and
         // not `_guard` so clippy::let_unit_value does not read it as a mistake.
         let () = Self::SIZE_GUARD;
 
@@ -36,21 +41,26 @@ impl<const N: usize, const S: usize> Id<N, S> {
     }
 
     pub fn as_str<'a>(&self, buf: &'a mut [u8; S]) -> &'a str {
-        let len = bs58::encode(&self.bytes)
-            .onto(&mut buf[..])
-            .expect("buffer too small");
+        // Infallible for this input: SIZE_GUARD makes S == N * 2, which is
+        // exactly what `encode_to_slice` demands, and hex digits are ASCII so
+        // the bytes are always UTF-8.
+        hex::encode_to_slice(self.bytes, &mut buf[..]).expect("buffer is N * 2");
 
-        str::from_utf8(&buf[..len]).unwrap()
+        str::from_utf8(&buf[..]).unwrap()
     }
 }
 
 impl<const N: usize, const S: usize> FromStr for Id<N, S> {
-    type Err = bs58::decode::Error;
+    type Err = hex::FromHexError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mut buf = [0; N];
 
-        let _len = bs58::decode(s).onto(&mut buf[..])?;
+        // Stricter than the base58 decoder this replaced, and deliberately so:
+        // `decode_to_slice` rejects any input that is not exactly 2N hex digits,
+        // where `bs58::decode(..).onto(..)` accepted a SHORTER string and
+        // left the remaining bytes zero. A truncated id used to parse.
+        hex::decode_to_slice(s, &mut buf[..])?;
 
         Ok(Self::new(buf))
     }
@@ -123,9 +133,9 @@ pub mod __private {
     };
     pub use core::str::FromStr;
 
-    pub use bs58;
     pub use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
     pub use calimero_sdk::serde::{Deserialize, Serialize};
+    pub use hex;
 }
 
 macro_rules! define {
@@ -216,7 +226,7 @@ macro_rules! define {
         }
 
         impl $crate::types::id::__private::FromStr for $name {
-            type Err = $crate::types::id::__private::bs58::decode::Error;
+            type Err = $crate::types::id::__private::hex::FromHexError;
 
             fn from_str(s: &str) -> $crate::types::id::__private::Result<Self, Self::Err> {
                 $crate::types::id::__private::Result::map(

@@ -25,7 +25,11 @@ use thiserror::Error;
 use types::id;
 mod types;
 
-id::define!(pub UserId<32, 44>);
+// 64, not 44: the second parameter is the length of the STRING form, and
+// core 0.11.0-rc.27 made every id hex (core#3691). 44 was the base58 upper
+// bound for 32 bytes; hex is exactly 2 per byte. `Id::SIZE_GUARD` fails the
+// build if these disagree, so this cannot drift silently.
+id::define!(pub UserId<32, 64>);
 
 #[app::event]
 pub enum Event {

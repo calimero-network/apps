@@ -3,7 +3,7 @@ export interface IEvent {
   title: string;
   description: string;
   start: string;
-  // BUGFIX (peers collapse on edit): peers are a real `string[]` of base58
+  // BUGFIX (peers collapse on edit): peers are a real `string[]` of hex
   // public keys end-to-end now. The old code round-tripped them through a
   // single string joined with ',' but split on ', ', which silently merged all
   // peers into one on edit. The contract takes/returns `peers: string[]`, so we
@@ -36,7 +36,7 @@ export type TEventTypes = "event" | "long-event";
 
 /** A team member, resolved from the contract's `get_members()` (camelCase). */
 export interface Member {
-  id: string; // base58 public key
+  id: string; // 64-hex account id — `UserId::new(env::account_id())`
   username: string;
   joinedAt: number;
   usernameUpdatedAt: number;

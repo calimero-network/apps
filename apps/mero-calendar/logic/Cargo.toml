@@ -51,7 +51,7 @@ github      = "https://github.com/calimero-network/apps"
 # Kept equal to the workspace SDK tag — that is what this is built and tested
 # against. Was rc.23 in the standalone repo; check-app-metadata.sh now enforces
 # the match, so it cannot drift back.
-min-runtime-version = "0.11.0-rc.26"
+min-runtime-version = "0.11.0-rc.28"
 # A BARE https origin. Not cosmetic: the embedded auth frontend compares
 # `frontend.origin === callbackOrigin`, so a path or a wrong host fails hosted
 # login AFTER credentials are accepted, while loopback/desktop login keeps
@@ -60,7 +60,10 @@ frontend    = "https://mero-calendar.vercel.app"
 
 [dependencies]
 base64                  = "0.22.1"
-bs58                    = { workspace = true }
+# Every id this contract renders is hex since core 0.11.0-rc.27 removed
+# base58 (core#3691). `UserId` wraps `env::account_id()`, so its rendering
+# has to match what the node and every other app now speak.
+hex                     = { workspace = true }
 # One pin for the whole fleet, in the root Cargo.toml. All three SDK crates must
 # share the exact same tag: core's workspace version at a tag is 0.0.0, so a
 # plain version requirement can never match.
