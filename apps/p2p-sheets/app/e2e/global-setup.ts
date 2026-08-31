@@ -1,6 +1,6 @@
 /**
  * Playwright global setup: starts 3 merod nodes with embedded auth,
- * authenticates each, installs the chat bundle on each.
+ * authenticates each, installs the app bundle on each.
  */
 import { execSync, execFileSync, spawn, ChildProcess } from 'child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync, createWriteStream } from 'fs';
@@ -34,9 +34,13 @@ function resolveMerodBinary(): string {
   return 'merod'; // let the spawn fail loudly if truly absent
 }
 
-// App-agnostic: the .mpk name is derived from studio.config.json so this
-// infra file is identical across the foundation and every generated app.
+// In the monorepo CI, the Browser E2E job downloads the mpk-<app>-<sha> artifact
+// and exports its path as KV_MPK_PATH (a generic-but-kv-named env every app's
+// setup reads — see apps/kv-store). Honour it first; fall back to the local
+// build-bundle.sh output for `pnpm test:e2e` on a dev machine.
 function resolveMpkPath(): string {
+  const fromEnv = process.env['KV_MPK_PATH'];
+  if (fromEnv) return fromEnv;
   const cfgPath = path.resolve(__dirname, '..', '..', 'studio.config.json');
   const cfg = JSON.parse(readFileSync(cfgPath, 'utf-8'));
   return path.resolve(
@@ -173,7 +177,7 @@ export default async function globalSetup() {
     throw new Error(`merod not found at ${MEROD_BINARY}. Set MEROD_BINARY env var.`);
   }
   if (!existsSync(MPK_PATH)) {
-    throw new Error(`chat .mpk not found at ${MPK_PATH}. Run: cd logic && ./build-bundle.sh`);
+    throw new Error(`p2p-sheets .mpk not found at ${MPK_PATH}. In CI it arrives as the mpk-p2p-sheets artifact via KV_MPK_PATH; locally run: cd logic && ./build-bundle.sh`);
   }
 
   // Check if nodes are already running (dev mode) — reuse them.

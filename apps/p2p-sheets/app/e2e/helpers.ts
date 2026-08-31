@@ -8,7 +8,7 @@ const STATE_FILE = path.resolve(__dirname, '..', '.playwright-data', 'pw-state.j
 
 // App-agnostic post-auth route — read from studio.config.json so this
 // infra file is identical across the foundation and every generated app
-// (no per-app patching). Foundation chat → "/chat".
+// (no per-app patching). e.g. the spreadsheet app → its APP_ROUTE.
 function appRoute(): string {
   try {
     const cfgPath = path.resolve(__dirname, '..', '..', 'studio.config.json');
