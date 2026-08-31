@@ -1,0 +1,352 @@
+{
+  "schema_version": "wasm-abi/1",
+  "types": {
+    "ChunkCursor": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "next_seq",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "oldest_live",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "last_keyframe",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "newest_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "pruned",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "Fragment": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "seq",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "from",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "track",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "chunk",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "chunks",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "width",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "height",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "codec",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "data",
+          "type": {
+            "kind": "bytes"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "MediaChunk": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "seq",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "from",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "track",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "is_keyframe",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "codec",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "width",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "height",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "timestamp_us",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "data",
+          "type": {
+            "kind": "bytes"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "Member": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "member_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "username",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "joined_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "MeroStream": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "stream_name",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "record",
+              "fields": [],
+              "crdt_type": "lww_register",
+              "inner_type": {
+                "kind": "string"
+              }
+            }
+          }
+        },
+        {
+          "name": "initial_name",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "members",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Member"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "fragments",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Fragment"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "next_seq",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "u64"
+            }
+          }
+        },
+        {
+          "name": "oldest_live_seq",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "u64"
+            }
+          }
+        },
+        {
+          "name": "pruned_frames",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "u64"
+            }
+          }
+        },
+        {
+          "name": "roles",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "bool"
+            },
+            "crdt_type": "shared_storage"
+          }
+        },
+        {
+          "name": "accounts",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "record",
+              "fields": [],
+              "crdt_type": "lww_register",
+              "inner_type": {
+                "kind": "bytes",
+                "size": 32
+              }
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "chunks",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "MediaChunk"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "chunk_cursors",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "ChunkCursor"
+            },
+            "crdt_type": "unordered_map"
+          }
+        }
+      ]
+    }
+  },
+  "methods": [],
+  "events": [],
+  "state_root": "MeroStream",
+  "state_version": 1
+}

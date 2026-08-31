@@ -1,0 +1,12 @@
+<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Mero Stream logo">
+  <defs>
+    <linearGradient id="g" x1="9" y1="17" x2="32" y2="47" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#6d83ff"/>
+      <stop offset="1" stop-color="#a06bff"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="#090b10"/>
+  <path d="M9 17 L32 32 L9 47 Z" fill="url(#g)"/>
+  <path d="M36.26 17.86 A32.5 32.5 0 0 1 36.26 46.14" fill="none" stroke="#a06bff" stroke-width="5" stroke-linecap="round"/>
+  <path d="M46.16 13.08 A43.5 43.5 0 0 1 46.16 50.92" fill="none" stroke="#a06bff" stroke-opacity="0.7" stroke-width="5" stroke-linecap="round"/>
+</svg>
