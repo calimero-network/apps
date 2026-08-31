@@ -29,7 +29,7 @@
   },
   "dependencies": {
     "@braintree/sanitize-url": "^7.1.2",
-    "@calimero-network/mero-js": "^13.3.0",
+    "@calimero-network/mero-js": "^13.4.0",
     "@calimero-network/mero-platform": "^0.1.0",
     "@calimero-network/mero-platform-react": "^0.1.0",
     "@calimero-network/mero-react": "^6.0.1",
