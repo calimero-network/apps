@@ -1,0 +1,431 @@
+name: Private events are node-local
+description: >
+  The defining claim of `#[app::private]` storage, which nothing else here
+  proves: a private event never leaves the node that created it.
+
+  logic-test.yml already shows that a private event stays OUT of the shared
+  calendar — but that is a single-node test, so it only shows private != shared
+  WITHIN one node. It cannot show the thing that actually matters: that node 2
+  cannot see node 1's private events at all, however much the two sync.
+
+  This also closes the last two uncovered contract methods. `update_private_event`
+  and `delete_private_event` were called by no scenario, which for the mutation
+  paths of private data is the wrong pair to have missing.
+
+stop_all_nodes: true
+restart: false
+wait_timeout: 120
+
+nodes: true
+restart: false
+wait_timeout: 120
+
+nodes:
+  chain_id: testnet-1
+  count: 2
+  # Must move in LOCKSTEP with the merobox pin in .github/workflows/. merobox
+  # talks to the node's admin API directly, so an image older than the merobox
+  # driving it fails on the FIRST step with a payload error that reads like a
+  # contract bug: rc.20 and older require `upgradePolicy` on create_namespace,
+  # and merobox 0.6.54+ stopped sending it (core#3393 dropped the concept in
+  # rc.21). rc.22 pairs with merobox >= 0.6.54; this repo pins 0.6.55.
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.28
+  prefix: calimero-node
+  # Stated, not inherited. core 0.11.0-rc.26 made mDNS opt-in (core#3620):
+  # `merod init` now writes `discovery.mdns = false`, where every earlier release
+  # left it on. merobox does not pass the flag, so this scenario's peer discovery
+  # changed behaviour at the image bump without a line of it changing.
+  mdns: true
+
+steps:
+  - name: Install Application on Node 1
+    type: install_application
+    node: calimero-node-1
+    path: res/mero_calendar.wasm
+    dev: true
+    outputs:
+      app_id: applicationId
+
+  - name: Install Application on Node 2
+    type: install_application
+    node: calimero-node-2
+    path: res/mero_calendar.wasm
+    dev: true
+
+  - name: Create Namespace
+    type: create_namespace
+    node: calimero-node-1
+    application_id: "{{app_id}}"
+    outputs:
+      namespace_id: namespaceId
+
+  # Subgroups/namespaces are RESTRICTED by default: without this, node 2 joins
+  # and then 403s on the first `call`, which looks like a sync failure rather
+  # than a permission one. 15 = the full read/write/execute/manage member bits.
+  - name: Set Default Member Capabilities
+    type: set_default_capabilities
+    node: calimero-node-1
+    group_id: "{{namespace_id}}"
+    capabilities: 15
+
+  - name: Create Calendar Context
+    type: create_context
+    node: calimero-node-1
+    application_id: "{{app_id}}"
+    group_id: "{{namespace_id}}"
+    params: '{}'
+    outputs:
+      context_id: contextId
+      member_public_key: memberPublicKey
+
+  # Mints an identity on node 2 so it has something to accept the invitation
+  # WITH. Its `publicKey` is deliberately not captured: the key that authorizes
+  # a `call` is the CONTEXT member key returned by join_context below, and using
+  # the raw identity key as executor_public_key is how you get an authorization
+  # error that reads like the contract rejecting the caller.
+  - name: Create Identity on Node 2
+    type: create_identity
+    node: calimero-node-2
+
+  - name: Wait for Identity Propagation
+    type: wait
+    seconds: 3
+
+  - name: Invite Node 2
+    type: create_namespace_invitation
+    node: calimero-node-1
+    group_id: "{{namespace_id}}"
+    outputs:
+      invitation_2: invitation
+
+  - name: Node 2 Joins Namespace
+    type: join_namespace
+    node: calimero-node-2
+    group_id: "{{namespace_id}}"
+    invitation: "{{invitation_2}}"
+
+  - name: Settle After Namespace Join
+    type: wait
+    seconds: 5
+
+  # The context was created AFTER node 2 was invited to the namespace, so node 2
+  # does not know it exists yet. Without this explicit pull, join_context below
+  # fails with "context not found" — a race that passes locally on a warm mesh
+  # and fails on a cold CI runner.
+  - name: Force Node 2 to Sync Namespace State
+    type: sync_group
+    node: calimero-node-2
+    group_id: "{{namespace_id}}"
+
+  - name: Settle After Sync
+    type: wait
+    seconds: 5
+
+  - name: Node 2 Joins Context
+    type: join_context
+    node: calimero-node-2
+    context_id: "{{context_id}}"
+    outputs:
+      public_key_2: memberPublicKey
+
+  - name: Sync
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  # ─── both nodes register, so get_members proves the mesh is live ─────────
+  #
+  # Done first and deliberately: if the mesh were broken, every isolation
+  # assertion below would pass for the WRONG reason — node 2 seeing none of
+  # node 1's private events because nothing syncs at all is not evidence of
+  # privacy. This step is what makes the rest meaningful.
+
+  - name: Node 1 registers Alice
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: set_username
+    args:
+      username: "alice"
+      timestamp: 2000000
+
+  - name: Node 2 registers Bob
+    type: call
+    node: calimero-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_2}}"
+    method: set_username
+    args:
+      username: "bob"
+      timestamp: 2000001
+
+  - name: Sync after usernames
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Node 2 reads members
+    type: call
+    node: calimero-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_2}}"
+    method: get_members
+    outputs:
+      members_seen_by_node2: result
+
+  - name: Assert the mesh really is syncing
+    type: assert
+    statements:
+      # Both names on node 2 = replication works. Without this the isolation
+      # assertions below would be vacuous.
+      - "contains({{members_seen_by_node2}}, alice)"
+      - "contains({{members_seen_by_node2}}, bob)"
+
+  # ─── each node creates its own private event ─────────────────────────────
+
+  - name: Node 1 creates a private event
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: create_private_event
+    args:
+      event_data:
+        title: "alice-private"
+        description: "only alice"
+        start: "2026-07-02T09:00:00"
+        end: "2026-07-02T10:00:00"
+        event_type: "event"
+        color: "rgb(213, 0, 0)"
+        peers: []
+      timestamp: 2000002
+    outputs:
+      alice_priv_id: result.output
+
+  - name: Node 2 creates a private event
+    type: call
+    node: calimero-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_2}}"
+    method: create_private_event
+    args:
+      event_data:
+        title: "bob-private"
+        description: "only bob"
+        start: "2026-07-02T11:00:00"
+        end: "2026-07-02T12:00:00"
+        event_type: "event"
+        color: "rgb(0, 121, 213)"
+        peers: []
+      timestamp: 2000003
+    outputs:
+      bob_priv_id: result.output
+
+  - name: Give sync every chance to leak them
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  # ─── ISOLATION: neither node sees the other's private event ──────────────
+
+  - name: Node 1 reads its private events
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_private_events
+    outputs:
+      node1_privates: result
+
+  - name: Node 2 reads its private events
+    type: call
+    node: calimero-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_2}}"
+    method: get_private_events
+    outputs:
+      node2_privates: result
+
+  - name: Assert each node sees ONLY its own private event
+    type: assert
+    statements:
+      # Both directions. Asserting only one would pass if private storage were
+      # broken in the other direction.
+      - "contains({{node1_privates}}, alice-private)"
+      - "not_contains({{node1_privates}}, bob-private)"
+      - "contains({{node2_privates}}, bob-private)"
+      - "not_contains({{node2_privates}}, alice-private)"
+
+  - name: Node 2 reads the shared calendar
+    type: call
+    node: calimero-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_2}}"
+    method: get_events
+    outputs:
+      shared_after_privates: result
+
+  - name: Assert no private event reached the SHARED calendar either
+    type: assert
+    statements:
+      # The other way privacy can fail: leaking into the replicated collection
+      # rather than into the other node's private one.
+      - "not_contains({{shared_after_privates}}, alice-private)"
+      - "not_contains({{shared_after_privates}}, bob-private)"
+
+  # ─── update_private_event: covered by nothing before this ────────────────
+
+  - name: Node 1 updates its own private event
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: update_private_event
+    args:
+      event_id: "{{alice_priv_id}}"
+      event_data:
+        title: "alice-private-renamed"
+        description: null
+        start: null
+        end: null
+        event_type: null
+        color: null
+        peers: null
+      timestamp: 2000004
+
+  - name: Sync after the private update
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Node 1 re-reads its private events
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_private_events
+    outputs:
+      node1_after_update: result
+
+  - name: Node 2 re-reads its private events
+    type: call
+    node: calimero-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_2}}"
+    method: get_private_events
+    outputs:
+      node2_after_update: result
+
+  - name: Assert the update landed locally and leaked nowhere
+    type: assert
+    statements:
+      - "contains({{node1_after_update}}, alice-private-renamed)"
+      - "not_contains({{node1_after_update}}, bob-private)"
+      # Node 2 is unaffected — its own event is untouched and it still cannot
+      # see alice's, renamed or not.
+      - "contains({{node2_after_update}}, bob-private)"
+      - "not_contains({{node2_after_update}}, alice-private-renamed)"
+
+  - name: Node 1 updates a private event that does not exist
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: update_private_event
+    args:
+      event_id: "no-such-private-event"
+      event_data:
+        title: "ghost"
+        description: null
+        start: null
+        end: null
+        event_type: null
+        color: null
+        peers: null
+      timestamp: 2000005
+    expected_failure: true
+    outputs:
+      update_ghost_error: error
+
+  - name: Assert the contract refused it
+    type: assert
+    statements:
+      # `expected_failure: true` alone can NEVER fail a call step — it marks the
+      # step allowed-to-fail, so an update that wrongly SUCCEEDED on a missing id
+      # would pass silently. Capturing the error is what makes this an assertion.
+      - "is_set({{update_ghost_error}})"
+
+  # ─── delete_private_event: likewise uncovered before this ────────────────
+
+  - name: Node 1 deletes its own private event
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: delete_private_event
+    args:
+      event_id: "{{alice_priv_id}}"
+
+  - name: Sync after the private delete
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Node 1 reads private events after the delete
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_private_events
+    outputs:
+      node1_after_delete: result
+
+  - name: Node 2 reads private events after the delete
+    type: call
+    node: calimero-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_2}}"
+    method: get_private_events
+    outputs:
+      node2_after_delete: result
+
+  - name: Assert the delete was local and node 2 kept its own
+    type: assert
+    statements:
+      - "not_contains({{node1_after_delete}}, alice-private-renamed)"
+      # The failure mode worth naming: a delete that reached across nodes would
+      # remove BOB's event too. Asserting bob's survives is what catches it.
+      - "contains({{node2_after_delete}}, bob-private)"
+
+  - name: Node 1 deletes a private event that does not exist
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: delete_private_event
+    args:
+      event_id: "no-such-private-event"
+    expected_failure: true
+    outputs:
+      delete_ghost_error: error
+
+  - name: Assert the contract refused that too
+    type: assert
+    statements:
+      - "is_set({{delete_ghost_error}})"

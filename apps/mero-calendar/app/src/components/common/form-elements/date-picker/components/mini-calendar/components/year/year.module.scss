@@ -1,0 +1,27 @@
+.year {
+  border-radius: 5px;
+  padding: 5.5px 0px;
+  cursor: pointer;
+  
+  &:hover {
+    background-color: var(--mc-hover);
+  }
+
+  &_selected {
+    color: var(--secondary);
+    background-color: #aecbfa;
+    
+    &:hover {
+      background-color: #aecbfa;
+    }
+  }
+  
+  &_today {
+    color: white;
+    background-color: var(--primary);
+
+    &:hover {
+      background-color: var(--primary);
+    }
+  }
+}

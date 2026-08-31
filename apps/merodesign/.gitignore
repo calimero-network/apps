@@ -1,0 +1,41 @@
+# Rust / WASM
+logic/target/
+# NOT `logic/res/`. That is what this file said, inherited from the standalone
+# repo, and it hid `logic/res/abi.json` and `logic/res/state-schema.json` from
+# git — so ci.yml's ABI-staleness gate had nothing to diff and passed while
+# checking nothing (`git add --intent-to-add` skips IGNORED files silently).
+# The root .gitignore already ignores the build output, `apps/*/logic/res/*.wasm`.
+# `cargo mero bundle` output (signed .mpk)
+logic/dist/
+*.wasm
+
+# Node
+app/node_modules/
+app/dist/
+app/dev-dist/
+app/.env.local
+app/.env.integration
+app/e2e-report/
+app/playwright-report/
+app/test-results/
+
+# macOS
+.DS_Store
+
+# Editor
+.vscode/
+.idea/
+*.swp
+
+# Logs
+*.log
+/tmp/*.log
+/tmp/*.pid
+
+# Calimero node homes (dev)
+~/.calimero/merodesign-*
+
+# build artifacts / caches (added 2026-06-08)
+node_modules/
+logic/res/*.mpk
+logic/res/bundle-temp/
