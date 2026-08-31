@@ -31,6 +31,15 @@ catalog:
   bs58: ^6.0.0
   fflate: ^0.8.2
 
+  # Shared by the canvas apps (mero-design, mero-pixart). Listed here rather
+  # than per-app because both carry them and they drifted apart in the separate
+  # repos — axios was ^1.18.0 in one and ^1.12.0 in the other.
+  react-router-dom: ^7.15.1
+  zustand: ^5.0.5
+  clsx: ^2.1.1
+  uuid: ^11.1.0
+  axios: ^1.18.0
+
   # ── build / test ───────────────────────────────────────────────────────────
   typescript: ~5.8.3
   vite: ^6.4.3
@@ -38,11 +47,22 @@ catalog:
   "@vitejs/plugin-react": ^4.3.4
   "@playwright/test": ^1.62.1
   jsdom: ^25.0.1
+  "@vitejs/plugin-react-swc": ^3.9.0
+  "@testing-library/react": ^16.3.2
+  "@testing-library/jest-dom": ^6.9.1
+  # eslint flat-config stack, shared by the canvas apps.
+  eslint: ^9.29.0
+  "@eslint/js": ^9.29.0
+  typescript-eslint: ^8.30.1
+  eslint-plugin-react-hooks: ^5.2.0
+  eslint-plugin-react-refresh: ^0.4.19
+  globals: ^16.0.0
 
   # ── types ──────────────────────────────────────────────────────────────────
   "@types/react": ^19.0.0
   "@types/react-dom": ^19.0.0
   "@types/node": ^22.10.0
+  "@types/uuid": ^10.0.0
 
 # esbuild's postinstall needs approving explicitly under pnpm 10+; pnpm 11
 # renamed the key to `allowBuilds`, so this may need updating with the toolchain.
