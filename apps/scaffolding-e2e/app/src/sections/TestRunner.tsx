@@ -102,6 +102,12 @@ const TESTS: TestCase[] = [
       // What is left is that neither is empty and neither is the other.
       matches(me.device_id, /^[0-9a-f]{64}$/, "a 64-hex device id");
       matches(me.account_id, /^[0-9a-f]{64}$/, "a 64-hex account id");
+      // Safe to assert, not a guess: both ids are content addresses, and
+      // `DeviceId::mint` is `domain_hash(DEVICE_ID_DOMAIN, account_id ‖ nonce)`
+      // (core, primitives/src/identity.rs). Equality would be a SHA-256
+      // preimage collision. So this only ever fires on a contract that returns
+      // one id for both — which is the regression the base58-vs-hex shape check
+      // used to catch for free, and this is all that is left of it.
       if (me.device_id === me.account_id) {
         throw new Error(
           "device_id and account_id are identical — since rc.27 they are the " +
