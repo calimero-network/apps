@@ -33,16 +33,14 @@ jobs:
     timeout-minutes: 5
     outputs:
       apps: ${{ steps.set.outputs.apps }}
-      # The wasm and merobox matrices are driven STRICTLY by what can change a
-      # contract. `apps` is a union that a JS-only change can widen, and neither
-      # job gates on js_deps — so sharing one matrix ran a 40-minute two-node
-      # e2e for every app whenever a lockfile moved. These must stay separate.
+      # The merobox matrix is driven STRICTLY by what can change a contract.
+      # `apps` is a union that a JS-only change can widen, and e2e does not gate
+      # on js_deps — so sharing one matrix ran a 40-minute two-node e2e for
+      # every app whenever a lockfile moved. These two must stay separate.
       #
-      # ⚠️ wasm uses this too, not `apps`. It gates on `logic || shared ||
-      # tooling` — never js_deps — but took its MATRIX from `apps`, so a
-      # migration PR that touched one contract AND rewrote a lockfile rebuilt
-      # every app's wasm, and the ABI gate and dry-run bundle with it. A pnpm
-      # resolution cannot change a single byte of wasm.
+      # ⚠️ Only `e2e` uses this. `wasm` must stay on `apps` because it is the
+      # producer of the artifacts BOTH it and `browser` download, and `browser`
+      # runs over `apps` — see the note on the wasm job's matrix.
       contract_apps: ${{ steps.set.outputs.contract_apps }}
       logic: ${{ steps.filter.outputs.logic }}
       frontend: ${{ steps.filter.outputs.frontend }}
@@ -234,15 +232,15 @@ jobs:
           fi
           echo "apps=$apps" >> "$GITHUB_OUTPUT"
 
-          # Contracts only. A frontend edit or a lockfile importer cannot change
-          # wasm, so neither belongs in the matrix that builds it or in the one
+          # Contracts only. A frontend edit or a lockfile importer cannot alter
+          # what a two-node merobox run does, so neither belongs in the matrix
           # that starts merod containers.
           if [ "$SHARED" = "true" ] || [ "$TOOLING" = "true" ]; then
             contract_apps=$(bash scripts/app-packages.sh all)
-            echo "::notice::contract-level change — wasm + merobox cover every app: $contract_apps"
+            echo "::notice::contract-level change — merobox covers every app: $contract_apps"
           else
             contract_apps=$(printf '%s' "$LOGIC_FILES" | bash scripts/app-packages.sh from-paths)
-            echo "::notice::contract apps (wasm + merobox): $contract_apps"
+            echo "::notice::merobox apps: $contract_apps"
           fi
           echo "contract_apps=$contract_apps" >> "$GITHUB_OUTPUT"
 
@@ -313,16 +311,30 @@ jobs:
     #
     # `apps != '[]'` is what makes an empty matrix a skipped job rather than a
     # job that silently succeeds having built nothing.
-    if: (needs.changes.outputs.logic == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.tooling == 'true') && needs.changes.outputs.contract_apps != '[]'
+    if: (needs.changes.outputs.logic == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.tooling == 'true') && needs.changes.outputs.apps != '[]'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
       fail-fast: false
-      # `contract_apps`, NOT `apps`: this job's own `if` already refuses to run
-      # for a JS-only change, but the matrix it took was the widened union, so
-      # `js_deps` still fanned it out to every app.
+      # ⚠️ `apps`, and it CANNOT be narrowed to `contract_apps`.
+      #
+      # This job is the only producer of `mpk-<app>` and `wasm-<app>`, and the
+      # jobs that consume them do not agree on a matrix: `browser` runs over
+      # `apps` (a frontend or lockfile change can break the UI), while `e2e`
+      # runs over `contract_apps`. So this must cover the UNION, which is
+      # `apps`.
+      #
+      # Narrowing it to `contract_apps` looks right — a pnpm resolution cannot
+      # change a byte of wasm — and it is what this comment used to say. It
+      # fails in the consumer instead, and not as a build error:
+      #
+      #     Unable to download artifact(s): Artifact not found for name:
+      #     mpk-kv-store-<sha>
+      #
+      # which reads like a flaky runner rather than a matrix that skipped the
+      # producer. Measured on migrate/merraria.
       matrix:
-        app: ${{ fromJSON(needs.changes.outputs.contract_apps) }}
+        app: ${{ fromJSON(needs.changes.outputs.apps) }}
     steps:
       - uses: actions/checkout@v4
 
