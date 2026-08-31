@@ -482,8 +482,15 @@ mod tests {
     /// alone, so ALICE and ALICE_PHONE are one person on two installations.
     const ALICE_PHONE: [u8; 32] = [0x33; 32];
 
+    /// Render an id the way the contract does.
+    ///
+    /// `caller_id()` is `String::from(PublicKey)`, and the SDK renders that —
+    /// so this helper does not get to choose. core 0.11.0-rc.27 removed base58
+    /// (core#3691) and `Hash`'s Display is `hex::encode`, which silently
+    /// changed what the contract emits. This was `bs58::encode` and every
+    /// assertion comparing a player id against it failed at the SDK bump.
     fn id_of(bytes: [u8; 32]) -> String {
-        bs58::encode(bytes).into_string()
+        hex::encode(bytes)
     }
 
     fn new_world() -> TestHost<Merraria> {

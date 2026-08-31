@@ -1,7 +1,13 @@
 node_modules/
 dist/
 target/
-res/
+# NOT `res/`. That is what this file said, inherited from the standalone
+# repo, and it hid `res/abi.json` and `res/state-schema.json` from git —
+# so ci.yml's ABI-staleness gate had nothing to diff and passed while
+# checking nothing. The root .gitignore already ignores the build output
+# (`apps/*/logic/res/*.wasm`); the ABI is source of truth and is committed.
+res/*.mpk
+res/bundle-temp/
 test-results/
 playwright-report/
 *.log
