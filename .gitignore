@@ -49,3 +49,7 @@ blob-report/
 
 # tsc -b declaration output
 dist-types/
+
+# Python bytecode from scripts/ helpers.
+__pycache__/
+*.pyc

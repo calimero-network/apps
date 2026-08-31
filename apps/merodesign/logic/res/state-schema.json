@@ -1,0 +1,606 @@
+{
+  "schema_version": "wasm-abi/1",
+  "types": {
+    "Comment": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "x",
+          "type": {
+            "kind": "i64"
+          }
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "i64"
+          }
+        },
+        {
+          "name": "content",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "author",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "replies",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "CommentReply"
+            }
+          }
+        }
+      ]
+    },
+    "CommentReply": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "content",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "author",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "CursorState": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "identity",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "x",
+          "type": {
+            "kind": "i64"
+          }
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "i64"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "Element": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "data",
+          "type": {
+            "$ref": "ElementData"
+          }
+        },
+        {
+          "name": "x",
+          "type": {
+            "kind": "i64"
+          }
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "i64"
+          }
+        },
+        {
+          "name": "width",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "height",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "rotation",
+          "type": {
+            "kind": "i32"
+          }
+        },
+        {
+          "name": "fill",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "stroke",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "stroke_width",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "opacity",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "layer_index",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "created_by",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "shadow_color",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "shadow_offset_x",
+          "type": {
+            "kind": "i32"
+          },
+          "nullable": true
+        },
+        {
+          "name": "shadow_offset_y",
+          "type": {
+            "kind": "i32"
+          },
+          "nullable": true
+        },
+        {
+          "name": "shadow_blur",
+          "type": {
+            "kind": "u32"
+          },
+          "nullable": true
+        },
+        {
+          "name": "label",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "corner_radius",
+          "type": {
+            "kind": "u32"
+          },
+          "nullable": true
+        }
+      ]
+    },
+    "ElementData": {
+      "kind": "variant",
+      "variants": [
+        {
+          "name": "Rect"
+        },
+        {
+          "name": "Circle"
+        },
+        {
+          "name": "Line",
+          "payload": {
+            "$ref": "ElementData_Line"
+          }
+        },
+        {
+          "name": "Arrow",
+          "payload": {
+            "$ref": "ElementData_Arrow"
+          }
+        },
+        {
+          "name": "Path",
+          "payload": {
+            "$ref": "ElementData_Path"
+          }
+        },
+        {
+          "name": "Text",
+          "payload": {
+            "$ref": "ElementData_Text"
+          }
+        },
+        {
+          "name": "Image",
+          "payload": {
+            "$ref": "ElementData_Image"
+          }
+        },
+        {
+          "name": "Svg",
+          "payload": {
+            "$ref": "ElementData_Svg"
+          }
+        }
+      ]
+    },
+    "ElementData_Arrow": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "points",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "ElementData_Image": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "natural_width",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "natural_height",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "blob_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "ElementData_Line": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "points",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "ElementData_Path": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "points",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "ElementData_Svg": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "natural_width",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "natural_height",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "blob_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "ElementData_Text": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "content",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "font_size",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "font_family",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "bold",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "italic",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "text_align",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "vertical_align",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Member": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "username",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "avatar",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "joined_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "username_updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "MeroDesign": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "board_name",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "record",
+              "fields": [],
+              "crdt_type": "lww_register",
+              "inner_type": {
+                "kind": "string"
+              }
+            }
+          }
+        },
+        {
+          "name": "board_description",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "record",
+              "fields": [],
+              "crdt_type": "lww_register",
+              "inner_type": {
+                "kind": "string"
+              }
+            }
+          }
+        },
+        {
+          "name": "initial_name",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "initial_description",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "elements",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Element"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "members",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Member"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "comments",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Comment"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "cursors",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "CursorState"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "roles",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "bool"
+            },
+            "crdt_type": "shared_storage"
+          }
+        },
+        {
+          "name": "accounts",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "record",
+              "fields": [],
+              "crdt_type": "lww_register",
+              "inner_type": {
+                "kind": "bytes",
+                "size": 32
+              }
+            },
+            "crdt_type": "unordered_map"
+          }
+        }
+      ]
+    }
+  },
+  "methods": [],
+  "events": [],
+  "state_root": "MeroDesign",
+  "state_version": 1
+}

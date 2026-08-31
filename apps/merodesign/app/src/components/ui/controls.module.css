@@ -1,0 +1,454 @@
+/**
+ * The inspector control kit.
+ *
+ * Every control in the right-hand panel used to be a bare HTML input, so the
+ * panel rendered as three different design languages at once: OS-drawn
+ * checkboxes and dropdowns, an OS range track, and text fields that only picked
+ * up a border. These styles replace all of that with one set of tokens, sized
+ * for a 240px inspector.
+ *
+ * Native elements are still what is underneath — a real <input type="checkbox">,
+ * a real <input type="color"> — because that is what keeps keyboard behaviour,
+ * form semantics and the OS colour picker. Only the painting is ours.
+ */
+
+.kit {
+  /* Tokens live on the panel root so every control below matches. */
+  --c-bg: #ffffff;
+  --c-bg-sunken: #f2f2f4;
+  --c-border: #dcdce2;
+  --c-border-strong: #c3c3cc;
+  --c-text: #1f2024;
+  --c-text-dim: #85858f;
+  --c-accent: #2563eb;
+  --c-accent-soft: #e8efff;
+  --c-danger: #dc2626;
+  --c-radius: 6px;
+  --c-height: 26px;
+}
+
+/* ── Field row ────────────────────────────────────────────────────── */
+.field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.fieldLabel {
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: var(--c-text-dim);
+  user-select: none;
+}
+.fieldStack {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.fieldStack > .fieldLabel {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+}
+
+/* ── Number field ─────────────────────────────────────────────────── */
+.number {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: var(--c-height);
+  padding: 0 2px 0 0;
+  background: var(--c-bg);
+  border: 1px solid var(--c-border);
+  border-radius: var(--c-radius);
+  min-width: 0;
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+.number:hover { border-color: var(--c-border-strong); }
+.numberFocused {
+  border-color: var(--c-accent);
+  box-shadow: 0 0 0 2px var(--c-accent-soft);
+}
+.numberDisabled {
+  background: var(--c-bg-sunken);
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+/* The scrub handle: drag left/right to change the value, like every design
+   tool. Also the field's label, so it costs no extra room. */
+.numberGrip {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 100%;
+  padding: 0 4px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--c-text-dim);
+  cursor: ew-resize;
+  user-select: none;
+  border-right: 1px solid transparent;
+}
+.numberGrip:hover { color: var(--c-accent); }
+
+.numberInput {
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  padding: 0 2px;
+  border: none;
+  outline: none;
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--c-text);
+}
+.numberSuffix {
+  flex: 0 0 auto;
+  padding-right: 4px;
+  font-size: 10px;
+  color: var(--c-text-dim);
+  user-select: none;
+}
+
+/* Steppers, shown on hover/focus so the field stays quiet at rest. */
+.numberSteps {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.number:hover .numberSteps,
+.numberFocused .numberSteps { opacity: 1; }
+.numberStep {
+  display: block;
+  width: 14px;
+  height: 11px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--c-text-dim);
+  font-size: 7px;
+  line-height: 11px;
+  cursor: pointer;
+}
+.numberStep:hover { color: var(--c-accent); }
+
+/* ── Select ───────────────────────────────────────────────────────── */
+.select { position: relative; min-width: 0; }
+.selectTrigger {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  height: var(--c-height);
+  padding: 0 6px 0 8px;
+  background: var(--c-bg);
+  border: 1px solid var(--c-border);
+  border-radius: var(--c-radius);
+  font-size: 12px;
+  color: var(--c-text);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+.selectTrigger:hover { border-color: var(--c-border-strong); }
+.selectTrigger:focus-visible,
+.selectOpen .selectTrigger {
+  outline: none;
+  border-color: var(--c-accent);
+  box-shadow: 0 0 0 2px var(--c-accent-soft);
+}
+.selectTrigger:disabled { background: var(--c-bg-sunken); color: var(--c-text-dim); cursor: not-allowed; }
+.selectValue {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.selectChevron { flex: 0 0 auto; color: var(--c-text-dim); transition: transform 0.15s; }
+.selectOpen .selectChevron { transform: rotate(180deg); }
+
+.selectMenu {
+  position: absolute;
+  z-index: 60;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-height: 240px;
+  overflow-y: auto;
+  padding: 4px;
+  background: var(--c-bg);
+  border: 1px solid var(--c-border);
+  border-radius: var(--c-radius);
+  box-shadow: 0 8px 24px rgba(16, 18, 27, 0.14);
+}
+/* Opens upward when there is no room below. */
+.selectMenuUp { top: auto; bottom: calc(100% + 4px); }
+.selectOption {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 5px 8px;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  font-size: 12px;
+  color: var(--c-text);
+  text-align: left;
+  cursor: pointer;
+}
+.selectOption:hover, .selectOptionActive { background: var(--c-bg-sunken); }
+.selectOptionSelected { color: var(--c-accent); font-weight: 600; }
+.selectCheck { margin-left: auto; font-size: 10px; }
+
+/* ── Checkbox ─────────────────────────────────────────────────────── */
+.checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: var(--c-text);
+  cursor: pointer;
+  user-select: none;
+}
+.checkboxDisabled { opacity: 0.5; cursor: not-allowed; }
+.checkboxNative {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+.checkboxBox {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  border: 1px solid var(--c-border-strong);
+  border-radius: 4px;
+  background: var(--c-bg);
+  color: #fff;
+  transition: background 0.12s, border-color 0.12s;
+}
+.checkboxNative:checked + .checkboxBox {
+  background: var(--c-accent);
+  border-color: var(--c-accent);
+}
+.checkboxNative:focus-visible + .checkboxBox {
+  box-shadow: 0 0 0 2px var(--c-accent-soft);
+}
+.checkboxTick { opacity: 0; transition: opacity 0.1s; }
+.checkboxNative:checked + .checkboxBox .checkboxTick { opacity: 1; }
+
+/* ── Switch ───────────────────────────────────────────────────────── */
+.switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+}
+.switchTrack {
+  position: relative;
+  width: 30px;
+  height: 17px;
+  border-radius: 999px;
+  background: #d3d3da;
+  transition: background 0.15s;
+  flex: 0 0 auto;
+}
+.switchThumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  transition: transform 0.15s;
+}
+.checkboxNative:checked + .switchTrack { background: var(--c-accent); }
+.checkboxNative:checked + .switchTrack .switchThumb { transform: translateX(13px); }
+.checkboxNative:focus-visible + .switchTrack { box-shadow: 0 0 0 2px var(--c-accent-soft); }
+
+/* ── Segmented control (radio group) ──────────────────────────────── */
+.segmented {
+  display: flex;
+  padding: 2px;
+  gap: 2px;
+  background: var(--c-bg-sunken);
+  border-radius: var(--c-radius);
+  border: 1px solid var(--c-border);
+}
+.segment {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 20px;
+  padding: 0 6px;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: var(--c-text-dim);
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.12s, color 0.12s;
+}
+.segment:hover:not(.segmentActive) { color: var(--c-text); }
+.segmentActive {
+  background: var(--c-bg);
+  color: var(--c-accent);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(16, 18, 27, 0.12);
+}
+.segmented:has(.segment:focus-visible) { box-shadow: 0 0 0 2px var(--c-accent-soft); }
+.segment:focus-visible { outline: none; }
+
+/* ── Slider ───────────────────────────────────────────────────────── */
+.slider {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 16px;
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+  cursor: pointer;
+}
+.slider::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 999px;
+  /* Filled portion is painted with a gradient stop set from JS. */
+  background: linear-gradient(
+    to right,
+    var(--c-accent) 0%,
+    var(--c-accent) var(--fill, 50%),
+    #dcdce2 var(--fill, 50%),
+    #dcdce2 100%
+  );
+}
+.slider::-moz-range-track {
+  height: 4px;
+  border-radius: 999px;
+  background: #dcdce2;
+}
+.slider::-moz-range-progress {
+  height: 4px;
+  border-radius: 999px;
+  background: var(--c-accent);
+}
+.slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 13px;
+  height: 13px;
+  margin-top: -4.5px;
+  border-radius: 50%;
+  background: #fff;
+  border: 1px solid var(--c-border-strong);
+  box-shadow: 0 1px 3px rgba(16, 18, 27, 0.2);
+}
+.slider::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #fff;
+  border: 1px solid var(--c-border-strong);
+  box-shadow: 0 1px 3px rgba(16, 18, 27, 0.2);
+}
+.slider:focus-visible { outline: none; }
+.slider:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 3px var(--c-accent-soft); }
+
+/* ── Colour field ─────────────────────────────────────────────────── */
+.color {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: var(--c-height);
+  padding: 0 6px 0 3px;
+  background: var(--c-bg);
+  border: 1px solid var(--c-border);
+  border-radius: var(--c-radius);
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.color:hover { border-color: var(--c-border-strong); }
+.colorSwatchWrap {
+  position: relative;
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  overflow: hidden;
+  /* Chequerboard, so a transparent swatch reads as transparent. */
+  background-image:
+    linear-gradient(45deg, #d8d8dd 25%, transparent 25%),
+    linear-gradient(-45deg, #d8d8dd 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #d8d8dd 75%),
+    linear-gradient(-45deg, transparent 75%, #d8d8dd 75%);
+  background-size: 8px 8px;
+  background-position: 0 0, 0 4px, 4px -4px, -4px 0;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12);
+}
+.colorSwatchFill { position: absolute; inset: 0; }
+.colorNative {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  width: 100%;
+  height: 100%;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+.colorHex {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  font: inherit;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-transform: uppercase;
+  color: var(--c-text);
+}
+.colorEmpty { color: var(--c-text-dim); font-size: 11px; }
+
+/* ── Icon button ──────────────────────────────────────────────────── */
+.iconButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: var(--c-height);
+  padding: 0 8px;
+  background: var(--c-bg);
+  border: 1px solid var(--c-border);
+  border-radius: var(--c-radius);
+  font-size: 11px;
+  color: var(--c-text);
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+  white-space: nowrap;
+}
+.iconButton:hover:not(:disabled) { border-color: var(--c-border-strong); background: var(--c-bg-sunken); }
+.iconButton:disabled { opacity: 0.45; cursor: not-allowed; }
+.iconButtonActive { border-color: var(--c-accent); color: var(--c-accent); background: var(--c-accent-soft); }
+.iconButtonDanger { color: var(--c-danger); }
+.iconButtonDanger:hover:not(:disabled) { background: #fef2f2; border-color: #fca5a5; }
