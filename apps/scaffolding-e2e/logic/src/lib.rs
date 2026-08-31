@@ -45,7 +45,6 @@ use thiserror::Error;
 // CONSTANTS
 
 const BLOB_ID_SIZE: usize = 32;
-const BASE58_ENCODED_MAX_SIZE: usize = 44;
 
 /// Workspace roles. Kept in lockstep with the frontend's `ROLES` in
 /// `sections/ContextMembers.tsx` — the contract is the authority, and an
@@ -81,7 +80,7 @@ struct NestedMap {
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct Identity {
-    /// This installation, base58.
+    /// This installation, 64 hex characters.
     pub device_id: String,
     /// The person, 64 hex characters. The writer-set key.
     pub account_id: String,
@@ -118,8 +117,8 @@ calimero_storage::impl_atomic_lww_leaf!(FileRecord, uploaded_at);
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct ChannelRecord {
-    /// The target context, base58. The map key as well as a field, so a
-    /// listing needs no zip with its keys.
+    /// The target context, 64 hex characters. The map key as well as a field,
+    /// so a listing needs no zip with its keys.
     pub context_id: String,
     pub name: String,
     pub topic: String,
@@ -547,10 +546,9 @@ pub enum Error<'a> {
 ///
 /// Every "who did this" field in this contract is an account, because that is
 /// the only authorization subject core 0.11 recognises and the only thing the
-/// storage layer reports back (`owner_of`, `writers()`). Rendering is hex, not
-/// base58 — core writes ids as hex precisely so an id is never mistaken for a
-/// key, and a base58 value here would never compare equal to what a query
-/// returns.
+/// storage layer reports back (`owner_of`, `writers()`). Rendering is hex —
+/// which since core 0.11.0-rc.27 is the only encoding for any id, so this no
+/// longer distinguishes an account from a device key the way it used to.
 fn caller_account() -> String {
     AccountId::from(env::account_id()).to_string()
 }
@@ -558,9 +556,15 @@ fn caller_account() -> String {
 /// Parse a 64-hex account id, with a message that says which of the two id
 /// kinds was expected.
 ///
-/// Every authorization subject in this contract is an ACCOUNT. Passing a base58
-/// DEVICE key here is the recurring mistake, and it has to fail loudly — as a
-/// `String` argument it would otherwise be stored as an account nobody holds.
+/// Every authorization subject in this contract is an ACCOUNT. Passing a DEVICE
+/// key here is the recurring mistake, and it has to fail loudly — as a `String`
+/// argument it would otherwise be stored as an account nobody holds.
+///
+/// ⚠️ core 0.11.0-rc.27 removed base58 (core#3691), so a device key and an
+/// account id are now BOTH 64 hex characters. The shape tell that used to catch
+/// this mistake on sight is gone; length validation cannot separate them and
+/// neither can a human reading a log. Only provenance does — `whoami` says
+/// which is which, and nothing on the wire maps one to the other.
 fn parse_account(account_hex: &str) -> app::Result<AccountId> {
     account_hex
         .parse()
@@ -601,18 +605,12 @@ fn check_known_role(role: &str) -> app::Result<()> {
     Ok(())
 }
 
-fn encode_blob_id_base58(blob_id_bytes: &[u8; BLOB_ID_SIZE]) -> String {
-    let mut buf = [0u8; BASE58_ENCODED_MAX_SIZE];
-    // Both unwraps are infallible for this input: a 32-byte value base58-encodes
-    // to at most 44 chars (== BASE58_ENCODED_MAX_SIZE), so `onto` never overflows
-    // the buffer, and the base58 alphabet is ASCII, so the bytes are always UTF-8.
-    let len = bs58::encode(blob_id_bytes).onto(&mut buf[..]).unwrap();
-    std::str::from_utf8(&buf[..len]).unwrap().to_owned()
+fn encode_blob_id_hex(blob_id_bytes: &[u8; BLOB_ID_SIZE]) -> String {
+    hex::encode(blob_id_bytes)
 }
 
-fn parse_blob_id_base58(blob_id_str: &str) -> app::Result<[u8; BLOB_ID_SIZE]> {
-    let bytes = bs58::decode(blob_id_str)
-        .into_vec()
+fn parse_blob_id_hex(blob_id_str: &str) -> app::Result<[u8; BLOB_ID_SIZE]> {
+    let bytes = hex::decode(blob_id_str)
         .map_err(|e| app::err!("Failed to decode blob ID '{blob_id_str}': {e}"))?;
 
     if bytes.len() != BLOB_ID_SIZE {
@@ -635,7 +633,7 @@ fn serialize_blob_id_bytes<S>(
 where
     S: calimero_sdk::serde::Serializer,
 {
-    let safe_string = encode_blob_id_base58(blob_id_bytes);
+    let safe_string = encode_blob_id_hex(blob_id_bytes);
     serializer.serialize_str(&safe_string)
 }
 
@@ -733,8 +731,8 @@ impl E2eKvStore {
     /// know which one it is holding:
     ///
     /// * `device_id` — this installation. The CRDT replica id, and what the
-    ///   node's group-membership listing calls `identity`. Base58, like
-    ///   everywhere else a key appears.
+    ///   node's group-membership listing calls `identity`. 64 hex characters,
+    ///   like every other id since core 0.11.0-rc.27 removed base58.
     /// * `account_id` — the person. The only authorization subject: the
     ///   `shared_*` writer set is keyed by it. 64 hex characters.
     ///
@@ -743,7 +741,7 @@ impl E2eKvStore {
     /// hand over the value this method returns.
     pub fn whoami(&self) -> Identity {
         Identity {
-            device_id: bs58::encode(env::device_id()).into_string(),
+            device_id: hex::encode(env::device_id()),
             account_id: AccountId::from(env::account_id()).to_string(),
         }
     }
@@ -981,7 +979,7 @@ impl E2eKvStore {
 
     /// Read another user's slot of `UserStorage`, addressed by ACCOUNT.
     ///
-    /// Takes 64-hex, not the base58 device key: rc.21 rekeyed `UserStorage`
+    /// Takes the ACCOUNT id, not the device key: rc.21 rekeyed `UserStorage`
     /// from `UnorderedMap<PublicKey, T>` to `UnorderedMap<AccountId, T>`, so a
     /// device key now names a slot nobody writes to and this would answer
     /// `None` forever rather than failing. Get the value from `whoami`, the
@@ -1366,7 +1364,7 @@ impl E2eKvStore {
         size: u64,
         mime_type: String,
     ) -> app::Result<String> {
-        let blob_id = parse_blob_id_base58(&blob_id_str)?;
+        let blob_id = parse_blob_id_hex(&blob_id_str)?;
 
         let current_counter = *self.file_counter.get();
         let file_id = format!("file_{current_counter}");
@@ -1442,9 +1440,9 @@ impl E2eKvStore {
         Ok(file_record.clone())
     }
 
-    pub fn get_blob_id_b58(&self, file_id: String) -> app::Result<String> {
+    pub fn get_blob_id_hex(&self, file_id: String) -> app::Result<String> {
         let file_record = self.get_file(file_id)?;
-        Ok(encode_blob_id_base58(&file_record.blob_id))
+        Ok(encode_blob_id_hex(&file_record.blob_id))
     }
 
     pub fn search_files(&self, query: String) -> app::Result<Vec<FileRecord>> {
@@ -1899,10 +1897,10 @@ impl E2eKvStore {
 
     /// The writer set, as 64-hex-character account ids.
     ///
-    /// These are `AccountId`s (people), NOT the base58 device keys the rest of
-    /// this contract reports — core 0.11 made the account the only
-    /// authorization subject. `whoami` returns the caller's own, which is what
-    /// you feed back into `shared_add_writer`.
+    /// These are `AccountId`s (people), NOT the device keys the rest of this
+    /// contract reports — core 0.11 made the account the only authorization
+    /// subject. `whoami` returns the caller's own, which is what you feed back
+    /// into `shared_add_writer`.
     pub fn shared_get_writers(&self) -> app::Result<Vec<String>> {
         Ok(self
             .shared_data
@@ -2195,10 +2193,12 @@ impl E2eKvStore {
     ///
     /// `identity` is a free-form `String`, not an `AccountId`, and that is not
     /// laziness: the UI grants roles to node identities it read from the admin
-    /// API's group-membership listing, which reports base58 DEVICE keys, while
-    /// `caller_account()` is a 64-hex ACCOUNT. Nothing on the wire maps one to
-    /// the other (see `whoami`), so this map has to hold whichever of the two
-    /// the operator pasted. The consequence is explicit rather than hidden:
+    /// API's group-membership listing, which reports DEVICE keys, while
+    /// `caller_account()` is an ACCOUNT. Since rc.27 both render as 64 hex
+    /// characters, not even a shape check can tell them apart. Nothing on the
+    /// wire maps one to the other (see `whoami`), so this map has to hold
+    /// whichever of the two the operator pasted. The consequence is explicit
+    /// rather than hidden:
     /// **only a role granted under the caller's own `account_id` is a role that
     /// `ws_my_role` will ever return** — everything else is a directory entry.
     /// This is the app-level mirror of the writer-set trap in `shared_*`.
@@ -2262,10 +2262,12 @@ impl E2eKvStore {
     /// node then dispatches it or denies it is invisible from inside the
     /// contract — watch `ws_ping_count` on the target, not the result of this.
     ///
-    /// The parameter is named `target_context_id_b58` because that is what the
-    /// frontend sends. The TYPE is `ContextId`, so the SDK does the base58
-    /// decode and a malformed id fails at the boundary rather than here.
-    pub fn ws_ping_channel(&mut self, target_context_id_b58: ContextId) -> app::Result<()> {
+    /// The TYPE is `ContextId`, not `String`, so the SDK does the decode and a
+    /// malformed id fails at the boundary rather than here. It was called
+    /// `target_context_id_b58` until rc.27 removed base58; the suffix named an
+    /// encoding that no longer exists, and a parameter name is part of the ABI,
+    /// so leaving it would have every caller spell out the wrong one forever.
+    pub fn ws_ping_channel(&mut self, target_context_id: ContextId) -> app::Result<()> {
         let by = self.require_writer()?;
 
         #[derive(calimero_sdk::serde::Serialize)]
@@ -2278,11 +2280,11 @@ impl E2eKvStore {
             from_context: ContextId::from(env::context_id()),
         })?;
 
-        env::xcall(target_context_id_b58.as_ref(), "ws_pong", &params);
+        env::xcall(target_context_id.as_ref(), "ws_pong", &params);
 
-        app::log!("queued ws_pong xcall to {}", target_context_id_b58);
+        app::log!("queued ws_pong xcall to {}", target_context_id);
         app::emit!(Event::ChannelPinged {
-            to_context: target_context_id_b58,
+            to_context: target_context_id,
             by,
         });
         Ok(())

@@ -152,7 +152,7 @@ export function AuthoredVector() {
         <div className="method-card">
           <div className="method-name">authored_vec_get_owner(index)</div>
           <p style={{ fontSize: 12, color: "var(--color-text-muted)", marginBottom: 10 }}>
-            Returns the 64-hex account id of the member that owns this slot — an account (a person), not a base58 device key.
+            Returns the 64-hex account id of the member that owns this slot — an account (a person), not a device key. Since core rc.27 both are 64 hex characters, so the value cannot be told apart by shape.
           </p>
           <div className="method-inputs">
             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>

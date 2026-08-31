@@ -301,7 +301,7 @@ export function BlobStorage() {
 
         {/* Get by ID card */}
         <div className="method-card">
-          <div className="method-name">get_file(file_id) / get_blob_id_b58(file_id)</div>
+          <div className="method-name">get_file(file_id) / get_blob_id_hex(file_id)</div>
           <div className="method-inputs">
             <input
               className="form-control"

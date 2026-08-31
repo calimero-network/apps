@@ -56,7 +56,7 @@ SDK in `logic/Cargo.toml` — the ABI emitter is versioned with core):
 
 ```bash
 cargo install --git https://github.com/calimero-network/core \
-  --tag 0.11.0-rc.24 cargo-mero --locked
+  --tag 0.11.0-rc.28 cargo-mero --locked
 ```
 
 Then build:
@@ -226,14 +226,14 @@ Methods exposed:
 - `authored_remove(key)` — remove an entry (owner only)
 - `authored_get(key)` — read a single entry
 - `authored_entries()` — read all entries as a map
-- `authored_get_owner(key)` — returns the base58 public key of the owner
+- `authored_get_owner(key)` — returns the hex public key of the owner
 - `authored_len()` — entry count
 
 ### SharedStorage
 
 A **single-value** store with an explicit writer set. Only callers whose **account** is in the writer set can call `shared_set`. The writer set is managed via `rotate_writers` (exposed as `shared_add_writer` in this app). Any context member can read.
 
-The writer set is a `BTreeSet<AccountId>` — an account id, not the base58 device key the rest of this app reports. Core 0.11 split one identity into a device (the installation, the CRDT replica id, what `authored_get_owner` returns) and an account (the person, the only authorization subject), and only the account authorizes. `AccountId` is `From<[u8; 32]>`, so passing a device key where an account belongs still compiles and still "succeeds" — it just grants an account nobody holds, and the grantee stays unable to write. Nothing on the wire maps a device key to an account, so a peer has to tell you theirs: `whoami`.
+The writer set is a `BTreeSet<AccountId>` — an account id, not the device key the rest of this app reports. Core 0.11 split one identity into a device (the installation, the CRDT replica id, what `authored_get_owner` returns) and an account (the person, the only authorization subject), and only the account authorizes. `AccountId` is `From<[u8; 32]>`, so passing a device key where an account belongs still compiles and still "succeeds" — it just grants an account nobody holds, and the grantee stays unable to write. Since core 0.11.0-rc.27 removed base58 (core#3691) both are 64 hex characters, so this mistake no longer looks wrong either. Nothing on the wire maps a device key to an account, so a peer has to tell you theirs: `whoami`.
 
 The context creator (node1) is the initial writer. Use `shared_add_writer` with a 64-hex account id to authorize additional accounts before they attempt to write.
 
@@ -263,8 +263,9 @@ reads them any more: `get_user_simple` will answer `null` for a user who
 plainly has data.** There is no migration; recreate the context.
 
 For the same reason `get_user_simple_for` takes a 64-hex `account_hex`, not a
-base58 device key. A device key is not rejected — it names an empty slot, so
-you get `null` rather than an error. Get the value from `whoami()`.
+device key. A device key is not rejected — it names an empty slot, so you get
+`null` rather than an error, and since core 0.11.0-rc.27 it is the same 64 hex
+characters an account is. Get the value from `whoami()`.
 
 Frontend: **Storage → User Storage**
 
@@ -317,7 +318,7 @@ To change the icon, edit `logic/res/icon.svg` and run `logic/gen-icon.sh`.
 
 **`merod` / `meroctl` not found** — run `./install-calimero.sh` and restart your terminal.
 
-**`cargo mero` not found** — `cargo install --git https://github.com/calimero-network/core --tag 0.11.0-rc.24 cargo-mero --locked`.
+**`cargo mero` not found** — `cargo install --git https://github.com/calimero-network/core --tag 0.11.0-rc.28 cargo-mero --locked`.
 
 **`app install` fails** — run `./logic/build-bundle.sh` first.
 

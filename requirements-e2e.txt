@@ -22,12 +22,18 @@
 #
 # which names neither the field nor the version. Found by this repo's own CI.
 #
-# 0.6.66 is what mero-design, mero-pixart, mero-calendar, mero-blocks and
-# merraria all run GREEN against rc.25 nodes, so the fleet and this repo agree on
-# one pair rather than two.
+# ⚠️ 0.6.69 is a FLOOR against an rc.27+ node, for the same shape of reason.
+# core 0.11.0-rc.27 (`refactor(primitives)!: one encoding for every id — hex,
+# and base58 removed`, core#3691) changed how EVERY id is written on the wire.
+# merobox learned to parse hex in 0.6.69 — core pinned exactly that release in
+# the same breath (core#3693, "the release that parses hex ids"). On 0.6.66 a
+# scenario against an rc.28 node fails while decoding an id it now reads as
+# base58, which surfaces as a truncated client error naming neither.
 #
 # calimero-client-py is the layer that actually builds the request, and merobox
-# 0.6.66 only requires `>=0.6.33` — so leaving it unpinned tracks core master
-# and can break a no-op commit.
-merobox==0.6.66
-calimero-client-py==0.6.33
+# 0.6.69 only requires `>=0.6.36` — so leaving it unpinned tracks core master
+# and can break a no-op commit. 0.6.36 is the version released alongside merobox
+# 0.6.69 (both 2026-08-28), not the newest: 0.6.37 landed 2026-08-31 and no
+# merobox release has been built against it yet.
+merobox==0.6.69
+calimero-client-py==0.6.36

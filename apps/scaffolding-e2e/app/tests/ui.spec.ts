@@ -13,9 +13,9 @@ import { test, expect, Page } from "@playwright/test";
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const NODE_URL = "http://localhost:2528";
-const FAKE_CTX_ID = "fakectxid0000000000000000000000aaaa";
-const FAKE_IDENTITY = "fakeidentitykey0000000000000000aaaa";
-const FAKE_APP_ID = "fakeappid000000000000000000000aaaaa";
+const FAKE_CTX_ID = "fac0c0de" + "0".repeat(52) + "c07e";
+const FAKE_IDENTITY = "fadeba5e" + "0".repeat(52) + "1de7";
+const FAKE_APP_ID = "fa11ab1e" + "0".repeat(52) + "a99d";
 
 // Override the global auth state — these tests set their own localStorage
 test.use({ storageState: { cookies: [], origins: [] } });
@@ -23,8 +23,11 @@ test.use({ storageState: { cookies: [], origins: [] } });
 // ── RPC mock table ────────────────────────────────────────────────────────────
 
 // A 64-hex account id, the shape `whoami` and the shared_* writer API use.
-// Distinct from FAKE_IDENTITY, which is a base58 device key — the two are
-// different identities and the UI copy now says so.
+// Distinct from FAKE_IDENTITY, which is a DEVICE key. core 0.11.0-rc.27 removed
+// base58 (core#3691), so both are now 64 hex characters and the encoding no
+// longer tells them apart — only the value does. Every fixture id in this file
+// is 64-hex for that reason: a mock in the old shape would let a component that
+// mishandles a real id still pass here.
 const FAKE_ACCOUNT = "a".repeat(64);
 
 const RPC_RESULTS: Record<string, unknown> = {
@@ -48,15 +51,15 @@ const RPC_RESULTS: Record<string, unknown> = {
   get_handler_execution_count: 3,
   // Blob / file
   list_files: [
-    { id: "file-id-aaabbb111", name: "hello.txt", blob_id: "FakeBlobB58Id11111", size: 42, mime_type: "text/plain", uploaded_by: FAKE_IDENTITY, uploaded_at: 1700000000 },
-    { id: "file-id-cccddd222", name: "photo.png", blob_id: "FakeBlobB58Id22222", size: 98765, mime_type: "image/png", uploaded_by: FAKE_IDENTITY, uploaded_at: 1700000001 },
+    { id: "file-id-aaabbb111", name: "hello.txt", blob_id: "b10b0001" + "0".repeat(52) + "11f1", size: 42, mime_type: "text/plain", uploaded_by: FAKE_IDENTITY, uploaded_at: 1700000000 },
+    { id: "file-id-cccddd222", name: "photo.png", blob_id: "b10b0002" + "0".repeat(52) + "22f2", size: 98765, mime_type: "image/png", uploaded_by: FAKE_IDENTITY, uploaded_at: 1700000001 },
   ],
   upload_file: "file-id-aaabbb111",
-  get_file: { id: "file-id-aaabbb111", name: "hello.txt", blob_id: "FakeBlobB58Id11111", size: 42, mime_type: "text/plain", uploaded_by: FAKE_IDENTITY, uploaded_at: 1700000000 },
-  get_blob_id_b58: "FakeBlobB58Id99999",
+  get_file: { id: "file-id-aaabbb111", name: "hello.txt", blob_id: "b10b0001" + "0".repeat(52) + "11f1", size: 42, mime_type: "text/plain", uploaded_by: FAKE_IDENTITY, uploaded_at: 1700000000 },
+  get_blob_id_hex: "b10b0009" + "0".repeat(52) + "99f9",
   delete_file: null,
   search_files: [
-    { id: "file-id-aaabbb111", name: "hello.txt", blob_id: "FakeBlobB58Id11111", size: 42, mime_type: "text/plain", uploaded_by: FAKE_IDENTITY, uploaded_at: 1700000000 },
+    { id: "file-id-aaabbb111", name: "hello.txt", blob_id: "b10b0001" + "0".repeat(52) + "11f1", size: 42, mime_type: "text/plain", uploaded_by: FAKE_IDENTITY, uploaded_at: 1700000000 },
   ],
   set_metadata: null,
   get_metadata: NODE_URL,
@@ -304,7 +307,7 @@ async function setupMocks(page: Page) {
     // All identities (across nodes)
     if (/^\/admin-api\/contexts\/[^/]+\/identities$/.test(path))
       return json({
-        data: { identities: [FAKE_IDENTITY, "othernodeidentity9999999999999999999"] },
+        data: { identities: [FAKE_IDENTITY, "0the12ce" + "0".repeat(52) + "2de7"] },
       });
 
     // Namespaces list
@@ -326,7 +329,7 @@ async function setupMocks(page: Page) {
 
     // Blob upload
     if (path === "/admin-api/blobs" && method === "PUT")
-      return json({ data: { blobId: "FakeBlobB58Upload1234567" } });
+      return json({ data: { blobId: "b10b0f11" + "0".repeat(52) + "abcd" } });
 
     // Blob download (GET with blob ID in path)
     if (/^\/admin-api\/blobs\//.test(path) && method === "GET")
