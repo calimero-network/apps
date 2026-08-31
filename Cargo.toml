@@ -11,7 +11,24 @@ resolver = "2"
 # Add "crates/*" back alongside the first shared contract crate — and create the
 # directory in the same commit. A glob whose parent does not exist is a hard
 # error, not an empty match: `failed to read .../crates/*/Cargo.toml`.
-members  = ["apps/*/logic"]
+members  = [
+  "apps/*/logic",
+  # An app whose contract is several crates keeps the extra ones here. The
+  # PRIMARY service is promoted to `apps/<app>/logic` (a members-glob match must
+  # be a package, so that manifest can never be a nested `[workspace]`).
+  #
+  # This entry is required specifically for a crate that is NOT a dependency of
+  # the primary one. Cargo automatically adopts a path dependency living inside
+  # the workspace directory as a member — which is why mero-issue-tracker's
+  # `crates/types` needs nothing — but mero-drive's `registry` is a SECOND
+  # SERVICE that nothing depends on, so without this glob `cargo mero bundle`
+  # fails with `package mero-drive-registry not found in the workspace`.
+  #
+  # A glob matching nothing is fine here: the parent (`apps/*/logic`) exists, and
+  # only a glob whose PARENT is missing is a hard error. Verified with apps that
+  # have no crates/ directory at all.
+  "apps/*/logic/crates/*",
+]
 
 [workspace.package]
 edition    = "2021"
