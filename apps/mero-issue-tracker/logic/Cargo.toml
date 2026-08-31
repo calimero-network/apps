@@ -49,7 +49,7 @@ slug        = "com.calimero.mero-issue-tracker"
 icon        = "default"
 tags        = ["productivity", "issues", "collaboration"]
 github      = "https://github.com/calimero-network/apps"
-min-runtime-version = "0.11.0-rc.26"
+min-runtime-version = "0.11.0-rc.28"
 # A BARE https origin — it doubles as the login callback's registered redirect
 # URI and is compared by EXACT ORIGIN, so a trailing path breaks hosted login
 # after credentials are accepted while desktop login keeps working.
@@ -68,7 +68,7 @@ issue-tracker-types     = { path = "crates/types" }
 calimero-sdk            = { workspace = true }
 calimero-storage        = { workspace = true }
 calimero-storage-macros = { workspace = true }
-bs58                    = { workspace = true }
+hex                     = { workspace = true }
 
 [dev-dependencies]
 # Enables register_crdt_merge + the native mock host so TestHost and converge_app

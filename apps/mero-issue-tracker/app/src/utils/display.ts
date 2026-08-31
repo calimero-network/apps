@@ -32,7 +32,7 @@ export function initial(seed: string): string {
   return c ? c.toLowerCase() : '?';
 }
 
-/** `4f8a…c2e1`-style truncation for a base58 public key. Anything that isn't
+/** `4f8a…c2e1`-style truncation for a hex public key. Anything that isn't
  *  plausibly a key (short, or containing spaces - e.g. an alias) passes through
  *  unchanged, so aliased display strings never get mangled. */
 export function truncateKey(key: string): string {

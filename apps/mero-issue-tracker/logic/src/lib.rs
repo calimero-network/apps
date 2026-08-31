@@ -698,11 +698,13 @@ impl IssueTracker {
 // ---------------------------------------------------------------------------
 
 impl IssueTracker {
-    /// Base58 of the executing identity — the public, shareable identity string.
+    /// Hex of the executing identity — the public, shareable identity string.
     /// Device, not account: this is the executor key the frontend compares
-    /// `created_by`/`author` against when gating edit and delete.
+    /// `created_by`/`author` against when gating edit and delete. Hex since
+    /// core 0.11.0-rc.27 removed base58 — the frontend now holds the same id
+    /// as hex, so a base58 rendering here would never compare equal.
     fn caller(&self) -> String {
-        bs58::encode(env::device_id()).into_string()
+        hex::encode(env::device_id())
     }
 
     fn issue_exists(&self, issue_id: &str) -> app::Result<bool> {
