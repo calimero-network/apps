@@ -1,0 +1,94 @@
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  height: 40px;
+  flex-shrink: 0;
+  padding: 0 14px;
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  overflow-y: hidden;
+  white-space: nowrap;
+}
+
+.toolName {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  flex-shrink: 0;
+}
+
+.field {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex-shrink: 0;
+}
+.label {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+.value {
+  font-size: 11px;
+  color: var(--text);
+  font-family: var(--mono);
+  min-width: 34px;
+  text-align: right;
+}
+.range { width: 110px; }
+
+.select {
+  height: 26px;
+  background: var(--bg-0);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  padding: 0 6px;
+}
+
+.color {
+  width: 26px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: none;
+  cursor: pointer;
+}
+
+.segmented {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.segmented button {
+  height: 26px;
+  padding: 0 10px;
+  font-size: 12px;
+  color: var(--text-dim);
+  background: var(--bg-0);
+}
+.segmented button:hover { color: var(--text); }
+.segOn { background: var(--accent-soft) !important; color: var(--accent) !important; }
+
+.btn {
+  height: 26px;
+  min-width: 28px;
+  padding: 0 10px;
+  font-size: 12px;
+  color: var(--text-dim);
+  background: var(--bg-0);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.btn:hover:not(:disabled) { color: var(--text); }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.note {
+  font-size: 11px;
+  color: var(--text-faint);
+  flex-shrink: 0;
+}

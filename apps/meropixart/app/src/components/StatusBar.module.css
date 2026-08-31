@@ -1,0 +1,28 @@
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 24px;
+  padding: 0 12px;
+  background: var(--bg-1);
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+  user-select: none;
+}
+.item { white-space: nowrap; display: inline-flex; align-items: center; gap: 5px; }
+.swatch {
+  width: 11px;
+  height: 11px;
+  border-radius: 2px;
+  border: 1px solid var(--border-strong);
+  display: inline-block;
+}
+.sep {
+  width: 1px;
+  height: 12px;
+  background: var(--border);
+}
+.grow { flex: 1; }

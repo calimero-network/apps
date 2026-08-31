@@ -679,10 +679,45 @@ name = "mero-calendar"
 version = "0.1.0"
 dependencies = [
  "base64",
- "bs58",
  "calimero-sdk",
  "calimero-storage",
  "calimero-storage-macros",
+ "hex",
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "merodesign"
+version = "0.0.2"
+dependencies = [
+ "calimero-sdk",
+ "calimero-storage",
+ "calimero-storage-macros",
+ "serde_json",
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "meropixart"
+version = "0.0.2"
+dependencies = [
+ "calimero-sdk",
+ "calimero-storage",
+ "calimero-storage-macros",
+ "serde_json",
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "merraria"
+version = "0.0.2"
+dependencies = [
+ "borsh",
+ "borsh-derive",
+ "calimero-sdk",
+ "calimero-storage",
+ "calimero-storage-macros",
+ "hex",
  "thiserror 1.0.69",
 ]
 

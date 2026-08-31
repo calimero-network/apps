@@ -1,0 +1,111 @@
+.modal {
+  width: min(480px, 94vw);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-height: 88vh;
+  overflow-y: auto;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.title { font-size: 16px; font-weight: 700; }
+.close {
+  background: none; border: none;
+  font-size: 14px; color: var(--text-faint);
+  cursor: pointer; padding: 4px;
+}
+.close:hover { color: var(--text); }
+
+.row { display: flex; flex-direction: column; gap: 7px; }
+
+.dimRow { display: flex; align-items: center; gap: 8px; }
+.dimRow .mp-input { width: 88px; }
+.dimTimes { color: var(--text-faint); }
+.dimUnit { color: var(--text-faint); font-size: 12px; margin-right: auto; }
+
+.copyRow {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--bg-0);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+}
+.code {
+  flex: 1; font-size: 11px; font-family: var(--mono);
+  word-break: break-all; color: var(--text-dim);
+}
+.copyBtn {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-2);
+  font-size: 11px; font-weight: 500;
+  color: var(--text);
+  cursor: pointer;
+}
+.copyBtn:hover { background: var(--bg-3); }
+
+.divider { height: 1px; background: var(--border); }
+.muted { font-size: 12px; color: var(--text-faint); }
+
+.memberList {
+  display: flex; flex-direction: column; gap: 8px;
+  max-height: 240px; overflow-y: auto;
+}
+.member { display: flex; align-items: center; gap: 8px; }
+
+.memberAvatar {
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 12px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.memberInfo { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.memberLabel { font-size: 12px; font-weight: 600; color: var(--text); }
+.memberIdRow { display: flex; align-items: center; gap: 6px; }
+.memberId { font-size: 11px; color: var(--text-faint); font-family: var(--mono); }
+
+.copyIcon {
+  flex-shrink: 0;
+  width: 20px; height: 20px;
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-2);
+  font-size: 11px; color: var(--text-dim);
+  cursor: pointer; line-height: 1;
+}
+.copyIcon:hover { background: var(--bg-3); color: var(--text); }
+
+.youTag { font-size: 10px; color: var(--text-faint); }
+
+.roleBadge {
+  flex-shrink: 0;
+  padding: 2px 9px;
+  border-radius: 20px;
+  font-size: 11px; font-weight: 600;
+}
+.roleAdmin { background: var(--accent-soft); color: var(--accent); }
+.roleMember { background: var(--bg-3); color: var(--text-dim); }
+
+.roleBtn {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-2);
+  font-size: 11px; font-weight: 500;
+  color: var(--text);
+  cursor: pointer;
+}
+.roleBtn:hover:not(:disabled) { background: var(--bg-3); border-color: var(--border-strong); }
+.roleBtn:disabled { opacity: 0.5; cursor: default; }

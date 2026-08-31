@@ -333,8 +333,12 @@ jobs:
       #
       # which reads like a flaky runner rather than a matrix that skipped the
       # producer. Measured on migrate/merraria.
+      # Sentinel fallback: an empty array leaves `${{ matrix.app }}` unexpanded,
+      # so GitHub prints the raw template as a skipped check. Falling back to
+      # `["none"]` keeps the name resolvable; this job's `if` gates on the same
+      # `!= '[]'`, so the leg is skipped and simply reads "… (none)".
       matrix:
-        app: ${{ fromJSON(needs.changes.outputs.apps) }}
+        app: ${{ fromJSON(needs.changes.outputs.apps != '[]' && needs.changes.outputs.apps || '["none"]') }}
     steps:
       - uses: actions/checkout@v4
 
@@ -501,8 +505,12 @@ jobs:
     timeout-minutes: 25
     strategy:
       fail-fast: false
+      # Sentinel fallback: an empty array leaves `${{ matrix.app }}` unexpanded,
+      # so GitHub prints the raw template as a skipped check. Falling back to
+      # `["none"]` keeps the name resolvable; this job's `if` gates on the same
+      # `!= '[]'`, so the leg is skipped and simply reads "… (none)".
       matrix:
-        app: ${{ fromJSON(needs.changes.outputs.apps) }}
+        app: ${{ fromJSON(needs.changes.outputs.apps != '[]' && needs.changes.outputs.apps || '["none"]') }}
     steps:
       - uses: actions/checkout@v4
 
@@ -621,8 +629,12 @@ jobs:
     timeout-minutes: 40
     strategy:
       fail-fast: false
+      # Sentinel fallback: an empty array leaves `${{ matrix.app }}` unexpanded,
+      # so GitHub prints the raw template as a skipped check. Falling back to
+      # `["none"]` keeps the name resolvable; this job's `if` gates on the same
+      # `!= '[]'`, so the leg is skipped and simply reads "… (none)".
       matrix:
-        app: ${{ fromJSON(needs.changes.outputs.contract_apps) }}
+        app: ${{ fromJSON(needs.changes.outputs.contract_apps != '[]' && needs.changes.outputs.contract_apps || '["none"]') }}
     steps:
       - uses: actions/checkout@v4
 
