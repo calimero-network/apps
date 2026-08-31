@@ -1,0 +1,134 @@
+@keyframes floatY {
+  0%   { transform: translateY(0px) rotate(0deg); }
+  50%  { transform: translateY(-14px) rotate(4deg); }
+  100% { transform: translateY(0px) rotate(0deg); }
+}
+@keyframes driftA {
+  0%   { transform: translate(0, 0) scale(1); }
+  25%  { transform: translate(80px, -60px) scale(1.1); }
+  50%  { transform: translate(40px, 80px) scale(0.95); }
+  75%  { transform: translate(-60px, 20px) scale(1.05); }
+  100% { transform: translate(0, 0) scale(1); }
+}
+@keyframes driftB {
+  0%   { transform: translate(0, 0) scale(1); }
+  33%  { transform: translate(-70px, 50px) scale(1.08); }
+  66%  { transform: translate(50px, -40px) scale(0.92); }
+  100% { transform: translate(0, 0) scale(1); }
+}
+@keyframes driftC {
+  0%   { transform: translate(0, 0); }
+  40%  { transform: translate(60px, 70px); }
+  80%  { transform: translate(-40px, -30px); }
+  100% { transform: translate(0, 0); }
+}
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.root {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(165,255,17,0.06), transparent 55%),
+    var(--bg-0);
+  background-image: radial-gradient(circle, rgba(255,255,255,0.035) 1px, transparent 1px);
+  background-size: 26px 26px;
+  position: relative;
+  overflow: hidden;
+}
+
+.bgCircle1 {
+  position: absolute;
+  width: 480px; height: 480px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(165,255,17,0.14), transparent 70%);
+  top: -120px; left: -160px;
+  filter: blur(50px);
+  animation: driftA 18s ease-in-out infinite;
+  pointer-events: none;
+}
+.bgCircle2 {
+  position: absolute;
+  width: 360px; height: 360px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(58,160,255,0.12), transparent 70%);
+  bottom: -80px; right: -100px;
+  filter: blur(55px);
+  animation: driftB 14s ease-in-out infinite;
+  pointer-events: none;
+}
+.bgCircle3 {
+  position: absolute;
+  width: 280px; height: 280px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(155,89,182,0.11), transparent 70%);
+  top: 50%; left: 60%;
+  filter: blur(50px);
+  animation: driftC 20s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.bgDots { position: absolute; inset: 0; pointer-events: none; z-index: 0; }
+
+.floatEl {
+  position: absolute;
+  opacity: 0.22;
+  pointer-events: none;
+  animation: floatY 5s ease-in-out infinite;
+  z-index: 1;
+}
+
+.backBtn {
+  position: absolute;
+  top: 24px; left: 28px;
+  background: none; border: none;
+  font-size: 13px; font-weight: 600;
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  transition: color 0.15s, background 0.15s;
+  z-index: 10;
+}
+.backBtn:hover { color: var(--text); background: var(--bg-3); }
+
+.card {
+  background: var(--bg-1);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  padding: 38px 34px;
+  width: 360px;
+  max-width: 92vw;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  position: relative;
+  z-index: 10;
+  box-shadow: var(--shadow);
+  animation: fadeUp 0.45s ease both;
+}
+
+.cardLogo { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.cardLogoText { font-size: 15px; font-weight: 700; letter-spacing: -0.3px; color: var(--text); }
+
+.title { font-size: 19px; font-weight: 700; letter-spacing: -0.3px; margin-bottom: 2px; color: var(--text); }
+.subtitle { font-size: 13px; color: var(--text-dim); margin-bottom: 12px; }
+
+/* Brand the mero ConnectButton */
+.connectWrap :global(button) {
+  width: 100%;
+  padding: 11px !important;
+  background: var(--accent) !important;
+  color: var(--accent-text) !important;
+  border: none !important;
+  border-radius: var(--radius-sm) !important;
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.connectWrap :global(button:hover) { background: var(--accent-dim) !important; }
