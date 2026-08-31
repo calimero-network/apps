@@ -4,6 +4,7 @@
 //! cell editing with basic formula evaluation, live cursor tracking, built-in
 //! function help, and data export.
 
+use calimero_sdk::abi::AbiType;
 use calimero_sdk::app;
 use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use calimero_sdk::env;
@@ -25,7 +26,7 @@ use events::Event;
 // ---------------------------------------------------------------------------
 
 /// A sheet tab stored in the shared UnorderedMap.
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, AbiType)]
 #[borsh(crate = "calimero_sdk::borsh")]
 pub struct SheetData {
     pub id: String,
@@ -66,7 +67,7 @@ impl Mergeable for SheetData {
 
 /// A single cell stored in the shared UnorderedMap.
 /// Key: `"{sheet_id}|{row}|{col}"`.
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, AbiType)]
 #[borsh(crate = "calimero_sdk::borsh")]
 pub struct CellData {
     /// Mirrors the map key for ABI convenience.
@@ -104,7 +105,7 @@ impl Mergeable for CellData {
 }
 
 /// A cursor stored in the per-author AuthoredMap (keyed by author pubkey b58).
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, AbiType)]
 #[borsh(crate = "calimero_sdk::borsh")]
 pub struct CursorData {
     pub sheet_id: String,
