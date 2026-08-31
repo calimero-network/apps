@@ -19,23 +19,15 @@ export function safeColor(raw: string | null | undefined): string | undefined {
   return COLOR_ALLOWLIST.test(trimmed) ? trimmed : undefined;
 }
 
-// Rough sanity-check on the pubkey format — Calimero identities
-// are base58-encoded Ed25519 pubkeys, which for a 32-byte key land
-// in the 43-44 char range. {40,50} gives some slack for prefixed or
-// versioned variants while still tightly enough scoped to catch
-// obviously-garbage input (typos, truncated paste, etc). This is a
-// client-side UX guard — the node validates the actual format.
+// Rough sanity-check on the pubkey format — Calimero identities are
+// Ed25519 device keys. core 0.11.0-rc.27 removed base58 (core#3691), so a
+// 32-byte key is now exactly 64 hex characters. This is a client-side UX
+// guard (catch typos / truncated paste); the node validates the real format,
+// and the registry service lower-cases what it stores.
 //
-// The character class IS the canonical Bitcoin base58 alphabet:
-// `123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz`
-// — only `0 O I l` are excluded (lowercase `o` is VALID). Decoded:
-//   1-9    → digits (no 0)
-//   A-H    → ends before I (I=73, excluded)
-//   J-N    → resumes after I, ends before O (O=79, excluded)
-//   P-Z    → resumes after O
-//   a-k    → ends before l (l=108, excluded)
-//   m-z    → resumes after l (includes o, which IS in base58)
-export const MEMBER_IDENTITY_PATTERN = /^[1-9A-HJ-NP-Za-km-z]{40,50}$/;
+// Case-insensitive on purpose: the admin API returns lower-case, but a hand-
+// pasted key may be upper-case, and `validate_member_key` normalises either.
+export const MEMBER_IDENTITY_PATTERN = /^[0-9a-fA-F]{64}$/;
 
 export function looksLikeMemberIdentity(raw: string): boolean {
   return MEMBER_IDENTITY_PATTERN.test(raw);

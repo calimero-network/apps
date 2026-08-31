@@ -5,7 +5,7 @@ set -euo pipefail
 # bundle contents cannot drift under us. This release is the first carrying the
 # bundle-manifest capabilities the metadata table uses (icon, slug, versioned
 # output path).
-RELEASE=0.11.0-rc.20
+RELEASE=0.11.0-rc.28
 
 # Per-asset SHA-256, so a re-uploaded asset under the same tag cannot swap the
 # binary silently. Refresh these together with RELEASE:

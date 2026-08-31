@@ -7,40 +7,34 @@ import {
 } from '../validation';
 
 describe('looksLikeMemberIdentity', () => {
-  it('accepts a typical 43-char base58 string of valid chars', () => {
-    // 'a' is in the base58 alphabet (a-k range).
-    expect(looksLikeMemberIdentity('a'.repeat(43))).toBe(true);
+  // core 0.11.0-rc.27 removed base58: a device key is now 64 hex characters.
+  it('accepts a 64-char hex string', () => {
+    expect(looksLikeMemberIdentity('a'.repeat(64))).toBe(true);
   });
 
-  it('accepts a string containing lowercase `o` (IS valid in base58)', () => {
-    // base58 excludes only `0 O I l` — lowercase `o` IS in the alphabet.
-    // The previous "fix" wrongly excluded `o`; reverted.
-    expect(looksLikeMemberIdentity('a'.repeat(42) + 'o')).toBe(true);
+  it('accepts upper-case hex (a pasted key may be upper-cased)', () => {
+    expect(looksLikeMemberIdentity('AbCdEf01'.repeat(8))).toBe(true);
   });
 
-  it('rejects a string containing `l` (excluded from base58)', () => {
-    expect(looksLikeMemberIdentity('a'.repeat(42) + 'l')).toBe(false);
+  it('accepts `0` — a valid hex digit, which base58 excluded', () => {
+    // The whole point of the migration: `0` used to be rejected, now it is not.
+    expect(looksLikeMemberIdentity('0'.repeat(64))).toBe(true);
   });
 
-  it('rejects strings containing `0`, `O`, `I` (the other base58 exclusions)', () => {
-    expect(looksLikeMemberIdentity('a'.repeat(42) + '0')).toBe(false);
-    expect(looksLikeMemberIdentity('a'.repeat(42) + 'O')).toBe(false);
-    expect(looksLikeMemberIdentity('a'.repeat(42) + 'I')).toBe(false);
+  it('rejects non-hex letters (`g`, `o`, `l`, `z`)', () => {
+    expect(looksLikeMemberIdentity('a'.repeat(63) + 'g')).toBe(false);
+    expect(looksLikeMemberIdentity('a'.repeat(63) + 'o')).toBe(false);
+    expect(looksLikeMemberIdentity('a'.repeat(63) + 'z')).toBe(false);
   });
 
-  it('rejects too-short / too-long strings', () => {
-    expect(looksLikeMemberIdentity('a'.repeat(39))).toBe(false);
-    expect(looksLikeMemberIdentity('a'.repeat(51))).toBe(false);
-  });
-
-  it('accepts the boundary lengths (40 and 50)', () => {
-    expect(looksLikeMemberIdentity('a'.repeat(40))).toBe(true);
-    expect(looksLikeMemberIdentity('a'.repeat(50))).toBe(true);
+  it('rejects the wrong length (63 / 65 chars)', () => {
+    expect(looksLikeMemberIdentity('a'.repeat(63))).toBe(false);
+    expect(looksLikeMemberIdentity('a'.repeat(65))).toBe(false);
   });
 
   it('exports a pattern that matches looksLikeMemberIdentity', () => {
-    expect(MEMBER_IDENTITY_PATTERN.test('a'.repeat(43))).toBe(true);
-    expect(MEMBER_IDENTITY_PATTERN.test('a'.repeat(42) + 'l')).toBe(false);
+    expect(MEMBER_IDENTITY_PATTERN.test('a'.repeat(64))).toBe(true);
+    expect(MEMBER_IDENTITY_PATTERN.test('a'.repeat(63) + 'z')).toBe(false);
   });
 });
 

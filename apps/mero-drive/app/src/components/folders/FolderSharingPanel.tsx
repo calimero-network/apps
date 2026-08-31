@@ -45,7 +45,7 @@ interface Props {
 }
 
 // Identity-format guard lives in utils/validation; see notes there
-// (base58 alphabet, length window, client-only UX check).
+// (64-hex, client-only UX check).
 
 export function FolderSharingPanel({ folderId }: Props) {
   const { namespaceId, folders, selfIdentity } = useDriveWorkspace();

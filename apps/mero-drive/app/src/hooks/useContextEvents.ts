@@ -90,7 +90,7 @@ export function useContextEvents(
 
   const strict = options?.strict ?? false;
   const debounceMs = options?.debounceMs ?? 0;
-  // Stable, comparable key for the id set — context ids are hex/base58
+  // Stable, comparable key for the id set — context ids are hex
   // so a comma separator never collides. Used as the callback dep
   // (the `ids` array is a fresh reference each render) and to rebuild
   // the allow-set inside the handler without capturing the array.

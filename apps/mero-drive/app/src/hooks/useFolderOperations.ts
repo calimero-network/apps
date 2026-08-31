@@ -74,7 +74,7 @@ export function useFolderOperations(
         throw new Error('workspace not bootstrapped');
       }
       // Empty applicationId makes admin-api reject the context
-      // creation with a base58-decode error. Guard here so the user
+      // creation with a hex-decode error. Guard here so the user
       // gets a meaningful message instead of a raw 400.
       if (!applicationId) {
         throw new Error(

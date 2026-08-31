@@ -90,7 +90,7 @@ export function buildInviteUrl(
   const base = PACKAGE_NAME
     ? `${DEEP_LINK_BASE}/${PACKAGE_NAME}/join`
     : `${window.location.origin}/join`;
-  // Ids are base58 today, but an unencoded `&` or `#` would truncate the
+  // Ids are hex today, but an unencoded `&` or `#` would truncate the
   // link into something that fails at the joiner rather than at build time.
   let url = `${base}?invitation=${payload}&kind=${kind}&id=${encodeURIComponent(targetId)}`;
   if (name) url += `&name=${encodeURIComponent(name)}`;

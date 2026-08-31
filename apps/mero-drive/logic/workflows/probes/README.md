@@ -52,7 +52,7 @@ running these two.
 
 ## What changed here during the migration
 
-* **`image: ghcr.io/calimero-network/merod:edge` → `0.11.0-rc.26`.** `edge` is a
+* **`image: ghcr.io/calimero-network/merod:edge` → `0.11.0-rc.28`.** `edge` is a
   MOVING tag and `force_pull_image: true` re-pulls it every run, so the release
   under test changed silently between runs. It also would have failed
   `scripts/check-app-metadata.sh`, whose regex matches any

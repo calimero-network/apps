@@ -126,7 +126,7 @@ pub enum Role {
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct FolderRoleEntry {
-    /// base58-encoded member public key.
+    /// hex-encoded member public key.
     pub member: String,
     pub role: Role,
 }
@@ -266,7 +266,7 @@ pub struct RegistryState {
     /// removed (kept around so the key is never CRDT-tombstoned — a
     /// `remove` would silently swallow a later re-add of the same key).
     managers: UnorderedMap<String, LwwRegister<bool>>,
-    /// `role_key(folder_id, member_b58)` → role. Absent ⇒ `Role::Editor`.
+    /// `role_key(folder_id, member_hex)` → role. Absent ⇒ `Role::Editor`.
     folder_roles: UnorderedMap<String, LwwRegister<Role>>,
 }
 
@@ -586,7 +586,7 @@ impl RegistryState {
     // ---- permissions: owner / managers ----------------------------------
 
     pub fn claim_owner(&mut self) -> app::Result<()> {
-        let caller = permissions::caller_b58().map_err(|e| AppError::msg(e.to_string()))?;
+        let caller = permissions::caller_hex().map_err(|e| AppError::msg(e.to_string()))?;
         self.claim_owner_inner(&caller)
             .map_err(|e| AppError::msg(e.to_string()))?;
         app::emit!(Event::OwnerClaimed { owner: &caller });
@@ -599,11 +599,11 @@ impl RegistryState {
     /// non-nullable Option.)
     #[app::view]
     pub fn get_owner(&self) -> app::Result<String> {
-        Ok(self.owner_b58())
+        Ok(self.owner_hex())
     }
 
     pub fn add_manager(&mut self, member: String) -> app::Result<()> {
-        let caller = permissions::caller_b58().map_err(|e| AppError::msg(e.to_string()))?;
+        let caller = permissions::caller_hex().map_err(|e| AppError::msg(e.to_string()))?;
         let member_for_event = member.clone();
         self.add_manager_inner(&caller, &member)
             .map_err(|e| AppError::msg(e.to_string()))?;
@@ -614,7 +614,7 @@ impl RegistryState {
     }
 
     pub fn remove_manager(&mut self, member: String) -> app::Result<()> {
-        let caller = permissions::caller_b58().map_err(|e| AppError::msg(e.to_string()))?;
+        let caller = permissions::caller_hex().map_err(|e| AppError::msg(e.to_string()))?;
         let member_for_event = member.clone();
         self.remove_manager_inner(&caller, &member)
             .map_err(|e| AppError::msg(e.to_string()))?;
@@ -638,7 +638,7 @@ impl RegistryState {
         member: String,
         role: Role,
     ) -> app::Result<()> {
-        let caller = permissions::caller_b58().map_err(|e| AppError::msg(e.to_string()))?;
+        let caller = permissions::caller_hex().map_err(|e| AppError::msg(e.to_string()))?;
         let fid = folder_id.0.clone();
         let member_for_event = member.clone();
         self.set_folder_role_inner(&caller, &folder_id.0, &member, role)
@@ -651,7 +651,7 @@ impl RegistryState {
     }
 
     pub fn clear_folder_role(&mut self, folder_id: FolderId, member: String) -> app::Result<()> {
-        let caller = permissions::caller_b58().map_err(|e| AppError::msg(e.to_string()))?;
+        let caller = permissions::caller_hex().map_err(|e| AppError::msg(e.to_string()))?;
         let fid = folder_id.0.clone();
         let member_for_event = member.clone();
         self.clear_folder_role_inner(&caller, &folder_id.0, &member)

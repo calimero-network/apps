@@ -1,6 +1,6 @@
 // Combobox over the namespace's existing members. The "add manager" /
 // "add member to restricted folder" flows used to be a raw text input
-// expecting a 44-char base58 pubkey; this lets the admin start typing
+// expecting a 64-char hex pubkey; this lets the admin start typing
 // a name or a pubkey prefix and pick from the workspace member list.
 // Free-form paste of an unknown pubkey still works (Enter commits the
 // raw text via onSelect — the downstream form validates / sends).

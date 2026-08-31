@@ -9,10 +9,10 @@ use mero_drive_types::DriveError;
 use crate::{FolderRoleEntry, RegistryState, Role};
 
 /// Composite key for the per-(folder, member) role map. U+001F (ASCII Unit
-/// Separator) cannot appear in a base58 string or a Calimero group id, so it
+/// Separator) cannot appear in a hex string or a Calimero group id, so it
 /// is a safe, collision-free delimiter.
-pub(crate) fn role_key(folder_id: &str, member_b58: &str) -> String {
-    format!("{folder_id}\u{1f}{member_b58}")
+pub(crate) fn role_key(folder_id: &str, member_hex: &str) -> String {
+    format!("{folder_id}\u{1f}{member_hex}")
 }
 
 /// Prefix matching every role row for one folder.
@@ -20,33 +20,34 @@ pub(crate) fn role_key_prefix(folder_id: &str) -> String {
     format!("{folder_id}\u{1f}")
 }
 
-/// base58 device public key of the caller. Deliberately NOT `account_id()`:
+/// Hex device public key of the caller. Deliberately NOT `account_id()`:
 /// the admin API only exposes members as device public keys, and role rows
-/// must match what clients pass in. Switch when core exposes member accounts.
-pub(crate) fn caller_b58() -> Result<String, DriveError> {
+/// must match what clients pass in. core 0.11.0-rc.27 removed base58
+/// (core#3691), so this is hex now — as is everything the admin API returns.
+/// Switch when core exposes member accounts.
+pub(crate) fn caller_hex() -> Result<String, DriveError> {
     let id = calimero_sdk::env::device_id();
     if id.len() != 32 {
         return Err(DriveError::Invalid("device id length".into()));
     }
-    Ok(bs58::encode(&id).into_string())
+    Ok(hex::encode(id))
 }
 
-/// Validate & normalise an incoming base58 32-byte public key.
+/// Validate & normalise an incoming hex 32-byte public key. Re-encoding
+/// lower-cases it, so the stored form is canonical regardless of input case.
 pub(crate) fn validate_member_key(s: &str) -> Result<String, DriveError> {
-    let decoded = bs58::decode(s)
-        .into_vec()
-        .map_err(|e| DriveError::Invalid(format!("bad base58 key: {e}")))?;
+    let decoded = hex::decode(s).map_err(|e| DriveError::Invalid(format!("bad hex key: {e}")))?;
     if decoded.len() != 32 {
         return Err(DriveError::Invalid("member key length".into()));
     }
-    Ok(bs58::encode(&decoded).into_string())
+    Ok(hex::encode(&decoded))
 }
 
 impl RegistryState {
     /// True if `caller` is the owner or a manager. Fail-closed: if no owner
     /// has been claimed yet, nobody is an admin.
     pub(crate) fn is_admin(&self, caller: &str) -> Result<bool, DriveError> {
-        let owner = self.owner_b58();
+        let owner = self.owner_hex();
         if owner.is_empty() {
             return Ok(false);
         }
@@ -70,14 +71,14 @@ impl RegistryState {
         }
     }
 
-    pub(crate) fn owner_b58(&self) -> String {
+    pub(crate) fn owner_hex(&self) -> String {
         self.owner.get().clone()
     }
 
     /// Claim ownership of the registry. Idempotent for the current owner;
     /// `Forbidden` if a different key already owns it.
     pub(crate) fn claim_owner_inner(&mut self, caller: &str) -> Result<(), DriveError> {
-        let cur = self.owner_b58();
+        let cur = self.owner_hex();
         if cur.is_empty() {
             self.owner.set(caller.to_string());
             Ok(())
@@ -90,7 +91,7 @@ impl RegistryState {
         }
     }
 
-    /// Owner-only. Validates `member` as base58. Re-adding / re-granting an
+    /// Owner-only. Validates `member` as hex. Re-adding / re-granting an
     /// existing or previously-removed manager succeeds (a fresh `LwwRegister`
     /// with the current HLC always wins — the key is never tombstoned).
     pub(crate) fn add_manager_inner(
@@ -98,7 +99,7 @@ impl RegistryState {
         caller: &str,
         member: &str,
     ) -> Result<(), DriveError> {
-        let owner = self.owner_b58();
+        let owner = self.owner_hex();
         if owner.is_empty() || owner != caller {
             return Err(DriveError::Forbidden(
                 "only the registry owner may add managers".into(),
@@ -122,7 +123,7 @@ impl RegistryState {
         caller: &str,
         member: &str,
     ) -> Result<(), DriveError> {
-        let owner = self.owner_b58();
+        let owner = self.owner_hex();
         if owner.is_empty() || owner != caller {
             return Err(DriveError::Forbidden(
                 "only the registry owner may remove managers".into(),
@@ -265,7 +266,7 @@ mod tests {
     use mero_drive_types::DriveError;
 
     fn key(byte: u8) -> String {
-        bs58::encode([byte; 32]).into_string()
+        hex::encode([byte; 32])
     }
     fn fid(s: &str) -> crate::FolderId {
         crate::FolderId(s.to_string())
@@ -284,16 +285,16 @@ mod tests {
     #[test]
     fn claim_owner_sets_owner_when_unclaimed() {
         let mut app = RegistryState::init();
-        assert_eq!(app.owner_b58(), "");
+        assert_eq!(app.owner_hex(), "");
         app.claim_owner_inner(&key(1)).unwrap();
-        assert_eq!(app.owner_b58(), key(1));
+        assert_eq!(app.owner_hex(), key(1));
     }
     #[test]
     fn claim_owner_is_idempotent_for_owner() {
         let mut app = RegistryState::init();
         app.claim_owner_inner(&key(1)).unwrap();
         app.claim_owner_inner(&key(1)).unwrap(); // no error
-        assert_eq!(app.owner_b58(), key(1));
+        assert_eq!(app.owner_hex(), key(1));
     }
     #[test]
     fn claim_owner_rejects_second_claimer() {
@@ -301,7 +302,7 @@ mod tests {
         app.claim_owner_inner(&key(1)).unwrap();
         let err = app.claim_owner_inner(&key(2)).unwrap_err();
         assert!(matches!(err, DriveError::Forbidden(_)));
-        assert_eq!(app.owner_b58(), key(1));
+        assert_eq!(app.owner_hex(), key(1));
     }
 
     // ---- is_admin / require_admin ----
@@ -339,11 +340,11 @@ mod tests {
             DriveError::Invalid(_)
         ));
         assert!(matches!(
-            app.add_manager_inner(&key(1), "not-base58!!").unwrap_err(),
+            app.add_manager_inner(&key(1), "not-hex!!").unwrap_err(),
             DriveError::Invalid(_)
         ));
         assert!(matches!(
-            app.add_manager_inner(&key(1), &bs58::encode([0u8; 16]).into_string())
+            app.add_manager_inner(&key(1), &hex::encode([0u8; 16]))
                 .unwrap_err(),
             DriveError::Invalid(_)
         ));
