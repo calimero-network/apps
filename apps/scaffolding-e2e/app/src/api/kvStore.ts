@@ -13,7 +13,7 @@ function call<A extends Record<string, unknown>, R>(method: string, argsJson: A)
 
 /** Both halves of the caller's identity — see the contract's `whoami`. */
 export interface Identity {
-  /** This installation, base58. What `authored_*` reports as an owner. */
+  /** This installation, 64 hex characters. What `authored_*` reports as an owner. */
   device_id: string;
   /** The person, 64 hex chars. What the `shared_*` writer set is keyed by. */
   account_id: string;
@@ -107,7 +107,7 @@ export const getUserSimple = () =>
 /**
  * Read another user's `UserStorage` slot, addressed by ACCOUNT (64 hex).
  *
- * Not the base58 device key: rc.21 rekeyed `UserStorage` by account, so a
+ * Not the DEVICE key: rc.21 rekeyed `UserStorage` by account, so a
  * device key names a slot nobody writes to and this answers `null` forever
  * instead of erroring. Get the value from `whoami().account_id`.
  */
@@ -170,7 +170,7 @@ export const getFile = (file_id: string) =>
   call<{ file_id: string }, FileRecord>("get_file", { file_id });
 
 export const getBlobIdB58 = (file_id: string) =>
-  call<{ file_id: string }, string>("get_blob_id_b58", { file_id });
+  call<{ file_id: string }, string>("get_blob_id_hex", { file_id });
 
 export const searchFiles = (query: string) =>
   call<{ query: string }, FileRecord[]>("search_files", { query });
@@ -386,9 +386,9 @@ export const wsMyRole = () =>
 export const wsListMembers = () =>
   call<Record<string, never>, MemberRecord[]>("ws_list_members", {});
 
-export const wsPingChannel = (target_context_id_b58: string) =>
-  call<{ target_context_id_b58: string }, void>("ws_ping_channel", {
-    target_context_id_b58,
+export const wsPingChannel = (target_context_id: string) =>
+  call<{ target_context_id: string }, void>("ws_ping_channel", {
+    target_context_id,
   });
 
 /**
@@ -455,7 +455,7 @@ export const sharedGet = () =>
 export const sharedGetWriters = () =>
   call<Record<string, never>, string[]>("shared_get_writers", {});
 
-// The writer set is keyed by ACCOUNT id (64 hex chars), not by the base58
+// The writer set is keyed by ACCOUNT id, not by the device
 // device key the rest of this API uses — core 0.11 made the account the only
 // authorization subject. Get yours from whoami().
 export const sharedAddWriter = (account_hex: string) =>

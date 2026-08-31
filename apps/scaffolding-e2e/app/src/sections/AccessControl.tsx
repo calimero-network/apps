@@ -74,7 +74,7 @@ export function AccessControlSection() {
   }, []);
 
   const accountHelp =
-    "A 64-hex ACCOUNT id, not a base58 device key. Every authorization subject here is an account; use whoami (Identity, top of the sidebar) or the node's own account to get one.";
+    "An ACCOUNT id, not a device key. Both are 64 hex characters since core rc.27, so the shape will not warn you — only whoami (Identity, top of the sidebar) tells you which is which. Every authorization subject here is an account.";
 
   return (
     <div>

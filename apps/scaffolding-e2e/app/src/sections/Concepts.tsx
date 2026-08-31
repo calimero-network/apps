@@ -279,7 +279,7 @@ const GLOSSARY_ITEMS: {
     tag: "Core",
     tagColor: "var(--color-brand-600)",
     definition:
-      "A live instance of a WASM application. Has its own replicated CRDT state. Multiple nodes join the same context to share state. Identified by a base58 context ID (32-byte Ed25519 public key).",
+      "A live instance of a WASM application. Has its own replicated CRDT state. Multiple nodes join the same context to share state. Identified by a hex context ID (32-byte Ed25519 public key).",
   },
   {
     term: "Namespace / Group",
@@ -293,7 +293,7 @@ const GLOSSARY_ITEMS: {
     tag: "Auth",
     tagColor: "#f59e0b",
     definition:
-      "Two different identities, and app code has to know which it holds. A device is one installation: an Ed25519 keypair, shown base58, what a context membership is tied to and what the CRDT layer uses as a replica id — env::device_id(). An account is the person, shown as 64 hex characters, and is the only thing that authorizes anything (the SharedStorage writer set is keyed by it) — env::account_id(). One account can have several devices. env::executor_id() used to be both and no longer exists. Call whoami to see both of yours.",
+      "Two different identities, and app code has to know which it holds. A device is one installation: an Ed25519 keypair, what a context membership is tied to and what the CRDT layer uses as a replica id — env::device_id(). An account is the person, and is the only thing that authorizes anything (the SharedStorage writer set is keyed by it) — env::account_id(). One account can have several devices. env::executor_id() used to be both and no longer exists. ⚠️ Since core 0.11.0-rc.27 removed base58, BOTH are 64 hex characters — the encoding used to tell them apart and no longer does, so passing a device key where an account belongs now fails silently as a permission that authorizes nobody. Call whoami to see both of yours.",
   },
   {
     term: "CRDT",
@@ -321,7 +321,7 @@ const GLOSSARY_ITEMS: {
     tag: "Files",
     tagColor: "#16a34a",
     definition:
-      "A file stored on the node. Identified by its SHA-256 hash (base58 encoded). Metadata (name, size, MIME type) replicates via CRDT to all peers. The blob bytes themselves stay on the originating node until a peer explicitly fetches them (lazy replication).",
+      "A file stored on the node. Identified by its SHA-256 hash (hex encoded). Metadata (name, size, MIME type) replicates via CRDT to all peers. The blob bytes themselves stay on the originating node until a peer explicitly fetches them (lazy replication).",
   },
   {
     term: "Private Storage",
@@ -826,13 +826,13 @@ const ID_FORMATS: {
 }[] = [
   {
     label: "Context ID",
-    encoding: "base58",
+    encoding: "hex",
     size: "32 bytes",
     description: "Identifies a context instance. Derived from the context's Ed25519 public key.",
   },
   {
     label: "Device Key",
-    encoding: "base58",
+    encoding: "hex",
     size: "32 bytes",
     description:
       "Ed25519 public key identifying one installation, and what the CRDT layer uses as the replica id. Never an authorization subject — that is the account. NOT sent with a call: it used to travel as executorPublicKey, but the node reads the caller from the bearer token and ignores anything passed alongside, so this app does not send it (see the assertion in api/rpc.test.ts).",
@@ -842,7 +842,7 @@ const ID_FORMATS: {
     encoding: "hex",
     size: "32 bytes",
     description:
-      "Identifies a person, and is the only thing that authorizes anything: writer sets, entry ownership and group membership are all keyed by it. One account can hold several device keys. Rendered hex, deliberately unlike a key, so the two are never pasted interchangeably.",
+      "Identifies a person, and is the only thing that authorizes anything: writer sets, entry ownership and group membership are all keyed by it. One account can hold several device keys. ⚠️ Until core 0.11.0-rc.27 this was hex while a device key was base58, so the two could never be confused on sight. rc.27 made every id hex (core#3691), so an account and a device key are now the same 64 characters and only their provenance tells them apart — call whoami.",
   },
   {
     label: "Group ID",
@@ -852,7 +852,7 @@ const ID_FORMATS: {
   },
   {
     label: "Blob ID",
-    encoding: "base58",
+    encoding: "hex",
     size: "32 bytes",
     description: "SHA-256 hash of the blob content. Content-addressed — the same file always has the same ID.",
   },

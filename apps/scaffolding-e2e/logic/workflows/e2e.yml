@@ -7,7 +7,7 @@ near_devnet: false
 
 nodes:
   count: 3
-  image: ghcr.io/calimero-network/merod:0.11.0-rc.26
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.28
   # rc.26 made mDNS opt-in (core#3620) and merobox does not pass the flag,
   # so discovery changed at the image bump. Stated, not inherited.
   mdns: true
@@ -1735,7 +1735,7 @@ steps:
     type: call
     node: e2e-node-1
     context_id: "{{context_id}}"
-    method: get_blob_id_b58
+    method: get_blob_id_hex
     args:
       file_id: "{{png_file_id}}"
     outputs:

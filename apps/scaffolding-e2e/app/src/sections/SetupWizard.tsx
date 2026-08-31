@@ -1006,9 +1006,9 @@ function JoinerStep2Context({ onDone }: { onDone: (ctxId: string) => void }) {
       <div style={{ marginBottom: 14 }}>
         <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 6 }}>
           <Label>Context ID</Label>
-          <FieldHelp text="The base58-encoded context ID from Node A's Step 2. Both nodes must join the same context ID to share CRDT state." />
+          <FieldHelp text="The hex context ID from Node A's Step 2. Both nodes must join the same context ID to share CRDT state." />
         </div>
-        <input className="form-control" value={ctxId} onChange={(e) => setCtxId(e.target.value)} placeholder="Context ID (base58)" />
+        <input className="form-control" value={ctxId} onChange={(e) => setCtxId(e.target.value)} placeholder="Context ID (hex)" />
       </div>
 
       <button className="btn-calimero" onClick={join} disabled={loading || !ctxId.trim()}>{loading ? "Joining…" : "Join Context"}</button>
