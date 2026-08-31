@@ -39,7 +39,6 @@ frontend = "https://mero-blocks.vercel.app/"
 [dependencies]
 borsh = "1.6.1"
 borsh-derive = "1.6.1"
-bs58 = "0.5.1"
 # SDK crates are not on crates.io past rc.5 — must be git tag deps, and all
 # three must share the exact same tag (workspace version at the tag is 0.0.0).
 # Pin a real release tag, never `branch = "master"`: master rides unreleased
@@ -52,6 +51,11 @@ calimero-storage-macros = { workspace = true }
 [dev-dependencies]
 # "testing" enables the native mock host (TestHost) for `cargo test`
 calimero-storage = { workspace = true, features = ["testing"] }
+# Only the tests render an id as a string, to compare against what the
+# contract produces. `caller_id()` is `String::from(PublicKey)` and the SDK
+# renders that — core 0.11.0-rc.27 removed base58 (core#3691), making it
+# hex, so the helper has to agree or every id assertion fails.
+hex = "0.4.3"
 
 # `[profile.*]` lives at the workspace root. Cargo IGNORES a profile in a
 # member and then hard-errors on it, so this is not stylistic.

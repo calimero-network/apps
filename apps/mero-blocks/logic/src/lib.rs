@@ -537,8 +537,15 @@ mod tests {
     const ALICE: [u8; 32] = [0x11; 32];
     const BOB: [u8; 32] = [0x22; 32];
 
+    /// Render an id the way the contract does.
+    ///
+    /// `caller_id()` is `String::from(PublicKey)`, so the SDK chooses this, not
+    /// the test. core 0.11.0-rc.27 removed base58 (core#3691) and `Hash`'s
+    /// Display is `hex::encode`, which silently changed what the contract
+    /// emits. This was `bs58::encode`, and every id assertion below compared
+    /// against the wrong string the moment the SDK moved.
     fn id_of(bytes: [u8; 32]) -> String {
-        bs58::encode(bytes).into_string()
+        hex::encode(bytes)
     }
 
     fn new_world() -> TestHost<MeroBlocks> {

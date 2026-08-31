@@ -29,7 +29,7 @@ steps:
   - name: Install application on Node 1
     type: install_application
     node: calimero-node-1
-    path: "../logic/res/mero_blocks.wasm"
+    path: res/mero_blocks.wasm
     dev: true
     outputs:
       app_id: applicationId
@@ -37,7 +37,7 @@ steps:
   - name: Install application on Node 2
     type: install_application
     node: calimero-node-2
-    path: "../logic/res/mero_blocks.wasm"
+    path: res/mero_blocks.wasm
     dev: true
 
   - name: Create namespace
