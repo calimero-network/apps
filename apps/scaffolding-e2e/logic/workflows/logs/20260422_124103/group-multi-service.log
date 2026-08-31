@@ -1,0 +1,6 @@
+Traceback (most recent call last):
+  File "/Users/frandomovic/.pyenv/versions/3.11.14/bin/merobox", line 5, in <module>
+    from merobox.cli import main
+  File "/Users/frandomovic/Desktop/things/SIMPLE/merobox/merobox/cli.py", line 9, in <module>
+    from merobox import __version__
+ImportError: cannot import name '__version__' from 'merobox' (unknown location)
