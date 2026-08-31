@@ -1,4 +1,4 @@
-import { ConnectButton, useMero } from "@calimero-network/mero-react";
+import { ConnectButton, clearContextId, useMero } from "@calimero-network/mero-react";
 import { ContextPicker } from "./ContextPicker";
 import { InviteCard } from "./InviteCard";
 import { JoinCard } from "./JoinCard";
@@ -16,6 +16,15 @@ export function App() {
     confirmJoin,
     declineJoin,
   } = useJoinFromInvitation();
+
+  // Drop the stored context and re-render at the picker. A reload rather than
+  // local state, for the same reason `ContextPicker.select` reloads: the
+  // provider reads the stored context on mount, so reloading is what makes the
+  // provider and the UI agree instead of duplicating that logic here.
+  function switchContext() {
+    clearContextId();
+    window.location.reload();
+  }
 
   return (
     <div className="wrap">
@@ -66,6 +75,24 @@ export function App() {
               onDecline={declineJoin}
             />
           )}
+          <div className="card context-bar">
+            <div className="row" style={{ justifyContent: "space-between" }}>
+              <span className="empty">
+                Context <code className="mono">{contextId}</code>
+              </span>
+              {/*
+                The only way back. Selecting a context used to be a ONE-WAY door:
+                `setContextId` is written to storage and the app then renders the
+                panel forever, so the picker was unreachable without clearing
+                site data or logging out. A node routinely holds several
+                contexts, and comparing two of them is the normal way to watch
+                a CRDT converge.
+              */}
+              <button className="ghost" onClick={switchContext}>
+                Change context
+              </button>
+            </div>
+          </div>
           <KvPanel contextId={contextId} />
           <InviteCard contextId={contextId} />
         </>
