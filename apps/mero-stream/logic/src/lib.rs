@@ -55,7 +55,7 @@ use calimero_storage::collections::{
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
-// A member id is the executor's public key, bs58-encoded — i.e. a plain `String`,
+// A member id is the executor's public key, hex-encoded — i.e. a plain `String`,
 // which is why it is spelled out at every use site rather than aliased.
 //
 // There used to be an alias here. It cannot come back as-is: rc.19's ABI emitter
@@ -555,7 +555,7 @@ pub struct MeroStream {
     /// `from` is in the key on purpose. Without it, two senders that minted the
     /// same seq collided on one key and last-writer-wins destroyed one of them —
     /// the defect behind the one-directional video in `retro/review.md`. Sender
-    /// ids are bs58 public keys, which never contain `-`, so the delimiter is
+    /// ids are hex public keys, which never contain `-`, so the delimiter is
     /// unambiguous.
     chunks: UnorderedMap<String, MediaChunk>,
     /// Per-sender sequence / keyframe / pruning state. See [`ChunkCursor`] for
@@ -1487,8 +1487,13 @@ mod tests {
     /// A test peer that must NOT inherit the creator's rights needs its own.
     const BOB_ACCOUNT: [u8; 32] = [0xB0; 32];
 
+    /// Render an id the way the contract does. `member_id` is
+    /// `String::from(caller())`, i.e. the SDK stringifying a `PublicKey` —
+    /// which core 0.11.0-rc.27 made hex (base58 removed, core#3691). This was
+    /// `bs58::encode`; every `member_id == id_of(..)` assertion below compared
+    /// against the wrong string the moment the SDK bumped.
     fn id_of(bytes: [u8; 32]) -> String {
-        bs58::encode(bytes).into_string()
+        hex::encode(bytes)
     }
 
     /// "Give me everything from these senders" — the cursor set that the old

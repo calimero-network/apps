@@ -34,7 +34,7 @@ slug        = "com.calimero.merostream"
 icon        = "../app/public/icon-512.png"
 tags        = ["streaming", "video", "webcodecs", "capacity-probe"]
 github      = "https://github.com/calimero-network/apps"
-min-runtime-version = "0.11.0-rc.26"
+min-runtime-version = "0.11.0-rc.28"
 # MUST be the exact origin the frontend is deployed on, and a BARE one.
 #
 # This is not cosmetic: the embedded auth frontend uses it as the
@@ -60,7 +60,6 @@ frontend    = "https://mero-stream-neon.vercel.app"
 base64                  = "0.22"
 borsh                   = { workspace = true }
 borsh-derive            = "1.6.1"
-bs58                    = { workspace = true }
 # One pin for the whole fleet, in the root Cargo.toml. All three SDK crates must
 # share the exact same tag — core's workspace version at a tag is 0.0.0, so a
 # plain version requirement can never match, and `branch = "master"` would ride
@@ -81,6 +80,10 @@ thiserror               = { workspace = true }
 # Enables the native mock host so TestHost can drive contract state under
 # `cargo test`.
 calimero-storage = { workspace = true, features = ["testing"] }
+# Only the tests stringify an id to compare against the contract's output.
+# `member_id` is `String::from(PublicKey)`, hex since core 0.11.0-rc.27 — the
+# helper must match. Was `bs58` in [dependencies]; test-only, so it lives here.
+hex = "0.4.3"
 
 # NOTE: no [profile.*] here. Cargo IGNORES profiles in a workspace member and
 # `cargo mero build` then fails with `profile 'app-release' is not defined`.
