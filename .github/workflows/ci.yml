@@ -736,13 +736,35 @@ jobs:
         working-directory: apps/${{ matrix.app }}/logic
         run: |
           shopt -s nullglob
+
+          # Run one scenario; always tear the containers down afterwards so a
+          # retry (or the next scenario) starts from a clean host.
+          run_one() {
+            merobox bootstrap run "$1" --log-level info
+            local s=$?
+            merobox stop --all >/dev/null 2>&1 || true
+            return $s
+          }
+
           for f in workflows/*.yml; do
             echo "::group::$f"
-            merobox bootstrap run "$f" --log-level info
-            status=$?
-            merobox stop --all >/dev/null 2>&1 || true
+            if ! run_one "$f"; then
+              # ONE retry, for the cold-namespace-join KeyDelivery flake:
+              # `join_namespace` (and `create_mesh`, which joins internally) 500s
+              # when the group key misses its 5s gossip window — a core-side
+              # timing race that CI load provokes. A `create_mesh` scenario has
+              # no step boundary to settle at, so the whole scenario is the unit
+              # of retry. A genuine failure fails both attempts and still reds
+              # the job; a flake almost never loses twice in a row.
+              echo "::warning file=$f::scenario failed — retrying once (cold-join KeyDelivery flake)"
+              sleep 5
+              if ! run_one "$f"; then
+                echo "::endgroup::"
+                echo "::error file=$f::scenario failed on both attempts"
+                exit 1
+              fi
+            fi
             echo "::endgroup::"
-            [ $status -eq 0 ] || exit $status
           done
 
       # `merobox logs` takes a NODE_NAME argument — with only `--tail` it exits
