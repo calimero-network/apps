@@ -15,7 +15,7 @@ export interface Item {
   id: string;
   title: string;
   body: string;
-  /** base58 public key of the author. */
+  /** hex public key of the author (64 chars; core rc.27 removed base58). */
   author: string;
   created_ms: number;
   updated_ms: number;

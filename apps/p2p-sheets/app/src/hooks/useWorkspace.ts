@@ -178,10 +178,9 @@ export function useWorkspace(): UseWorkspaceReturn {
         // Reuse the app's namespace, or create it on first run.
         let nsId = namespaceId;
         if (!nsId) {
-          const ns = await mero.admin.createNamespace({
-            applicationId,
-            upgradePolicy: 'Automatic',
-          });
+          // No upgradePolicy: mero-js 13 dropped it from CreateNamespaceRequest
+          // (the node applies its default). Matches the fleet's createNamespace.
+          const ns = await mero.admin.createNamespace({ applicationId });
           await mero.admin.setDefaultCapabilities(ns.namespaceId, {
             defaultCapabilities: DEFAULT_CAPABILITIES,
           });

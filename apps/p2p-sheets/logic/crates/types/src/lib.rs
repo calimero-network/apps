@@ -1,6 +1,6 @@
 //! Shared, domain-neutral helpers for foundation services.
 //!
-//! A generic `Error` enum, a base58 `PublicKey`, an id generator, and a small
+//! A generic `Error` enum, a hex `PublicKey`, an id generator, and a small
 //! label validator. No app-specific (chat / item / …) variants live here — a
 //! service crate adds its own domain errors on top of this generic set.
 
@@ -21,7 +21,7 @@ pub enum Error {
     Forbidden(String),
 }
 
-/// A 32-byte Ed25519 public key with base58 encoding.
+/// A 32-byte Ed25519 public key with hex encoding (core 0.11.0-rc.27 removed base58).
 ///
 /// Note: `from_executor_id()` lives in each service crate (it needs
 /// `calimero-sdk`, which this crate deliberately does not depend on).
@@ -38,20 +38,15 @@ impl PublicKey {
         Ok(PublicKey(arr))
     }
 
-    pub fn from_base58(encoded: &str) -> Result<PublicKey, Error> {
-        let decoded = bs58::decode(encoded)
-            .into_vec()
-            .map_err(|e| Error::Invalid(format!("bad base58 key: {e}")))?;
-        if decoded.len() != 32 {
-            return Err(Error::Invalid("key length".into()));
-        }
+    pub fn from_hex(encoded: &str) -> Result<PublicKey, Error> {
         let mut arr = [0u8; 32];
-        arr.copy_from_slice(&decoded);
+        hex::decode_to_slice(encoded, &mut arr)
+            .map_err(|e| Error::Invalid(format!("bad hex key: {e}")))?;
         Ok(PublicKey(arr))
     }
 
-    pub fn to_base58(&self) -> String {
-        bs58::encode(&self.0).into_string()
+    pub fn to_hex(&self) -> String {
+        hex::encode(self.0)
     }
 }
 
@@ -79,7 +74,10 @@ pub fn validate_label(label: &str) -> Result<(), Error> {
 pub fn validate_sheet_name(name: &str) -> Result<(), Error> {
     validate_label(name)?;
     const FORBIDDEN: &[char] = &['[', ']', '!', ':', '\'', '"'];
-    if name.chars().any(|c| FORBIDDEN.contains(&c) || c.is_control()) {
+    if name
+        .chars()
+        .any(|c| FORBIDDEN.contains(&c) || c.is_control())
+    {
         return Err(Error::Invalid(
             "sheet name may not contain [ ] ! : ' \" or control characters".into(),
         ));
@@ -102,21 +100,21 @@ mod tests {
     use super::*;
 
     #[test]
-    fn public_key_base58_roundtrip() {
+    fn public_key_hex_roundtrip() {
         let key = PublicKey([42u8; 32]);
-        let decoded = PublicKey::from_base58(&key.to_base58()).unwrap();
+        let decoded = PublicKey::from_hex(&key.to_hex()).unwrap();
         assert_eq!(key, decoded);
     }
 
     #[test]
-    fn public_key_bad_base58_fails() {
-        assert!(PublicKey::from_base58("!!!invalid!!!").is_err());
+    fn public_key_bad_hex_fails() {
+        assert!(PublicKey::from_hex("!!!invalid!!!").is_err());
     }
 
     #[test]
     fn public_key_wrong_length_fails() {
-        let short = bs58::encode([1u8; 16]).into_string();
-        assert!(PublicKey::from_base58(&short).is_err());
+        let short = hex::encode([1u8; 16]);
+        assert!(PublicKey::from_hex(&short).is_err());
     }
 
     #[test]
@@ -129,7 +127,9 @@ mod tests {
 
     #[test]
     fn error_display_includes_detail() {
-        assert!(Error::NotFound("widget-1".into()).to_string().contains("widget-1"));
+        assert!(Error::NotFound("widget-1".into())
+            .to_string()
+            .contains("widget-1"));
     }
 
     #[test]

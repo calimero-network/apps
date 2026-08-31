@@ -41,13 +41,27 @@ pub fn evaluate_json(input: &str) -> String {
     let cells: BTreeMap<CellRef, String> = parsed
         .cells
         .into_iter()
-        .map(|c| (CellRef { sheet_id: c.sheet_id, row: c.row, col: c.col }, c.raw_value))
+        .map(|c| {
+            (
+                CellRef {
+                    sheet_id: c.sheet_id,
+                    row: c.row,
+                    col: c.col,
+                },
+                c.raw_value,
+            )
+        })
         .collect();
     let sheet_ids: HashSet<String> = parsed.sheet_ids.into_iter().collect();
     let computed = recalc_evaluate(&WorkbookInputs { cells, sheet_ids });
     let out: Vec<OutputCell> = computed
         .into_iter()
-        .map(|(k, v)| OutputCell { sheet_id: k.sheet_id, row: k.row, col: k.col, computed_value: v })
+        .map(|(k, v)| OutputCell {
+            sheet_id: k.sheet_id,
+            row: k.row,
+            col: k.col,
+            computed_value: v,
+        })
         .collect();
     serde_json::to_string(&out).unwrap_or_else(|_| "[]".to_string())
 }
@@ -73,7 +87,10 @@ mod tests {
         let out = evaluate_json(input);
         // Parse back and look up A3 = 6.
         let parsed: Vec<OutputCell> = serde_json::from_str(&out).unwrap();
-        let a3 = parsed.iter().find(|c| c.sheet_id == "s" && c.row == 2 && c.col == 0).unwrap();
+        let a3 = parsed
+            .iter()
+            .find(|c| c.sheet_id == "s" && c.row == 2 && c.col == 0)
+            .unwrap();
         assert_eq!(a3.computed_value, "6");
     }
 

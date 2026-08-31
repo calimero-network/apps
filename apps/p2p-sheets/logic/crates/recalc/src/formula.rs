@@ -5,7 +5,10 @@
 /// current sheet, or `Some(name)` for a cross-sheet reference (`Data!A1` or
 /// `'My Sheet'!A1`). Rows/cols are 0-indexed as used by the API; references
 /// use 1-indexed rows and A-Z columns (e.g. `A1` → row 0, col 0).
-pub fn evaluate(formula: &str, get_value: impl Fn(Option<&str>, u32, u32) -> Option<String>) -> String {
+pub fn evaluate(
+    formula: &str,
+    get_value: impl Fn(Option<&str>, u32, u32) -> Option<String>,
+) -> String {
     let expr = formula.trim().strip_prefix('=').unwrap_or(formula).trim();
     // `$` marks an absolute reference (a fill/copy anchor). It has no effect
     // on evaluation, so strip it and `=$A$1` evaluates exactly like `=A1`.
@@ -27,7 +30,10 @@ pub fn evaluate(formula: &str, get_value: impl Fn(Option<&str>, u32, u32) -> Opt
 }
 
 /// Evaluate an expression to its display string.
-fn eval_to_string(expr: &str, get_value: &impl Fn(Option<&str>, u32, u32) -> Option<String>) -> String {
+fn eval_to_string(
+    expr: &str,
+    get_value: &impl Fn(Option<&str>, u32, u32) -> Option<String>,
+) -> String {
     let expr = expr.trim();
     if expr.is_empty() {
         return String::new();
@@ -89,7 +95,10 @@ fn split_sheet_qualifier(s: &str) -> (Option<String>, String) {
 
 /// If `expr` is exactly a single `NAME(args)` call, evaluate it; else
 /// `None` (so `SUM(..)+1` and bare arithmetic fall to the number parser).
-fn try_function(expr: &str, get_value: &impl Fn(Option<&str>, u32, u32) -> Option<String>) -> Option<String> {
+fn try_function(
+    expr: &str,
+    get_value: &impl Fn(Option<&str>, u32, u32) -> Option<String>,
+) -> Option<String> {
     let paren = expr.find('(')?;
     let name = &expr[..paren];
     if name.is_empty() || !name.chars().all(|c| c.is_ascii_alphabetic()) {
@@ -104,7 +113,9 @@ fn try_function(expr: &str, get_value: &impl Fn(Option<&str>, u32, u32) -> Optio
     }
 
     match name.to_uppercase().as_str() {
-        "SUM" => Some(format_num(collect_arg_values(inner, get_value).iter().sum())),
+        "SUM" => Some(format_num(
+            collect_arg_values(inner, get_value).iter().sum(),
+        )),
         "AVERAGE" => {
             let vals = collect_arg_values(inner, get_value);
             if vals.is_empty() {
@@ -116,13 +127,21 @@ fn try_function(expr: &str, get_value: &impl Fn(Option<&str>, u32, u32) -> Optio
             let min = collect_arg_values(inner, get_value)
                 .into_iter()
                 .fold(f64::INFINITY, f64::min);
-            Some(if min.is_infinite() { "0".into() } else { format_num(min) })
+            Some(if min.is_infinite() {
+                "0".into()
+            } else {
+                format_num(min)
+            })
         }
         "MAX" => {
             let max = collect_arg_values(inner, get_value)
                 .into_iter()
                 .fold(f64::NEG_INFINITY, f64::max);
-            Some(if max.is_infinite() { "0".into() } else { format_num(max) })
+            Some(if max.is_infinite() {
+                "0".into()
+            } else {
+                format_num(max)
+            })
         }
         "COUNT" => Some(collect_arg_values(inner, get_value).len().to_string()),
         "IF" => {
@@ -132,8 +151,14 @@ fn try_function(expr: &str, get_value: &impl Fn(Option<&str>, u32, u32) -> Optio
                 return Some("#ARG!".into());
             }
             let cond = eval_to_string(args[0].trim(), get_value);
-            let non_zero = cond.parse::<f64>().map(|n| n != 0.0).unwrap_or(!cond.is_empty());
-            Some(eval_to_string(args[if non_zero { 1 } else { 2 }].trim(), get_value))
+            let non_zero = cond
+                .parse::<f64>()
+                .map(|n| n != 0.0)
+                .unwrap_or(!cond.is_empty());
+            Some(eval_to_string(
+                args[if non_zero { 1 } else { 2 }].trim(),
+                get_value,
+            ))
         }
         _ => Some("#NAME?".into()),
     }
@@ -143,7 +168,10 @@ fn try_function(expr: &str, get_value: &impl Fn(Option<&str>, u32, u32) -> Optio
 /// expands to its numeric cells; every other comma-separated arg is
 /// evaluated as an expression (cell ref, number, or arithmetic) and
 /// contributes its numeric value — so `SUM(3+4)` and `SUM(A1, A2, 5)` work.
-fn collect_arg_values(args: &str, get_value: &impl Fn(Option<&str>, u32, u32) -> Option<String>) -> Vec<f64> {
+fn collect_arg_values(
+    args: &str,
+    get_value: &impl Fn(Option<&str>, u32, u32) -> Option<String>,
+) -> Vec<f64> {
     let mut nums = Vec::new();
     for arg in split_args(args) {
         let arg = arg.trim();
@@ -181,7 +209,11 @@ fn eval_number(expr: &str, gv: &impl Fn(Option<&str>, u32, u32) -> Option<String
     let mut p = 0usize;
     let v = parse_add(&chars, &mut p, gv)?;
     skip_ws(&chars, &mut p);
-    if p == chars.len() { Some(v) } else { None } // reject trailing junk
+    if p == chars.len() {
+        Some(v)
+    } else {
+        None
+    } // reject trailing junk
 }
 
 fn skip_ws(c: &[char], p: &mut usize) {
@@ -190,25 +222,42 @@ fn skip_ws(c: &[char], p: &mut usize) {
     }
 }
 
-fn parse_add(c: &[char], p: &mut usize, gv: &impl Fn(Option<&str>, u32, u32) -> Option<String>) -> Option<f64> {
+fn parse_add(
+    c: &[char],
+    p: &mut usize,
+    gv: &impl Fn(Option<&str>, u32, u32) -> Option<String>,
+) -> Option<f64> {
     let mut v = parse_mul(c, p, gv)?;
     loop {
         skip_ws(c, p);
         match c.get(*p) {
-            Some('+') => { *p += 1; v += parse_mul(c, p, gv)?; }
-            Some('-') => { *p += 1; v -= parse_mul(c, p, gv)?; }
+            Some('+') => {
+                *p += 1;
+                v += parse_mul(c, p, gv)?;
+            }
+            Some('-') => {
+                *p += 1;
+                v -= parse_mul(c, p, gv)?;
+            }
             _ => break,
         }
     }
     Some(v)
 }
 
-fn parse_mul(c: &[char], p: &mut usize, gv: &impl Fn(Option<&str>, u32, u32) -> Option<String>) -> Option<f64> {
+fn parse_mul(
+    c: &[char],
+    p: &mut usize,
+    gv: &impl Fn(Option<&str>, u32, u32) -> Option<String>,
+) -> Option<f64> {
     let mut v = parse_factor(c, p, gv)?;
     loop {
         skip_ws(c, p);
         match c.get(*p) {
-            Some('*') => { *p += 1; v *= parse_factor(c, p, gv)?; }
+            Some('*') => {
+                *p += 1;
+                v *= parse_factor(c, p, gv)?;
+            }
             Some('/') => {
                 *p += 1;
                 let d = parse_factor(c, p, gv)?;
@@ -223,7 +272,11 @@ fn parse_mul(c: &[char], p: &mut usize, gv: &impl Fn(Option<&str>, u32, u32) -> 
     Some(v)
 }
 
-fn parse_factor(c: &[char], p: &mut usize, gv: &impl Fn(Option<&str>, u32, u32) -> Option<String>) -> Option<f64> {
+fn parse_factor(
+    c: &[char],
+    p: &mut usize,
+    gv: &impl Fn(Option<&str>, u32, u32) -> Option<String>,
+) -> Option<f64> {
     skip_ws(c, p);
     match c.get(*p)? {
         '(' => {
@@ -236,8 +289,14 @@ fn parse_factor(c: &[char], p: &mut usize, gv: &impl Fn(Option<&str>, u32, u32) 
             *p += 1;
             Some(v)
         }
-        '-' => { *p += 1; Some(-parse_factor(c, p, gv)?) }
-        '+' => { *p += 1; parse_factor(c, p, gv) }
+        '-' => {
+            *p += 1;
+            Some(-parse_factor(c, p, gv)?)
+        }
+        '+' => {
+            *p += 1;
+            parse_factor(c, p, gv)
+        }
         '[' => parse_bracket_ref(c, p, gv),
         ch if ch.is_ascii_alphabetic() => parse_ident(c, p, gv),
         ch if ch.is_ascii_digit() || *ch == '.' => {
@@ -254,7 +313,11 @@ fn parse_factor(c: &[char], p: &mut usize, gv: &impl Fn(Option<&str>, u32, u32) 
 /// A leading alphabetic run is a function call `NAME(...)` or a plain cell
 /// reference `A1`. Cross-sheet references use the bracket form `[id]!A1`
 /// (see `parse_bracket_ref`), not a bare `name!` qualifier.
-fn parse_ident(c: &[char], p: &mut usize, gv: &impl Fn(Option<&str>, u32, u32) -> Option<String>) -> Option<f64> {
+fn parse_ident(
+    c: &[char],
+    p: &mut usize,
+    gv: &impl Fn(Option<&str>, u32, u32) -> Option<String>,
+) -> Option<f64> {
     let start = *p;
     while *p < c.len() && c[*p].is_ascii_alphabetic() {
         *p += 1;
@@ -295,18 +358,32 @@ fn parse_ident(c: &[char], p: &mut usize, gv: &impl Fn(Option<&str>, u32, u32) -
 }
 
 /// Parse an id-qualified reference `[sheet-id]!A1` as a number.
-fn parse_bracket_ref(c: &[char], p: &mut usize, gv: &impl Fn(Option<&str>, u32, u32) -> Option<String>) -> Option<f64> {
+fn parse_bracket_ref(
+    c: &[char],
+    p: &mut usize,
+    gv: &impl Fn(Option<&str>, u32, u32) -> Option<String>,
+) -> Option<f64> {
     *p += 1; // opening '['
     let ids = *p;
-    while *p < c.len() && c[*p] != ']' { *p += 1; }
-    if c.get(*p) != Some(&']') { return None; }
+    while *p < c.len() && c[*p] != ']' {
+        *p += 1;
+    }
+    if c.get(*p) != Some(&']') {
+        return None;
+    }
     let id: String = c[ids..*p].iter().collect();
     *p += 1; // ']'
-    if c.get(*p) != Some(&'!') { return None; }
+    if c.get(*p) != Some(&'!') {
+        return None;
+    }
     *p += 1; // '!'
     let cs = *p;
-    while *p < c.len() && c[*p].is_ascii_uppercase() { *p += 1; }
-    while *p < c.len() && c[*p].is_ascii_digit() { *p += 1; }
+    while *p < c.len() && c[*p].is_ascii_uppercase() {
+        *p += 1;
+    }
+    while *p < c.len() && c[*p].is_ascii_digit() {
+        *p += 1;
+    }
     let refstr: String = c[cs..*p].iter().collect();
     let (row, col) = parse_cell_ref(&refstr)?;
     cell_num(gv, Some(&id), row, col)
@@ -323,7 +400,11 @@ fn cell_num(
     match gv(sheet, row, col) {
         Some(val) => {
             let t = val.trim();
-            if t.is_empty() { Some(0.0) } else { t.parse::<f64>().ok() }
+            if t.is_empty() {
+                Some(0.0)
+            } else {
+                t.parse::<f64>().ok()
+            }
         }
         None => Some(0.0),
     }
@@ -589,7 +670,11 @@ mod tests {
         r.sort();
         assert_eq!(
             r,
-            vec![("s1".into(), 0, 0), ("s1".into(), 1, 0), ("s1".into(), 2, 0)]
+            vec![
+                ("s1".into(), 0, 0),
+                ("s1".into(), 1, 0),
+                ("s1".into(), 2, 0)
+            ]
         );
     }
 

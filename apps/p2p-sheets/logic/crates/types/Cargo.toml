@@ -8,6 +8,6 @@ repository.workspace = true
 
 [dependencies]
 thiserror = { workspace = true }
-bs58      = { workspace = true }
+hex       = { workspace = true }
 borsh     = { workspace = true, features = ["derive"] }
 serde     = { version = "1.0", features = ["derive"] }

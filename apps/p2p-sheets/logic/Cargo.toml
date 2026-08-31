@@ -30,9 +30,9 @@ icon        = "default"
 tags        = ["productivity", "spreadsheet", "collaboration"]
 github      = "https://github.com/calimero-network/apps"
 # ⚠️ The contract was pinned to core 0.11.0-rc.8 — EIGHTEEN releases back. This
-# value is the claim that an rc.26 node can run the bundle, and it is only true
+# value is the claim that an rc.28 node can run the bundle, and it is only true
 # once the port in the PR body is done.
-min-runtime-version = "0.11.0-rc.26"
+min-runtime-version = "0.11.0-rc.28"
 frontend    = "https://p2p-sheets.vercel.app"
 
 [[package.metadata.calimero.services]]
@@ -45,7 +45,7 @@ p2p-sheets-recalc       = { path = "crates/recalc" }
 calimero-sdk            = { workspace = true }
 calimero-storage        = { workspace = true }
 calimero-storage-macros = { workspace = true }
-bs58                    = { workspace = true }
+hex                     = { workspace = true }
 
 [dev-dependencies]
 calimero-storage = { workspace = true, features = ["testing"] }

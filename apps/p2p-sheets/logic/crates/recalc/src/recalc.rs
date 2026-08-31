@@ -38,8 +38,11 @@ pub(crate) fn order(
 
     // Kahn's algorithm. `ready` is a BTreeSet so we always pop the smallest
     // CellRef — deterministic order independent of input iteration order.
-    let mut ready: BTreeSet<CellRef> =
-        in_degree.iter().filter(|(_, d)| **d == 0).map(|(n, _)| n.clone()).collect();
+    let mut ready: BTreeSet<CellRef> = in_degree
+        .iter()
+        .filter(|(_, d)| **d == 0)
+        .map(|(n, _)| n.clone())
+        .collect();
     let mut ordered: Vec<CellRef> = Vec::with_capacity(nodes.len());
     while let Some(n) = ready.iter().next().cloned() {
         ready.remove(&n);
@@ -68,10 +71,7 @@ pub(crate) fn order(
 /// under-reporting a range/whole-column ref and stays identical to a
 /// whole-workbook evaluation. Terminates: `closure` grows monotonically and is
 /// bounded by the finite set of sheet ids present in `cells`.
-pub fn sheet_closure(
-    cells: &BTreeMap<CellRef, String>,
-    requested_sheet: &str,
-) -> HashSet<String> {
+pub fn sheet_closure(cells: &BTreeMap<CellRef, String>, requested_sheet: &str) -> HashSet<String> {
     // Adjacency: sheet -> the set of sheets its formulas reference. Built in one
     // pass over the cells (each formula's precedents parsed exactly once).
     let mut refs: HashMap<String, HashSet<String>> = HashMap::new();
@@ -155,9 +155,19 @@ pub fn evaluate(inputs: &WorkbookInputs) -> BTreeMap<CellRef, String> {
                 }
                 None => home.clone(),
             };
-            results.get(&CellRef { sheet_id: sid, row: r, col: c }).cloned()
+            results
+                .get(&CellRef {
+                    sheet_id: sid,
+                    row: r,
+                    col: c,
+                })
+                .cloned()
         });
-        let value = if bad_sheet.get() { "#REF!".to_string() } else { value };
+        let value = if bad_sheet.get() {
+            "#REF!".to_string()
+        } else {
+            value
+        };
         results.insert(n.clone(), value);
     }
 
@@ -169,11 +179,18 @@ mod tests {
     use super::*;
 
     fn cr(sheet: &str, row: u32, col: u32) -> CellRef {
-        CellRef { sheet_id: sheet.into(), row, col }
+        CellRef {
+            sheet_id: sheet.into(),
+            row,
+            col,
+        }
     }
 
     fn inputs(pairs: &[(CellRef, &str)]) -> BTreeMap<CellRef, String> {
-        pairs.iter().map(|(k, v)| (k.clone(), v.to_string())).collect()
+        pairs
+            .iter()
+            .map(|(k, v)| (k.clone(), v.to_string()))
+            .collect()
     }
 
     #[test]
@@ -184,15 +201,15 @@ mod tests {
             (cr("S1", 1, 0), "5"),
             (cr("S2", 0, 0), "9"),
         ]);
-        assert_eq!(sheet_closure(&cells, "S1"), ["S1".to_string()].into_iter().collect());
+        assert_eq!(
+            sheet_closure(&cells, "S1"),
+            ["S1".to_string()].into_iter().collect()
+        );
     }
 
     #[test]
     fn closure_includes_directly_referenced_sheet() {
-        let cells = inputs(&[
-            (cr("S1", 0, 0), "=[S2]!A1"),
-            (cr("S2", 0, 0), "5"),
-        ]);
+        let cells = inputs(&[(cr("S1", 0, 0), "=[S2]!A1"), (cr("S2", 0, 0), "5")]);
         assert_eq!(
             sheet_closure(&cells, "S1"),
             ["S1".to_string(), "S2".to_string()].into_iter().collect()
@@ -217,16 +234,16 @@ mod tests {
     #[test]
     fn closure_of_sheet_with_no_cells_is_self() {
         let cells = inputs(&[(cr("S2", 0, 0), "9")]);
-        assert_eq!(sheet_closure(&cells, "S1"), ["S1".to_string()].into_iter().collect());
+        assert_eq!(
+            sheet_closure(&cells, "S1"),
+            ["S1".to_string()].into_iter().collect()
+        );
     }
 
     #[test]
     fn closure_handles_cross_sheet_cycle() {
         // S1 ↔ S2 mutually reference; closure(S1) must include both and terminate.
-        let cells = inputs(&[
-            (cr("S1", 0, 0), "=[S2]!A1"),
-            (cr("S2", 0, 0), "=[S1]!A1"),
-        ]);
+        let cells = inputs(&[(cr("S1", 0, 0), "=[S2]!A1"), (cr("S2", 0, 0), "=[S1]!A1")]);
         assert_eq!(
             sheet_closure(&cells, "S1"),
             ["S1".to_string(), "S2".to_string()].into_iter().collect()
@@ -241,9 +258,13 @@ mod tests {
         let c = cr("s", 2, 0);
         let nodes: BTreeSet<CellRef> = [a.clone(), b.clone(), c.clone()].into();
         let prec = |n: &CellRef| -> Vec<CellRef> {
-            if *n == c { vec![b.clone()] }
-            else if *n == b { vec![a.clone()] }
-            else { vec![] }
+            if *n == c {
+                vec![b.clone()]
+            } else if *n == b {
+                vec![a.clone()]
+            } else {
+                vec![]
+            }
         };
         let (ordered, cyclic) = order(&nodes, &prec);
         assert!(cyclic.is_empty());
@@ -257,9 +278,13 @@ mod tests {
         let b = cr("s", 1, 0);
         let nodes: BTreeSet<CellRef> = [a.clone(), b.clone()].into();
         let prec = |n: &CellRef| -> Vec<CellRef> {
-            if *n == a { vec![a.clone()] }
-            else if *n == b { vec![a.clone()] }
-            else { vec![] }
+            if *n == a {
+                vec![a.clone()]
+            } else if *n == b {
+                vec![a.clone()]
+            } else {
+                vec![]
+            }
         };
         let (ordered, cyclic) = order(&nodes, &prec);
         assert!(ordered.is_empty());
@@ -298,19 +323,41 @@ mod eval_tests {
         WorkbookInputs {
             cells: cells
                 .iter()
-                .map(|(s, r, c, v)| (CellRef { sheet_id: (*s).into(), row: *r, col: *c }, (*v).into()))
+                .map(|(s, r, c, v)| {
+                    (
+                        CellRef {
+                            sheet_id: (*s).into(),
+                            row: *r,
+                            col: *c,
+                        },
+                        (*v).into(),
+                    )
+                })
                 .collect(),
             sheet_ids: sheets.iter().map(|s| (*s).to_string()).collect(),
         }
     }
     fn get(out: &BTreeMap<CellRef, String>, s: &str, r: u32, c: u32) -> String {
-        out.get(&CellRef { sheet_id: s.into(), row: r, col: c }).cloned().unwrap_or_default()
+        out.get(&CellRef {
+            sheet_id: s.into(),
+            row: r,
+            col: c,
+        })
+        .cloned()
+        .unwrap_or_default()
     }
 
     #[test]
     fn literal_and_chain() {
         // A1=1, A2=A1+4, A3=SUM(A1,A2). Single pass in dependency order.
-        let inp = inputs(&["s"], &[("s", 0, 0, "1"), ("s", 1, 0, "=A1+4"), ("s", 2, 0, "=SUM(A1,A2)")]);
+        let inp = inputs(
+            &["s"],
+            &[
+                ("s", 0, 0, "1"),
+                ("s", 1, 0, "=A1+4"),
+                ("s", 2, 0, "=SUM(A1,A2)"),
+            ],
+        );
         let out = evaluate(&inp);
         assert_eq!(get(&out, "s", 0, 0), "1");
         assert_eq!(get(&out, "s", 1, 0), "5");
@@ -321,7 +368,11 @@ mod eval_tests {
     fn cross_sheet_and_unknown_sheet() {
         let inp = inputs(
             &["s", "data"],
-            &[("data", 0, 0, "10"), ("s", 0, 0, "=[data]!A1*2"), ("s", 1, 0, "=[gone]!A1")],
+            &[
+                ("data", 0, 0, "10"),
+                ("s", 0, 0, "=[data]!A1*2"),
+                ("s", 1, 0, "=[gone]!A1"),
+            ],
         );
         let out = evaluate(&inp);
         assert_eq!(get(&out, "s", 0, 0), "20");
@@ -339,8 +390,14 @@ mod eval_tests {
 
     #[test]
     fn deterministic_regardless_of_insertion_order() {
-        let a = inputs(&["s"], &[("s", 0, 0, "1"), ("s", 1, 0, "=A1+1"), ("s", 2, 0, "=A2+1")]);
-        let b = inputs(&["s"], &[("s", 2, 0, "=A2+1"), ("s", 1, 0, "=A1+1"), ("s", 0, 0, "1")]);
+        let a = inputs(
+            &["s"],
+            &[("s", 0, 0, "1"), ("s", 1, 0, "=A1+1"), ("s", 2, 0, "=A2+1")],
+        );
+        let b = inputs(
+            &["s"],
+            &[("s", 2, 0, "=A2+1"), ("s", 1, 0, "=A1+1"), ("s", 0, 0, "1")],
+        );
         assert_eq!(evaluate(&a), evaluate(&b));
     }
 }
