@@ -1,0 +1,1481 @@
+{
+  "schema_version": "wasm-abi/1",
+  "types": {
+    "Adjustments": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "brightness",
+          "type": {
+            "kind": "i32"
+          }
+        },
+        {
+          "name": "contrast",
+          "type": {
+            "kind": "i32"
+          }
+        },
+        {
+          "name": "saturation",
+          "type": {
+            "kind": "i32"
+          }
+        },
+        {
+          "name": "hue",
+          "type": {
+            "kind": "i32"
+          }
+        },
+        {
+          "name": "exposure",
+          "type": {
+            "kind": "i32"
+          }
+        },
+        {
+          "name": "blur",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "invert",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "curves",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "CursorState": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "identity",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "account",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "x",
+          "type": {
+            "kind": "i64"
+          }
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "i64"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "DocumentInfo": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "description",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "width",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "height",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "background",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "layer_count",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "member_count",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "owner",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        }
+      ]
+    },
+    "Layer": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "kind",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "parent_id",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "layer_index",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "visible",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "locked",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "opacity",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "blend_mode",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "x",
+          "type": {
+            "kind": "i64"
+          }
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "i64"
+          }
+        },
+        {
+          "name": "width",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "height",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "rotation",
+          "type": {
+            "kind": "i32"
+          }
+        },
+        {
+          "name": "scale_x",
+          "type": {
+            "kind": "i32"
+          }
+        },
+        {
+          "name": "scale_y",
+          "type": {
+            "kind": "i32"
+          }
+        },
+        {
+          "name": "skew_x",
+          "type": {
+            "kind": "i32"
+          }
+        },
+        {
+          "name": "skew_y",
+          "type": {
+            "kind": "i32"
+          }
+        },
+        {
+          "name": "flip_h",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "flip_v",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "warp",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "blob_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "mask_blob_id",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "fill",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "adjustments",
+          "type": {
+            "$ref": "Adjustments"
+          }
+        },
+        {
+          "name": "text",
+          "type": {
+            "$ref": "TextProps"
+          },
+          "nullable": true
+        },
+        {
+          "name": "created_by",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "Member": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "username",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "avatar",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "joined_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "username_updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "MemberRole": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "member",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "role",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "MeroPixArt": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "doc_name",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "record",
+              "fields": [],
+              "crdt_type": "lww_register",
+              "inner_type": {
+                "kind": "string"
+              }
+            }
+          }
+        },
+        {
+          "name": "doc_description",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "record",
+              "fields": [],
+              "crdt_type": "lww_register",
+              "inner_type": {
+                "kind": "string"
+              }
+            }
+          }
+        },
+        {
+          "name": "initial_name",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "initial_description",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "canvas_width",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "u32"
+            }
+          }
+        },
+        {
+          "name": "canvas_height",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "u32"
+            }
+          }
+        },
+        {
+          "name": "background",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "layers",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Layer"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "members",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Member"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "cursors",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "CursorState"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "roles",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "bool"
+            },
+            "crdt_type": "shared_storage"
+          }
+        }
+      ]
+    },
+    "TextProps": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "content",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "font_family",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "font_size",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "color",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "bold",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "italic",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "align",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        }
+      ]
+    }
+  },
+  "methods": [
+    {
+      "name": "add_layer",
+      "params": [
+        {
+          "name": "layer",
+          "type": {
+            "$ref": "Layer"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      }
+    },
+    {
+      "name": "bring_to_front",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "can_edit",
+      "params": [],
+      "returns": {
+        "kind": "bool"
+      }
+    },
+    {
+      "name": "clear_layers",
+      "params": [],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "delete_layer",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "get_cursors",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "CursorState"
+        }
+      }
+    },
+    {
+      "name": "get_document",
+      "params": [],
+      "returns": {
+        "$ref": "DocumentInfo"
+      }
+    },
+    {
+      "name": "get_layer",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "Layer"
+      },
+      "returns_nullable": true
+    },
+    {
+      "name": "get_layers",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "Layer"
+        }
+      }
+    },
+    {
+      "name": "get_members",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "Member"
+        }
+      }
+    },
+    {
+      "name": "get_role",
+      "params": [
+        {
+          "name": "member",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      }
+    },
+    {
+      "name": "grant_editor",
+      "params": [
+        {
+          "name": "member",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "init",
+      "params": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "description",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "width",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "height",
+          "type": {
+            "kind": "u32"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "join",
+      "params": [
+        {
+          "name": "username",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "avatar",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "timestamp",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "list_roles",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "MemberRole"
+        }
+      }
+    },
+    {
+      "name": "move_layer",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "parent_id",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "layer_index",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "move_layers",
+      "params": [
+        {
+          "name": "moves",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "tuple",
+              "elements": [
+                {
+                  "kind": "string"
+                },
+                {
+                  "kind": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "my_role",
+      "params": [],
+      "returns": {
+        "kind": "string"
+      }
+    },
+    {
+      "name": "reorder_layers",
+      "params": [
+        {
+          "name": "order",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "tuple",
+              "elements": [
+                {
+                  "kind": "string"
+                },
+                {
+                  "kind": "u32"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "revoke_editor",
+      "params": [
+        {
+          "name": "member",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "send_to_back",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "transfer_ownership",
+      "params": [
+        {
+          "name": "new_owner",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "update_adjustments",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "brightness",
+          "type": {
+            "kind": "i32"
+          },
+          "nullable": true
+        },
+        {
+          "name": "contrast",
+          "type": {
+            "kind": "i32"
+          },
+          "nullable": true
+        },
+        {
+          "name": "saturation",
+          "type": {
+            "kind": "i32"
+          },
+          "nullable": true
+        },
+        {
+          "name": "hue",
+          "type": {
+            "kind": "i32"
+          },
+          "nullable": true
+        },
+        {
+          "name": "exposure",
+          "type": {
+            "kind": "i32"
+          },
+          "nullable": true
+        },
+        {
+          "name": "blur",
+          "type": {
+            "kind": "u32"
+          },
+          "nullable": true
+        },
+        {
+          "name": "invert",
+          "type": {
+            "kind": "bool"
+          },
+          "nullable": true
+        },
+        {
+          "name": "curves",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "update_cursor",
+      "params": [
+        {
+          "name": "x",
+          "type": {
+            "kind": "i64"
+          }
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "i64"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "update_document",
+      "params": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "description",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "width",
+          "type": {
+            "kind": "u32"
+          },
+          "nullable": true
+        },
+        {
+          "name": "height",
+          "type": {
+            "kind": "u32"
+          },
+          "nullable": true
+        },
+        {
+          "name": "background",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "update_layer",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "visible",
+          "type": {
+            "kind": "bool"
+          },
+          "nullable": true
+        },
+        {
+          "name": "locked",
+          "type": {
+            "kind": "bool"
+          },
+          "nullable": true
+        },
+        {
+          "name": "opacity",
+          "type": {
+            "kind": "u32"
+          },
+          "nullable": true
+        },
+        {
+          "name": "blend_mode",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "x",
+          "type": {
+            "kind": "i64"
+          },
+          "nullable": true
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "i64"
+          },
+          "nullable": true
+        },
+        {
+          "name": "width",
+          "type": {
+            "kind": "u32"
+          },
+          "nullable": true
+        },
+        {
+          "name": "height",
+          "type": {
+            "kind": "u32"
+          },
+          "nullable": true
+        },
+        {
+          "name": "rotation",
+          "type": {
+            "kind": "i32"
+          },
+          "nullable": true
+        },
+        {
+          "name": "scale_x",
+          "type": {
+            "kind": "i32"
+          },
+          "nullable": true
+        },
+        {
+          "name": "scale_y",
+          "type": {
+            "kind": "i32"
+          },
+          "nullable": true
+        },
+        {
+          "name": "fill",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "update_layer_content",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "blob_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "width",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "height",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "update_layer_mask",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "mask_blob_id",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "update_member_username",
+      "params": [
+        {
+          "name": "username",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "timestamp",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "update_text",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "content",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "font_family",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "font_size",
+          "type": {
+            "kind": "u32"
+          },
+          "nullable": true
+        },
+        {
+          "name": "color",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "bold",
+          "type": {
+            "kind": "bool"
+          },
+          "nullable": true
+        },
+        {
+          "name": "italic",
+          "type": {
+            "kind": "bool"
+          },
+          "nullable": true
+        },
+        {
+          "name": "align",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "update_transform",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "rotation",
+          "type": {
+            "kind": "i32"
+          },
+          "nullable": true
+        },
+        {
+          "name": "scale_x",
+          "type": {
+            "kind": "i32"
+          },
+          "nullable": true
+        },
+        {
+          "name": "scale_y",
+          "type": {
+            "kind": "i32"
+          },
+          "nullable": true
+        },
+        {
+          "name": "skew_x",
+          "type": {
+            "kind": "i32"
+          },
+          "nullable": true
+        },
+        {
+          "name": "skew_y",
+          "type": {
+            "kind": "i32"
+          },
+          "nullable": true
+        },
+        {
+          "name": "flip_h",
+          "type": {
+            "kind": "bool"
+          },
+          "nullable": true
+        },
+        {
+          "name": "flip_v",
+          "type": {
+            "kind": "bool"
+          },
+          "nullable": true
+        },
+        {
+          "name": "warp",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    }
+  ],
+  "events": [
+    {
+      "name": "CursorMoved",
+      "payload": {
+        "kind": "string"
+      }
+    },
+    {
+      "name": "DocumentUpdated"
+    },
+    {
+      "name": "LayerAdded",
+      "payload": {
+        "kind": "string"
+      }
+    },
+    {
+      "name": "LayerDeleted",
+      "payload": {
+        "kind": "string"
+      }
+    },
+    {
+      "name": "LayerUpdated",
+      "payload": {
+        "kind": "string"
+      }
+    },
+    {
+      "name": "LayersReordered"
+    },
+    {
+      "name": "MemberJoined",
+      "payload": {
+        "kind": "string"
+      }
+    },
+    {
+      "name": "MemberUsernameUpdated",
+      "payload": {
+        "kind": "string"
+      }
+    },
+    {
+      "name": "OwnerTransferred",
+      "payload": {
+        "kind": "string"
+      }
+    },
+    {
+      "name": "RoleUpdated",
+      "payload": {
+        "kind": "string"
+      }
+    }
+  ],
+  "state_root": "MeroPixArt",
+  "state_version": 1
+}
