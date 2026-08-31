@@ -1,0 +1,507 @@
+{
+  "schema_version": "wasm-abi/1",
+  "types": {
+    "Adjustments": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "brightness",
+          "type": {
+            "kind": "i32"
+          }
+        },
+        {
+          "name": "contrast",
+          "type": {
+            "kind": "i32"
+          }
+        },
+        {
+          "name": "saturation",
+          "type": {
+            "kind": "i32"
+          }
+        },
+        {
+          "name": "hue",
+          "type": {
+            "kind": "i32"
+          }
+        },
+        {
+          "name": "exposure",
+          "type": {
+            "kind": "i32"
+          }
+        },
+        {
+          "name": "blur",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "invert",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "curves",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "CursorState": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "identity",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "account",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "x",
+          "type": {
+            "kind": "i64"
+          }
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "i64"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "Layer": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "kind",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "parent_id",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "layer_index",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "visible",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "locked",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "opacity",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "blend_mode",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "x",
+          "type": {
+            "kind": "i64"
+          }
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "i64"
+          }
+        },
+        {
+          "name": "width",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "height",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "rotation",
+          "type": {
+            "kind": "i32"
+          }
+        },
+        {
+          "name": "scale_x",
+          "type": {
+            "kind": "i32"
+          }
+        },
+        {
+          "name": "scale_y",
+          "type": {
+            "kind": "i32"
+          }
+        },
+        {
+          "name": "skew_x",
+          "type": {
+            "kind": "i32"
+          }
+        },
+        {
+          "name": "skew_y",
+          "type": {
+            "kind": "i32"
+          }
+        },
+        {
+          "name": "flip_h",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "flip_v",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "warp",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "blob_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "mask_blob_id",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "fill",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "adjustments",
+          "type": {
+            "$ref": "Adjustments"
+          }
+        },
+        {
+          "name": "text",
+          "type": {
+            "$ref": "TextProps"
+          },
+          "nullable": true
+        },
+        {
+          "name": "created_by",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "Member": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "username",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "avatar",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "joined_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "username_updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "MeroPixArt": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "doc_name",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "record",
+              "fields": [],
+              "crdt_type": "lww_register",
+              "inner_type": {
+                "kind": "string"
+              }
+            }
+          }
+        },
+        {
+          "name": "doc_description",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "record",
+              "fields": [],
+              "crdt_type": "lww_register",
+              "inner_type": {
+                "kind": "string"
+              }
+            }
+          }
+        },
+        {
+          "name": "initial_name",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "initial_description",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "canvas_width",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "u32"
+            }
+          }
+        },
+        {
+          "name": "canvas_height",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "u32"
+            }
+          }
+        },
+        {
+          "name": "background",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "layers",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Layer"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "members",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Member"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "cursors",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "CursorState"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "roles",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "bool"
+            },
+            "crdt_type": "shared_storage"
+          }
+        }
+      ]
+    },
+    "TextProps": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "content",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "font_family",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "font_size",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "color",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "bold",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "italic",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "align",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        }
+      ]
+    }
+  },
+  "methods": [],
+  "events": [],
+  "state_root": "MeroPixArt",
+  "state_version": 1
+}
