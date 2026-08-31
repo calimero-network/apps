@@ -44,17 +44,6 @@ steps:
     path: res/scaffolding_e2e.wasm
     dev: true
 
-  # Settle so peer discovery is done before the mesh joins. `create_mesh` does
-  # create-identity, invite and join as ONE step, so unlike an explicit
-  # `join_namespace` there is nowhere inside it to wait — which is why PR #22's
-  # pre-join settle skipped these eight scenarios and they kept flaking. Core
-  # gives the group key 5s to arrive over gossip (join_group.rs:557) and answers
-  # a miss with a bare `HTTP 500: Internal server error`; without this, that
-  # budget also has to cover finding the peer. See group-late-joiner.yml.
-  - name: Settle before the mesh joins
-    type: wait
-    seconds: 12
-
   - name: Create mesh with node-2
     type: create_mesh
     context_node: e2e-node-1
