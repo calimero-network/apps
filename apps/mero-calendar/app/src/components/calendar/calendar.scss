@@ -1,0 +1,15 @@
+.calendar {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 60px);
+  background: var(--mc-bg);
+  color: var(--mc-text);
+
+  &__body {
+    display: flex;
+    overflow: auto;
+    height: 100%;
+    padding-left: 8px;
+  }
+}
+

@@ -1,0 +1,252 @@
+.modal {
+  position: fixed;
+  background: var(--mc-surface);
+  color: var(--mc-text);
+  padding: 20px 15px 20px 25px;
+  border: 1px solid var(--mc-border);
+  border-radius: 8px;
+  max-width: 600px;
+  width: 100%;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 100;
+  cursor: auto;
+  box-shadow: var(--shadow);
+
+  &__content {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+
+    &__close {
+      margin-left: auto;
+      outline: none;
+      border: none;
+      cursor: pointer;
+      border-radius: 50%;
+      width: 24px;
+      height: 24px;
+      background: transparent;
+      color: var(--mc-text);
+      font-size: 18px;
+      font-weight: 500;
+    }
+  }
+
+  &__form {
+    display: flex;
+    flex-direction: column;
+
+    &__date {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+    }
+
+    &__time {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      cursor: pointer;
+
+      &__input {
+        background: var(--mc-surface);
+        color: var(--mc-text);
+        border: 1px solid var(--mc-border);
+        border-radius: 4px;
+        padding: 4px 6px;
+      }
+    }
+
+    &__textarea {
+      border: 1px solid var(--mc-border);
+      outline: none;
+      padding: 8px;
+      background-color: var(--mc-surface);
+      color: var(--mc-text);
+      border-radius: 4px;
+      overflow: hidden;
+      width: 100%;
+      resize: vertical;
+
+      &:focus,
+      &:hover {
+        border-color: var(--accent);
+      }
+
+      &__container {
+        width: 100%;
+        display: flex;
+      }
+    }
+
+    &__checkbox {
+      &__title {
+        margin-left: 8px;
+        cursor: pointer;
+        color: var(--mc-text);
+      }
+
+      &__container {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 18px;
+        align-items: center;
+      }
+    }
+
+    &__private {
+      display: inline-flex;
+      align-items: center;
+      cursor: pointer;
+    }
+
+    &__group {
+      margin-top: 20px;
+
+      &__title {
+        padding-left: 4px;
+        color: var(--mc-text-dim);
+        font-size: 13px;
+        margin-bottom: 6px;
+      }
+    }
+
+    &__title {
+      color: var(--mc-text);
+      font-size: 22px;
+      border-bottom: 1px solid var(--mc-border);
+    }
+
+    &__error {
+      color: var(--danger);
+      font-size: 12px;
+      margin-top: 6px;
+
+      &::first-letter {
+        text-transform: uppercase;
+      }
+    }
+
+    &__time__separator {
+      padding-top: 4px;
+      padding-right: 11px;
+    }
+
+    &__btn {
+      margin: 8px;
+      margin-left: auto;
+      border: none;
+      color: var(--accent-text);
+      background-color: var(--accent);
+      padding: 9px 18px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 600;
+
+      &:hover {
+        background-color: var(--accent-dim);
+      }
+
+      &:disabled {
+        opacity: 0.55;
+        cursor: not-allowed;
+      }
+    }
+  }
+}
+
+/* ── Peer multi-select autocomplete ──────────────────────────────────── */
+.peers {
+  position: relative;
+}
+.peers__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  padding: 6px;
+  border: 1px solid var(--mc-border);
+  border-radius: 6px;
+  background: var(--mc-surface);
+  min-height: 40px;
+}
+.peers__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 12px;
+}
+.peers__chipRemove {
+  border: none;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  font-size: 11px;
+  line-height: 1;
+  padding: 0;
+}
+.peers__input {
+  flex: 1;
+  min-width: 120px;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--mc-text);
+  font-size: 13px;
+  padding: 4px;
+}
+.peers__dropdown {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 4px);
+  background: var(--mc-surface);
+  border: 1px solid var(--mc-border);
+  border-radius: 6px;
+  box-shadow: var(--shadow);
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  // 50, matching the colour picker and the shared Select, so which panel wins
+  // does not depend on which component happens to be mounted.
+  z-index: 50;
+  max-height: 220px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.peers__option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 5px;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--mc-hover);
+  }
+}
+.peers__optionName {
+  font-size: 13px;
+  color: var(--mc-text);
+  font-weight: 600;
+}
+.peers__optionPk {
+  font-size: 11px;
+  color: var(--mc-text-dim);
+  font-family: monospace;
+}
+.peers__empty {
+  padding: 10px;
+  font-size: 12px;
+  color: var(--mc-text-dim);
+}

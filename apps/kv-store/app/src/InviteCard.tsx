@@ -102,7 +102,25 @@ export function InviteCard({ contextId }: { contextId: string }) {
 
       {link && (
         <>
-          <pre style={{ whiteSpace: "pre-wrap", wordBreak: "break-all" }}>{link}</pre>
+          {/*
+            ONE LINE, truncated, with Copy as the real affordance.
+
+            This was a full-width `<pre>` with `word-break: break-all`, and an
+            invitation payload is a few hundred base58 characters — so it wrapped
+            into a wall of text taller than the rest of the card and pushed the
+            explanation below the fold. Nobody transcribes an invite link by eye;
+            the only thing anyone does with it is copy it. So it is rendered as a
+            single ellipsised line that still selects and still copies in full
+            (CSS truncation is visual only — `textContent` is the whole link, and
+            the Copy button writes `link`, not what is painted).
+
+            `title` puts the full value in the native tooltip, and `readOnly`
+            input semantics are avoided deliberately: a `<code>` stays selectable
+            without becoming a form control the tab order has to visit.
+          */}
+          <code className="invite-link mono" title={link}>
+            {link}
+          </code>
           {/*
             Said plainly rather than hidden, because it is the difference between
             "this link is broken" and "this app is not deployed yet". The desktop

@@ -1,0 +1,66 @@
+[package]
+name = "merraria"
+description = "Calimero voxel world state (tile overrides + player presence)"
+# NOT the release version. cargo requires a version field, but
+# .github/workflows/deploy-bundle.yml ignores it: the registry owns the number —
+# the check job takes the highest published appVersion and increments the patch
+# (0.0.1 when nothing is published yet). Bumping this changes nothing about what
+# gets released, so do not read a shipped version out of the tree; read it from
+# the registry or the workflow's run summary.
+version = "0.0.2"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+# Read by `cargo mero bundle` (core #3374): every field the node and the
+# registry actually render now has a producer here, so nothing is hand-written
+# into a manifest.json any more. `appVersion` is deliberately absent — the
+# deploy workflow resolves it from the registry.
+[package.metadata.calimero]
+package = "com.calimero.merraria"
+name = "Merraria"
+description = "Terraria-style P2P mining sandbox. The world is a Calimero context: seed + tile-edit diff + player presence, no game server."
+author = "Calimero"
+# The desktop resolves a deep link (calimero://<slug>/… and
+# https://links.calimero.network/<slug>/…) by this slug, so it MUST stay equal
+# to the package id the app's invite links carry.
+slug = "com.calimero.merraria"
+icon = "../app/public/icon-512.png"
+tags = ["game", "sandbox", "multiplayer"]
+github = "https://github.com/calimero-network/merraria"
+# Kept equal to the SDK tag above, the way mero-ar/pixart/stream/scaffolding do
+# it — "0.1.0" was cargo-mero's placeholder floor, not a claim anyone verified.
+# The bundle does NOT actually need an rc.23 host: core's `crates/sys` (the whole
+# host import surface) is byte-identical between rc.22 and rc.23, and this wasm
+# imports the same 18 `env.*` symbols it did before. rc.23's identity change is a
+# meaning change inside two of them, not a new one. So this stays the
+# conservative, truthful "what it was built and e2e'd against", not a floor
+# anyone measured.
+min-runtime-version = "0.11.0-rc.28"
+frontend = "https://merraria.vercel.app/"
+
+[dependencies]
+borsh = "1.6.1"
+borsh-derive = "1.6.1"
+# SDK crates are not on crates.io past rc.5 — must be git tag deps, and all
+# three must share the exact same tag (workspace version at the tag is 0.0.0).
+# Pin a real release tag, never `branch = "master"`: master rides unreleased
+# protocol work against nodes that run the release, and `latest` does not exist
+# on the remote (it only ever resolves from a warm cargo cache).
+calimero-sdk = { workspace = true }
+calimero-storage = { workspace = true }
+calimero-storage-macros = { workspace = true }
+thiserror = "1.0.56"
+
+[dev-dependencies]
+# "testing" enables the native mock host (TestHost) for `cargo test`
+calimero-storage = { workspace = true, features = ["testing"] }
+# Only the tests render an id as a string, to compare against what the
+# contract produces. It was `bs58` in [dependencies]; core 0.11.0-rc.27
+# removed base58 (core#3691) and `String::from(PublicKey)` is hex now, so
+# the helper has to agree or every id assertion fails.
+hex = "0.4.3"
+
+# `[profile.*]` lives at the workspace root. Cargo IGNORES a profile in a
+# member and then hard-errors on it, so this is not stylistic.

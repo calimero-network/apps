@@ -1,0 +1,20 @@
+<!-- Hand-written twin of scripts/gen-icons.mjs `mark()`. Keep the two in sync:
+     the raster set is generated, this one is not. Colours are the app's own
+     tokens from src/styles/theme.css. -->
+<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Mero Calendar logo">
+  <rect width="64" height="64" rx="14" fill="#1d2433"/>
+  <!-- binding rings, drawn first so the page body overlaps their lower halves -->
+  <circle cx="23" cy="12.5" r="3.4" fill="#97a0b0"/>
+  <circle cx="41" cy="12.5" r="3.4" fill="#97a0b0"/>
+  <!-- page, then the header band squared off along its bottom edge -->
+  <rect x="9" y="15" width="46" height="39" rx="5" fill="#ffffff"/>
+  <rect x="9" y="15" width="46" height="13" rx="5" fill="#6c8cff"/>
+  <rect x="9" y="23" width="46" height="5" fill="#6c8cff"/>
+  <!-- day dots; today picked out in --ok -->
+  <circle cx="19" cy="36" r="2.6" fill="#97a0b0"/>
+  <circle cx="32" cy="36" r="2.6" fill="#97a0b0"/>
+  <circle cx="45" cy="36" r="2.6" fill="#97a0b0"/>
+  <circle cx="19" cy="47" r="2.6" fill="#97a0b0"/>
+  <circle cx="32" cy="47" r="2.6" fill="#43d17a"/>
+  <circle cx="45" cy="47" r="2.6" fill="#97a0b0"/>
+</svg>
