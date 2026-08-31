@@ -1,0 +1,1424 @@
+{
+  "schema_version": "wasm-abi/1",
+  "types": {
+    "BoardInfo": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "description",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "element_count",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "member_count",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "owner",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        }
+      ]
+    },
+    "Comment": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "x",
+          "type": {
+            "kind": "i64"
+          }
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "i64"
+          }
+        },
+        {
+          "name": "content",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "author",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "replies",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "CommentReply"
+            }
+          }
+        }
+      ]
+    },
+    "CommentReply": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "content",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "author",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "CursorState": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "identity",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "x",
+          "type": {
+            "kind": "i64"
+          }
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "i64"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "Element": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "data",
+          "type": {
+            "$ref": "ElementData"
+          }
+        },
+        {
+          "name": "x",
+          "type": {
+            "kind": "i64"
+          }
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "i64"
+          }
+        },
+        {
+          "name": "width",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "height",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "rotation",
+          "type": {
+            "kind": "i32"
+          }
+        },
+        {
+          "name": "fill",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "stroke",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "stroke_width",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "opacity",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "layer_index",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "created_by",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "shadow_color",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "shadow_offset_x",
+          "type": {
+            "kind": "i32"
+          },
+          "nullable": true
+        },
+        {
+          "name": "shadow_offset_y",
+          "type": {
+            "kind": "i32"
+          },
+          "nullable": true
+        },
+        {
+          "name": "shadow_blur",
+          "type": {
+            "kind": "u32"
+          },
+          "nullable": true
+        },
+        {
+          "name": "label",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "corner_radius",
+          "type": {
+            "kind": "u32"
+          },
+          "nullable": true
+        }
+      ]
+    },
+    "ElementData": {
+      "kind": "variant",
+      "variants": [
+        {
+          "name": "Rect"
+        },
+        {
+          "name": "Circle"
+        },
+        {
+          "name": "Line",
+          "payload": {
+            "$ref": "ElementData_Line"
+          }
+        },
+        {
+          "name": "Arrow",
+          "payload": {
+            "$ref": "ElementData_Arrow"
+          }
+        },
+        {
+          "name": "Path",
+          "payload": {
+            "$ref": "ElementData_Path"
+          }
+        },
+        {
+          "name": "Text",
+          "payload": {
+            "$ref": "ElementData_Text"
+          }
+        },
+        {
+          "name": "Image",
+          "payload": {
+            "$ref": "ElementData_Image"
+          }
+        },
+        {
+          "name": "Svg",
+          "payload": {
+            "$ref": "ElementData_Svg"
+          }
+        }
+      ]
+    },
+    "ElementData_Arrow": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "points",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "ElementData_Image": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "natural_width",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "natural_height",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "blob_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "ElementData_Line": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "points",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "ElementData_Path": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "points",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "ElementData_Svg": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "natural_width",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "natural_height",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "blob_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "ElementData_Text": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "content",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "font_size",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "font_family",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "bold",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "italic",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "text_align",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "vertical_align",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Member": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "username",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "avatar",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "joined_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "username_updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "MemberRole": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "member",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "role",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "MeroDesign": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "board_name",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "record",
+              "fields": [],
+              "crdt_type": "lww_register",
+              "inner_type": {
+                "kind": "string"
+              }
+            }
+          }
+        },
+        {
+          "name": "board_description",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "record",
+              "fields": [],
+              "crdt_type": "lww_register",
+              "inner_type": {
+                "kind": "string"
+              }
+            }
+          }
+        },
+        {
+          "name": "initial_name",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "initial_description",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "elements",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Element"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "members",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Member"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "comments",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Comment"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "cursors",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "CursorState"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "roles",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "bool"
+            },
+            "crdt_type": "shared_storage"
+          }
+        },
+        {
+          "name": "accounts",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "record",
+              "fields": [],
+              "crdt_type": "lww_register",
+              "inner_type": {
+                "kind": "bytes",
+                "size": 32
+              }
+            },
+            "crdt_type": "unordered_map"
+          }
+        }
+      ]
+    }
+  },
+  "methods": [
+    {
+      "name": "add_comment",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "x",
+          "type": {
+            "kind": "i64"
+          }
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "i64"
+          }
+        },
+        {
+          "name": "content",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "add_element",
+      "params": [
+        {
+          "name": "element",
+          "type": {
+            "$ref": "Element"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      }
+    },
+    {
+      "name": "add_reply",
+      "params": [
+        {
+          "name": "comment_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "reply_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "content",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "bring_to_front",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "can_edit",
+      "params": [],
+      "returns": {
+        "kind": "bool"
+      }
+    },
+    {
+      "name": "clear_comments",
+      "params": [],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "clear_elements",
+      "params": [],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "delete_comment",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "delete_element",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "delete_reply",
+      "params": [
+        {
+          "name": "comment_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "reply_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "get_board",
+      "params": [],
+      "returns": {
+        "$ref": "BoardInfo"
+      }
+    },
+    {
+      "name": "get_comments",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "Comment"
+        }
+      }
+    },
+    {
+      "name": "get_cursors",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "CursorState"
+        }
+      }
+    },
+    {
+      "name": "get_element",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "Element"
+      },
+      "returns_nullable": true
+    },
+    {
+      "name": "get_elements",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "Element"
+        }
+      }
+    },
+    {
+      "name": "get_members",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "Member"
+        }
+      }
+    },
+    {
+      "name": "get_role",
+      "params": [
+        {
+          "name": "member",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      }
+    },
+    {
+      "name": "grant_editor",
+      "params": [
+        {
+          "name": "member",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "init",
+      "params": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "description",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "join",
+      "params": [
+        {
+          "name": "username",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "avatar",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "timestamp",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "list_roles",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "MemberRole"
+        }
+      }
+    },
+    {
+      "name": "my_role",
+      "params": [],
+      "returns": {
+        "kind": "string"
+      }
+    },
+    {
+      "name": "revoke_editor",
+      "params": [
+        {
+          "name": "member",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "send_to_back",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "set_layer_index",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "index",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "transfer_ownership",
+      "params": [
+        {
+          "name": "new_owner",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "update_board",
+      "params": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "description",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "update_cursor",
+      "params": [
+        {
+          "name": "x",
+          "type": {
+            "kind": "i64"
+          }
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "i64"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "update_element",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "x",
+          "type": {
+            "kind": "i64"
+          },
+          "nullable": true
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "i64"
+          },
+          "nullable": true
+        },
+        {
+          "name": "width",
+          "type": {
+            "kind": "u32"
+          },
+          "nullable": true
+        },
+        {
+          "name": "height",
+          "type": {
+            "kind": "u32"
+          },
+          "nullable": true
+        },
+        {
+          "name": "rotation",
+          "type": {
+            "kind": "i32"
+          },
+          "nullable": true
+        },
+        {
+          "name": "fill",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "stroke",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "stroke_width",
+          "type": {
+            "kind": "u32"
+          },
+          "nullable": true
+        },
+        {
+          "name": "opacity",
+          "type": {
+            "kind": "u32"
+          },
+          "nullable": true
+        },
+        {
+          "name": "corner_radius",
+          "type": {
+            "kind": "u32"
+          },
+          "nullable": true
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "update_element_label",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "label",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "update_member_username",
+      "params": [
+        {
+          "name": "username",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "timestamp",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "update_shadow",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "shadow_color",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "shadow_offset_x",
+          "type": {
+            "kind": "i32"
+          },
+          "nullable": true
+        },
+        {
+          "name": "shadow_offset_y",
+          "type": {
+            "kind": "i32"
+          },
+          "nullable": true
+        },
+        {
+          "name": "shadow_blur",
+          "type": {
+            "kind": "u32"
+          },
+          "nullable": true
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "update_text_style",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "content",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "font_family",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "font_size",
+          "type": {
+            "kind": "u32"
+          },
+          "nullable": true
+        },
+        {
+          "name": "bold",
+          "type": {
+            "kind": "bool"
+          },
+          "nullable": true
+        },
+        {
+          "name": "italic",
+          "type": {
+            "kind": "bool"
+          },
+          "nullable": true
+        },
+        {
+          "name": "text_align",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "vertical_align",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    }
+  ],
+  "events": [
+    {
+      "name": "BoardUpdated"
+    },
+    {
+      "name": "CommentAdded",
+      "payload": {
+        "kind": "string"
+      }
+    },
+    {
+      "name": "CommentDeleted",
+      "payload": {
+        "kind": "string"
+      }
+    },
+    {
+      "name": "CommentUpdated",
+      "payload": {
+        "kind": "string"
+      }
+    },
+    {
+      "name": "CursorMoved",
+      "payload": {
+        "kind": "string"
+      }
+    },
+    {
+      "name": "ElementAdded",
+      "payload": {
+        "kind": "string"
+      }
+    },
+    {
+      "name": "ElementDeleted",
+      "payload": {
+        "kind": "string"
+      }
+    },
+    {
+      "name": "ElementUpdated",
+      "payload": {
+        "kind": "string"
+      }
+    },
+    {
+      "name": "LayerReordered"
+    },
+    {
+      "name": "MemberJoined",
+      "payload": {
+        "kind": "string"
+      }
+    },
+    {
+      "name": "MemberUsernameUpdated",
+      "payload": {
+        "kind": "string"
+      }
+    },
+    {
+      "name": "OwnerTransferred",
+      "payload": {
+        "kind": "string"
+      }
+    },
+    {
+      "name": "RoleUpdated",
+      "payload": {
+        "kind": "string"
+      }
+    }
+  ],
+  "state_root": "MeroDesign",
+  "state_version": 1
+}

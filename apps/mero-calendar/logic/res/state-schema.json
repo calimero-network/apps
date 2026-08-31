@@ -1,0 +1,139 @@
+{
+  "schema_version": "wasm-abi/1",
+  "types": {
+    "CalendarEventState": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "title",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "description",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "owner",
+          "type": {
+            "kind": "bytes",
+            "size": 32
+          }
+        },
+        {
+          "name": "start",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "end",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "event_type",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "color",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "peers",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "bytes",
+              "size": 32
+            }
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "CalendarState": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "events",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "CalendarEventState"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "members",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Member"
+            },
+            "crdt_type": "unordered_map"
+          }
+        }
+      ]
+    },
+    "Member": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "username",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "joined_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "username_updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    }
+  },
+  "methods": [],
+  "events": [],
+  "state_root": "CalendarState",
+  "state_version": 1
+}

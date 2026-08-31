@@ -1,0 +1,334 @@
+.bar {
+  height: 48px;
+  display: flex;
+  align-items: center;
+  background: #f6f6f6;
+  border-bottom: 1px solid #e0e0e0;
+  padding: 0 12px;
+  gap: 6px;
+  flex-shrink: 0;
+  /* Above the comments overlay (100-120). The dropdowns inside this element are
+     trapped in its stacking context, so their own z-index cannot rescue them —
+     the bar itself has to outrank the overlay. */
+  z-index: 300;
+  user-select: none;
+}
+
+.logo {
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  letter-spacing: -0.2px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.divider {
+  width: 1px;
+  height: 20px;
+  background: #e0e0e0;
+  margin: 0 4px;
+  flex-shrink: 0;
+}
+
+.tools {
+  display: flex;
+  gap: 2px;
+}
+
+.tool {
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  font-size: 12px;
+  cursor: pointer;
+  color: #444;
+  transition: background 0.1s;
+}
+.tool:hover { background: #f0f0f0; }
+.tool.active { background: #e8f0fe; color: #1a5fe4; }
+
+.section {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.sectionLabel {
+  font-size: 10px;
+  color: #999;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  white-space: nowrap;
+}
+
+.bgPicker {
+  display: flex;
+  gap: 4px;
+}
+
+.bgBtn {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: border-color 0.1s, transform 0.1s;
+  box-shadow: 0 0 0 1px #ccc;
+}
+.bgBtn:hover { transform: scale(1.15); }
+.bgBtn.bgActive { border-color: #1a5fe4; box-shadow: 0 0 0 1px #1a5fe4; }
+
+.exportBtn {
+  padding: 4px 9px;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  background: #fff;
+  font-size: 11px;
+  font-weight: 500;
+  color: #444;
+  cursor: pointer;
+  transition: background 0.1s, border-color 0.1s;
+}
+.exportBtn:hover { background: #f5f5f5; border-color: #bbb; }
+
+.importError {
+  font-size: 11px;
+  color: #c0392b;
+  font-weight: 700;
+  cursor: default;
+}
+
+.backBtn {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  font-size: 14px;
+  color: #555;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.backBtn:hover { background: #f0f0f0; color: #111; }
+
+.spacer { flex: 1; }
+
+.logoutBtn {
+  padding: 4px 12px;
+  border: 1px solid #e0e0e0;
+  border-radius: 5px;
+  background: #fff;
+  font-size: 11px;
+  color: #555;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.logoutBtn:hover { background: #f5f5f5; border-color: #bbb; }
+
+.previewBtn {
+  padding: 4px 12px;
+  border: 1.5px solid #2563eb;
+  border-radius: 5px;
+  background: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  color: #2563eb;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.1s, color 0.1s;
+}
+.previewBtn:hover { background: #2563eb; color: #fff; }
+.previewBtnActive { background: #2563eb; color: #fff; }
+
+.exportSep {
+  display: block;
+  width: 1px;
+  height: 14px;
+  background: #e0e0e0;
+  margin: 0 2px;
+  flex-shrink: 0;
+}
+
+/* Icon button (comment, etc.) */
+.iconBtn {
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  color: #555;
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s, border-color 0.1s;
+  flex-shrink: 0;
+}
+.iconBtn:hover { background: #f0f0f0; }
+.iconBtnActive { background: #dbeafe; color: #2563eb; border-color: #93c5fd; }
+
+/* Members */
+.membersWrap {
+  position: relative;
+  flex-shrink: 0;
+  margin-right: 4px;
+}
+
+.membersBtn {
+  position: relative;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: #555;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.membersBtn:hover { background: #f0f0f0; }
+
+.membersBadge {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  background: #2563eb;
+  color: #fff;
+  font-size: 8px;
+  font-weight: 700;
+  border-radius: 6px;
+  padding: 0 3px;
+  min-width: 12px;
+  text-align: center;
+  line-height: 13px;
+  height: 13px;
+}
+
+.membersDropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  background: #fff;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.12);
+  min-width: 180px;
+  z-index: 200;
+  padding: 8px 0;
+}
+
+.membersTitle {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: #999;
+  padding: 2px 12px 6px;
+}
+
+.membersEmpty {
+  font-size: 12px;
+  color: #aaa;
+  padding: 2px 12px 4px;
+}
+
+.memberRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px;
+}
+.memberRow:hover { background: #f8f8f8; }
+
+.memberDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.memberLabel {
+  font-size: 12px;
+  font-family: monospace;
+  color: #333;
+}
+
+/* Options dropdown */
+.optionsWrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.exportBtnActive {
+  background: #f0f0f0;
+  border-color: #bbb;
+}
+
+.optionsDropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  background: #fff;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.12);
+  min-width: 200px;
+  z-index: 200;
+  padding: 6px 0;
+}
+
+.optionsGroupLabel {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: #999;
+  padding: 4px 12px 2px;
+  margin: 0;
+}
+
+.optionsBgRow {
+  display: flex;
+  gap: 8px;
+  padding: 6px 12px;
+}
+
+.optionsDivider {
+  height: 1px;
+  background: #f0f0f0;
+  margin: 4px 0;
+}
+
+.optionsItem {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 7px 12px;
+  border: none;
+  background: transparent;
+  font-size: 12px;
+  color: #333;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.optionsItem:hover:not(:disabled) { background: #f5f5f5; }
+.optionsItem:disabled { color: #bbb; cursor: default; }
+
+.optionsError {
+  font-size: 11px;
+  color: #c0392b;
+  padding: 4px 12px;
+  margin: 0;
+}

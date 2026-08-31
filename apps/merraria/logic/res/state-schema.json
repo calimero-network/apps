@@ -1,0 +1,185 @@
+{
+  "schema_version": "wasm-abi/1",
+  "types": {
+    "Merraria": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "seed",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "u64"
+            }
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "u64"
+            }
+          }
+        },
+        {
+          "name": "overrides",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "TileOverride"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "players",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Player"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "reap_marks",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "ReapMark"
+            },
+            "crdt_type": "unordered_map"
+          }
+        }
+      ]
+    },
+    "Player": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "x",
+          "type": {
+            "kind": "f64"
+          }
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "f64"
+          }
+        },
+        {
+          "name": "dir",
+          "type": {
+            "kind": "f64"
+          }
+        },
+        {
+          "name": "sel",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "action",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "left",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "joined_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "ReapMark": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "marked_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "row_ts",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "TileOverride": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "t",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    }
+  },
+  "methods": [],
+  "events": [],
+  "state_root": "Merraria",
+  "state_version": 1
+}

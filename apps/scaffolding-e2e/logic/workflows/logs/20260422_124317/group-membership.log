@@ -1,0 +1,178 @@
+run_workflow: incoming log_level='debug'
+run_workflow: incoming rust_backtrace='0'
+WorkflowExecutor: resolved log_level='debug', binary_mode=False
+WorkflowExecutor: workflow_id='ac5bb9c9' (for test isolation)
+WorkflowExecutor: resolved rust_backtrace='0', binary_mode=False
+
+🚀 Executing Workflow: E2E KV Store - Group Membership
+
+💥 Nuking all data before workflow ...
+Found 2 Calimero node data directory(ies)
+✓ Found merod binary in PATH: /usr/local/bin/merod
+
+Deleting 2 data directory(ies)...
+✓ Successfully deleted 2 data directory(ies)
+Total space freed: 8.7 MB
+✓ Nuke on start completed
+
+Step 1: Checking workflow nodes (restart=false)...
+Will reuse existing nodes if they're running...
+
+Step 2: Managing nodes...
+Checking 3 nodes with prefix 'e2e-node' (no restart mode)...
+✓ Image ghcr.io/calimero-network/merod:0.10.1-rc.29 already available locally
+✓ Cleaned up existing container e2e-node-1-init
+Setting RUST_LOG for node e2e-node-1: debug
+Setting RUST_BACKTRACE for node e2e-node-1: 0
+Environment variables for e2e-node-1:
+  CALIMERO_HOME=/app/data
+  NODE_NAME=e2e-node-1
+  RUST_LOG=debug
+  RUST_BACKTRACE=0
+Using default fresh WebUI fetch for node e2e-node-1
+Initializing node e2e-node-1...
+✓ Node e2e-node-1 initialized successfully
+Starting node e2e-node-1...
+✓ Started Calimero node e2e-node-1 (ID: 1333d4cb583b)
+  - P2P Port: 2428
+  - RPC/Admin Port: 2528
+  - Data Directory: ./data/e2e-node-1
+  - Non Auth Node URL: http://localhost:2528
+✓ Image ghcr.io/calimero-network/merod:0.10.1-rc.29 already available locally
+✓ Cleaned up existing container e2e-node-2-init
+Setting RUST_LOG for node e2e-node-2: debug
+Setting RUST_BACKTRACE for node e2e-node-2: 0
+Environment variables for e2e-node-2:
+  CALIMERO_HOME=/app/data
+  NODE_NAME=e2e-node-2
+  RUST_LOG=debug
+  RUST_BACKTRACE=0
+Using default fresh WebUI fetch for node e2e-node-2
+Initializing node e2e-node-2...
+✓ Node e2e-node-2 initialized successfully
+Starting node e2e-node-2...
+✓ Started Calimero node e2e-node-2 (ID: b865894c3ea6)
+  - P2P Port: 2429
+  - RPC/Admin Port: 2529
+  - Data Directory: ./data/e2e-node-2
+  - Non Auth Node URL: http://localhost:2529
+✓ Image ghcr.io/calimero-network/merod:0.10.1-rc.29 already available locally
+✓ Cleaned up existing container e2e-node-3-init
+Setting RUST_LOG for node e2e-node-3: debug
+Setting RUST_BACKTRACE for node e2e-node-3: 0
+Environment variables for e2e-node-3:
+  CALIMERO_HOME=/app/data
+  NODE_NAME=e2e-node-3
+  RUST_LOG=debug
+  RUST_BACKTRACE=0
+Using default fresh WebUI fetch for node e2e-node-3
+Initializing node e2e-node-3...
+✓ Node e2e-node-3 initialized successfully
+Starting node e2e-node-3...
+✓ Started Calimero node e2e-node-3 (ID: abddf507188e)
+  - P2P Port: 2430
+  - RPC/Admin Port: 2530
+  - Data Directory: ./data/e2e-node-3
+  - Non Auth Node URL: http://localhost:2530
+✓ Node management completed
+
+Step 3: Waiting for nodes to be ready...
+Waiting up to 60 seconds for 3 nodes to be ready...
+✓ Admin server accessible on localhost:2528 for e2e-node-2
+✓ Node e2e-node-2 is ready (health check passed)
+✓ Admin server accessible on localhost:2528 for e2e-node-3
+✓ Node e2e-node-3 is ready (health check passed)
+✓ Admin server accessible on localhost:2528 for e2e-node-1
+✓ Node e2e-node-1 is ready (health check passed)
+  Waiting for nodes... ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 100% 0:00:00
+✓ All nodes are ready
+
+Step 4: Executing workflow steps...
+
+Executing Install application on node-1 (install_application)...
+✅ Custom outputs configuration validated: 1 outputs defined
+Connecting to http://localhost:2528 (node: e2e-node-1)...
+Copied file to container data directory: data/e2e-node-1/e2e_kv_store.wasm
+Installing dev application using container path: /app/data/e2e_kv_store.wasm
+🔍 Install API Response for e2e-node-1:
+  Success: True
+  Data:
+{
+  "data": {
+    "applicationId": "64Ayc8BQoYBWYRFVToQJ3TxAveEw3oHm2grs9DaavcCU"
+  }
+}
+📝 Install result data: {'data': {'applicationId': '64Ayc8BQoYBWYRFVToQJ3TxAveEw3oHm2grs9DaavcCU'}}
+� Exporting variables from e2e-node-1 response:
+   ✓ app_id = 64Ayc8BQoYBWYRFVToQJ3TxAveEw3oHm2grs9DaavcCU
+📝 Fallback: Captured application ID for e2e-node-1: 64Ayc8BQoYBWYRFVToQJ3TxAveEw3oHm2grs9DaavcCU
+✓ Step 'Install application on node-1' completed
+
+Executing Create namespace on node-1 (create_namespace)...
+� Exporting variables from e2e-node-1 response:
+   ✓ namespace_id = 100e3822a4a7a5a9f8c92d65d95288d3b16008555eef6d4a50bc47e867c0fb70
+Captured namespace ID for e2e-node-1: 100e3822a4a7a5a9f8c92d65d95288d3b16008555eef6d4a50bc47e867c0fb70
+✓ Namespace created on e2e-node-1: 100e3822a4a7a5a9f8c92d65d95288d3b16008555eef6d4a50bc47e867c0fb70
+✓ Step 'Create namespace on node-1' completed
+
+Executing Invite node-2 to namespace (create_namespace_invitation)...
+� Exporting variables from e2e-node-1 response:
+   ✓ invite_node2 = {'invitation': {'expiration_timestamp': 1808390762, 'group_id': [16, 14, 56, 34, 164, 167, 165, 
+1...
+✓ Namespace invitation created on e2e-node-1
+✓ Step 'Invite node-2 to namespace' completed
+
+Executing Node-2 joins namespace (join_namespace)...
+Auto-installed application on e2e-node-2
+Join namespace failed on e2e-node-2: Client error: Invalid JSON data: Failed to deserialize the JSON body into the 
+target type: invitation: missing field `invitation` at line 1 column 462
+
+📋 Recent logs from node 'e2e-node-2' (last 50 lines):
+================================================================================
+Failed to execute workflow: closing tag 
+'[/ip4/63.181.86.34/udp/43163/quic-v1/p2p/12D3KooWR5V4zmisVtVdGE6i8jfFwtgRNq5t8eDGxfckKuhXu7Eh/p2p-circuit/p2p/12D3Koo
+WLAUPXVamDDKpQChmgVkPRKyYeWfmWWPUhej1RNCWKcSv, 
+/ip4/63.181.86.34/tcp/43380/p2p/12D3KooWR5V4zmisVtVdGE6i8jfFwtgRNq5t8eDGxfckKuhXu7Eh/p2p-circuit/p2p/12D3KooWLAUPXVamD
+DKpQChmgVkPRKyYeWfmWWPUhej1RNCWKcSv, 
+/ip4/63.181.86.34/tcp/37170/p2p/12D3KooWR5V4zmisVtVdGE6i8jfFwtgRNq5t8eDGxfckKuhXu7Eh/p2p-circuit/p2p/12D3KooWLAUPXVamD
+DKpQChmgVkPRKyYeWfmWWPUhej1RNCWKcSv, /ip4/172.17.0.4/tcp/2428, 
+/ip4/63.181.86.34/udp/40960/quic-v1/p2p/12D3KooWR5V4zmisVtVdGE6i8jfFwtgRNq5t8eDGxfckKuhXu7Eh/p2p-circuit/p2p/12D3KooWL
+AUPXVamDDKpQChmgVkPRKyYeWfmWWPUhej1RNCWKcSv, 
+/ip4/10.0.9.209/tcp/4001/p2p/12D3KooWR5V4zmisVtVdGE6i8jfFwtgRNq5t8eDGxfckKuhXu7Eh/p2p-circuit/p2p/12D3KooWLAUPXVamDDKp
+QChmgVkPRKyYeWfmWWPUhej1RNCWKcSv, 
+/ip4/63.181.86.34/udp/34552/quic-v1/p2p/12D3KooWR5V4zmisVtVdGE6i8jfFwtgRNq5t8eDGxfckKuhXu7Eh/p2p-circuit/p2p/12D3KooWL
+AUPXVamDDKpQChmgVkPRKyYeWfmWWPUhej1RNCWKcSv, 
+/ip4/10.0.9.209/tcp/46510/p2p/12D3KooWR5V4zmisVtVdGE6i8jfFwtgRNq5t8eDGxfckKuhXu7Eh/p2p-circuit/p2p/12D3KooWLAUPXVamDDK
+pQChmgVkPRKyYeWfmWWPUhej1RNCWKcSv, /ip4/172.17.0.4/udp/2428/quic-v1, /ip6/::1/udp/2428/quic-v1, 
+/ip4/63.181.86.34/tcp/48796/p2p/12D3KooWR5V4zmisVtVdGE6i8jfFwtgRNq5t8eDGxfckKuhXu7Eh/p2p-circuit/p2p/12D3KooWLAUPXVamD
+DKpQChmgVkPRKyYeWfmWWPUhej1RNCWKcSv, /ip4/127.0.0.1/tcp/2428, /ip6/::1/tcp/2428, 
+/ip4/63.181.86.34/tcp/41132/p2p/12D3KooWR5V4zmisVtVdGE6i8jfFwtgRNq5t8eDGxfckKuhXu7Eh/p2p-circuit/p2p/12D3KooWLAUPXVamD
+DKpQChmgVkPRKyYeWfmWWPUhej1RNCWKcSv, 
+/ip4/63.181.86.34/tcp/37670/p2p/12D3KooWR5V4zmisVtVdGE6i8jfFwtgRNq5t8eDGxfckKuhXu7Eh/p2p-circuit/p2p/12D3KooWLAUPXVamD
+DKpQChmgVkPRKyYeWfmWWPUhej1RNCWKcSv, 
+/ip4/63.181.86.34/udp/50978/quic-v1/p2p/12D3KooWR5V4zmisVtVdGE6i8jfFwtgRNq5t8eDGxfckKuhXu7Eh/p2p-circuit/p2p/12D3KooWL
+AUPXVamDDKpQChmgVkPRKyYeWfmWWPUhej1RNCWKcSv, 
+/ip4/63.181.86.34/tcp/49690/p2p/12D3KooWR5V4zmisVtVdGE6i8jfFwtgRNq5t8eDGxfckKuhXu7Eh/p2p-circuit/p2p/12D3KooWLAUPXVamD
+DKpQChmgVkPRKyYeWfmWWPUhej1RNCWKcSv, 
+/ip4/63.181.86.34/udp/57786/quic-v1/p2p/12D3KooWR5V4zmisVtVdGE6i8jfFwtgRNq5t8eDGxfckKuhXu7Eh/p2p-circuit/p2p/12D3KooWL
+AUPXVamDDKpQChmgVkPRKyYeWfmWWPUhej1RNCWKcSv, 
+/ip4/10.0.9.209/tcp/49388/p2p/12D3KooWR5V4zmisVtVdGE6i8jfFwtgRNq5t8eDGxfckKuhXu7Eh/p2p-circuit/p2p/12D3KooWLAUPXVamDDK
+pQChmgVkPRKyYeWfmWWPUhej1RNCWKcSv, 
+/ip4/63.181.86.34/tcp/4001/p2p/12D3KooWR5V4zmisVtVdGE6i8jfFwtgRNq5t8eDGxfckKuhXu7Eh/p2p-circuit/p2p/12D3KooWLAUPXVamDD
+KpQChmgVkPRKyYeWfmWWPUhej1RNCWKcSv, 
+/ip4/10.0.9.209/udp/4001/quic-v1/p2p/12D3KooWR5V4zmisVtVdGE6i8jfFwtgRNq5t8eDGxfckKuhXu7Eh/p2p-circuit/p2p/12D3KooWLAUP
+XVamDDKpQChmgVkPRKyYeWfmWWPUhej1RNCWKcSv, 
+/ip4/63.181.86.34/udp/38139/quic-v1/p2p/12D3KooWR5V4zmisVtVdGE6i8jfFwtgRNq5t8eDGxfckKuhXu7Eh/p2p-circuit/p2p/12D3KooWL
+AUPXVamDDKpQChmgVkPRKyYeWfmWWPUhej1RNCWKcSv, /ip4/127.0.0.1/udp/2428/quic-v1, 
+/ip4/63.181.86.34/tcp/39826/p2p/12D3KooWR5V4zmisVtVdGE6i8jfFwtgRNq5t8eDGxfckKuhXu7Eh/p2p-circuit/p2p/12D3KooWLAUPXVamD
+DKpQChmgVkPRKyYeWfmWWPUhej1RNCWKcSv, 
+/ip4/63.181.86.34/udp/4001/quic-v1/p2p/12D3KooWR5V4zmisVtVdGE6i8jfFwtgRNq5t8eDGxfckKuhXu7Eh/p2p-circuit/p2p/12D3KooWLA
+UPXVamDDKpQChmgVkPRKyYeWfmWWPUhej1RNCWKcSv, 
+/ip4/63.181.86.34/tcp/37664/p2p/12D3KooWR5V4zmisVtVdGE6i8jfFwtgRNq5t8eDGxfckKuhXu7Eh/p2p-circuit/p2p/12D3KooWLAUPXVamD
+DKpQChmgVkPRKyYeWfmWWPUhej1RNCWKcSv]' at position 49 doesn't match any open tag
+Stopping managed containers with graceful shutdown...
+Initiating graceful shutdown for 3 containers...
+Waiting 3s for connection draining...
+✓ Gracefully stopped and removed e2e-node-1
+✓ Gracefully stopped and removed e2e-node-2
+✓ Gracefully stopped and removed e2e-node-3

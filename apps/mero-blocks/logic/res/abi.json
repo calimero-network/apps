@@ -1,0 +1,533 @@
+{
+  "schema_version": "wasm-abi/1",
+  "types": {
+    "BlockEntry": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "k",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "b",
+          "type": {
+            "kind": "u32"
+          }
+        }
+      ]
+    },
+    "BlockOverride": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "b",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "Edit": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "x",
+          "type": {
+            "kind": "i32"
+          }
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "i32"
+          }
+        },
+        {
+          "name": "z",
+          "type": {
+            "kind": "i32"
+          }
+        },
+        {
+          "name": "b",
+          "type": {
+            "kind": "u32"
+          }
+        }
+      ]
+    },
+    "MeroBlocks": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "seed",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "u64"
+            }
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "u64"
+            }
+          }
+        },
+        {
+          "name": "overrides",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "BlockOverride"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "players",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Player"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "reap_marks",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "ReapMark"
+            },
+            "crdt_type": "unordered_map"
+          }
+        }
+      ]
+    },
+    "Player": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "x",
+          "type": {
+            "kind": "f64"
+          }
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "f64"
+          }
+        },
+        {
+          "name": "z",
+          "type": {
+            "kind": "f64"
+          }
+        },
+        {
+          "name": "yaw",
+          "type": {
+            "kind": "f64"
+          }
+        },
+        {
+          "name": "pitch",
+          "type": {
+            "kind": "f64"
+          }
+        },
+        {
+          "name": "sel",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "left",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "joined_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "PlayerView": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "x",
+          "type": {
+            "kind": "f64"
+          }
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "f64"
+          }
+        },
+        {
+          "name": "z",
+          "type": {
+            "kind": "f64"
+          }
+        },
+        {
+          "name": "yaw",
+          "type": {
+            "kind": "f64"
+          }
+        },
+        {
+          "name": "pitch",
+          "type": {
+            "kind": "f64"
+          }
+        },
+        {
+          "name": "sel",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "online",
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ]
+    },
+    "ReapMark": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "marked_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "row_ts",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "Transform": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "x",
+          "type": {
+            "kind": "f64"
+          }
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "f64"
+          }
+        },
+        {
+          "name": "z",
+          "type": {
+            "kind": "f64"
+          }
+        },
+        {
+          "name": "yaw",
+          "type": {
+            "kind": "f64"
+          }
+        },
+        {
+          "name": "pitch",
+          "type": {
+            "kind": "f64"
+          }
+        },
+        {
+          "name": "sel",
+          "type": {
+            "kind": "u32"
+          }
+        }
+      ]
+    },
+    "WorldMeta": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "seed",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    }
+  },
+  "methods": [
+    {
+      "name": "get_overrides",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "BlockEntry"
+        }
+      }
+    },
+    {
+      "name": "get_players",
+      "params": [
+        {
+          "name": "now",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "PlayerView"
+        }
+      }
+    },
+    {
+      "name": "heartbeat",
+      "params": [
+        {
+          "name": "t",
+          "type": {
+            "$ref": "Transform"
+          }
+        },
+        {
+          "name": "now",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "init",
+      "params": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "seed",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "now",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "join",
+      "params": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "now",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "PlayerView"
+      }
+    },
+    {
+      "name": "leave",
+      "params": [
+        {
+          "name": "now",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "override_count",
+      "params": [],
+      "returns": {
+        "kind": "u32"
+      }
+    },
+    {
+      "name": "set_blocks",
+      "params": [
+        {
+          "name": "edits",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "Edit"
+            }
+          }
+        },
+        {
+          "name": "now",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "u32"
+      }
+    },
+    {
+      "name": "world_meta",
+      "params": [],
+      "returns": {
+        "$ref": "WorldMeta"
+      }
+    }
+  ],
+  "events": [
+    {
+      "name": "BlocksChanged",
+      "payload": {
+        "kind": "string"
+      }
+    },
+    {
+      "name": "Initialized"
+    },
+    {
+      "name": "PlayerJoined",
+      "payload": {
+        "kind": "string"
+      }
+    },
+    {
+      "name": "PlayerLeft",
+      "payload": {
+        "kind": "string"
+      }
+    }
+  ],
+  "state_root": "MeroBlocks",
+  "state_version": 1
+}
