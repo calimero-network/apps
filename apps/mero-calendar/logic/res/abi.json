@@ -1,0 +1,527 @@
+{
+  "schema_version": "wasm-abi/1",
+  "types": {
+    "CalendarEvent": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "title",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "description",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "owner",
+          "type": {
+            "kind": "bytes",
+            "size": 32
+          }
+        },
+        {
+          "name": "start",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "end",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "event_type",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "color",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "peers",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "bytes",
+              "size": 32
+            }
+          }
+        },
+        {
+          "name": "private",
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ]
+    },
+    "CalendarEventState": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "title",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "description",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "owner",
+          "type": {
+            "kind": "bytes",
+            "size": 32
+          }
+        },
+        {
+          "name": "start",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "end",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "event_type",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "color",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "peers",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "bytes",
+              "size": 32
+            }
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "CalendarState": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "events",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "CalendarEventState"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "members",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Member"
+            },
+            "crdt_type": "unordered_map"
+          }
+        }
+      ]
+    },
+    "CreateCalendarEvent": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "title",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "description",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "start",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "end",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "event_type",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "color",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "peers",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "bytes",
+              "size": 32
+            }
+          }
+        }
+      ]
+    },
+    "Member": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "username",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "joined_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "username_updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "UpdateCalendarEvent": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "title",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "description",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "start",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "end",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "event_type",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "color",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "peers",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "bytes",
+              "size": 32
+            }
+          },
+          "nullable": true
+        }
+      ]
+    }
+  },
+  "methods": [
+    {
+      "name": "create_event",
+      "params": [
+        {
+          "name": "event_data",
+          "type": {
+            "$ref": "CreateCalendarEvent"
+          }
+        },
+        {
+          "name": "timestamp",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      }
+    },
+    {
+      "name": "create_private_event",
+      "params": [
+        {
+          "name": "event_data",
+          "type": {
+            "$ref": "CreateCalendarEvent"
+          }
+        },
+        {
+          "name": "timestamp",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      }
+    },
+    {
+      "name": "delete_event",
+      "params": [
+        {
+          "name": "event_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      }
+    },
+    {
+      "name": "delete_private_event",
+      "params": [
+        {
+          "name": "event_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      }
+    },
+    {
+      "name": "get_events",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "CalendarEvent"
+        }
+      }
+    },
+    {
+      "name": "get_members",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "Member"
+        }
+      }
+    },
+    {
+      "name": "get_private_events",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "CalendarEvent"
+        }
+      }
+    },
+    {
+      "name": "init",
+      "params": [],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "set_username",
+      "params": [
+        {
+          "name": "username",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "timestamp",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "update_event",
+      "params": [
+        {
+          "name": "event_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "event_data",
+          "type": {
+            "$ref": "UpdateCalendarEvent"
+          }
+        },
+        {
+          "name": "timestamp",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      }
+    },
+    {
+      "name": "update_private_event",
+      "params": [
+        {
+          "name": "event_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "event_data",
+          "type": {
+            "$ref": "UpdateCalendarEvent"
+          }
+        },
+        {
+          "name": "timestamp",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      }
+    }
+  ],
+  "events": [
+    {
+      "name": "CalendarEventCreated",
+      "payload": {
+        "kind": "string"
+      }
+    },
+    {
+      "name": "CalendarEventDeleted",
+      "payload": {
+        "kind": "string"
+      }
+    },
+    {
+      "name": "CalendarEventEdited",
+      "payload": {
+        "kind": "string"
+      }
+    },
+    {
+      "name": "MemberJoined",
+      "payload": {
+        "kind": "string"
+      }
+    },
+    {
+      "name": "MemberUsernameUpdated",
+      "payload": {
+        "kind": "string"
+      }
+    }
+  ],
+  "state_root": "CalendarState",
+  "state_version": 1
+}
