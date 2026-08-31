@@ -47,7 +47,7 @@ github = "https://github.com/calimero-network/apps"
 # build imports host functions that only exist from that release on, so a node
 # older than this installs the bundle happily and then dies at context creation
 # with `link error: unknown import`.
-min-runtime-version = "0.11.0-rc.26"
+min-runtime-version = "0.11.0-rc.28"
 # Where the desktop app and links.calimero.network send a deep link for this
 # package. The hosted build is the same `frontend/` in this repo (Vercel project
 # root = `frontend`); it still talks to whatever node the user connects to from
@@ -85,8 +85,7 @@ calimero-storage-macros = { workspace = true }
 thiserror = "1.0.56"
 sha2      = "0.10.8"
 hex       = "0.4.3"
-bs58      = "0.5.0"
-# Same pin core's workspace uses at 0.11.0-rc.25. It has to resolve to the SAME
+# Same pin core's workspace uses at 0.11.0-rc.28. It has to resolve to the SAME
 # `tracing` as the SDK's: the subscriber is registered per `tracing` crate
 # instance, so two semver-incompatible copies would leave this crate's macros
 # talking to a subscriber that forwards nowhere.

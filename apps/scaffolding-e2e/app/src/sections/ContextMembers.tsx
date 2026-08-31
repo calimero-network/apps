@@ -139,18 +139,18 @@ export function ContextMembers() {
         <div className="method-card">
           <div className="method-name">ws_get_member_role(identity) → string</div>
           <p style={{ fontSize: 12, color: "var(--color-text-muted)", marginBottom: 10 }}>
-            Look up the role for a specific identity (base58 public key).
+            Look up the role for a specific identity (hex public key).
           </p>
           <div className="method-inputs">
             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
               <input
                 className="form-control"
                 style={{ flex: 1 }}
-                placeholder="identity (base58 public key)"
+                placeholder="identity (hex public key)"
                 value={getRoleIdentity}
                 onChange={(e) => setGetRoleIdentity(e.target.value)}
               />
-              <FieldHelp text="The Ed25519 public key of a context member, base58-encoded. Visible in the context bar after login (the executor key), or run meroctl identity list on the target node." />
+              <FieldHelp text="The Ed25519 public key of a context member, as 64 hex characters (core rc.27 removed base58). Visible in the context bar after login (the executor key), or run meroctl identity list on the target node." />
             </div>
           </div>
           <button
@@ -178,11 +178,11 @@ export function ContextMembers() {
               <input
                 className="form-control"
                 style={{ flex: 1 }}
-                placeholder="identity (base58 public key)"
+                placeholder="identity (hex public key)"
                 value={setRoleIdentity}
                 onChange={(e) => setSetRoleIdentity(e.target.value)}
               />
-              <FieldHelp text="The Ed25519 public key of a context member, base58-encoded. Visible in the context bar after login (the executor key), or run meroctl identity list on the target node." />
+              <FieldHelp text="The Ed25519 public key of a context member, as 64 hex characters (core rc.27 removed base58). Visible in the context bar after login (the executor key), or run meroctl identity list on the target node." />
             </div>
             <select
               className="form-control"

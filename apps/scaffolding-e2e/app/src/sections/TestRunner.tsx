@@ -89,16 +89,31 @@ interface TestCase {
 const TESTS: TestCase[] = [
   {
     id: "whoami-shape",
-    name: "whoami returns a base58 device id and a 64-hex account id",
+    name: "whoami returns a 64-hex device id and a 64-hex account id",
     group: "Identity",
     fn: async () => {
       const me = out<api.Identity>(await api.whoami());
-      // The two ids are different encodings of different things; asserting the
-      // shapes is what catches a regression that returns one where the other
-      // belongs, which would otherwise only show up as a silent permission
-      // failure in the Shared Storage group.
-      matches(me.device_id, /^[1-9A-HJ-NP-Za-km-z]+$/, "a base58 device id");
+      // ⚠️ This assertion got WEAKER at core 0.11.0-rc.27, which removed base58
+      // and writes every id as hex (core#3691). It used to be the thing that
+      // caught a regression returning one id where the other belongs — the
+      // device key was base58 and the account 64-hex, so a swap failed here
+      // rather than as a silent permission failure over in Shared Storage.
+      // Both are now 64 hex characters and NO shape check can separate them.
+      // What is left is that neither is empty and neither is the other.
+      matches(me.device_id, /^[0-9a-f]{64}$/, "a 64-hex device id");
       matches(me.account_id, /^[0-9a-f]{64}$/, "a 64-hex account id");
+      // Safe to assert, not a guess: both ids are content addresses, and
+      // `DeviceId::mint` is `domain_hash(DEVICE_ID_DOMAIN, account_id ‖ nonce)`
+      // (core, primitives/src/identity.rs). Equality would be a SHA-256
+      // preimage collision. So this only ever fires on a contract that returns
+      // one id for both — which is the regression the base58-vs-hex shape check
+      // used to catch for free, and this is all that is left of it.
+      if (me.device_id === me.account_id) {
+        throw new Error(
+          "device_id and account_id are identical — since rc.27 they are the " +
+            "same shape, so a contract returning one for both now looks correct",
+        );
+      }
     },
   },
   {
@@ -1374,7 +1389,7 @@ const TESTS: TestCase[] = [
     fn: async (r) => {
       noErr(await api.authoredInsert(`amo_${r}`, "v"));
       const owner = out<string | null>(await api.authoredGetOwner(`amo_${r}`));
-      notEmpty(owner ?? "", "owner key should be a non-empty base58 string");
+      notEmpty(owner ?? "", "owner key should be a non-empty hex string");
     },
   },
   {

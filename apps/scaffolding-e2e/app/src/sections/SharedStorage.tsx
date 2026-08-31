@@ -44,7 +44,7 @@ export function SharedStorage() {
         </p>
         <p className="section-desc">
           Note the identity: this set is keyed by <strong>account id</strong>{" "}
-          (64 hex characters), not by the base58 device key shown in the context
+          (64 hex characters), not by the device key shown in the context
           bar and reported by the <code>authored_*</code> methods. Core 0.11
           split the two, and only the account authorizes. Call{" "}
           <code>whoami</code> to get yours — nothing on the wire maps a device
@@ -94,7 +94,7 @@ export function SharedStorage() {
         <div className="method-card">
           <div className="method-name">shared_get_writers()</div>
           <p style={{ fontSize: 12, color: "var(--color-text-muted)", marginBottom: 10 }}>
-            List all base58 public keys authorized to write. The init node is
+            List all account ids authorized to write. The init node is
             always the first entry.
           </p>
           <button
@@ -122,7 +122,7 @@ export function SharedStorage() {
                 value={addWriterKey}
                 onChange={(e) => setAddWriterKey(e.target.value)}
               />
-              <FieldHelp text="An account id: 64 hex characters. Get it from shared_get_writers (for an existing writer) or from whoami (for yourself). NOT the base58 executor key in the context bar — that is the device id, and granting it silently authorizes nobody." />
+              <FieldHelp text="An account id: 64 hex characters. Get it from shared_get_writers (for an existing writer) or from whoami (for yourself). NOT the executor key in the context bar — that is the device id, and granting it silently authorizes nobody. Since core rc.27 both are 64 hex, so nothing about the value will warn you." />
             </div>
           </div>
           <button

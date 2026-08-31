@@ -585,14 +585,14 @@ function WsChannels({ onRefresh }: { onRefresh: () => void }) {
             <div style={{ display: "flex", alignItems: "flex-start", gap: 6 }}>
               <div style={{ flex: 1 }}>
                 <IdPicker
-                  placeholder="Context ID (base58)"
+                  placeholder="Context ID (hex)"
                   value={ctxId}
                   onChange={setCtxId}
                   options={ctxOptions}
                   loading={ctxLoading}
                 />
               </div>
-              <FieldHelp text="A base58-encoded 32-byte identifier for a Calimero context. Create a context with meroctl context create or via the Setup Wizard, then paste its ID here." />
+              <FieldHelp text="A hex-encoded 32-byte identifier for a Calimero context (64 characters; core rc.27 removed base58). Create a context with meroctl context create or via the Setup Wizard, then paste its ID here." />
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" as const }}>
               <input
@@ -632,7 +632,7 @@ function WsChannels({ onRefresh }: { onRefresh: () => void }) {
               <input
                 className="form-control"
                 style={{ flex: 1 }}
-                placeholder="Target context ID (base58)"
+                placeholder="Target context ID (hex)"
                 value={pingId}
                 onChange={(e) => setPingId(e.target.value)}
               />
@@ -869,13 +869,13 @@ function WsMembers() {
           <div style={{ display: "flex", alignItems: "flex-start", gap: 6 }}>
             <div style={{ flex: 1 }}>
               <IdPicker
-                placeholder="Identity (base58 public key)"
+                placeholder="Identity (hex public key)"
                 value={identity}
                 onChange={setIdentity}
                 options={identityOptions}
               />
             </div>
-            <FieldHelp text="The Ed25519 public key of a context member, base58-encoded. Visible in the context bar after login, or run meroctl identity list on the member's node." />
+            <FieldHelp text="The Ed25519 public key of a context member, as 64 hex characters (core rc.27 removed base58). Visible in the context bar after login, or run meroctl identity list on the member's node." />
           </div>
         <div className="input-row">
           <select

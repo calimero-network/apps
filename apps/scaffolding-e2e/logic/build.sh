@@ -12,7 +12,7 @@
 #
 # Install the tool with:
 #   cargo install --git https://github.com/calimero-network/core \
-#     --tag 0.11.0-rc.24 cargo-mero --locked
+#     --tag 0.11.0-rc.28 cargo-mero --locked
 # Keep that tag equal to the calimero-sdk tag in Cargo.toml: the ABI emitter is
 # versioned with core.
 set -euo pipefail
@@ -21,7 +21,7 @@ cd "$(dirname "$0")"
 
 if ! cargo mero --version >/dev/null 2>&1; then
     echo "ERROR: cargo-mero is not installed. Install it with:" >&2
-    echo "  cargo install --git https://github.com/calimero-network/core --tag 0.11.0-rc.24 cargo-mero --locked" >&2
+    echo "  cargo install --git https://github.com/calimero-network/core --tag 0.11.0-rc.28 cargo-mero --locked" >&2
     exit 1
 fi
 

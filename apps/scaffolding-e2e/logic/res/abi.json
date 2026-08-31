@@ -2003,7 +2003,7 @@
       }
     },
     {
-      "name": "get_blob_id_b58",
+      "name": "get_blob_id_hex",
       "params": [
         {
           "name": "file_id",
@@ -3101,7 +3101,7 @@
       "name": "ws_ping_channel",
       "params": [
         {
-          "name": "target_context_id_b58",
+          "name": "target_context_id",
           "type": {
             "kind": "bytes",
             "size": 32
