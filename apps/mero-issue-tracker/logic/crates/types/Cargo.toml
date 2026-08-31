@@ -1,0 +1,16 @@
+[package]
+name    = "issue-tracker-types"
+version = "0.1.0"
+edition.workspace    = true
+authors.workspace    = true
+license.workspace    = true
+repository.workspace = true
+
+# No [package.metadata.calimero] — this is a SHARED CRATE, not an app.
+# check-app-metadata.sh treats a member without the table as exactly that, and
+# only requires the table for a crate whose manifest is `apps/*/logic/Cargo.toml`.
+[dependencies]
+thiserror = { workspace = true }
+hex       = { workspace = true }
+borsh     = { workspace = true, features = ["derive"] }
+serde     = { version = "1.0", features = ["derive"] }
