@@ -19,8 +19,9 @@ describe("dmContext", () => {
   it("fits the group-name cap for real account ids", () => {
     // The bug this guards: the alias used to be
     // `DM_CONTEXT_<44-char account>_<44-char account>` = 100 bytes against a
-    // 64-byte server cap, so `createSubgroup` refused it and creating a DM did
-    // nothing visible at all.
+    // 64-byte cap. The create still returned 200 — the name was stored as the
+    // empty string — so the DM existed and was never visible, which looked like
+    // a button that did nothing.
     const alias = buildDmAlias(
       "D6Ey2whp8PEDj9B5Ws5KYn9KoqDLzDm214vkhEPTpYHC",
       "7Cx9dHT2ZZaaj9B5Ws5KYn9KoqDLzDm214vkhEPTpABC",

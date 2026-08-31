@@ -114,8 +114,13 @@ function getMetadataValue(
 /** A short, order-independent tag for a DM subgroup.
  *
  * This used to be `DM_CONTEXT_<identityA>_<identityB>`. Two account ids are 44
- * characters each, so that name was **100 bytes against a 64-byte server cap** —
- * `createSubgroup` refused it and DM creation failed with nothing on screen.
+ * characters each, so that name was 100 bytes against a 64-byte cap.
+ *
+ * The server does NOT refuse it — measured against a live node, the create
+ * returns 200 and the name is stored as the EMPTY STRING. So the subgroup was
+ * made and the DM simply never appeared, which reads from the outside as a
+ * button that does nothing. An over-long name is dropped, not rejected and not
+ * truncated.
  *
  * It also does not want to be participant-derived at all. The pairing is the
  * social graph, and a group name is not the place to publish it. Discovery moved
