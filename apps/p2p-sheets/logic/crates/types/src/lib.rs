@@ -23,8 +23,9 @@ pub enum Error {
 
 /// A 32-byte Ed25519 public key with hex encoding (core 0.11.0-rc.27 removed base58).
 ///
-/// Note: `from_executor_id()` lives in each service crate (it needs
-/// `calimero-sdk`, which this crate deliberately does not depend on).
+/// Note: turning a live node id into a `PublicKey` lives in each service crate
+/// (it needs `calimero-sdk`, which this crate deliberately does not depend on).
+/// The contract keys cursors on `hex::encode(env::device_id())` directly.
 #[derive(Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PublicKey(pub [u8; 32]);
 
