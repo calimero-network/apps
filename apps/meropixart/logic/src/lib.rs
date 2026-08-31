@@ -1221,14 +1221,26 @@ mod tests {
         assert_eq!(app.view(|s| s.get_role(stranger)), "editor");
     }
 
-    /// The ids are both 32 bytes and nothing downstream would object, so a public
-    /// key pasted where a member id belongs has to be rejected by shape here.
+    /// Before core 0.11.0-rc.27 a public key rendered as base58 and an account as
+    /// hex, so a device key pasted where a member id belongs was rejected on
+    /// sight — which is what this test used to assert. rc.27 removed base58
+    /// (core#3691): both are 64 hex characters now, so a public key PARSES as an
+    /// account id and only its value distinguishes the two. The shape check that
+    /// survives is the rejection of an id that is not a well-formed account.
     #[test]
-    fn a_public_key_is_not_a_member_id() {
+    fn require_account_rejects_a_malformed_member_id() {
         let mut app = new_doc();
-        let key = String::from(PublicKey::from([0x44u8; 32]));
+        // A public key is now accepted by shape — 64 hex, indistinguishable from
+        // an account. This is the rc.27 device/account collision, not a bug here.
+        let pubkey = String::from(PublicKey::from([0x44u8; 32]));
+        app.call(|s| s.grant_editor(pubkey)).unwrap();
+        // What shape can still catch: an id that is not a 64-character hex account.
         // `calimero_sdk::types::Error` is Debug-only, not Display.
-        let err = format!("{:?}", app.call(|s| s.grant_editor(key)).unwrap_err());
+        let err = format!(
+            "{:?}",
+            app.call(|s| s.grant_editor("not-an-account-id".to_owned()))
+                .unwrap_err()
+        );
         assert!(err.contains("not a member id"), "unexpected: {err}");
     }
 
