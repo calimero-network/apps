@@ -33,11 +33,17 @@ jobs:
     timeout-minutes: 5
     outputs:
       apps: ${{ steps.set.outputs.apps }}
-      # The merobox matrix is driven STRICTLY by what can change a contract.
-      # `apps` is a union that a JS-only change can widen, and wasm/e2e do not
-      # gate on js_deps — so sharing one matrix ran a 40-minute two-node e2e for
-      # every app whenever a lockfile moved. These two must stay separate.
-      e2e_apps: ${{ steps.set.outputs.e2e_apps }}
+      # The wasm and merobox matrices are driven STRICTLY by what can change a
+      # contract. `apps` is a union that a JS-only change can widen, and neither
+      # job gates on js_deps — so sharing one matrix ran a 40-minute two-node
+      # e2e for every app whenever a lockfile moved. These must stay separate.
+      #
+      # ⚠️ wasm uses this too, not `apps`. It gates on `logic || shared ||
+      # tooling` — never js_deps — but took its MATRIX from `apps`, so a
+      # migration PR that touched one contract AND rewrote a lockfile rebuilt
+      # every app's wasm, and the ABI gate and dry-run bundle with it. A pnpm
+      # resolution cannot change a single byte of wasm.
+      contract_apps: ${{ steps.set.outputs.contract_apps }}
       logic: ${{ steps.filter.outputs.logic }}
       frontend: ${{ steps.filter.outputs.frontend }}
       # `shared` and `js_deps` are the EFFECTIVE verdicts, not the raw path
@@ -93,8 +99,14 @@ jobs:
             # everyone's; `pnpm-lock.yaml` is per-importer, so adding an app
             # rewrites it without changing what any other app resolves.
             js_config:
-              - 'pnpm-workspace.yaml'
               - 'tsconfig.base.json'
+            # The catalog SOURCE. Split out of `js_config` because it answers
+            # differently for the same reason the lockfiles do: an arriving app
+            # only ADDS catalog entries for dependencies no one else has, which
+            # cannot change what another app resolves. The `locks` step tells
+            # that apart from an existing pin actually moving.
+            pnpm_workspace:
+              - 'pnpm-workspace.yaml'
             pnpm_lock:
               - 'pnpm-lock.yaml'
             logic:
@@ -120,6 +132,7 @@ jobs:
           MANIFEST: ${{ steps.filter.outputs.workspace_manifest }}
           CARGO_LOCK: ${{ steps.filter.outputs.cargo_lock }}
           JS_CONFIG: ${{ steps.filter.outputs.js_config }}
+          PNPM_WORKSPACE: ${{ steps.filter.outputs.pnpm_workspace }}
           PNPM_LOCK: ${{ steps.filter.outputs.pnpm_lock }}
           # For a PR this is the base of the merge; for a push, the previous
           # tip. Empty or all-zeroes (a brand-new branch) makes the script
@@ -149,6 +162,19 @@ jobs:
               echo "::notice::Cargo.lock moved a dependency — covering every app"
             else
               echo "::notice::Cargo.lock changed only for the apps in this PR"
+            fi
+          fi
+
+          if [ "$PNPM_WORKSPACE" = "true" ] && [ "$js_deps" != "true" ]; then
+            if ! verdict=$(python3 scripts/lockfile-fanout.py catalog --base "$BASE" --head HEAD); then
+              verdict=all
+              echo "::warning::lockfile-fanout.py failed on pnpm-workspace.yaml — covering every app"
+            fi
+            if [ "$verdict" = "all" ]; then
+              js_deps=true
+              echo "::notice::pnpm-workspace.yaml moved an existing catalog pin — covering every app"
+            else
+              echo "::notice::pnpm-workspace.yaml only added catalog entries — no fan-out"
             fi
           fi
 
@@ -209,15 +235,16 @@ jobs:
           echo "apps=$apps" >> "$GITHUB_OUTPUT"
 
           # Contracts only. A frontend edit or a lockfile importer cannot change
-          # wasm, so neither belongs in the matrix that starts merod containers.
+          # wasm, so neither belongs in the matrix that builds it or in the one
+          # that starts merod containers.
           if [ "$SHARED" = "true" ] || [ "$TOOLING" = "true" ]; then
-            e2e_apps=$(bash scripts/app-packages.sh all)
-            echo "::notice::contract-level change — merobox covers every app: $e2e_apps"
+            contract_apps=$(bash scripts/app-packages.sh all)
+            echo "::notice::contract-level change — wasm + merobox cover every app: $contract_apps"
           else
-            e2e_apps=$(printf '%s' "$LOGIC_FILES" | bash scripts/app-packages.sh from-paths)
-            echo "::notice::merobox apps: $e2e_apps"
+            contract_apps=$(printf '%s' "$LOGIC_FILES" | bash scripts/app-packages.sh from-paths)
+            echo "::notice::contract apps (wasm + merobox): $contract_apps"
           fi
-          echo "e2e_apps=$e2e_apps" >> "$GITHUB_OUTPUT"
+          echo "contract_apps=$contract_apps" >> "$GITHUB_OUTPUT"
 
   # ── workspace-wide, cheap, always ──────────────────────────────────────────
   metadata:
@@ -286,13 +313,16 @@ jobs:
     #
     # `apps != '[]'` is what makes an empty matrix a skipped job rather than a
     # job that silently succeeds having built nothing.
-    if: (needs.changes.outputs.logic == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.tooling == 'true') && needs.changes.outputs.apps != '[]'
+    if: (needs.changes.outputs.logic == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.tooling == 'true') && needs.changes.outputs.contract_apps != '[]'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
       fail-fast: false
+      # `contract_apps`, NOT `apps`: this job's own `if` already refuses to run
+      # for a JS-only change, but the matrix it took was the widened union, so
+      # `js_deps` still fanned it out to every app.
       matrix:
-        app: ${{ fromJSON(needs.changes.outputs.apps) }}
+        app: ${{ fromJSON(needs.changes.outputs.contract_apps) }}
     steps:
       - uses: actions/checkout@v4
 
@@ -574,13 +604,13 @@ jobs:
     # Only when a CONTRACT or the pipeline moved. A frontend-only change cannot
     # alter what a two-node merobox run does, and each of these pulls an image
     # and starts two merod containers.
-    if: (needs.changes.outputs.logic == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.tooling == 'true') && needs.changes.outputs.e2e_apps != '[]'
+    if: (needs.changes.outputs.logic == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.tooling == 'true') && needs.changes.outputs.contract_apps != '[]'
     runs-on: ubuntu-latest
     timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:
-        app: ${{ fromJSON(needs.changes.outputs.e2e_apps) }}
+        app: ${{ fromJSON(needs.changes.outputs.contract_apps) }}
     steps:
       - uses: actions/checkout@v4
 
