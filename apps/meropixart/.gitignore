@@ -1,6 +1,5 @@
 # Rust / WASM
 logic/target/
-logic/res/
 logic/dist/
 logic/res/*.mpk
 logic/res/bundle-temp/

@@ -25,7 +25,7 @@ type LayerId = String;
 /// group listing answers with accounts, `AccessControl` and `Ownable` gate on
 /// accounts, and `env::executor_id()` resolves to one — so the document keys its
 /// roster, its roles and its authorship by the same thing. It is deliberately
-/// not the bs58 a public key renders in; the two are both 32 bytes and nothing
+/// not the public key it is derived alongside; the two are both 32 bytes and nothing
 /// downstream would object to the wrong one.
 type MemberId = String;
 
@@ -260,7 +260,7 @@ pub struct MemberRole {
 #[serde(crate = "calimero_sdk::serde")]
 #[serde(rename_all = "camelCase")]
 pub struct CursorState {
-    /// The device this pointer belongs to (bs58 context key) — unique per open
+    /// The device this pointer belongs to (hex context key) — unique per open
     /// installation, so it is what the map is keyed by.
     pub identity: String,
     /// The member (account) behind that device, so the overlay can label the
@@ -382,7 +382,7 @@ impl MeroPixArt {
         Self::caller_account().to_string()
     }
 
-    /// The installation this call came from, as the bs58 context key the
+    /// The installation this call came from, as the hex context key the
     /// frontend reads back from `/contexts/{id}/identities-owned`.
     ///
     /// Kept on `device_id()` deliberately and used for exactly one thing: the
@@ -1112,8 +1112,9 @@ mod tests {
     const OTHER_ACCOUNT: [u8; 32] = [0xA2; 32];
 
     /// The member id an account is written as — hex, which is what
-    /// [`MeroPixArt::require_account`] parses. `String::from(PublicKey::…)` gives
-    /// bs58 and is now rejected by shape.
+    /// [`MeroPixArt::require_account`] parses. Since core 0.11.0-rc.27 removed
+    /// base58, a public key renders as 64 hex too, so a device key now parses by
+    /// shape — only its value differs from an account.
     fn member_id(account: [u8; 32]) -> MemberId {
         AccountId::from(account).to_string()
     }

@@ -40,7 +40,7 @@ github = "https://github.com/calimero-network/mero-pixart"
 # that earlier merod has no implementation for: claiming 0.1.0 lets such a node
 # install the bundle happily and then fail at context creation with "unknown
 # import". Keep this equal to the calimero-sdk tag above.
-min-runtime-version = "0.11.0-rc.26"
+min-runtime-version = "0.11.0-rc.28"
 frontend = "https://mero-pixart.vercel.app/"
 
 [dependencies]

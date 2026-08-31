@@ -1,17 +1,16 @@
-name: Integration Test Setup
+name: E2E Two-Node Test
 description: >
-  Sets up a two-node environment for MeroPixArt integration tests.
-  Creates a project context, sets up two members (Alice and Bob),
-  adds a seed layer, then leaves nodes running for Playwright.
+  Full two-node MeroPixArt e2e workflow. Installs app, creates a project,
+  adds layers from both nodes, verifies sync.
 
-stop_all_nodes: false
+stop_all_nodes: true
 restart: false
 wait_timeout: 120
 
 nodes:
   chain_id: testnet-1
   count: 2
-  image: ghcr.io/calimero-network/merod:0.11.0-rc.26
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.28
   # rc.26 made mDNS opt-in (core#3620) and merobox does not pass the flag,
   # so discovery changed at the image bump. Stated, not inherited.
   mdns: true
@@ -21,7 +20,7 @@ steps:
   - name: Install Application on Node 1
     type: install_application
     node: calimero-node-1
-    path: "../logic/res/meropixart.wasm"
+    path: "res/meropixart.wasm"
     dev: true
     outputs:
       app_id: applicationId
@@ -29,7 +28,7 @@ steps:
   - name: Install Application on Node 2
     type: install_application
     node: calimero-node-2
-    path: "../logic/res/meropixart.wasm"
+    path: "res/meropixart.wasm"
     dev: true
 
   - name: Create Namespace
@@ -48,12 +47,12 @@ steps:
     group_id: "{{namespace_id}}"
     capabilities: 15
 
-  - name: Create Project Context
+  - name: Create Project
     type: create_context
     node: calimero-node-1
     application_id: "{{app_id}}"
     group_id: "{{namespace_id}}"
-    params: '{"name": "Integration Project", "description": "Playwright test project", "width": 800, "height": 600}'
+    params: '{"name": "E2E Project", "description": "", "width": 800, "height": 600}'
     outputs:
       context_id: contextId
       member_public_key: memberPublicKey
@@ -64,73 +63,33 @@ steps:
     outputs:
       public_key_2: publicKey
 
-  - name: Wait for Identity Setup
-    type: wait
-    seconds: 3
-
-  - name: Invite Node 2
+  - name: Invite and Join
     type: create_namespace_invitation
     node: calimero-node-1
     group_id: "{{namespace_id}}"
     outputs:
       invitation_2: invitation
 
-  - name: Node 2 Joins Namespace
+  - name: Node 2 Joins
     type: join_namespace
     node: calimero-node-2
     group_id: "{{namespace_id}}"
     invitation: "{{invitation_2}}"
 
-  - name: Node 2 Joins Project Context
+  - name: Node 2 Joins Context
     type: join_context
     node: calimero-node-2
     context_id: "{{context_id}}"
 
-  - name: Wait for Sync
+  - name: Sync
     type: wait_for_sync
     context_id: "{{context_id}}"
-    nodes:
-      - calimero-node-1
-      - calimero-node-2
+    nodes: [calimero-node-1, calimero-node-2]
     timeout: 60
     check_interval: 2
     trigger_sync: true
 
-  - name: Alice Joins Project
-    type: call
-    node: calimero-node-1
-    context_id: "{{context_id}}"
-    executor_public_key: "{{member_public_key}}"
-    method: join
-    args:
-      # member id is derived server-side from the signer (env::executor_id).
-      username: "Alice"
-      avatar: null
-      timestamp: 1751953000
-
-  - name: Sync Alice to Node 2
-    type: wait_for_sync
-    context_id: "{{context_id}}"
-    nodes:
-      - calimero-node-1
-      - calimero-node-2
-    timeout: 60
-    check_interval: 2
-    trigger_sync: true
-
-  - name: Bob Joins Project
-    type: call
-    node: calimero-node-2
-    context_id: "{{context_id}}"
-    executor_public_key: "{{public_key_2}}"
-    method: join
-    args:
-      # member id is derived server-side from the signer (env::executor_id).
-      username: "Bob"
-      avatar: null
-      timestamp: 1751953001
-
-  - name: Alice Adds Seed Layer
+  - name: Add Layer from Node 1
     type: call
     node: calimero-node-1
     context_id: "{{context_id}}"
@@ -166,12 +125,26 @@ steps:
         createdAt: 1751953010
         updatedAt: 1751953010
 
-  - name: Final Sync
+  - name: Sync after layer
     type: wait_for_sync
     context_id: "{{context_id}}"
-    nodes:
-      - calimero-node-1
-      - calimero-node-2
+    nodes: [calimero-node-1, calimero-node-2]
     timeout: 60
     check_interval: 2
     trigger_sync: true
+
+  - name: Verify Layers
+    type: call
+    node: calimero-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_2}}"
+    method: get_layers
+    args: {}
+    outputs:
+      layers: result
+
+  - name: Assert Layer Synced
+    type: assert
+    statements:
+      - "contains({{layers}}, 'layer-1')"
+      - "contains({{layers}}, 'Background')"
