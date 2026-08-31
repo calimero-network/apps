@@ -1,0 +1,23 @@
+{
+  "appName": "mero-issue-tracker",
+  "appVersion": "1.1.0",
+  "package": "com.calimero.mero-issue-tracker",
+  "frontendUrl": "https://mero-issue-tracker-app.vercel.app",
+  "metadata": {
+    "name": "mero-issue-tracker",
+    "description": "A private, real-time issue board for a small engineering team \u2014 create, triage, and discuss issues together",
+    "author": "Calimero",
+    "route": "/issue-tracker"
+  },
+  "theme": {
+    "primaryColor": "#2563EB",
+    "accentColor": "#F97316",
+    "style": "clean-modern"
+  },
+  "services": [
+    {
+      "name": "issue-tracker",
+      "crate": "mero-issue-tracker"
+    }
+  ]
+}

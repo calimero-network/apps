@@ -33,13 +33,29 @@ jobs:
     timeout-minutes: 5
     outputs:
       apps: ${{ steps.set.outputs.apps }}
+      # The merobox matrix is driven STRICTLY by what can change a contract.
+      # `apps` is a union that a JS-only change can widen, and e2e does not gate
+      # on js_deps — so sharing one matrix ran a 40-minute two-node e2e for
+      # every app whenever a lockfile moved. These two must stay separate.
+      #
+      # ⚠️ Only `e2e` uses this. `wasm` must stay on `apps` because it is the
+      # producer of the artifacts BOTH it and `browser` download, and `browser`
+      # runs over `apps` — see the note on the wasm job's matrix.
+      contract_apps: ${{ steps.set.outputs.contract_apps }}
       logic: ${{ steps.filter.outputs.logic }}
       frontend: ${{ steps.filter.outputs.frontend }}
-      shared: ${{ steps.filter.outputs.shared }}
+      # `shared` and `js_deps` are the EFFECTIVE verdicts, not the raw path
+      # filters: a lockfile that changed only for the app being touched does not
+      # make this a workspace-level change. See the `locks` step below.
+      shared: ${{ steps.locks.outputs.shared }}
       tooling: ${{ steps.filter.outputs.tooling }}
-      js_deps: ${{ steps.filter.outputs.js_deps }}
+      js_deps: ${{ steps.locks.outputs.js_deps }}
     steps:
+      # Full history: deciding whether a lockfile change reaches other apps
+      # means reading the lockfile as it was BEFORE this change.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: dorny/paths-filter@v3
         id: filter
@@ -48,9 +64,9 @@ jobs:
           # instead of re-deriving them from a boolean.
           list-files: shell
           filters: |
-            # `shared` means "this can change a CONTRACT's bytes", which is what
-            # justifies fanning out to every app AND running the 40-minute
-            # merobox matrix.
+            # A workspace-level change is one that can change a CONTRACT's
+            # bytes, which is what justifies fanning out to every app AND
+            # running the 40-minute merobox matrix.
             #
             # It used to include `.github/**`, `scripts/**` and the JS
             # workspace files, so editing a COMMENT in this very file triggered
@@ -58,9 +74,15 @@ jobs:
             # something — they just do not change any wasm — so they are their
             # own filters below.
             #
-            # Add 'crates/**' here when that directory is created.
-            shared:
+            # The manifest and the lockfile are separate because they answer
+            # differently: editing the workspace manifest is always everyone's
+            # business, while `Cargo.lock` is also rewritten just by adding or
+            # renaming an app. The `locks` step tells those two cases apart.
+            #
+            # Add 'crates/**' to `workspace_manifest` when that dir is created.
+            workspace_manifest:
               - 'Cargo.toml'
+            cargo_lock:
               - 'Cargo.lock'
             # The pipeline itself changed, so the pipeline has to be exercised —
             # including the e2e, since these are what drive it.
@@ -70,16 +92,112 @@ jobs:
               - 'requirements-e2e.txt'
             # JS-only: a catalog bump or a tsconfig change cannot alter a
             # contract, so it must not start merod containers.
-            js_deps:
-              - 'pnpm-workspace.yaml'
-              - 'pnpm-lock.yaml'
+            #
+            # Same split as above. The catalog and the shared tsconfig are
+            # everyone's; `pnpm-lock.yaml` is per-importer, so adding an app
+            # rewrites it without changing what any other app resolves.
+            js_config:
               - 'tsconfig.base.json'
+            # The catalog SOURCE. Split out of `js_config` because it answers
+            # differently for the same reason the lockfiles do: an arriving app
+            # only ADDS catalog entries for dependencies no one else has, which
+            # cannot change what another app resolves. The `locks` step tells
+            # that apart from an existing pin actually moving.
+            pnpm_workspace:
+              - 'pnpm-workspace.yaml'
+            pnpm_lock:
+              - 'pnpm-lock.yaml'
             logic:
               - 'apps/*/logic/**'
             frontend:
               - 'apps/*/app/**'
             app:
               - 'apps/**'
+
+      # DID THE LOCKFILES CHANGE FOR ANYONE ELSE?
+      #
+      # `Cargo.lock` and `pnpm-lock.yaml` are rewritten whenever an app is
+      # added, renamed or removed, and both used to be plain booleans that
+      # fanned out to every app. So every migration PR paid for the full WASM +
+      # browser + merobox matrix to prove that nine untouched apps still built.
+      #
+      # scripts/lockfile-fanout.py answers the narrower question the fan-out
+      # actually needs — see its docstring for the rules, and
+      # scripts/tests/lockfile-fanout-test.py for both branches pinned.
+      - name: Decide whether the lockfile changes reach other apps
+        id: locks
+        env:
+          MANIFEST: ${{ steps.filter.outputs.workspace_manifest }}
+          CARGO_LOCK: ${{ steps.filter.outputs.cargo_lock }}
+          JS_CONFIG: ${{ steps.filter.outputs.js_config }}
+          PNPM_WORKSPACE: ${{ steps.filter.outputs.pnpm_workspace }}
+          PNPM_LOCK: ${{ steps.filter.outputs.pnpm_lock }}
+          # For a PR this is the base of the merge; for a push, the previous
+          # tip. Empty or all-zeroes (a brand-new branch) makes the script
+          # answer `all`, which is the safe direction.
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          set -uo pipefail
+
+          # The workspace manifest and the shared JS config are everyone's
+          # business on their own; the lockfiles only sometimes are.
+          shared="$MANIFEST"
+          js_deps="$JS_CONFIG"
+          extra_paths=""
+
+          # Note the explicit failure branch on every probe below. With `set
+          # -e` a crash would kill the job; WITHOUT it, an unchecked `$(...)`
+          # leaves `verdict` empty, which reads as "no fan-out" and SKIPS apps
+          # — the one direction that fails silently. So a failure is forced to
+          # mean `all`.
+          if [ "$CARGO_LOCK" = "true" ] && [ "$shared" != "true" ]; then
+            if ! verdict=$(python3 scripts/lockfile-fanout.py cargo --base "$BASE" --head HEAD); then
+              verdict=all
+              echo "::warning::lockfile-fanout.py failed on Cargo.lock — covering every app"
+            fi
+            if [ "$verdict" = "all" ]; then
+              shared=true
+              echo "::notice::Cargo.lock moved a dependency — covering every app"
+            else
+              echo "::notice::Cargo.lock changed only for the apps in this PR"
+            fi
+          fi
+
+          if [ "$PNPM_WORKSPACE" = "true" ] && [ "$js_deps" != "true" ]; then
+            if ! verdict=$(python3 scripts/lockfile-fanout.py catalog --base "$BASE" --head HEAD); then
+              verdict=all
+              echo "::warning::lockfile-fanout.py failed on pnpm-workspace.yaml — covering every app"
+            fi
+            if [ "$verdict" = "all" ]; then
+              js_deps=true
+              echo "::notice::pnpm-workspace.yaml moved an existing catalog pin — covering every app"
+            else
+              echo "::notice::pnpm-workspace.yaml only added catalog entries — no fan-out"
+            fi
+          fi
+
+          if [ "$PNPM_LOCK" = "true" ] && [ "$js_deps" != "true" ]; then
+            if ! verdict=$(python3 scripts/lockfile-fanout.py pnpm --base "$BASE" --head HEAD); then
+              verdict=all
+              echo "::warning::lockfile-fanout.py failed on pnpm-lock.yaml — covering every app"
+            fi
+            if [ "$verdict" = "all" ]; then
+              js_deps=true
+              echo "::notice::pnpm-lock.yaml changed shared resolution — covering every app"
+            elif [ -n "$verdict" ]; then
+              # Importer paths, which map to apps exactly like source paths do.
+              extra_paths="$verdict"
+              echo "::notice::pnpm importers changed: $(echo "$verdict" | tr '\n' ' ')"
+            fi
+          fi
+
+          echo "shared=$shared" >> "$GITHUB_OUTPUT"
+          echo "js_deps=$js_deps" >> "$GITHUB_OUTPUT"
+          {
+            echo "extra_paths<<__EOF__"
+            echo "$extra_paths"
+            echo "__EOF__"
+          } >> "$GITHUB_OUTPUT"
 
       # WHICH APPS, not "are there any".
       #
@@ -91,25 +209,40 @@ jobs:
       # expressed. Found by a reviewer, not by CI, because with one app in the
       # repo the two are indistinguishable.
       #
-      # `shared` still means every app — an SDK or toolchain change really does
-      # change every contract's bytes.
+      # A genuine workspace-level change still means every app — an SDK bump
+      # really does change every contract's bytes.
       - name: Resolve the app matrix
         id: set
         env:
-          SHARED: ${{ steps.filter.outputs.shared }}
+          SHARED: ${{ steps.locks.outputs.shared }}
           TOOLING: ${{ steps.filter.outputs.tooling }}
-          JS_DEPS: ${{ steps.filter.outputs.js_deps }}
+          JS_DEPS: ${{ steps.locks.outputs.js_deps }}
           APP_FILES: ${{ steps.filter.outputs.app_files }}
+          LOGIC_FILES: ${{ steps.filter.outputs.logic_files }}
+          EXTRA_PATHS: ${{ steps.locks.outputs.extra_paths }}
         run: |
           set -euo pipefail
           if [ "$SHARED" = "true" ] || [ "$TOOLING" = "true" ] || [ "$JS_DEPS" = "true" ]; then
             apps=$(bash scripts/app-packages.sh all)
             echo "::notice::workspace-level change — covering every app: $apps"
           else
-            apps=$(printf '%s' "$APP_FILES" | bash scripts/app-packages.sh from-paths)
+            apps=$(printf '%s\n%s' "$APP_FILES" "$EXTRA_PATHS" \
+                   | bash scripts/app-packages.sh from-paths)
             echo "::notice::changed apps: $apps"
           fi
           echo "apps=$apps" >> "$GITHUB_OUTPUT"
+
+          # Contracts only. A frontend edit or a lockfile importer cannot alter
+          # what a two-node merobox run does, so neither belongs in the matrix
+          # that starts merod containers.
+          if [ "$SHARED" = "true" ] || [ "$TOOLING" = "true" ]; then
+            contract_apps=$(bash scripts/app-packages.sh all)
+            echo "::notice::contract-level change — merobox covers every app: $contract_apps"
+          else
+            contract_apps=$(printf '%s' "$LOGIC_FILES" | bash scripts/app-packages.sh from-paths)
+            echo "::notice::merobox apps: $contract_apps"
+          fi
+          echo "contract_apps=$contract_apps" >> "$GITHUB_OUTPUT"
 
   # ── workspace-wide, cheap, always ──────────────────────────────────────────
   metadata:
@@ -120,6 +253,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: bash scripts/check-app-metadata.sh
+
+      # The matrix resolver decides what the rest of this file runs, and both of
+      # its wrong answers are silent — too broad only costs money, too narrow
+      # skips an app with nothing to notice. So its rules are tested.
+      - name: Test the lockfile fan-out rules
+        run: python3 scripts/tests/lockfile-fanout-test.py
 
   rust:
     name: Rust (fmt, clippy, test)
@@ -177,8 +316,29 @@ jobs:
     timeout-minutes: 30
     strategy:
       fail-fast: false
+      # ⚠️ `apps`, and it CANNOT be narrowed to `contract_apps`.
+      #
+      # This job is the only producer of `mpk-<app>` and `wasm-<app>`, and the
+      # jobs that consume them do not agree on a matrix: `browser` runs over
+      # `apps` (a frontend or lockfile change can break the UI), while `e2e`
+      # runs over `contract_apps`. So this must cover the UNION, which is
+      # `apps`.
+      #
+      # Narrowing it to `contract_apps` looks right — a pnpm resolution cannot
+      # change a byte of wasm — and it is what this comment used to say. It
+      # fails in the consumer instead, and not as a build error:
+      #
+      #     Unable to download artifact(s): Artifact not found for name:
+      #     mpk-kv-store-<sha>
+      #
+      # which reads like a flaky runner rather than a matrix that skipped the
+      # producer. Measured on migrate/merraria.
+      # Sentinel fallback: an empty array leaves `${{ matrix.app }}` unexpanded,
+      # so GitHub prints the raw template as a skipped check. Falling back to
+      # `["none"]` keeps the name resolvable; this job's `if` gates on the same
+      # `!= '[]'`, so the leg is skipped and simply reads "… (none)".
       matrix:
-        app: ${{ fromJSON(needs.changes.outputs.apps) }}
+        app: ${{ fromJSON(needs.changes.outputs.apps != '[]' && needs.changes.outputs.apps || '["none"]') }}
     steps:
       - uses: actions/checkout@v4
 
@@ -246,6 +406,22 @@ jobs:
             --app-version 0.0.0 \
             --output "dist/dry-run-${{ matrix.app }}.mpk"
 
+      # An app may ship a hand-rolled bundle FIXTURE its scenarios install —
+      # scaffolding-e2e's two-service .mpk, which exists to exercise merod's
+      # multi-service install and `service_name` selection. It has to be built
+      # HERE: this is the only job with a Rust toolchain, and the e2e job
+      # deliberately downloads the contract rather than rebuilding it. Without
+      # this the scenario fails at `Application path not found`.
+      - name: Build any bundle fixtures this app ships
+        run: |
+          script="apps/${{ matrix.app }}/logic/build-multi-service-bundle.sh"
+          if [ -x "$script" ]; then
+            echo "running $script"
+            (cd "apps/${{ matrix.app }}/logic" && ./build-multi-service-bundle.sh)
+          else
+            echo "no bundle fixture for ${{ matrix.app }} — nothing to build"
+          fi
+
       # A SEPARATE artifact on purpose. The upload below uses glob paths whose
       # least-common-ancestor is `apps/`, which is what makes `path: apps`
       # correct on the download side — adding a repo-root path like `dist/`
@@ -272,6 +448,7 @@ jobs:
             apps/*/logic/res/*.wasm
             apps/*/logic/res/abi.json
             apps/*/logic/res/state-schema.json
+            apps/*/logic/res/*.mpk
           retention-days: 3
 
   frontend:
@@ -328,8 +505,12 @@ jobs:
     timeout-minutes: 25
     strategy:
       fail-fast: false
+      # Sentinel fallback: an empty array leaves `${{ matrix.app }}` unexpanded,
+      # so GitHub prints the raw template as a skipped check. Falling back to
+      # `["none"]` keeps the name resolvable; this job's `if` gates on the same
+      # `!= '[]'`, so the leg is skipped and simply reads "… (none)".
       matrix:
-        app: ${{ fromJSON(needs.changes.outputs.apps) }}
+        app: ${{ fromJSON(needs.changes.outputs.apps != '[]' && needs.changes.outputs.apps || '["none"]') }}
     steps:
       - uses: actions/checkout@v4
 
@@ -406,9 +587,20 @@ jobs:
         working-directory: apps/${{ matrix.app }}/app
         run: npx playwright install-deps chromium
 
+      # An app opts into a specific CI suite with `test:e2e:ci`; otherwise the
+      # default projects run. scaffolding-e2e needs this: its default config has
+      # a globalSetup that drives a real hosted login, which on a runner ends at
+      # `chrome-error://chromewebdata/`, while its mocked config injects auth in
+      # the page and needs no node.
       - name: Run the browser e2e
         working-directory: apps/${{ matrix.app }}/app
-        run: npx playwright test
+        run: |
+          if node -e "process.exit(require('./package.json').scripts?.['test:e2e:ci']?0:1)"; then
+            echo "using this app's test:e2e:ci"
+            pnpm run test:e2e:ci
+          else
+            npx playwright test
+          fi
 
       - name: Upload the report and node log
         if: always()
@@ -432,13 +624,17 @@ jobs:
     # Only when a CONTRACT or the pipeline moved. A frontend-only change cannot
     # alter what a two-node merobox run does, and each of these pulls an image
     # and starts two merod containers.
-    if: (needs.changes.outputs.logic == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.tooling == 'true') && needs.changes.outputs.apps != '[]'
+    if: (needs.changes.outputs.logic == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.tooling == 'true') && needs.changes.outputs.contract_apps != '[]'
     runs-on: ubuntu-latest
     timeout-minutes: 40
     strategy:
       fail-fast: false
+      # Sentinel fallback: an empty array leaves `${{ matrix.app }}` unexpanded,
+      # so GitHub prints the raw template as a skipped check. Falling back to
+      # `["none"]` keeps the name resolvable; this job's `if` gates on the same
+      # `!= '[]'`, so the leg is skipped and simply reads "… (none)".
       matrix:
-        app: ${{ fromJSON(needs.changes.outputs.apps) }}
+        app: ${{ fromJSON(needs.changes.outputs.contract_apps != '[]' && needs.changes.outputs.contract_apps || '["none"]') }}
     steps:
       - uses: actions/checkout@v4
 
@@ -509,6 +705,17 @@ jobs:
           shopt -s nullglob
           for f in workflows/*.yml; do merobox bootstrap validate "$f"; done
 
+      # ⚠️ Tear the containers down BETWEEN scenarios, not just at the end.
+      # `nuke_on_start` in a scenario clears DATA, not a previous scenario's
+      # running containers, and scenarios pick their own node prefix while
+      # sharing the default host ports. So the second scenario to want 2428
+      # dies at:
+      #
+      #     Bind for 0.0.0.0:2428 failed: port is already allocated
+      #
+      # which reads like a runner problem rather than a missing teardown. Any
+      # app with ONE scenario — kv-store, merodesign, merraria — never sees it;
+      # scaffolding-e2e has 18.
       - name: Run workflows
         working-directory: apps/${{ matrix.app }}/logic
         run: |
@@ -516,7 +723,10 @@ jobs:
           for f in workflows/*.yml; do
             echo "::group::$f"
             merobox bootstrap run "$f" --log-level info
+            status=$?
+            merobox stop --all >/dev/null 2>&1 || true
             echo "::endgroup::"
+            [ $status -eq 0 ] || exit $status
           done
 
       # `merobox logs` takes a NODE_NAME argument — with only `--tail` it exits

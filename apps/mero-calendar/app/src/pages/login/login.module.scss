@@ -1,0 +1,128 @@
+@keyframes drift {
+  0% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(40px, 30px) scale(1.06); }
+  100% { transform: translate(0, 0) scale(1); }
+}
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.root {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-0);
+  position: relative;
+  overflow: hidden;
+}
+
+.bgCircle1 {
+  position: absolute;
+  width: 460px;
+  height: 460px;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--accent-soft), transparent 70%);
+  top: -120px;
+  left: -140px;
+  filter: blur(50px);
+  animation: drift 18s ease-in-out infinite;
+  pointer-events: none;
+}
+.bgCircle2 {
+  position: absolute;
+  width: 340px;
+  height: 340px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(67, 209, 122, 0.12), transparent 70%);
+  bottom: -90px;
+  right: -90px;
+  filter: blur(55px);
+  animation: drift 14s ease-in-out infinite reverse;
+  pointer-events: none;
+}
+
+.backBtn {
+  position: absolute;
+  top: 24px;
+  left: 28px;
+  background: none;
+  border: none;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  z-index: 10;
+}
+.backBtn:hover {
+  color: var(--text);
+}
+
+.themeSlot {
+  position: absolute;
+  top: 20px;
+  right: 24px;
+  z-index: 10;
+}
+
+.card {
+  background: var(--bg-1);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  padding: 38px 34px;
+  width: 360px;
+  max-width: 92vw;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  position: relative;
+  z-index: 10;
+  box-shadow: var(--shadow);
+  animation: fadeUp 0.45s ease both;
+}
+
+.cardLogo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+.cardLogoText {
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+  color: var(--text);
+}
+
+.title {
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+  margin-bottom: 2px;
+  color: var(--text);
+}
+.subtitle {
+  font-size: 13px;
+  color: var(--text-dim);
+  margin-bottom: 12px;
+}
+
+/* Brand the mero ConnectButton */
+.connectWrap :global(button) {
+  width: 100%;
+  padding: 12px !important;
+  background: var(--accent) !important;
+  color: var(--accent-text) !important;
+  border: none !important;
+  border-radius: var(--radius-sm) !important;
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.connectWrap :global(button:hover) {
+  background: var(--accent-dim) !important;
+}

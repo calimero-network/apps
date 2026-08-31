@@ -1,0 +1,146 @@
+name: Mero Stream — approach 1, media on ephemeral presence (no DAG growth)
+description: >
+  Approach 1: the encoded frame travels as an EPHEMERAL-PRESENCE slice
+  (core 0.11.0-rc.24, core#3427) instead of as replicated state. Signed,
+  encrypted under the context group key, gossiped between nodes, never
+  persisted, never in the DAG, swept by the node after a 7 s TTL.
+
+  This scenario proves the three things only two real nodes can settle:
+
+    (a) a single-fragment frame published on node 1 with the JSON-RPC
+        `set_ephemeral` method reaches a live SSE subscriber on node 2
+        BYTE-IDENTICALLY, attributed to node 1's identity, as a live delta
+        (no `ageMs`) — and the framing header survives the wire intact,
+    (b) a frame too large for one 16 KiB slice, published as sequential
+        fragments, is reassembled byte-identically on node 2 — best effort, so
+        the assertion allows the same retry the app's keyframe cadence provides,
+    (c) node 1's `contextStateHash` is IDENTICAL before and after every publish,
+        measured against a NON-NULL baseline. This is the load-bearing guard: it
+        is the entire difference between this transport and `post_chunk`, whose
+        every access unit becomes replicated state that then needs tombstones to
+        walk back.
+
+  What this scenario CANNOT cover: the real encode/decode. That needs a browser
+  with a camera (the `/live` route in Chrome, transport switched to "ephemeral").
+  It covers everything between. The framing itself — reassembly, out-of-order
+  fragments, a lost fragment, a replayed slice, a foreign slice sharing the
+  presence channel — is unit-tested in app/src/lib/ephemeralFrames.test.ts,
+  which runs on every PR without a node.
+
+  The assertions run as a Node script rather than merobox `assert` steps because
+  presence has NO read endpoint: a client learns it only by subscribing to the
+  event stream. `set_ephemeral` is still an ordinary JSON-RPC call — SSE is
+  server-to-client only — and merobox executes `script` steps through `sh`, so
+  the .mjs has a one-line .sh wrapper. Nodes run in Proxy auth mode (default),
+  so no Bearer token is required.
+
+force_pull_image: true
+
+nodes:
+  chain_id: testnet-1
+  count: 2
+  # Keep in step with logic/Cargo.toml's calimero-* tag. rc.24 is a FLOOR here,
+  # not a preference: `set_ephemeral` does not exist before it, and an older node
+  # fails this scenario at the publish step.
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.28
+  prefix: calimero-node
+  # Stated, not inherited. core 0.11.0-rc.26 made mDNS opt-in (core#3620), so
+  # `merod init` now writes `discovery.mdns = false`; merobox does not pass the
+  # flag, so peer discovery changed at the image bump with nothing here changing.
+  mdns: true
+  # Distinct from e2e.yml (2760/2660), tombstones (2780/2680), fanout
+  # (2800/2700), live-chunks (2820/2720). The script step builds its URLs by
+  # hand, so these have to be pinned rather than auto-allocated: with
+  # base_rpc_port set, merobox publishes host port base_rpc_port + i for node
+  # i+1, which makes localhost:2740 / localhost:2741 stable.
+  base_port: 2840
+  base_rpc_port: 2740
+
+steps:
+  - name: Install application on Node 1
+    type: install_application
+    node: calimero-node-1
+    path: res/mero_stream.wasm
+    dev: true
+    outputs:
+      app_id: applicationId
+
+  - name: Create the stream mesh
+    type: create_mesh
+    context_node: calimero-node-1
+    application_id: "{{app_id}}"
+    nodes:
+      - calimero-node-2
+    params: '{"name": "ephemeral"}'
+
+  - name: Wait for the context on both nodes
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  # This join is not scenery. The no-DAG-growth guard compares node 1's
+  # contextStateHash before and after the ephemeral publishes, and "unchanged" is
+  # also true of a context nothing has ever written to — so the guard would pass
+  # vacuously against the genesis hash (base58 of 32 zero bytes). One real state
+  # write gives it a non-null baseline; the script refuses to run without one.
+  - name: Alice joins (gives the no-DAG-growth guard a non-null baseline)
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    method: join
+    args: { username: "Alice", now: 1755600000 }
+    executor_public_key: "{{member_public_key}}"
+
+  - name: Bob joins
+    type: call
+    node: calimero-node-2
+    context_id: "{{context_id}}"
+    method: join
+    args: { username: "Bob", now: 1755600001 }
+    executor_public_key: "{{public_key}}"
+
+  - name: Sync membership
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  # Presence rides the GOSSIP layer, not the DAG sync path, so DAG convergence
+  # above is not what makes the next step work — the gossip mesh forming is.
+  # Node 2 subscribes to the context topic on join; this is the settle time for
+  # the mesh itself.
+  - name: Wait for the gossip mesh to settle
+    type: wait
+    seconds: 30
+
+  - name: "Ephemeral frame transport (byte-identity + reassembly + no DAG growth)"
+    type: script
+    # No '..' in this path: merobox rejects one as path traversal, which is why
+    # the wrapper sits in this directory instead of alongside the repo's other
+    # shell helpers in scripts/. Resolved against merobox's CWD, which ci.yml
+    # sets to apps/<app>/logic, so the path is prefixed with workflows/.
+    script: workflows/e2e-ephemeral-frames.sh
+    target: local
+    # Positional args: $1=node1_url $2=node2_url $3=context_id $4=node1_key
+    args:
+      - "http://localhost:2740"
+      - "http://localhost:2741"
+      - "{{context_id}}"
+      - "{{member_public_key}}"
+
+  - name: Assert no panics or fatal errors on either node
+    type: assert_log_absent
+    nodes:
+      - calimero-node-1
+      - calimero-node-2
+    patterns:
+      - "panicked at"
+      - "thread 'main' panicked"
+      - "FATAL"
+
+stop_all_nodes: true

@@ -1,0 +1,121 @@
+name: Simple Sync Test (No Handlers)
+description: Basic set/get sync test without event handlers
+
+force_pull_image: false
+nuke_on_start: true
+
+nodes:
+  chain_id: testnet-1
+  count: 2
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.28
+  # rc.26 made mDNS opt-in (core#3620) and merobox does not pass the flag,
+  # so discovery changed at the image bump. Stated, not inherited.
+  mdns: true
+  prefix: e2e-node
+
+steps:
+  - name: Install application on node-1
+    type: install_application
+    node: e2e-node-1
+    path: res/scaffolding_e2e.wasm
+    dev: true
+    outputs:
+      app_id: applicationId
+
+  # Installed explicitly rather than left to blob sync. The `path:` this step
+  # lost from `create_mesh` was not decoration in the older merobox: it put the
+  # wasm on the joining node directly. Without it the node has to pull the blob
+  # from the founder, and for a contract this size that loses the race against
+  # merobox's retry window — the run dies at `JSON-RPC Error: Uninitialized`
+  # with `error=blob share` in the node log, which names neither cause.
+  - name: Install application on e2e-node-2
+    type: install_application
+    node: e2e-node-2
+    path: res/scaffolding_e2e.wasm
+    dev: true
+
+  - name: Create mesh with node-2
+    type: create_mesh
+    context_node: e2e-node-1
+    application_id: "{{app_id}}"
+    nodes:
+      - e2e-node-2
+    outputs:
+      context_id: contextId
+      node1_key: memberPublicKey
+      # No `node2_key: memberIdentity` here: `create_mesh` resolves its outputs
+      # against the CONTEXT-CREATION response, which carries only contextId,
+      # groupCreated, groupId and memberPublicKey. The value was never used.
+      # Node-2's key is available as `{{public_key_e2e-node-2}}`.
+
+  # Simple set on node-1
+  - name: Set value on node-1
+    type: call
+    node: e2e-node-1
+    context_id: "{{context_id}}"
+    method: set
+    args:
+      key: "test_key"
+      value: "test_value"
+
+  - name: Wait for sync
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - e2e-node-1
+      - e2e-node-2
+    timeout: 30
+    check_interval: 2
+    trigger_sync: true
+
+  # Verify on node-2
+  - name: Get value on node-2
+    type: call
+    node: e2e-node-2
+    context_id: "{{context_id}}"
+    method: get
+    args:
+      key: "test_key"
+    outputs:
+      result: result
+
+  - name: Assert value synced
+    type: json_assert
+    statements:
+      - 'json_equal({{result}}, {"output": "test_value"})'
+
+  # Now node-2 writes
+  - name: Set value on node-2
+    type: call
+    node: e2e-node-2
+    context_id: "{{context_id}}"
+    method: set
+    args:
+      key: "from_node2"
+      value: "node2_value"
+
+  - name: Wait for sync after node-2
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - e2e-node-1
+      - e2e-node-2
+    timeout: 30
+    check_interval: 2
+    trigger_sync: true
+
+  # Verify on node-1
+  - name: Get node-2 value on node-1
+    type: call
+    node: e2e-node-1
+    context_id: "{{context_id}}"
+    method: get
+    args:
+      key: "from_node2"
+    outputs:
+      result2: result
+
+  - name: Assert node-2 value synced to node-1
+    type: json_assert
+    statements:
+      - 'json_equal({{result2}}, {"output": "node2_value"})'
