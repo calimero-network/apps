@@ -1,0 +1,51 @@
+name: Mero Drive Playwright — two-node setup
+description: >
+  Two-node merobox bootstrap for the e2e-two-node Playwright job.
+  Installs the docs+registry mpk bundle on BOTH nodes and idles.
+  No namespace, no members, no contexts — every user-visible step
+  (namespace creation, invitation, join, folder create, visibility
+  toggle, doc edit) is a Playwright assertion target, so we want
+  a blank slate on both sides.
+
+  stop_all_nodes: false keeps both merod containers alive after
+  merobox exits; the CI harness SIGKILLs merobox once the success
+  line lands so docker (separate process tree) outlives merobox's
+  python atexit teardown.
+
+force_pull_image: true
+
+# Auth-service ON: nodes reachable at http://nodeN.127.0.0.1.nip.io
+# through Traefik. See fast-setup workflow for merobox version
+# requirements.
+auth_service: true
+
+nodes:
+  count: 2
+  # Stated, not inherited. core rc.26 made mDNS opt-in (core#3620): `merod init`
+  # now writes `discovery.mdns = false`. merobox does not pass the flag, so peer
+  # discovery changed at the image bump with nothing here changing.
+  mdns: true
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.28
+  prefix: calimero-node
+
+steps:
+  - name: Install Mero Drive bundle on Node 1
+    type: install_application
+    node: calimero-node-1
+    path: dist/com.calimero.mero-drive-docs.mpk
+    dev: true
+    outputs:
+      app_id: applicationId
+
+  - name: Install Mero Drive bundle on Node 2
+    type: install_application
+    node: calimero-node-2
+    path: dist/com.calimero.mero-drive-docs.mpk
+    dev: true
+
+  - name: Assert app installed
+    type: assert
+    statements:
+      - 'is_set({{app_id}})'
+
+stop_all_nodes: false

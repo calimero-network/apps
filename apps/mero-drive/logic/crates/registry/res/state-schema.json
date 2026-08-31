@@ -1,0 +1,188 @@
+{
+  "schema_version": "wasm-abi/1",
+  "types": {
+    "ContextId": {
+      "kind": "alias",
+      "target": {
+        "kind": "string"
+      }
+    },
+    "FolderRecord": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "parent_id",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "color",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "alias",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "visibility",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "$ref": "Visibility"
+            }
+          }
+        }
+      ]
+    },
+    "RegistryState": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "folders",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "FolderRecord"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "folder_contexts",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "ContextId"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "sort_order",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "record",
+              "fields": [],
+              "crdt_type": "lww_register",
+              "inner_type": {
+                "kind": "list",
+                "items": {
+                  "kind": "string"
+                }
+              }
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "owner",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "managers",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "record",
+              "fields": [],
+              "crdt_type": "lww_register",
+              "inner_type": {
+                "kind": "bool"
+              }
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "folder_roles",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "record",
+              "fields": [],
+              "crdt_type": "lww_register",
+              "inner_type": {
+                "$ref": "Role"
+              }
+            },
+            "crdt_type": "unordered_map"
+          }
+        }
+      ]
+    },
+    "Role": {
+      "kind": "variant",
+      "variants": [
+        {
+          "name": "Viewer"
+        },
+        {
+          "name": "Editor"
+        },
+        {
+          "name": "Manager"
+        }
+      ]
+    },
+    "Visibility": {
+      "kind": "variant",
+      "variants": [
+        {
+          "name": "Inherit"
+        },
+        {
+          "name": "Restricted"
+        }
+      ]
+    }
+  },
+  "methods": [],
+  "events": [],
+  "state_root": "RegistryState",
+  "state_version": 1
+}

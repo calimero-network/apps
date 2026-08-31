@@ -1,0 +1,324 @@
+name: Mero Drive E2E — Collaborative Op-Log Convergence
+description: >
+  Cross-node convergence for the Yjs collaboration op-log — the backend
+  half of true two-person editing (PR #57). The doc body is an add-only,
+  idempotent set of opaque Yjs update blobs (`content_updates`), written
+  via `append_doc_update` and read via `get_doc_updates`. The client folds
+  the set with Y.applyUpdate; this workflow proves the layer beneath that:
+  that two real merod nodes' update SETS converge.
+
+  Coverage (the in-process Rust test logic/crates/docs/tests/collab_convergence.rs
+  proves the same via Root::sync; this is the real cross-NODE P2P version):
+
+    - one-way: Alice appends a blob, Bob sees the identical set (single
+      element → order-safe equality);
+    - concurrent merge: Alice and Bob append DIFFERENT blobs without an
+      intervening sync, then converge to the SAME set on both nodes
+      (add-wins union — neither write clobbers the other, the property
+      last-writer-wins content could not provide);
+    - idempotent re-delivery: re-appending an already-present blob is a
+      no-op (the set is unchanged), so SSE re-delivery is free.
+
+  Note: merobox asserts on the node-layer SET (get_doc_updates). The actual
+  Yjs TEXT merge is client-side and is covered by the browser two-node test
+  (app/e2e/two-node/doc-collab.spec.ts) + the provider unit tests; merobox
+  has no Yjs runtime. Set-convergence ⇒ text-convergence (Y.applyUpdate is
+  deterministic), so this is a sound, non-flaky always-on proxy.
+
+force_pull_image: true
+
+nodes:
+  count: 2
+  # Stated, not inherited. core rc.26 made mDNS opt-in (core#3620): `merod init`
+  # now writes `discovery.mdns = false`. merobox does not pass the flag, so peer
+  # discovery changed at the image bump with nothing here changing.
+  mdns: true
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.28
+  prefix: calimero-node
+
+steps:
+  # =================================================================
+  # Phase A: Bootstrap — install, namespace, folder + docs context
+  # (mirrors workflow-mero-drive-docs-lifecycle.yml)
+  # =================================================================
+
+  - name: Install bundle on Node 1
+    type: install_application
+    node: calimero-node-1
+    path: dist/com.calimero.mero-drive-docs.mpk
+    dev: true
+    outputs:
+      app_id: applicationId
+
+  - name: Install bundle on Node 2
+    type: install_application
+    node: calimero-node-2
+    path: dist/com.calimero.mero-drive-docs.mpk
+    dev: true
+
+  - name: Alice creates namespace
+    type: create_namespace
+    node: calimero-node-1
+    application_id: '{{app_id}}'
+    outputs:
+      namespace_id: namespaceId
+
+  - name: Alice creates top-level folder group
+    type: create_group_in_namespace
+    node: calimero-node-1
+    namespace_id: '{{namespace_id}}'
+    group_name: notes
+    outputs:
+      notes_group: groupId
+
+  - name: Alice creates the docs context bound to the folder group
+    type: create_context
+    node: calimero-node-1
+    application_id: '{{app_id}}'
+    group_id: '{{notes_group}}'
+    service_name: docs
+    outputs:
+      docs_ctx: contextId
+      alice_key: memberPublicKey
+
+  # =================================================================
+  # Phase B: Bob joins the namespace + folder + docs context
+  # =================================================================
+
+  - name: Create namespace invitation for Bob
+    type: create_namespace_invitation
+    node: calimero-node-1
+    namespace_id: '{{namespace_id}}'
+    outputs:
+      ns_invite: invitation
+
+  - name: Wait for namespace gossip to reach Node 2
+    type: wait
+    seconds: 10
+
+  - name: Bob joins the namespace
+    type: join_namespace
+    node: calimero-node-2
+    namespace_id: '{{namespace_id}}'
+    invitation: '{{ns_invite}}'
+    outputs:
+      bob_identity: memberIdentity
+
+  - name: Alice adds Bob to the folder group
+    type: add_group_members
+    node: calimero-node-1
+    group_id: '{{notes_group}}'
+    members:
+      - identity: '{{bob_identity}}'
+        role: Member
+
+  - name: Wait for folder subgroup membership to propagate
+    type: wait
+    seconds: 10
+
+  - name: Bob joins the docs context
+    type: join_context
+    node: calimero-node-2
+    context_id: '{{docs_ctx}}'
+    outputs:
+      bob_key: memberPublicKey
+
+  - name: Sync docs context across nodes
+    type: wait_for_sync
+    nodes: [calimero-node-1, calimero-node-2]
+    context_id: '{{docs_ctx}}'
+    timeout: 30
+
+  # =================================================================
+  # Phase C: A doc to collaborate on
+  # =================================================================
+
+  - name: Alice creates the collaborative doc
+    type: call
+    node: calimero-node-1
+    context_id: '{{docs_ctx}}'
+    method: create_doc
+    executor_public_key: '{{alice_key}}'
+    args:
+      title: 'Joint pad'
+      content: ''
+    outputs:
+      doc_a: result.output
+
+  - name: Assert the doc id was captured
+    type: assert
+    statements:
+      - 'is_set({{doc_a}})'
+
+  - name: Sync so Bob sees the doc
+    type: wait_for_sync
+    nodes: [calimero-node-1, calimero-node-2]
+    context_id: '{{docs_ctx}}'
+    timeout: 30
+
+  # =================================================================
+  # Phase D: One-way — Alice appends, Bob converges to the same set.
+  # Single blob ⇒ the set has one element ⇒ equality is order-safe.
+  # =================================================================
+
+  - name: Alice appends update blob #1
+    type: call
+    node: calimero-node-1
+    context_id: '{{docs_ctx}}'
+    method: append_doc_update
+    executor_public_key: '{{alice_key}}'
+    args:
+      id: '{{doc_a}}'
+      update: [10, 11, 12]
+
+  - name: Sync the append to Bob
+    type: wait_for_sync
+    nodes: [calimero-node-1, calimero-node-2]
+    context_id: '{{docs_ctx}}'
+    timeout: 30
+
+  - name: Alice reads the update set
+    type: call
+    node: calimero-node-1
+    context_id: '{{docs_ctx}}'
+    method: get_doc_updates
+    executor_public_key: '{{alice_key}}'
+    args:
+      id: '{{doc_a}}'
+    outputs:
+      ua_oneway: result.output
+
+  - name: Bob reads the update set (cross-node)
+    type: call
+    node: calimero-node-2
+    context_id: '{{docs_ctx}}'
+    method: get_doc_updates
+    executor_public_key: '{{bob_key}}'
+    args:
+      id: '{{doc_a}}'
+    outputs:
+      ub_oneway: result.output
+
+  - name: Both nodes hold the same (single-blob) set
+    type: assert
+    statements:
+      - 'is_set({{ua_oneway}})'
+      - 'is_set({{ub_oneway}})'
+      - '{{ua_oneway}} == {{ub_oneway}}'
+
+  # =================================================================
+  # Phase E: CONCURRENT merge — the headline. Alice and Bob each append
+  # a DIFFERENT blob with NO sync between them, then converge to the
+  # SAME set on both nodes (add-wins union; neither write is lost).
+  # =================================================================
+
+  - name: Alice appends blob #2 (concurrent)
+    type: call
+    node: calimero-node-1
+    context_id: '{{docs_ctx}}'
+    method: append_doc_update
+    executor_public_key: '{{alice_key}}'
+    args:
+      id: '{{doc_a}}'
+      update: [20, 21]
+
+  - name: Bob appends blob #3 (concurrent — no sync since Alice's append)
+    type: call
+    node: calimero-node-2
+    context_id: '{{docs_ctx}}'
+    method: append_doc_update
+    executor_public_key: '{{bob_key}}'
+    args:
+      id: '{{doc_a}}'
+      update: [30, 31]
+
+  - name: Sync the concurrent appends both directions
+    type: wait_for_sync
+    nodes: [calimero-node-1, calimero-node-2]
+    context_id: '{{docs_ctx}}'
+    timeout: 30
+
+  - name: Alice's converged set
+    type: call
+    node: calimero-node-1
+    context_id: '{{docs_ctx}}'
+    method: get_doc_updates
+    executor_public_key: '{{alice_key}}'
+    args:
+      id: '{{doc_a}}'
+    outputs:
+      ua_final: result.output
+
+  - name: Bob's converged set
+    type: call
+    node: calimero-node-2
+    context_id: '{{docs_ctx}}'
+    method: get_doc_updates
+    executor_public_key: '{{bob_key}}'
+    args:
+      id: '{{doc_a}}'
+    outputs:
+      ub_final: result.output
+
+  - name: Concurrent appends converged — both nodes agree, neither write lost
+    type: assert
+    statements:
+      - 'is_set({{ua_final}})'
+      - 'is_set({{ub_final}})'
+      - '{{ua_final}} == {{ub_final}}'
+
+  # =================================================================
+  # Phase F: Idempotent re-delivery — re-appending a present blob is a
+  # no-op (add-only set). The set must be UNCHANGED vs the converged set.
+  # =================================================================
+
+  - name: Alice re-appends blob #2 (duplicate)
+    type: call
+    node: calimero-node-1
+    context_id: '{{docs_ctx}}'
+    method: append_doc_update
+    executor_public_key: '{{alice_key}}'
+    args:
+      id: '{{doc_a}}'
+      update: [20, 21]
+
+  - name: Sync the (no-op) re-append
+    type: wait_for_sync
+    nodes: [calimero-node-1, calimero-node-2]
+    context_id: '{{docs_ctx}}'
+    timeout: 30
+
+  - name: Set after duplicate re-append
+    type: call
+    node: calimero-node-2
+    context_id: '{{docs_ctx}}'
+    method: get_doc_updates
+    executor_public_key: '{{bob_key}}'
+    args:
+      id: '{{doc_a}}'
+    outputs:
+      ub_dup: result.output
+
+  - name: Re-appending a present blob did not change the set
+    type: assert
+    statements:
+      - '{{ub_dup}} == {{ub_final}}'
+
+  # =================================================================
+  # Phase G: Negative — append to an unknown doc id fails
+  # =================================================================
+
+  - name: Reject append_doc_update on unknown doc
+    type: call
+    node: calimero-node-1
+    context_id: '{{docs_ctx}}'
+    method: append_doc_update
+    executor_public_key: '{{alice_key}}'
+    args:
+      id: '00000000000000000000000000000000'
+      update: [1, 2, 3]
+    expected_failure: true
+
+# Leave containers up for the CI log-watcher / retry loop (same as the
+# other workflows; the CI shell nukes on attempt boundaries).
+stop_all_nodes: false
