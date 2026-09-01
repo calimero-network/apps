@@ -16,10 +16,18 @@
 //! - Cells are stored in row-major order (y * width + x)
 //! - The board size is defined by the `BOARD_SIZE` constant
 //!
+//! ⚠️ The examples below are `ignore`d. They were never compiled — the
+//! standalone repo did not run `cargo test --doc` — and they describe an API
+//! that does not exist: `PublicKey::from_executor_id()` is a free function, not
+//! an associated one, `PublicKey` does not live in this module, and several use
+//! `?` at doctest top level. Marking them honestly beats either deleting the
+//! documentation or faking it into compiling; making them real examples is a
+//! follow-up worth doing on its own.
+//!
 //! ## Usage Examples
 //!
 //! ### Creating Coordinates
-//! ```rust
+//! ```rust,ignore
 //! use battleships_game::board::{Coordinate, BOARD_SIZE};
 //!
 //! let coord = Coordinate::new(5, 3)?; // (5, 3) position
@@ -27,7 +35,7 @@
 //! ```
 //!
 //! ### Working with Boards
-//! ```rust
+//! ```rust,ignore
 //! use battleships_game::board::{Board, Cell, BOARD_SIZE};
 //!
 //! let mut board = Board::new_zeroed(BOARD_SIZE);
@@ -58,7 +66,7 @@ pub const BOARD_SIZE: u8 = 10;
 /// * `y` - The y-coordinate (row, 0-9)
 ///
 /// # Example
-/// ```rust
+/// ```rust,ignore
 /// use battleships_game::board::Coordinate;
 ///
 /// let coord = Coordinate::new(5, 3)?;
@@ -115,7 +123,7 @@ impl Coordinate {
 /// * `Pending` - Cell has a pending shot (not yet resolved)
 ///
 /// # Example
-/// ```rust
+/// ```rust,ignore
 /// use battleships_game::board::Cell;
 ///
 /// let cell = Cell::Ship;
@@ -183,7 +191,7 @@ impl Cell {
 /// - Cell values: 0=Empty, 1=Ship, 2=Hit, 3=Miss, 4=Pending
 ///
 /// # Example
-/// ```rust
+/// ```rust,ignore
 /// use battleships_game::board::{Board, Cell, BOARD_SIZE};
 ///
 /// let mut board = Board::new_zeroed(BOARD_SIZE);

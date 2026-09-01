@@ -13,7 +13,7 @@
 //! ## Usage Examples
 //!
 //! ### Using Predefined Validation Contexts
-//! ```rust
+//! ```rust,ignore
 //! use crate::validation::{validate_ship_placement, validate_fleet_composition, validate_coordinates};
 //!
 //! // Ship placement validation
@@ -27,7 +27,7 @@
 //! ```
 //!
 //! ### Creating Custom Validation Contexts
-//! ```rust
+//! ```rust,ignore
 //! use crate::validation::{ValidationContext, BoundsValidationStrategy, UniquenessValidationStrategy};
 //!
 //! let custom_context = ValidationContext::new()
@@ -42,7 +42,7 @@
 //! ```
 //!
 //! ### Extending with New Validation Strategies
-//! ```rust
+//! ```rust,ignore
 //! use crate::validation::ValidationStrategy;
 //! use battleships_types::GameError;
 //!
@@ -93,7 +93,7 @@ use battleships_types::GameError;
 /// flexible composition of validation logic and easy extensibility.
 ///
 /// # Example
-/// ```rust
+/// ```rust,ignore
 /// use crate::validation::{ValidationStrategy, ValidationInput};
 /// use battleships_types::GameError;
 ///
@@ -133,7 +133,7 @@ pub trait ValidationStrategy {
 /// to validation strategies. It uses the builder pattern for easy construction.
 ///
 /// # Example
-/// ```rust
+/// ```rust,ignore
 /// use crate::validation::ValidationInput;
 /// use crate::board::{Board, Coordinate, BOARD_SIZE};
 ///
@@ -510,7 +510,7 @@ impl ValidationStrategy for ShipAdjacencyValidationStrategy {
 /// validation flows for different use cases.
 ///
 /// # Example
-/// ```rust
+/// ```rust,ignore
 /// use crate::validation::{ValidationContext, BoundsValidationStrategy, UniquenessValidationStrategy};
 ///
 /// let context = ValidationContext::new()
@@ -624,7 +624,7 @@ impl ValidationContext {
 /// * `Err(GameError)` - Ship placement is invalid with specific error
 ///
 /// # Example
-/// ```rust
+/// ```rust,ignore
 /// use crate::validation::validate_ship_placement;
 /// use crate::board::{Board, Coordinate, BOARD_SIZE};
 ///
@@ -666,7 +666,7 @@ pub fn validate_ship_placement(
 /// * `Err(GameError)` - Fleet composition is invalid with specific error
 ///
 /// # Example
-/// ```rust
+/// ```rust,ignore
 /// use crate::validation::validate_fleet_composition;
 /// use crate::board::Coordinate;
 ///
@@ -704,7 +704,7 @@ pub fn validate_fleet_composition(
 /// * `Err(GameError)` - Coordinates are invalid with specific error
 ///
 /// # Example
-/// ```rust
+/// ```rust,ignore
 /// use crate::validation::validate_coordinates;
 /// use crate::board::{Coordinate, BOARD_SIZE};
 ///

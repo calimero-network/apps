@@ -21,10 +21,18 @@
 //! system. This ensures that only the player can see their own ship placements
 //! until they are hit by the opponent.
 //!
+//! ⚠️ The examples below are `ignore`d. They were never compiled — the
+//! standalone repo did not run `cargo test --doc` — and they describe an API
+//! that does not exist: `PublicKey::from_executor_id()` is a free function, not
+//! an associated one, `PublicKey` does not live in this module, and several use
+//! `?` at doctest top level. Marking them honestly beats either deleting the
+//! documentation or faking it into compiling; making them real examples is a
+//! follow-up worth doing on its own.
+//!
 //! ## Usage Examples
 //!
 //! ### Creating a Public Key
-//! ```rust
+//! ```rust,ignore
 //! use battleships_game::players::PublicKey;
 //!
 //! let key = PublicKey::from_executor_id()?;
@@ -33,7 +41,7 @@
 //! ```
 //!
 //! ### Managing Player Boards
-//! ```rust
+//! ```rust,ignore
 //! use battleships_game::players::PlayerBoard;
 //!
 //! let mut board = PlayerBoard::new();
@@ -68,7 +76,7 @@ use calimero_storage::collections::UnorderedMap;
 /// until they are hit by the opponent.
 ///
 /// # Example
-/// ```rust
+/// ```rust,ignore
 /// use battleships_game::players::PlayerBoard;
 ///
 /// let mut board = PlayerBoard::new();

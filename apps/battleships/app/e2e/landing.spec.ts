@@ -28,9 +28,20 @@ test.describe('Landing (unauthenticated)', () => {
   });
 
   test('renders feature bullets', async ({ page }) => {
-    await expect(page.getByText(/Private ship placement/i)).toBeVisible();
-    await expect(page.getByText(/Verifiable shots/i)).toBeVisible();
-    await expect(page.getByText(/Real-time P2P state sync/i)).toBeVisible();
+    // Matched on the FULL bullet, not a prefix. `/Private ship placement/i` also
+    // matched the paragraph above it ("...Private ship placementS, verifiable
+    // shots..."), so the locator resolved to two elements and Playwright's
+    // strict mode failed the test. `.first()` would have hidden that rather than
+    // fixed it — and would have stopped asserting the bullet at all.
+    await expect(
+      page.getByText('Private ship placement — opponents never see your board'),
+    ).toBeVisible();
+    await expect(
+      page.getByText('Verifiable shots via cross-context calls'),
+    ).toBeVisible();
+    await expect(
+      page.getByText('Real-time P2P state sync between nodes'),
+    ).toBeVisible();
   });
 
   test('shows a Connect button', async ({ page }) => {

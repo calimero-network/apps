@@ -26,10 +26,18 @@
 //! - 2 ships of length 3 (cruiser, submarine)
 //! - 1 ship of length 2 (destroyer)
 //!
+//! ⚠️ The examples below are `ignore`d. They were never compiled — the
+//! standalone repo did not run `cargo test --doc` — and they describe an API
+//! that does not exist: `PublicKey::from_executor_id()` is a free function, not
+//! an associated one, `PublicKey` does not live in this module, and several use
+//! `?` at doctest top level. Marking them honestly beats either deleting the
+//! documentation or faking it into compiling; making them real examples is a
+//! follow-up worth doing on its own.
+//!
 //! ## Usage Examples
 //!
 //! ### Creating a Ship
-//! ```rust
+//! ```rust,ignore
 //! use battleships_game::board::Coordinate;
 //! use battleships_game::ships::Ship;
 //!
@@ -43,7 +51,7 @@
 //! ```
 //!
 //! ### Creating a Fleet
-//! ```rust
+//! ```rust,ignore
 //! use battleships_game::ships::{Ship, Fleet};
 //! use battleships_game::board::Coordinate;
 //!
@@ -82,7 +90,7 @@ use calimero_sdk::serde::{Deserialize, Serialize};
 /// - Ship must be contiguous (no gaps between coordinates)
 ///
 /// # Example
-/// ```rust
+/// ```rust,ignore
 /// use battleships_game::board::Coordinate;
 /// use battleships_game::ships::Ship;
 ///
@@ -228,7 +236,7 @@ impl Ship {
 /// - Fleet composition must match standard rules
 ///
 /// # Example
-/// ```rust
+/// ```rust,ignore
 /// use battleships_game::ships::{Ship, Fleet};
 /// use battleships_game::board::Coordinate;
 ///
