@@ -66,8 +66,14 @@ pub struct ExportedSeed {
 // Helpers
 // ---------------------------------------------------------------------------
 
+/// The caller, as a PublicKey.
+///
+/// `env::executor_id()` no longer exists. The ACCOUNT, deliberately, and it must
+/// match the lobby service's `from_executor_id` exactly — the two services
+/// compare player keys across the boundary, so one reading the device and the
+/// other the account would let a player fail to recognise their own match.
 fn from_executor_id() -> Result<PublicKey, GameError> {
-    let v = calimero_sdk::env::executor_id();
+    let v = calimero_sdk::env::account_id();
     if v.len() != 32 {
         return Err(GameError::Invalid("executor id length".into()));
     }

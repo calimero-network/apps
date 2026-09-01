@@ -144,8 +144,14 @@ pub struct MatchRecord {
 // Helpers
 // ---------------------------------------------------------------------------
 
+/// The caller, as a PublicKey.
+///
+/// `env::executor_id()` no longer exists. This reads the ACCOUNT deliberately:
+/// a battleships player is a PERSON, so one human on a laptop and a phone must
+/// be one player — with the device id they would be two, and could join their
+/// own match as both sides.
 fn from_executor_id() -> Result<PublicKey, GameError> {
-    let v = calimero_sdk::env::executor_id();
+    let v = calimero_sdk::env::account_id();
     if v.len() != 32 {
         return Err(GameError::Invalid("executor id length".into()));
     }
@@ -261,11 +267,14 @@ impl LobbyState {
         match_id: &str,
         context_id: &str,
     ) -> Result<(), GameError> {
-        let mut summary = self
+        // `get` hands back a `ValueRef`; an owned record is needed to edit and
+        // re-insert. MatchSummary is plain data and derives Clone.
+        let mut summary = (*self
             .matches
             .get(&match_id.to_string())
             .map_err(|e| GameError::Invalid(format!("matches.get failed: {e}")))?
-            .ok_or(GameError::Invalid("unknown match_id".into()))?;
+            .ok_or(GameError::Invalid("unknown match_id".into()))?)
+        .clone();
         // Only allow the Pending -> Active transition. Re-linking an Active
         // match silently is redundant; reactivating a Finished match would
         // corrupt history.
@@ -331,11 +340,14 @@ impl LobbyState {
         // Direct map lookup. The game context now receives the lobby-issued
         // match_id at init time and echoes it back here, so the
         // resolve-by-context-id fallback the previous version needed is gone.
-        let mut summary = self
+        // `get` hands back a `ValueRef`; an owned record is needed to edit and
+        // re-insert. MatchSummary is plain data and derives Clone.
+        let mut summary = (*self
             .matches
             .get(&match_id.to_string())
             .map_err(|e| GameError::Invalid(format!("matches.get failed: {e}")))?
-            .ok_or(GameError::Invalid("unknown match_id".into()))?;
+            .ok_or(GameError::Invalid("unknown match_id".into()))?)
+        .clone();
         summary.status = MatchStatus::Finished;
         summary.winner = Some(winner.to_string());
         self.matches
@@ -362,24 +374,38 @@ fn bump_stats(
     player_key: &str,
     is_winner: bool,
 ) -> Result<(), GameError> {
-    let mut stats = stats_map
+    // NOT get-clone-mutate-insert. `PlayerStats` holds `Counter`s, which are
+    // CRDTs: cloning one out and writing it back would discard the per-replica
+    // merge metadata that makes two concurrent increments on two nodes both
+    // count, silently turning +1 +1 into +1. So mutate through the `ValueRef`
+    // the map hands back, and only construct-and-insert when the row is absent.
+    fn bump(stats: &mut PlayerStats, is_winner: bool) -> Result<(), GameError> {
+        if is_winner {
+            stats
+                .wins
+                .increment()
+                .map_err(|e| GameError::Invalid(format!("wins.increment failed: {e}")))
+        } else {
+            stats
+                .losses
+                .increment()
+                .map_err(|e| GameError::Invalid(format!("losses.increment failed: {e}")))
+        }
+    }
+
+    match stats_map
         .get(&player_key.to_string())
         .map_err(|e| GameError::Invalid(format!("stats.get failed: {e}")))?
-        .unwrap_or_else(|| PlayerStats::new(player_key));
-    if is_winner {
-        stats
-            .wins
-            .increment()
-            .map_err(|e| GameError::Invalid(format!("wins.increment failed: {e}")))?;
-    } else {
-        stats
-            .losses
-            .increment()
-            .map_err(|e| GameError::Invalid(format!("losses.increment failed: {e}")))?;
+    {
+        Some(mut stats) => bump(&mut stats, is_winner)?,
+        None => {
+            let mut stats = PlayerStats::new(player_key);
+            bump(&mut stats, is_winner)?;
+            stats_map
+                .insert(player_key.to_string(), stats)
+                .map_err(|e| GameError::Invalid(format!("stats.insert failed: {e}")))?;
+        }
     }
-    stats_map
-        .insert(player_key.to_string(), stats)
-        .map_err(|e| GameError::Invalid(format!("stats.insert failed: {e}")))?;
     Ok(())
 }
 
