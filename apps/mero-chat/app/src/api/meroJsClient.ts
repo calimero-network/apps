@@ -4,13 +4,21 @@
 // envelope shape, so dataSource code can keep its existing access patterns
 // without per-callsite refactors.
 
+// Everything comes from mero-react, including the mero-js surface it
+// re-exports (`export * from "@calimero-network/mero-js"`).
+//
+// Importing mero-js directly would mean declaring it as a second dependency
+// beside mero-react, which owns its own copy. Two copies is a correctness
+// problem, not untidiness: they can resolve to different majors, and mero-js 14
+// changed every id from base58 to hex. Two encodings inside one app, against
+// a node that parses one, is the failure this app already hit.
 import {
   type MeroJs,
   RpcError,
   type Context,
   type ExecuteParams,
-} from "@calimero-network/mero-js";
-import { getNodeUrl } from "@calimero-network/mero-react";
+  getNodeUrl,
+} from "@calimero-network/mero-react";
 import type { ResponseData } from "./types";
 
 // Helper used by raw-fetch wrappers below + by useSseSubscription.

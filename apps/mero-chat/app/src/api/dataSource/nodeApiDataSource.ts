@@ -4,7 +4,7 @@ import {
   getContextIdentity as getExecutorPublicKey,
 } from "@calimero-network/mero-react";
 import { getAuthConfig, getMeroJs } from "../meroJsClient";
-import type { CreateContextRequest } from "@calimero-network/mero-js";
+import type { CreateContextRequest } from "@calimero-network/mero-react";
 import type { ApiResponse } from "../types";
 import { getApplicationId } from "../../constants/config";
 import type {

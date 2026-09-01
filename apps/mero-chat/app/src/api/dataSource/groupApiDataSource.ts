@@ -1,10 +1,8 @@
 import axios from "axios";
-import bs58 from "bs58";
 import { getNodeUrl as getAppEndpointKey } from "@calimero-network/mero-react";
 import { getAuthConfig, getMeroJs } from "../meroJsClient";
 import {
   getSelfAccountHex,
-  hexToBase58,
   loadSelfAccountIdentity,
 } from "../../utils/accountIdentity";
 import type { ApiResponse } from "../types";
@@ -112,24 +110,20 @@ function httpFail<T>(status: number, statusText: string): Result<T> {
   return fail(status, statusText);
 }
 
-function isHexContextId(value: string): boolean {
-  return /^[0-9a-fA-F]{64}$/.test(value);
-}
-
+/**
+ * Context ids are passed through untouched.
+ *
+ * This used to convert a 64-hex id to base58, because the node spelled
+ * `ContextId` in base58 and refused hex. Core removed that split in rc.27 —
+ * every id is hex now and `Hash::from_str` is hex-only — so the conversion
+ * turns a valid id into one the node cannot parse, taking `contextGroupId`
+ * and everything built on it (member lists, allowlists) with it.
+ *
+ * Kept as a named function rather than deleted at each call site: it marks
+ * where an encoding decision used to live, and there are six of them.
+ */
 function normalizeContextId(value: string): string {
-  if (!isHexContextId(value)) {
-    return value;
-  }
-
-  try {
-    const bytes = new Uint8Array(value.length / 2);
-    for (let index = 0; index < value.length; index += 2) {
-      bytes[index / 2] = parseInt(value.slice(index, index + 2), 16);
-    }
-    return bs58.encode(bytes);
-  } catch {
-    return value;
-  }
+  return value;
 }
 
 function normalizeGroupContextEntry(entry: unknown): GroupContextEntry | null {
@@ -825,25 +819,24 @@ export class GroupApiDataSource implements GroupApi {
   ): ApiResponse<void> {
     try {
       const cgid = await this.contextGroupId(contextId);
-      // `listGroupMembers` (and therefore getContextAllowlist) reports
-      // identities HEX-encoded, but the membership writes decode them as
-      // base58 — feeding a read straight back into a write 400s with
-      // "buffer provided to decode base58 encoded string into was too small".
-      // Normalise so the read/write round-trip closes.
-      const toBase58 = (identity: string) =>
-        /^[0-9a-f]{64}$/i.test(identity) ? hexToBase58(identity) : identity;
-
+      // Identities go to the node exactly as it reported them.
+      //
+      // This used to convert hex to base58 before writing, because reads came
+      // back hex while writes decoded base58 — a genuine split, and feeding a
+      // read into a write failed with "buffer provided to decode base58 encoded
+      // string into was too small". rc.27 removed base58 from every id, so both
+      // halves are hex and the conversion is now what breaks the round-trip.
       if (request.add?.length) {
         await getMeroJs().admin.addGroupMembers(cgid, {
           members: request.add.map((identity) => ({
-            identity: toBase58(identity),
+            identity,
             role: "Member" as const,
           })),
         });
       }
       if (request.remove?.length) {
         await getMeroJs().admin.removeGroupMembers(cgid, {
-          members: request.remove.map(toBase58),
+          members: request.remove,
         });
       }
       return ok(undefined as void);

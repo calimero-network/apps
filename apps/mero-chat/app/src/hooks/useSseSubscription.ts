@@ -1,5 +1,5 @@
 import { useRef, useCallback, useEffect } from "react";
-import { SseClient } from "@calimero-network/mero-js";
+import { SseClient } from "@calimero-network/mero-react";
 import { getNodeUrl } from "@calimero-network/mero-react";
 import { getJwt } from "../api/meroJsClient";
 import type { WebSocketEvent, WebSocketEventCallback } from "../types/WebSocketTypes";

@@ -25,14 +25,15 @@ const mockClient = vi.hoisted(() => ({
   off: vi.fn(),
 }));
 
-vi.mock("@calimero-network/mero-js", () => ({
+// One mock for the whole module. `SseClient` and `getNodeUrl` both come from
+// mero-react now — `SseClient` via the mero-js surface it re-exports — and two
+// `vi.mock` calls for the same module do not merge: the second replaces the
+// first, which silently drops whichever export it omits.
+vi.mock("@calimero-network/mero-react", () => ({
   // vitest v4 requires a regular function (not an arrow) for constructor mocks
   SseClient: vi.fn(function (this: unknown) {
     return mockClient;
   }),
-}));
-
-vi.mock("@calimero-network/mero-react", () => ({
   getNodeUrl: vi.fn().mockReturnValue("http://localhost:2428"),
 }));
 

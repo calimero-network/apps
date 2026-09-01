@@ -25,7 +25,7 @@ import type { ChannelInfo, UserId } from "../api/clientApi";
 import { extractAndAddMentions } from "../utils/mentions";
 import ChatSearchOverlay from "./ChatSearchOverlay";
 import { isSelfSender } from "../utils/selfIdentity";
-import { getSelfAccountBase58 } from "../utils/accountIdentity";
+import { getSelfAccountHex, sameAccount } from "../utils/accountIdentity";
 
 interface ChatContainerProps {
   activeChat: ActiveChat;
@@ -227,18 +227,28 @@ function ChatContainer({
           // Use isAdding (captured at call time) so the update is idempotent
           // regardless of whether a WebSocket update arrived first.
           // Reactions are keyed by ACCOUNT — the id the contract stamps from
-          // `executor_id()`, in the base58 form it emits. The name that used to
-          // sit here was a leftover from when messages carried a username, and
-          // it no longer exists in any scope: reacting threw before the
-          // optimistic update could run.
-          const selfAccount = getSelfAccountBase58();
+          // `executor_id()`. The name that used to sit here was a leftover from
+          // when messages carried a username, and it no longer exists in any
+          // scope: reacting threw before the optimistic update could run.
+          //
+          // A message's reaction list can hold BOTH spellings. rc.27 made every
+          // id hex, but reactions written before it are base58 and live on in
+          // replicated state — upgrading a node does not rewrite them. So add
+          // the hex form (what the node will echo back, keeping the optimistic
+          // row identical to the real one) and compare with `sameAccount`, which
+          // matches either spelling. A raw `===` would fail to find your own
+          // older reaction and quietly add a duplicate instead of removing it.
+          const selfAccount = getSelfAccountHex();
           const updateFunction = (msg: CurbMessage) => {
             const msgAccounts = msg.reactions?.[reaction] ?? [];
+            const alreadyReacted = msgAccounts.some((a: string) =>
+              sameAccount(a, selfAccount),
+            );
             const updatedAccounts = isAdding
-              ? msgAccounts.includes(selfAccount)
+              ? alreadyReacted
                 ? msgAccounts
                 : [...msgAccounts, selfAccount]
-              : msgAccounts.filter((a: string) => a !== selfAccount);
+              : msgAccounts.filter((a: string) => !sameAccount(a, selfAccount));
             return { reactions: { ...msg.reactions, [reaction]: updatedAccounts } };
           };
           // Without a known account there is nothing correct to paint: adding

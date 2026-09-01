@@ -1,4 +1,3 @@
-import bs58 from "bs58";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { GroupApiDataSource } from "./groupApiDataSource";
 
@@ -227,13 +226,13 @@ describe("GroupApiDataSource", () => {
   });
 
   it("preserves optional aliases when listing group contexts", async () => {
+    // The id is passed through as the node reported it.
+    //
+    // This used to assert a hex -> base58 conversion, which was right while the
+    // node spelled ContextId in base58 and refused hex. rc.27 made every id hex
+    // (`Hash::from_str` is hex-only), so converting now produces an id the node
+    // cannot parse.
     const hexContextId = "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20";
-    const contextBytes = Uint8Array.from(
-      hexContextId.match(/.{2}/g)?.map((byte) => parseInt(byte, 16)) ?? [],
-    );
-    const expectedContextId = bs58.encode(
-      contextBytes,
-    );
 
     mockListGroupContexts.mockResolvedValue([
       {
@@ -248,7 +247,7 @@ describe("GroupApiDataSource", () => {
     expect(response).toEqual({
       data: [
         {
-          contextId: expectedContextId,
+          contextId: hexContextId,
           alias: "Project Alpha",
         },
       ],

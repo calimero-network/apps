@@ -115,14 +115,57 @@ export function base58ToHex(id: string): string {
   }
 }
 
+const HEX_ACCOUNT = /^[0-9a-f]{64}$/i;
+
 /**
- * Canonical account-id conversions now live in `@calimero-network/mero-js`
- * (13.2.0+). They were duplicated here while the SDK lacked them; re-exported
- * rather than re-implemented so there is one definition of what an account id
- * is — the same admin-hex vs contract-base58 mismatch that silently broke
- * member lookups is exactly the bug two copies would reintroduce.
+ * Canonical account-id conversions.
+ *
+ * These used to be re-exported from `@calimero-network/mero-js`, which owned
+ * them from 13.2.0. mero-js 15 deleted `src/account` on the reasoning that core
+ * removed base58 from every id (calimero-network/core#3691), so a bridge
+ * between two spellings is no longer needed.
+ *
+ * That is true of ids a node produces TODAY. It is not true of the data already
+ * in a context: every reaction, profile and mention written before rc.27 stamped
+ * a BASE58 account into replicated CRDT state, and that state does not migrate
+ * when a node upgrades. A client that can only speak hex silently stops matching
+ * its own historical reactions — the exact failure the bridge exists to prevent,
+ * reappearing against stored data instead of across an API boundary.
+ *
+ * So the conversions live here again, implemented on the same `hexToBase58` /
+ * `base58ToHex` this module already had. Each returns its input unchanged when
+ * it is not a 32-byte account, so a device key or an alias survives a call.
  */
-export { sameAccount, toAccountBase58, toAccountHex } from "@calimero-network/mero-js";
+export function toAccountHex(id: string | null | undefined): string {
+  const trimmed = (id ?? "").trim();
+  if (!trimmed) return "";
+  if (HEX_ACCOUNT.test(trimmed)) return trimmed.toLowerCase();
+  const hex = base58ToHex(trimmed);
+  return hex.length === 64 ? hex : trimmed;
+}
+
+/** The form pre-rc.27 contract data stamped on `sender` and keyed profiles by. */
+export function toAccountBase58(id: string | null | undefined): string {
+  const trimmed = (id ?? "").trim();
+  if (!trimmed) return "";
+  if (!HEX_ACCOUNT.test(trimmed)) return trimmed;
+  return hexToBase58(trimmed) || trimmed;
+}
+
+/**
+ * True when both ids name the same account, whichever encoding each is in.
+ *
+ * Two ids that are not accounts compare false rather than accidentally matching
+ * as raw strings.
+ */
+export function sameAccount(
+  a: string | null | undefined,
+  b: string | null | undefined,
+): boolean {
+  const left = toAccountHex(a);
+  const right = toAccountHex(b);
+  return HEX_ACCOUNT.test(left) && left === right;
+}
 
 
 /**
