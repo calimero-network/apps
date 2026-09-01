@@ -44,7 +44,10 @@ pub struct SecretItem {
 /// field: there is no meaningful way to merge two different passwords, and
 /// showing one of them is better than showing a splice of both.
 impl MergeableTrait for SecretItem {
-    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+    // `std::result::Result`, spelled out: this module defines its own
+    // `Result<T> = Result<T, AppError>` alias, which otherwise shadows the one in
+    // the trait signature and fails as "type alias takes 1 generic argument".
+    fn merge(&mut self, other: &Self) -> std::result::Result<(), MergeError> {
         let mine = (self.version, self.updated_at, &self.name, &self.data);
         let theirs = (other.version, other.updated_at, &other.name, &other.data);
         if theirs > mine {
@@ -76,7 +79,7 @@ pub struct AuditLogEntry {
 /// did, the copy already present wins: an audit trail that a later write can
 /// rewrite is not an audit trail.
 impl MergeableTrait for AuditLogEntry {
-    fn merge(&mut self, _other: &Self) -> Result<(), MergeError> {
+    fn merge(&mut self, _other: &Self) -> std::result::Result<(), MergeError> {
         Ok(())
     }
 }
