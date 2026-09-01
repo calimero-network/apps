@@ -1,0 +1,27 @@
+title: p2p-sheets
+description: A collaborative, peer-to-peer spreadsheet built on Calimero.
+# Project Pages live under /<repo>/. Must match the repo name.
+baseurl: "/p2p-sheets"
+url: "https://calimero-network.github.io"
+
+remote_theme: just-the-docs/just-the-docs@v0.10.0
+plugins:
+  - jekyll-remote-theme
+  - jekyll-seo-tag
+  - jekyll-include-cache
+color_scheme: light
+
+# Design history lives in-repo but is NOT part of the published site.
+exclude:
+  - superpowers/
+  - Gemfile
+  - Gemfile.lock
+  - vendor/
+
+aux_links:
+  "GitHub":
+    - "https://github.com/calimero-network/p2p-sheets"
+
+nav_external_links:
+  - title: Live app
+    url: https://github.com/calimero-network/p2p-sheets/deployments

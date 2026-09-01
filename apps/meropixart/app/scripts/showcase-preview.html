@@ -1,0 +1,52 @@
+<!doctype html>
+<!--
+  Dev-only harness for eyeballing the bundled showcase projects.
+
+    pnpm dev            then open http://localhost:5176/scripts/showcase-preview.html
+
+  Every project is rendered at full resolution through the real compositor and
+  laid out side by side, so a change to a recipe (or to the transform/warp code
+  under it) is visible without booting a node or creating a project. `window`
+  also carries the PNGs, which is how the CI screenshot check picks them up.
+-->
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>MeroPixArt — showcase preview</title>
+    <style>
+      body { margin: 0; background: #0b0f14; color: #9fb6ce; font: 13px/1.5 ui-sans-serif, system-ui, sans-serif; }
+      h1 { font-size: 15px; padding: 14px 16px 0; margin: 0; color: #fff; }
+      .grid { display: flex; flex-wrap: wrap; gap: 16px; padding: 16px; }
+      figure { margin: 0; max-width: 520px; }
+      img { width: 100%; display: block; border: 1px solid #223; border-radius: 6px; }
+      figcaption { padding-top: 6px; font-size: 12px; }
+    </style>
+  </head>
+  <body>
+    <h1>Showcase projects — full-resolution renders</h1>
+    <div class="grid" id="out"></div>
+    <script type="module">
+      import { SHOWCASE_PROJECTS } from "/src/showcase/index.ts";
+      import { renderShowcase } from "/src/showcase/preview.ts";
+
+      const out = document.getElementById("out");
+      const pngs = {};
+      for (const project of SHOWCASE_PROJECTS) {
+        const canvas = renderShowcase(project);
+        pngs[project.id] = canvas.toDataURL("image/png");
+
+        const figure = document.createElement("figure");
+        const img = document.createElement("img");
+        img.src = pngs[project.id];
+        img.alt = project.name;
+        const caption = document.createElement("figcaption");
+        caption.textContent =
+          `${project.name} — ${project.width}×${project.height}, ${project.layers.length} layers`;
+        figure.append(img, caption);
+        out.append(figure);
+      }
+      window.__SHOWCASE_PNGS__ = pngs;
+      window.__SHOWCASE_READY__ = true;
+    </script>
+  </body>
+</html>

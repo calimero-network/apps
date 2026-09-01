@@ -1,0 +1,382 @@
+name: Mero Drive E2E — Metadata records (#2338)
+description: >
+  Covers the metadata-records surface introduced by core PR #2338
+  (and the merobox v0.6.11 step replacement of group-alias →
+  metadata-records) across group and member scopes. Two nodes:
+  Alice (calimero-node-1, namespace creator + admin) and Bob
+  (calimero-node-2, default-cap member). Asserts:
+
+    1. Alice sets a name on the namespace; Bob joins and reads it.
+    2. Alice creates a folder subgroup, names it; Bob's Open-folder
+       inheritance picks up the name on read.
+    3. Alice sets her own display name; Bob reads it via
+       get_member_metadata.
+    4. Bob sets HIS own display name; Alice reads it.
+    5. Bob tries to rename Alice's display name → expected_failure
+       (Bob lacks CAN_MANAGE_METADATA). Alice grants the cap → Bob
+       retries → succeeds; Alice reads the override on node 1.
+    6. Rename round trip: Alice renames the namespace, the folder,
+       and her own member record; Bob reads each renamed value
+       after sync.
+
+  Step types used: install_application, create_namespace,
+  create_context, create_group_in_namespace, set_subgroup_visibility,
+  set_default_capabilities, set_member_capabilities,
+  create_namespace_invitation, join_namespace, wait,
+  set_group_metadata, get_group_metadata, set_member_metadata,
+  get_member_metadata, assert, delete_namespace.
+
+force_pull_image: true
+
+nodes:
+  count: 2
+  # Stated, not inherited. core rc.26 made mDNS opt-in (core#3620): `merod init`
+  # now writes `discovery.mdns = false`. merobox does not pass the flag, so peer
+  # discovery changed at the image bump with nothing here changing.
+  mdns: true
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.28
+  prefix: calimero-node
+
+steps:
+  # =================================================================
+  # A. Bootstrap — bundle on both nodes, namespace with default caps,
+  # Alice names the workspace.
+  # =================================================================
+  - name: Install bundle on Alice
+    type: install_application
+    node: calimero-node-1
+    path: dist/com.calimero.mero-drive-docs.mpk
+    dev: true
+    outputs:
+      app_id: applicationId
+
+  - name: Install bundle on Bob
+    type: install_application
+    node: calimero-node-2
+    path: dist/com.calimero.mero-drive-docs.mpk
+    dev: true
+
+  - name: Alice creates the namespace
+    type: create_namespace
+    node: calimero-node-1
+    application_id: '{{app_id}}'
+    outputs:
+      namespace_id: namespaceId
+
+  # Default caps 37 = CAN_JOIN_OPEN_SUBGROUPS|CAN_CREATE_SUBGROUP|CAN_CREATE_CONTEXT
+  # (4 | 32 | 1). Crucially, does NOT include CAN_MANAGE_METADATA (256), so
+  # Bob's first attempt to rename Alice below will (correctly) be denied.
+  - name: Alice sets default member caps (37 = JOIN_OPEN|CREATE_SUBGROUP|CREATE_CONTEXT)
+    type: set_default_capabilities
+    node: calimero-node-1
+    group_id: '{{namespace_id}}'
+    capabilities: 37
+
+  # ---- A1: name the workspace ----
+  - name: Alice names the workspace
+    type: set_group_metadata
+    node: calimero-node-1
+    group_id: '{{namespace_id}}'
+    record_name: Acme Workspace
+    data:
+      color: '#3366ff'
+
+  - name: Alice reads workspace metadata
+    type: get_group_metadata
+    node: calimero-node-1
+    group_id: '{{namespace_id}}'
+    outputs:
+      ws_name: name
+
+  - name: Assert workspace name set
+    type: assert
+    statements:
+      - "equal({{ws_name}}, 'Acme Workspace')"
+
+  # =================================================================
+  # B. Folder subgroup + name on it.
+  # =================================================================
+  - name: Alice creates folder (Shared)
+    type: create_group_in_namespace
+    node: calimero-node-1
+    namespace_id: '{{namespace_id}}'
+    group_name: shared
+    outputs:
+      folder_id: groupId
+
+  - name: Mark folder Open (namespace members inherit access)
+    type: set_subgroup_visibility
+    node: calimero-node-1
+    group_id: '{{folder_id}}'
+    visibility: Open
+
+  - name: Alice names the folder
+    type: set_group_metadata
+    node: calimero-node-1
+    group_id: '{{folder_id}}'
+    record_name: Shared (Q3 plan)
+    data:
+      color: '#1f8a4c'
+
+  - name: Alice reads folder metadata
+    type: get_group_metadata
+    node: calimero-node-1
+    group_id: '{{folder_id}}'
+    outputs:
+      folder_name: name
+
+  - name: Assert folder name set
+    type: assert
+    statements:
+      - "equal({{folder_name}}, 'Shared (Q3 plan)')"
+
+  # =================================================================
+  # C. Alice sets her OWN display name (self-edit; no cap needed).
+  # The registry context creation is the standard mero-drive bootstrap
+  # shape (matches workflow-mero-drive-open-restricted-collab.yml) and
+  # also gives us Alice's namespace-member public key for the
+  # member_id arg below.
+  # =================================================================
+  - name: Alice creates the per-namespace Registry context
+    type: create_context
+    node: calimero-node-1
+    application_id: '{{app_id}}'
+    group_id: '{{namespace_id}}'
+    service_name: registry
+    outputs:
+      reg_ctx: contextId
+      alice_key: memberPublicKey
+
+  - name: Alice sets her own display name
+    type: set_member_metadata
+    node: calimero-node-1
+    group_id: '{{namespace_id}}'
+    member_id: '{{alice_key}}'
+    record_name: Alice Anderson
+
+  - name: Alice reads her own display name
+    type: get_member_metadata
+    node: calimero-node-1
+    group_id: '{{namespace_id}}'
+    member_id: '{{alice_key}}'
+    outputs:
+      alice_name: name
+
+  - name: Assert Alice's name
+    type: assert
+    statements:
+      - "equal({{alice_name}}, 'Alice Anderson')"
+
+  # =================================================================
+  # D. Bob joins; reads workspace name + folder name + Alice's name.
+  # =================================================================
+  - name: Alice mints invite
+    type: create_namespace_invitation
+    node: calimero-node-1
+    namespace_id: '{{namespace_id}}'
+    outputs:
+      ns_invite: invitation
+
+  - name: Wait for governance gossip
+    type: wait
+    seconds: 10
+    message: Namespace governance DAG needs to propagate before Bob can join
+
+  - name: Bob joins namespace
+    type: join_namespace
+    node: calimero-node-2
+    namespace_id: '{{namespace_id}}'
+    invitation: '{{ns_invite}}'
+    outputs:
+      bob_identity: memberIdentity
+
+  - name: Wait for metadata + group rows to propagate to Bob
+    type: wait
+    seconds: 10
+    message: Bob's node needs metadata + Open-folder rows propagated
+
+  - name: Bob reads workspace name
+    type: get_group_metadata
+    node: calimero-node-2
+    group_id: '{{namespace_id}}'
+    outputs:
+      ws_name_bob: name
+
+  - name: Assert workspace name visible to Bob
+    type: assert
+    statements:
+      - "equal({{ws_name_bob}}, 'Acme Workspace')"
+
+  - name: Bob reads folder name
+    type: get_group_metadata
+    node: calimero-node-2
+    group_id: '{{folder_id}}'
+    outputs:
+      folder_name_bob: name
+
+  - name: Assert folder name visible to Bob
+    type: assert
+    statements:
+      - "equal({{folder_name_bob}}, 'Shared (Q3 plan)')"
+
+  - name: Bob reads Alice's display name
+    type: get_member_metadata
+    node: calimero-node-2
+    group_id: '{{namespace_id}}'
+    member_id: '{{alice_key}}'
+    outputs:
+      alice_name_bob: name
+
+  - name: Assert Alice's name visible to Bob
+    type: assert
+    statements:
+      - "equal({{alice_name_bob}}, 'Alice Anderson')"
+
+  # =================================================================
+  # E. Bob sets HIS OWN display name; Alice reads it.
+  # =================================================================
+  - name: Bob sets his own display name
+    type: set_member_metadata
+    node: calimero-node-2
+    group_id: '{{namespace_id}}'
+    member_id: '{{bob_identity}}'
+    record_name: Bob Brown
+
+  - name: Wait for member-metadata gossip
+    type: wait
+    seconds: 8
+
+  - name: Alice reads Bob's display name
+    type: get_member_metadata
+    node: calimero-node-1
+    group_id: '{{namespace_id}}'
+    member_id: '{{bob_identity}}'
+    outputs:
+      bob_name_alice: name
+
+  - name: Assert Bob's name visible to Alice
+    type: assert
+    statements:
+      - "equal({{bob_name_alice}}, 'Bob Brown')"
+
+  # =================================================================
+  # F. Negative cap path: Bob can't rename Alice without
+  # CAN_MANAGE_METADATA. Grant → retry → succeed.
+  # =================================================================
+  - name: Bob tries to rename Alice — must fail (lacks CAN_MANAGE_METADATA)
+    type: set_member_metadata
+    node: calimero-node-2
+    group_id: '{{namespace_id}}'
+    member_id: '{{alice_key}}'
+    record_name: AliceHax0r
+    expected_failure: true
+
+  # Bob's current caps (per default) = 37. Grant 256 (CAN_MANAGE_METADATA)
+  # on top → 37 | 256 = 293 (override of his individual bitmap).
+  - name: Alice grants Bob CAN_MANAGE_METADATA (293 = 37|256)
+    type: set_member_capabilities
+    node: calimero-node-1
+    group_id: '{{namespace_id}}'
+    member_id: '{{bob_identity}}'
+    capabilities: 293
+
+  - name: Wait for cap propagation
+    type: wait
+    seconds: 8
+
+  - name: Bob renames Alice (now permitted)
+    type: set_member_metadata
+    node: calimero-node-2
+    group_id: '{{namespace_id}}'
+    member_id: '{{alice_key}}'
+    record_name: Alice (renamed by admin)
+
+  - name: Wait for the cross-node rename to gossip
+    type: wait
+    seconds: 8
+
+  - name: Alice reads her own (renamed) name
+    type: get_member_metadata
+    node: calimero-node-1
+    group_id: '{{namespace_id}}'
+    member_id: '{{alice_key}}'
+    outputs:
+      alice_renamed: name
+
+  - name: Assert Alice's name was overwritten by Bob
+    type: assert
+    statements:
+      - "equal({{alice_renamed}}, 'Alice (renamed by admin)')"
+
+  # =================================================================
+  # G. Rename round trip — namespace + folder + Alice's name, all by
+  # Alice from node-1; Bob sees each on node-2 after sync.
+  # =================================================================
+  - name: Alice renames the workspace
+    type: set_group_metadata
+    node: calimero-node-1
+    group_id: '{{namespace_id}}'
+    record_name: Acme — Renamed
+    data:
+      color: '#cc0033'
+
+  - name: Alice renames the folder
+    type: set_group_metadata
+    node: calimero-node-1
+    group_id: '{{folder_id}}'
+    record_name: Shared (Q4 plan)
+    data:
+      color: '#1f8a4c'
+
+  - name: Alice resets her own display name
+    type: set_member_metadata
+    node: calimero-node-1
+    group_id: '{{namespace_id}}'
+    member_id: '{{alice_key}}'
+    record_name: Alice (back to default)
+
+  - name: Wait for renames to gossip
+    type: wait
+    seconds: 10
+
+  - name: Bob reads workspace name (renamed)
+    type: get_group_metadata
+    node: calimero-node-2
+    group_id: '{{namespace_id}}'
+    outputs:
+      ws_renamed_bob: name
+
+  - name: Bob reads folder name (renamed)
+    type: get_group_metadata
+    node: calimero-node-2
+    group_id: '{{folder_id}}'
+    outputs:
+      folder_renamed_bob: name
+
+  - name: Bob reads Alice's name (renamed back)
+    type: get_member_metadata
+    node: calimero-node-2
+    group_id: '{{namespace_id}}'
+    member_id: '{{alice_key}}'
+    outputs:
+      alice_renamed_bob: name
+
+  - name: Assert all renames visible to Bob
+    type: assert
+    statements:
+      - "equal({{ws_renamed_bob}}, 'Acme — Renamed')"
+      - "equal({{folder_renamed_bob}}, 'Shared (Q4 plan)')"
+      - "equal({{alice_renamed_bob}}, 'Alice (back to default)')"
+
+  # =================================================================
+  # H. Teardown.
+  # =================================================================
+  - name: Alice deletes the namespace
+    type: delete_namespace
+    node: calimero-node-1
+    namespace_id: '{{namespace_id}}'
+
+# Leave containers up for the CI log-watcher / retry loop. The outer
+# shell in .github/workflows/ci.yml calls `merobox nuke --force` on
+# attempt boundaries; merobox shouldn't stop nodes on workflow success.
+stop_all_nodes: false

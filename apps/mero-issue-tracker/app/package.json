@@ -1,0 +1,49 @@
+{
+  "name": "mero-issue-tracker",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@calimero-network/mero-icons": "0.0.6",
+    "@calimero-network/mero-js": "catalog:",
+    "@calimero-network/mero-platform": "catalog:",
+    "@calimero-network/mero-react": "catalog:",
+    "@calimero-network/mero-ui": "catalog:",
+    "bs58": "catalog:",
+    "fflate": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "react-router-dom": "^6.22.3",
+    "styled-components": "^6.1.11"
+  },
+  "devDependencies": {
+    "@calimero-network/abi-codegen": "catalog:",
+    "@playwright/test": "catalog:",
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@types/styled-components": "^5.1.34",
+    "@vitejs/plugin-react": "catalog:",
+    "tweetnacl": "^1.0.3",
+    "tweetnacl-util": "^0.15.1",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vite-plugin-node-polyfills": "^0.24.0",
+    "vitest": "catalog:"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "codegen": "node scripts/codegen.mjs",
+    "preview": "vite preview",
+    "merod:start": "../../scripts/merod-start.sh .merod-data 2",
+    "merod:stop": "../../scripts/merod-stop.sh .merod-data",
+    "merod:install": "node scripts/merod-install.mjs",
+    "test": "vitest run",
+    "test:unit": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "typecheck": "tsc -b"
+  }
+}

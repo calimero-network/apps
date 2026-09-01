@@ -1,0 +1,113 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal {
+  background: #fff;
+  border-radius: 10px;
+  padding: 28px;
+  width: 420px;
+  max-width: 95vw;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.16);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.title {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.close {
+  background: none;
+  border: none;
+  font-size: 14px;
+  color: #999;
+  cursor: pointer;
+  padding: 4px;
+}
+.close:hover { color: #333; }
+
+.desc {
+  font-size: 13px;
+  color: #666;
+  line-height: 1.5;
+  margin-bottom: 18px;
+}
+
+.tokenBox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #f5f5f5;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  padding: 10px 12px;
+}
+
+.token {
+  flex: 1;
+  font-size: 11px;
+  font-family: monospace;
+  word-break: break-all;
+  color: #333;
+}
+
+.copyBtn {
+  flex-shrink: 0;
+  padding: 5px 12px;
+  border: 1px solid #e0e0e0;
+  border-radius: 5px;
+  background: #fff;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.copyBtn:hover { background: #f5f5f5; }
+
+.generateBtn {
+  width: 100%;
+  padding: 10px;
+  background: #111;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.generateBtn:hover:not(:disabled) { background: #333; }
+.generateBtn:disabled { opacity: 0.5; }
+
+.error {
+  font-size: 12px;
+  color: #c0392b;
+  margin-top: 10px;
+}
+
+.copiedMsg { font-size: 13px; color: #15803d; font-weight: 500; }
+
+.spinner {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  border: 2px solid #d7d7d7;
+  border-top-color: #15803d;
+  border-radius: 50%;
+  animation: inviteModalSpin 0.8s linear infinite;
+}
+
+@keyframes inviteModalSpin {
+  to { transform: rotate(360deg); }
+}

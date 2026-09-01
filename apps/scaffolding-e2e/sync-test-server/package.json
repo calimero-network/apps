@@ -1,0 +1,22 @@
+{
+  "name": "calimero-sync-test-server",
+  "version": "1.0.0",
+  "description": "Coordination server for cross-node CRDT sync verification",
+  "main": "server.js",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test server.test.js",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "check": "prettier --check . && eslint ."
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "eslint": "^9.0.0",
+    "prettier": "^3.0.0"
+  }
+}

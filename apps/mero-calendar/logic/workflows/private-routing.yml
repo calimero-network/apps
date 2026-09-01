@@ -1,0 +1,453 @@
+name: Events route by peer list, and promote when peers arrive
+description: >
+  Where a calendar event LIVES is decided by its peer list, and this scenario is
+  the only thing that proves it across two nodes.
+
+  private-events.yml covers the explicitly private methods. It cannot cover this,
+  because the routing happens inside `create_event` — the SHARED entry point.
+  An event created with no peers is nobody's business but its author's, so it is
+  written to `#[app::private]` storage and never enters the DAG; name a peer and
+  it goes to the shared state where that peer can actually see it.
+
+  The two directions are not symmetric, and both halves are asserted here:
+
+    - adding a peer to a private event PROMOTES it — same id, moved into the
+      shared state, and removed from private storage so the frontend's merged
+      view cannot show it twice.
+    - removing every peer from a shared event does NOT demote it. The DAG is
+      append-only; the write is already replicated and cannot be recalled. What
+      does change is who can read it, because `get_events` gates on
+      owner-or-peer — so the ex-peer stops seeing it while the owner does not.
+
+  Asserting only the promotion would leave the frontend free to assume a
+  symmetry the contract does not have.
+nodes:
+  chain_id: testnet-1
+  count: 2
+  # Must move in LOCKSTEP with the merobox pin in .github/workflows/. merobox
+  # talks to the node's admin API directly, so an image older than the merobox
+  # driving it fails on the FIRST step with a payload error that reads like a
+  # contract bug: rc.20 and older require `upgradePolicy` on create_namespace,
+  # and merobox 0.6.54+ stopped sending it (core#3393 dropped the concept in
+  # rc.21). rc.22 pairs with merobox >= 0.6.54; this repo pins 0.6.55.
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.28
+  prefix: calimero-node
+  # Stated, not inherited. core 0.11.0-rc.26 made mDNS opt-in (core#3620):
+  # `merod init` now writes `discovery.mdns = false`, where every earlier release
+  # left it on. merobox does not pass the flag, so this scenario's peer discovery
+  # changed behaviour at the image bump without a line of it changing.
+  mdns: true
+
+steps:
+  - name: Install Application on Node 1
+    type: install_application
+    node: calimero-node-1
+    path: res/mero_calendar.wasm
+    dev: true
+    outputs:
+      app_id: applicationId
+
+  - name: Install Application on Node 2
+    type: install_application
+    node: calimero-node-2
+    path: res/mero_calendar.wasm
+    dev: true
+
+  - name: Create Namespace
+    type: create_namespace
+    node: calimero-node-1
+    application_id: "{{app_id}}"
+    outputs:
+      namespace_id: namespaceId
+
+  # Subgroups/namespaces are RESTRICTED by default: without this, node 2 joins
+  # and then 403s on the first `call`, which looks like a sync failure rather
+  # than a permission one. 15 = the full read/write/execute/manage member bits.
+  - name: Set Default Member Capabilities
+    type: set_default_capabilities
+    node: calimero-node-1
+    group_id: "{{namespace_id}}"
+    capabilities: 15
+
+  - name: Create Calendar Context
+    type: create_context
+    node: calimero-node-1
+    application_id: "{{app_id}}"
+    group_id: "{{namespace_id}}"
+    params: '{}'
+    outputs:
+      context_id: contextId
+      member_public_key: memberPublicKey
+
+  # Mints an identity on node 2 so it has something to accept the invitation
+  # WITH. Its `publicKey` is deliberately not captured: the key that authorizes
+  # a `call` is the CONTEXT member key returned by join_context below, and using
+  # the raw identity key as executor_public_key is how you get an authorization
+  # error that reads like the contract rejecting the caller.
+  - name: Create Identity on Node 2
+    type: create_identity
+    node: calimero-node-2
+
+  - name: Wait for Identity Propagation
+    type: wait
+    seconds: 3
+
+  - name: Invite Node 2
+    type: create_namespace_invitation
+    node: calimero-node-1
+    group_id: "{{namespace_id}}"
+    outputs:
+      invitation_2: invitation
+
+  - name: Settle before the namespace join (cold-join KeyDelivery)
+    type: wait
+    seconds: 12
+
+  - name: Node 2 Joins Namespace
+    type: join_namespace
+    node: calimero-node-2
+    group_id: "{{namespace_id}}"
+    invitation: "{{invitation_2}}"
+
+  - name: Settle After Namespace Join
+    type: wait
+    seconds: 5
+
+  # The context was created AFTER node 2 was invited to the namespace, so node 2
+  # does not know it exists yet. Without this explicit pull, join_context below
+  # fails with "context not found" — a race that passes locally on a warm mesh
+  # and fails on a cold CI runner.
+  - name: Force Node 2 to Sync Namespace State
+    type: sync_group
+    node: calimero-node-2
+    group_id: "{{namespace_id}}"
+
+  - name: Settle After Sync
+    type: wait
+    seconds: 5
+
+  - name: Node 2 Joins Context
+    type: join_context
+    node: calimero-node-2
+    context_id: "{{context_id}}"
+    outputs:
+      public_key_2: memberPublicKey
+
+  - name: Sync
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  # ─── both nodes register, so get_members proves the mesh is live ─────────
+  #
+  # Done first and deliberately: if the mesh were broken, every isolation
+  # assertion below would pass for the WRONG reason — node 2 seeing none of
+  # node 1's private events because nothing syncs at all is not evidence of
+  # privacy. This step is what makes the rest meaningful.
+
+
+  # ─── bob's UserId, which is what a peer list is made of ──────────────────
+  #
+  # `peers` is a Vec<UserId>, and UserId is derived from the ACCOUNT id — not
+  # from `executor_public_key`, which is a context member (device) key. Those
+  # are different values since rc.21 rekeyed group members by account, so
+  # passing the member key as a peer produces an event whose peer matches
+  # nobody: every assertion below would still pass while proving nothing.
+  #
+  # `Member.id` IS that account-derived id (`caller_id()` stringifies
+  # `UserId::new(env::account_id())`), so registering bob is how the scenario
+  # learns it. He registers FIRST and ALONE precisely so `output.0` is
+  # unambiguous — with two members the map iteration order picks the winner.
+  - name: Node 2 registers Bob
+    type: call
+    node: calimero-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_2}}"
+    method: set_username
+    args:
+      username: "bob"
+      timestamp: 3000001
+
+  - name: Sync after Bob registers
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Node 2 reads its own member row
+    type: call
+    node: calimero-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_2}}"
+    method: get_members
+    outputs:
+      bob_user_id: result.output.0.id
+      members_seen_by_node2: result
+
+  - name: Node 1 reads members
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_members
+    outputs:
+      members_seen_by_node1: result
+
+  - name: Assert the mesh is live and Bob's id was captured
+    type: assert
+    statements:
+      # Node 1 seeing a write node 2 made is the liveness proof. Without it,
+      # every "node 2 cannot see it" assertion below passes vacuously.
+      - "contains({{members_seen_by_node1}}, bob)"
+      - "contains({{members_seen_by_node2}}, bob)"
+      # A peer list built from an empty capture would silently be a list of one
+      # empty string, which matches no caller.
+      - "is_set({{bob_user_id}})"
+
+  # ─── NO PEERS: create_event must not touch the DAG ────────────────────────
+
+  - name: Node 1 creates an event with nobody in it
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: create_event
+    args:
+      event_data:
+        title: "solo-alice"
+        description: "no peers, so this must stay on node 1"
+        start: "2026-07-03T09:00:00"
+        end: "2026-07-03T10:00:00"
+        event_type: "event"
+        color: "rgb(213, 0, 0)"
+        peers: []
+      timestamp: 3000002
+    outputs:
+      solo_id: result.output
+
+  - name: Give sync every chance to leak it
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Node 1 reads its shared calendar
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_events
+    outputs:
+      n1_shared_after_solo: result
+
+  - name: Node 1 reads its private events
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_private_events
+    outputs:
+      n1_private_after_solo: result
+
+  - name: Node 2 reads its shared calendar
+    type: call
+    node: calimero-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_2}}"
+    method: get_events
+    outputs:
+      n2_shared_after_solo: result
+
+  - name: Assert a peerless event went to private storage, not the DAG
+    type: assert
+    statements:
+      # The owner's own shared read is the strongest of the three: it is the one
+      # place a DAG write would be visible even if replication were broken.
+      - "not_contains({{n1_shared_after_solo}}, solo-alice)"
+      - "contains({{n1_private_after_solo}}, solo-alice)"
+      - "not_contains({{n2_shared_after_solo}}, solo-alice)"
+
+  # ─── WITH A PEER: create_event must reach the DAG and replicate ───────────
+
+  - name: Node 1 creates an event with Bob in it
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: create_event
+    args:
+      event_data:
+        title: "shared-with-bob"
+        description: "has a peer, so this must replicate"
+        start: "2026-07-03T11:00:00"
+        end: "2026-07-03T12:00:00"
+        event_type: "event"
+        color: "rgb(0, 121, 213)"
+        peers: ["{{bob_user_id}}"]
+      timestamp: 3000003
+    outputs:
+      shared_id: result.output
+
+  - name: Sync the shared event
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Node 2 reads the shared calendar
+    type: call
+    node: calimero-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_2}}"
+    method: get_events
+    outputs:
+      n2_shared: result
+
+  - name: Node 1 re-reads its private events
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_private_events
+    outputs:
+      n1_private_after_shared: result
+
+  - name: Assert naming a peer put the event in the DAG
+    type: assert
+    statements:
+      # Bob reading it is the whole point: it is in shared state AND the peer
+      # gate lets him through.
+      - "contains({{n2_shared}}, shared-with-bob)"
+      - "not_contains({{n1_private_after_shared}}, shared-with-bob)"
+      # The peerless event is still private after a second event synced — this
+      # catches a promotion that fires on the wrong event.
+      - "not_contains({{n2_shared}}, solo-alice)"
+
+  # ─── PROMOTION: adding a peer moves the private event, keeping its id ─────
+
+  - name: Node 1 adds Bob to the peerless event
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: update_private_event
+    args:
+      event_id: "{{solo_id}}"
+      event_data:
+        peers: ["{{bob_user_id}}"]
+      timestamp: 3000004
+
+  - name: Sync the promotion
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Node 2 reads the shared calendar after the promotion
+    type: call
+    node: calimero-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_2}}"
+    method: get_events
+    outputs:
+      n2_after_promotion: result
+
+  - name: Node 1 reads private events after the promotion
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_private_events
+    outputs:
+      n1_private_after_promotion: result
+
+  - name: Node 1 reads its shared calendar after the promotion
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_events
+    outputs:
+      n1_shared_after_promotion: result
+
+  - name: Assert the promotion moved the event and kept its id
+    type: assert
+    statements:
+      - "contains({{n1_shared_after_promotion}}, solo-alice)"
+      - "contains({{n2_after_promotion}}, solo-alice)"
+      # REMOVED from private storage, not copied. Leaving both would show the
+      # event twice in the frontend, which merges the two lists.
+      - "not_contains({{n1_private_after_promotion}}, solo-alice)"
+      # The id survives the move, so a link or a pending edit still resolves.
+      - "contains({{n2_after_promotion}}, {{solo_id}})"
+
+  # ─── NO DEMOTION: emptying the peer list cannot recall a DAG write ────────
+
+  - name: Node 1 removes every peer from the shared event
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: update_event
+    args:
+      event_id: "{{shared_id}}"
+      event_data:
+        peers: []
+      timestamp: 3000005
+
+  - name: Sync the peer removal
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Node 1 reads its shared calendar after the removal
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_events
+    outputs:
+      n1_shared_after_removal: result
+
+  - name: Node 1 reads private events after the removal
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_private_events
+    outputs:
+      n1_private_after_removal: result
+
+  - name: Node 2 reads the shared calendar after the removal
+    type: call
+    node: calimero-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_2}}"
+    method: get_events
+    outputs:
+      n2_after_removal: result
+
+  - name: Assert removing the peers changed the audience, not the storage
+    type: assert
+    statements:
+      # Still in the DAG for its owner — no demotion.
+      - "contains({{n1_shared_after_removal}}, shared-with-bob)"
+      # And NOT smuggled back into private storage, which is the tempting
+      # symmetry the contract deliberately does not implement.
+      - "not_contains({{n1_private_after_removal}}, shared-with-bob)"
+      # What DID change: Bob is no longer a peer, so the read gate excludes him.
+      - "not_contains({{n2_after_removal}}, shared-with-bob)"

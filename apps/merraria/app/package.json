@@ -1,0 +1,33 @@
+{
+  "name": "merraria",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@9.15.9",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "e2e": "playwright test --project=mocked",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@calimero-network/mero-js": "catalog:",
+    "@calimero-network/mero-platform": "catalog:",
+    "@calimero-network/mero-react": "catalog:",
+    "bs58": "catalog:",
+    "fflate": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:"
+  },
+  "devDependencies": {
+    "@playwright/test": "catalog:",
+    "@types/node": "^24.13.3",
+    "jsdom": "^28.1.0",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vitest": "catalog:"
+  }
+}

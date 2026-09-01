@@ -1,0 +1,68 @@
+# Aggregation-dashboard perf workflow. Boots 2 merod nodes, installs the
+# p2p-sheets bundle, creates a shared context, joins node 2, then runs the
+# aggregation size sweep via a local script step. Pre-flight: bash logic/build-bundle.sh.
+name: p2p-sheets perf — aggregation
+description: Wide SUM/AVERAGE/COUNT/MAX/MIN aggregates over a large range; time node-side apply/derive/sync across a size sweep.
+log_level: info
+nodes:
+  count: 2
+  prefix: app-node
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.8
+  base_port: 13828
+  base_rpc_port: 13928
+nuke_on_start: true
+nuke_on_end: true
+wait_timeout: 90
+
+steps:
+  - type: install_application
+    name: Install bundle on app-node-1
+    node: app-node-1
+    dev: true
+    path: ./logic/res/p2p-sheets-1.0.0.mpk
+    outputs:
+      app_id: applicationId
+
+  - type: install_application
+    name: Install bundle on app-node-2
+    node: app-node-2
+    dev: true
+    path: ./logic/res/p2p-sheets-1.0.0.mpk
+
+  - type: create_namespace
+    name: Create namespace on app-node-1
+    node: app-node-1
+    application_id: '{{app_id}}'
+    outputs:
+      namespace_id: namespaceId
+
+  - type: create_context
+    name: Create spreadsheet context on app-node-1
+    node: app-node-1
+    application_id: '{{app_id}}'
+    group_id: '{{namespace_id}}'
+    service_name: spreadsheet
+    outputs:
+      spreadsheet_ctx: contextId
+
+  - type: create_namespace_invitation
+    name: Issue namespace invitation from app-node-1
+    node: app-node-1
+    namespace_id: '{{namespace_id}}'
+    outputs:
+      invitation: invitation
+
+  - type: join_namespace
+    name: app-node-2 joins namespace
+    node: app-node-2
+    namespace_id: '{{namespace_id}}'
+    invitation: '{{invitation}}'
+
+  - type: script
+    name: Run aggregation perf sweep (local)
+    target: local
+    script: ./test/perf/perf-aggregation.sh
+    args:
+      - '{{spreadsheet_ctx}}'
+      - 'app-node-1'
+      - 'app-node-2'

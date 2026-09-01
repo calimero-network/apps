@@ -1,0 +1,14 @@
+[package]
+name    = "p2p-sheets-recalc"
+version = "0.1.0"
+edition.workspace    = true
+authors.workspace    = true
+license.workspace    = true
+repository.workspace = true
+
+[lib]
+crate-type = ["rlib"]
+
+# The pure formula engine: no calimero dependency at all, so it is shared by the
+# contract and (via recalc-wasm) the browser.
+[dependencies]

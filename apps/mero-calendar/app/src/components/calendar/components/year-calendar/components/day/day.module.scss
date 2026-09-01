@@ -1,0 +1,47 @@
+.day {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  align-items: center;
+
+  &__label {
+    margin-top: 8px;
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: .3px;
+    text-align: center;
+    width: max-content;
+    min-width: 24px;
+    color: var(--mc-text);
+    line-height: 24px;
+    border-radius: 50%;
+    white-space: nowrap;
+    cursor: pointer;
+
+    &:hover {
+      background-color: var(--mc-hover);
+    }
+
+    &_additional {
+      color: var(--mc-text-dim);
+    }
+
+    &_selected {
+      color: var(--secondary);
+      background-color: var(--accent-soft);
+      
+      &:hover {
+        background-color: var(--accent-soft);
+      }
+    }
+    
+    &_active {
+      color: #fff;
+      background-color: var(--accent);
+
+      &:hover {
+        background-color: var(--accent-dim);
+      }
+    }
+  }
+}
