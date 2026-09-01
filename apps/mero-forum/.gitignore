@@ -22,3 +22,6 @@ logic/workflows/**/.pids/
 /data/
 logic/calimero.json
 logic/key.json
+
+# Screenshot harness output — regenerate with `node shots/shoot.mjs`
+shots/out/
