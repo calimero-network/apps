@@ -70,6 +70,10 @@ steps:
     outputs:
       invite_bob: invitation
 
+  - name: Settle before the namespace join (cold-join KeyDelivery)
+    type: wait
+    seconds: 12
+
   - name: Node 2 joins namespace
     type: join_namespace
     node: calimero-node-2

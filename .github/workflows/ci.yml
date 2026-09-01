@@ -746,25 +746,27 @@ jobs:
             return $s
           }
 
+          # Up to 3 attempts per scenario, for the cold-namespace-join
+          # KeyDelivery flake: `join_namespace` (and `create_mesh`, which joins
+          # internally) 500s when the group key misses its 5s gossip window — a
+          # core-side timing race CI load provokes. It has been observed to lose
+          # TWICE in a row on a heavily loaded runner, so one retry was not
+          # enough; three attempts makes that vanishingly unlikely while a
+          # genuine failure still loses all three and reds the job. A
+          # `create_mesh` scenario has no step boundary to settle at, so the
+          # whole scenario is the unit of retry.
           for f in workflows/*.yml; do
             echo "::group::$f"
-            if ! run_one "$f"; then
-              # ONE retry, for the cold-namespace-join KeyDelivery flake:
-              # `join_namespace` (and `create_mesh`, which joins internally) 500s
-              # when the group key misses its 5s gossip window — a core-side
-              # timing race that CI load provokes. A `create_mesh` scenario has
-              # no step boundary to settle at, so the whole scenario is the unit
-              # of retry. A genuine failure fails both attempts and still reds
-              # the job; a flake almost never loses twice in a row.
-              echo "::warning file=$f::scenario failed — retrying once (cold-join KeyDelivery flake)"
-              sleep 5
-              if ! run_one "$f"; then
-                echo "::endgroup::"
-                echo "::error file=$f::scenario failed on both attempts"
-                exit 1
-              fi
-            fi
+            ok=0
+            for attempt in 1 2 3; do
+              if run_one "$f"; then ok=1; break; fi
+              [ "$attempt" -lt 3 ] && echo "::warning file=$f::attempt $attempt failed — retrying (cold-join KeyDelivery flake)" && sleep 5
+            done
             echo "::endgroup::"
+            if [ "$ok" -ne 1 ]; then
+              echo "::error file=$f::scenario failed on all 3 attempts"
+              exit 1
+            fi
           done
 
       # `merobox logs` takes a NODE_NAME argument — with only `--tail` it exits
