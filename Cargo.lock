@@ -76,6 +76,7 @@ name = "battleships-types"
 version = "0.1.0"
 dependencies = [
  "borsh",
+ "calimero-sdk",
  "bs58",
  "serde",
  "thiserror 1.0.69",

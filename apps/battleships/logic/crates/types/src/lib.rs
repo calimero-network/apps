@@ -1,8 +1,9 @@
 use borsh::{BorshDeserialize, BorshSerialize};
+use calimero_sdk::abi::AbiType;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-#[derive(Debug, Error, Serialize)]
+#[derive(AbiType, Debug, Error, Serialize)]
 #[serde(tag = "kind", content = "data")]
 pub enum GameError {
     #[error("not found: {0}")]
@@ -32,7 +33,9 @@ pub enum GameError {
 /// Player public key — 32-byte Ed25519 key with base58 encoding.
 ///
 /// Note: `from_executor_id()` lives in each service crate (requires calimero-sdk).
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(
+    AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize, PartialEq, Eq,
+)]
 pub struct PublicKey(pub [u8; 32]);
 
 impl PublicKey {
