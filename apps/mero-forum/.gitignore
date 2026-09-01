@@ -1,0 +1,24 @@
+# Rust / WASM
+logic/target/
+# NOT `logic/res/` — that hides res/abi.json and res/state-schema.json, and
+# ci.yml's ABI gate then has nothing to diff and passes while checking nothing.
+logic/res/*.mpk
+logic/res/bundle-temp/
+logic/dist/
+
+# Frontend
+app/node_modules/
+app/dist/
+app/playwright-report/
+app/test-results/
+
+# merobox runtime data (~400 MB of node state)
+logic/workflows/data/
+logic/workflows/**/.pids/
+
+# misc
+.DS_Store
+*.log
+/data/
+logic/calimero.json
+logic/key.json

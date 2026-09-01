@@ -1,24 +1,18 @@
-import { Route, BrowserRouter, Routes } from "react-router-dom";
-import { AccessTokenWrapper } from "@calimero-network/calimero-client";
+import { Route, Routes, Navigate } from "react-router-dom";
 
-import Home from "./pages/home";
-import LoginPage from "./pages/login";
-import FeedPage from "./pages/feed/FeedPage";
-import PostPage from "./pages/post/[id]";
+import FeedPage from "./pages/FeedPage";
+import PostPage from "./pages/PostPage";
 
-function App() {
+export default function App() {
   return (
-    <AccessTokenWrapper>
-      <BrowserRouter basename="/only-peers-client/">
-        <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/feed" element={<FeedPage />} />
-          <Route path="/post/:id" element={<PostPage />} />
-        </Routes>
-      </BrowserRouter>
-    </AccessTokenWrapper>
+    <div className="shell">
+      <Routes>
+        <Route path="/" element={<FeedPage />} />
+        <Route path="/p/:postId" element={<PostPage />} />
+        {/* Unknown routes fall back to the feed rather than a blank page — a
+            shared link that has gone stale should still land somewhere. */}
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </div>
   );
 }
-
-export default App;
