@@ -46,6 +46,7 @@ use crate::board::{Board, Cell, BOARD_SIZE};
 use crate::ships::ShipValidator;
 use crate::validation::validate_fleet_composition;
 use battleships_types::GameError;
+use calimero_sdk::abi::AbiType;
 use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use calimero_sdk::serde::{Deserialize, Serialize};
 use calimero_storage::collections::UnorderedMap;
@@ -79,7 +80,7 @@ use calimero_storage::collections::UnorderedMap;
 /// assert!(board.is_placed());
 /// assert_eq!(board.get_ship_count(), 7); // 3 + 4 ships
 /// ```
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct PlayerBoard {

@@ -1,16 +1,18 @@
 //! Lobby service — match directory, player stats, and history.
 
 use battleships_types::{GameError, PublicKey};
+use calimero_sdk::abi::AbiType;
 use calimero_sdk::app;
 use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use calimero_sdk::serde::{Deserialize, Serialize};
 use calimero_sdk::types::Error as AppError;
+use calimero_storage::address::Id;
 use calimero_storage::collections::crdt_meta::MergeError;
+use calimero_storage::collections::rekey::RekeyTarget;
 use calimero_storage::collections::{
     Counter, FrozenValue, LwwRegister, Mergeable, UnorderedMap, Vector,
 };
 use calimero_storage::env as storage_env;
-use calimero_storage_macros::Mergeable;
 
 pub mod events;
 use events::Event;
@@ -19,7 +21,9 @@ use events::Event;
 // Lobby data models
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[derive(
+    AbiType, Debug, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, Serialize, Deserialize,
+)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 pub enum MatchStatus {
@@ -28,7 +32,7 @@ pub enum MatchStatus {
     Finished,
 }
 
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct MatchSummary {
@@ -69,6 +73,12 @@ impl Mergeable for MatchSummary {
     }
 }
 
+// Flat record, no nested collections, so re-keying is a no-op — but
+// `Mergeable: RekeyTarget` still requires the impl.
+impl RekeyTarget for MatchSummary {
+    fn rekey_relative_to(&mut self, _parent_id: Id) {}
+}
+
 #[derive(Mergeable, BorshSerialize, BorshDeserialize)]
 #[borsh(crate = "calimero_sdk::borsh")]
 pub struct PlayerStats {
@@ -107,7 +117,7 @@ impl PlayerStats {
 }
 
 /// Flat snapshot of a player's stats — what consumers see over the wire.
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct PlayerStatsView {
@@ -116,7 +126,7 @@ pub struct PlayerStatsView {
     pub games_played: u64,
 }
 
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct MatchRecord {
@@ -149,8 +159,6 @@ fn from_executor_id() -> Result<PublicKey, GameError> {
 // ---------------------------------------------------------------------------
 
 #[app::state(emits = for<'a> Event<'a>)]
-#[derive(BorshSerialize, BorshDeserialize)]
-#[borsh(crate = "calimero_sdk::borsh")]
 pub struct LobbyState {
     created_ms: LwwRegister<u64>,
     matches: UnorderedMap<String, MatchSummary>,

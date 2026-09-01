@@ -1,6 +1,7 @@
 //! Game service — live match gameplay with private boards.
 
 use battleships_types::{GameError, PublicKey};
+use calimero_sdk::abi::AbiType;
 use calimero_sdk::app;
 use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use calimero_sdk::serde::{Deserialize, Serialize};
@@ -23,7 +24,7 @@ use players::{PlayerBoard, PrivateBoards};
 // API response types
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct OwnBoardView {
@@ -31,7 +32,7 @@ pub struct OwnBoardView {
     pub board: Vec<u8>,
 }
 
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct ShotsView {
@@ -40,7 +41,7 @@ pub struct ShotsView {
 }
 
 /// Pending-shot record — small value living in an `LwwRegister`.
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct PendingShot {
@@ -53,7 +54,7 @@ pub struct PendingShot {
 /// Export payload for cross-device durability. Defined locally (not re-used from
 /// `battleships-types`) because the wasm-abi emitter resolves types by their
 /// local path and would otherwise not find it.
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct ExportedSeed {
@@ -86,8 +87,6 @@ fn sdk_pk(pk: &PublicKey) -> calimero_sdk::PublicKey {
 // ---------------------------------------------------------------------------
 
 #[app::state(emits = for<'a> Event<'a>)]
-#[derive(BorshSerialize, BorshDeserialize)]
-#[borsh(crate = "calimero_sdk::borsh")]
 pub struct GameState {
     pub lobby_context_id: LwwRegister<Option<String>>,
     pub match_id: LwwRegister<Option<String>>,

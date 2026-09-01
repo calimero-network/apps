@@ -57,6 +57,7 @@
 use crate::board::{Board, Coordinate};
 use crate::validation::{validate_fleet_composition, validate_ship_placement};
 use battleships_types::GameError;
+use calimero_sdk::abi::AbiType;
 use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use calimero_sdk::serde::{Deserialize, Serialize};
 
@@ -95,7 +96,9 @@ use calimero_sdk::serde::{Deserialize, Serialize};
 /// assert!(ship.is_straight());
 /// assert!(ship.is_contiguous());
 /// ```
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(
+    AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize, PartialEq, Eq,
+)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct Ship {
@@ -236,7 +239,7 @@ impl Ship {
 /// let fleet = Fleet::new(ships)?;
 /// assert_eq!(fleet.total_ships(), 5);
 /// ```
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct Fleet {

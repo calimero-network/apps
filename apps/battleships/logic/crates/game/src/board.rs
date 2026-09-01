@@ -37,6 +37,7 @@
 //! ```
 
 use battleships_types::GameError;
+use calimero_sdk::abi::AbiType;
 use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use calimero_sdk::serde::{Deserialize, Serialize};
 
@@ -66,6 +67,7 @@ pub const BOARD_SIZE: u8 = 10;
 /// assert!(coord.is_valid());
 /// ```
 #[derive(
+    AbiType,
     Debug,
     Clone,
     Copy,
@@ -121,7 +123,16 @@ impl Coordinate {
 /// assert_eq!(Cell::from_u8(1), Cell::Ship);
 /// ```
 #[derive(
-    Debug, Clone, Copy, BorshSerialize, BorshDeserialize, Serialize, Deserialize, PartialEq, Eq,
+    AbiType,
+    Debug,
+    Clone,
+    Copy,
+    BorshSerialize,
+    BorshDeserialize,
+    Serialize,
+    Deserialize,
+    PartialEq,
+    Eq,
 )]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
@@ -180,7 +191,7 @@ impl Cell {
 /// let cell = board.get(BOARD_SIZE, 0, 0);
 /// assert_eq!(cell, Cell::Ship);
 /// ```
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct Board(pub Vec<u8>);
