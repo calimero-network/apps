@@ -152,7 +152,7 @@ steps:
     args:
       issue_id: '{{issue_id}}'
     outputs:
-      issue_after_status: result.output.0
+      issue_after_status: result.output.issue
 
   - type: json_assert
     name: set_status moved the issue to In progress
@@ -185,7 +185,7 @@ steps:
     args:
       issue_id: '{{issue_id}}'
     outputs:
-      issue_after_priority: result.output.0
+      issue_after_priority: result.output.issue
 
   - type: json_assert
     name: set_priority updated the priority to urgent
@@ -218,7 +218,7 @@ steps:
     args:
       issue_id: '{{issue_id}}'
     outputs:
-      issue_after_assignee: result.output.0
+      issue_after_assignee: result.output.issue
 
   - type: json_assert
     name: set_assignee set the assignee to alice
@@ -290,7 +290,7 @@ steps:
     args:
       issue_id: '{{issue_id}}'
     outputs:
-      comment_0: result.output.1.0
+      comment_0: result.output.comments.0
 
   - type: json_assert
     name: add_comment produced a visible comment on node-2
@@ -356,7 +356,7 @@ steps:
     args:
       issue_id: '{{issue_id}}'
     outputs:
-      comment_edited: result.output.1.0
+      comment_edited: result.output.comments.0
 
   - type: json_assert
     name: edit_comment updated the comment body
@@ -388,7 +388,7 @@ steps:
     args:
       issue_id: '{{issue_id}}'
     outputs:
-      thread_after_delete: result.output.1
+      thread_after_delete: result.output.comments
 
   - type: json_assert
     name: delete_comment emptied the issue's comment thread
