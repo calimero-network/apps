@@ -182,7 +182,15 @@ impl GameState {
         let mut priv_boards = PrivateBoards::private_load_or_default()?;
         let mut priv_mut = priv_boards.as_mut();
         let key = PrivateBoards::key(match_id);
-        let mut pb = priv_mut.boards.get(&key)?.unwrap_or_default();
+        // `get` hands back a `ValueRef`, so deref out before defaulting — both
+        // arms have to be the same owned type. Cloning is right here where it
+        // was wrong for PlayerStats: this is `UserStorage`, private to one node,
+        // and PlayerBoard is plain data with no CRDT counters inside.
+        let mut pb = priv_mut
+            .boards
+            .get(&key)?
+            .map(|v| (*v).clone())
+            .unwrap_or_default();
         pb.place_ships(ships)?;
         // Snapshot the pristine board NOW — `own` will be mutated as shots
         // resolve, but the commitment hash must always match placement state.
