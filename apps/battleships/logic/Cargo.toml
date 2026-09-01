@@ -31,7 +31,7 @@ slug        = "com.calimero.battleships"
 icon        = "default"
 tags        = ["game", "multiplayer", "turn-based"]
 github      = "https://github.com/calimero-network/apps"
-min-runtime-version = "0.11.0-rc.26"
+min-runtime-version = "0.11.0-rc.28"
 frontend    = "https://battleships.vercel.app"
 
 # Two services, one bundle. PACKAGE level, because cargo-mero REPLACES an app's
