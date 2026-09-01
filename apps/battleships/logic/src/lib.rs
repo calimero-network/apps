@@ -149,12 +149,21 @@ pub struct MatchRecord {
 
 /// The caller, as a PublicKey.
 ///
-/// `env::executor_id()` no longer exists. This reads the ACCOUNT deliberately:
-/// a battleships player is a PERSON, so one human on a laptop and a phone must
-/// be one player — with the device id they would be two, and could join their
-/// own match as both sides.
+/// `env::executor_id()` no longer exists. This is the DEVICE, not the account,
+/// and the choice is forced by what a "player" is in this app: a player is a
+/// CONTEXT MEMBER. The lobby records `player2` from a member key, the game
+/// context is initialised with `{"player1": <memberPublicKey>, "player2": …}`,
+/// and the frontend reads the same id from `/contexts/{id}/identities-owned`.
+/// Resolving the caller to the account instead made every one of those
+/// comparisons fail — `place_ships` answered `{"kind":"Forbidden","data":"not a
+/// player"}` for the actual player — because since rc.27 an account and a device
+/// key are both 64 hex and nothing objects to the wrong one.
+///
+/// (`UserStorage` is the exception and IS account-keyed since rc.21 — see
+/// `sdk_account`. A private board belongs to the person; a player id identifies
+/// the context member.)
 fn from_executor_id() -> Result<PublicKey, GameError> {
-    let v = calimero_sdk::env::account_id();
+    let v = calimero_sdk::env::device_id();
     if v.len() != 32 {
         return Err(GameError::Invalid("executor id length".into()));
     }
