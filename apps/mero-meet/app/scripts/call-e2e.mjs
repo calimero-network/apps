@@ -15,7 +15,10 @@
 // URL_A / URL_B (the desktop-style SSO URLs) are injected by scripts/dev-e2e.sh.
 // Artifacts (screenshots, per-peer console + in-call diagnostics) land in
 // OUT_DIR on failure.
-import { chromium } from "playwright";
+// `@playwright/test`, not the raw `playwright` package: it re-exports chromium,
+// and carrying both is how two Playwright copies end up installed — which fails
+// as "Playwright Test did not expect test.describe() to be called here".
+import { chromium } from "@playwright/test";
 import fs from "node:fs";
 
 const URL_A = process.env.URL_A;

@@ -1,68 +1,71 @@
 [package]
-name = "mero-meet"
+name        = "mero-meet"
 description = "Calimero video-call signaling (control plane)"
-# NOT the release version. cargo requires a version field, but
-# .github/workflows/deploy-bundle.yml ignores it: the registry owns the number —
-# the check job takes the highest published appVersion and increments the patch
-# (0.0.1 when nothing is published yet). Bumping this changes nothing about what
-# gets released, so do not read a shipped version out of the tree; read it from
-# the registry or the workflow's run summary.
-version = "0.0.2"
-edition = "2021"
+# NOT the release version. The registry owns the number: publish-bundle takes the
+# highest published appVersion and increments the patch. Do not read a shipped
+# version out of the tree.
+version     = "0.0.2"
+edition.workspace    = true
+authors.workspace    = true
+license.workspace    = true
+repository.workspace = true
 
 [lib]
 crate-type = ["cdylib", "rlib"]
 
-# Read by `cargo mero bundle` (core #3374): every field the node and the
-# registry render now has a producer here, so nothing hand-writes a
-# manifest.json. `appVersion` is deliberately absent — the deploy workflow
-# resolves it from the registry with `--bump patch`.
+# Consumed by `cargo mero build` / `cargo mero bundle`. Parsed with
+# deny_unknown_fields and kebab-case keys, so a snake_case typo is a loud error
+# rather than a silently-ignored field.
+#
+# NOT inheritable: `[package.metadata]` is not on cargo's inheritable list, so
+# `min-runtime-version.workspace = true` resolves to the literal
+# `{"workspace": true}`. scripts/check-app-metadata.sh asserts the match instead.
 [package.metadata.calimero]
-package = "com.calimero.meromeet"
-name = "Mero Meet"
+package     = "com.calimero.meromeet"
+name        = "Mero Meet"
 description = "Decentralized, peer-to-peer video calling on Calimero. WebRTC media; signaling rides your nodes — no signaling server."
-author = "Calimero"
+author      = "Calimero"
 # The desktop resolves a deep link (calimero://<slug>/… and
 # https://links.calimero.network/<slug>/…) by Application.package, so the slug
-# IS the package id.
-slug = "com.calimero.meromeet"
+# IS the package id. Unchanged — it is in every invite link already shared.
+slug        = "com.calimero.meromeet"
 # Embedded into the manifest as a data: URI, which is what gives the app a real
 # icon in the registry and — via tauri-app's `ensure_app_launcher_icon` — in the
-# macOS Dock. The bundled icon is preferred over fetching the frontend's PWA
-# manifest because it is deterministic and works offline. Regenerate with
-# `node app/scripts/gen-icons.mjs`.
-icon = "../app/public/icon-512.png"
-tags = ["video", "calls", "webrtc"]
-github = "https://github.com/calimero-network/mero-meet"
-# Equal to the SDK tag below, always. This is a claim about the runtime this
-# bundle was built and tested against, not a floor someone once guessed: it sat
-# at "0.1.0" for three releases, which told every node "any version will do"
-# while the wasm was calling host functions no such node has.
-min-runtime-version = "0.11.0-rc.25"
-frontend = "https://mero-meet.vercel.app/"
+# macOS Dock. Regenerate with `node app/scripts/gen-icons.mjs`.
+icon        = "../app/public/icon-512.png"
+tags        = ["video", "calls", "webrtc"]
+# The monorepo is the home now; the standalone repo is archived.
+github      = "https://github.com/calimero-network/apps"
+min-runtime-version = "0.11.0-rc.28"
+# MUST be the exact origin the frontend is deployed on, and a BARE one: the
+# embedded auth frontend uses it as the registered-redirect-URI equivalent and
+# compares `frontend.origin === callbackOrigin`. A trailing slash or a path
+# fails hosted login AFTER credentials are accepted, while local and desktop
+# login keep working (loopback is always trusted) — so it breaks silently for
+# exactly the users who are not us. check-app-metadata.sh enforces the shape.
+frontend    = "https://mero-meet.vercel.app"
 
 [dependencies]
-borsh = "1.6.1"
-borsh-derive = "1.6.1"
-bs58 = "0.5.1"
-# Pin a real release tag, never `branch = "master"`: master rides unreleased
-# protocol work against nodes that run the release. All SDK crates must share
-# the exact same tag (the workspace version at a tag is 0.0.0).
-calimero-sdk = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.25" }
-calimero-storage = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.25" }
-calimero-storage-macros = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.25" }
-thiserror = "1.0.56"
+borsh                   = { workspace = true }
+borsh-derive            = "1.6.1"
+# One pin for the whole fleet, in the root Cargo.toml. All three SDK crates must
+# share the exact same tag — core's workspace version at a tag is 0.0.0, so a
+# plain version requirement can never match, and `branch = "master"` would ride
+# unreleased protocol work against nodes running the release.
+calimero-sdk            = { workspace = true }
+calimero-storage        = { workspace = true }
+calimero-storage-macros = { workspace = true }
+thiserror               = { workspace = true }
 
 [dev-dependencies]
 # Enables register_crdt_merge + the native mock host so TestHost can drive the
 # AccessControl writer-set state under `cargo test`.
-calimero-storage = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.25", features = ["testing"] }
+calimero-storage = { workspace = true, features = ["testing"] }
+# Only the tests stringify an id to compare against the contract's output.
+# `member_id` is `String::from(PublicKey)`, hex since core 0.11.0-rc.27 — the
+# helper must match. Was `bs58` in [dependencies]; test-only, so it lives here.
+hex = { workspace = true }
 
-[profile.app-release]
-inherits = "release"
-codegen-units = 1
-opt-level = "z"
-lto = true
-debug = false
-panic = "abort"
-overflow-checks = true
+# NOTE: no [profile.*] here. Cargo IGNORES profiles in a workspace member and
+# `cargo mero build` then fails with `profile 'app-release' is not defined`.
+# app-release and app-profiling live in the root Cargo.toml.

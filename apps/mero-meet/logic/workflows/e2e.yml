@@ -15,8 +15,16 @@ force_pull_image: true
 nodes:
   chain_id: testnet-1
   count: 2
-  image: ghcr.io/calimero-network/merod:0.11.0-rc.25
+  # Must match the `calimero-*` tag in the root Cargo.toml — contract and node
+  # have to agree. check-app-metadata.sh asserts this against
+  # [workspace.metadata.mero-apps].merod-image, so it is not hand-maintained drift.
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.28
   prefix: calimero-node
+  # Stated, not inherited. core 0.11.0-rc.26 made mDNS opt-in (core#3620), so
+  # `merod init` now writes `discovery.mdns = false` and merobox does not pass
+  # the flag. Without this the two nodes never peer and the run dies as a 500
+  # on join_namespace, which reads like a contract break.
+  mdns: true
   # Off the default 2428/2528 so the workflow doesn't collide with a local
   # dev merod a developer may already be running.
   base_port: 2740
@@ -27,7 +35,7 @@ steps:
   - name: Install application on Node 1
     type: install_application
     node: calimero-node-1
-    path: "../logic/res/mero_meet.wasm"
+    path: res/mero_meet.wasm
     dev: true
     outputs:
       app_id: applicationId
@@ -35,7 +43,7 @@ steps:
   - name: Install application on Node 2
     type: install_application
     node: calimero-node-2
-    path: "../logic/res/mero_meet.wasm"
+    path: res/mero_meet.wasm
     dev: true
 
   - name: Create namespace
@@ -67,6 +75,10 @@ steps:
     group_id: "{{namespace_id}}"
     outputs:
       invite_bob: invitation
+
+  - name: Settle before the namespace join (cold-join KeyDelivery)
+    type: wait
+    seconds: 12
 
   - name: Node 2 joins namespace
     type: join_namespace

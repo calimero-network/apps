@@ -1,6 +1,12 @@
 # Rust / WASM
 logic/target/
-logic/res/
+# NOT `logic/res/`. That is what this file said, inherited from the standalone
+# repo, and it hid `res/abi.json` and `res/state-schema.json` from git — so
+# ci.yml's ABI-staleness gate had nothing to diff and passed while checking
+# nothing. The root .gitignore already ignores the build output
+# (`apps/*/logic/res/*.wasm`); the ABI is source of truth and is committed.
+logic/res/*.mpk
+logic/res/bundle-temp/
 # `cargo mero bundle` output (signed .mpk)
 logic/dist/
 
@@ -10,9 +16,10 @@ app/dist/
 app/dev-dist/
 app/.vite/
 
-# merobox runtime data
-workflows/data/
-workflows/**/.pids/
+# merobox runtime data. The scenarios moved to logic/workflows/ in the
+# monorepo, and merobox writes ~400 MB of node state next to them.
+logic/workflows/data/
+logic/workflows/**/.pids/
 
 # misc
 .DS_Store

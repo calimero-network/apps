@@ -796,6 +796,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "mero-meet"
+version = "0.0.2"
+dependencies = [
+ "borsh",
+ "borsh-derive",
+ "calimero-sdk",
+ "calimero-storage",
+ "calimero-storage-macros",
+ "hex",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "mero-stream"
 version = "0.0.2"
 dependencies = [

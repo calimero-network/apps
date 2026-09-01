@@ -84,9 +84,10 @@ dev-stop:
 	@bash scripts/dev-node.sh --clean || true
 
 # Runs the 2-node signaling e2e. Requires Docker + merobox (`pip install merobox`).
-# Run from workflows/ so the `../logic/res/mero_meet.wasm` path resolves.
+# Run from logic/ so the scenario's `res/mero_meet.wasm` path resolves — that is
+# also the working directory ci.yml's e2e job uses, so local and CI agree.
 workflows: logic-build
-	cd workflows && merobox bootstrap run e2e.yml
+	cd logic && merobox bootstrap run workflows/e2e.yml
 
 clean:
 	cd logic && rm -rf res target

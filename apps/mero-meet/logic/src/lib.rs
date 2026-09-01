@@ -1079,8 +1079,13 @@ mod tests {
     // must NOT inherit the creator's host rights needs its own account.
     const BOB_ACCOUNT: [u8; 32] = [0xB0; 32];
 
+    /// A member id as the contract renders it: `String::from(PublicKey)`, which
+    /// is HEX since core 0.11.0-rc.27 removed base58. This helper was
+    /// `bs58::encode` and every assertion comparing against it silently stopped
+    /// matching at that release — the ids are the same length either way, so it
+    /// fails as "not found", not as a decode error.
     fn id_of(bytes: [u8; 32]) -> String {
-        bs58::encode(bytes).into_string()
+        hex::encode(bytes)
     }
 
     /// init runs as the default test executor, who becomes the room owner/admin.
@@ -1704,7 +1709,7 @@ mod tests {
             .expect("a fresh room has an owner");
         assert_eq!(owner.len(), 64, "an AccountId renders as 32 bytes of hex");
         assert!(owner.chars().all(|c| c.is_ascii_hexdigit()));
-        assert_ne!(owner, id_of(ALICE), "not a bs58 member key");
+        assert_ne!(owner, id_of(ALICE), "the owner is the ACCOUNT, not the device key");
     }
 
     #[test]

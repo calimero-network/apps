@@ -33,7 +33,7 @@ Mero Meet splits a video call into two planes:
 |------|------|
 | `logic/` | Rust WASM contract — presence, signaling relay, call sessions, roles |
 | `app/`   | React frontend — Tauri-gated; landing page on the web, lobby + call in desktop |
-| `workflows/` | merobox 2-node e2e proving signaling rides the contract |
+| `logic/workflows/` | merobox 2-node e2e proving signaling rides the contract |
 
 ## Desktop-only
 
