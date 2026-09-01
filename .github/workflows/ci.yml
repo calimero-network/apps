@@ -359,6 +359,22 @@ jobs:
 
       - uses: ./.github/actions/install-cargo-mero
 
+      # cargo-mero blanks RUSTFLAGS when unset (so a .cargo/config.toml is
+      # ignored) but honours an ambient one. An app that ships a
+      # `logic/wasm-rustflags` file exports it here into $GITHUB_ENV, so EVERY
+      # wasm build in this job — the build below, the dry-run bundle, and any
+      # fixture bundle — picks it up. Additive: an app with no file sets nothing.
+      #
+      # p2p-sheets needs `-Ctarget-feature=-nontrapping-fptoint`: its recalc
+      # engine casts f64->i64, lowering to the `i64.trunc_sat_f64_s` opcode that
+      # cargo-mero's bundled wasm-opt rejects. The flag lowers the SAME
+      # saturating cast without that opcode. Safe job-wide — this job only ever
+      # builds wasm, never a native target.
+      - name: Load per-app wasm RUSTFLAGS
+        run: |
+          f="apps/${{ matrix.app }}/logic/wasm-rustflags"
+          [ -f "$f" ] && echo "RUSTFLAGS=$(tr -d '\n' < "$f")" >> "$GITHUB_ENV" || true
+
       - name: Build
         run: cargo mero build -p ${{ matrix.app }}
 

@@ -1,0 +1,159 @@
+"""Pure load generators for the perf workflows: build apply_cell_ops batches
+and the expected correctness invariant. No I/O, no node calls."""
+from dataclasses import dataclass
+
+
+def a1(row: int, col: int) -> str:
+    """0-based (row, col) -> A1 string. (0,0)->A1, (0,26)->AA1."""
+    s = ""
+    c = col
+    while True:
+        s = chr(ord("A") + (c % 26)) + s
+        c = c // 26 - 1
+        if c < 0:
+            break
+    return f"{s}{row + 1}"
+
+
+def set_op(row: int, col: int, raw) -> dict:
+    return {"kind": "Set", "row": row, "col": col, "raw_value": str(raw)}
+
+
+@dataclass
+class DataSheet:
+    ops: list          # list[CellOp dict]
+    grand_total_cell: tuple  # (row, col)
+    input_sum: int
+
+
+def financial_data_sheet(rows: int, cols: int) -> DataSheet:
+    """A P&L data sheet: `rows`x`cols` numeric inputs, a per-row SUM total in the
+    column after the inputs, a per-col SUM total in the row after the inputs, and
+    a grand total at their intersection. Inputs are a deterministic 1..N ramp so
+    the invariant is exact."""
+    ops = []
+    total_col = cols       # totals column sits just past the inputs
+    total_row = rows       # totals row sits just past the inputs
+    input_sum = 0
+    n = 0
+    for r in range(rows):
+        for c in range(cols):
+            n += 1
+            input_sum += n
+            ops.append(set_op(r, c, n))
+    # per-row totals: =SUM(A{r}:<lastcol>{r})
+    for r in range(rows):
+        ops.append(set_op(r, total_col, f"=SUM({a1(r,0)}:{a1(r,cols-1)})"))
+    # per-col totals: =SUM(<col>1:<col>{rows})
+    for c in range(cols):
+        ops.append(set_op(total_row, c, f"=SUM({a1(0,c)}:{a1(rows-1,c)})"))
+    # grand total: sum of the row totals
+    ops.append(set_op(total_row, total_col,
+                      f"=SUM({a1(0,total_col)}:{a1(rows-1,total_col)})"))
+    return DataSheet(ops=ops, grand_total_cell=(total_row, total_col), input_sum=input_sum)
+
+
+# Summary sheet: cross-ref cells go in column A (rows 0..k-1); the grand total
+# lives in column B, row 0 — a fixed, out-of-the-way coordinate.
+SUMMARY_TOTAL_CELL = (0, 1)
+
+
+def financial_summary(entries) -> list:
+    """entries: list[(sheet_id, (row,col))]. One cross-ref cell per entry in
+    column A referencing that sheet's grand total, then a grand SUM over those
+    ref cells at SUMMARY_TOTAL_CELL."""
+    ops = []
+    for i, (sheet_id, (r, c)) in enumerate(entries):
+        ops.append(set_op(i, 0, f"=[{sheet_id}]!{a1(r, c)}"))
+    first = a1(0, 0)
+    last = a1(len(entries) - 1, 0)
+    ops.append(set_op(SUMMARY_TOTAL_CELL[0], SUMMARY_TOTAL_CELL[1],
+                      f"=SUM({first}:{last})"))
+    return ops
+
+
+def amortization_chain(depth: int, principal: int = 1_000_000, step: int = -1_000):
+    """A deep single-column dependency chain (stresses topological-sort depth):
+    A1 = principal; A[n] = A[n-1] + step, for n = 1..depth-1.
+
+    Integer recurrence — the invariant is EXACT (no f64 drift over the chain),
+    while still exercising the same chain-depth eval a float amortization would.
+    `step` may be negative (a declining balance). Returns (ops, expected_final,
+    last_cell) where expected_final = principal + (depth-1)*step and last_cell is
+    the (row, col) of the final cell."""
+    ops = [set_op(0, 0, principal)]
+    sign = "+" if step >= 0 else "-"
+    mag = abs(step)
+    for n in range(1, depth):
+        # reference the cell directly above (a1(n-1, 0)) and add/subtract step
+        ops.append(set_op(n, 0, f"={a1(n - 1, 0)}{sign}{mag}"))
+    expected_final = principal + (depth - 1) * step
+    return ops, expected_final, (depth - 1, 0)
+
+
+def aggregation_dashboard(size: int):
+    """A single column of `size` numeric inputs (values 1..size in column A, rows
+    0..size-1) plus a 5-cell aggregation panel in column C over the range A1:A{size}:
+    SUM, AVERAGE, COUNT, MAX, MIN.
+
+    Uses an EXPLICIT range (A1:A{size}), not whole-column A:A: the engine caps
+    whole-column expansion at MAX_ROWS=1000, so A:A would silently drop inputs once
+    size>1000. Explicit endpoints keep every aggregate exact at any size.
+
+    Inputs are the exact ramp 1..size so each aggregate has a closed form. Returns
+    (ops, expected, agg_cells): `expected` maps {"sum","average","count","max","min"}
+    to closed-form values, `agg_cells` maps the same keys to (row, col) coords."""
+    ops = [set_op(r, 0, r + 1) for r in range(size)]
+    rng = f"{a1(0, 0)}:{a1(size - 1, 0)}"  # A1:A{size}
+    agg_col = 2  # column C — clear of the column-A data block
+    panel = [
+        ("sum", f"=SUM({rng})"),
+        ("average", f"=AVERAGE({rng})"),
+        ("count", f"=COUNT({rng})"),
+        ("max", f"=MAX({rng})"),
+        ("min", f"=MIN({rng})"),
+    ]
+    agg_cells = {}
+    for i, (key, formula) in enumerate(panel):
+        ops.append(set_op(i, agg_col, formula))
+        agg_cells[key] = (i, agg_col)
+    expected = {
+        "sum": size * (size + 1) // 2,
+        "average": (size + 1) / 2,
+        "count": size,
+        "max": size,
+        "min": 1,
+    }
+    return ops, expected, agg_cells
+
+
+def dense_grid(rows: int, cols: int):
+    """An R×C cumulative prefix-sum table (stresses total formula count + per-cell
+    dependency fan-out in one derive pass). Each interior cell is
+    P(r,c) = up + left - diag + 1 (inclusion-exclusion), row 0 and col 0 are
+    `=neighbor+1` ramps, and P(0,0)=1 is the sole literal. Hence P(r,c)=(r+1)(c+1)
+    exactly and the bottom-right cell = rows*cols.
+
+    Deviations from the spec's pure up+left binomial recurrence: (1) the binomial
+    form C(r+c,r) overflows f64 exact-integer range past ~27 rows, so this
+    prefix-sum keeps the invariant exact at any size (same up/left fan-out + 1 diag
+    ref). (2) cols is capped at 26 — the engine's cell-ref parser only accepts
+    single-letter columns (A..Z); grow rows for larger cell counts.
+
+    Ops are emitted row-major so every precedent precedes its dependant. Returns
+    (ops, expected_bottom_right, last_cell)."""
+    if cols > 26:
+        raise ValueError(f"cols must be <= 26 (single-letter columns), got {cols}")
+    ops = []
+    for r in range(rows):
+        for c in range(cols):
+            if r == 0 and c == 0:
+                ops.append(set_op(0, 0, 1))
+            elif r == 0:
+                ops.append(set_op(0, c, f"={a1(0, c - 1)}+1"))
+            elif c == 0:
+                ops.append(set_op(r, 0, f"={a1(r - 1, 0)}+1"))
+            else:
+                up, left, diag = a1(r - 1, c), a1(r, c - 1), a1(r - 1, c - 1)
+                ops.append(set_op(r, c, f"={up}+{left}-{diag}+1"))
+    return ops, rows * cols, (rows - 1, cols - 1)
