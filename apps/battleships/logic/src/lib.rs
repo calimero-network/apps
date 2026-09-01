@@ -79,7 +79,7 @@ impl RekeyTarget for MatchSummary {
     fn rekey_relative_to(&mut self, _parent_id: Id) {}
 }
 
-#[derive(Mergeable, Clone, BorshSerialize, BorshDeserialize)]
+#[derive(Mergeable, BorshSerialize, BorshDeserialize)]
 #[borsh(crate = "calimero_sdk::borsh")]
 pub struct PlayerStats {
     pub wins: Counter,
@@ -374,10 +374,18 @@ fn bump_stats(
     player_key: &str,
     is_winner: bool,
 ) -> Result<(), GameError> {
-    // `ValueRef` is READ-ONLY — it has no DerefMut — so a stored record can only
-    // be updated by taking an owned copy, mutating it and writing it back. The
-    // `Counter`s inside `PlayerStats` carry their own CRDT state as data, so the
-    // clone carries it too and concurrent increments on two nodes still merge.
+    // `entry(…).or_insert_with(…)`, which the SDK calls "the blessed path for
+    // in-place mutation of nested CRDT values": the guard re-persists the value
+    // when it drops, so there is no get → modify → re-insert dance.
+    //
+    // Neither alternative works here, and the reasons are worth keeping:
+    //   • `get()` hands back a `ValueRef`, which is read-only — no DerefMut.
+    //   • cloning out and re-inserting is impossible because `Counter` is
+    //     deliberately NOT `Clone`. That is the SDK preventing a real bug: two
+    //     copies of one counter's per-replica state would double-count on merge.
+    // The entry API also re-keys a freshly-built value under this entry's
+    // deterministic id, so a row first created independently on two nodes still
+    // converges instead of carrying two random internal ids.
     fn bump(stats: &mut PlayerStats, is_winner: bool) -> Result<(), GameError> {
         if is_winner {
             stats
@@ -392,17 +400,12 @@ fn bump_stats(
         }
     }
 
-    let mut stats = match stats_map
-        .get(&player_key.to_string())
-        .map_err(|e| GameError::Invalid(format!("stats.get failed: {e}")))?
-    {
-        Some(existing) => (*existing).clone(),
-        None => PlayerStats::new(player_key),
-    };
-    bump(&mut stats, is_winner)?;
-    stats_map
-        .insert(player_key.to_string(), stats)
-        .map_err(|e| GameError::Invalid(format!("stats.insert failed: {e}")))?;
+    let mut slot = stats_map
+        .entry(player_key.to_string())
+        .map_err(|e| GameError::Invalid(format!("stats.entry failed: {e}")))?
+        .or_insert_with(|| PlayerStats::new(player_key))
+        .map_err(|e| GameError::Invalid(format!("stats.or_insert_with failed: {e}")))?;
+    bump(&mut slot, is_winner)?;
     Ok(())
 }
 
