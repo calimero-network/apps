@@ -1,0 +1,200 @@
+/* PDF Viewer Styles */
+.pdf-viewer-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  max-height: 100%;
+  overflow: hidden;
+}
+
+.pdf-viewer-container .pdf-viewer-content {
+  flex: 1;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.pdf-viewer-container canvas {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 0 auto;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+}
+
+/* Mobile optimizations */
+@media (max-width: 768px) {
+  .pdf-viewer-container {
+    border-radius: 8px;
+  }
+
+  .pdf-viewer-container .pdf-viewer-content {
+    padding: 0.75rem;
+  }
+
+  .pdf-viewer-container canvas {
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  }
+}
+
+/* Touch-friendly controls */
+.pdf-viewer-container button {
+  min-width: 44px;
+  min-height: 44px;
+  touch-action: manipulation;
+}
+
+/* Loading state */
+.pdf-viewer-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  min-height: 200px;
+}
+
+/* Error state */
+.pdf-viewer-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  min-height: 200px;
+  text-align: center;
+}
+
+/* Empty state */
+.pdf-viewer-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  min-height: 200px;
+  text-align: center;
+}
+
+/* Smooth animations */
+.pdf-viewer-container * {
+  transition: all 0.2s ease;
+}
+
+/* Focus styles for accessibility */
+.pdf-viewer-container button:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  .pdf-viewer-container canvas {
+    border: 2px solid var(--current-border);
+  }
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  .pdf-viewer-container * {
+    transition: none;
+  }
+}
+
+/* Mobile Floating Action Button */
+@media (max-width: 639px) {
+  .pdf-viewer-mobile-fab {
+    position: fixed;
+    bottom: 1.5rem;
+    right: 1.5rem;
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    box-shadow:
+      0 4px 12px rgba(0, 0, 0, 0.15),
+      0 2px 6px rgba(0, 0, 0, 0.1);
+    z-index: 40;
+    transition: all 0.3s ease;
+  }
+
+  .pdf-viewer-mobile-fab:hover {
+    box-shadow:
+      0 6px 16px rgba(0, 0, 0, 0.2),
+      0 4px 8px rgba(0, 0, 0, 0.1);
+    transform: translateY(-2px);
+  }
+
+  .pdf-viewer-mobile-fab:active {
+    transform: translateY(0);
+  }
+
+  /* Ensure FAB doesn't interfere with signature overlays */
+  .pdf-viewer-mobile-fab {
+    pointer-events: auto;
+  }
+
+  /* Mobile actions modal */
+  .pdf-viewer-mobile-actions {
+    border-radius: 1.5rem 1.5rem 0 0;
+    max-height: 80vh;
+    overflow-y: auto;
+    z-index: 9999;
+  }
+
+  /* Ensure modals stay above signature overlays */
+  .pdf-viewer-modal-overlay {
+    z-index: 9999 !important;
+  }
+
+  /* Apply to all modal overlays */
+  .pdf-viewer-modal-overlay,
+  [class*='z-[9999]'] {
+    z-index: 9999 !important;
+  }
+
+  /* Ensure signature pad modal stays above everything */
+  .signature-pad-modal-overlay {
+    z-index: 9999 !important;
+  }
+
+  /* Adjust signature overlay touch targets for mobile */
+  .signature-overlay {
+    touch-action: none;
+    transition: transform 0.1s ease-out;
+  }
+
+  .signature-overlay:active {
+    transform: scale(1.05);
+  }
+
+  .signature-overlay button {
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0.5rem;
+    border-radius: 50%;
+    transition: all 0.2s ease;
+  }
+
+  .signature-overlay button:active {
+    transform: scale(0.95);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  }
+
+  /* Enhanced touch targets for resize handles */
+  .signature-overlay [class*='cursor-'] {
+    min-width: 32px;
+    min-height: 32px;
+    transition: all 0.2s ease;
+  }
+
+  .signature-overlay [class*='cursor-']:active {
+    transform: scale(1.1);
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+  }
+}
+
+/* Ensure proper spacing when FAB is present */
+@media (max-width: 639px) {
+  .pdf-viewer-container .pdf-viewer-content {
+    padding-bottom: 5rem; /* Space for FAB */
+  }
+}

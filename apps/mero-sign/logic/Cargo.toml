@@ -1,0 +1,57 @@
+[package]
+# Renamed from `mero_sign`: the directory, cargo package and npm package must be
+# ONE value, and cargo package names are conventionally kebab-case. The wasm
+# artifact is still mero_sign.wasm (cargo underscores the lib name).
+name        = "mero-sign"
+description = "Calimero MeroSign logic"
+version     = "0.1.0"
+edition.workspace    = true
+authors.workspace    = true
+license.workspace    = true
+repository.workspace = true
+
+[lib]
+# `rlib` added alongside cdylib so TestHost unit tests can link the crate as a
+# normal library — this contract currently has none, which is part of the punch
+# list in the PR body.
+crate-type = ["cdylib", "rlib"]
+
+# NEW. The standalone repo had no [package.metadata.calimero] at all, so it was
+# never bundled by cargo-mero and never published: the registry has nothing under
+# any mero-sign id. That makes the id below a FIRST publish, with no installed
+# copies or invite links to orphan.
+[package.metadata.calimero]
+package     = "com.calimero.mero-sign"
+name        = "MeroSign"
+description = "Document signing on Calimero - upload a PDF, collect signatures from namespace members, and verify them peer-to-peer."
+author      = "Calimero"
+slug        = "com.calimero.mero-sign"
+# assets/icon-512x512.png lives at the APP root, not under logic/, and a relative
+# icon resolves against the directory of the table that supplied the metadata —
+# this package's dir. Left as the Calimero mark until the icon is moved or copied
+# under logic/; `cargo mero bundle` refuses to run without an icon DECISION.
+# A real icon, not the placeholder — this is what gives the app an icon in the
+# registry and, via tauri-app's `ensure_app_launcher_icon`, in the macOS Dock.
+# Regenerate with `node app/scripts/gen-icons.mjs`.
+icon        = "../app/public/icon-512.png"
+tags        = ["documents", "signing", "pdf"]
+github      = "https://github.com/calimero-network/apps"
+min-runtime-version = "0.11.0-rc.28"
+frontend    = "https://mero-sign.vercel.app"
+
+[dependencies]
+
+# WAS pinned to core rev 770d93c1 (2026-01-17) — roughly nine releases before
+# rc.26. This bump is the substance of the port; see the PR body.
+calimero-sdk            = { workspace = true }
+calimero-storage        = { workspace = true }
+calimero-storage-macros = { workspace = true }
+# `upload_document` renders 16 random bytes as its id.
+hex                     = { workspace = true }
+
+# NOTE: no build.rs and no [build-dependencies]. Core deleted all 60 per-app ABI
+# build scripts (#3319) and derives the ABI from the type system (#3364); the
+# emitter now lives in `cargo mero build`.
+#
+# NOTE: no [profile.*] — cargo ignores profiles in a workspace member and
+# `cargo mero build` then fails with `profile 'app-release' is not defined`.

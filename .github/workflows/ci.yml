@@ -702,6 +702,47 @@ jobs:
         with:
           python-version: "3.11"
 
+      # ── the app's own dev bundle ────────────────────────────────────────────
+      #
+      # A scenario that passes `service_name` cannot install a bare .wasm — it
+      # has to install a BUNDLE, because that is the only thing carrying the
+      # services list the name selects from. Those scenarios were unrunnable
+      # here: the wasm job uploads the bundle as a separate `mpk-` artifact and
+      # only the BROWSER job downloaded it, so fifteen scenarios sat parked in
+      # `logic/workflows/probes/` (one level below the `workflows/*.yml` glob)
+      # rather than gating anything.
+      #
+      # Strict on purpose: this job `needs: wasm`, and the bundle dry-run runs
+      # unconditionally there, so a missing artifact means something upstream is
+      # wrong and should be loud rather than a scenario failing later with
+      # `Application path not found`.
+      - uses: actions/download-artifact@v4
+        with:
+          name: mpk-${{ matrix.app }}-${{ github.sha }}
+          path: apps/${{ matrix.app }}/logic/dist
+
+      # The artifact is named after the DIRECTORY (`dry-run-<app>.mpk`), but a
+      # scenario refers to the bundle by its PACKAGE ID — `dist/<package>.mpk`,
+      # the same name `cargo mero bundle` writes locally, which is what makes a
+      # scenario runnable by hand as well as in CI. Read the id out of the
+      # manifest rather than assuming it equals the directory name; the two are
+      # deliberately allowed to differ (merodesign/meropixart already do).
+      #
+      # tomllib is stdlib from 3.11, which the step above just installed.
+      - name: Name the bundle after its package id
+        working-directory: apps/${{ matrix.app }}/logic
+        run: |
+          set -euo pipefail
+          pkg=$(python3 -c "import tomllib;print(tomllib.load(open('Cargo.toml','rb'))['package']['metadata']['calimero']['package'])")
+          src="dist/dry-run-${{ matrix.app }}.mpk"
+          if [ ! -f "$src" ]; then
+            echo "::error::$src missing from the mpk artifact — a service_name scenario would fail as 'Application path not found'"
+            ls -la dist || true
+            exit 1
+          fi
+          cp "$src" "dist/${pkg}.mpk"
+          echo "bundle available as dist/${pkg}.mpk ($(wc -c <"$src") bytes)"
+
       # calimero-client-py ships an sdist ONLY, so an uncached job compiles a
       # Rust wheel (~70s measured).
       - uses: actions/cache@v4
