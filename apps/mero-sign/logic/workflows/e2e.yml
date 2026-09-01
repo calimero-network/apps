@@ -167,7 +167,10 @@ steps:
     context_id: "{{agreement_id}}"
     file_path: workflows/test-files/sample-agreement.txt
     outputs:
-      blob_id: blobId
+      # `blob_id`, snake_case — merobox's own key. `blobId` captures nothing and
+      # the step fails with an EMPTY error message, which reads like the upload
+      # itself broke rather than the output path being wrong.
+      blob_id: blob_id
 
   - name: Alice uploads the document
     type: call

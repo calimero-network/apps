@@ -817,6 +817,9 @@ importers:
       '@eslint/js':
         specifier: ^9.4.0
         version: 9.39.5
+      '@playwright/test':
+        specifier: 'catalog:'
+        version: 1.62.1
       '@types/bs58':
         specifier: ^4.0.4
         version: 4.0.4
