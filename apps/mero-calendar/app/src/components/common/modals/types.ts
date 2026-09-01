@@ -1,0 +1,28 @@
+import { IValidatorData } from "../../../hooks/useValidator/types";
+import { TEventTypes } from "../../../types/event";
+
+export interface IModalValues extends IValidatorData {
+  title: string;
+  startDate: Date;
+  endDate: Date;
+  peers: string[];
+  startTime: string;
+  endTime: string;
+  description: string;
+  isLongEvent: boolean;
+  isPrivate: boolean;
+  color: string;
+  owner: string;
+}
+
+export interface IMapEventValues {
+  title: string;
+  description: string;
+  peers: string[];
+  startDate: Date;
+  endDate: Date;
+  type: TEventTypes;
+  color?: string;
+  owner: string;
+  isPrivate?: boolean;
+}

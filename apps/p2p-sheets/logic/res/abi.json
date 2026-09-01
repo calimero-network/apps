@@ -1,0 +1,981 @@
+{
+  "schema_version": "wasm-abi/1",
+  "types": {
+    "Cell": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "row",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "col",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "raw_value",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "computed_value",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "format",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "CellData": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "row",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "col",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "raw_value",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "format",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "CellOp": {
+      "kind": "variant",
+      "variants": [
+        {
+          "name": "Set",
+          "payload": {
+            "$ref": "CellOp_Set"
+          }
+        },
+        {
+          "name": "Format",
+          "payload": {
+            "$ref": "CellOp_Format"
+          }
+        },
+        {
+          "name": "Clear",
+          "payload": {
+            "$ref": "CellOp_Clear"
+          }
+        }
+      ]
+    },
+    "CellOp_Clear": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "row",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "col",
+          "type": {
+            "kind": "u32"
+          }
+        }
+      ]
+    },
+    "CellOp_Format": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "row",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "col",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "format",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "CellOp_Set": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "row",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "col",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "raw_value",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Cursor": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "author",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "row",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "col",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "color",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "CursorData": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "row",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "col",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "color",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "Event_CellCleared": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "row",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "col",
+          "type": {
+            "kind": "u32"
+          }
+        }
+      ]
+    },
+    "Event_CellUpdated": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_CellsChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "count",
+          "type": {
+            "kind": "u32"
+          }
+        }
+      ]
+    },
+    "Event_CursorMoved": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "author",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_CursorRemoved": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "author",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_ProjectInitialized": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_SheetCreated": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_SheetDeleted": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_SheetRenamed": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "FunctionDef": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "syntax",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "description",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "example",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Sheet": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "position",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "SheetData": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "position",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "Spreadsheet": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "project_id",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "project_name",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "project_created_at",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "u64"
+            }
+          }
+        },
+        {
+          "name": "sheets",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "SheetData"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "cells",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "CellData"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "cursors",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "CursorData"
+            },
+            "crdt_type": "authored_map"
+          }
+        }
+      ]
+    }
+  },
+  "methods": [
+    {
+      "name": "apply_cell_ops",
+      "params": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "ops",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "CellOp"
+            }
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "clear_cell",
+      "params": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "row",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "col",
+          "type": {
+            "kind": "u32"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "create_sheet",
+      "params": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      }
+    },
+    {
+      "name": "delete_sheet",
+      "params": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "export_all",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "Sheet"
+        }
+      }
+    },
+    {
+      "name": "get_all_cells",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "Cell"
+        }
+      }
+    },
+    {
+      "name": "get_cells",
+      "params": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "Cell"
+        }
+      }
+    },
+    {
+      "name": "get_cursors",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "Cursor"
+        }
+      }
+    },
+    {
+      "name": "get_functions",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "FunctionDef"
+        }
+      }
+    },
+    {
+      "name": "init",
+      "params": [],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "init_project",
+      "params": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      }
+    },
+    {
+      "name": "list_sheets",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "Sheet"
+        }
+      }
+    },
+    {
+      "name": "remove_cursor",
+      "params": [],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "rename_sheet",
+      "params": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "new_name",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "search_functions",
+      "params": [
+        {
+          "name": "prefix",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "FunctionDef"
+        }
+      }
+    },
+    {
+      "name": "set_cell",
+      "params": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "row",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "col",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "raw_value",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      }
+    },
+    {
+      "name": "set_cell_format",
+      "params": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "row",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "col",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "format",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      }
+    },
+    {
+      "name": "set_cell_formula",
+      "params": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "row",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "col",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "formula",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      }
+    },
+    {
+      "name": "update_cursor",
+      "params": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "row",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "col",
+          "type": {
+            "kind": "u32"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    }
+  ],
+  "events": [
+    {
+      "name": "CellCleared",
+      "payload": {
+        "$ref": "Event_CellCleared"
+      }
+    },
+    {
+      "name": "CellUpdated",
+      "payload": {
+        "$ref": "Event_CellUpdated"
+      }
+    },
+    {
+      "name": "CellsChanged",
+      "payload": {
+        "$ref": "Event_CellsChanged"
+      }
+    },
+    {
+      "name": "CursorMoved",
+      "payload": {
+        "$ref": "Event_CursorMoved"
+      }
+    },
+    {
+      "name": "CursorRemoved",
+      "payload": {
+        "$ref": "Event_CursorRemoved"
+      }
+    },
+    {
+      "name": "ProjectInitialized",
+      "payload": {
+        "$ref": "Event_ProjectInitialized"
+      }
+    },
+    {
+      "name": "SheetCreated",
+      "payload": {
+        "$ref": "Event_SheetCreated"
+      }
+    },
+    {
+      "name": "SheetDeleted",
+      "payload": {
+        "$ref": "Event_SheetDeleted"
+      }
+    },
+    {
+      "name": "SheetRenamed",
+      "payload": {
+        "$ref": "Event_SheetRenamed"
+      }
+    }
+  ],
+  "state_root": "Spreadsheet",
+  "state_version": 1
+}

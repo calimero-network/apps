@@ -1,0 +1,29 @@
+.btn {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, transform 0.12s ease;
+}
+.btn:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+  transform: translateY(-1px);
+}
+
+/* On the dark call stage, force light-on-dark regardless of theme. */
+.overlay {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.14);
+  color: #fff;
+  pointer-events: auto;
+}
+.overlay:hover {
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+}

@@ -1,0 +1,71 @@
+.modal {
+  width: min(360px, 94vw);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.header h2 { font-size: 16px; font-weight: 700; }
+.close {
+  background: none; border: none;
+  font-size: 14px; color: var(--text-faint);
+  cursor: pointer; padding: 4px;
+}
+.close:hover { color: var(--text); }
+
+.tabs {
+  display: flex;
+  gap: 4px;
+  background: var(--bg-0);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 3px;
+}
+.tab {
+  flex: 1;
+  height: 26px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-dim);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.tab:hover { color: var(--text); }
+.tabActive {
+  background: var(--bg-3);
+  color: var(--text);
+}
+
+.canvasWrap {
+  display: flex;
+  justify-content: center;
+}
+.canvas {
+  width: 256px;
+  height: 256px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  touch-action: none;
+  cursor: crosshair;
+}
+
+.hint {
+  font-size: 11px;
+  color: var(--text-faint);
+  text-align: center;
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.spacer { flex: 1; }

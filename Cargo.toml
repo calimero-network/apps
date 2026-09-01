@@ -11,7 +11,24 @@ resolver = "2"
 # Add "crates/*" back alongside the first shared contract crate — and create the
 # directory in the same commit. A glob whose parent does not exist is a hard
 # error, not an empty match: `failed to read .../crates/*/Cargo.toml`.
-members  = ["apps/*/logic"]
+members  = [
+  "apps/*/logic",
+  # An app whose contract is several crates keeps the extra ones here. The
+  # PRIMARY service is promoted to `apps/<app>/logic` (a members-glob match must
+  # be a package, so that manifest can never be a nested `[workspace]`).
+  #
+  # This entry is required specifically for a crate that is NOT a dependency of
+  # the primary one. Cargo automatically adopts a path dependency living inside
+  # the workspace directory as a member — which is why mero-issue-tracker's
+  # `crates/types` needs nothing — but mero-drive's `registry` is a SECOND
+  # SERVICE that nothing depends on, so without this glob `cargo mero bundle`
+  # fails with `package mero-drive-registry not found in the workspace`.
+  #
+  # A glob matching nothing is fine here: the parent (`apps/*/logic`) exists, and
+  # only a glob whose PARENT is missing is a hard error. Verified with apps that
+  # have no crates/ directory at all.
+  "apps/*/logic/crates/*",
+]
 
 [workspace.package]
 edition    = "2021"
@@ -32,9 +49,9 @@ repository = "https://github.com/calimero-network/apps"
 # Bumping core: edit these three lines, update `min-runtime-version` and
 # `merod-image` below, run `cargo update`, and let CI rebuild every app.
 [workspace.dependencies]
-calimero-sdk            = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.26" }
-calimero-storage        = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.26" }
-calimero-storage-macros = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.26" }
+calimero-sdk            = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.28" }
+calimero-storage        = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.28" }
+calimero-storage-macros = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.28" }
 
 thiserror = "1.0.56"
 bs58      = "0.5.1"
@@ -76,10 +93,10 @@ borsh     = "1.6.1"
 # Keep equal to the SDK tag above. A build imports host functions that only
 # exist from that release on; an older node installs the bundle happily and then
 # dies at context creation with `link error: unknown import`.
-min-runtime-version = "0.11.0-rc.26"
+min-runtime-version = "0.11.0-rc.28"
 # The merod image every merobox workflow runs against, matched to the SDK tag so
 # contract and node always agree.
-merod-image = "ghcr.io/calimero-network/merod:0.11.0-rc.26"
+merod-image = "ghcr.io/calimero-network/merod:0.11.0-rc.28"
 
 # ── profiles MUST live here ──────────────────────────────────────────────────
 #

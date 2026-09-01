@@ -1,0 +1,166 @@
+/* ── Invite sheet ───────────────────────────────────────────────────────────
+ *
+ * Replaces a read-only input holding ~380 characters of base58 next to a Copy
+ * button. The link is the primary object; the raw code is a disclosure, kept
+ * because it is the cross-app format and because a link is useless in the desktop
+ * shell (see shareableInvite).
+ */
+/* One column. It was a two-column grid with a QR beside the link; with the QR
+   gone there is nothing to sit beside, and the container query that kept the two
+   columns from crushing each other went with it. */
+.sheet {
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--bg-elev);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* ── Right column ─────────────────────────────────────────────────────────── */
+.main {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.scope {
+  font-size: 0.78rem;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 2px 9px;
+  white-space: nowrap;
+}
+
+.linkRow {
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+}
+
+.link {
+  flex: 1;
+  min-width: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  padding: 9px 11px;
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  text-overflow: ellipsis;
+}
+.link:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.primaryBtn {
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  color: var(--accent-fg);
+  padding: 9px 16px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.primaryBtn:hover {
+  background: var(--accent-hover);
+}
+
+.secondaryBtn {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  padding: 9px 14px;
+  font-size: 0.88rem;
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.secondaryBtn:hover {
+  background: var(--surface-hover);
+}
+
+.hint {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+
+.error {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--red);
+}
+
+/* ── Raw code disclosure ──────────────────────────────────────────────────── */
+.disclosure {
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+
+.summary {
+  cursor: pointer;
+  font-size: 0.82rem;
+  color: var(--text-dim);
+  list-style: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.summary::-webkit-details-marker {
+  display: none;
+}
+.summary::before {
+  content: "▸";
+  font-size: 0.7rem;
+  transition: transform 0.12s ease;
+}
+.disclosure[open] .summary::before {
+  transform: rotate(90deg);
+}
+.summary:hover {
+  color: var(--text);
+}
+
+.codeRow {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+  min-width: 0;
+}
+
+.code {
+  flex: 1;
+  min-width: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  padding: 8px 10px;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+}

@@ -1,0 +1,45 @@
+name: Mero Drive Playwright — fast (single-node) setup
+description: >
+  Single-node merobox bootstrap for the e2e-fast Playwright job
+  (landing + single-node projects). Installs the docs+registry mpk
+  bundle on node 1 and idles. No namespace, no contexts — every
+  user-visible step (create namespace, folder, doc) is a Playwright
+  assertion target, so we want a blank slate.
+
+  stop_all_nodes: false keeps the merod container alive after merobox
+  exits; the CI harness SIGKILLs merobox once the success line lands
+  so docker (separate process tree) outlives the merobox python
+  atexit teardown.
+
+force_pull_image: true
+
+# Auth-service ON: node reachable at http://node1.127.0.0.1.nip.io
+# through Traefik. Browser origin (Vite :5173) needs merobox >=0.6.9
+# for OPTIONS preflight bypass (merobox#228) and >=0.6.11 for the
+# rename of `alias` → `name` on CreateNamespaceApiRequest (#235).
+auth_service: true
+
+nodes:
+  count: 1
+  # Stated, not inherited. core rc.26 made mDNS opt-in (core#3620): `merod init`
+  # now writes `discovery.mdns = false`. merobox does not pass the flag, so peer
+  # discovery changed at the image bump with nothing here changing.
+  mdns: true
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.28
+  prefix: calimero-node
+
+steps:
+  - name: Install Mero Drive bundle on Node 1
+    type: install_application
+    node: calimero-node-1
+    path: dist/com.calimero.mero-drive-docs.mpk
+    dev: true
+    outputs:
+      app_id: applicationId
+
+  - name: Assert app installed
+    type: assert
+    statements:
+      - 'is_set({{app_id}})'
+
+stop_all_nodes: false

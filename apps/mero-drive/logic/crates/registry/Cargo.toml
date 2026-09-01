@@ -1,0 +1,23 @@
+[package]
+name    = "mero-drive-registry"
+version = "10.1.3"
+edition.workspace    = true
+authors.workspace    = true
+license.workspace    = true
+repository.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+# No [package.metadata.calimero]: this is the SECOND service of the mero-drive
+# bundle, declared in ../../Cargo.toml's services list. check-app-metadata.sh only
+# requires the table for a manifest at `apps/*/logic/Cargo.toml`.
+[dependencies]
+mero-drive-types        = { path = "../types" }
+calimero-sdk            = { workspace = true }
+calimero-storage        = { workspace = true }
+calimero-storage-macros = { workspace = true }
+# Every id this service stores is a device key, hex-encoded. core
+# 0.11.0-rc.27 removed base58 (core#3691); the admin API now hands out hex
+# device keys, and role rows must match what clients pass in.
+hex                     = { workspace = true }

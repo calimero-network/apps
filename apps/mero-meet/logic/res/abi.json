@@ -1,0 +1,760 @@
+{
+  "schema_version": "wasm-abi/1",
+  "types": {
+    "ChatMessage": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "seq",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "from",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "username",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "text",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "LobbyView": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "room",
+          "type": {
+            "$ref": "RoomInfo"
+          }
+        },
+        {
+          "name": "members",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "Presence"
+            }
+          }
+        },
+        {
+          "name": "online",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        }
+      ]
+    },
+    "MeroMeet": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "room_name",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "record",
+              "fields": [],
+              "crdt_type": "lww_register",
+              "inner_type": {
+                "kind": "string"
+              }
+            }
+          }
+        },
+        {
+          "name": "initial_name",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "presence",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Presence"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "signals",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Signal"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "next_seq",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "u64"
+            }
+          }
+        },
+        {
+          "name": "active_call",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "roles",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "bool"
+            },
+            "crdt_type": "shared_storage"
+          }
+        },
+        {
+          "name": "messages",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "ChatMessage"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "next_msg_seq",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "u64"
+            }
+          }
+        },
+        {
+          "name": "reap_marks",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "ReapMark"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "accounts",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "record",
+              "fields": [],
+              "crdt_type": "lww_register",
+              "inner_type": {
+                "kind": "bytes",
+                "size": 32
+              }
+            },
+            "crdt_type": "unordered_map"
+          }
+        }
+      ]
+    },
+    "Presence": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "member_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "username",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "status",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "muted",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "video_on",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "call_id",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "joined_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "ReapMark": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "marked_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "row_ts",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "RoomInfo": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "owner",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "member_count",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "online_count",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "active_call",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Signal": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "seq",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "from",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "to",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "kind",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "payload",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "call_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    }
+  },
+  "methods": [
+    {
+      "name": "active_call_id",
+      "params": [],
+      "returns": {
+        "kind": "string"
+      }
+    },
+    {
+      "name": "end_call",
+      "params": [],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "get_call_participants",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "kind": "string"
+        }
+      }
+    },
+    {
+      "name": "get_lobby",
+      "params": [
+        {
+          "name": "now",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "LobbyView"
+      }
+    },
+    {
+      "name": "get_messages",
+      "params": [
+        {
+          "name": "after_seq",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "ChatMessage"
+        }
+      }
+    },
+    {
+      "name": "get_room",
+      "params": [
+        {
+          "name": "now",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "RoomInfo"
+      }
+    },
+    {
+      "name": "get_signals",
+      "params": [
+        {
+          "name": "after_seq",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "Signal"
+        }
+      }
+    },
+    {
+      "name": "grant_host",
+      "params": [
+        {
+          "name": "member",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "heartbeat",
+      "params": [
+        {
+          "name": "now",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "init",
+      "params": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "is_member_host",
+      "params": [
+        {
+          "name": "member",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "bool"
+      }
+    },
+    {
+      "name": "join",
+      "params": [
+        {
+          "name": "username",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "now",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "Presence"
+      }
+    },
+    {
+      "name": "leave",
+      "params": [
+        {
+          "name": "now",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "leave_call",
+      "params": [
+        {
+          "name": "now",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "post_message",
+      "params": [
+        {
+          "name": "text",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "now",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "u64"
+      }
+    },
+    {
+      "name": "post_signal",
+      "params": [
+        {
+          "name": "to",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "kind",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "payload",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "call_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "now",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "u64"
+      }
+    },
+    {
+      "name": "rename_room",
+      "params": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "revoke_host",
+      "params": [
+        {
+          "name": "member",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "set_state",
+      "params": [
+        {
+          "name": "muted",
+          "type": {
+            "kind": "bool"
+          },
+          "nullable": true
+        },
+        {
+          "name": "video_on",
+          "type": {
+            "kind": "bool"
+          },
+          "nullable": true
+        },
+        {
+          "name": "status",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "now",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "start_call",
+      "params": [
+        {
+          "name": "now",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      }
+    }
+  ],
+  "events": [
+    {
+      "name": "CallEnded",
+      "payload": {
+        "kind": "string"
+      }
+    },
+    {
+      "name": "CallStarted",
+      "payload": {
+        "kind": "string"
+      }
+    },
+    {
+      "name": "Initialized"
+    },
+    {
+      "name": "MemberLeft",
+      "payload": {
+        "kind": "string"
+      }
+    },
+    {
+      "name": "MessagePosted",
+      "payload": {
+        "kind": "u64"
+      }
+    },
+    {
+      "name": "PresenceChanged",
+      "payload": {
+        "kind": "string"
+      }
+    },
+    {
+      "name": "RoleUpdated",
+      "payload": {
+        "kind": "string"
+      }
+    },
+    {
+      "name": "SignalPosted",
+      "payload": {
+        "kind": "string"
+      }
+    }
+  ],
+  "state_root": "MeroMeet",
+  "state_version": 1
+}

@@ -1,0 +1,711 @@
+name: Authored Map + Shared Storage E2E
+description: Multi-node sync tests for AuthoredMap (per-entry ownership) and SharedStorage (rotatable writer set)
+
+force_pull_image: false
+nuke_on_start: true
+
+nodes:
+  chain_id: testnet-1
+  count: 3
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.28
+  # rc.26 made mDNS opt-in (core#3620) and merobox does not pass the flag,
+  # so discovery changed at the image bump. Stated, not inherited.
+  mdns: true
+  prefix: e2e-node
+
+steps:
+  - name: Install application on node-1
+    type: install_application
+    node: e2e-node-1
+    path: res/scaffolding_e2e.wasm
+    dev: true
+    outputs:
+      app_id: applicationId
+
+  # Installed explicitly rather than left to blob sync. The `path:` this step
+  # lost from `create_mesh` was not decoration in the older merobox: it put the
+  # wasm on the joining node directly. Without it the node has to pull the blob
+  # from the founder, and for a contract this size that loses the race against
+  # merobox's retry window — the run dies at `JSON-RPC Error: Uninitialized`
+  # with `error=blob share` in the node log, which names neither cause.
+  - name: Install application on e2e-node-2
+    type: install_application
+    node: e2e-node-2
+    path: res/scaffolding_e2e.wasm
+    dev: true
+
+  # Installed explicitly rather than left to blob sync. The `path:` this step
+  # lost from `create_mesh` was not decoration in the older merobox: it put the
+  # wasm on the joining node directly. Without it the node has to pull the blob
+  # from the founder, and for a contract this size that loses the race against
+  # merobox's retry window — the run dies at `JSON-RPC Error: Uninitialized`
+  # with `error=blob share` in the node log, which names neither cause.
+  - name: Install application on e2e-node-3
+    type: install_application
+    node: e2e-node-3
+    path: res/scaffolding_e2e.wasm
+    dev: true
+
+  - name: Create mesh with node-2 and node-3
+    type: create_mesh
+    context_node: e2e-node-1
+    application_id: "{{app_id}}"
+    nodes:
+      - e2e-node-2
+      - e2e-node-3
+    outputs:
+      context_id: contextId
+      node1_key: memberPublicKey
+
+  - name: Verify mesh keys are populated
+    type: assert
+    statements:
+      - "is_set({{node1_key}})"
+      - "is_set({{public_key_e2e-node-2}})"
+      - "is_set({{public_key_e2e-node-3}})"
+
+  # Ownership is reported as an ACCOUNT (`owner_of` returns `AccountId`), while
+  # merobox only knows each node's base58 DEVICE key — `node1_key` above. So
+  # node-1 has to say who it is before any owner can be asserted. Comparing an
+  # owner against `node1_key` instead does not fail loudly: it compares a 64-hex
+  # account to a base58 key, so the assertion can only ever be vacuous.
+  - name: node-1 reports its own account id
+    type: call
+    node: e2e-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: whoami
+    args: {}
+    outputs:
+      n1_account: result.output.account_id
+
+  - name: Verify node-1 account id is populated
+    type: assert
+    statements:
+      - "is_set({{n1_account}})"
+
+  # ─── AuthoredMap: insert from node-1, others can read but cannot mutate ────
+
+  - name: node-1 inserts authored entry
+    type: call
+    node: e2e-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: authored_insert
+    args:
+      key: "alice_key"
+      value: "owned_by_node1"
+
+  - name: Wait for sync after authored_insert
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - e2e-node-1
+      - e2e-node-2
+      - e2e-node-3
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: node-2 reads authored entry
+    type: call
+    node: e2e-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_e2e-node-2}}"
+    method: authored_get
+    args:
+      key: "alice_key"
+    outputs:
+      n2_authored_get: result
+
+  - name: Assert node-2 sees authored value
+    type: json_assert
+    statements:
+      - 'json_equal({{n2_authored_get}}, {"output": "owned_by_node1"})'
+
+  - name: node-3 reads owner of authored entry
+    type: call
+    node: e2e-node-3
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_e2e-node-3}}"
+    method: authored_get_owner
+    args:
+      key: "alice_key"
+    outputs:
+      n3_owner: result
+
+  - name: Assert authored owner is node-1
+    type: json_assert
+    statements:
+      - 'json_equal({{n3_owner}}, {"output": "{{n1_account}}"})'
+
+  # node-1 (owner) updates the entry — should succeed
+  - name: node-1 updates its own authored entry
+    type: call
+    node: e2e-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: authored_update
+    args:
+      key: "alice_key"
+      value: "updated_by_owner"
+
+  - name: Wait for sync after authored_update
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - e2e-node-1
+      - e2e-node-2
+      - e2e-node-3
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: node-2 sees updated authored value
+    type: call
+    node: e2e-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_e2e-node-2}}"
+    method: authored_get
+    args:
+      key: "alice_key"
+    outputs:
+      n2_after_update: result
+
+  - name: Assert authored update propagated
+    type: json_assert
+    statements:
+      - 'json_equal({{n2_after_update}}, {"output": "updated_by_owner"})'
+
+  # node-2 inserts its own authored entry — different owner
+  - name: node-2 inserts its own authored entry
+    type: call
+    node: e2e-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_e2e-node-2}}"
+    method: authored_insert
+    args:
+      key: "bob_key"
+      value: "owned_by_node2"
+
+  - name: Wait for sync after second authored_insert
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - e2e-node-1
+      - e2e-node-2
+      - e2e-node-3
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: node-1 reads node-2's authored entry
+    type: call
+    node: e2e-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: authored_get
+    args:
+      key: "bob_key"
+    outputs:
+      n1_bob_value: result
+
+  - name: Assert cross-owner read works
+    type: json_assert
+    statements:
+      - 'json_equal({{n1_bob_value}}, {"output": "owned_by_node2"})'
+
+  - name: node-3 enumerates authored_entries
+    type: call
+    node: e2e-node-3
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_e2e-node-3}}"
+    method: authored_len
+    args: {}
+    outputs:
+      n3_authored_len: result
+
+  - name: Assert authored_len reflects both keys (>= 2)
+    type: json_assert
+    statements:
+      - 'json_equal({{n3_authored_len}}, {"output": 2})'
+
+  # owner removes its entry; verify gone everywhere
+  - name: node-1 removes its authored entry
+    type: call
+    node: e2e-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: authored_remove
+    args:
+      key: "alice_key"
+
+  - name: Wait for sync after authored_remove
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - e2e-node-1
+      - e2e-node-2
+      - e2e-node-3
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: node-2 reads removed authored entry → null
+    type: call
+    node: e2e-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_e2e-node-2}}"
+    method: authored_get
+    args:
+      key: "alice_key"
+    outputs:
+      n2_after_remove: result
+
+  - name: Assert removed entry is gone
+    type: json_assert
+    statements:
+      - 'json_equal({{n2_after_remove}}, {"output": null})'
+
+  # ─── SharedStorage: writer set + rotatable writes ────────────────────────
+
+  - name: node-1 (initial writer) sets shared value
+    type: call
+    node: e2e-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: shared_set
+    args:
+      value: "v1_from_node1"
+
+  - name: Wait for sync after shared_set
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - e2e-node-1
+      - e2e-node-2
+      - e2e-node-3
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: node-2 reads shared value
+    type: call
+    node: e2e-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_e2e-node-2}}"
+    method: shared_get
+    args: {}
+    outputs:
+      n2_shared_get: result
+
+  - name: Assert shared value synced to node-2
+    type: json_assert
+    statements:
+      - 'json_equal({{n2_shared_get}}, {"output": "v1_from_node1"})'
+
+  - name: node-3 reads shared value
+    type: call
+    node: e2e-node-3
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_e2e-node-3}}"
+    method: shared_get
+    args: {}
+    outputs:
+      n3_shared_get: result
+
+  - name: Assert shared value synced to node-3
+    type: json_assert
+    statements:
+      - 'json_equal({{n3_shared_get}}, {"output": "v1_from_node1"})'
+
+  # The writer set is keyed by ACCOUNT (core 0.11), and nothing on the wire maps
+  # a node's public key to its account id — merobox only exposes
+  # public_key_<node>, which is the DEVICE key. So node-2 has to tell us its own
+  # account id, which is what whoami is for. Passing the base58 device key here
+  # does not fail loudly; it just names an account nobody holds, so every
+  # is_writer check would answer false and the test would prove nothing.
+  - name: node-2 reports its own account id
+    type: call
+    node: e2e-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_e2e-node-2}}"
+    method: whoami
+    args: {}
+    outputs:
+      n2_account: result.output.account_id
+
+  - name: node-2 checks shared_is_writer for itself (should be false)
+    type: call
+    node: e2e-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_e2e-node-2}}"
+    method: shared_is_writer
+    args:
+      account_hex: "{{n2_account}}"
+    outputs:
+      n2_is_writer_pre: result
+
+  - name: Assert node-2 not yet a writer
+    type: json_assert
+    statements:
+      - 'json_equal({{n2_is_writer_pre}}, {"output": false})'
+
+  # node-1 grants writer to node-2
+  - name: node-1 adds node-2 as shared writer
+    type: call
+    node: e2e-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: shared_add_writer
+    args:
+      account_hex: "{{n2_account}}"
+
+  - name: Wait for sync after shared_add_writer
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - e2e-node-1
+      - e2e-node-2
+      - e2e-node-3
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: node-2 checks shared_is_writer for itself (should now be true)
+    type: call
+    node: e2e-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_e2e-node-2}}"
+    method: shared_is_writer
+    args:
+      account_hex: "{{n2_account}}"
+    outputs:
+      n2_is_writer_post: result
+
+  - name: Assert node-2 is now a writer
+    type: json_assert
+    statements:
+      - 'json_equal({{n2_is_writer_post}}, {"output": true})'
+
+  # node-2 (newly authorized) writes shared value
+  - name: node-2 writes shared value
+    type: call
+    node: e2e-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_e2e-node-2}}"
+    method: shared_set
+    args:
+      value: "v2_from_node2"
+
+  - name: Wait for sync after second shared_set
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - e2e-node-1
+      - e2e-node-2
+      - e2e-node-3
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: node-3 reads new shared value
+    type: call
+    node: e2e-node-3
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_e2e-node-3}}"
+    method: shared_get
+    args: {}
+    outputs:
+      n3_shared_get_v2: result
+
+  - name: Assert second shared write propagated
+    type: json_assert
+    statements:
+      - 'json_equal({{n3_shared_get_v2}}, {"output": "v2_from_node2"})'
+
+  - name: node-3 reads shared writer set
+    type: call
+    node: e2e-node-3
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_e2e-node-3}}"
+    method: shared_get_writers
+    args: {}
+    outputs:
+      n3_writers: result
+
+  - name: Assert is_frozen is false
+    type: call
+    node: e2e-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: shared_is_frozen
+    args: {}
+    outputs:
+      is_frozen: result
+
+  - name: Assert shared_is_frozen returns false
+    type: json_assert
+    statements:
+      - 'json_equal({{is_frozen}}, {"output": false})'
+
+  # ─── AuthoredVector: push from node-1 and node-2, owner-only update/remove ──
+
+  - name: node-1 pushes first authored vector entry
+    type: call
+    node: e2e-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: authored_vec_push
+    args:
+      value: "slot0_from_node1"
+    outputs:
+      slot0_index: result.output
+
+  - name: Assert slot0 index is 0
+    type: json_assert
+    statements:
+      - 'json_equal({{slot0_index}}, 0)'
+
+  # node-2 can only land on index 1 once it has actually received slot 0 —
+  # `authored_vec_push` appends to the vector it can see locally. Without this
+  # barrier the next assertion is a race, and it returned index 0.
+  - name: Wait for slot0 to reach node-2
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - e2e-node-1
+      - e2e-node-2
+      - e2e-node-3
+    timeout: 30
+    check_interval: 2
+
+  - name: node-2 pushes second authored vector entry
+    type: call
+    node: e2e-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_e2e-node-2}}"
+    method: authored_vec_push
+    args:
+      value: "slot1_from_node2"
+    outputs:
+      slot1_index: result.output
+
+  - name: Assert slot1 index is 1
+    type: json_assert
+    statements:
+      - 'json_equal({{slot1_index}}, 1)'
+
+  - name: Wait for authored vector sync
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - e2e-node-1
+      - e2e-node-2
+      - e2e-node-3
+    timeout: 30
+    check_interval: 2
+
+  - name: node-3 reads slot0 pushed by node-1
+    type: call
+    node: e2e-node-3
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_e2e-node-3}}"
+    method: authored_vec_get
+    args:
+      index: 0
+    outputs:
+      n3_slot0: result
+
+  - name: Assert node-3 sees slot0 value
+    type: json_assert
+    statements:
+      - 'json_equal({{n3_slot0}}, {"output": "slot0_from_node1"})'
+
+  - name: node-3 reads owner of slot0
+    type: call
+    node: e2e-node-3
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_e2e-node-3}}"
+    method: authored_vec_get_owner
+    args:
+      index: 0
+    outputs:
+      slot0_owner: result
+
+  - name: Assert slot0 owner is node-1
+    type: json_assert
+    statements:
+      - 'json_equal({{slot0_owner}}, {"output": "{{n1_account}}"})'
+
+  - name: node-1 updates its own slot0
+    type: call
+    node: e2e-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: authored_vec_update
+    args:
+      index: 0
+      value: "slot0_updated_by_node1"
+
+  - name: Wait for update sync
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - e2e-node-1
+      - e2e-node-2
+      - e2e-node-3
+    timeout: 30
+    check_interval: 2
+
+  - name: node-2 sees updated slot0
+    type: call
+    node: e2e-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_e2e-node-2}}"
+    method: authored_vec_get
+    args:
+      index: 0
+    outputs:
+      n2_slot0_updated: result
+
+  - name: Assert slot0 update propagated to node-2
+    type: json_assert
+    statements:
+      - 'json_equal({{n2_slot0_updated}}, {"output": "slot0_updated_by_node1"})'
+
+  - name: node-2 tombstones its own slot1
+    type: call
+    node: e2e-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_e2e-node-2}}"
+    method: authored_vec_remove
+    args:
+      index: 1
+
+  - name: Wait for tombstone sync
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - e2e-node-1
+      - e2e-node-2
+      - e2e-node-3
+    timeout: 30
+    check_interval: 2
+
+  - name: node-1 reads slot1 after tombstone
+    type: call
+    node: e2e-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: authored_vec_get
+    args:
+      index: 1
+    outputs:
+      n1_slot1_after_tombstone: result
+
+  - name: Assert slot1 is tombstoned (empty string)
+    type: json_assert
+    statements:
+      - 'json_equal({{n1_slot1_after_tombstone}}, {"output": ""})'
+
+  - name: node-3 checks vector length is 2
+    type: call
+    node: e2e-node-3
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_e2e-node-3}}"
+    method: authored_vec_len
+    args: {}
+    outputs:
+      vec_len: result
+
+  - name: Assert authored vector length is 2
+    type: json_assert
+    statements:
+      - 'json_equal({{vec_len}}, {"output": 2})'
+
+  # ─── authored_entries / authored_vec_entries ──────────────────────────────
+  #
+  # The two list-ALL accessors. Every other authored method here is
+  # single-entry (`authored_get`, `authored_get_owner`, `authored_vec_get`), so
+  # the iteration paths — `AuthoredMap::entries()` and `AuthoredVector::iter()`
+  # — were exercised by no workflow at all. They are the interesting ones on a
+  # real node, because an authored collection stores per-entry authorship and a
+  # broken iterator can drop or duplicate another writer's entries: a single-key
+  # read looks up its own entry and never notices.
+  #
+  # These run on node-3, which authored NEITHER of the earlier writes, so a
+  # result that only lists the caller's own entries fails here and would pass on
+  # node-1 or node-2.
+
+  - name: node-3 lists every authored map entry
+    type: call
+    node: e2e-node-3
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_e2e-node-3}}"
+    method: authored_entries
+    args: {}
+    outputs:
+      all_authored: result
+
+  - name: Assert a non-author sees exactly the surviving entry
+    type: json_assert
+    statements:
+      # The EXACT map, and it is `bob_key` — not `alice_key`.
+      #
+      # By this point the scenario has inserted `alice_key` (node-1), updated it,
+      # and then REMOVED it; `authored_remove` really removes, which the earlier
+      # 'removed entry is gone' step already asserts returns null. So only
+      # `bob_key` survives, authored by NODE-2.
+      #
+      # That makes this read strictly stronger than it would have been on
+      # alice_key: node-3 authored neither entry, so listing bob_key proves both
+      # that the entry replicated across nodes AND that the iterator is not
+      # scoped to the caller's own authorship.
+      #
+      # Exact rather than `is_set`, because `is_set` passes on `{}` — which is
+      # precisely the regression a caller-scoped iterator would produce here.
+      - 'json_equal({{all_authored}}, {"output": {"bob_key": "owned_by_node2"}})'
+
+  - name: node-3 lists every authored vector entry
+    type: call
+    node: e2e-node-3
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_e2e-node-3}}"
+    method: authored_vec_entries
+    args: {}
+    outputs:
+      all_authored_vec: result
+
+  - name: Assert the vector lists both slots, tombstone included
+    type: assert
+    statements:
+      # Two slots were pushed and slot1 was tombstoned earlier in this scenario,
+      # which `authored_vec_len` already asserts is still length 2 — a tombstone
+      # empties a slot rather than removing it. So the iterator must yield TWO
+      # elements, with the tombstoned one as an empty string. Asserting the count
+      # via the length method keeps the two views honest with each other.
+      - "is_set({{all_authored_vec}})"
+
+  - name: node-3 re-reads the vector length alongside the entries
+    type: call
+    node: e2e-node-3
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_e2e-node-3}}"
+    method: authored_vec_len
+    args: {}
+    outputs:
+      vec_len_for_entries: result
+
+  - name: Assert the iterator and the length agree
+    type: json_assert
+    statements:
+      # The property worth having: iter() and len() are two different code paths
+      # over the same authored vector, and a tombstone is exactly where they can
+      # disagree (one skipping it, the other counting it).
+      - 'json_equal({{vec_len_for_entries}}, {"output": 2})'
+      - 'json_equal({{all_authored_vec}}, {"output": ["slot0_updated_by_node1", ""]})'
+
+stop_all_nodes: false
+restart: false
+wait_timeout: 120

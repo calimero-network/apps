@@ -1,0 +1,18 @@
+node_modules/
+dist/
+target/
+# NOT `res/`. Inherited from the standalone repo, it hid `res/abi.json` and
+# `res/state-schema.json` from git — so ci.yml's ABI-staleness gate had
+# nothing to diff and passed while checking nothing (`git add
+# --intent-to-add` skips IGNORED files silently). The root .gitignore
+# already ignores the build output, `apps/*/logic/res/*.wasm`.
+res/*.mpk
+res/bundle-temp/
+test-results/
+playwright-report/
+*.log
+.DS_Store
+.env*
+!.env.example
+.vercel/
+workflows/data/

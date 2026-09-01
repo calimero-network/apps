@@ -1,0 +1,61 @@
+{
+  "name": "mero-meet",
+  "private": true,
+  "version": "0.4.0",
+  "description": "Calimero Mero Meet — decentralized video calling (desktop)",
+  "keywords": [
+    "calimero",
+    "video",
+    "webrtc",
+    "react",
+    "vite",
+    "web3"
+  ],
+  "type": "module",
+  "scripts": {
+    "sync:wasm": "node scripts/copy-mediapipe.mjs",
+    "predev": "node scripts/copy-mediapipe.mjs",
+    "dev": "vite",
+    "prebuild": "node scripts/copy-mediapipe.mjs",
+    "build": "tsc -b && vite build",
+    "typecheck": "tsc -b",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "preview": "vite preview",
+    "prettier": "prettier --check 'src/**/*.{js,jsx,ts,tsx,json}'",
+    "prettier:write": "prettier --write 'src/**/*.{js,jsx,ts,tsx,json}'"
+  },
+  "dependencies": {
+    "@calimero-network/mero-js": "catalog:",
+    "@calimero-network/mero-platform": "catalog:",
+    "@calimero-network/mero-react": "catalog:",
+    "@calimero-network/mero-ui": "catalog:",
+    "@mediapipe/tasks-vision": "^0.10.0",
+    "bs58": "catalog:",
+    "fflate": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "react-router-dom": "catalog:",
+    "zustand": "catalog:"
+  },
+  "devDependencies": {
+    "@eslint/js": "catalog:",
+    "@playwright/test": "catalog:",
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@vitejs/plugin-react-swc": "catalog:",
+    "eslint": "catalog:",
+    "eslint-plugin-react-hooks": "catalog:",
+    "eslint-plugin-react-refresh": "catalog:",
+    "globals": "catalog:",
+    "jsdom": "catalog:",
+    "prettier": "^3.8.4",
+    "typescript": "catalog:",
+    "typescript-eslint": "catalog:",
+    "vite": "catalog:",
+    "vitest": "catalog:"
+  }
+}

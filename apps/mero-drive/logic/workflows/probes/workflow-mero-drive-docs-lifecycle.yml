@@ -1,0 +1,540 @@
+name: Mero Drive E2E — Docs Service Full Lifecycle
+description: >
+  End-to-end coverage for the DocsClient WASM surface — the editor loop
+  that Phase 8-D shipped. The main workflow-mero-drive-e2e.yml exercises
+  the registry service thoroughly but skips the docs service; this
+  workflow closes that gap.
+
+  Two nodes (Alice + Bob). Alice creates a namespace and a folder with
+  its own Docs context, invites Bob, Bob joins, and then every public
+  DocsClient method is exercised with cross-node sync assertions:
+
+    create_doc / list_docs / get_doc / edit_doc (title, content, both)
+    archive_doc / unarchive_doc / delete_doc
+    add_tag / remove_tag
+
+  Negative paths: edit unknown doc, delete unknown doc, add empty tag,
+  list_docs with / without include_archived.
+
+  Matches the user flow in DocumentEditor + DocumentList: a folder
+  with multiple docs, open one, edit content, rename via title, archive
+  out of view, delete with confirmation. Each DocsClient method the
+  app can call is hit here with both happy and error paths.
+
+force_pull_image: true
+
+nodes:
+  count: 2
+  # Stated, not inherited. core rc.26 made mDNS opt-in (core#3620): `merod init`
+  # now writes `discovery.mdns = false`. merobox does not pass the flag, so peer
+  # discovery changed at the image bump with nothing here changing.
+  mdns: true
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.28
+  prefix: calimero-node
+
+steps:
+  # =================================================================
+  # Phase A: Bootstrap — install, namespace, folder + docs context
+  # =================================================================
+
+  - name: Install bundle on Node 1
+    type: install_application
+    node: calimero-node-1
+    path: dist/com.calimero.mero-drive-docs.mpk
+    dev: true
+    outputs:
+      app_id: applicationId
+
+  - name: Install bundle on Node 2
+    type: install_application
+    node: calimero-node-2
+    path: dist/com.calimero.mero-drive-docs.mpk
+    dev: true
+
+  - name: Alice creates namespace
+    type: create_namespace
+    node: calimero-node-1
+    application_id: '{{app_id}}'
+    outputs:
+      namespace_id: namespaceId
+
+  - name: Alice creates top-level folder group
+    type: create_group_in_namespace
+    node: calimero-node-1
+    namespace_id: '{{namespace_id}}'
+    group_name: notes
+    outputs:
+      notes_group: groupId
+
+  - name: Alice creates the docs context bound to the folder group
+    type: create_context
+    node: calimero-node-1
+    application_id: '{{app_id}}'
+    group_id: '{{notes_group}}'
+    service_name: docs
+    outputs:
+      docs_ctx: contextId
+      alice_key: memberPublicKey
+
+  # =================================================================
+  # Phase B: Bob joins
+  # =================================================================
+
+  - name: Create namespace invitation for Bob
+    type: create_namespace_invitation
+    node: calimero-node-1
+    namespace_id: '{{namespace_id}}'
+    outputs:
+      ns_invite: invitation
+
+  - name: Wait for namespace gossip to reach Node 2
+    type: wait
+    seconds: 10
+
+  - name: Bob joins the namespace
+    type: join_namespace
+    node: calimero-node-2
+    namespace_id: '{{namespace_id}}'
+    invitation: '{{ns_invite}}'
+    outputs:
+      bob_identity: memberIdentity
+
+  - name: Alice adds Bob to the folder group (so he can join its docs context)
+    type: add_group_members
+    node: calimero-node-1
+    group_id: '{{notes_group}}'
+    members:
+      - identity: '{{bob_identity}}'
+        role: Member
+
+  - name: Wait for folder subgroup membership to propagate
+    type: wait
+    seconds: 10
+
+  # Only bob_key is consumed downstream (Bob's executor_public_key for
+  # all cross-node reads); Alice's docs_ctx variable is reused verbatim
+  # for both nodes' context_id, so no separate docs_ctx_bob capture.
+  - name: Bob joins the docs context
+    type: join_context
+    node: calimero-node-2
+    context_id: '{{docs_ctx}}'
+    outputs:
+      bob_key: memberPublicKey
+
+  - name: Sync docs context across nodes
+    type: wait_for_sync
+    nodes: [calimero-node-1, calimero-node-2]
+    context_id: '{{docs_ctx}}'
+    timeout: 30
+
+  # =================================================================
+  # Phase C: Empty-state reads
+  # =================================================================
+
+  - name: list_docs on empty docs context returns empty list
+    type: call
+    node: calimero-node-1
+    context_id: '{{docs_ctx}}'
+    method: list_docs
+    executor_public_key: '{{alice_key}}'
+    args:
+      include_archived: false
+
+  - name: Bob also sees an empty list (cross-node read)
+    type: call
+    node: calimero-node-2
+    context_id: '{{docs_ctx}}'
+    method: list_docs
+    executor_public_key: '{{bob_key}}'
+    args:
+      include_archived: false
+
+  # =================================================================
+  # Phase D: create_doc — multiple docs, cross-node visibility
+  # =================================================================
+
+  - name: Alice creates the first doc
+    type: call
+    node: calimero-node-1
+    context_id: '{{docs_ctx}}'
+    method: create_doc
+    executor_public_key: '{{alice_key}}'
+    args:
+      title: 'Meeting notes'
+      content: '<p>Initial draft</p>'
+    outputs:
+      doc_a: result.output
+
+  - name: Alice creates the second doc
+    type: call
+    node: calimero-node-1
+    context_id: '{{docs_ctx}}'
+    method: create_doc
+    executor_public_key: '{{alice_key}}'
+    args:
+      title: 'Shopping list'
+      content: '<ul><li>Milk</li></ul>'
+    outputs:
+      doc_b: result.output
+
+  - name: Alice creates the third doc (will be archived later)
+    type: call
+    node: calimero-node-1
+    context_id: '{{docs_ctx}}'
+    method: create_doc
+    executor_public_key: '{{alice_key}}'
+    args:
+      title: 'Old notes'
+      content: '<p>stale</p>'
+    outputs:
+      doc_c: result.output
+
+  - name: Assert all three doc ids were captured
+    type: assert
+    statements:
+      - 'is_set({{doc_a}})'
+      - 'is_set({{doc_b}})'
+      - 'is_set({{doc_c}})'
+
+  - name: Sync so Bob can see what Alice created
+    type: wait_for_sync
+    nodes: [calimero-node-1, calimero-node-2]
+    context_id: '{{docs_ctx}}'
+    timeout: 30
+
+  - name: Bob lists docs — sees all three
+    type: call
+    node: calimero-node-2
+    context_id: '{{docs_ctx}}'
+    method: list_docs
+    executor_public_key: '{{bob_key}}'
+    args:
+      include_archived: false
+
+  # =================================================================
+  # Phase E: get_doc — detailed reads, cross-node
+  # =================================================================
+
+  - name: Alice reads doc_a
+    type: call
+    node: calimero-node-1
+    context_id: '{{docs_ctx}}'
+    method: get_doc
+    executor_public_key: '{{alice_key}}'
+    args:
+      id: '{{doc_a}}'
+    outputs:
+      doc_a_read: result.output
+
+  - name: Assert the read returned something
+    type: assert
+    statements:
+      - 'is_set({{doc_a_read}})'
+
+  - name: Bob also reads doc_a (cross-node)
+    type: call
+    node: calimero-node-2
+    context_id: '{{docs_ctx}}'
+    method: get_doc
+    executor_public_key: '{{bob_key}}'
+    args:
+      id: '{{doc_a}}'
+
+  - name: Reject get_doc on unknown id
+    type: call
+    node: calimero-node-1
+    context_id: '{{docs_ctx}}'
+    method: get_doc
+    executor_public_key: '{{alice_key}}'
+    args:
+      id: '00000000000000000000000000000000'
+    expected_failure: true
+
+  # =================================================================
+  # Phase F: edit_doc — title-only, content-only, both-together
+  # =================================================================
+
+  - name: Alice renames doc_a (title only, content null)
+    type: call
+    node: calimero-node-1
+    context_id: '{{docs_ctx}}'
+    method: edit_doc
+    executor_public_key: '{{alice_key}}'
+    args:
+      id: '{{doc_a}}'
+      title: 'Meeting notes (renamed)'
+      content: null
+
+  - name: Alice edits doc_a content (title null, content set)
+    type: call
+    node: calimero-node-1
+    context_id: '{{docs_ctx}}'
+    method: edit_doc
+    executor_public_key: '{{alice_key}}'
+    args:
+      id: '{{doc_a}}'
+      title: null
+      content: '<p>Revised draft with more detail</p>'
+
+  - name: Alice edits doc_b title and content together
+    type: call
+    node: calimero-node-1
+    context_id: '{{docs_ctx}}'
+    method: edit_doc
+    executor_public_key: '{{alice_key}}'
+    args:
+      id: '{{doc_b}}'
+      title: 'Groceries'
+      content: '<ul><li>Milk</li><li>Bread</li></ul>'
+
+  - name: Sync edits across nodes
+    type: wait_for_sync
+    nodes: [calimero-node-1, calimero-node-2]
+    context_id: '{{docs_ctx}}'
+    timeout: 30
+
+  - name: Bob reads the renamed doc_a
+    type: call
+    node: calimero-node-2
+    context_id: '{{docs_ctx}}'
+    method: get_doc
+    executor_public_key: '{{bob_key}}'
+    args:
+      id: '{{doc_a}}'
+
+  - name: Reject edit_doc on unknown id
+    type: call
+    node: calimero-node-1
+    context_id: '{{docs_ctx}}'
+    method: edit_doc
+    executor_public_key: '{{alice_key}}'
+    args:
+      id: '00000000000000000000000000000000'
+      title: 'Ghost'
+      content: null
+    expected_failure: true
+
+  # =================================================================
+  # Phase G: Tags — add_tag / remove_tag
+  # =================================================================
+
+  - name: Alice adds "important" tag to doc_a
+    type: call
+    node: calimero-node-1
+    context_id: '{{docs_ctx}}'
+    method: add_tag
+    executor_public_key: '{{alice_key}}'
+    args:
+      id: '{{doc_a}}'
+      tag: important
+
+  - name: Alice adds "meeting" tag to doc_a (multiple tags)
+    type: call
+    node: calimero-node-1
+    context_id: '{{docs_ctx}}'
+    method: add_tag
+    executor_public_key: '{{alice_key}}'
+    args:
+      id: '{{doc_a}}'
+      tag: meeting
+
+  - name: Alice removes "meeting" tag from doc_a
+    type: call
+    node: calimero-node-1
+    context_id: '{{docs_ctx}}'
+    method: remove_tag
+    executor_public_key: '{{alice_key}}'
+    args:
+      id: '{{doc_a}}'
+      tag: meeting
+
+  - name: Reject add_tag with empty tag
+    type: call
+    node: calimero-node-1
+    context_id: '{{docs_ctx}}'
+    method: add_tag
+    executor_public_key: '{{alice_key}}'
+    args:
+      id: '{{doc_a}}'
+      tag: ''
+    expected_failure: true
+
+  - name: Reject add_tag on unknown doc
+    type: call
+    node: calimero-node-1
+    context_id: '{{docs_ctx}}'
+    method: add_tag
+    executor_public_key: '{{alice_key}}'
+    args:
+      id: '00000000000000000000000000000000'
+      tag: anything
+    expected_failure: true
+
+  # remove_tag is intentionally tolerant: the backend `tags.retain(...)`
+  # is a no-op when the tag isn't present (see docs/src/lib.rs:323-335).
+  # Asserting success here documents that contract — the app's
+  # useDocs.removeTag wrapper relies on it so repeated remove taps on an
+  # already-removed tag don't surface an error toast.
+  - name: remove_tag for a tag not present is a success no-op
+    type: call
+    node: calimero-node-1
+    context_id: '{{docs_ctx}}'
+    method: remove_tag
+    executor_public_key: '{{alice_key}}'
+    args:
+      id: '{{doc_a}}'
+      tag: 'never-added'
+
+  # =================================================================
+  # Phase H: Archive flow
+  # =================================================================
+
+  - name: Alice archives doc_c
+    type: call
+    node: calimero-node-1
+    context_id: '{{docs_ctx}}'
+    method: archive_doc
+    executor_public_key: '{{alice_key}}'
+    args:
+      id: '{{doc_c}}'
+
+  - name: Sync so Bob sees the archive
+    type: wait_for_sync
+    nodes: [calimero-node-1, calimero-node-2]
+    context_id: '{{docs_ctx}}'
+    timeout: 30
+
+  - name: list_docs without include_archived — archived doc_c hidden
+    type: call
+    node: calimero-node-2
+    context_id: '{{docs_ctx}}'
+    method: list_docs
+    executor_public_key: '{{bob_key}}'
+    args:
+      include_archived: false
+
+  - name: list_docs with include_archived — archived doc_c visible
+    type: call
+    node: calimero-node-2
+    context_id: '{{docs_ctx}}'
+    method: list_docs
+    executor_public_key: '{{bob_key}}'
+    args:
+      include_archived: true
+
+  - name: Alice unarchives doc_c
+    type: call
+    node: calimero-node-1
+    context_id: '{{docs_ctx}}'
+    method: unarchive_doc
+    executor_public_key: '{{alice_key}}'
+    args:
+      id: '{{doc_c}}'
+
+  - name: Sync unarchive
+    type: wait_for_sync
+    nodes: [calimero-node-1, calimero-node-2]
+    context_id: '{{docs_ctx}}'
+    timeout: 30
+
+  - name: list_docs without include_archived — doc_c visible again
+    type: call
+    node: calimero-node-2
+    context_id: '{{docs_ctx}}'
+    method: list_docs
+    executor_public_key: '{{bob_key}}'
+    args:
+      include_archived: false
+
+  - name: Reject archive_doc on unknown id
+    type: call
+    node: calimero-node-1
+    context_id: '{{docs_ctx}}'
+    method: archive_doc
+    executor_public_key: '{{alice_key}}'
+    args:
+      id: '00000000000000000000000000000000'
+    expected_failure: true
+
+  # =================================================================
+  # Phase I: delete_doc
+  # =================================================================
+
+  - name: Alice deletes doc_b
+    type: call
+    node: calimero-node-1
+    context_id: '{{docs_ctx}}'
+    method: delete_doc
+    executor_public_key: '{{alice_key}}'
+    args:
+      id: '{{doc_b}}'
+
+  - name: Sync the delete
+    type: wait_for_sync
+    nodes: [calimero-node-1, calimero-node-2]
+    context_id: '{{docs_ctx}}'
+    timeout: 30
+
+  - name: Bob can't find doc_b anymore (deleted)
+    type: call
+    node: calimero-node-2
+    context_id: '{{docs_ctx}}'
+    method: get_doc
+    executor_public_key: '{{bob_key}}'
+    args:
+      id: '{{doc_b}}'
+    expected_failure: true
+
+  - name: Reject delete_doc on already-deleted id
+    type: call
+    node: calimero-node-1
+    context_id: '{{docs_ctx}}'
+    method: delete_doc
+    executor_public_key: '{{alice_key}}'
+    args:
+      id: '{{doc_b}}'
+    expected_failure: true
+
+  - name: Final list_docs — only doc_a + doc_c remain
+    type: call
+    node: calimero-node-2
+    context_id: '{{docs_ctx}}'
+    method: list_docs
+    executor_public_key: '{{bob_key}}'
+    args:
+      include_archived: false
+
+  # =================================================================
+  # Phase J: Cross-node write — Bob edits, Alice sees
+  # =================================================================
+
+  - name: Bob edits doc_a content
+    type: call
+    node: calimero-node-2
+    context_id: '{{docs_ctx}}'
+    method: edit_doc
+    executor_public_key: '{{bob_key}}'
+    args:
+      id: '{{doc_a}}'
+      title: null
+      content: '<p>Bob was here</p>'
+
+  - name: Sync Bob's edit back to Alice
+    type: wait_for_sync
+    nodes: [calimero-node-1, calimero-node-2]
+    context_id: '{{docs_ctx}}'
+    timeout: 30
+
+  - name: Alice reads Bob's edit
+    type: call
+    node: calimero-node-1
+    context_id: '{{docs_ctx}}'
+    method: get_doc
+    executor_public_key: '{{alice_key}}'
+    args:
+      id: '{{doc_a}}'
+
+# Leave containers up for the CI log-watcher / retry loop. The outer
+# shell in .github/workflows/ci.yml calls `merobox nuke --force` on
+# attempt boundaries; merobox shouldn't stop nodes on workflow success.
+stop_all_nodes: false

@@ -1,0 +1,250 @@
+import { useCallback, useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { useSubscription } from "@calimero-network/mero-react";
+import { useMeroMeet } from "../hooks/useMeroMeet";
+import { useRoomInvite } from "../hooks/useRoomInvite";
+import { useCall } from "../call/CallContext";
+import { getExecutorPublicKey, setRoomName, getUsername, setUsername } from "../lib/session";
+import ThemeToggle from "../components/ThemeToggle";
+import type { LobbyView, Presence } from "../types";
+import styles from "./LobbyPage.module.css";
+
+// Fast presence: 3s heartbeats against the contract's 10s online TTL keep the
+// available/away status near-live; 2s refreshes keep the list honest.
+const REFRESH_MS = 2000;
+const HEARTBEAT_MS = 3_000;
+
+/**
+ * The lobby = the room directory. Shows everyone who's in this Calimero room
+ * (presence), who's online, and who is already in a call — then lets you join.
+ * "Finding people" is exactly this presence list.
+ */
+export default function LobbyPage() {
+  const meet = useMeroMeet();
+  const navigate = useNavigate();
+  const call = useCall();
+  const selfId = getExecutorPublicKey() ?? "";
+
+  const [lobby, setLobby] = useState<LobbyView | null>(null);
+  const [username, setUsernameInput] = useState(getUsername());
+  const [joined, setJoined] = useState(false);
+  const [nameError, setNameError] = useState(false);
+  const invite = useRoomInvite(lobby?.room.name);
+
+  const refresh = useCallback(async () => {
+    const view = await meet.getLobby();
+    if (view) {
+      setLobby(view);
+      // Cache the room's name so the Rooms picker shows it (not a raw id).
+      if (meet.contextId && view.room.name) setRoomName(meet.contextId, view.room.name);
+    }
+  }, [meet]);
+
+  // Initial join + presence refresh loop + heartbeat.
+  useEffect(() => {
+    void refresh();
+    const r = setInterval(() => void refresh(), REFRESH_MS);
+    const hb = setInterval(() => {
+      if (joined) void meet.heartbeat();
+    }, HEARTBEAT_MS);
+    return () => {
+      clearInterval(r);
+      clearInterval(hb);
+    };
+  }, [refresh, meet, joined]);
+
+  // Re-register presence on a refresh: if we already have a saved name, rejoin
+  // silently so the room shows us as present without re-typing (fixes "on
+  // refresh I lose things").
+  useEffect(() => {
+    const saved = getUsername();
+    if (saved && !joined) {
+      void meet.join(saved).then(() => {
+        setJoined(true);
+        void refresh();
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Live updates when others change presence.
+  const onEvent = useCallback(() => void refresh(), [refresh]);
+  useSubscription(meet.contextId ? [meet.contextId] : [], onEvent);
+
+  // A real display name is REQUIRED — no more silent "Guest" fallback. Peers
+  // identify each other by these names in the call grid and the chat.
+  const requireName = (): string | null => {
+    const name = username.trim();
+    if (!name) {
+      setNameError(true);
+      return null;
+    }
+    setNameError(false);
+    setUsername(name);
+    return name;
+  };
+
+  const handleJoin = async () => {
+    const name = requireName();
+    if (!name) return;
+    await meet.join(name);
+    setJoined(true);
+    await refresh();
+  };
+
+  const enterCall = async () => {
+    const name = requireName();
+    if (!name) return;
+    if (!joined) await meet.join(name);
+    call.start();
+    navigate("/call");
+  };
+
+  const online = new Set(lobby?.online ?? []);
+  const members: Presence[] = lobby?.members ?? [];
+  const activeCall = lobby?.room.activeCall || "";
+  // "In call" = presence points at the CURRENTLY active call (the roster is
+  // derived this way contract-side too — a row still carrying a dead call id
+  // is not in a call) AND the member is fresh (in the online TTL set), so an
+  // ungraceful exit stops counting once their heartbeat goes stale.
+  const inCall = members.filter(
+    (m) =>
+      m.callId &&
+      m.callId === activeCall &&
+      (m.memberId === selfId || online.has(m.memberId)),
+  );
+  // The call is active only if someone fresh is actually in it — not merely
+  // because the active_call register still holds a stale id from an ungraceful
+  // exit. This makes the room fall back to "Start call" (a fresh session) once
+  // everyone has really left.
+  const callActive = inCall.length > 0;
+  // Count online with the same self-override the rows use, so the header never
+  // says "0 online" while you're sitting in the room.
+  const onlineCount = members.filter((m) => m.memberId === selfId || online.has(m.memberId)).length;
+  // Calls require a display name (already joined counts — the name is known).
+  const canCall = joined || username.trim().length > 0;
+
+  return (
+    <div className={styles.page}>
+      <header className={styles.header}>
+        <div>
+          <button className={styles.switchBtn} onClick={() => navigate("/rooms")}>
+            ← All rooms
+          </button>
+          <h1 className={styles.roomName}>{lobby?.room.name || "Room"}</h1>
+          <p className={styles.roomMeta}>
+            {onlineCount} online · {Math.max(lobby?.room.memberCount ?? 0, members.length)} members
+            {callActive && <span className={styles.liveDot}> · call in progress</span>}
+          </p>
+        </div>
+        <div className={styles.headerActions}>
+          <ThemeToggle />
+          <button className={styles.inviteBtn} onClick={() => void invite.generate()} disabled={invite.inviting}>
+            {invite.inviting ? "Inviting…" : "Invite"}
+          </button>
+          <button
+            className={styles.callBtn}
+            onClick={enterCall}
+            disabled={!canCall}
+            title={canCall ? undefined : "Enter your name below first"}
+          >
+            {callActive ? "Join call" : "Start call"}
+          </button>
+        </div>
+      </header>
+
+      {invite.code && (
+        <div className={styles.invitePanel}>
+          <div className={styles.inviteTop}>
+            <span className={styles.inviteTitle}>Invite to this room</span>
+            <button className={styles.copyBtn} onClick={invite.copy}>
+              {invite.copied ? "Copied ✓" : "Copy"}
+            </button>
+          </div>
+          <code className={styles.inviteCode}>{invite.code}</code>
+          <span className={styles.inviteHint}>
+            Share this code. They open Mero Meet → <strong>Join</strong> and paste it.
+          </span>
+        </div>
+      )}
+
+      {!joined && (
+        <div className={styles.joinBar}>
+          <input
+            className={styles.input}
+            placeholder="Your name (required)"
+            value={username}
+            onChange={(e) => {
+              setUsernameInput(e.target.value);
+              if (e.target.value.trim()) setNameError(false);
+            }}
+            onKeyDown={(e) => e.key === "Enter" && handleJoin()}
+            maxLength={40}
+            aria-invalid={nameError}
+            style={nameError ? { borderColor: "var(--danger, #e5484d)" } : undefined}
+          />
+          <button className={styles.joinBtn} onClick={handleJoin}>
+            Enter room
+          </button>
+          {nameError && (
+            <span role="alert" style={{ color: "var(--danger, #e5484d)", fontSize: 13 }}>
+              Please enter your name first
+            </span>
+          )}
+        </div>
+      )}
+
+      {callActive && (
+        <section className={styles.callBanner}>
+          <span className={styles.pulse} />
+          <span>
+            {inCall.length} {inCall.length === 1 ? "person is" : "people are"} in a call
+          </span>
+          <button
+            className={styles.bannerJoin}
+            onClick={enterCall}
+            disabled={!canCall}
+            title={canCall ? undefined : "Enter your name first"}
+          >
+            Join
+          </button>
+        </section>
+      )}
+
+      <section className={styles.list}>
+        <h2 className={styles.listTitle}>People</h2>
+        {members.length === 0 && <p className={styles.empty}>No one here yet. Be the first.</p>}
+        {members.map((m) => {
+          const isSelf = m.memberId === selfId;
+          // You're looking at the app right now, so always show yourself online —
+          // don't wait on the presence-TTL heartbeat to mark self online.
+          const isOnline = isSelf || online.has(m.memberId);
+          return (
+            <div key={m.memberId} className={styles.row}>
+              <span className={`${styles.status} ${isOnline ? styles.on : styles.off}`} />
+              <span className={styles.avatar}>{m.username.slice(0, 2).toUpperCase()}</span>
+              <div className={styles.who}>
+                <span className={styles.name}>
+                  {m.username}
+                  {isSelf && <span className={styles.youTag}> you</span>}
+                </span>
+                <span className={styles.sub}>
+                  {/* "in call" only for live members pointing at the ACTIVE
+                      call — a stale row or a dead call id must read away/
+                      available, never "in call" forever. */}
+                  {m.callId && m.callId === activeCall && isOnline
+                    ? "in call"
+                    : isOnline
+                      ? "available"
+                      : "away"}
+                  {m.muted && " · muted"}
+                  {!m.videoOn && " · camera off"}
+                </span>
+              </div>
+            </div>
+          );
+        })}
+      </section>
+    </div>
+  );
+}
