@@ -4,7 +4,10 @@ use calimero_sdk::abi::AbiType;
 use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use calimero_sdk::serde::{Deserialize, Serialize};
 use calimero_sdk::{app, env, AccountId};
-use calimero_storage::collections::UnorderedMap;
+use calimero_storage::address::Id;
+use calimero_storage::collections::crdt_meta::MergeError;
+use calimero_storage::collections::rekey::RekeyTarget;
+use calimero_storage::collections::{Mergeable as MergeableTrait, UnorderedMap};
 use thiserror::Error;
 
 #[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
@@ -14,7 +17,7 @@ pub struct SecretItem {
     pub id: String,
     pub name: String,
     pub secret_type: String, // "login", "secure_note", "totp", "ssh_key", "payment_card"
-    pub data: String, // JSON serialized secret data
+    pub data: String,        // JSON serialized secret data
     pub tags: Vec<String>,
     pub created_at: u64,
     pub updated_at: u64,
@@ -23,6 +26,39 @@ pub struct SecretItem {
 }
 
 // Removed Vault: a Calimero context IS a vault.
+
+/// A vault entry is replicated state, so it has to say how two divergent copies
+/// reconcile — `UnorderedMap<_, SecretItem>` is rejected outright otherwise
+/// ("cannot be stored in replicated state — it is not a CRDT").
+///
+/// Last-writer-wins, but over a **total order**, not just `version`. Two members
+/// editing the same secret while partitioned both go 1 → 2, so `version` alone
+/// ties; `updated_at` usually breaks it, and can itself tie on a fast edit or a
+/// skewed clock. A merge that resolved a tie by "take other" would pick a
+/// different winner depending on which side merged first, and the replicas would
+/// silently disagree forever. Comparing the whole tuple makes the result a `max`
+/// over a totally ordered set, which is commutative, associative and idempotent —
+/// the actual requirement.
+///
+/// The losing edit IS discarded. That is the honest semantics for a password
+/// field: there is no meaningful way to merge two different passwords, and
+/// showing one of them is better than showing a splice of both.
+impl MergeableTrait for SecretItem {
+    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        let mine = (self.version, self.updated_at, &self.name, &self.data);
+        let theirs = (other.version, other.updated_at, &other.name, &other.data);
+        if theirs > mine {
+            *self = other.clone();
+        }
+        Ok(())
+    }
+}
+
+// Flat record, no nested collections, so re-keying is a no-op — but the
+// `Mergeable: RekeyTarget` supertrait bound still requires the impl.
+impl RekeyTarget for SecretItem {
+    fn rekey_relative_to(&mut self, _parent_id: Id) {}
+}
 
 #[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
 #[borsh(crate = "calimero_sdk::borsh")]
@@ -33,6 +69,20 @@ pub struct AuditLogEntry {
     pub details: String,
     pub user_public_key: String,
     pub timestamp: u64,
+}
+
+/// An audit entry is written once and never edited, and every entry is keyed by
+/// 16 random bytes, so two entries never contend for the same key. If one ever
+/// did, the copy already present wins: an audit trail that a later write can
+/// rewrite is not an audit trail.
+impl MergeableTrait for AuditLogEntry {
+    fn merge(&mut self, _other: &Self) -> Result<(), MergeError> {
+        Ok(())
+    }
+}
+
+impl RekeyTarget for AuditLogEntry {
+    fn rekey_relative_to(&mut self, _parent_id: Id) {}
 }
 
 #[derive(Error, Debug)]
@@ -104,13 +154,18 @@ impl MeroPassApp {
         }
     }
 
-
-    pub fn add_secret(&mut self, name: String, secret_type: String, data: String, tags: Vec<String>) -> app::Result<String> {
+    pub fn add_secret(
+        &mut self,
+        name: String,
+        secret_type: String,
+        data: String,
+        tags: Vec<String>,
+    ) -> app::Result<String> {
         app::log!("Adding secret: {} of type: {}", name, secret_type);
-        
+
         let secret_id = Self::fresh_id("secret");
         let author = Self::caller_id();
-        
+
         let secret = SecretItem {
             id: secret_id.clone(),
             name: name.clone(),
@@ -124,12 +179,12 @@ impl MeroPassApp {
         };
 
         self.secrets.insert(secret_id.clone(), secret)?;
-        
+
         app::emit!(Event::SecretAdded {
             secret_id: &secret_id,
             name: &name,
         });
-        
+
         self.log_audit_event(
             &secret_id,
             "secret_added",
@@ -145,8 +200,13 @@ impl MeroPassApp {
         data: String,
         tags: Vec<String>,
     ) -> app::Result<()> {
-        let secret = self.secrets.get(&secret_id)?.ok_or(AppError::SecretNotFound)?;
-        let mut updated = secret;
+        let secret = self
+            .secrets
+            .get(&secret_id)?
+            .ok_or(AppError::SecretNotFound)?;
+        // `UnorderedMap::get` hands back a `ValueRef`, not the value: field reads
+        // go through Deref, but an owned record is needed to edit and re-insert.
+        let mut updated = (*secret).clone();
         updated.name = name.clone();
         updated.data = data;
         updated.tags = tags.clone();
@@ -162,7 +222,10 @@ impl MeroPassApp {
     }
 
     pub fn delete_secret(&mut self, secret_id: String) -> app::Result<()> {
-        let secret = self.secrets.get(&secret_id)?.ok_or(AppError::SecretNotFound)?;
+        let secret = self
+            .secrets
+            .get(&secret_id)?
+            .ok_or(AppError::SecretNotFound)?;
         self.secrets.remove(&secret_id)?;
         self.log_audit_event(
             &secret_id,
@@ -173,7 +236,8 @@ impl MeroPassApp {
     }
 
     pub fn get_secret(&self, secret_id: String) -> app::Result<Option<SecretItem>> {
-        Ok(self.secrets.get(&secret_id)?)
+        // Deref out of the `ValueRef` — the RPC surface returns owned values.
+        Ok(self.secrets.get(&secret_id)?.map(|s| (*s).clone()))
     }
 
     pub fn list_secrets(&self) -> app::Result<Vec<SecretItem>> {
@@ -185,7 +249,7 @@ impl MeroPassApp {
         let query_lower = query.to_lowercase();
         let results: Vec<SecretItem> = self
             .secrets
-            .entries()? 
+            .entries()?
             .map(|(_, secret)| secret)
             .filter(|secret| {
                 secret.name.to_lowercase().contains(&query_lower)
@@ -201,7 +265,7 @@ impl MeroPassApp {
     pub fn get_secrets_by_tag(&self, tag: String) -> app::Result<Vec<SecretItem>> {
         let results: Vec<SecretItem> = self
             .secrets
-            .entries()? 
+            .entries()?
             .map(|(_, secret)| secret)
             .filter(|secret| secret.tags.iter().any(|t| t == &tag))
             .collect();
@@ -294,7 +358,10 @@ mod tests {
         let a = add(&mut app, "First", &[]);
         let b = add(&mut app, "Second", &[]);
 
-        assert_ne!(a, b, "ids collided — one secret would have overwritten the other");
+        assert_ne!(
+            a, b,
+            "ids collided — one secret would have overwritten the other"
+        );
         assert_eq!(app.view(|s| s.list_secrets()).unwrap().len(), 2);
     }
 
@@ -302,7 +369,11 @@ mod tests {
     fn update_secret_bumps_the_version_and_keeps_the_author() {
         let mut app = new_vault();
         let id = add(&mut app, "GitHub", &["dev"]);
-        let author = app.view(|s| s.get_secret(id.clone())).unwrap().unwrap().created_by;
+        let author = app
+            .view(|s| s.get_secret(id.clone()))
+            .unwrap()
+            .unwrap()
+            .created_by;
 
         app.call(|s| {
             s.update_secret(
@@ -318,7 +389,10 @@ mod tests {
         assert_eq!(got.name, "GitHub (work)");
         assert_eq!(got.tags, vec!["work".to_owned()]);
         assert_eq!(got.version, 2);
-        assert_eq!(got.created_by, author, "an edit must not reassign authorship");
+        assert_eq!(
+            got.created_by, author,
+            "an edit must not reassign authorship"
+        );
     }
 
     #[test]
@@ -370,7 +444,9 @@ mod tests {
         add(&mut app, "GitHub", &["dev"]);
         add(&mut app, "Bank", &["development"]);
 
-        let hits = app.view(|s| s.get_secrets_by_tag("dev".to_owned())).unwrap();
+        let hits = app
+            .view(|s| s.get_secrets_by_tag("dev".to_owned()))
+            .unwrap();
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].name, "GitHub", "`dev` must not match `development`");
     }
@@ -402,7 +478,12 @@ mod tests {
         let mine = add(&mut app, "Mine", &[]);
         let theirs = app
             .call_as_account(OTHER_ACCOUNT, OTHER_DEVICE, |s| {
-                s.add_secret("Theirs".to_owned(), "login".to_owned(), "{}".to_owned(), vec![])
+                s.add_secret(
+                    "Theirs".to_owned(),
+                    "login".to_owned(),
+                    "{}".to_owned(),
+                    vec![],
+                )
             })
             .unwrap();
 
@@ -441,7 +522,10 @@ mod tests {
 
         // get_audit_logs sorts descending, so timestamps must be non-increasing.
         for pair in logs.windows(2) {
-            assert!(pair[0].timestamp >= pair[1].timestamp, "audit log is not newest-first");
+            assert!(
+                pair[0].timestamp >= pair[1].timestamp,
+                "audit log is not newest-first"
+            );
         }
     }
 
@@ -453,6 +537,10 @@ mod tests {
 
         // Two adds, two audit entries — they were keyed by the millisecond too.
         let logs = app.view(|s| s.get_audit_logs()).unwrap();
-        assert_eq!(logs.len(), 2, "an audit entry was overwritten by a same-ms sibling");
+        assert_eq!(
+            logs.len(),
+            2,
+            "an audit entry was overwritten by a same-ms sibling"
+        );
     }
 }
