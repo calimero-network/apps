@@ -86,9 +86,17 @@ steps:
     node: app-node-1
     context_id: '{{issue_tracker_ctx}}'
     method: create_issue
+    # ⚠️ These five text fields are all REQUIRED and none may be renamed. This
+    # step sent `description` and omitted impact/repro/resolution_criteria, so
+    # the call panicked in the guest with `unknown field \`description\``. The
+    # scenario had drifted behind the contract while parked in probes/ — which
+    # is the argument for gating it rather than keeping it as a manual runbook.
     args:
       title: "Login button broken"
-      description: "Clicking login does nothing on Safari"
+      summary: "Clicking login does nothing on Safari"
+      impact: "Safari users cannot sign in at all"
+      repro: "Open the app in Safari 17, click Login, observe no navigation"
+      resolution_criteria: "Clicking Login starts the auth flow in Safari"
       priority: "high"
       labels: ["bug"]
     outputs:
@@ -144,7 +152,7 @@ steps:
     args:
       issue_id: '{{issue_id}}'
     outputs:
-      issue_after_status: result.output.0
+      issue_after_status: result.output.issue
 
   - type: json_assert
     name: set_status moved the issue to In progress
@@ -177,7 +185,7 @@ steps:
     args:
       issue_id: '{{issue_id}}'
     outputs:
-      issue_after_priority: result.output.0
+      issue_after_priority: result.output.issue
 
   - type: json_assert
     name: set_priority updated the priority to urgent
@@ -210,7 +218,7 @@ steps:
     args:
       issue_id: '{{issue_id}}'
     outputs:
-      issue_after_assignee: result.output.0
+      issue_after_assignee: result.output.issue
 
   - type: json_assert
     name: set_assignee set the assignee to alice
@@ -282,7 +290,7 @@ steps:
     args:
       issue_id: '{{issue_id}}'
     outputs:
-      comment_0: result.output.1.0
+      comment_0: result.output.comments.0
 
   - type: json_assert
     name: add_comment produced a visible comment on node-2
@@ -348,7 +356,7 @@ steps:
     args:
       issue_id: '{{issue_id}}'
     outputs:
-      comment_edited: result.output.1.0
+      comment_edited: result.output.comments.0
 
   - type: json_assert
     name: edit_comment updated the comment body
@@ -380,7 +388,7 @@ steps:
     args:
       issue_id: '{{issue_id}}'
     outputs:
-      thread_after_delete: result.output.1
+      thread_after_delete: result.output.comments
 
   - type: json_assert
     name: delete_comment emptied the issue's comment thread
