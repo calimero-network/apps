@@ -160,8 +160,8 @@ pub struct MatchRecord {
 /// key are both 64 hex and nothing objects to the wrong one.
 ///
 /// (`UserStorage` is the exception and IS account-keyed since rc.21 — see
-/// `caller_account` in the game crate. A private board belongs to the person; a
-/// the context member.)
+/// `caller_account` in the game crate. A private board belongs to the PERSON; a
+/// player id identifies the context member. Both are true at once.)
 fn from_executor_id() -> Result<PublicKey, GameError> {
     let v = calimero_sdk::env::device_id();
     if v.len() != 32 {
