@@ -1,3 +1,27 @@
+# merobox scenarios — parked on RUNTIME, no longer on the bundle
+
+⚠️ **The blocker this file was written about is gone.** `ci.yml`'s `e2e` job now
+downloads the `mpk-<app>-<sha>` artifact and names it `dist/<package-id>.mpk`,
+which is exactly the path these scenarios install from. A bundle-installing
+scenario is runnable under CI as of that change — proved by
+`mero-issue-tracker/logic/workflows/smoke.yml` and
+`p2p-sheets/logic/workflows/spec-smoke.yml`, which moved up out of their own
+`probes/` in the same PR.
+
+These eleven stayed down here for a **different** reason: the e2e job runs every
+`workflows/*.yml` match sequentially in ONE job, with up to 3 attempts each, and
+eleven two-node scenarios would not fit the timeout. Un-parking them is a
+follow-up that needs the scenarios triaged first — pick the handful that gate
+real behaviour, and leave the rest deliberate. One of them
+(`comments-migration`) additionally installs TWO differently-versioned bundles
+(9.3.0 and 9.4.0) that CI does not build at all, so that one cannot be gated as
+written.
+
+The original explanation follows, kept because the `service_name` reasoning is
+still exactly right.
+
+---
+
 # merobox scenarios — manual, not gated by CI
 
 All eleven scenarios here install a **signed `.mpk` bundle**:
