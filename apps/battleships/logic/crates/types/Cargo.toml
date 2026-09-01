@@ -12,6 +12,7 @@ repository.workspace = true
 # means this crate needs the SDK it previously did without.
 calimero-sdk = { workspace = true }
 thiserror = { workspace = true }
-bs58      = { workspace = true }
+# `hex`, not `bs58`: core rc.27 removed base58 from ids entirely.
+hex                     = { workspace = true }
 borsh     = { workspace = true, features = ["derive"] }
 serde     = { version = "1.0", features = ["derive"] }

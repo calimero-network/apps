@@ -130,8 +130,8 @@ impl GameState {
         lobby_context_id: Option<String>,
         match_id: String,
     ) -> GameState {
-        let pk1 = PublicKey::from_base58(&player1).ok();
-        let pk2 = PublicKey::from_base58(&player2).ok();
+        let pk1 = PublicKey::from_hex(&player1).ok();
+        let pk2 = PublicKey::from_hex(&player2).ok();
         // Game context echoes the lobby-issued match_id verbatim so the
         // on_match_finished xcall lands on the lobby's matches map directly,
         // no context-id reverse scan needed.
@@ -227,10 +227,10 @@ impl GameState {
         }
 
         let commitment_hex = hex_encode(&commitment);
-        let caller_b58 = caller.to_base58();
+        let caller_hex = caller.to_hex();
         app::emit!(Event::BoardCommitted {
             id: match_id,
-            player: &caller_b58,
+            player: &caller_hex,
             commitment: &commitment_hex,
         });
         app::emit!(Event::ShipsPlaced { id: match_id });
@@ -376,7 +376,7 @@ impl GameState {
             .map_err(|e| AppError::msg(format!("shots.insert: {e}")))?;
         self.pending.set(None);
 
-        let caller_b58 = caller.to_base58();
+        let caller_hex = caller.to_hex();
         let result_str = if is_hit { "hit" } else { "miss" };
 
         if ships_remaining == 0 {
@@ -406,7 +406,7 @@ impl GameState {
             if audit_ok {
                 app::emit!(Event::AuditPassed {
                     id: match_id,
-                    player: &caller_b58,
+                    player: &caller_hex,
                 });
             } else {
                 let reason = if !commitment_ok {
@@ -416,7 +416,7 @@ impl GameState {
                 };
                 app::emit!(Event::AuditFailed {
                     id: match_id,
-                    player: &caller_b58,
+                    player: &caller_hex,
                     reason,
                 });
             }
@@ -432,17 +432,17 @@ impl GameState {
 
             // xcall lobby with match-finished.
             if let Some(lobby_ctx) = self.lobby_context_id.get().as_ref() {
-                if let Ok(lobby_bytes) = bs58::decode(lobby_ctx).into_vec() {
+                if let Ok(lobby_bytes) = hex::decode(lobby_ctx) {
                     if let Ok(ctx_arr) = <[u8; 32]>::try_from(lobby_bytes.as_slice()) {
-                        let winner_b58 = pending.shooter.to_base58();
-                        let loser_b58 = caller.to_base58();
+                        let winner_hex = pending.shooter.to_hex();
+                        let loser_hex = caller.to_hex();
                         // The lobby-issued match_id was passed into init() and
                         // stored verbatim, so we echo it back here for an O(1)
                         // map lookup on the lobby side.
                         let params = calimero_sdk::serde_json::json!({
                             "match_id": match_id,
-                            "winner": winner_b58,
-                            "loser": loser_b58,
+                            "winner": winner_hex,
+                            "loser": loser_hex,
                         });
                         if let Ok(payload) = calimero_sdk::serde_json::to_vec(&params) {
                             calimero_sdk::env::xcall(&ctx_arr, "on_match_finished", &payload);
@@ -494,11 +494,11 @@ impl GameState {
         let own_cells = pb.pristine().to_vec();
         let board_bytes = calimero_sdk::borsh::to_vec(&own_cells)
             .map_err(|e| AppError::msg(format!("serialize board: {e}")))?;
-        let caller_b58 = caller.to_base58();
+        let caller_hex = caller.to_hex();
         if !audit::verify_commitment(&board_bytes, pb.salt(), &commitment_hash) {
             app::emit!(Event::AuditFailed {
                 id: match_id,
-                player: &caller_b58,
+                player: &caller_hex,
                 reason: "commitment_mismatch",
             });
             app::bail!(GameError::CommitmentMismatch);
@@ -513,18 +513,18 @@ impl GameState {
             let reason = failure.to_string();
             app::emit!(Event::AuditFailed {
                 id: match_id,
-                player: &caller_b58,
+                player: &caller_hex,
                 reason: &reason,
             });
             app::bail!(GameError::AuditFailed { reason });
         }
         app::emit!(Event::BoardRevealed {
             id: match_id,
-            player: &caller_b58,
+            player: &caller_hex,
         });
         app::emit!(Event::AuditPassed {
             id: match_id,
-            player: &caller_b58,
+            player: &caller_hex,
         });
         Ok(())
     }
@@ -645,11 +645,11 @@ impl GameState {
     }
 
     pub fn get_current_turn(&self) -> app::Result<Option<String>> {
-        Ok(self.turn.get().as_ref().map(|pk| pk.to_base58()))
+        Ok(self.turn.get().as_ref().map(|pk| pk.to_hex()))
     }
 
     pub fn get_current_user(&self) -> app::Result<String> {
-        Ok(from_executor_id()?.to_base58())
+        Ok(from_executor_id()?.to_hex())
     }
 
     #[allow(unused_variables)]
@@ -754,8 +754,8 @@ mod tests {
 
     #[test]
     fn init_stores_lobby_match_id_verbatim() {
-        let pk1 = PublicKey([1u8; 32]).to_base58();
-        let pk2 = PublicKey([2u8; 32]).to_base58();
+        let pk1 = PublicKey([1u8; 32]).to_hex();
+        let pk2 = PublicKey([2u8; 32]).to_hex();
         let lobby_match_id = format!("{pk1}-1700000000000-deadbeef");
         let state = GameState::init(
             pk1.clone(),
@@ -763,7 +763,7 @@ mod tests {
             Some("lobby".into()),
             lobby_match_id.clone(),
         );
-        assert_eq!(state.turn.get().as_ref().unwrap().to_base58(), pk1);
+        assert_eq!(state.turn.get().as_ref().unwrap().to_hex(), pk1);
         assert_eq!(
             state.match_id.get().as_deref(),
             Some(lobby_match_id.as_str())

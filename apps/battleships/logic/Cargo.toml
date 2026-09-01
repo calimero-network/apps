@@ -50,7 +50,8 @@ crate = "battleships-game"
 
 [dependencies]
 battleships-types       = { path = "crates/types" }
-bs58                    = { workspace = true }
+# `hex`, not `bs58`: core rc.27 removed base58 from ids entirely.
+hex                     = { workspace = true }
 # WAS `branch = "master"`, which rides unreleased protocol work against nodes
 # running a release and drifts silently between builds.
 calimero-sdk            = { workspace = true }

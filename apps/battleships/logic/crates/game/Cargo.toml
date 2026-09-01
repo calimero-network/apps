@@ -17,5 +17,6 @@ battleships-types       = { path = "../types" }
 calimero-sdk            = { workspace = true }
 calimero-storage        = { workspace = true }
 calimero-storage-macros = { workspace = true }
-bs58                    = { workspace = true }
+# `hex`, not `bs58`: core rc.27 removed base58 from ids entirely.
+hex                     = { workspace = true }
 sha2                    = { workspace = true }

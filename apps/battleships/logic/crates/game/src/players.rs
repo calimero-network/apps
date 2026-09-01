@@ -36,7 +36,7 @@
 //! use battleships_game::players::PublicKey;
 //!
 //! let key = PublicKey::from_executor_id()?;
-//! let encoded = key.to_base58();
+//! let encoded = key.to_hex();
 //! println!("Player key: {}", encoded);
 //! ```
 //!
