@@ -1,0 +1,136 @@
+.panel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 8;
+  width: 340px;
+  max-width: 86vw;
+  display: flex;
+  flex-direction: column;
+  background: var(--panel-bg);
+  border-left: 1px solid var(--border);
+  backdrop-filter: blur(18px);
+  box-shadow: -12px 0 40px rgba(0, 0, 0, 0.35);
+  animation: slideIn 0.18s ease;
+}
+@keyframes slideIn {
+  from { transform: translateX(100%); opacity: 0.6; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 16px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.title {
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: var(--text);
+}
+.close {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+.close:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+}
+.empty {
+  color: var(--text-faint);
+  font-size: 0.85rem;
+  text-align: center;
+  margin-top: 30px;
+}
+
+.msg {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  max-width: 84%;
+}
+.msg.mine {
+  align-self: flex-end;
+  align-items: flex-end;
+}
+.author {
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  margin: 0 0 3px 2px;
+  font-weight: 600;
+}
+.bubble {
+  padding: 8px 12px;
+  border-radius: 14px;
+  background: var(--surface-strong);
+  color: var(--text);
+  font-size: 0.9rem;
+  line-height: 1.35;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+.mine .bubble {
+  background: var(--accent);
+  color: #fff;
+}
+.time {
+  font-size: 0.66rem;
+  color: var(--text-faint);
+  margin: 3px 4px 0;
+}
+
+.composer {
+  display: flex;
+  gap: 8px;
+  padding: 12px;
+  border-top: 1px solid var(--border);
+}
+.input {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.9rem;
+  outline: none;
+}
+.input:focus {
+  border-color: var(--accent);
+}
+.send {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  border-radius: 10px;
+  border: none;
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+}
+.send:disabled {
+  opacity: 0.45;
+  cursor: default;
+}

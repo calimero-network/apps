@@ -1,0 +1,85 @@
+.day {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  align-items: center;
+  border-right: 1px solid var(--mc-grid-line);
+  border-bottom: 1px solid var(--mc-grid-line);
+  height: 100%;
+
+  &:nth-of-type(7n + 1) {
+    border-left: 1px solid var(--mc-grid-line);
+  }
+
+  &__label {
+    margin-top: 3px;
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.3px;
+    text-align: center;
+    width: max-content;
+    min-width: 24px;
+    color: var(--mc-text);
+    line-height: 24px;
+    border-radius: 50%;
+    white-space: nowrap;
+    cursor: pointer;
+
+    &:hover {
+      background-color: var(--mc-hover);
+    }
+
+    &_additional {
+      color: var(--mc-text-dim);
+      opacity: 0.7;
+    }
+
+    &_active {
+      color: #fff;
+      background-color: var(--accent);
+
+      &:hover {
+        background-color: var(--accent-dim);
+      }
+    }
+  }
+
+  &__events {
+    width: 100%;
+    position: relative;
+    margin-top: 7px;
+
+    &::-webkit-scrollbar {
+      width: 0;
+    }
+
+    &:hover::-webkit-scrollbar {
+      width: 8px;
+    }
+  }
+
+  &__more__btn {
+    font-size: 12px;
+    height: 22px;
+    padding: 0 8px;
+    line-height: 20px;
+    border-radius: 4px;
+    overflow: hidden;
+    color: var(--mc-text);
+    background-color: inherit;
+    margin-bottom: 3px;
+    cursor: pointer;
+    text-align: start;
+    width: 98%;
+    outline: none;
+    border: none;
+    position: absolute;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 500;
+
+    &:hover {
+      background-color: var(--mc-hover);
+    }
+  }
+}

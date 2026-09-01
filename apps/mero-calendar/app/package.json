@@ -1,0 +1,50 @@
+{
+  "name": "mero-calendar",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Mero Calendar — shared p2p team calendars on Calimero",
+  "type": "module",
+  "dependencies": {
+    "@calimero-network/mero-js": "catalog:",
+    "@calimero-network/mero-platform": "catalog:",
+    "@calimero-network/mero-react": "catalog:",
+    "@calimero-network/mero-ui": "catalog:",
+    "@reduxjs/toolkit": "^1.8.3",
+    "axios": "^1.12.0",
+    "bs58": "catalog:",
+    "classnames": "^2.3.1",
+    "fflate": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "react-redux": "^8.0.2",
+    "react-router-dom": "^7.15.1",
+    "react-toastify": "^11.0.5",
+    "redux": "^5.0.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "catalog:",
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.3.0",
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@vitejs/plugin-react": "catalog:",
+    "jsdom": "catalog:",
+    "sass": "^1.43.4",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vite-plugin-node-polyfills": "^0.21.0",
+    "vitest": "catalog:"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -b",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "e2e": "playwright test --project=mocked",
+    "e2e:ui": "playwright test --ui --project=mocked",
+    "e2e:integration": "playwright test --project=integration"
+  }
+}

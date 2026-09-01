@@ -1,0 +1,35 @@
+{
+  "name": "mero-blocks",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@9.15.9",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "e2e": "playwright test --project=mocked",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@calimero-network/mero-js": "catalog:",
+    "@calimero-network/mero-platform": "catalog:",
+    "@calimero-network/mero-react": "catalog:",
+    "bs58": "catalog:",
+    "fflate": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "three": "^0.185.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "catalog:",
+    "@types/node": "^26.1.2",
+    "@types/three": "^0.185.4",
+    "jsdom": "catalog:",
+    "typescript": "~7.0.2",
+    "vite": "^8.2.0",
+    "vitest": "catalog:"
+  }
+}

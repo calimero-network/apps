@@ -7,6 +7,11 @@
 # wasm is build output, so ignoring it is what keeps a local build from leaving
 # the tree dirty and a stray binary from being committed by `git add -A`.
 apps/*/logic/res/*.wasm
+# A multi-service app keeps its extra service crates in logic/crates/<name>/, and
+# `cargo mero bundle` writes each one's wasm into its own res/. The glob above is
+# non-recursive, so without this line those land untracked and `git add -A`
+# commits a binary. Their abi.json/state-schema.json ARE still committed.
+apps/*/logic/crates/*/res/*.wasm
 
 # Node
 node_modules/
@@ -44,3 +49,7 @@ blob-report/
 
 # tsc -b declaration output
 dist-types/
+
+# Python bytecode from scripts/ helpers.
+__pycache__/
+*.pyc

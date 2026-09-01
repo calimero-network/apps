@@ -1,0 +1,533 @@
+run_workflow: incoming log_level='debug'
+run_workflow: incoming rust_backtrace='0'
+WorkflowExecutor: resolved log_level='debug', binary_mode=False
+WorkflowExecutor: workflow_id='d0243b7d' (for test isolation)
+WorkflowExecutor: resolved rust_backtrace='0', binary_mode=False
+
+🚀 Executing Workflow: E2E KV Store - Group Lifecycle Tests
+
+💥 Nuking all data before workflow ...
+Found 2 Calimero node data directory(ies)
+✓ Found merod binary in PATH: /usr/local/bin/merod
+
+Deleting 2 data directory(ies)...
+✓ Successfully deleted 2 data directory(ies)
+Total space freed: 8.7 MB
+✓ Nuke on start completed
+
+Step 1: Checking workflow nodes (restart=false)...
+Will reuse existing nodes if they're running...
+
+Step 2: Managing nodes...
+Checking 2 nodes with prefix 'e2e-node' (no restart mode)...
+✓ Image ghcr.io/calimero-network/merod:0.10.1-rc.29 already available locally
+✓ Cleaned up existing container e2e-node-1-init
+Setting RUST_LOG for node e2e-node-1: debug
+Setting RUST_BACKTRACE for node e2e-node-1: 0
+Environment variables for e2e-node-1:
+  CALIMERO_HOME=/app/data
+  NODE_NAME=e2e-node-1
+  RUST_LOG=debug
+  RUST_BACKTRACE=0
+Using default fresh WebUI fetch for node e2e-node-1
+Initializing node e2e-node-1...
+✓ Node e2e-node-1 initialized successfully
+Starting node e2e-node-1...
+✓ Started Calimero node e2e-node-1 (ID: 90d69bb83949)
+  - P2P Port: 2428
+  - RPC/Admin Port: 2528
+  - Data Directory: ./data/e2e-node-1
+  - Non Auth Node URL: http://localhost:2528
+✓ Image ghcr.io/calimero-network/merod:0.10.1-rc.29 already available locally
+✓ Cleaned up existing container e2e-node-2-init
+Setting RUST_LOG for node e2e-node-2: debug
+Setting RUST_BACKTRACE for node e2e-node-2: 0
+Environment variables for e2e-node-2:
+  CALIMERO_HOME=/app/data
+  NODE_NAME=e2e-node-2
+  RUST_LOG=debug
+  RUST_BACKTRACE=0
+Using default fresh WebUI fetch for node e2e-node-2
+Initializing node e2e-node-2...
+✓ Node e2e-node-2 initialized successfully
+Starting node e2e-node-2...
+✓ Started Calimero node e2e-node-2 (ID: 5a74951e341d)
+  - P2P Port: 2429
+  - RPC/Admin Port: 2529
+  - Data Directory: ./data/e2e-node-2
+  - Non Auth Node URL: http://localhost:2529
+✓ Node management completed
+
+Step 3: Waiting for nodes to be ready...
+Waiting up to 60 seconds for 2 nodes to be ready...
+✓ Admin server accessible on localhost:2528 for e2e-node-1
+✓ Node e2e-node-1 is ready (health check passed)
+✓ Admin server accessible on localhost:2528 for e2e-node-2
+✓ Node e2e-node-2 is ready (health check passed)
+  Waiting for nodes... ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 100% 0:00:00
+✓ All nodes are ready
+
+Step 4: Executing workflow steps...
+
+Executing Install application on node-1 (install_application)...
+✅ Custom outputs configuration validated: 1 outputs defined
+Connecting to http://localhost:2528 (node: e2e-node-1)...
+Copied file to container data directory: data/e2e-node-1/e2e_kv_store.wasm
+Installing dev application using container path: /app/data/e2e_kv_store.wasm
+🔍 Install API Response for e2e-node-1:
+  Success: True
+  Data:
+{
+  "data": {
+    "applicationId": "64Ayc8BQoYBWYRFVToQJ3TxAveEw3oHm2grs9DaavcCU"
+  }
+}
+📝 Install result data: {'data': {'applicationId': '64Ayc8BQoYBWYRFVToQJ3TxAveEw3oHm2grs9DaavcCU'}}
+� Exporting variables from e2e-node-1 response:
+   ✓ app_id = 64Ayc8BQoYBWYRFVToQJ3TxAveEw3oHm2grs9DaavcCU
+📝 Fallback: Captured application ID for e2e-node-1: 64Ayc8BQoYBWYRFVToQJ3TxAveEw3oHm2grs9DaavcCU
+✓ Step 'Install application on node-1' completed
+
+Executing Assert application installed (assert)...
+✓ Assertion #1: is_set({{app_id}})
+✓ Step 'Assert application installed' completed
+
+Executing Create namespace on node-1 (create_namespace)...
+� Exporting variables from e2e-node-1 response:
+   ✓ namespace_id = e30248ccd15e5a42b62c81df28a8df66dddfbcafc68477c6d480eb9416cb852e
+Captured namespace ID for e2e-node-1: e30248ccd15e5a42b62c81df28a8df66dddfbcafc68477c6d480eb9416cb852e
+✓ Namespace created on e2e-node-1: e30248ccd15e5a42b62c81df28a8df66dddfbcafc68477c6d480eb9416cb852e
+✓ Step 'Create namespace on node-1' completed
+
+Executing Assert namespace created (assert)...
+✓ Assertion #1: is_set({{namespace_id}})
+✓ Step 'Assert namespace created' completed
+
+Executing Create context 1 in namespace on node-1 (create_context)...
+Debug: CreateContext resolved values:
+  node: e2e-node-1
+  application_id (resolved): 64Ayc8BQoYBWYRFVToQJ3TxAveEw3oHm2grs9DaavcCU
+  dynamic_values keys: ['app_path_e2e-node-1', 'app_id', 'app_id_e2e-node-1', 'namespace_id', 
+'namespace_id_e2e-node-1']
+  workflow_results keys: ['install_e2e-node-1', 'namespace_e2e-node-1']
+✅ Custom outputs configuration validated: 2 outputs defined
+🔍 Context Creation API Response for e2e-node-1:
+  Success: True
+  Data:
+{
+  "data": {
+    "contextId": "A1wLhjjbuWYej484aRCWNAqG9zy3tKy15PQK3CocrE1n",
+    "groupCreated": false,
+    "groupId": "e30248ccd15e5a42b62c81df28a8df66dddfbcafc68477c6d480eb9416cb852e",
+    "memberPublicKey": "ECcYD5DbyigtHQbSxtM6pzip2ta5Axn9AYCZZNUHY7Cr"
+  }
+}
+� Exporting variables from e2e-node-1 response:
+   ✓ ctx1_id = A1wLhjjbuWYej484aRCWNAqG9zy3tKy15PQK3CocrE1n
+   ✓ ctx1_key_node1 = ECcYD5DbyigtHQbSxtM6pzip2ta5Axn9AYCZZNUHY7Cr
+📝 Fallback: Captured context ID for e2e-node-1: A1wLhjjbuWYej484aRCWNAqG9zy3tKy15PQK3CocrE1n
+✓ Step 'Create context 1 in namespace on node-1' completed
+
+Executing Create namespace invitation on node-1 (create_namespace_invitation)...
+� Exporting variables from e2e-node-1 response:
+   ✓ namespace_invitation = {'invitation': {'expiration_timestamp': 1808390864, 'group_id': [227, 2, 72, 204, 209, 94,
+90, 66...
+✓ Namespace invitation created on e2e-node-1
+✓ Step 'Create namespace invitation on node-1' completed
+
+Executing Node-2 joins namespace (join_namespace)...
+Auto-installed application on e2e-node-2
+Join namespace failed on e2e-node-2: Client error: Invalid JSON data: Failed to deserialize the JSON body into the 
+target type: invitation: missing field `invitation` at line 1 column 460
+
+📋 Recent logs from node 'e2e-node-2' (last 50 lines):
+================================================================================
+2026-04-22T10:47:42.676951471Z [2m2026-04-22T10:47:42.676890Z[0m [34mDEBUG[0m [1mSwarm::poll[0m[2m:[0m 
+[2mlibp2p_swarm[0m[2m:[0m Connection attempt to peer failed with 
+Transport([(/ip4/169.254.155.210/tcp/46510/p2p/12D3KooWR5V4zmisVtVdGE6i8jfFwtgRNq5t8eDGxfckKuhXu7Eh/p2p-circuit/p2p/12
+D3KooWG677qyRCyeRydMmrZigQHf7a3LM3XXoQZwJaszCmkShE, Other(Custom { kind: Other, error: 
+Other(Left(Left(Left(Connect(ResourceLimitExceeded))))) }))]). 
+[3mpeer[0m[2m=[0m12D3KooWG677qyRCyeRydMmrZigQHf7a3LM3XXoQZwJaszCmkShE
+2026-04-22T10:47:42.676994305Z [2m2026-04-22T10:47:42.676926Z[0m [34mDEBUG[0m [1mSwarm::poll[0m[2m:[0m 
+[2mlibp2p_swarm[0m[2m:[0m Connection attempt to peer failed with 
+Transport([(/ip4/63.181.86.34/udp/4001/quic-v1/p2p/12D3KooWR5V4zmisVtVdGE6i8jfFwtgRNq5t8eDGxfckKuhXu7Eh/p2p-circuit/p2
+p/12D3KooWBmtw3jjkfhJPPU2VCj2A1n69YykJ9EsjtFU8umXo8M3a, Other(Custom { kind: Other, error: 
+Other(Left(Left(Left(Connect(ResourceLimitExceeded))))) }))]). 
+[3mpeer[0m[2m=[0m12D3KooWBmtw3jjkfhJPPU2VCj2A1n69YykJ9EsjtFU8umXo8M3a
+2026-04-22T10:47:42.677004721Z [2m2026-04-22T10:47:42.676962Z[0m [34mDEBUG[0m [1mSwarm::poll[0m[2m:[0m 
+[2mlibp2p_swarm[0m[2m:[0m Connection attempt to peer failed with 
+Transport([(/ip4/63.181.86.34/udp/4001/quic-v1/p2p/12D3KooWR5V4zmisVtVdGE6i8jfFwtgRNq5t8eDGxfckKuhXu7Eh/p2p-circuit/p2
+p/12D3KooWRxFirTcxQkWV6gJByRuvjLKWcCTtjzVHN4xqhT1Jsd1D, Other(Custom { kind: Other, error: 
+Other(Left(Left(Left(Connect(ResourceLimitExceeded))))) }))]). 
+[3mpeer[0m[2m=[0m12D3KooWRxFirTcxQkWV6gJByRuvjLKWcCTtjzVHN4xqhT1Jsd1D
+2026-04-22T10:47:42.677085013Z [2m2026-04-22T10:47:42.676999Z[0m [34mDEBUG[0m [1mSwarm::poll[0m[2m:[0m 
+[2mlibp2p_swarm[0m[2m:[0m Connection attempt to peer failed with 
+Transport([(/ip4/63.181.86.34/udp/4001/quic-v1/p2p/12D3KooWR5V4zmisVtVdGE6i8jfFwtgRNq5t8eDGxfckKuhXu7Eh/p2p-circuit/p2
+p/12D3KooWNvWbtqpgTX1ucUkDViQmU6CyYSaTqWoN2LXnjb685mw3, Other(Custom { kind: Other, error: 
+Other(Left(Left(Left(Connect(ResourceLimitExceeded))))) }))]). 
+[3mpeer[0m[2m=[0m12D3KooWNvWbtqpgTX1ucUkDViQmU6CyYSaTqWoN2LXnjb685mw3
+2026-04-22T10:47:42.677089930Z [2m2026-04-22T10:47:42.677035Z[0m [34mDEBUG[0m [1mSwarm::poll[0m[2m:[0m 
+[2mlibp2p_swarm[0m[2m:[0m Connection attempt to peer failed with 
+Transport([(/ip4/63.181.86.34/udp/4001/quic-v1/p2p/12D3KooWR5V4zmisVtVdGE6i8jfFwtgRNq5t8eDGxfckKuhXu7Eh/p2p-circuit/p2
+p/12D3KooWCbxbzYbsv56vLQ4DDoKse7NAmRznMePkx2cZ9WYvfoqP, Other(Custom { kind: Other, error: 
+Other(Left(Left(Left(Connect(ResourceLimitExceeded))))) }))]). 
+[3mpeer[0m[2m=[0m12D3KooWCbxbzYbsv56vLQ4DDoKse7NAmRznMePkx2cZ9WYvfoqP
+2026-04-22T10:47:42.677156096Z [2m2026-04-22T10:47:42.677070Z[0m [34mDEBUG[0m [1mSwarm::poll[0m[2m:[0m 
+[2mlibp2p_swarm[0m[2m:[0m Connection attempt to peer failed with 
+Transport([(/ip4/63.181.86.34/udp/4001/quic-v1/p2p/12D3KooWR5V4zmisVtVdGE6i8jfFwtgRNq5t8eDGxfckKuhXu7Eh/p2p-circuit/p2
+p/12D3KooWF47UEpuwenz6QXVwY2H7w1i2rgZhFeBXf5tmzBxWpPwQ, Other(Custom { kind: Other, error: 
+Other(Left(Left(Left(Connect(ResourceLimitExceeded))))) }))]). 
+[3mpeer[0m[2m=[0m12D3KooWF47UEpuwenz6QXVwY2H7w1i2rgZhFeBXf5tmzBxWpPwQ
+2026-04-22T10:47:42.677160721Z [2m2026-04-22T10:47:42.677104Z[0m [34mDEBUG[0m [1mSwarm::poll[0m[2m:[0m 
+[2mlibp2p_swarm[0m[2m:[0m Connection attempt to peer failed with 
+Transport([(/ip4/63.181.86.34/udp/4001/quic-v1/p2p/12D3KooWR5V4zmisVtVdGE6i8jfFwtgRNq5t8eDGxfckKuhXu7Eh/p2p-circuit/p2
+p/12D3KooWLAUPXVamDDKpQChmgVkPRKyYeWfmWWPUhej1RNCWKcSv, Other(Custom { kind: Other, error: 
+Other(Left(Left(Left(Connect(ResourceLimitExceeded))))) }))]). 
+[3mpeer[0m[2m=[0m12D3KooWLAUPXVamDDKpQChmgVkPRKyYeWfmWWPUhej1RNCWKcSv
+2026-04-22T10:47:42.677294055Z [2m2026-04-22T10:47:42.677153Z[0m [34mDEBUG[0m 
+[2mcalimero_network::handlers::stream::swarm::rendezvous[0m[2m:[0m \x1b[33mrendezvous\x1b[39m: Registered { 
+rendezvous_node: PeerId("12D3KooWR5V4zmisVtVdGE6i8jfFwtgRNq5t8eDGxfckKuhXu7Eh"), ttl: 7200, namespace: 
+Namespace("/calimero/devnet/global") }
+2026-04-22T10:47:42.677298305Z [2m2026-04-22T10:47:42.677185Z[0m [34mDEBUG[0m 
+[2mcalimero_network::handlers::stream::swarm[0m[2m:[0m Outgoing connection error 
+[3mpeer_id[0m[2m=[0mSome(PeerId("12D3KooWG677qyRCyeRydMmrZigQHf7a3LM3XXoQZwJaszCmkShE")) [3merror[0m[2m=[0mFailed to
+negotiate transport protocol(s): 
+[(/ip4/63.181.86.34/udp/4001/quic-v1/p2p/12D3KooWR5V4zmisVtVdGE6i8jfFwtgRNq5t8eDGxfckKuhXu7Eh/p2p-circuit/p2p/12D3KooW
+G677qyRCyeRydMmrZigQHf7a3LM3XXoQZwJaszCmkShE: : Failed to connect to destination.: Failed to connect to destination.: 
+Remote reported resource limit exceeded.)]
+2026-04-22T10:47:42.677301471Z [2m2026-04-22T10:47:42.677200Z[0m [34mDEBUG[0m 
+[2mcalimero_network::handlers::stream::swarm[0m[2m:[0m Outgoing connection error 
+[3mpeer_id[0m[2m=[0mSome(PeerId("12D3KooWG677qyRCyeRydMmrZigQHf7a3LM3XXoQZwJaszCmkShE")) [3merror[0m[2m=[0mFailed to
+negotiate transport protocol(s): 
+[(/ip4/196.245.54.24/tcp/37170/p2p/12D3KooWR5V4zmisVtVdGE6i8jfFwtgRNq5t8eDGxfckKuhXu7Eh/p2p-circuit/p2p/12D3KooWG677qy
+RCyeRydMmrZigQHf7a3LM3XXoQZwJaszCmkShE: : Failed to connect to destination.: Failed to connect to destination.: Remote
+reported resource limit exceeded.)]
+2026-04-22T10:47:42.677304596Z [2m2026-04-22T10:47:42.677211Z[0m [34mDEBUG[0m 
+[2mcalimero_network::handlers::stream::swarm[0m[2m:[0m Outgoing connection error 
+[3mpeer_id[0m[2m=[0mSome(PeerId("12D3KooWG677qyRCyeRydMmrZigQHf7a3LM3XXoQZwJaszCmkShE")) [3merror[0m[2m=[0mFailed to
+negotiate transport protocol(s): 
+[(/ip4/196.245.54.22/tcp/37170/p2p/12D3KooWR5V4zmisVtVdGE6i8jfFwtgRNq5t8eDGxfckKuhXu7Eh/p2p-circuit/p2p/12D3KooWG677qy
+RCyeRydMmrZigQHf7a3LM3XXoQZwJaszCmkShE: : Failed to connect to destination.: Failed to connect to destination.: Remote
+reported resource limit exceeded.)]
+2026-04-22T10:47:42.677307763Z [2m2026-04-22T10:47:42.677221Z[0m [34mDEBUG[0m 
+[2mcalimero_network::handlers::stream::swarm[0m[2m:[0m Outgoing connection error 
+[3mpeer_id[0m[2m=[0mSome(PeerId("12D3KooWG677qyRCyeRydMmrZigQHf7a3LM3XXoQZwJaszCmkShE")) [3merror[0m[2m=[0mFailed to
+negotiate transport protocol(s): 
+[(/ip4/169.254.155.210/tcp/46510/p2p/12D3KooWR5V4zmisVtVdGE6i8jfFwtgRNq5t8eDGxfckKuhXu7Eh/p2p-circuit/p2p/12D3KooWG677
+qyRCyeRydMmrZigQHf7a3LM3XXoQZwJaszCmkShE: : Failed to connect to destination.: Failed to connect to destination.: 
+Remote reported resource limit exceeded.)]
+2026-04-22T10:47:42.677310596Z [2m2026-04-22T10:47:42.677232Z[0m [34mDEBUG[0m 
+[2mcalimero_network::handlers::stream::swarm[0m[2m:[0m Outgoing connection error 
+[3mpeer_id[0m[2m=[0mSome(PeerId("12D3KooWBmtw3jjkfhJPPU2VCj2A1n69YykJ9EsjtFU8umXo8M3a")) [3merror[0m[2m=[0mFailed to
+negotiate transport protocol(s): 
+[(/ip4/63.181.86.34/udp/4001/quic-v1/p2p/12D3KooWR5V4zmisVtVdGE6i8jfFwtgRNq5t8eDGxfckKuhXu7Eh/p2p-circuit/p2p/12D3KooW
+Bmtw3jjkfhJPPU2VCj2A1n69YykJ9EsjtFU8umXo8M3a: : Failed to connect to destination.: Failed to connect to destination.: 
+Remote reported resource limit exceeded.)]
+2026-04-22T10:47:42.677316346Z [2m2026-04-22T10:47:42.677242Z[0m [34mDEBUG[0m 
+[2mcalimero_network::handlers::stream::swarm[0m[2m:[0m Outgoing connection error 
+[3mpeer_id[0m[2m=[0mSome(PeerId("12D3KooWRxFirTcxQkWV6gJByRuvjLKWcCTtjzVHN4xqhT1Jsd1D")) [3merror[0m[2m=[0mFailed to
+negotiate transport protocol(s): 
+[(/ip4/63.181.86.34/udp/4001/quic-v1/p2p/12D3KooWR5V4zmisVtVdGE6i8jfFwtgRNq5t8eDGxfckKuhXu7Eh/p2p-circuit/p2p/12D3KooW
+RxFirTcxQkWV6gJByRuvjLKWcCTtjzVHN4xqhT1Jsd1D: : Failed to connect to destination.: Failed to connect to destination.: 
+Remote reported resource limit exceeded.)]
+2026-04-22T10:47:42.677319388Z [2m2026-04-22T10:47:42.677258Z[0m [34mDEBUG[0m 
+[2mcalimero_network::handlers::stream::swarm[0m[2m:[0m Outgoing connection error 
+[3mpeer_id[0m[2m=[0mSome(PeerId("12D3KooWNvWbtqpgTX1ucUkDViQmU6CyYSaTqWoN2LXnjb685mw3")) [3merror[0m[2m=[0mFailed to
+negotiate transport protocol(s): 
+[(/ip4/63.181.86.34/udp/4001/quic-v1/p2p/12D3KooWR5V4zmisVtVdGE6i8jfFwtgRNq5t8eDGxfckKuhXu7Eh/p2p-circuit/p2p/12D3KooW
+NvWbtqpgTX1ucUkDViQmU6CyYSaTqWoN2LXnjb685mw3: : Failed to connect to destination.: Failed to connect to destination.: 
+Remote reported resource limit exceeded.)]
+2026-04-22T10:47:42.677322221Z [2m2026-04-22T10:47:42.677269Z[0m [34mDEBUG[0m 
+[2mcalimero_network::handlers::stream::swarm[0m[2m:[0m Outgoing connection error 
+[3mpeer_id[0m[2m=[0mSome(PeerId("12D3KooWCbxbzYbsv56vLQ4DDoKse7NAmRznMePkx2cZ9WYvfoqP")) [3merror[0m[2m=[0mFailed to
+negotiate transport protocol(s): 
+[(/ip4/63.181.86.34/udp/4001/quic-v1/p2p/12D3KooWR5V4zmisVtVdGE6i8jfFwtgRNq5t8eDGxfckKuhXu7Eh/p2p-circuit/p2p/12D3KooW
+CbxbzYbsv56vLQ4DDoKse7NAmRznMePkx2cZ9WYvfoqP: : Failed to connect to destination.: Failed to connect to destination.: 
+Remote reported resource limit exceeded.)]
+2026-04-22T10:47:42.677333930Z [2m2026-04-22T10:47:42.677279Z[0m [34mDEBUG[0m 
+[2mcalimero_network::handlers::stream::swarm[0m[2m:[0m Outgoing connection error 
+[3mpeer_id[0m[2m=[0mSome(PeerId("12D3KooWF47UEpuwenz6QXVwY2H7w1i2rgZhFeBXf5tmzBxWpPwQ")) [3merror[0m[2m=[0mFailed to
+negotiate transport protocol(s): 
+[(/ip4/63.181.86.34/udp/4001/quic-v1/p2p/12D3KooWR5V4zmisVtVdGE6i8jfFwtgRNq5t8eDGxfckKuhXu7Eh/p2p-circuit/p2p/12D3KooW
+F47UEpuwenz6QXVwY2H7w1i2rgZhFeBXf5tmzBxWpPwQ: : Failed to connect to destination.: Failed to connect to destination.: 
+Remote reported resource limit exceeded.)]
+2026-04-22T10:47:42.677337221Z [2m2026-04-22T10:47:42.677294Z[0m [34mDEBUG[0m 
+[2mcalimero_network::handlers::stream::swarm[0m[2m:[0m Outgoing connection error 
+[3mpeer_id[0m[2m=[0mSome(PeerId("12D3KooWLAUPXVamDDKpQChmgVkPRKyYeWfmWWPUhej1RNCWKcSv")) [3merror[0m[2m=[0mFailed to
+negotiate transport protocol(s): 
+[(/ip4/63.181.86.34/udp/4001/quic-v1/p2p/12D3KooWR5V4zmisVtVdGE6i8jfFwtgRNq5t8eDGxfckKuhXu7Eh/p2p-circuit/p2p/12D3KooW
+LAUPXVamDDKpQChmgVkPRKyYeWfmWWPUhej1RNCWKcSv: : Failed to connect to destination.: Failed to connect to destination.: 
+Remote reported resource limit exceeded.)]
+2026-04-22T10:47:42.679713555Z [2m2026-04-22T10:47:42.679619Z[0m [34mDEBUG[0m 
+[1mnew_established_connection[0m[1m{[0m[3mremote_addr[0m[2m=[0m/ip4/35.214.188.225/udp/2528/quic-v1/p2p/12D3KooWRUyq2T
+8tzk7wTRsynBYGaQRz8HrVBuRVNGRz1p6ez8Ty [3mid[0m[2m=[0m6 
+[3mpeer[0m[2m=[0m12D3KooWRUyq2T8tzk7wTRsynBYGaQRz8HrVBuRVNGRz1p6ez8Ty[1m}[0m[2m:[0m[1mConnection::poll[0m[2m:[0m
+[2mlibp2p_ping::handler[0m[2m:[0m ping succeeded [3mrtt[0m[2m=[0m57.001291ms
+2026-04-22T10:47:42.679751180Z [2m2026-04-22T10:47:42.679691Z[0m [34mDEBUG[0m [1mSwarm::poll[0m[2m:[0m 
+[2mlibp2p_gossipsub::behaviour[0m[2m:[0m SUBSCRIPTION: Adding gossip peer to topic 
+[3mpeer[0m[2m=[0m12D3KooWRUyq2T8tzk7wTRsynBYGaQRz8HrVBuRVNGRz1p6ez8Ty [3mtopic[0m[2m=[0mmero_specialized_node_invites
+2026-04-22T10:47:42.679754346Z [2m2026-04-22T10:47:42.679711Z[0m [34mDEBUG[0m [1mSwarm::poll[0m[2m:[0m 
+[2mlibp2p_gossipsub::behaviour[0m[2m:[0m SUBSCRIPTION: Adding peer to the mesh for topic 
+[3mpeer[0m[2m=[0m12D3KooWRUyq2T8tzk7wTRsynBYGaQRz8HrVBuRVNGRz1p6ez8Ty [3mtopic[0m[2m=[0mmero_specialized_node_invites
+2026-04-22T10:47:42.679756971Z [2m2026-04-22T10:47:42.679719Z[0m [34mDEBUG[0m [1mSwarm::poll[0m[2m:[0m 
+[2mlibp2p_gossipsub::behaviour[0m[2m:[0m Sending GRAFT to peer for topic 
+[3mpeer[0m[2m=[0m12D3KooWRUyq2T8tzk7wTRsynBYGaQRz8HrVBuRVNGRz1p6ez8Ty [3mtopic[0m[2m=[0mmero_specialized_node_invites
+2026-04-22T10:47:42.679835930Z [2m2026-04-22T10:47:42.679753Z[0m [34mDEBUG[0m 
+[2mcalimero_network::handlers::stream::swarm::gossipsub[0m[2m:[0m \x1b[33mgossipsub\x1b[39m: Subscribed { peer_id:
+PeerId("12D3KooWRUyq2T8tzk7wTRsynBYGaQRz8HrVBuRVNGRz1p6ez8Ty"), topic: TopicHash { hash: 
+"mero_specialized_node_invites" } }
+2026-04-22T10:47:42.679841596Z [2m2026-04-22T10:47:42.679776Z[0m [34mDEBUG[0m 
+[2mcalimero_network::handlers::stream::swarm::ping[0m[2m:[0m \x1b[33mping\x1b[39m: Event { peer: 
+PeerId("12D3KooWRUyq2T8tzk7wTRsynBYGaQRz8HrVBuRVNGRz1p6ez8Ty"), connection: ConnectionId(6), result: Ok(57.001291ms) }
+2026-04-22T10:47:42.680036596Z [2m2026-04-22T10:47:42.679959Z[0m [34mDEBUG[0m 
+[2mcalimero_node::network_event_processor[0m[2m:[0m Forwarding network event to NodeManager 
+[3mevent_type[0m[2m=[0m"Subscribed"
+2026-04-22T10:47:42.680414721Z [2m2026-04-22T10:47:42.680184Z[0m [34mDEBUG[0m [1mSwarm::poll[0m[2m:[0m 
+[2mlibp2p_core::transport::choice[0m[2m:[0m Failed to dial using 
+libp2p_core::transport::map::Map<libp2p_core::transport::choice::OrTransport<libp2p_core::transport::map::Map<libp2p_c
+ore::transport::upgrade::Multiplexed<libp2p_core::transport::and_then::AndThen<libp2p_core::transport::and_then::AndTh
+en<libp2p_tcp::Transport<libp2p_tcp::provider::tokio::Tcp>, 
+libp2p_core::transport::upgrade::Builder<libp2p_tcp::Transport<libp2p_tcp::provider::tokio::Tcp>>::authenticate<libp2p
+_tcp::provider::tokio::TcpStream, 
+futures_util::future::either::Either<futures_rustls::TlsStream<multistream_select::negotiated::Negotiated<libp2p_tcp::
+provider::tokio::TcpStream>>, 
+libp2p_noise::io::Output<multistream_select::negotiated::Negotiated<libp2p_tcp::provider::tokio::TcpStream>>>, 
+libp2p::builder::select_security::SelectSecurityUpgrade<libp2p_tls::upgrade::Config, libp2p_noise::Config>, 
+either::Either<libp2p_tls::upgrade::UpgradeError, libp2p_noise::Error>>::{{closure}}>, 
+libp2p_core::transport::upgrade::Authenticated<libp2p_core::transport::and_then::AndThen<libp2p_tcp::Transport<libp2p_
+tcp::provider::tokio::Tcp>, 
+libp2p_core::transport::upgrade::Builder<libp2p_tcp::Transport<libp2p_tcp::provider::tokio::Tcp>>::authenticate<libp2p
+_tcp::provider::tokio::TcpStream, 
+futures_util::future::either::Either<futures_rustls::TlsStream<multistream_select::negotiated::Negotiated<libp2p_tcp::
+provider::tokio::TcpStream>>, 
+libp2p_noise::io::Output<multistream_select::negotiated::Negotiated<libp2p_tcp::provider::tokio::TcpStream>>>, 
+libp2p::builder::select_security::SelectSecurityUpgrade<libp2p_tls::upgrade::Config, libp2p_noise::Config>, 
+either::Either<libp2p_tls::upgrade::UpgradeError, 
+libp2p_noise::Error>>::{{closure}}>>::multiplex<futures_util::future::either::Either<futures_rustls::TlsStream<multist
+ream_select::negotiated::Negotiated<libp2p_tcp::provider::tokio::TcpStream>>, 
+libp2p_noise::io::Output<multistream_select::negotiated::Negotiated<libp2p_tcp::provider::tokio::TcpStream>>>, 
+libp2p_yamux::Muxer<multistream_select::negotiated::Negotiated<futures_util::future::either::Either<futures_rustls::Tl
+sStream<multistream_select::negotiated::Negotiated<libp2p_tcp::provider::tokio::TcpStream>>, 
+libp2p_noise::io::Output<multistream_select::negotiated::Negotiated<libp2p_tcp::provider::tokio::TcpStream>>>>>, 
+libp2p_yamux::Config, std::io::error::Error>::{{closure}}>>, libp2p::builder::phase::tcp::<impl 
+libp2p::builder::SwarmBuilder<libp2p::builder::phase::provider::Tokio, 
+libp2p::builder::phase::tcp::TcpPhase>>::with_tcp<(libp2p_tls::upgrade::Config::new, libp2p_noise::Config::new), 
+futures_util::future::either::Either<futures_rustls::TlsStream<multistream_select::negotiated::Negotiated<libp2p_tcp::
+provider::tokio::TcpStream>>, 
+libp2p_noise::io::Output<multistream_select::negotiated::Negotiated<libp2p_tcp::provider::tokio::TcpStream>>>, 
+either::Either<libp2p_tls::upgrade::UpgradeError, libp2p_noise::Error>, <libp2p_yamux::Config as 
+core::default::Default>::default, 
+libp2p_yamux::Muxer<multistream_select::negotiated::Negotiated<futures_util::future::either::Either<futures_rustls::Tl
+sStream<multistream_select::negotiated::Negotiated<libp2p_tcp::provider::tokio::TcpStream>>, 
+libp2p_noise::io::Output<multistream_select::negotiated::Negotiated<libp2p_tcp::provider::tokio::TcpStream>>>>>, 
+std::io::error::Error>::{{closure}}>, 
+libp2p_core::transport::map::Map<libp2p_quic::transport::GenTransport<libp2p_quic::provider::tokio::Provider>, 
+libp2p::builder::phase::quic::<impl libp2p::builder::SwarmBuilder<libp2p::builder::phase::provider::Tokio, 
+libp2p::builder::phase::quic::QuicPhase<libp2p_core::transport::map::Map<libp2p_core::transport::upgrade::Multiplexed<
+libp2p_core::transport::and_then::AndThen<libp2p_core::transport::and_then::AndThen<libp2p_tcp::Transport<libp2p_tcp::
+provider::tokio::Tcp>, 
+libp2p_core::transport::upgrade::Builder<libp2p_tcp::Transport<libp2p_tcp::provider::tokio::Tcp>>::authenticate<libp2p
+_tcp::provider::tokio::TcpStream, 
+futures_util::future::either::Either<futures_rustls::TlsStream<multistream_select::negotiated::Negotiated<libp2p_tcp::
+provider::tokio::TcpStream>>, 
+libp2p_noise::io::Output<multistream_select::negotiated::Negotiated<libp2p_tcp::provider::tokio::TcpStream>>>, 
+libp2p::builder::select_security::SelectSecurityUpgrade<libp2p_tls::upgrade::Config, libp2p_noise::Config>, 
+either::Either<libp2p_tls::upgrade::UpgradeError, libp2p_noise::Error>>::{{closure}}>, 
+libp2p_core::transport::upgrade::Authenticated<libp2p_core::transport::and_then::AndThen<libp2p_tcp::Transport<libp2p_
+tcp::provider::tokio::Tcp>, 
+libp2p_core::transport::upgrade::Builder<libp2p_tcp::Transport<libp2p_tcp::provider::tokio::Tcp>>::authenticate<libp2p
+_tcp::provider::tokio::TcpStream, 
+futures_util::future::either::Either<futures_rustls::TlsStream<multistream_select::negotiated::Negotiated<libp2p_tcp::
+provider::tokio::TcpStream>>, 
+libp2p_noise::io::Output<multistream_select::negotiated::Negotiated<libp2p_tcp::provider::tokio::TcpStream>>>, 
+libp2p::builder::select_security::SelectSecurityUpgrade<libp2p_tls::upgrade::Config, libp2p_noise::Config>, 
+either::Either<libp2p_tls::upgrade::UpgradeError, 
+libp2p_noise::Error>>::{{closure}}>>::multiplex<futures_util::future::either::Either<futures_rustls::TlsStream<multist
+ream_select::negotiated::Negotiated<libp2p_tcp::provider::tokio::TcpStream>>, 
+libp2p_noise::io::Output<multistream_select::negotiated::Negotiated<libp2p_tcp::provider::tokio::TcpStream>>>, 
+libp2p_yamux::Muxer<multistream_select::negotiated::Negotiated<futures_util::future::either::Either<futures_rustls::Tl
+sStream<multistream_select::negotiated::Negotiated<libp2p_tcp::provider::tokio::TcpStream>>, 
+libp2p_noise::io::Output<multistream_select::negotiated::Negotiated<libp2p_tcp::provider::tokio::TcpStream>>>>>, 
+libp2p_yamux::Config, std::io::error::Error>::{{closure}}>>, libp2p::builder::phase::tcp::<impl 
+libp2p::builder::SwarmBuilder<libp2p::builder::phase::provider::Tokio, 
+libp2p::builder::phase::tcp::TcpPhase>>::with_tcp<(libp2p_tls::upgrade::Config::new, libp2p_noise::Config::new), 
+futures_util::future::either::Either<futures_rustls::TlsStream<multistream_select::negotiated::Negotiated<libp2p_tcp::
+provider::tokio::TcpStream>>, 
+libp2p_noise::io::Output<multistream_select::negotiated::Negotiated<libp2p_tcp::provider::tokio::TcpStream>>>, 
+either::Either<libp2p_tls::upgrade::UpgradeError, libp2p_noise::Error>, <libp2p_yamux::Config as 
+core::default::Default>::default, 
+libp2p_yamux::Muxer<multistream_select::negotiated::Negotiated<futures_util::future::either::Either<futures_rustls::Tl
+sStream<multistream_select::negotiated::Negotiated<libp2p_tcp::provider::tokio::TcpStream>>, 
+libp2p_noise::io::Output<multistream_select::negotiated::Negotiated<libp2p_tcp::provider::tokio::TcpStream>>>>>, 
+std::io::error::Error>::{{closure}}>>>>::with_quic_config<core::convert::identity<libp2p_quic::config::Config>>::{{clo
+sure}}>>, libp2p::builder::phase::quic::<impl libp2p::builder::SwarmBuilder<libp2p::builder::phase::provider::Tokio, 
+libp2p::builder::phase::quic::QuicPhase<libp2p_core::transport::map::Map<libp2p_core::transport::upgrade::Multiplexed<
+libp2p_core::transport::and_then::AndThen<libp2p_core::transport::and_then::AndThen<libp2p_tcp::Transport<libp2p_tcp::
+provider::tokio::Tcp>, 
+libp2p_core::transport::upgrade::Builder<libp2p_tcp::Transport<libp2p_tcp::provider::tokio::Tcp>>::authenticate<libp2p
+_tcp::provider::tokio::TcpStream, 
+futures_util::future::either::Either<futures_rustls::TlsStream<multistream_select::negotiated::Negotiated<libp2p_tcp::
+provider::tokio::TcpStream>>, 
+libp2p_noise::io::Output<multistream_select::negotiated::Negotiated<libp2p_tcp::provider::tokio::TcpStream>>>, 
+libp2p::builder::select_security::SelectSecurityUpgrade<libp2p_tls::upgrade::Config, libp2p_noise::Config>, 
+either::Either<libp2p_tls::upgrade::UpgradeError, libp2p_noise::Error>>::{{closure}}>, 
+libp2p_core::transport::upgrade::Authenticated<libp2p_core::transport::and_then::AndThen<libp2p_tcp::Transport<libp2p_
+tcp::provider::tokio::Tcp>, 
+libp2p_core::transport::upgrade::Builder<libp2p_tcp::Transport<libp2p_tcp::provider::tokio::Tcp>>::authenticate<libp2p
+_tcp::provider::tokio::TcpStream, 
+futures_util::future::either::Either<futures_rustls::TlsStream<multistream_select::negotiated::Negotiated<libp2p_tcp::
+provider::tokio::TcpStream>>, 
+libp2p_noise::io::Output<multistream_select::negotiated::Negotiated<libp2p_tcp::provider::tokio::TcpStream>>>, 
+libp2p::builder::select_security::SelectSecurityUpgrade<libp2p_tls::upgrade::Config, libp2p_noise::Config>, 
+either::Either<libp2p_tls::upgrade::UpgradeError, 
+libp2p_noise::Error>>::{{closure}}>>::multiplex<futures_util::future::either::Either<futures_rustls::TlsStream<multist
+ream_select::negotiated::Negotiated<libp2p_tcp::provider::tokio::TcpStream>>, 
+libp2p_noise::io::Output<multistream_select::negotiated::Negotiated<libp2p_tcp::provider::tokio::TcpStream>>>, 
+libp2p_yamux::Muxer<multistream_select::negotiated::Negotiated<futures_util::future::either::Either<futures_rustls::Tl
+sStream<multistream_select::negotiated::Negotiated<libp2p_tcp::provider::tokio::TcpStream>>, 
+libp2p_noise::io::Output<multistream_select::negotiated::Negotiated<libp2p_tcp::provider::tokio::TcpStream>>>>>, 
+libp2p_yamux::Config, std::io::error::Error>::{{closure}}>>, libp2p::builder::phase::tcp::<impl 
+libp2p::builder::SwarmBuilder<libp2p::builder::phase::provider::Tokio, 
+libp2p::builder::phase::tcp::TcpPhase>>::with_tcp<(libp2p_tls::upgrade::Config::new, libp2p_noise::Config::new), 
+futures_util::future::either::Either<futures_rustls::TlsStream<multistream_select::negotiated::Negotiated<libp2p_tcp::
+provider::tokio::TcpStream>>, 
+libp2p_noise::io::Output<multistream_select::negotiated::Negotiated<libp2p_tcp::provider::tokio::TcpStream>>>, 
+either::Either<libp2p_tls::upgrade::UpgradeError, libp2p_noise::Error>, <libp2p_yamux::Config as 
+core::default::Default>::default, 
+libp2p_yamux::Muxer<multistream_select::negotiated::Negotiated<futures_util::future::either::Either<futures_rustls::Tl
+sStream<multistream_select::negotiated::Negotiated<libp2p_tcp::provider::tokio::TcpStream>>, 
+libp2p_noise::io::Output<multistream_select::negotiated::Negotiated<libp2p_tcp::provider::tokio::TcpStream>>>>>, 
+std::io::error::Error>::{{closure}}>>>>::with_quic_config<core::convert::identity<libp2p_quic::config::Config>>::{{clo
+sure}}> 
+[3maddress[0m[2m=[0m/ip4/117.99.11.1/udp/27927/quic-v1/p2p/12D3KooWEN9oXy7hTcD3EgAHwGRMVPQE7XHbSeeFwXCuzeazPnMF
+2026-04-22T10:47:42.680457180Z [2m2026-04-22T10:47:42.680323Z[0m [34mDEBUG[0m [1mSwarm::poll[0m[2m:[0m 
+[2mlibp2p_core::transport::choice[0m[2m:[0m Failed to dial using 
+libp2p_core::transport::map::Map<libp2p_quic::transport::GenTransport<libp2p_quic::provider::tokio::Provider>, 
+libp2p::builder::phase::quic::<impl libp2p::builder::SwarmBuilder<libp2p::builder::phase::provider::Tokio, 
+libp2p::builder::phase::quic::QuicPhase<libp2p_core::transport::map::Map<libp2p_core::transport::upgrade::Multiplexed<
+libp2p_core::transport::and_then::AndThen<libp2p_core::transport::and_then::AndThen<libp2p_tcp::Transport<libp2p_tcp::
+provider::tokio::Tcp>, 
+libp2p_core::transport::upgrade::Builder<libp2p_tcp::Transport<libp2p_tcp::provider::tokio::Tcp>>::authenticate<libp2p
+_tcp::provider::tokio::TcpStream, 
+futures_util::future::either::Either<futures_rustls::TlsStream<multistream_select::negotiated::Negotiated<libp2p_tcp::
+provider::tokio::TcpStream>>, 
+libp2p_noise::io::Output<multistream_select::negotiated::Negotiated<libp2p_tcp::provider::tokio::TcpStream>>>, 
+libp2p::builder::select_security::SelectSecurityUpgrade<libp2p_tls::upgrade::Config, libp2p_noise::Config>, 
+either::Either<libp2p_tls::upgrade::UpgradeError, libp2p_noise::Error>>::{{closure}}>, 
+libp2p_core::transport::upgrade::Authenticated<libp2p_core::transport::and_then::AndThen<libp2p_tcp::Transport<libp2p_
+tcp::provider::tokio::Tcp>, 
+libp2p_core::transport::upgrade::Builder<libp2p_tcp::Transport<libp2p_tcp::provider::tokio::Tcp>>::authenticate<libp2p
+_tcp::provider::tokio::TcpStream, 
+futures_util::future::either::Either<futures_rustls::TlsStream<multistream_select::negotiated::Negotiated<libp2p_tcp::
+provider::tokio::TcpStream>>, 
+libp2p_noise::io::Output<multistream_select::negotiated::Negotiated<libp2p_tcp::provider::tokio::TcpStream>>>, 
+libp2p::builder::select_security::SelectSecurityUpgrade<libp2p_tls::upgrade::Config, libp2p_noise::Config>, 
+either::Either<libp2p_tls::upgrade::UpgradeError, 
+libp2p_noise::Error>>::{{closure}}>>::multiplex<futures_util::future::either::Either<futures_rustls::TlsStream<multist
+ream_select::negotiated::Negotiated<libp2p_tcp::provider::tokio::TcpStream>>, 
+libp2p_noise::io::Output<multistream_select::negotiated::Negotiated<libp2p_tcp::provider::tokio::TcpStream>>>, 
+libp2p_yamux::Muxer<multistream_select::negotiated::Negotiated<futures_util::future::either::Either<futures_rustls::Tl
+sStream<multistream_select::negotiated::Negotiated<libp2p_tcp::provider::tokio::TcpStream>>, 
+libp2p_noise::io::Output<multistream_select::negotiated::Negotiated<libp2p_tcp::provider::tokio::TcpStream>>>>>, 
+libp2p_yamux::Config, std::io::error::Error>::{{closure}}>>, libp2p::builder::phase::tcp::<impl 
+libp2p::builder::SwarmBuilder<libp2p::builder::phase::provider::Tokio, 
+libp2p::builder::phase::tcp::TcpPhase>>::with_tcp<(libp2p_tls::upgrade::Config::new, libp2p_noise::Config::new), 
+futures_util::future::either::Either<futures_rustls::TlsStream<multistream_select::negotiated::Negotiated<libp2p_tcp::
+provider::tokio::TcpStream>>, 
+libp2p_noise::io::Output<multistream_select::negotiated::Negotiated<libp2p_tcp::provider::tokio::TcpStream>>>, 
+either::Either<libp2p_tls::upgrade::UpgradeError, libp2p_noise::Error>, <libp2p_yamux::Config as 
+core::default::Default>::default, 
+libp2p_yamux::Muxer<multistream_select::negotiated::Negotiated<futures_util::future::either::Either<futures_rustls::Tl
+sStream<multistream_select::negotiated::Negotiated<libp2p_tcp::provider::tokio::TcpStream>>, 
+libp2p_noise::io::Output<multistream_select::negotiated::Negotiated<libp2p_tcp::provider::tokio::TcpStream>>>>>, 
+std::io::error::Error>::{{closure}}>>>>::with_quic_config<core::convert::identity<libp2p_quic::config::Config>>::{{clo
+sure}}> 
+[3maddress[0m[2m=[0m/ip4/117.99.11.1/udp/27927/quic-v1/p2p/12D3KooWEN9oXy7hTcD3EgAHwGRMVPQE7XHbSeeFwXCuzeazPnMF
+2026-04-22T10:47:42.680498305Z [2m2026-04-22T10:47:42.680409Z[0m [34mDEBUG[0m 
+[2mcalimero_network::handlers::stream::swarm[0m[2m:[0m Dialing peer: 
+12D3KooWEN9oXy7hTcD3EgAHwGRMVPQE7XHbSeeFwXCuzeazPnMF
+2026-04-22T10:47:42.680502013Z [2m2026-04-22T10:47:42.680447Z[0m [34mDEBUG[0m 
+[1mTransport::dial[0m[1m{[0m[3maddress[0m[2m=[0m/ip4/117.99.11.1/udp/27927/quic-v1/p2p/12D3KooWEN9oXy7hTcD3EgAHwGRMVPQ
+E7XHbSeeFwXCuzeazPnMF[1m}[0m[2m:[0m [2mrustls::client::hs[0m[2m:[0m Resuming session
+2026-04-22T10:47:42.791476180Z [2m2026-04-22T10:47:42.791031Z[0m [34mDEBUG[0m [2mquinn_proto::endpoint[0m[2m:[0m
+dropping packet with invalid CID
+2026-04-22T10:47:43.452171013Z [2m2026-04-22T10:47:43.451953Z[0m [34mDEBUG[0m 
+[2mlibp2p_mdns::behaviour::iface[0m[2m:[0m Parsing mdns packet failed: ProtoError { kind: Msg("rdata length too large
+for remaining bytes, need: 219 remain: 55") }
+2026-04-22T10:47:43.453034013Z [2m2026-04-22T10:47:43.452731Z[0m [34mDEBUG[0m 
+[2mlibp2p_mdns::behaviour::iface[0m[2m:[0m Parsing mdns packet failed: ProtoError { kind: Msg("rdata length too large
+for remaining bytes, need: 83 remain: 41") }
+2026-04-22T10:47:43.592107555Z [2m2026-04-22T10:47:43.591998Z[0m [34mDEBUG[0m [1mSwarm::poll[0m[2m:[0m 
+[2mlibp2p_gossipsub::behaviour[0m[2m:[0m SUBSCRIPTION: Adding gossip peer to topic 
+[3mpeer[0m[2m=[0m12D3KooWCwDjdDJjRvfFmV4oyNjgPApUdXZG7bH9jjWCgLyvrbhU 
+[3mtopic[0m[2m=[0mns/e30248ccd15e5a42b62c81df28a8df66dddfbcafc68477c6d480eb9416cb852e
+2026-04-22T10:47:43.592117888Z [2m2026-04-22T10:47:43.592038Z[0m [34mDEBUG[0m 
+[2mcalimero_network::handlers::stream::swarm::gossipsub[0m[2m:[0m \x1b[33mgossipsub\x1b[39m: Subscribed { peer_id:
+PeerId("12D3KooWCwDjdDJjRvfFmV4oyNjgPApUdXZG7bH9jjWCgLyvrbhU"), topic: TopicHash { hash: 
+"ns/e30248ccd15e5a42b62c81df28a8df66dddfbcafc68477c6d480eb9416cb852e" } }
+2026-04-22T10:47:43.592182055Z [2m2026-04-22T10:47:43.592112Z[0m [34mDEBUG[0m 
+[2mcalimero_node::network_event_processor[0m[2m:[0m Forwarding network event to NodeManager 
+[3mevent_type[0m[2m=[0m"Subscribed"
+2026-04-22T10:47:44.084629305Z [2m2026-04-22T10:47:44.084508Z[0m [34mDEBUG[0m [1mSwarm::poll[0m[2m:[0m 
+[2mlibp2p_gossipsub::behaviour[0m[2m:[0m SUBSCRIPTION: Adding gossip peer to topic 
+[3mpeer[0m[2m=[0m12D3KooWCwDjdDJjRvfFmV4oyNjgPApUdXZG7bH9jjWCgLyvrbhU 
+[3mtopic[0m[2m=[0mA1wLhjjbuWYej484aRCWNAqG9zy3tKy15PQK3CocrE1n
+2026-04-22T10:47:44.084635597Z [2m2026-04-22T10:47:44.084548Z[0m [34mDEBUG[0m 
+[2mcalimero_network::handlers::stream::swarm::gossipsub[0m[2m:[0m \x1b[33mgossipsub\x1b[39m: Subscribed { peer_id:
+PeerId("12D3KooWCwDjdDJjRvfFmV4oyNjgPApUdXZG7bH9jjWCgLyvrbhU"), topic: TopicHash { hash: 
+"A1wLhjjbuWYej484aRCWNAqG9zy3tKy15PQK3CocrE1n" } }
+2026-04-22T10:47:44.084710847Z [2m2026-04-22T10:47:44.084602Z[0m [34mDEBUG[0m 
+[2mcalimero_node::network_event_processor[0m[2m:[0m Forwarding network event to NodeManager 
+[3mevent_type[0m[2m=[0m"Subscribed"
+2026-04-22T10:47:44.084713639Z [2m2026-04-22T10:47:44.084673Z[0m [34mDEBUG[0m 
+[2mcalimero_node::handlers::network_event::subscriptions[0m[2m:[0m Observed subscription to unknown context, 
+ignoring.. [3mcontext_id[0m[2m=[0mA1wLhjjbuWYej484aRCWNAqG9zy3tKy15PQK3CocrE1n 
+[3mpeer_id[0m[2m=[0m12D3KooWCwDjdDJjRvfFmV4oyNjgPApUdXZG7bH9jjWCgLyvrbhU
+2026-04-22T10:47:44.099702264Z [2m2026-04-22T10:47:44.099567Z[0m [32m INFO[0m [1mcall[0m[2m:[0m 
+[2mcalimero_server::admin::handlers::applications::install_dev_application[0m[2m:[0m Installing dev application 
+[3mpath[0m[2m=[0m/app/data/e2e_kv_store.wasm
+2026-04-22T10:47:44.099716180Z [2m2026-04-22T10:47:44.099583Z[0m [34mDEBUG[0m [1mcall[0m[2m:[0m 
+[2mcalimero_server::admin::handlers::applications::install_dev_application[0m[2m:[0m install_dev_application request
+received [3mpath[0m[2m=[0m/app/data/e2e_kv_store.wasm [3mmetadata_len[0m[2m=[0m0 [3mpackage[0m[2m=[0m"unknown"
+[3mversion[0m[2m=[0m"0.0.0"
+2026-04-22T10:47:44.099717930Z [2m2026-04-22T10:47:44.099608Z[0m [34mDEBUG[0m [1mcall[0m[2m:[0m 
+[2mcalimero_node_primitives::client::application::install[0m[2m:[0m install_application_from_path started 
+[3mpath[0m[2m=[0m/app/data/e2e_kv_store.wasm [3mmetadata_len[0m[2m=[0m0
+2026-04-22T10:47:44.100369930Z [2m2026-04-22T10:47:44.100289Z[0m [34mDEBUG[0m [1mcall[0m[2m:[0m 
+[2mcalimero_node_primitives::client::application::install[0m[2m:[0m install_application_from_path discovered file size
+[3mpath[0m[2m=[0m/app/data/e2e_kv_store.wasm [3mexpected_size[0m[2m=[0m760455
+2026-04-22T10:47:44.100376555Z [2m2026-04-22T10:47:44.100299Z[0m [34mDEBUG[0m [1mcall[0m[2m:[0m 
+[2mcalimero_node_primitives::client::blob[0m[2m:[0m add_blob invoked [3mexpected_size[0m[2m=[0m760455 
+[3mhas_expected_hash[0m[2m=[0mfalse
+2026-04-22T10:47:44.100428972Z [2m2026-04-22T10:47:44.100302Z[0m [34mDEBUG[0m [1mcall[0m[2m:[0m 
+[2mcalimero_blobstore[0m[2m:[0m put_sized invoked [3msize_hint[0m[2m=[0m760455
+2026-04-22T10:47:44.118658305Z [2m2026-04-22T10:47:44.118551Z[0m [34mDEBUG[0m [1mcall[0m[2m:[0m 
+[2mcalimero_blobstore[0m[2m:[0m blob metadata persisted 
+[3mid[0m[2m=[0mBlobId(Hash("CDSv51HaNu2xsoZWTxw9sDtsUDHC9NdDG1TUuNociBYX")) [3mtotal_size[0m[2m=[0m760455 
+[3mchunk_count[0m[2m=[0m1
+2026-04-22T10:47:44.118676597Z [2m2026-04-22T10:47:44.118572Z[0m [34mDEBUG[0m [1mcall[0m[2m:[0m 
+[2mcalimero_blobstore[0m[2m:[0m blob stored successfully 
+[3mid[0m[2m=[0mBlobId(Hash("CDSv51HaNu2xsoZWTxw9sDtsUDHC9NdDG1TUuNociBYX")) [3mtotal_size[0m[2m=[0m760455 
+[3mchunk_count[0m[2m=[0m1
+2026-04-22T10:47:44.118709680Z [2m2026-04-22T10:47:44.118662Z[0m [34mDEBUG[0m [1mcall[0m[2m:[0m 
+[2mcalimero_node_primitives::client::blob[0m[2m:[0m add_blob completed successfully 
+[3mblob_id[0m[2m=[0mCDSv51HaNu2xsoZWTxw9sDtsUDHC9NdDG1TUuNociBYX [3mstored_size[0m[2m=[0m760455
+2026-04-22T10:47:44.118714430Z [2m2026-04-22T10:47:44.118672Z[0m [34mDEBUG[0m [1mcall[0m[2m:[0m 
+[2mcalimero_node_primitives::client::application::install[0m[2m:[0m application blob added via add_blob 
+[3mblob_id[0m[2m=[0mCDSv51HaNu2xsoZWTxw9sDtsUDHC9NdDG1TUuNociBYX [3mexpected_size[0m[2m=[0m760455 
+[3mstored_size[0m[2m=[0m760455
+2026-04-22T10:47:44.118781222Z [2m2026-04-22T10:47:44.118743Z[0m [32m INFO[0m [1mcall[0m[2m:[0m 
+[2mcalimero_server::admin::handlers::applications::install_dev_application[0m[2m:[0m Dev application installed 
+successfully [3mapplication_id[0m[2m=[0m64Ayc8BQoYBWYRFVToQJ3TxAveEw3oHm2grs9DaavcCU
+
+================================================================================
+
+❌ Step 'Node-2 joins namespace' failed
+❌ Workflow steps failed - stopping workflow
+
+❌ Workflow failed!
+Stopping managed containers with graceful shutdown...
+Initiating graceful shutdown for 2 containers...
+Waiting 3s for connection draining...
+✓ Gracefully stopped and removed e2e-node-1
+✓ Gracefully stopped and removed e2e-node-2

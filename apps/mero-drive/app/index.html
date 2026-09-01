@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Mero Drive</title>
+    <link rel="icon" type="image/svg+xml" href="/icons/icon.svg" />
+    <link rel="apple-touch-icon" href="/icons/icon-512x512.png" />
+    <link rel="manifest" href="/manifest.json" />
+    <script>
+      // Apply the persisted theme before React mounts to avoid a
+      // light-mode flash. Default to dark unless explicitly 'light'.
+      (function () {
+        try {
+          var t = JSON.parse(localStorage.getItem('mero-theme'));
+          if (t !== 'light') document.documentElement.classList.add('dark');
+        } catch (e) {
+          document.documentElement.classList.add('dark');
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./src/index.tsx"></script>
+  </body>
+</html>

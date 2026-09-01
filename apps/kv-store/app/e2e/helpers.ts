@@ -44,14 +44,33 @@ export async function waitForPanel(page: Page) {
   });
 }
 
-/** The result <pre> under Remove, where every call reports its outcome. */
-export function result(page: Page) {
-  return page.locator("pre").first();
+/** The card whose <h2> is `heading`. */
+export function card(page: Page, heading: string) {
+  return page.locator(".card", {
+    has: page.getByRole("heading", { name: heading, exact: true }),
+  });
+}
+
+/**
+ * The result <pre> for ONE section.
+ *
+ * Results used to be a single node — `page.locator("pre").first()` — because the
+ * app rendered every call's output once, at the bottom of the Remove card. Now
+ * each section shows its own, so a locator has to say WHICH, and
+ * `.first()` would silently read whichever card happens to come first in the
+ * DOM. That is the difference between asserting on `set`'s output and asserting
+ * on whatever `get` left behind three cards earlier.
+ */
+export type SectionName = "Write" | "Read" | "Remove" | "Entries";
+export function result(page: Page, section: SectionName) {
+  return card(page, section).locator("pre").first();
 }
 
 export const writeKey = (page: Page) => page.getByLabel("key", { exact: true });
 export const writeValue = (page: Page) => page.getByLabel("value", { exact: true });
 export const readKey = (page: Page) => page.getByLabel("read key", { exact: true });
+/** Remove owns its own key field now; it used to reuse the Write one. */
+export const removeKey = (page: Page) => page.getByLabel("remove key", { exact: true });
 export const btn = (page: Page, name: string) =>
   page.getByRole("button", { name, exact: true });
 

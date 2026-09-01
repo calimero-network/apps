@@ -1,0 +1,854 @@
+{
+  "schema_version": "wasm-abi/1",
+  "types": {
+    "ContextId": {
+      "kind": "alias",
+      "target": {
+        "kind": "string"
+      }
+    },
+    "Event_FolderAliasChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_FolderColorChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_FolderContextBound": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "folder_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "context_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_FolderParentChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_FolderRegistered": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_FolderRoleChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "folder_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "member",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_FolderSortOrderChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "parent_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_FolderUnregistered": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_FolderVisibilityChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_ManagerAdded": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "member",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_ManagerRemoved": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "member",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_OwnerClaimed": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "owner",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "FolderDto": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "$ref": "FolderId"
+          }
+        },
+        {
+          "name": "parent_id",
+          "type": {
+            "$ref": "FolderId"
+          },
+          "nullable": true
+        },
+        {
+          "name": "color",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "context_id",
+          "type": {
+            "$ref": "ContextId"
+          },
+          "nullable": true
+        },
+        {
+          "name": "alias",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "visibility",
+          "type": {
+            "$ref": "Visibility"
+          }
+        }
+      ]
+    },
+    "FolderId": {
+      "kind": "alias",
+      "target": {
+        "kind": "string"
+      }
+    },
+    "FolderRecord": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "parent_id",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "color",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "alias",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "visibility",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "$ref": "Visibility"
+            }
+          }
+        }
+      ]
+    },
+    "FolderRoleEntry": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "member",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "role",
+          "type": {
+            "$ref": "Role"
+          }
+        }
+      ]
+    },
+    "RegistryState": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "folders",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "FolderRecord"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "folder_contexts",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "ContextId"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "sort_order",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "record",
+              "fields": [],
+              "crdt_type": "lww_register",
+              "inner_type": {
+                "kind": "list",
+                "items": {
+                  "kind": "string"
+                }
+              }
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "owner",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "managers",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "record",
+              "fields": [],
+              "crdt_type": "lww_register",
+              "inner_type": {
+                "kind": "bool"
+              }
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "folder_roles",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "record",
+              "fields": [],
+              "crdt_type": "lww_register",
+              "inner_type": {
+                "$ref": "Role"
+              }
+            },
+            "crdt_type": "unordered_map"
+          }
+        }
+      ]
+    },
+    "Role": {
+      "kind": "variant",
+      "variants": [
+        {
+          "name": "Viewer"
+        },
+        {
+          "name": "Editor"
+        },
+        {
+          "name": "Manager"
+        }
+      ]
+    },
+    "Visibility": {
+      "kind": "variant",
+      "variants": [
+        {
+          "name": "Inherit"
+        },
+        {
+          "name": "Restricted"
+        }
+      ]
+    }
+  },
+  "methods": [
+    {
+      "name": "add_manager",
+      "params": [
+        {
+          "name": "member",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "bind_folder_context",
+      "params": [
+        {
+          "name": "folder_id",
+          "type": {
+            "$ref": "FolderId"
+          }
+        },
+        {
+          "name": "context_id",
+          "type": {
+            "$ref": "ContextId"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "claim_owner",
+      "params": [],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "clear_folder_role",
+      "params": [
+        {
+          "name": "folder_id",
+          "type": {
+            "$ref": "FolderId"
+          }
+        },
+        {
+          "name": "member",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "get_folder",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "$ref": "FolderId"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "FolderDto"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_folder_context",
+      "params": [
+        {
+          "name": "folder_id",
+          "type": {
+            "$ref": "FolderId"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "ContextId"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_folder_role",
+      "params": [
+        {
+          "name": "folder_id",
+          "type": {
+            "$ref": "FolderId"
+          }
+        },
+        {
+          "name": "member",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "Role"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_folders",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "FolderDto"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_owner",
+      "params": [],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_sort_order",
+      "params": [
+        {
+          "name": "parent_id",
+          "type": {
+            "$ref": "FolderId"
+          },
+          "nullable": true
+        }
+      ],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "FolderId"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "init",
+      "params": [],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "list_folder_roles",
+      "params": [
+        {
+          "name": "folder_id",
+          "type": {
+            "$ref": "FolderId"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "FolderRoleEntry"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "list_managers",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "kind": "string"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "move_folder",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "$ref": "FolderId"
+          }
+        },
+        {
+          "name": "new_parent",
+          "type": {
+            "$ref": "FolderId"
+          },
+          "nullable": true
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "register_folder",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "$ref": "FolderId"
+          }
+        },
+        {
+          "name": "parent_id",
+          "type": {
+            "$ref": "FolderId"
+          },
+          "nullable": true
+        },
+        {
+          "name": "color",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "alias",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "remove_manager",
+      "params": [
+        {
+          "name": "member",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "reorder",
+      "params": [
+        {
+          "name": "parent_id",
+          "type": {
+            "$ref": "FolderId"
+          },
+          "nullable": true
+        },
+        {
+          "name": "folder_ids",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "FolderId"
+            }
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "set_color",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "$ref": "FolderId"
+          }
+        },
+        {
+          "name": "color",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "set_folder_alias",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "$ref": "FolderId"
+          }
+        },
+        {
+          "name": "alias",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "set_folder_role",
+      "params": [
+        {
+          "name": "folder_id",
+          "type": {
+            "$ref": "FolderId"
+          }
+        },
+        {
+          "name": "member",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "role",
+          "type": {
+            "$ref": "Role"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "set_visibility",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "$ref": "FolderId"
+          }
+        },
+        {
+          "name": "visibility",
+          "type": {
+            "$ref": "Visibility"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "unregister_folder",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "$ref": "FolderId"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    }
+  ],
+  "events": [
+    {
+      "name": "FolderAliasChanged",
+      "payload": {
+        "$ref": "Event_FolderAliasChanged"
+      }
+    },
+    {
+      "name": "FolderColorChanged",
+      "payload": {
+        "$ref": "Event_FolderColorChanged"
+      }
+    },
+    {
+      "name": "FolderContextBound",
+      "payload": {
+        "$ref": "Event_FolderContextBound"
+      }
+    },
+    {
+      "name": "FolderParentChanged",
+      "payload": {
+        "$ref": "Event_FolderParentChanged"
+      }
+    },
+    {
+      "name": "FolderRegistered",
+      "payload": {
+        "$ref": "Event_FolderRegistered"
+      }
+    },
+    {
+      "name": "FolderRoleChanged",
+      "payload": {
+        "$ref": "Event_FolderRoleChanged"
+      }
+    },
+    {
+      "name": "FolderSortOrderChanged",
+      "payload": {
+        "$ref": "Event_FolderSortOrderChanged"
+      }
+    },
+    {
+      "name": "FolderUnregistered",
+      "payload": {
+        "$ref": "Event_FolderUnregistered"
+      }
+    },
+    {
+      "name": "FolderVisibilityChanged",
+      "payload": {
+        "$ref": "Event_FolderVisibilityChanged"
+      }
+    },
+    {
+      "name": "ManagerAdded",
+      "payload": {
+        "$ref": "Event_ManagerAdded"
+      }
+    },
+    {
+      "name": "ManagerRemoved",
+      "payload": {
+        "$ref": "Event_ManagerRemoved"
+      }
+    },
+    {
+      "name": "OwnerClaimed",
+      "payload": {
+        "$ref": "Event_OwnerClaimed"
+      }
+    }
+  ],
+  "state_root": "RegistryState",
+  "state_version": 1
+}

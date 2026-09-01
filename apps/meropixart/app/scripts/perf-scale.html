@@ -1,0 +1,137 @@
+<!doctype html>
+<!--
+  Dev-only perf harness for the OTHER lag: a document that accumulates a lot of
+  elements. Builds synthetic documents of N small raster layers and measures the
+  per-frame path the editor actually runs while you drag something:
+
+    sig      — the flattened-document cache signature CanvasStage builds per draw
+    warm     — composite() with every layer's prepared pixels already cached
+    moved    — composite() right after one layer moved (the real drag frame)
+    alloc    — just createCanvas(docW, docH), the per-composite output buffer
+
+  Open http://localhost:5176/scripts/perf-scale.html, or let e2e/perf read
+  window.__SCALE__.
+-->
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>MeroPixArt — scale bench</title>
+    <style>
+      body { margin: 0; padding: 16px; background: #0b0f14; color: #9fb6ce;
+             font: 13px/1.6 ui-monospace, monospace; }
+      h1 { font-size: 14px; color: #fff; }
+      td, th { padding: 2px 16px 2px 0; text-align: right; }
+      th:first-child, td:first-child { text-align: left; }
+      .n { color: #a5ff11; }
+    </style>
+  </head>
+  <body>
+    <h1>MeroPixArt — cost vs layer count</h1>
+    <table id="out"></table>
+    <script type="module">
+      import { composite, invalidatePrepared } from "/src/utils/compositor.ts";
+      import { createCanvas, ctx2d } from "/src/utils/raster.ts";
+      import { NEUTRAL_ADJUSTMENTS } from "/src/types/index.ts";
+
+      const DOC_W = 1400, DOC_H = 1800;
+      const COUNTS = [25, 100, 400, 1000, 2000];
+
+      const ms = (f) => { const t = performance.now(); f(); return performance.now() - t; };
+      const median = (xs) => xs.slice().sort((a, b) => a - b)[Math.floor(xs.length / 2)];
+      const best = (n, f) => median(Array.from({ length: n }, () => ms(f)));
+
+      /** N small raster "elements" scattered over the document, as if pasted in. */
+      function makeDoc(n) {
+        const layers = [];
+        const canvases = new Map();
+        for (let i = 0; i < n; i++) {
+          const id = `el-${i}`;
+          const w = 96, h = 96;
+          const c = createCanvas(w, h);
+          const cx = ctx2d(c);
+          cx.fillStyle = `hsl(${(i * 37) % 360} 70% 55%)`;
+          cx.fillRect(0, 0, w, h);
+          canvases.set(id, c);
+          layers.push({
+            id, name: `Element ${i}`, kind: "raster", parentId: null, layerIndex: i,
+            visible: true, locked: false, opacity: 100, blendMode: "normal",
+            x: (i * 53) % (DOC_W - w), y: (i * 89) % (DOC_H - h),
+            width: w, height: h, rotation: 0, scaleX: 100, scaleY: 100,
+            skewX: 0, skewY: 0, flipH: false, flipV: false, warp: "",
+            blobId: "", maskBlobId: null, fill: "",
+            adjustments: { ...NEUTRAL_ADJUSTMENTS }, text: null,
+            createdBy: "bench", createdAt: 0, updatedAt: 0,
+          });
+        }
+        return { layers, sources: (id) => canvases.get(id) ?? null };
+      }
+
+      /** Exactly the signature string CanvasStage.flattened() builds every draw. */
+      function sigOf(ls, tick) {
+        return `${tick}|${DOC_W}x${DOC_H}|#00000000|` + ls.map((l) =>
+          [
+            l.id, l.layerIndex, l.visible ? 1 : 0, l.parentId ?? "", l.opacity, l.blendMode,
+            l.x, l.y, l.width, l.height, l.rotation, l.scaleX, l.scaleY,
+            l.skewX, l.skewY, l.flipH ? 1 : 0, l.flipV ? 1 : 0, l.warp ?? "", l.fill ?? "",
+            l.maskBlobId ?? "",
+          ].join(","),
+        ).join(";");
+      }
+
+      const rows = {};
+      for (const n of COUNTS) {
+        const { layers, sources } = makeDoc(n);
+        const opts = { background: "#00000000", sources, masks: () => null };
+
+        invalidatePrepared();
+        composite(layers, DOC_W, DOC_H, opts); // warm the prepared cache
+
+        const warm = best(7, () => composite(layers, DOC_W, DOC_H, opts));
+        const moved = best(7, () => {
+          layers[0].x = (layers[0].x + 1) % 900;   // a drag moves ONE layer
+          composite(layers, DOC_W, DOC_H, opts);
+        });
+        // What would viewport culling be worth? At zoom 1 a ~1200x800 window shows
+        // about 38% of a 1400x1800 document, so composite only the elements whose
+        // box intersects it and see how the cost moves.
+        const VP = { x: 0, y: 0, w: 1200, h: 800 };
+        const visible = layers.filter((l) =>
+          l.x < VP.x + VP.w && l.x + l.width > VP.x
+          && l.y < VP.y + VP.h && l.y + l.height > VP.y);
+        invalidatePrepared();
+        composite(visible, DOC_W, DOC_H, opts);
+        const culled = best(7, () => composite(visible, DOC_W, DOC_H, opts));
+        invalidatePrepared();
+        composite(layers, DOC_W, DOC_H, opts);
+
+        const sig = best(9, () => sigOf(layers, 1));
+        const alloc = best(9, () => createCanvas(DOC_W, DOC_H));
+        const sigLen = sigOf(layers, 1).length;
+
+        rows[n] = {
+          layers: n,
+          sigMs: +sig.toFixed(2),
+          sigChars: sigLen,
+          warmMs: +warm.toFixed(1),
+          movedMs: +moved.toFixed(1),
+          allocMs: +alloc.toFixed(2),
+          visible: visible.length,
+          culledMs: +culled.toFixed(1),
+        };
+        console.log(`SCALEMARK n=${n} sig=${sig.toFixed(2)} warm=${warm.toFixed(1)} `
+          + `moved=${moved.toFixed(1)} culled=${culled.toFixed(1)}(${visible.length}) `
+          + `alloc=${alloc.toFixed(2)} sigChars=${sigLen}`);
+      }
+
+      const head = "<tr><th>layers</th><th>sig build</th><th>sig chars</th>"
+        + "<th>composite warm</th><th>after a move</th><th>canvas alloc</th></tr>";
+      document.getElementById("out").innerHTML = head + Object.values(rows).map((r) =>
+        `<tr><td>${r.layers}</td><td class=n>${r.sigMs}ms</td><td>${r.sigChars}</td>`
+        + `<td class=n>${r.warmMs}ms</td><td class=n>${r.movedMs}ms</td>`
+        + `<td class=n>${r.allocMs}ms</td></tr>`).join("");
+
+      window.__SCALE__ = rows;
+      window.__SCALE_READY__ = true;
+    </script>
+  </body>
+</html>

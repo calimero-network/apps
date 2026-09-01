@@ -1,0 +1,146 @@
+run_workflow: incoming log_level='debug'
+run_workflow: incoming rust_backtrace='0'
+WorkflowExecutor: resolved log_level='debug', binary_mode=False
+WorkflowExecutor: workflow_id='6a15d5db' (for test isolation)
+WorkflowExecutor: resolved rust_backtrace='0', binary_mode=False
+
+🚀 Executing Workflow: Simple Sync Test (No Handlers)
+
+💥 Nuking all data before workflow ...
+Found 2 Calimero node data directory(ies)
+✓ Found merod binary in PATH: /usr/local/bin/merod
+
+Deleting 2 data directory(ies)...
+✓ Successfully deleted 2 data directory(ies)
+Total space freed: 8.7 MB
+✓ Nuke on start completed
+
+Step 1: Checking workflow nodes (restart=false)...
+Will reuse existing nodes if they're running...
+
+Step 2: Managing nodes...
+Checking 2 nodes with prefix 'e2e-node' (no restart mode)...
+✓ Image ghcr.io/calimero-network/merod:0.10.1-rc.29 already available locally
+✓ Cleaned up existing container e2e-node-1-init
+Setting RUST_LOG for node e2e-node-1: debug
+Setting RUST_BACKTRACE for node e2e-node-1: 0
+Environment variables for e2e-node-1:
+  CALIMERO_HOME=/app/data
+  NODE_NAME=e2e-node-1
+  RUST_LOG=debug
+  RUST_BACKTRACE=0
+Using default fresh WebUI fetch for node e2e-node-1
+Initializing node e2e-node-1...
+✓ Node e2e-node-1 initialized successfully
+Starting node e2e-node-1...
+✓ Started Calimero node e2e-node-1 (ID: 15d8e07e7f43)
+  - P2P Port: 2428
+  - RPC/Admin Port: 2528
+  - Data Directory: ./data/e2e-node-1
+  - Non Auth Node URL: http://localhost:2528
+✓ Image ghcr.io/calimero-network/merod:0.10.1-rc.29 already available locally
+✓ Cleaned up existing container e2e-node-2-init
+Setting RUST_LOG for node e2e-node-2: debug
+Setting RUST_BACKTRACE for node e2e-node-2: 0
+Environment variables for e2e-node-2:
+  CALIMERO_HOME=/app/data
+  NODE_NAME=e2e-node-2
+  RUST_LOG=debug
+  RUST_BACKTRACE=0
+Using default fresh WebUI fetch for node e2e-node-2
+Initializing node e2e-node-2...
+✓ Node e2e-node-2 initialized successfully
+Starting node e2e-node-2...
+✓ Started Calimero node e2e-node-2 (ID: ae7fc2a78454)
+  - P2P Port: 2429
+  - RPC/Admin Port: 2529
+  - Data Directory: ./data/e2e-node-2
+  - Non Auth Node URL: http://localhost:2529
+✓ Node management completed
+
+Step 3: Waiting for nodes to be ready...
+Waiting up to 60 seconds for 2 nodes to be ready...
+✓ Admin server accessible on localhost:2528 for e2e-node-1
+✓ Node e2e-node-1 is ready (health check passed)
+✓ Admin server accessible on localhost:2528 for e2e-node-2
+✓ Node e2e-node-2 is ready (health check passed)
+  Waiting for nodes... ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 100% 0:00:00
+✓ All nodes are ready
+
+Step 4: Executing workflow steps...
+
+Executing Install application on node-1 (install_application)...
+✅ Custom outputs configuration validated: 1 outputs defined
+Connecting to http://localhost:2528 (node: e2e-node-1)...
+Copied file to container data directory: data/e2e-node-1/e2e_kv_store.wasm
+Installing dev application using container path: /app/data/e2e_kv_store.wasm
+🔍 Install API Response for e2e-node-1:
+  Success: True
+  Data:
+{
+  "data": {
+    "applicationId": "64Ayc8BQoYBWYRFVToQJ3TxAveEw3oHm2grs9DaavcCU"
+  }
+}
+📝 Install result data: {'data': {'applicationId': '64Ayc8BQoYBWYRFVToQJ3TxAveEw3oHm2grs9DaavcCU'}}
+� Exporting variables from e2e-node-1 response:
+   ✓ app_id = 64Ayc8BQoYBWYRFVToQJ3TxAveEw3oHm2grs9DaavcCU
+📝 Fallback: Captured application ID for e2e-node-1: 64Ayc8BQoYBWYRFVToQJ3TxAveEw3oHm2grs9DaavcCU
+✓ Step 'Install application on node-1' completed
+
+Executing Create mesh with node-2 (create_mesh)...
+Creating mesh: context on e2e-node-1, connecting 1 nodes
+✅ Custom outputs configuration validated: 3 outputs defined
+
+Step 1: Creating namespace on e2e-node-1
+✓ Namespace created: a3c18a84436dd094b678d58bf1e7b808e6de288a495b94fdbd3d4e154f9f8e0c
+
+Step 2: Creating context on e2e-node-1
+🔍 Context Creation API Response:
+  Success: True
+  Data:
+{
+  "data": {
+    "contextId": "9WqTKEFGuxLZkvYaTrnLYinBMHTyKWxFvRXMHkRKvK8N",
+    "groupCreated": false,
+    "groupId": "a3c18a84436dd094b678d58bf1e7b808e6de288a495b94fdbd3d4e154f9f8e0c",
+    "memberPublicKey": "xRJZwGQkiL2NrXGei5cPycEqJuC8FaPSs9A9BD8MsAW"
+  }
+}
+✓ Context created: 9WqTKEFGuxLZkvYaTrnLYinBMHTyKWxFvRXMHkRKvK8N
+✓ Member public key: xRJZwGQkiL2NrXGei5cPycEqJuC8FaPSs9A9BD8MsAW
+✓ Namespace ID: a3c18a84436dd094b678d58bf1e7b808e6de288a495b94fdbd3d4e154f9f8e0c
+� Exporting variables from e2e-node-1 response:
+   ✓ context_id = 9WqTKEFGuxLZkvYaTrnLYinBMHTyKWxFvRXMHkRKvK8N
+   ✓ node1_key = xRJZwGQkiL2NrXGei5cPycEqJuC8FaPSs9A9BD8MsAW
+⚠️  Export failed: 'memberIdentity' not found
+   Available: contextId, groupCreated, groupId, memberPublicKey
+
+Pre-installing application on joining nodes
+Copied file to container data directory: data/e2e-node-2/e2e_kv_store.wasm
+  ✓ Pre-installed application on e2e-node-2
+
+Processing node: e2e-node-2
+  Creating identity on e2e-node-2...
+🔍 Identity Creation API Response for e2e-node-2:
+  Success: True
+  Data:
+{
+  "data": {
+    "publicKey": "FxRh8SgeGjKanSMESnJ3CWwPKadNENYHJwg7io1teGSQ"
+  }
+}
+  ✓ Identity created: FxRh8SgeGjKanSMESnJ3CWwPKadNENYHJwg7io1teGSQ
+  Creating namespace invitation from e2e-node-1...
+  ✓ Namespace invitation created
+  Joining namespace from e2e-node-2...
+Join namespace failed for e2e-node-2: join_namespace failed
+❌ Step 'Create mesh with node-2' failed
+❌ Workflow steps failed - stopping workflow
+
+❌ Workflow failed!
+Stopping managed containers with graceful shutdown...
+Initiating graceful shutdown for 2 containers...
+Waiting 3s for connection draining...
+✓ Gracefully stopped and removed e2e-node-1
+✓ Gracefully stopped and removed e2e-node-2

@@ -1,0 +1,10 @@
+[toolchain]
+channel = "1.89.0"
+# ^~~ keep this in sync with mero-chat / the merod build toolchain
+# rustfmt is required, not optional: CI gates on `cargo fmt --check`, and a pinned
+# channel does NOT inherit the components your default toolchain happens to have.
+# Without it listed here the gate fails with "'cargo-fmt' is not installed for the
+# toolchain '1.89.0'" on any clean machine — it passes locally only because your
+# default toolchain has rustfmt.
+components = ["cargo", "clippy", "rustfmt"]
+targets = ["wasm32-unknown-unknown"]

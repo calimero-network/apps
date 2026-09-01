@@ -1,0 +1,33 @@
+{
+  "scripts": {
+    "prepare": "husky",
+    "lint": "pnpm lint:check",
+    "lint:check": "pnpm --dir app lint:check",
+    "lint:fix": "pnpm --dir app lint:fix",
+    "logic:build": "cargo mero bundle --manifest-path logic/Cargo.toml --dev --output logic/dist/com.calimero.mero-drive-docs.mpk",
+    "logic:clean": "rm -rf ./logic/target ./logic/crates/registry/res ./logic/res ./logic/dist",
+    "logic:sync": "bash ./scripts/sync-wasm.sh",
+    "logic:watch": "chokidar \"logic/res/**/*\" -c \"node scripts/on-res-change.mjs {path}\"",
+    "app:install": "pnpm --dir app install",
+    "app:dev": "concurrently -n web,res -c green,magenta \"pnpm --dir app dev\" \"pnpm run logic:watch\"",
+    "app:build": "pnpm --dir app build",
+    "app:preview": "pnpm --dir app preview",
+    "app:generate-client": "pnpm --dir app codegen",
+    "dev": "pnpm run app:dev",
+    "dev:full": "concurrently -n registry,web,res -c blue,green,magenta \"pnpm run registry:start\" \"pnpm --dir app dev\" \"pnpm run logic:watch\"",
+    "registry:start": "calimero-registry local start --port 8082",
+    "registry:sync": "bash ./scripts/registry-sync.sh",
+    "registry:status": "curl -sf http://localhost:8082/healthz > /dev/null && echo '\u2705 Registry is running' || echo '\u274c Registry is not running'"
+  },
+  "devDependencies": {
+    "@calimero-network/merobox-js": "^0.0.3",
+    "chokidar-cli": "^3.0.0",
+    "concurrently": "^9.2.1",
+    "husky": "^9.0.11"
+  },
+  "dependencies": {
+    "@calimero-network/mero-icons": "^0.0.4",
+    "@calimero-network/mero-ui": "^0.3.4"
+  },
+  "name": "mero-drive"
+}

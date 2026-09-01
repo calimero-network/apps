@@ -1,0 +1,13 @@
+{
+  "name": "Mero Meet",
+  "short_name": "MeroMeet",
+  "description": "Decentralized, peer-to-peer video calling on Calimero. WebRTC media; signaling rides your nodes — no signaling server.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#090b10",
+  "theme_color": "#090b10",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

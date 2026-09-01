@@ -1,0 +1,11 @@
+.modal {
+  width: min(420px, 92vw);
+  background: var(--bg-1);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  padding: 24px;
+}
+.title { font-size: 17px; font-weight: 700; color: var(--text); margin-bottom: 6px; }
+.sub { font-size: 13px; color: var(--text-dim); margin-bottom: 16px; line-height: 1.5; }
+.actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
