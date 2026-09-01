@@ -84,8 +84,15 @@ fn from_executor_id() -> Result<PublicKey, GameError> {
 
 /// Bridge between our `battleships_types::PublicKey` and the SDK's own `PublicKey`
 /// (needed for `UserStorage::get_for_user` and similar SDK-typed APIs).
-fn sdk_pk(pk: &PublicKey) -> calimero_sdk::PublicKey {
-    calimero_sdk::PublicKey::from(pk.0)
+/// The caller as an SDK `AccountId`, for the `UserStorage` APIs.
+///
+/// Was `calimero_sdk::PublicKey`. core rc.21 rekeyed UserStorage from the device
+/// key to the ACCOUNT, and this is the conversion that follows it — which is the
+/// same principal `from_executor_id` resolves, so a player's private board is
+/// reachable from either of their machines rather than only the one that placed
+/// the ships.
+fn sdk_account(pk: &PublicKey) -> calimero_sdk::AccountId {
+    calimero_sdk::AccountId::from(pk.0)
 }
 
 // ---------------------------------------------------------------------------
@@ -336,6 +343,7 @@ impl GameState {
         let mut pb = priv_mut
             .boards
             .get(&key)?
+            .map(|v| (*v).clone())
             .ok_or_else(|| AppError::from(GameError::Invalid("target board unavailable".into())))?;
         let cur = pb.get_board().get(BOARD_SIZE, pending.x, pending.y);
         let is_hit = cur == Cell::Ship;
@@ -375,7 +383,7 @@ impl GameState {
             // Winning shot — run audit.
             let commitment = self
                 .commitments
-                .get_for_user(&sdk_pk(&caller))
+                .get_for_user(&sdk_account(&caller))
                 .map_err(|e| AppError::msg(format!("commitments.get_for_user: {e}")))?
                 .ok_or_else(|| {
                     AppError::from(GameError::Invalid("no commitment for caller".into()))
@@ -474,7 +482,7 @@ impl GameState {
         let caller = from_executor_id()?;
         let commitment = self
             .commitments
-            .get_for_user(&sdk_pk(&caller))
+            .get_for_user(&sdk_account(&caller))
             .map_err(|e| AppError::msg(format!("commitments.get_for_user: {e}")))?
             .ok_or_else(|| AppError::from(GameError::Invalid("no commitment for caller".into())))?;
         let commitment_hash = *commitment.get();
@@ -547,7 +555,7 @@ impl GameState {
         let caller = from_executor_id()?;
         let expected = self
             .commitments
-            .get_for_user(&sdk_pk(&caller))
+            .get_for_user(&sdk_account(&caller))
             .map_err(|e| AppError::msg(format!("commitments.get_for_user: {e}")))?
             .ok_or_else(|| AppError::from(GameError::Invalid("no commitment for caller".into())))?;
         let expected_hash = *expected.get();
