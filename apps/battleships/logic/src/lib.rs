@@ -230,7 +230,7 @@ impl LobbyState {
         // Reject malformed player2 keys early so the game context can validate
         // its caller against a real key.
         PublicKey::from_hex(player2_hex)
-            .map_err(|e| GameError::Invalid(format!("player2 is not a valid base58 key: {e}")))?;
+            .map_err(|e| GameError::Invalid(format!("player2 is not a valid hex key: {e}")))?;
         let match_id = format!("{caller_hex}-{now_ms}-{nonce_hex}");
         let collides = self
             .matches

@@ -120,8 +120,26 @@ steps:
     statements:
       - 'is_set({{match_id}})'
 
-  # Negative-path coverage for create_match validation (added for the
-  # CRDT migration — self-match rejection and malformed-base58 rejection).
+  # The caller's own id, read back from the match it just created.
+  #
+  # ⚠️ `p1_key` is `memberPublicKey` — a DEVICE key — but the contract resolves
+  # its caller with `account_id()`. Since rc.27 both render as 64 hex, so passing
+  # the device key as `player2` does not trip the self-match guard: it compares
+  # two different-but-same-shaped ids and sees two distinct players. The test
+  # passed for years by asserting nothing; wiring up the assertion is what
+  # exposed it. `MatchSummary.player1` is the account the contract actually
+  # recorded, which is the only id here that can be compared against itself.
+  - name: Read back the caller's account from the match
+    type: call
+    node: calimero-node-1
+    context_id: '{{lobby_ctx_id}}'
+    method: get_matches
+    args: {}
+    executor_public_key: '{{p1_key}}'
+    outputs:
+      p1_account: result.output.0.player1
+
+  # Negative-path coverage for create_match validation.
   - name: Reject Self-Match Creation
     type: call
     node: calimero-node-1
@@ -129,7 +147,7 @@ steps:
     method: create_match
     executor_public_key: '{{p1_key}}'
     args:
-      player2: '{{p1_key}}'
+      player2: '{{p1_account}}'
     expected_failure: true
     outputs:
       reject_err_1: error
@@ -139,19 +157,21 @@ steps:
     statements:
       - "is_set({{reject_err_1}})"
 
-  - name: Reject Non-Base58 Player2
+  - name: Reject Malformed Player2
     type: call
     node: calimero-node-1
     context_id: '{{lobby_ctx_id}}'
     method: create_match
     executor_public_key: '{{p1_key}}'
     args:
-      player2: '!!!not-a-valid-base58-key!!!'
+      # Not hex. Was '!!!not-a-valid-base58-key!!!' — still rejected, but for a
+      # reason the name no longer described once ids became hex.
+      player2: 'zzzz-not-hex-zzzz'
     expected_failure: true
     outputs:
       reject_err_2: error
 
-  - name: Assert rejected — Reject Non-Base58 Player2
+  - name: Assert rejected — Reject Malformed Player2
     type: assert
     statements:
       - "is_set({{reject_err_2}})"
