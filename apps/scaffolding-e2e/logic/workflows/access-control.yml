@@ -1,0 +1,803 @@
+name: Access Control + Ownable E2E
+description: >
+  Role-based access control and single-owner storage across two nodes. The point
+  of the two-node setup is that neither can be shown on one: that `init` seeds
+  exactly one admin, that a role grant confers nothing until it is projected, and
+  that an ownership transfer moves the single writer somewhere the previous owner
+  cannot follow.
+
+force_pull_image: false
+nuke_on_start: true
+near_devnet: false
+
+nodes:
+  count: 2
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.28
+  # rc.26 made mDNS opt-in (core#3620) and merobox does not pass the flag,
+  # so discovery changed at the image bump. Stated, not inherited.
+  mdns: true
+  prefix: e2e-node
+
+steps:
+  - name: Install application on node-1
+    type: install_application
+    node: e2e-node-1
+    path: res/scaffolding_e2e.wasm
+    dev: true
+    outputs:
+      app_id: applicationId
+
+  - name: Assert application installed
+    type: assert
+    statements:
+      - "is_set({{app_id}})"
+
+  # Installed explicitly rather than left to blob sync. The `path:` this step
+  # lost from `create_mesh` was not decoration in the older merobox: it put the
+  # wasm on the joining node directly. Without it the node has to pull the blob
+  # from the founder, and for a contract this size that loses the race against
+  # merobox's retry window — the run dies at `JSON-RPC Error: Uninitialized`
+  # with `error=blob share` in the node log, which names neither cause.
+  - name: Install application on e2e-node-2
+    type: install_application
+    node: e2e-node-2
+    path: res/scaffolding_e2e.wasm
+    dev: true
+
+  - name: Create mesh with node-2
+    type: create_mesh
+    context_node: e2e-node-1
+    application_id: "{{app_id}}"
+    nodes:
+      - e2e-node-2
+    outputs:
+      context_id: contextId
+      node1_key: memberPublicKey
+
+  - name: Verify mesh keys are populated
+    type: assert
+    statements:
+      - "is_set({{node1_key}})"
+      - "is_set({{public_key_e2e-node-2}})"
+
+  # Every gate in this contract resolves an ACCOUNT, and merobox only knows each
+  # node's base58 DEVICE key. Asserting an admin or an owner against
+  # `node1_key` would compare two different id kinds and could only ever be
+  # vacuously false, so both nodes say who they are first.
+  - name: node-1 reports its own account id
+    type: call
+    node: e2e-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: whoami
+    args: {}
+    outputs:
+      n1_account: result.output.account_id
+
+  - name: node-2 reports its own account id
+    type: call
+    node: e2e-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_e2e-node-2}}"
+    method: whoami
+    args: {}
+    outputs:
+      n2_account: result.output.account_id
+
+  - name: Assert both accounts are populated
+    type: assert
+    statements:
+      - "is_set({{n1_account}})"
+      - "is_set({{n2_account}})"
+
+  # ─── init seeds exactly one admin ──────────────────────────────────────────
+
+  # ⚠️ ONE, and that is the gap worth knowing about: seeding two admins in `init`
+  # would need both account ids known to whoever creates the context AND every
+  # node deriving the same set, which nothing in `init` guarantees. So a
+  # migration that needs a pre-seeded multi-admin state has no way to express it
+  # — the second admin can only arrive later, through an authenticated rotation.
+  - name: node-1 lists admins
+    type: call
+    node: e2e-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: acl_admins
+    args: {}
+    outputs:
+      admins_initial: result
+
+  - name: Assert the context creator is the sole admin
+    type: json_assert
+    statements:
+      - 'json_equal({{admins_initial}}, {"output": ["{{n1_account}}"]})'
+
+  - name: node-2 checks whether it is an admin
+    type: call
+    node: e2e-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_e2e-node-2}}"
+    method: acl_is_admin
+    args:
+      account_hex: "{{n2_account}}"
+    outputs:
+      n2_admin_pre: result
+
+  - name: Assert node-2 is not an admin
+    type: json_assert
+    statements:
+      - 'json_equal({{n2_admin_pre}}, {"output": false})'
+
+  - name: node-1 reads the role vocabulary
+    type: call
+    node: e2e-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: acl_roles
+    args: {}
+    outputs:
+      roles: result
+
+  - name: Assert the contract defines editor and moderator
+    type: json_assert
+    statements:
+      - 'json_equal({{roles}}, {"output": {"editor": ["write"], "moderator": ["write", "delete"]}})'
+
+  # ─── A grant confers nothing until it is projected ─────────────────────────
+
+  - name: node-1 grants node-2 the editor role
+    type: call
+    node: e2e-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: acl_grant
+    args:
+      role: "editor"
+      account_hex: "{{n2_account}}"
+
+  - name: Wait for the grant to reach node-2
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - e2e-node-1
+      - e2e-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: node-2 reads its own roles
+    type: call
+    node: e2e-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_e2e-node-2}}"
+    method: acl_my_roles
+    args: {}
+    outputs:
+      n2_roles: result
+
+  - name: Assert the registry entry reached node-2
+    type: json_assert
+    statements:
+      - 'json_equal({{n2_roles}}, {"output": ["editor"]})'
+
+  # The registry says node-2 is an editor. The CAPABILITY MAP — the thing a merge
+  # check actually reads — does not know that yet, because the projection is a
+  # separate signed action. This assertion is the whole point of the split.
+  - name: node-2 reads the capability map before projection
+    type: call
+    node: e2e-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_e2e-node-2}}"
+    method: acl_capabilities
+    args: {}
+    outputs:
+      caps_pre: result
+
+  - name: Assert only the admin has capabilities so far
+    type: json_assert
+    statements:
+      - 'json_equal({{caps_pre}}, {"output": {"{{n1_account}}": ["write", "delete", "admin"]}})'
+
+  - name: node-1 projects the registry onto the document
+    type: call
+    node: e2e-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: acl_project
+    args: {}
+    outputs:
+      projected: result
+
+  - name: Assert the projection covers both accounts
+    type: json_assert
+    statements:
+      - 'json_equal({{projected}}, {"output": 2})'
+
+  - name: Wait for the projection to reach node-2
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - e2e-node-1
+      - e2e-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: node-2 reads the capability map after projection
+    type: call
+    node: e2e-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_e2e-node-2}}"
+    method: acl_capabilities
+    args: {}
+    outputs:
+      caps_post: result
+
+  # `editor` is WRITE only — no `delete`. The admin keeps the full mask, which
+  # `project_onto` guarantees so a projection can never lock out the account
+  # that administers the document.
+  - name: Assert the editor got write and the admin kept everything
+    type: json_assert
+    statements:
+      - 'json_equal({{caps_post}}, {"output": {"{{n1_account}}": ["write", "delete", "admin"], "{{n2_account}}": ["write"]}})'
+
+  - name: node-2 writes the guarded document
+    type: call
+    node: e2e-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_e2e-node-2}}"
+    method: acl_doc_set
+    args:
+      value: "written_by_the_editor"
+
+  - name: Wait for the guarded write to reach node-1
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - e2e-node-1
+      - e2e-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: node-1 reads the guarded document
+    type: call
+    node: e2e-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: acl_doc_get
+    args: {}
+    outputs:
+      doc_after_editor: result
+
+  - name: Assert a projected role authorises a real write
+    type: json_assert
+    statements:
+      - 'json_equal({{doc_after_editor}}, {"output": "written_by_the_editor"})'
+
+  # ─── Revoke, and re-grant ─────────────────────────────────────────────────
+
+  - name: node-1 revokes the editor role
+    type: call
+    node: e2e-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: acl_revoke
+    args:
+      role: "editor"
+      account_hex: "{{n2_account}}"
+
+  - name: node-1 re-projects after the revoke
+    type: call
+    node: e2e-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: acl_project
+    args: {}
+    outputs:
+      projected_after_revoke: result
+
+  # Assert the MAP, not its length. A revoke has to shrink the capability map,
+  # not merely stop adding to it — and if it does not, the mismatch here names
+  # the account that survived, where a count assertion would only have said
+  # "2 != 1".
+  - name: node-1 reads the capability map after the revoke
+    type: call
+    node: e2e-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: acl_capabilities
+    args: {}
+    outputs:
+      caps_after_revoke: result
+
+  - name: Assert the revoke removed the editor from the capability map
+    type: json_assert
+    statements:
+      - 'json_equal({{caps_after_revoke}}, {"output": {"{{n1_account}}": ["write", "delete", "admin"]}})'
+      - 'json_equal({{projected_after_revoke}}, {"output": 1})'
+
+  - name: Wait for the revoke to reach node-2
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - e2e-node-1
+      - e2e-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: node-2 checks its role after the revoke
+    type: call
+    node: e2e-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_e2e-node-2}}"
+    method: acl_has_role
+    args:
+      role: "editor"
+      account_hex: "{{n2_account}}"
+    outputs:
+      n2_editor_post_revoke: result
+
+  - name: Assert the revoke propagated
+    type: json_assert
+    statements:
+      - 'json_equal({{n2_editor_post_revoke}}, {"output": false})'
+
+  # A revoke stores `false` rather than deleting the entry, so membership stays a
+  # plain last-writer-wins boolean with no tombstone — which is why this
+  # re-grant converges, unlike the set-tombstone case that never did before
+  # rc.10.
+  - name: node-1 re-grants the editor role
+    type: call
+    node: e2e-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: acl_grant
+    args:
+      role: "editor"
+      account_hex: "{{n2_account}}"
+
+  - name: Wait for the re-grant to reach node-2
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - e2e-node-1
+      - e2e-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: node-2 checks its role after the re-grant
+    type: call
+    node: e2e-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_e2e-node-2}}"
+    method: acl_my_roles
+    args: {}
+    outputs:
+      n2_roles_regranted: result
+
+  - name: Assert the re-grant survived the merge
+    type: json_assert
+    statements:
+      - 'json_equal({{n2_roles_regranted}}, {"output": ["editor"]})'
+
+  # ─── The admin tier ───────────────────────────────────────────────────────
+
+  - name: node-1 makes node-2 an admin
+    type: call
+    node: e2e-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: acl_grant_admin
+    args:
+      account_hex: "{{n2_account}}"
+
+  - name: Wait for the admin rotation to reach node-2
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - e2e-node-1
+      - e2e-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: node-2 checks whether it is an admin now
+    type: call
+    node: e2e-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_e2e-node-2}}"
+    method: acl_is_admin
+    args:
+      account_hex: "{{n2_account}}"
+    outputs:
+      n2_admin_post: result
+
+  - name: Assert the admin rotation propagated
+    type: json_assert
+    statements:
+      - 'json_equal({{n2_admin_post}}, {"output": true})'
+
+  # ⚠️ The grant had to project on its own, and this is why: admin-ness lives on
+  # the REGISTRY, while `acl_project` writes the guarded DOCUMENT and
+  # `set_capabilities` guards `Op::Admin` against that document's own capability
+  # map. Without the self-projection node-2 would be an admin who cannot project
+  # — the next step failed with exactly that before `acl_grant_admin` learned to
+  # do it: `Action not allowed: Executor is not authorised for this operation`.
+  - name: node-2 reads the capability map after being made an admin
+    type: call
+    node: e2e-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_e2e-node-2}}"
+    method: acl_capabilities
+    args: {}
+    outputs:
+      caps_after_admin_grant: result
+
+  - name: Assert the new admin already holds the full mask
+    type: json_assert
+    statements:
+      - 'json_equal({{caps_after_admin_grant}}, {"output": {"{{n1_account}}": ["write", "delete", "admin"], "{{n2_account}}": ["write", "delete", "admin"]}})'
+
+  # The real test of the admin tier: node-2 grants a role it was never given
+  # permission to grant except by becoming an admin.
+  - name: node-2 grants itself the moderator role
+    type: call
+    node: e2e-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_e2e-node-2}}"
+    method: acl_grant
+    args:
+      role: "moderator"
+      account_hex: "{{n2_account}}"
+
+  - name: node-2 projects its own grant
+    type: call
+    node: e2e-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_e2e-node-2}}"
+    method: acl_project
+    args: {}
+    outputs:
+      projected_by_n2: result
+
+  - name: Assert a new admin can grant and project
+    type: json_assert
+    statements:
+      - 'json_equal({{projected_by_n2}}, {"output": 2})'
+
+  - name: Wait for node-2's grant to reach node-1
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - e2e-node-1
+      - e2e-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: node-1 reads the capability map after node-2's projection
+    type: call
+    node: e2e-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: acl_capabilities
+    args: {}
+    outputs:
+      caps_final: result
+
+  # Both are admins now, so `project_onto` gives both the full mask regardless of
+  # their roles — the admin override, asserted rather than assumed.
+  - name: Assert both admins hold the full mask
+    type: json_assert
+    statements:
+      - 'json_equal({{caps_final}}, {"output": {"{{n1_account}}": ["write", "delete", "admin"], "{{n2_account}}": ["write", "delete", "admin"]}})'
+
+  # ─── Ownable: a transfer moves the single writer ───────────────────────────
+
+  - name: node-1 reads the owner
+    type: call
+    node: e2e-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: owned_owner
+    args: {}
+    outputs:
+      owner_initial: result
+
+  - name: Assert the context creator is the owner
+    type: json_assert
+    statements:
+      - 'json_equal({{owner_initial}}, {"output": "{{n1_account}}"})'
+
+  - name: node-1 writes the owned document
+    type: call
+    node: e2e-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: owned_set
+    args:
+      value: "written_by_the_owner"
+
+  - name: Wait for the owned write to reach node-2
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - e2e-node-1
+      - e2e-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  # A non-owner can READ — `Ownable` gates writes, not visibility.
+  - name: node-2 reads the owned document
+    type: call
+    node: e2e-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_e2e-node-2}}"
+    method: owned_get
+    args: {}
+    outputs:
+      owned_read_by_n2: result
+
+  - name: Assert a non-owner can read
+    type: json_assert
+    statements:
+      - 'json_equal({{owned_read_by_n2}}, {"output": "written_by_the_owner"})'
+
+  - name: node-1 transfers ownership to node-2
+    type: call
+    node: e2e-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: owned_transfer
+    args:
+      account_hex: "{{n2_account}}"
+
+  - name: Wait for the transfer to reach node-2
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - e2e-node-1
+      - e2e-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: node-2 reads the owner after the transfer
+    type: call
+    node: e2e-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_e2e-node-2}}"
+    method: owned_owner
+    args: {}
+    outputs:
+      owner_after_transfer: result
+
+  # A transfer ROTATES the writer set to exactly one account. If this said
+  # node-1, the transfer had added rather than replaced — and `Ownable::owner`
+  # would then answer `null` on a two-writer cell rather than pick one.
+  - name: Assert ownership moved, and moved wholly
+    type: json_assert
+    statements:
+      - 'json_equal({{owner_after_transfer}}, {"output": "{{n2_account}}"})'
+
+  - name: node-1 checks whether it is still the owner
+    type: call
+    node: e2e-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: owned_is_owner
+    args:
+      account_hex: "{{n1_account}}"
+    outputs:
+      n1_still_owner: result
+
+  - name: Assert the previous owner is out
+    type: json_assert
+    statements:
+      - 'json_equal({{n1_still_owner}}, {"output": false})'
+
+  - name: The new owner writes
+    type: call
+    node: e2e-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_e2e-node-2}}"
+    method: owned_set
+    args:
+      value: "written_by_the_new_owner"
+
+  - name: Wait for the new owner's write to reach node-1
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - e2e-node-1
+      - e2e-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: node-1 reads the owned document
+    type: call
+    node: e2e-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: owned_get
+    args: {}
+    outputs:
+      owned_final: result
+
+  - name: Assert the transferred ownership is real
+    type: json_assert
+    statements:
+      - 'json_equal({{owned_final}}, {"output": "written_by_the_new_owner"})'
+
+  # ─── acl_members_of and acl_revoke_admin ──────────────────────────────────
+  #
+  # Both are on the ABI and the frontend calls both, but no workflow named
+  # either — so the admin-rotation path had never run against a real node. It is
+  # the last place that should be true of: the AccessControl writer set IS the
+  # admin tier, so a bug here is "who may grant a role" going wrong, silently.
+  #
+  # ⚠️ ORDER MATTERS HERE. By this point the scenario above has ALREADY promoted
+  # node-2 to admin (`acl_grant_admin` earlier) and never revoked it, so the
+  # registry holds TWO admins. The last-admin guard therefore cannot be probed by
+  # revoking node-1 first — with two admins that revoke SUCCEEDS, the assertion
+  # would fail for the wrong reason, and it would strip node-1's admin and break
+  # every step after it. So node-2 is demoted first, deliberately, to reach the
+  # one-admin state the guard is about.
+
+  - name: node-1 lists the members of the editor role
+    type: call
+    node: e2e-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: acl_members_of
+    args:
+      role: "editor"
+    outputs:
+      editor_members: result
+
+  - name: Assert the roster names node-2 and only node-2
+    type: json_assert
+    statements:
+      # The exact list, not `is_set`: a members_of that returned every account,
+      # or an empty list, would both pass a set-ness check while meaning the
+      # opposite of what a roster is for. node-2 was granted `editor` earlier and
+      # node-1 holds its capabilities through the ADMIN tier, not through a role,
+      # so node-1 must not appear here.
+      - 'json_equal({{editor_members}}, {"output": ["{{n2_account}}"]})'
+
+  - name: node-1 lists the members of a role nobody holds
+    type: call
+    node: e2e-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: acl_members_of
+    args:
+      role: "role_that_does_not_exist"
+    outputs:
+      empty_members: result
+
+  - name: Assert an unheld role is empty rather than an error
+    type: json_assert
+    statements:
+      - 'json_equal({{empty_members}}, {"output": []})'
+
+  # --- a real rotation: demote node-2, which is currently the second admin ---
+
+  - name: node-1 confirms there are two admins before demoting
+    type: call
+    node: e2e-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: acl_admins
+    args: {}
+    outputs:
+      admins_before_demote: result
+
+  - name: Assert node-2 is an admin going in
+    type: assert
+    statements:
+      - "contains({{admins_before_demote}}, {{n2_account}})"
+      - "contains({{admins_before_demote}}, {{n1_account}})"
+
+  - name: node-1 revokes node-2's admin
+    type: call
+    node: e2e-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: acl_revoke_admin
+    args:
+      account_hex: "{{n2_account}}"
+
+  - name: Wait for the demotion to reach node-2
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - e2e-node-1
+      - e2e-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: node-2 checks whether it is still an admin
+    type: call
+    node: e2e-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_e2e-node-2}}"
+    method: acl_is_admin
+    args:
+      account_hex: "{{n2_account}}"
+    outputs:
+      n2_admin_after_revoke: result
+
+  - name: Assert the admin revoke actually landed on the other node
+    type: json_assert
+    statements:
+      # Read on node-2, not node-1: a revoke that updated only the writer's local
+      # view would pass a same-node read and still leave the other node treating
+      # node-2 as an admin.
+      - 'json_equal({{n2_admin_after_revoke}}, {"output": false})'
+
+  # --- now node-1 is the sole admin, so the guard is reachable ---
+
+  - name: node-1 tries to revoke ITSELF as the only remaining admin
+    type: call
+    node: e2e-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: acl_revoke_admin
+    args:
+      account_hex: "{{n1_account}}"
+    expected_failure: true
+    outputs:
+      last_admin_error: error
+
+  - name: Assert the last admin cannot be revoked
+    type: assert
+    statements:
+      # `expected_failure: true` alone can NEVER fail a call step — it marks the
+      # step allowed-to-fail, so a revoke that wrongly SUCCEEDED (leaving a
+      # registry no one can administer, which is what the contract's
+      # "the registry would be frozen" bail exists to prevent) would still pass.
+      # Capturing the error and asserting it is set is what makes this real.
+      - "is_set({{last_admin_error}})"
+
+  - name: node-1 confirms it is still an admin
+    type: call
+    node: e2e-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: acl_is_admin
+    args:
+      account_hex: "{{n1_account}}"
+    outputs:
+      still_admin: result
+
+  - name: Assert the refused revoke changed nothing
+    type: json_assert
+    statements:
+      - 'json_equal({{still_admin}}, {"output": true})'
+
+  - name: node-1 lists admins after the refused self-revoke
+    type: call
+    node: e2e-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: acl_admins
+    args: {}
+    outputs:
+      admins_final: result
+
+  - name: Assert exactly the one admin remains
+    type: json_assert
+    statements:
+      # The whole point of the guard: one admin, and it is node-1.
+      - 'json_equal({{admins_final}}, {"output": ["{{n1_account}}"]})'
+
+stop_all_nodes: false
+restart: false
+wait_timeout: 180

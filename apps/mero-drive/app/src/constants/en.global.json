@@ -1,0 +1,47 @@
+{
+  "home": {
+    "welcome": "Welcome to Mero Drive!",
+    "demoDescription": "A private file storage application built on Calimero's P2P network. Upload, organize, and share your files securely in Mero Drive.",
+    "calimeroIntro": "Calimero is a privacy-focused blockchain network that enables developers to build scalable, private applications. Our platform provides the infrastructure for creating decentralized applications with enhanced privacy and performance.",
+    "learnMore": "Learn more about Calimero:",
+    "documentation": "Documentation",
+    "github": "GitHub",
+    "website": "Website",
+    "uploadFile": "Upload File",
+    "title": "Title",
+    "noFiles": "No files yet. Upload your first file to get started!",
+    "searchPlaceholder": "Search files...",
+    "contextActions": "Context Actions",
+    "logout": "Logout",
+    "viewFile": "View File",
+    "download": "Download",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "errors": {
+      "uploadFailed": "Failed to upload file",
+      "loadFailed": "Failed to load files",
+      "deleteFailed": "Failed to delete file",
+      "downloadFailed": "Failed to download file"
+    }
+  },
+  "auth": {
+    "title": "Mero Drive",
+    "back": "Back",
+    "goToContext": "Go to context actions",
+    "description": {
+      "title": "Welcome to Mero Drive",
+      "subtitle": "Secure file storage on the Calimero P2P network",
+      "features": [
+        "Upload and manage private files",
+        "Real-time sync across P2P nodes",
+        "Folder-based organization",
+        "Secure and encrypted storage"
+      ],
+      "getStarted": "Connect your wallet to get started"
+    }
+  },
+  "context": {
+    "backToLogin": "Back to Login",
+    "goToHome": "Go to Home"
+  }
+}

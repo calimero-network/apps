@@ -1,0 +1,205 @@
+// Single recursive row in the FolderTree. Renders the folder's
+// alias with an optional color chip and restricted-visibility lock
+// icon, and recurses into its children. Selection is a controlled
+// prop — parent owns the selectedId state.
+//
+// Also hosts the per-row action trigger (FolderContextMenu, shown
+// on hover) and the inline-rename state — the rename action fires
+// from the context menu but the editing surface lives here because
+// the alias text is owned by this row's render.
+
+import React, { useCallback, useRef, useState } from 'react';
+import { ChevronRight, ChevronDown, Lock, Folder } from 'lucide-react';
+import type { TreeNode } from '@/utils/ancestry';
+import { safeColor } from '@/utils/validation';
+import { MAX_ALIAS_LENGTH } from '@/constants/config';
+import type { MergedFolder } from '@/hooks/useWorkspaceTree';
+import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
+import { useFolderOperations } from '@/hooks/useFolderOperations';
+import { FolderContextMenu } from './FolderContextMenu';
+import { FolderDocLeaves } from './FolderDocLeaves';
+
+interface Props {
+  node: TreeNode;
+  byId: Map<string, MergedFolder>;
+  selectedId: string | null;
+  onSelect: (id: string) => void;
+  expanded: Set<string>;
+  onToggleExpanded: (id: string) => void;
+  selectedDocId: string | null;
+  onOpenDoc: (folderId: string, docId: string) => void;
+}
+
+export function FolderTreeItem({
+  node,
+  byId,
+  selectedId,
+  onSelect,
+  expanded,
+  onToggleExpanded,
+  selectedDocId,
+  onOpenDoc,
+}: Props) {
+  const folder = byId.get(node.id);
+  const isSelected = selectedId === node.id;
+  const isExpanded = expanded.has(node.id);
+  const [renaming, setRenaming] = useState(false);
+  const [renameValue, setRenameValue] = useState('');
+  // Re-entry guard for submitRename. Without this, pressing Enter
+  // starts the async rename, and if the input loses focus before
+  // the await resolves (which it does when setRenaming(false) fires
+  // and unmounts the input), the native blur event fires a second
+  // submitRename with the same state — `folder.alias` hasn't yet
+  // refreshed from the registry, so the same-name guard doesn't
+  // catch it and the rename runs twice.
+  const submitRenameInFlightRef = useRef(false);
+
+  const { rootGroupId, registryClient, applicationId, refetch } =
+    useDriveWorkspace();
+  const ops = useFolderOperations(
+    registryClient,
+    rootGroupId,
+    applicationId,
+    refetch,
+  );
+
+  const startRename = useCallback(() => {
+    setRenameValue(folder?.alias ?? '');
+    setRenaming(true);
+  }, [folder?.alias]);
+
+  const cancelRename = useCallback(() => {
+    setRenaming(false);
+    setRenameValue('');
+  }, []);
+
+  const submitRename = useCallback(async () => {
+    if (submitRenameInFlightRef.current) return;
+    const next = renameValue.trim();
+    if (!next || next.length > MAX_ALIAS_LENGTH || next === folder?.alias) {
+      cancelRename();
+      return;
+    }
+    submitRenameInFlightRef.current = true;
+    try {
+      await ops.rename(node.id, next);
+    } catch (e) {
+      console.error('rename failed', e);
+    } finally {
+      submitRenameInFlightRef.current = false;
+      setRenaming(false);
+    }
+  }, [renameValue, folder?.alias, ops, node.id, cancelRename]);
+
+  return (
+    <li>
+      <div
+        className={`group flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm cursor-pointer transition-colors ${
+          isSelected
+            ? 'bg-primary/10 text-primary font-medium'
+            : 'text-foreground hover:bg-muted/60'
+        }`}
+        onClick={() => {
+          if (renaming) return;
+          onSelect(node.id);
+          // Selecting a folder also reveals its contents. Expand-only (not
+          // toggle) so clicking an already-open folder doesn't collapse it —
+          // the chevron remains the explicit collapse control.
+          if (!isExpanded) onToggleExpanded(node.id);
+        }}
+      >
+        <button
+          type="button"
+          aria-label={isExpanded ? 'Collapse' : 'Expand'}
+          className="flex h-4 w-4 items-center justify-center text-muted-foreground hover:text-foreground"
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleExpanded(node.id);
+          }}
+        >
+          {isExpanded ? (
+            <ChevronDown className="h-3.5 w-3.5" />
+          ) : (
+            <ChevronRight className="h-3.5 w-3.5" />
+          )}
+        </button>
+        {(() => {
+          const color = safeColor(folder?.color);
+          return color ? (
+            <span
+              className="h-2.5 w-2.5 rounded-sm border border-border/50"
+              style={{ backgroundColor: color }}
+              aria-hidden
+            />
+          ) : (
+            <Folder className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
+          );
+        })()}
+        {renaming ? (
+          <input
+            className="flex-1 h-6 min-w-0 rounded border border-input bg-background px-1.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            value={renameValue}
+            maxLength={MAX_ALIAS_LENGTH}
+            autoFocus
+            onChange={(e) => setRenameValue(e.target.value)}
+            onBlur={submitRename}
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                submitRename();
+              } else if (e.key === 'Escape') {
+                e.preventDefault();
+                cancelRename();
+              }
+            }}
+          />
+        ) : (
+          <span className="flex-1 truncate">
+            {folder?.alias ?? node.id.slice(0, 8)}
+          </span>
+        )}
+        {folder?.visibility === 'Restricted' && !renaming && (
+          <Lock
+            className="h-3 w-3 text-muted-foreground"
+            aria-label="Restricted"
+          />
+        )}
+        {folder && !renaming && (
+          <FolderContextMenu
+            folderId={node.id}
+            currentVisibility={folder.visibility}
+            onRename={startRename}
+          />
+        )}
+      </div>
+      {isExpanded && (
+        // Subtree guide: the left border draws the vertical tree line,
+        // ml-4 positions it under the parent's chevron, and pl-1 gives
+        // children a small gap to the right of the line. Indentation is
+        // structural (one nested <ul> per level) rather than a computed
+        // per-row padding, so the line and the indent always agree.
+        <ul className="ml-4 mt-1.5 space-y-1.5 border-l border-border/50 pl-2">
+          <FolderDocLeaves
+            folderId={node.id}
+            selectedDocId={selectedDocId}
+            onOpenDoc={onOpenDoc}
+          />
+          {node.children.map((c) => (
+            <FolderTreeItem
+              key={c.id}
+              node={c}
+              byId={byId}
+              selectedId={selectedId}
+              onSelect={onSelect}
+              expanded={expanded}
+              onToggleExpanded={onToggleExpanded}
+              selectedDocId={selectedDocId}
+              onOpenDoc={onOpenDoc}
+            />
+          ))}
+        </ul>
+      )}
+    </li>
+  );
+}

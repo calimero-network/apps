@@ -1,0 +1,124 @@
+<!doctype html>
+<!--
+  Dev-only perf harness. Measures the three things that run when you open a
+  showcase, against the REAL compositor in a real browser:
+
+    1. picker    — renderShowcaseThumb + toDataURL, per card
+    2. composite — one full-document flatten, cold and warm
+    3. loadstorm — what the editor actually does while blobs stream in:
+                   one full recomposite per arriving layer blob
+
+  Open http://localhost:5176/scripts/perf-bench.html, or let e2e/perf read
+  window.__PERF__.
+-->
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>MeroPixArt — perf bench</title>
+    <style>
+      body { margin: 0; padding: 16px; background: #0b0f14; color: #9fb6ce;
+             font: 13px/1.6 ui-monospace, monospace; }
+      h1 { font-size: 14px; color: #fff; }
+      td { padding: 2px 14px 2px 0; }
+      .n { text-align: right; color: #a5ff11; }
+    </style>
+  </head>
+  <body>
+    <h1>MeroPixArt perf bench</h1>
+    <table id="out"></table>
+    <script type="module">
+      import { SHOWCASE_PROJECTS } from "/src/showcase/index.ts";
+      import { renderShowcase, renderShowcaseThumb } from "/src/showcase/preview.ts";
+      import { buildShowcase, stableIds } from "/src/showcase/build.ts";
+      import { composite, invalidatePrepared } from "/src/utils/compositor.ts";
+
+      const ms = (f) => { const t = performance.now(); f(); return performance.now() - t; };
+      const median = (xs) => xs.slice().sort((a, b) => a - b)[Math.floor(xs.length / 2)];
+
+      const results = {};
+      window.__PERF__ = results;
+      const mark = (m) => { console.log("PERFMARK " + m); };
+
+      for (const project of SHOWCASE_PROJECTS) {
+        mark("start " + project.id);
+        const built = buildShowcase(project, { idFor: stableIds(project) });
+        const sources = (id) => built.canvases.get(id) ?? null;
+        const masks = (id) => built.masks.get(id) ?? null;
+        const opts = { background: project.background, sources, masks };
+
+        // 1. picker card: full render + PNG encode, exactly what Thumb does
+        invalidatePrepared();
+        let thumbCanvas = null;
+        const thumbRender = ms(() => { thumbCanvas = renderShowcaseThumb(project, 520, 520); });
+        const thumbPng = ms(() => thumbCanvas.toDataURL("image/png"));
+        const thumb = thumbRender + thumbPng;
+        mark(project.id + " thumb " + thumb.toFixed(1)
+          + " (render " + thumbRender.toFixed(1) + " + png " + thumbPng.toFixed(1) + ")");
+
+        // 2. composite: cold (empty prepared cache) then warm
+        invalidatePrepared();
+        const cold = ms(() => composite(built.layers, project.width, project.height, opts));
+        mark(project.id + " cold " + cold.toFixed(1));
+        const warm = median(Array.from({ length: 7 }, () =>
+          ms(() => composite(built.layers, project.width, project.height, opts))));
+        mark(project.id + " warm " + warm.toFixed(1));
+
+        // 3. load storm — BEFORE: loadBlobs() called bumpRender() after every
+        //    arriving blob, and a bump invalidates the flattened-document cache,
+        //    so the whole document was recomposited once per blob.
+        const withPixels = built.layers.filter((l) => built.canvases.has(l.id)).length;
+        invalidatePrepared();
+        const storm = ms(() => {
+          for (let i = 0; i < withPixels; i++) {
+            composite(built.layers, project.width, project.height, opts);
+          }
+        });
+
+        // 3b. load storm — AFTER: redraws are coalesced onto an animation frame,
+        //    so a burst of arriving blobs costs one recomposite, not N.
+        invalidatePrepared();
+        const coalesced = ms(() => composite(built.layers, project.width, project.height, opts));
+        mark(project.id + " coalesced " + coalesced.toFixed(1));
+
+        mark(project.id + " storm " + storm.toFixed(1));
+        results[project.id] = {
+          layers: project.layers.length,
+          size: `${project.width}x${project.height}`,
+          blobs: withPixels,
+          thumbMs: +thumb.toFixed(1),
+          thumbRenderMs: +thumbRender.toFixed(1),
+          thumbPngMs: +thumbPng.toFixed(1),
+          coldMs: +cold.toFixed(1),
+          warmMs: +warm.toFixed(1),
+          stormMs: +storm.toFixed(1),
+          coalescedMs: +coalesced.toFixed(1),
+        };
+      }
+
+      // Picker total: all four cards render in ONE frame, because four rAF
+      // callbacks registered in the same tick all fire in the same frame.
+      // BEFORE: four rAF callbacks registered in the same tick all fire in the
+      // same frame, so this whole sum is one unbroken block of main-thread work.
+      // AFTER: one poster per frame, so the worst single frame is the max.
+      const thumbs = Object.values(results).map((r) => r.thumbMs ?? 0);
+      results.__pickerOneFrameMs__ = +thumbs.reduce((a, b) => a + b, 0).toFixed(1);
+      results.__pickerWorstFrameMs__ = +Math.max(...thumbs).toFixed(1);
+
+      const rows = ["<tr><td>project</td><td>layers</td><td>size</td><td>thumb+png</td>"
+        + "<td>composite cold</td><td>warm</td><td>load storm</td></tr>"];
+      for (const [id, r] of Object.entries(results)) {
+        if (id.startsWith("__")) continue;
+        rows.push(`<tr><td>${id}</td><td class=n>${r.layers}</td><td>${r.size}</td>`
+          + `<td class=n>${r.thumbMs}ms</td><td class=n>${r.coldMs}ms</td>`
+          + `<td class=n>${r.warmMs}ms</td><td class=n>${r.stormMs}ms</td></tr>`);
+      }
+      rows.push(`<tr><td colspan=7>picker — before (all 4 in one frame): `
+        + `<b class=n>${results.__pickerOneFrameMs__}ms</b> · after (worst single frame): `
+        + `<b class=n>${results.__pickerWorstFrameMs__}ms</b></td></tr>`);
+      document.getElementById("out").innerHTML = rows.join("");
+
+      window.__PERF__ = results;
+      window.__PERF_READY__ = true;
+    </script>
+  </body>
+</html>

@@ -1,0 +1,39 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+dist/
+frontend/public/app.wasm
+
+# Rust / WASM
+logic/target/
+logic/res/*.wasm
+
+# Bundle signing key. NEVER commit this: whoever signs a package's first
+# published version owns it, because the node derives ApplicationId from
+# (package, signer). build-bundle.sh generates one here on first run, and CI
+# signs with the organization's MERO_SIGN_KEY secret.
+logic/res/my-key.json
+
+# Bundle artifacts (`cargo mero bundle` writes dist/, which is ignored above)
+*.mpk
+logic/res/bundle-temp/
+
+# Calimero node data
+logic/data/
+
+# Playwright
+frontend/playwright-report/
+frontend/test-results/
+frontend/tests/.auth/
+
+# Env
+frontend/.env
+frontend/.env.local
+
+# Editor
+.DS_Store
+.vscode/
+.idea/
+*.swp

@@ -1,0 +1,505 @@
+import React, { useEffect, useState } from 'react';
+import styled from 'styled-components';
+import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useToast } from '@calimero-network/mero-ui';
+import { tokens as t, STATUSES, PRIORITIES } from '../../theme';
+import { APP_ROUTE } from '../../config';
+import { describeError } from '../../utils/errors';
+import type { IssueDetail, CommentView } from '../../hooks/useItems';
+import { relativeTime, truncateKey } from '../../utils/display';
+import { buildFixPrompt } from '../../utils/fixPrompt';
+import StatusDot from '../../components/StatusDot';
+import PriorityGlyph from '../../components/PriorityGlyph';
+import AvatarGlyph from '../../components/AvatarGlyph';
+import LabelChip from '../../components/LabelChip';
+import { SelectMenu } from '../../components/Dropdown';
+import { IconBack, IconAgent, IconCopy } from '../../components/icons';
+import { Overlay, Dialog, Close, Actions, SecondaryBtn } from '../../components/modalKit';
+import { useAppCtx } from './appContext';
+
+// "now" already reads as present tense; only older stamps take the " ago" suffix.
+const ago = (v: number): string => {
+  const r = relativeTime(v);
+  return r === 'now' ? 'now' : `${r} ago`;
+};
+
+/** Full-page issue view: four section blocks + activity feed, properties rail. */
+export default function IssueDetailPage(): React.ReactElement {
+  const { id = '' } = useParams();
+  const { data, currentUser, members, aliases, repoUrl } = useAppCtx();
+  const toast = useToast();
+  const navigate = useNavigate();
+
+  const [detail, setDetail] = useState<IssueDetail | null>(null);
+  const [assignee, setAssignee] = useState('');
+  const [newLabel, setNewLabel] = useState('');
+  const [addingLabel, setAddingLabel] = useState(false);
+  const [commentBody, setCommentBody] = useState('');
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  // Reload the issue + comment thread on mount and on every board refresh so
+  // remote edits appear live (mirrors the previous drawer behaviour).
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const d = await data.getIssue(id);
+        if (!cancelled) setDetail(d);
+      } catch { /* keep last known detail on a transient failure */ }
+    })();
+    return () => { cancelled = true; };
+  }, [id, data.issues, data.getIssue]);
+
+  const issue = detail?.issue ?? data.issues.find((i) => i.id === id) ?? null;
+  const comments = detail?.comments ?? [];
+  const createdByHasAlias = issue ? aliases.hasAlias(issue.created_by) : false;
+  const createdByLabel = issue ? aliases.resolve(issue.created_by) : '';
+  // Seed the composer avatar with the SAME resolved identity the comment list
+  // uses, not the raw public key (which produced a mismatched glyph/colour).
+  const meHasAlias = currentUser ? aliases.hasAlias(currentUser) : false;
+  const meLabel = currentUser ? aliases.resolve(currentUser) : '';
+
+  useEffect(() => { setAssignee(issue?.assignee ?? ''); }, [issue?.assignee]);
+
+  const run = async (fn: () => Promise<void>) => {
+    try { await fn(); } catch (err) { toast.show({ variant: 'error', description: describeError(err) }); }
+  };
+
+  if (!issue) {
+    return (
+      <Missing>
+        <Link to={APP_ROUTE} className="back"><IconBack /> All Issues</Link>
+        <p>Issue not found.</p>
+      </Missing>
+    );
+  }
+
+  const commitAssignee = () => {
+    const next = assignee.trim();
+    if (next === (issue.assignee ?? '')) return;
+    void run(() => data.setAssignee(issue.id, next || null));
+  };
+  const submitLabel = () => {
+    const l = newLabel.trim();
+    if (!l) return;
+    void run(async () => { await data.addLabel(issue.id, l); setNewLabel(''); });
+  };
+  const submitComment = () => {
+    const body = commentBody.trim();
+    if (!body) return;
+    void run(async () => { await data.addComment(issue.id, body); setCommentBody(''); });
+  };
+  const copyFixPrompt = () => {
+    void run(async () => {
+      await navigator.clipboard.writeText(buildFixPrompt(issue, repoUrl));
+      toast.show({ variant: 'success', description: 'Prompt copied' });
+    });
+  };
+  // Only the creator may delete (server enforces it too); mirrors the comment gate.
+  const isCreator = !!currentUser && issue.created_by === currentUser;
+  const runDelete = async () => {
+    setDeleting(true);
+    try {
+      await data.deleteIssue(issue.id);
+      setConfirmDelete(false);
+      navigate(APP_ROUTE);
+      toast.show({ variant: 'success', description: 'Issue deleted' });
+    } catch (err) {
+      toast.show({ variant: 'error', description: describeError(err) });
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  return (
+    <Wrap>
+      <MainCol>
+        <button className="back" data-testid="action-back" onClick={() => navigate(APP_ROUTE)}><IconBack /> All Issues</button>
+
+        <div className="idrow">
+          <span className="id">{truncateKey(issue.id)}</span>
+          <StatusDot status={issue.status} />
+          <span className="status-name">{issue.status}</span>
+        </div>
+        <h1 className="title">{issue.title}</h1>
+
+        <Section title="Summary">
+          <p data-testid="field-summary">{issue.summary}</p>
+        </Section>
+        <Section title="Impact">
+          <p data-testid="field-impact">{issue.impact}</p>
+        </Section>
+        <Section title="Repro">
+          <p data-testid="field-repro">{issue.repro}</p>
+        </Section>
+        <Section title="Resolution criteria">
+          <p data-testid="field-resolution_criteria">{issue.resolution_criteria}</p>
+        </Section>
+
+        <div className="divider" />
+
+        <div className="eyebrow activity-title">Activity</div>
+        <div className="activity">
+          <div className="act-item">
+            <AvatarGlyph
+              seed={createdByHasAlias ? createdByLabel : issue.created_by}
+              size="sm"
+              keyFallback={!createdByHasAlias}
+            />
+            <div className="act-body">
+              <div className="act-meta"><b>{createdByLabel}</b> created this issue <span className="act-time">· {ago(issue.created_at)}</span></div>
+            </div>
+          </div>
+
+          {comments.map((c) => (
+            <CommentItem
+              key={c.id}
+              comment={c}
+              mine={c.author === currentUser}
+              onEdit={(body) => run(() => data.editComment(c.id, body))}
+              onDelete={() => run(() => data.deleteComment(c.id))}
+            />
+          ))}
+
+          <div className="composer">
+            <AvatarGlyph
+              seed={meHasAlias ? meLabel : (currentUser || 'me')}
+              size="sm"
+              keyFallback={!!currentUser && !meHasAlias}
+            />
+            <input
+              data-testid="field-body"
+              placeholder="Leave a comment…"
+              aria-label="Leave a comment"
+              value={commentBody}
+              onChange={(e) => setCommentBody(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submitComment(); } }}
+            />
+            <button className="send" data-testid="action-add_comment" disabled={!commentBody.trim()} onClick={submitComment}>Comment</button>
+          </div>
+        </div>
+      </MainCol>
+
+      <Props>
+        <div className="prop-row">
+          <span className="label">Status</span>
+          <SelectMenu
+            className="ctl"
+            testId="action-set_status"
+            ariaLabel="Status"
+            value={issue.status}
+            options={STATUSES}
+            onChange={(v) => run(() => data.setStatus(issue.id, v))}
+            renderValue={(v) => <><StatusDot status={v} />{v}</>}
+            renderOption={(o) => <><StatusDot status={String(o)} />{String(o)}</>}
+          />
+        </div>
+        <div className="prop-row">
+          <span className="label">Priority</span>
+          <SelectMenu
+            className="ctl cap"
+            testId="action-set_priority"
+            ariaLabel="Priority"
+            value={issue.priority}
+            options={PRIORITIES}
+            onChange={(v) => run(() => data.setPriority(issue.id, v))}
+            renderValue={(v) => <><PriorityGlyph priority={v} boxSize={14} />{v}</>}
+            renderOption={(o) => <><PriorityGlyph priority={String(o)} boxSize={14} />{String(o)}</>}
+          />
+        </div>
+        <div className="prop-row">
+          <span className="label">Assignee</span>
+          <span className="val assignee">
+            <input
+              data-testid="field-assignee"
+              placeholder="Unassigned"
+              list="assignee-suggestions"
+              value={assignee}
+              onChange={(e) => setAssignee(e.target.value)}
+              onBlur={commitAssignee}
+              onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+            />
+            {/* Native combobox: suggests members by alias, but a free-text value still saves. */}
+            <datalist id="assignee-suggestions">
+              {members.map((key) => <option key={key} value={aliases.resolve(key)} />)}
+            </datalist>
+            <button data-testid="action-set_assignee" type="button" onClick={commitAssignee}>Save</button>
+          </span>
+        </div>
+        <div className="prop-row labels-row">
+          <span className="label">Labels</span>
+          <span className="val labels">
+            {issue.labels.map((l) => (
+              <LabelChip key={l} label={l} onRemove={() => run(() => data.removeLabel(issue.id, l))} />
+            ))}
+            {addingLabel ? (
+              <input
+                className="label-input"
+                data-testid="field-label"
+                placeholder="Label name…"
+                aria-label="Label name"
+                autoFocus
+                value={newLabel}
+                onChange={(e) => setNewLabel(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') { e.preventDefault(); submitLabel(); }
+                  else if (e.key === 'Escape') { setNewLabel(''); setAddingLabel(false); }
+                }}
+                onBlur={() => { if (!newLabel.trim()) setAddingLabel(false); }}
+              />
+            ) : (
+              <button className="add-label" data-testid="action-add_label" type="button" onClick={() => setAddingLabel(true)}>+ Add</button>
+            )}
+          </span>
+        </div>
+
+        <div className="divider" />
+
+        <div className="prop-row">
+          <span className="label">Created by</span>
+          <span className="val">
+            <AvatarGlyph
+              seed={createdByHasAlias ? createdByLabel : issue.created_by}
+              size="sm"
+              keyFallback={!createdByHasAlias}
+            />
+            <span className={createdByHasAlias ? '' : 'mono'}>{createdByLabel}</span>
+          </span>
+        </div>
+        <div className="prop-row">
+          <span className="label">Created</span>
+          <span className="val dim">{ago(issue.created_at)}</span>
+        </div>
+
+        <AgentCard>
+          <span className="eyebrow"><span className="ico"><IconAgent /></span>Local agent</span>
+          <button className="copy" data-testid="action-copy_fix_prompt" onClick={copyFixPrompt}><IconCopy /> Copy fix prompt</button>
+          <div className="hint">paste into your Claude Code session</div>
+        </AgentCard>
+
+        {isCreator && (
+          <DeleteAction>
+            <button type="button" data-testid="action-delete_issue" onClick={() => setConfirmDelete(true)}>Delete issue</button>
+          </DeleteAction>
+        )}
+      </Props>
+
+      {confirmDelete && (
+        <Overlay onClick={() => !deleting && setConfirmDelete(false)}>
+          <Dialog onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="issue-delete-title">
+            <Close onClick={() => !deleting && setConfirmDelete(false)} aria-label="Close">×</Close>
+            <h3 id="issue-delete-title">Delete issue</h3>
+            <p className="sub">Delete "{issue.title}"? This also removes its comments and cannot be undone.</p>
+            <Actions>
+              <SecondaryBtn onClick={() => setConfirmDelete(false)} disabled={deleting}>Cancel</SecondaryBtn>
+              <DangerBtn data-testid="confirm-delete_issue" onClick={runDelete} disabled={deleting}>Delete</DangerBtn>
+            </Actions>
+          </Dialog>
+        </Overlay>
+      )}
+    </Wrap>
+  );
+}
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="section">
+      <span className="eyebrow">{title}</span>
+      {children}
+    </div>
+  );
+}
+
+/* ── One comment: authorship-gated edit / delete ─────────────────────────── */
+function CommentItem({
+  comment, mine, onEdit, onDelete,
+}: {
+  comment: CommentView;
+  mine: boolean;
+  onEdit: (body: string) => Promise<void>;
+  onDelete: () => Promise<void>;
+}) {
+  const { aliases } = useAppCtx();
+  const authorHasAlias = aliases.hasAlias(comment.author);
+  const authorLabel = aliases.resolve(comment.author);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(comment.body);
+  useEffect(() => { setDraft(comment.body); }, [comment.body]);
+
+  const save = async () => {
+    const next = draft.trim();
+    if (!next || next === comment.body) { setEditing(false); return; }
+    await onEdit(next);
+    setEditing(false);
+  };
+
+  return (
+    <div className="act-item" data-testid="item-comment" data-comment-id={comment.id}>
+      <AvatarGlyph
+        seed={authorHasAlias ? authorLabel : comment.author}
+        size="sm"
+        keyFallback={!authorHasAlias}
+      />
+      <div className="act-body">
+        <div className="act-meta">
+          <b>{authorLabel}</b>
+          <span className="act-time"> · {ago(comment.created_at)}</span>
+          {mine && (
+            <span className="cactions">
+              {editing ? (
+                <>
+                  <button data-testid="action-edit_comment" onClick={save}>Save</button>
+                  <button onClick={() => { setEditing(false); setDraft(comment.body); }}>Cancel</button>
+                </>
+              ) : (
+                <>
+                  <button onClick={() => setEditing(true)}>Edit</button>
+                  <button data-testid="action-delete_comment" onClick={onDelete}>Delete</button>
+                </>
+              )}
+            </span>
+          )}
+        </div>
+        {editing ? (
+          <textarea className="cedit" rows={2} value={draft} onChange={(e) => setDraft(e.target.value)} />
+        ) : (
+          <div className="act-comment">{comment.body}{comment.edited_at != null && <span className="edited"> (edited)</span>}</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+const Wrap = styled.div`
+  display: grid; grid-template-columns: 1fr 308px; gap: 0;
+  flex: 1 1 auto; min-height: 0; overflow-y: auto;
+  @media (max-width: 940px) { grid-template-columns: 1fr; }
+`;
+const MainCol = styled.div`
+  padding: 28px 40px 60px; max-width: 760px; width: 100%; margin: 0 auto; min-width: 0;
+  .back {
+    display: inline-flex; align-items: center; gap: 6px; font-size: 12px;
+    color: ${t.color.text3}; background: none; border: none; padding: 0; margin-bottom: 20px; cursor: pointer;
+    &:hover { color: ${t.color.text}; }
+  }
+  .idrow { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  .idrow .id { font-family: ${t.font.mono}; font-size: 12px; color: ${t.color.text3}; }
+  .idrow .status-name { font-size: 12px; color: ${t.color.text2}; }
+  .title { font-size: 20px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.3; margin: 0 0 26px; }
+  .section { margin-bottom: 24px; }
+  .section .eyebrow {
+    display: block; margin-bottom: 8px; font-size: 11px; letter-spacing: 0.07em;
+    text-transform: uppercase; color: ${t.color.text3}; font-weight: 600;
+  }
+  .section p { margin: 0; color: ${t.color.text}; font-size: 13.5px; line-height: 1.55; white-space: pre-wrap; }
+  .section p.muted { color: ${t.color.text3}; }
+  .divider { height: 1px; background: ${t.color.border}; margin: 30px 0 22px; }
+  .activity-title { margin-bottom: 18px; font-size: 11px; letter-spacing: 0.07em; text-transform: uppercase; color: ${t.color.text3}; font-weight: 600; }
+  .activity { display: flex; flex-direction: column; gap: 16px; }
+  .act-item { display: flex; gap: 10px; align-items: flex-start; }
+  .act-body { min-width: 0; flex: 1 1 auto; }
+  .act-meta { font-size: 12.5px; color: ${t.color.text2}; display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+  .act-meta b { color: ${t.color.text}; font-weight: 600; }
+  .act-time { color: ${t.color.text3}; }
+  .cactions { display: inline-flex; gap: 8px; margin-left: 8px; }
+  .cactions button { background: none; border: none; cursor: pointer; font-size: 11.5px; font-weight: 600; color: ${t.color.text3}; &:hover { color: ${t.color.text}; } }
+  .act-comment {
+    margin-top: 7px; background: ${t.color.panel}; border: 1px solid ${t.color.border};
+    border-radius: ${t.radius}; padding: 10px 12px; font-size: 13px; color: ${t.color.text}; line-height: 1.55;
+  }
+  .act-comment .edited { color: ${t.color.text3}; font-size: 11.5px; }
+  .cedit {
+    margin-top: 7px; width: 100%; box-sizing: border-box; padding: 8px 10px; font-size: 13px;
+    color: ${t.color.text}; background: ${t.color.raised}; border: 1px solid ${t.color.border};
+    border-radius: ${t.radius}; outline: none; font-family: inherit; resize: vertical;
+    &:focus { border-color: ${t.color.borderStrong}; }
+  }
+  .composer { margin-top: 4px; display: flex; align-items: center; gap: 10px; }
+  .composer input {
+    flex: 1 1 auto; background: ${t.color.raised}; border: 1px solid ${t.color.border};
+    border-radius: ${t.radius}; padding: 9px 12px; color: ${t.color.text};
+    font-family: inherit; font-size: 13px; outline: none; transition: border-color 150ms ease-out;
+    &::placeholder { color: ${t.color.text3}; }
+    &:focus { border-color: ${t.color.borderStrong}; }
+  }
+  .composer .send {
+    border-radius: ${t.radius}; border: 1px solid transparent; background: ${t.color.accent};
+    color: ${t.color.onAccent}; font-weight: 600; font-size: 12.5px; padding: 8px 12px; cursor: pointer;
+    &:hover:not(:disabled) { background: #b6ff5e; }
+    &:disabled { opacity: 0.5; cursor: default; }
+  }
+`;
+const Props = styled.aside`
+  border-left: 1px solid ${t.color.border}; padding: 20px 16px; background: ${t.color.panel};
+  display: flex; flex-direction: column; gap: 2px;
+  .prop-row { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: ${t.radius}; min-height: 32px; }
+  .prop-row.labels-row { align-items: flex-start; }
+  .label { font-size: 12px; color: ${t.color.text3}; width: 76px; flex: 0 0 auto; }
+  .val { font-size: 12.5px; color: ${t.color.text}; display: flex; align-items: center; gap: 7px; flex: 1 1 auto; min-width: 0; }
+  .val.dim { color: ${t.color.text2}; }
+  .val .mono { font-size: 11px; color: ${t.color.text2}; font-family: ${t.font.mono}; }
+  /* Shared control column: selects + assignee input line up at one width. */
+  .ctl { flex: 1 1 auto; min-width: 0; }
+  .cap .tv, .cap [role="option"] { text-transform: capitalize; }
+  .val.assignee { gap: 6px; }
+  .val.assignee input {
+    flex: 1 1 auto; min-width: 0; background: ${t.color.raised}; border: 1px solid ${t.color.border};
+    border-radius: ${t.radiusSm}; padding: 5px 7px; color: ${t.color.text}; font-family: inherit; font-size: 12.5px; outline: none;
+    &:focus { border-color: ${t.color.accentBorder}; }
+  }
+  .val.assignee button {
+    background: ${t.color.raised2}; border: 1px solid ${t.color.border}; border-radius: ${t.radiusSm};
+    color: ${t.color.text2}; font-size: 11px; padding: 5px 8px; cursor: pointer; &:hover { color: ${t.color.text}; }
+  }
+  .val.labels { flex-wrap: wrap; gap: 6px; }
+  .val.labels .label-input {
+    background: ${t.color.raised}; border: 1px solid ${t.color.border}; border-radius: ${t.radiusSm};
+    padding: 4px 8px; color: ${t.color.text}; font-family: inherit; font-size: 11.5px; outline: none; width: 100px;
+    &:focus { border-color: ${t.color.accentBorder}; }
+  }
+  .val.labels .add-label {
+    display: inline-flex; align-items: center; background: none; border: 1px dashed ${t.color.border};
+    border-radius: 20px; color: ${t.color.text3}; font-size: 11px; padding: 2px 9px; cursor: pointer;
+    &:hover { color: ${t.color.text}; border-color: ${t.color.borderStrong}; }
+  }
+  .divider { height: 1px; background: ${t.color.border}; margin: 16px 0; }
+`;
+const AgentCard = styled.div`
+  margin-top: 8px; background: ${t.color.raised}; border: 1px solid ${t.color.border};
+  border-radius: ${t.radius}; padding: 13px;
+  .eyebrow {
+    display: flex; align-items: center; gap: 6px; margin-bottom: 10px;
+    font-size: 11px; letter-spacing: 0.07em; text-transform: uppercase; color: ${t.color.text3}; font-weight: 600;
+  }
+  .eyebrow .ico { color: ${t.color.accent}; display: inline-flex; }
+  .copy {
+    width: 100%; display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+    border-radius: ${t.radius}; border: 1px solid ${t.color.border}; background: ${t.color.raised};
+    color: ${t.color.text}; font-size: 12.5px; font-weight: 500; padding: 6px 11px; cursor: pointer;
+    &:hover { border-color: ${t.color.borderStrong}; }
+  }
+  .hint { margin-top: 8px; font-family: ${t.font.mono}; font-size: 10.5px; color: ${t.color.text3}; text-align: center; }
+`;
+const Missing = styled.div`
+  padding: 40px; color: ${t.color.text2};
+  .back { display: inline-flex; align-items: center; gap: 6px; color: ${t.color.text3}; margin-bottom: 20px; }
+`;
+/* Quiet destructive control, pinned to the bottom of the rail behind a hairline. */
+const DeleteAction = styled.div`
+  margin-top: 14px; padding-top: 14px; border-top: 1px solid ${t.color.border};
+  button {
+    width: 100%; border-radius: ${t.radius}; border: 1px solid ${t.color.dangerBorder};
+    background: transparent; color: ${t.color.danger}; font-size: 12.5px; font-weight: 500;
+    padding: 6px 11px; cursor: pointer; transition: background 150ms ease-out, border-color 150ms ease-out;
+    &:hover { background: rgba(229,105,95,0.08); border-color: ${t.color.danger}; }
+  }
+`;
+const DangerBtn = styled.button`
+  min-width: 120px; display: inline-flex; align-items: center; justify-content: center;
+  padding: 10px 18px; font-size: 13px; font-weight: 600; border-radius: ${t.radius}; cursor: pointer;
+  color: #fff; background: ${t.color.danger}; border: 1px solid transparent;
+  transition: background 0.15s, border-color 0.15s;
+  &:hover:not(:disabled) { background: #ef7b72; }
+  &:disabled { opacity: 0.6; cursor: default; }
+`;

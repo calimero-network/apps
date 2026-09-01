@@ -1,0 +1,20 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: Roboto, Arial, Helvetica, sans-serif;
+  background: var(--bg-0);
+  color: var(--text);
+}
+
+/* Legacy variable names kept for the date-picker / year views — aliased onto
+   the themed tokens so they follow the active light/dark theme. */
+:root {
+  --color-text: var(--mc-text);
+  --primary: var(--accent);
+  --secondary: var(--accent);
+  --secondary-7: var(--accent-dim);
+  --color-placeholder: var(--mc-text-dim);
+  --background-color-calendar-header: var(--mc-header-bg);
+}

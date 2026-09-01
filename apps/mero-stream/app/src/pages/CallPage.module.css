@@ -1,0 +1,505 @@
+/* ── Call layout ────────────────────────────────────────────────────────────
+ *
+ * Three fixed rows in the viewport — bar / stage / bar — with the stage taking
+ * whatever is left. The page itself never scrolls: a call where you have to
+ * scroll to see someone is not a call.
+ *
+ * What this replaced: a 900 px-wide document with a `1fr 1fr` card grid and two
+ * long metrics sections below it, so the video was a pair of small thumbnails
+ * near the top of a page you scrolled. Everything that used to sit under the
+ * tiles now lives in the data dialog.
+ */
+.page {
+  height: 100vh;
+  /* dvh where supported: on mobile Safari `100vh` is the LARGER viewport, so the
+     bottom control bar sits under the browser chrome until you scroll. */
+  height: 100dvh;
+  display: grid;
+  /* topbar / notices / stage / controls. The notices row is separate from the
+     stage on purpose: as a grid item inside the stage it took an equal `1fr`
+     share of the height, squeezing every tile and leaving a band of dead space
+     above them. */
+  grid-template-rows: auto auto 1fr auto;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  overflow: hidden;
+}
+
+/* ── Top bar ──────────────────────────────────────────────────────────────── */
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-elev);
+  min-height: 52px;
+}
+
+.brand {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+}
+
+.title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+.roomId {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  color: var(--text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.topbarRight {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Identity control. Shows the name it edits — the only way to notice yours is
+   still a placeholder — and opens the roster so the change can be seen landing. */
+.identityBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text);
+  padding: 4px 12px 4px 4px;
+  font-size: 0.87rem;
+  font-family: inherit;
+  cursor: pointer;
+  max-width: 260px;
+}
+.identityBtn:hover {
+  background: var(--surface-hover);
+  border-color: var(--border-strong);
+}
+.identityBtn[data-unset="true"] {
+  border-color: var(--amber);
+}
+
+.identityAvatar {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 0.66rem;
+  font-weight: 600;
+}
+
+.identityName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.identityFlag {
+  flex: none;
+  font-size: 0.72rem;
+  color: var(--amber);
+  border-left: 1px solid var(--border);
+  padding-left: 8px;
+}
+
+/* The join state is a test hook and an assistive-tech announcement, not visible
+   chrome: the participant count is in the People button and the identity button
+   already shows you are in. Clipped rather than `display: none` so it is still
+   in the accessibility tree and still queryable. */
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+.ghostBtn {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  padding: 6px 12px;
+  font-size: 0.85rem;
+  font-family: inherit;
+  cursor: pointer;
+}
+.ghostBtn:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+/* ── Stage ────────────────────────────────────────────────────────────────── */
+.stage {
+  position: relative;
+  background: var(--stage);
+  padding: 12px;
+  min-height: 0; /* lets the grid shrink inside `1fr` instead of overflowing */
+  display: grid;
+  gap: 12px;
+  /* Rows share the height equally, so tiles grow to fill rather than stacking at
+     their intrinsic size and leaving dead space. */
+  grid-auto-rows: 1fr;
+  align-content: stretch;
+  /* Tiles are 4:3 and centred in their cell (see `.tile`), so the cell is a
+     bounding box rather than the tile itself. */
+  justify-items: center;
+  align-items: center;
+}
+
+/* Explicit column counts up to six, because `auto-fit` picks a column count from
+   a width floor and gets 3 people wrong: it puts two side by side and drops the
+   third onto a second row, halving everyone. Beyond six, tiles are small enough
+   that packing by width is the right call. */
+.stage[data-count="1"] {
+  grid-template-columns: minmax(0, 1fr);
+}
+.stage[data-count="2"] {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.stage[data-count="3"],
+.stage[data-count="4"] {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+/* Three people: 2x2 (which gives bigger tiles than one row of three at any
+   normal window width) with the odd tile centred under the pair, rather than
+   left-aligned against an empty cell. Spanning both columns and centring keeps
+   it the SAME SIZE as the others — the tiles are height-constrained by the row,
+   so a wider cell does not make a wider tile. */
+.stage[data-count="3"] > .tile:last-of-type {
+  grid-column: span 2;
+}
+.stage[data-count="5"],
+.stage[data-count="6"] {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.stage[data-many="true"] {
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  overflow-y: auto;
+  grid-auto-rows: minmax(180px, auto);
+}
+
+@media (max-width: 720px) {
+  .stage,
+  .stage[data-count="2"],
+  .stage[data-count="3"],
+  .stage[data-count="4"],
+  .stage[data-count="5"],
+  .stage[data-count="6"] {
+    grid-template-columns: minmax(0, 1fr);
+    overflow-y: auto;
+    grid-auto-rows: minmax(200px, 1fr);
+  }
+}
+
+/* ── Tile ─────────────────────────────────────────────────────────────────── */
+/* The tile itself carries the source's 4:3 aspect and is centred in its grid
+   cell, rather than filling the cell and letting the video letterbox inside it.
+   Both alternatives are worse: `contain` in a wide cell paints black bars down
+   either side of every tile, and `cover` crops a 4:3 frame to fit — which on a
+   diagnostic app means you cannot tell a correct decode from one with bad edges,
+   because the edges are off-screen. Matching the aspect gives neither. */
+.tile {
+  position: relative;
+  margin: 0;
+  aspect-ratio: 4 / 3;
+  max-width: 100%;
+  max-height: 100%;
+  min-width: 0;
+  min-height: 0;
+  background: var(--tile);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  display: flex;
+}
+
+/* `display: flex` above BEATS the UA's `[hidden] { display: none }` on
+   specificity, so the self-tile stayed visible (as an empty black box) whenever
+   it was hidden. Restated here where it wins. */
+.tile[hidden] {
+  display: none;
+}
+
+.tileSelf {
+  border-color: var(--accent);
+}
+
+/* `cover` is safe now that the tile carries the same aspect ratio: there is
+   nothing to crop. It stays `cover` rather than `contain` so a source that is
+   NOT 4:3 fills the tile instead of introducing bars. */
+.media {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  object-fit: cover;
+  display: block;
+  background: var(--tile);
+}
+
+/* NOTE: no `image-rendering: pixelated` here. The old shared stylesheet applied
+   it to every canvas, which is right for /stream's 64x48 in-WASM codec and wrong
+   for a 480p H.264 tile — it visibly hard-edged the decoded picture. */
+
+.tileLabel {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  right: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75rem;
+  color: #fff;
+  /* Its own scrim rather than a page-level one: the label sits ON the video, and
+     video is the one background whose brightness cannot be assumed. */
+  background: rgba(0, 0, 0, 0.6);
+  border-radius: var(--radius-sm);
+  padding: 4px 8px;
+  width: fit-content;
+  max-width: calc(100% - 16px);
+}
+
+.tileName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.tileMeta {
+  color: rgba(255, 255, 255, 0.6);
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  white-space: nowrap;
+}
+
+/* Shown while a peer is present but its first keyframe has not arrived. A blank
+   tile with no explanation reads as a bug; this is a bounded, expected wait. */
+.tileWaiting {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--text-faint);
+  font-size: 0.8rem;
+  text-align: center;
+  padding: 16px;
+}
+
+.empty {
+  grid-column: 1 / -1;
+  justify-self: stretch;
+  align-self: center;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 8px;
+  color: var(--text-faint);
+  text-align: center;
+  padding: 32px;
+}
+
+.emptyTitle {
+  color: var(--text-dim);
+  font-size: 1rem;
+  font-weight: 500;
+}
+
+.emptyHint {
+  font-size: 0.85rem;
+  max-width: 46ch;
+  line-height: 1.5;
+}
+
+/* ── Banners ──────────────────────────────────────────────────────────────── */
+/* Its own row above the stage. Empty when there is nothing to say, and `:empty`
+   collapses the padding so it costs no height at all in the common case. */
+.notices {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px 0;
+  background: var(--stage);
+}
+.notices:empty {
+  display: none;
+}
+
+.banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  font-size: 0.85rem;
+  line-height: 1.45;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-elev);
+  align-self: start;
+}
+
+.bannerWarn {
+  border-color: var(--amber);
+}
+
+.bannerError {
+  border-color: var(--red);
+}
+
+.bannerText {
+  flex: 1;
+  min-width: 0;
+}
+
+.bannerClose {
+  background: none;
+  border: none;
+  color: var(--text-faint);
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+  padding: 2px 4px;
+}
+.bannerClose:hover {
+  color: var(--text);
+}
+
+/* ── Control bar ──────────────────────────────────────────────────────────── */
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-elev);
+  flex-wrap: wrap;
+}
+
+.primaryBtn,
+.stopBtn {
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  padding: 10px 20px;
+  font-size: 0.92rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  color: var(--accent-fg);
+  white-space: nowrap;
+}
+.primaryBtn {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.primaryBtn:hover:not(:disabled) {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+.stopBtn {
+  background: var(--red);
+  border-color: var(--red);
+}
+.stopBtn:hover:not(:disabled) {
+  background: var(--red-hover);
+  border-color: var(--red-hover);
+}
+.primaryBtn:disabled,
+.stopBtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ── Status strip ─────────────────────────────────────────────────────────── */
+/* Four numbers stay OUT of the dialog on purpose: they are how you tell a
+   working call from a broken one, and putting them behind a click would mean
+   opening a panel to find out whether the picture you are looking at is live. */
+.status {
+  display: flex;
+  align-items: center;
+  gap: 4px 18px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+}
+
+.statValue {
+  font-family: var(--mono);
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.statLabel {
+  font-size: 0.68rem;
+  color: var(--text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.pressureOk {
+  color: var(--green);
+}
+.pressureTight {
+  color: var(--amber);
+}
+.pressureOver {
+  color: var(--red);
+}
+
+.slotsPill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.slotsPillFull {
+  border-color: var(--amber);
+  color: var(--amber);
+}
+
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-faint);
+}
+.dotLive {
+  background: var(--red);
+}

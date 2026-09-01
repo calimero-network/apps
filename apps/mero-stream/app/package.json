@@ -1,0 +1,61 @@
+{
+  "name": "mero-stream",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Calimero Mero Stream \u2014 streaming media OVER the Calimero contract (Task 3 capacity probe)",
+  "keywords": [
+    "calimero",
+    "streaming",
+    "codec",
+    "react",
+    "vite",
+    "web3"
+  ],
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "preview": "vite preview",
+    "e2e:call": "node e2e/browser-call.mjs",
+    "prettier": "prettier --check 'src/**/*.{js,jsx,ts,tsx,json}' 'e2e/**/*.mjs'",
+    "prettier:write": "prettier --write 'src/**/*.{js,jsx,ts,tsx,json}' 'e2e/**/*.mjs'",
+    "typecheck": "tsc -b",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui"
+  },
+  "dependencies": {
+    "@calimero-network/mero-js": "catalog:",
+    "@calimero-network/mero-platform": "catalog:",
+    "@calimero-network/mero-react": "catalog:",
+    "@calimero-network/mero-ui": "catalog:",
+    "bs58": "catalog:",
+    "fflate": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "react-router-dom": "^7.15.1",
+    "zustand": "^5.0.14"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.25.0",
+    "@playwright/test": "catalog:",
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.6",
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@vitejs/plugin-react-swc": "^3.9.0",
+    "eslint": "^9.29.0",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "eslint-plugin-react-refresh": "^0.5.3",
+    "globals": "^17.7.0",
+    "jsdom": "catalog:",
+    "prettier": "^3.8.4",
+    "typescript": "catalog:",
+    "typescript-eslint": "^8.62.0",
+    "vite": "catalog:",
+    "vitest": "catalog:"
+  }
+}

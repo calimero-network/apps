@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Matches --bg in src/index.css. It was #090b10, the OLD purple theme's
+         background, so mobile browser chrome sat a shade off the page. -->
+    <meta name="theme-color" content="#0c0d10" />
+
+    <!-- An invite rides a query parameter (see lib/inviteLink.ts), and a query
+         parameter is a signed capability sitting in the URL. `strict-origin` is
+         already most browsers' default for cross-origin requests, but stating it
+         makes the guarantee explicit and independent of that default: no
+         subresource, first-party or third-party, receives the path or query of
+         the page that loaded it. Same-origin gets the origin only.
+
+         ALSO SET AS AN HTTP HEADER in vercel.json, and both are wanted. A meta
+         tag cannot govern the request for the document itself, and it only
+         applies once the HTML has been parsed — so a fetcher, proxy or
+         pre-rendering crawler that issues sub-requests without fully parsing the
+         page is outside its reach. The header covers those; the tag covers a
+         local `vite preview` or any host that is not Vercel. -->
+    <meta name="referrer" content="strict-origin" />
+    <title>Mero Stream</title>
+
+    <link rel="icon" href="/favicon.ico" sizes="48x48" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
