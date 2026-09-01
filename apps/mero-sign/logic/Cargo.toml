@@ -43,6 +43,8 @@ bs58                    = { workspace = true }
 calimero-sdk            = { workspace = true }
 calimero-storage        = { workspace = true }
 calimero-storage-macros = { workspace = true }
+# `upload_document` renders 16 random bytes as its id.
+hex                     = { workspace = true }
 
 # NOTE: no build.rs and no [build-dependencies]. Core deleted all 60 per-app ABI
 # build scripts (#3319) and derives the ABI from the type system (#3364); the

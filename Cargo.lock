@@ -813,6 +813,7 @@ name = "mero-sign"
 version = "0.1.0"
 dependencies = [
  "bs58",
+ "hex",
  "calimero-sdk",
  "calimero-storage",
  "calimero-storage-macros",

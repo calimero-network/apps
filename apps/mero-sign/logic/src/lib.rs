@@ -677,7 +677,7 @@ impl MeroSignState {
                     .unwrap_or(PermissionLevel::Read);
 
                 participants_with_permissions.push(ParticipantInfo {
-                    user_id: participant.clone(),
+                    user_id: *participant,
                     permission_level: permission,
                 });
             }
@@ -731,6 +731,7 @@ impl MeroSignState {
     }
 
     /// Upload a document
+    #[allow(clippy::too_many_arguments)]
     pub fn upload_document(
         &mut self,
         name: String,
@@ -741,7 +742,13 @@ impl MeroSignState {
         extracted_text: Option<String>,
         chunks: Option<Vec<DocumentChunk>>,
     ) -> app::Result<String> {
-        let document_id = format!("doc_{}_{}", env::time_now(), name);
+        // NOT `doc_<millis>_<name>`: two uploads of the same filename inside one
+        // millisecond produced the same key, and `insert` is an upsert — so one
+        // document silently destroyed the other, and converged to the loss on
+        // every replica. Random bytes are unique without coordination.
+        let mut id_bytes = [0u8; 16];
+        env::random_bytes(&mut id_bytes);
+        let document_id = format!("doc_{}", hex::encode(id_bytes));
 
         if self.documents.contains(&document_id).unwrap_or(false) {
             return Err(AppError::msg(
@@ -1151,7 +1158,7 @@ impl MeroSignState {
         let mut participants = Vec::new();
         if let Ok(iter) = self.participants.iter() {
             for participant in iter {
-                participants.push(participant.clone());
+                participants.push(*participant);
             }
         }
         Ok(participants)
@@ -1286,8 +1293,7 @@ impl MeroSignState {
                     let clean_text = chunk
                         .text
                         .trim()
-                        .replace('\n', " ")
-                        .replace('\r', " ")
+                        .replace(['\n', '\r'], " ")
                         .replace("  ", " ");
 
                     let max_chars = if similarity > 0.5 {
@@ -1342,10 +1348,7 @@ impl MeroSignState {
         }
 
         let text_snippet = if let Some(ref full_text) = document.extracted_text {
-            let clean_text = full_text
-                .replace('\n', " ")
-                .replace('\r', " ")
-                .replace("  ", " ");
+            let clean_text = full_text.replace(['\n', '\r'], " ").replace("  ", " ");
 
             let max_chars = if similarity > 0.4 {
                 400
