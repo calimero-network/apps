@@ -27,11 +27,14 @@ slug        = "com.calimero.meropass"
 icon        = "default"
 tags        = ["secrets", "passwords", "security"]
 github      = "https://github.com/calimero-network/apps"
-min-runtime-version = "0.11.0-rc.26"
+min-runtime-version = "0.11.0-rc.28"
 frontend    = "https://meropass.vercel.app"
 
 [dependencies]
 thiserror               = { workspace = true }
+# `fresh_id` renders 16 random bytes from the host. Not decorative: the previous
+# scheme keyed a secret by its creation millisecond, and `insert` is an upsert.
+hex                     = { workspace = true }
 # WAS `branch = "master"` resolved around 2025-11 — it rides unreleased protocol
 # work against nodes running a release, and silently drifts between builds. The
 # workspace pins one real release tag for the whole fleet.
@@ -46,3 +49,10 @@ calimero-storage-macros = { workspace = true }
 #
 # NOTE: no [profile.*] — cargo ignores profiles in a workspace member and
 # `cargo mero build` then fails with `profile 'app-release' is not defined`.
+
+[dev-dependencies]
+# Enables the native mock host so TestHost can drive contract state under
+# `cargo test`. This contract shipped with no tests at all; the ones added
+# alongside cover the vault operations, the audit trail, and the two bugs the
+# port fixed (millisecond-collided ids, device-vs-account authorship).
+calimero-storage = { workspace = true, features = ["testing"] }
