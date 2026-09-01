@@ -1709,7 +1709,11 @@ mod tests {
             .expect("a fresh room has an owner");
         assert_eq!(owner.len(), 64, "an AccountId renders as 32 bytes of hex");
         assert!(owner.chars().all(|c| c.is_ascii_hexdigit()));
-        assert_ne!(owner, id_of(ALICE), "the owner is the ACCOUNT, not the device key");
+        assert_ne!(
+            owner,
+            id_of(ALICE),
+            "the owner is the ACCOUNT, not the device key"
+        );
     }
 
     #[test]
