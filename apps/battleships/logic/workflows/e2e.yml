@@ -131,6 +131,13 @@ steps:
     args:
       player2: '{{p1_key}}'
     expected_failure: true
+    outputs:
+      reject_err_1: error
+
+  - name: Assert rejected — Reject Self-Match Creation
+    type: assert
+    statements:
+      - "is_set({{reject_err_1}})"
 
   - name: Reject Non-Base58 Player2
     type: call
@@ -141,6 +148,13 @@ steps:
     args:
       player2: '!!!not-a-valid-base58-key!!!'
     expected_failure: true
+    outputs:
+      reject_err_2: error
+
+  - name: Assert rejected — Reject Non-Base58 Player2
+    type: assert
+    statements:
+      - "is_set({{reject_err_2}})"
 
   # The frontend creates a per-match subgroup inside the namespace, then
   # creates the match context inside that subgroup. Mirror that flow here.
@@ -148,7 +162,7 @@ steps:
     type: create_group_in_namespace
     node: calimero-node-1
     namespace_id: '{{namespace_id}}'
-    group_alias: 'match-{{match_id}}'
+    group_name: 'match-{{match_id}}'
     outputs:
       match_subgroup_id: groupId
 
@@ -342,6 +356,13 @@ steps:
         - '0,6;1,6;2,6;3,6'
         - '0,8;1,8;2,8;3,8;4,8'
     expected_failure: true
+    outputs:
+      reject_err_3: error
+
+  - name: Assert rejected — Reject Second Placement by P1 (AlreadyCommitted)
+    type: assert
+    statements:
+      - "is_set({{reject_err_3}})"
 
   # Verify cross-device durability hooks: export returns board_bytes + salt,
   # keyed against the caller's published commitment.
@@ -589,6 +610,13 @@ steps:
       match_id: '{{match_id}}'
       context_id: '{{match_ctx_id}}'
     expected_failure: true
+    outputs:
+      reject_err_4: error
+
+  - name: Assert rejected — Reject Re-Link of Active Match
+    type: assert
+    statements:
+      - "is_set({{reject_err_4}})"
 
   # ============================================================
   # Phase G: Complete the Game — 31 more shots in varied order
@@ -1081,6 +1109,13 @@ steps:
     executor_public_key: '{{match_p1_key}}'
     args: { match_id: '{{game_match_id}}', x: 0, y: 0 }
     expected_failure: true
+    outputs:
+      reject_err_5: error
+
+  - name: Assert rejected — Reject Post-Match Shot from P1
+    type: assert
+    statements:
+      - "is_set({{reject_err_5}})"
 
   - name: Reject Post-Match Shot from P2
     type: call
@@ -1090,6 +1125,13 @@ steps:
     executor_public_key: '{{match_p2_key}}'
     args: { match_id: '{{game_match_id}}', x: 5, y: 5 }
     expected_failure: true
+    outputs:
+      reject_err_6: error
+
+  - name: Assert rejected — Reject Post-Match Shot from P2
+    type: assert
+    statements:
+      - "is_set({{reject_err_6}})"
 
   # The lobby should now show the match as Finished with P1 as the
   # winner. Read from BOTH nodes to confirm the xcall + summary merge
