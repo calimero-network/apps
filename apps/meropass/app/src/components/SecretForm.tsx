@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
-import { AbiClient, SecretItem } from '../api/AbiClient';
+import type { SecretItem } from '../generated/MeroPassClient';
+import { MeroPassClient } from '../generated/MeroPassClient';
 import {
   Modal,
   Button,
   Input,
-  Text,
   Textarea,
   Select,
   Card,
@@ -15,9 +15,7 @@ import {
 } from '@calimero-network/mero-ui';
 
 interface SecretFormProps {
-  api: AbiClient;
-  vaultId: string;
-  memberPublicKey: string;
+  api: MeroPassClient;
   secret?: SecretItem;
   onSuccess: () => void;
   trigger?: React.ReactNode;
@@ -57,8 +55,6 @@ interface SecureNoteData {
 
 const SecretForm: React.FC<SecretFormProps> = ({
   api,
-  vaultId,
-  memberPublicKey,
   secret,
   onSuccess,
   trigger,
@@ -178,23 +174,23 @@ const SecretForm: React.FC<SecretFormProps> = ({
 
       if (secret) {
         // Update existing secret
+        // `vault_id` and `member_public_key` are gone: the vault IS the
+        // context the client is bound to, and the caller is the signer of the
+        // call. Passing them was harmless only because the old hand-written
+        // client dropped unknown keys; the contract never took either.
         await api.updateSecret({
-          vault_id: vaultId,
           secret_id: secret.id,
           name,
           data: secretData,
           tags: tagsArray,
-          member_public_key: memberPublicKey,
         });
       } else {
         // Create new secret
         await api.addSecret({
-          vault_id: vaultId,
           name,
           secret_type: secretType,
           data: secretData,
           tags: tagsArray,
-          member_public_key: memberPublicKey,
         });
       }
 
@@ -265,14 +261,8 @@ const SecretForm: React.FC<SecretFormProps> = ({
               />
             </div>
             <div>
-              <label
-                htmlFor="login-notes"
-                className="block text-sm font-medium mb-1"
-              >
-                Notes
-              </label>
               <Textarea
-                id="login-notes"
+                label="Notes"
                 value={loginData.notes || ''}
                 onChange={(e) =>
                   setLoginData((prev) => ({ ...prev, notes: e.target.value }))
@@ -341,14 +331,8 @@ const SecretForm: React.FC<SecretFormProps> = ({
         return (
           <div className="space-y-4">
             <div>
-              <label
-                htmlFor="private-key"
-                className="block text-sm font-medium mb-1"
-              >
-                Private Key
-              </label>
               <Textarea
-                id="private-key"
+                label="Private Key"
                 value={sshKeyData.private_key}
                 onChange={(e) =>
                   setSshKeyData((prev) => ({
@@ -361,14 +345,8 @@ const SecretForm: React.FC<SecretFormProps> = ({
               />
             </div>
             <div>
-              <label
-                htmlFor="public-key"
-                className="block text-sm font-medium mb-1"
-              >
-                Public Key
-              </label>
               <Textarea
-                id="public-key"
+                label="Public Key"
                 value={sshKeyData.public_key}
                 onChange={(e) =>
                   setSshKeyData((prev) => ({
@@ -482,14 +460,8 @@ const SecretForm: React.FC<SecretFormProps> = ({
               />
             </div>
             <div>
-              <label
-                htmlFor="card-notes"
-                className="block text-sm font-medium mb-1"
-              >
-                Notes
-              </label>
               <Textarea
-                id="card-notes"
+                label="Notes"
                 value={paymentCardData.notes || ''}
                 onChange={(e) =>
                   setPaymentCardData((prev) => ({
@@ -507,14 +479,8 @@ const SecretForm: React.FC<SecretFormProps> = ({
         return (
           <div className="space-y-4">
             <div>
-              <label
-                htmlFor="content"
-                className="block text-sm font-medium mb-1"
-              >
-                Content
-              </label>
               <Textarea
-                id="content"
+                label="Content"
                 value={secureNoteData.content}
                 onChange={(e) =>
                   setSecureNoteData((prev) => ({
@@ -527,14 +493,8 @@ const SecretForm: React.FC<SecretFormProps> = ({
               />
             </div>
             <div>
-              <label
-                htmlFor="note-notes"
-                className="block text-sm font-medium mb-1"
-              >
-                Notes
-              </label>
               <Textarea
-                id="note-notes"
+                label="Notes"
                 value={secureNoteData.notes || ''}
                 onChange={(e) =>
                   setSecureNoteData((prev) => ({
@@ -580,7 +540,6 @@ const SecretForm: React.FC<SecretFormProps> = ({
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="Enter secret name"
-                required
               />
             </div>
 
@@ -625,7 +584,7 @@ const SecretForm: React.FC<SecretFormProps> = ({
           <div className="flex justify-end gap-2">
             <Button
               type="button"
-              variant="outlined"
+              variant="outline"
               onClick={() => setIsOpen(false)}
             >
               Cancel

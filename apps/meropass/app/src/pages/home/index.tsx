@@ -1,9 +1,5 @@
 import React from 'react';
-import {
-  useCalimero,
-  CalimeroConnectButton,
-  ConnectionType,
-} from '@calimero-network/calimero-client';
+import { ConnectButton } from '@calimero-network/mero-react';
 import {
   Navbar as MeroNavbar,
   NavbarBrand,
@@ -13,20 +9,17 @@ import {
 import VaultList from './VaultList';
 
 const HomePage: React.FC = () => {
-  const { identity } = useCalimero();
-
   return (
     <>
       <MeroNavbar variant="elevated" size="md">
         <NavbarBrand text="MeroPass" />
         <NavbarMenu align="right">
           <NavbarItem>
-            <CalimeroConnectButton
-              connectionType={{
-                type: ConnectionType.Custom,
-                url: 'http://node1.127.0.0.1.nip.io',
-              }}
-            />
+            {/* No hard-coded node URL. This said
+                `http://node1.127.0.0.1.nip.io`, a developer's local node, so
+                every user of a deployed build was pointed at a machine that is
+                not theirs. mero-react's ConnectButton asks for the node. */}
+            <ConnectButton label="Connect a node" />
           </NavbarItem>
         </NavbarMenu>
       </MeroNavbar>

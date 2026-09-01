@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
-import {
-  useCalimero,
-  CalimeroConnectButton,
-  ConnectionType,
-} from '@calimero-network/calimero-client';
-import { AbiClient, SecretItem, AuditLogEntry } from '../../api/AbiClient';
+import { ConnectButton } from '@calimero-network/mero-react';
+import type {
+  AuditLogEntry,
+  SecretItem,
+} from '../../generated/MeroPassClient';
+import { useVaultClient } from '../../lib/vault';
 import SecretForm from '../../components/SecretForm';
 import {
   Button,
@@ -29,95 +29,39 @@ import {
 
 const VaultDashboard: React.FC = () => {
   const { vaultId } = useParams<{ vaultId: string }>();
-  const { app } = useCalimero();
+  // One vault == one context, so the route param IS the context id. The old
+  // code listed every context and searched it for a match, which meant a page
+  // load could not tell "not a member" from "node unreachable".
+  const client = useVaultClient(vaultId ?? null);
   const [secrets, setSecrets] = useState<SecretItem[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTag, setSelectedTag] = useState<string>('all');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [contexts, setContexts] = useState<any[]>([]);
   const [selectedSecret, setSelectedSecret] = useState<SecretItem | null>(null);
   const [isSecretModalOpen, setIsSecretModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<string>('secrets');
 
-  // Fetch contexts for the application
-  useEffect(() => {
-    if (!app) return;
-
-    const fetchContexts = async () => {
-      try {
-        const contextsData = await app.fetchContexts();
-        console.log('fetchContexts: Raw response:', contextsData);
-
-        // Handle the response structure - contexts might be in data.contexts
-        const actualContexts =
-          (contextsData as any).data?.contexts ||
-          (contextsData as any).contexts ||
-          contextsData;
-
-        // Ensure it's an array
-        const contextsArray = Array.isArray(actualContexts)
-          ? actualContexts
-          : [];
-        console.log('fetchContexts: Processed contexts:', contextsArray);
-
-        setContexts(contextsArray);
-      } catch (err) {
-        console.error('Failed to fetch contexts:', err);
-        setError('Failed to fetch contexts');
-      }
-    };
-
-    fetchContexts();
-  }, [app]);
-
   // Load vault data - each context is a vault
   const loadVaultData = useCallback(async () => {
-    if (!app || !vaultId || contexts.length === 0) return;
+    if (!client) return;
 
     try {
       setIsLoading(true);
       setError(null);
-
-      // Find the context that matches the vaultId (handle both id and contextId)
-      const context = contexts.find(
-        (ctx) => (ctx.id || ctx.contextId) === vaultId,
-      );
-      if (!context) {
-        setError(`Vault ${vaultId} not found`);
-        return;
-      }
-
-      const contextId = context.id || context.contextId;
-      console.log(`Loading vault data for context: ${contextId}`);
-      const api = new AbiClient(app, context);
-
-      // Get secrets from this context (vault)
-      const secretsData = await api.listSecrets();
-      console.log(
-        `Found ${secretsData.length} secrets in vault ${contextId}:`,
-        secretsData,
-      );
+      const [secretsData, auditData] = await Promise.all([
+        client.listSecrets(),
+        client.getAuditLogs(),
+      ]);
       setSecrets(secretsData);
-
-      // Get audit logs for this context (vault)
-      const auditData = await api.getAuditLogs();
-      console.log(
-        `Found ${auditData.length} audit logs for vault ${contextId}:`,
-        auditData,
-      );
       setAuditLogs(auditData);
-
-      console.log('Vault data loaded successfully');
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : 'Failed to load vault data',
-      );
+      setError(err instanceof Error ? err.message : 'Failed to load vault data');
     } finally {
       setIsLoading(false);
     }
-  }, [app, vaultId, contexts]);
+  }, [client]);
 
   useEffect(() => {
     loadVaultData();
@@ -212,12 +156,7 @@ const VaultDashboard: React.FC = () => {
           <NavbarBrand text="MeroPass" />
           <NavbarMenu align="right">
             <NavbarItem>
-              <CalimeroConnectButton
-                connectionType={{
-                  type: ConnectionType.Custom,
-                  url: 'http://node1.127.0.0.1.nip.io',
-                }}
-              />
+              <ConnectButton label="Connect a node" />
             </NavbarItem>
           </NavbarMenu>
         </MeroNavbar>
@@ -235,12 +174,7 @@ const VaultDashboard: React.FC = () => {
           <NavbarBrand text="MeroPass" />
           <NavbarMenu align="right">
             <NavbarItem>
-              <CalimeroConnectButton
-                connectionType={{
-                  type: ConnectionType.Custom,
-                  url: 'http://node1.127.0.0.1.nip.io',
-                }}
-              />
+              <ConnectButton label="Connect a node" />
             </NavbarItem>
           </NavbarMenu>
         </MeroNavbar>
@@ -256,12 +190,7 @@ const VaultDashboard: React.FC = () => {
           <NavbarBrand text="MeroPass" />
           <NavbarMenu align="right">
             <NavbarItem>
-              <CalimeroConnectButton
-                connectionType={{
-                  type: ConnectionType.Custom,
-                  url: 'http://node1.127.0.0.1.nip.io',
-                }}
-              />
+              <ConnectButton label="Connect a node" />
             </NavbarItem>
           </NavbarMenu>
         </MeroNavbar>
@@ -276,12 +205,7 @@ const VaultDashboard: React.FC = () => {
         <NavbarBrand text="MeroPass" />
         <NavbarMenu align="right">
           <NavbarItem>
-            <CalimeroConnectButton
-              connectionType={{
-                type: ConnectionType.Custom,
-                url: 'http://node1.127.0.0.1.nip.io',
-              }}
-            />
+            <ConnectButton label="Connect a node" />
           </NavbarItem>
         </NavbarMenu>
       </MeroNavbar>
@@ -299,18 +223,9 @@ const VaultDashboard: React.FC = () => {
             </p>
           </div>
           <div className="flex gap-2">
-            {app && contexts.length > 0 && (
+            {client && (
               <SecretForm
-                api={
-                  new AbiClient(
-                    app,
-                    contexts.find(
-                      (ctx) => (ctx.id || ctx.contextId) === vaultId,
-                    )!,
-                  )
-                }
-                vaultId={vaultId!}
-                memberPublicKey=""
+                api={client}
                 onSuccess={loadVaultData}
               />
             )}

@@ -1,6 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useCalimero } from '@calimero-network/calimero-client';
-import { AbiClient } from '../../api/AbiClient';
+import { useMero } from '@calimero-network/mero-react';
+import {
+  clientForContext,
+  useVaultContexts,
+  vaultLabel,
+} from '../../lib/vault';
 import {
   Card,
   CardContent,
@@ -10,7 +14,6 @@ import {
   Input,
   Badge,
   Alert,
-  Modal,
 } from '@calimero-network/mero-ui';
 
 interface VaultContext {
@@ -21,114 +24,54 @@ interface VaultContext {
 }
 
 const VaultList: React.FC = () => {
-  const { app } = useCalimero();
+  const { mero } = useMero();
+  const { contextIds, error: contextsError } = useVaultContexts();
   const [vaults, setVaults] = useState<VaultContext[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [contexts, setContexts] = useState<any[]>([]);
 
-  // Fetch contexts for the application
+  // Surface a context-listing failure the same way a load failure is surfaced.
   useEffect(() => {
-    if (!app) return;
-
-    const fetchContexts = async () => {
-      try {
-        console.log('fetchContexts: Starting to fetch contexts...');
-        const contextsData = await app.fetchContexts();
-        console.log('fetchContexts: Raw response:', contextsData);
-
-        // Handle the response structure - contexts might be in data.contexts
-        const actualContexts =
-          contextsData.data?.contexts || contextsData.contexts || contextsData;
-        console.log('fetchContexts: Processed contexts:', actualContexts);
-
-        // Ensure it's an array
-        const contextsArray = Array.isArray(actualContexts)
-          ? actualContexts
-          : [];
-        console.log('fetchContexts: Contexts array:', contextsArray);
-
-        setContexts(contextsArray);
-        console.log('fetchContexts: Set contexts state:', contextsArray);
-      } catch (err) {
-        console.error('Failed to fetch contexts:', err);
-        setError('Failed to fetch contexts');
-      }
-    };
-
-    fetchContexts();
-  }, [app]);
+    if (contextsError) setError(contextsError);
+  }, [contextsError]);
 
   // Load vaults function - each context is a vault
   const loadVaults = useCallback(async () => {
-    if (!app || contexts.length === 0) {
-      console.log('loadVaults: Missing app or no contexts', {
-        app: !!app,
-        contextsLength: contexts.length,
-      });
+    if (!mero || contextIds.length === 0) {
+      setIsLoading(false);
       return;
     }
 
-    try {
-      setIsLoading(true);
-      setError(null);
+    setIsLoading(true);
+    setError(null);
 
-      console.log('Available contexts:', contexts);
-      console.log('loadVaults: Starting to process contexts');
-
-      const vaultContexts: VaultContext[] = [];
-
-      // Each context is a vault - get secret count for each
-      for (const context of contexts) {
-        // Handle both context.id and context.contextId
-        const contextId = context.id || context.contextId;
-
-        // Skip if context doesn't have an id
-        if (!context || !contextId) {
-          console.warn('Skipping context without id:', context);
-          continue;
-        }
-
+    // One vault per context. A context whose secrets cannot be read still
+    // appears, with a zero count, rather than vanishing from the list — the
+    // vault exists either way and hiding it looks like data loss.
+    const loaded = await Promise.all(
+      contextIds.map(async (contextId): Promise<VaultContext> => {
         try {
-          console.log(`Loading vault data from context ${contextId}`, context);
-          const api = new AbiClient(app, context);
-          const secrets = await api.listSecrets();
-
-          const vaultContext: VaultContext = {
+          const client = await clientForContext(mero, contextId);
+          const secrets = client ? await client.listSecrets() : [];
+          return {
             id: contextId,
-            name: `Vault ${contextId.slice(0, 8)}...`,
+            name: vaultLabel(contextId),
             secretCount: secrets.length,
             lastActivity:
               secrets.length > 0
-                ? Math.max(...secrets.map((s) => s.updated_at))
+                ? Math.max(...secrets.map((secret) => secret.updated_at))
                 : undefined,
           };
-
-          vaultContexts.push(vaultContext);
-          console.log(`Context ${contextId}: ${secrets.length} secrets`);
-        } catch (err) {
-          console.error(
-            `Failed to load secrets from context ${contextId}:`,
-            err,
-          );
-          // Still add the context as a vault, just with 0 secrets
-          vaultContexts.push({
-            id: contextId,
-            name: `Vault ${contextId.slice(0, 8)}...`,
-            secretCount: 0,
-          });
+        } catch {
+          return { id: contextId, name: vaultLabel(contextId), secretCount: 0 };
         }
-      }
+      }),
+    );
 
-      setVaults(vaultContexts);
-      console.log('Total vault contexts loaded:', vaultContexts.length);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load vaults');
-    } finally {
-      setIsLoading(false);
-    }
-  }, [app, contexts]);
+    setVaults(loaded);
+    setIsLoading(false);
+  }, [mero, contextIds]);
 
   // Load vaults from all contexts
   useEffect(() => {
@@ -147,7 +90,7 @@ const VaultList: React.FC = () => {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="text-lg">
-          Loading vaults... (Contexts: {contexts.length})
+          Loading vaults... (Contexts: {contextIds.length})
         </div>
       </div>
     );
@@ -180,7 +123,7 @@ const VaultList: React.FC = () => {
       {/* Debug Info */}
       <div className="text-sm text-gray-500 mb-4">
         Debug: {vaults.length} total vaults, {filteredVaults.length} filtered,{' '}
-        {contexts.length} contexts
+        {contextIds.length} contexts
         <br />
         User: Connected
         <br />

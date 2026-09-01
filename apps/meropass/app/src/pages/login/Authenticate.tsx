@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Card,
@@ -12,18 +12,13 @@ import {
   NavbarBrand,
   NavbarMenu,
   NavbarItem,
-  List,
 } from '@calimero-network/mero-ui';
-import {
-  useCalimero,
-  CalimeroConnectButton,
-  ConnectionType,
-} from '@calimero-network/calimero-client';
+import { ConnectButton, useMero } from '@calimero-network/mero-react';
 import translations from '../../constants/en.global.json';
 
 export default function Authenticate() {
   const navigate = useNavigate();
-  const { isAuthenticated } = useCalimero();
+  const { isAuthenticated } = useMero();
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -37,7 +32,7 @@ export default function Authenticate() {
         <NavbarBrand text="MeroPass" />
         <NavbarMenu align="right">
           <NavbarItem>
-            <CalimeroConnectButton />
+            <ConnectButton label="Connect a node" />
           </NavbarItem>
         </NavbarMenu>
       </MeroNavbar>
@@ -230,16 +225,6 @@ export default function Authenticate() {
                           boxShadow: '0 4px 6px -1px rgba(59, 130, 246, 0.3)',
                           transition: 'all 0.2s ease-in-out',
                         }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.transform = 'translateY(-1px)';
-                          e.currentTarget.style.boxShadow =
-                            '0 6px 12px -3px rgba(59, 130, 246, 0.4)';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.transform = 'translateY(0)';
-                          e.currentTarget.style.boxShadow =
-                            '0 4px 6px -1px rgba(59, 130, 246, 0.3)';
-                        }}
                       >
                         📚 {translations.home.documentation}
                       </Button>
@@ -264,16 +249,6 @@ export default function Authenticate() {
                           boxShadow: '0 4px 6px -1px rgba(107, 114, 128, 0.3)',
                           transition: 'all 0.2s ease-in-out',
                         }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.transform = 'translateY(-1px)';
-                          e.currentTarget.style.boxShadow =
-                            '0 6px 12px -3px rgba(107, 114, 128, 0.4)';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.transform = 'translateY(0)';
-                          e.currentTarget.style.boxShadow =
-                            '0 4px 6px -1px rgba(107, 114, 128, 0.3)';
-                        }}
                       >
                         🐙 {translations.home.github}
                       </Button>
@@ -297,16 +272,6 @@ export default function Authenticate() {
                           fontSize: '0.9rem',
                           boxShadow: '0 4px 6px -1px rgba(6, 182, 212, 0.3)',
                           transition: 'all 0.2s ease-in-out',
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.transform = 'translateY(-1px)';
-                          e.currentTarget.style.boxShadow =
-                            '0 6px 12px -3px rgba(6, 182, 212, 0.4)';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.transform = 'translateY(0)';
-                          e.currentTarget.style.boxShadow =
-                            '0 4px 6px -1px rgba(6, 182, 212, 0.3)';
                         }}
                       >
                         🌐 {translations.home.website}

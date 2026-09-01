@@ -1,32 +1,17 @@
-import React, { useState } from 'react';
-import { Routes, Route, BrowserRouter } from 'react-router-dom';
-import { CalimeroProvider, AppMode } from '@calimero-network/calimero-client';
-import { ToastProvider } from '@calimero-network/mero-ui';
+import { Routes, Route } from "react-router-dom";
 
-import HomePage from './pages/home';
-import Authenticate from './pages/login/Authenticate';
-import VaultDashboard from './pages/vault/VaultDashboard';
+import HomePage from "./pages/home";
+import Authenticate from "./pages/login/Authenticate";
+import VaultDashboard from "./pages/vault/VaultDashboard";
 
+// The provider tree lives in index.tsx so that MeroProvider is mounted before
+// anything reads the session. This component is routing only.
 export default function App() {
-  const [clientAppId] = useState<string>(
-    '4WEikdan9yeaDTADsS1uGzGasiVuJDQcozJbogEyTYcy',
-  );
-
   return (
-    <CalimeroProvider
-      clientApplicationId={clientAppId}
-      applicationPath={window.location.pathname || '/'}
-      mode={AppMode.MultiContext}
-    >
-      <ToastProvider>
-        <BrowserRouter basename="/">
-          <Routes>
-            <Route path="/" element={<Authenticate />} />
-            <Route path="/home" element={<HomePage />} />
-            <Route path="/vault/:vaultId" element={<VaultDashboard />} />
-          </Routes>
-        </BrowserRouter>
-      </ToastProvider>
-    </CalimeroProvider>
+    <Routes>
+      <Route path="/" element={<Authenticate />} />
+      <Route path="/home" element={<HomePage />} />
+      <Route path="/vault/:vaultId" element={<VaultDashboard />} />
+    </Routes>
   );
 }

@@ -277,7 +277,9 @@ impl MeroPassApp {
 
     pub fn get_audit_logs(&self) -> app::Result<Vec<AuditLogEntry>> {
         let mut logs: Vec<AuditLogEntry> = self.audit_logs.entries()?.map(|(_, l)| l).collect();
-        logs.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+        // Newest first. `sort_by_key` + `Reverse` rather than a comparator —
+        // clippy's `-D warnings` rejects the closure form.
+        logs.sort_by_key(|l| std::cmp::Reverse(l.timestamp));
         Ok(logs)
     }
 
