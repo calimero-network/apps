@@ -1,6 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import styled from "styled-components";
 import { GroupApiDataSource } from "../../api/dataSource/groupApiDataSource";
+import { useWorkspaceName } from "../../hooks/useWorkspaceName";
+import {
+  resolveWorkspaceName,
+  shouldBackfillWorkspaceName,
+} from "../../utils/workspaceName";
 import type { GroupSummary } from "../../api/groupApi";
 import { getGroupId, setGroupId, getStoredGroupAlias } from "../../constants/config";
 import { clearStoredSession } from "../../utils/session";
@@ -133,16 +138,55 @@ export default function WorkspaceSwitcher({ isCollapsed }: WorkspaceSwitcherProp
 
   useEffect(() => {
     const api = new GroupApiDataSource();
-    void api.listGroups().then((resp) => {
-      if (resp.data) setWorkspaces(resp.data.map((w) => ({
-        ...w,
-        alias: w.alias?.trim() || getStoredGroupAlias(w.groupId) || undefined,
-      })));
+    void api.listGroups().then(async (resp) => {
+      if (!resp.data) return;
+
+      // Read the replicated name per workspace. The listing does not carry
+      // metadata, so this is one call each — a handful, and only on open.
+      // Failures are silent: a workspace whose metadata cannot be read still
+      // shows its local alias rather than disappearing.
+      const named = await Promise.all(
+        resp.data.map(async (w) => {
+          const localAlias = getStoredGroupAlias(w.groupId);
+          const record = await api.getGroupMetadata(w.groupId).catch(() => null);
+          const sources = {
+            metadataName: record?.data?.name,
+            serverAlias: w.alias,
+            localAlias,
+            groupId: w.groupId,
+          };
+
+          // Promote a name this browser knows and the workspace does not, so a
+          // workspace named before metadata was used becomes visible to
+          // everyone. Best-effort — a member without CAN_MANAGE_METADATA is
+          // refused, and the local alias keeps showing for them.
+          if (shouldBackfillWorkspaceName(sources)) {
+            void api.setGroupMetadata(w.groupId, localAlias).catch(() => {});
+          }
+
+          return { ...w, alias: resolveWorkspaceName(sources) };
+        }),
+      );
+
+      setWorkspaces(named);
     });
   }, []);
 
   const current = workspaces.find((w) => w.groupId === currentGroupId);
-  const displayName = current?.alias || (currentGroupId ? currentGroupId.slice(0, 8) + "…" : "Workspace");
+
+  // The pill's own name comes from the shared hook when the listing cannot
+  // supply it.
+  //
+  // The listing can be empty — a node that cannot resolve the application id
+  // returns nothing — and keying the displayed name off `find(...)` is what
+  // showed a truncated id here while Settings showed the name. The hook needs
+  // only the current group id, which is always known.
+  const currentName = useWorkspaceName(currentGroupId);
+  // The listing's entry already ranks metadata above the server alias above the
+  // local one, so prefer it when the workspace is in the list. The hook is the
+  // fallback for when it is NOT — an empty listing is exactly the case that
+  // showed a truncated id here while Settings showed the name.
+  const displayName = current?.alias || (currentGroupId ? currentName : "Workspace");
 
   const handleSelect = useCallback((groupId: string) => {
     if (groupId === currentGroupId) { setIsOpen(false); return; }

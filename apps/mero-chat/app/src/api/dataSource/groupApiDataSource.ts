@@ -5,7 +5,9 @@ import {
   getSelfAccountHex,
   loadSelfAccountIdentity,
 } from "../../utils/accountIdentity";
+import type { MetadataRecord } from "@calimero-network/mero-react";
 import type { ApiResponse } from "../types";
+import { getApplicationId } from "../../constants/config";
 import { groupNameError } from "../../utils/groupName";
 import type {
   ContextVisibility,
@@ -384,16 +386,36 @@ export class GroupApiDataSource implements GroupApi {
       // /namespaces is the correct endpoint (matches POST /namespaces in createGroup).
       // Fall back to /groups for older merod versions.
       const admin = getMeroJs().admin;
-      const appId = import.meta.env.VITE_APPLICATION_ID as string | undefined;
+      // `getApplicationId()`, NOT `import.meta.env.VITE_APPLICATION_ID`.
+      //
+      // The env value is baked at build time, so a deployed build stays pinned
+      // to whatever app it was built against and cannot follow an app-id
+      // change — and the id changes whenever the wasm does, which is every
+      // release. `getApplicationId` resolves the live one: `app-id` from the
+      // URL (how the desktop passes it), then the stored id, then the env
+      // default. Its own doc warns about exactly this fall-through.
+      const appId = getApplicationId();
       let payload: unknown;
       try {
         payload = appId
           ? await admin.listNamespacesForApplication(appId)
           : await admin.listNamespaces();
       } catch (firstError) {
+        const status = (firstError as { status?: number })?.status;
+
+        // The node rejects an id it does not know with `400 Invalid
+        // application id`. Treat that as "cannot filter", not as "no
+        // workspaces": an empty list is indistinguishable from having none,
+        // and it rendered as a truncated group id where the workspace name
+        // belongs. Showing every namespace is imperfect; showing none looks
+        // like the workspace is gone.
+        if (status === 400 && appId) {
+          payload = await admin.listNamespaces();
+          return this.toGroupSummaries(payload);
+        }
+
         // Older merod does not serve /namespaces; fall back to the legacy
         // /groups route. mero-js throws HTTPError carrying `status`.
-        const status = (firstError as { status?: number })?.status;
         if (status !== 404 && status !== 405) throw firstError;
         const legacy = await axios.get(`${this.base()}/groups`, {
           headers: getAuthHeaders(),
@@ -404,48 +426,59 @@ export class GroupApiDataSource implements GroupApi {
         payload = legacy.data.data;
       }
 
-      // Normalise: server may nest under .namespaces / .groups, and use namespaceId vs groupId
-      const p = payload as {
-        namespaces?: unknown[];
-        groups?: unknown[];
-      } | null;
-      const raw: unknown[] = Array.isArray(payload)
-        ? (payload as unknown[])
-        : Array.isArray(p?.namespaces)
-          ? p!.namespaces
-          : Array.isArray(p?.groups)
-            ? p!.groups
-            : [];
-
-      const groups: GroupSummary[] = raw
-        .filter((item): item is Record<string, unknown> => !!item && typeof item === "object")
-        .map((item) => ({
-          groupId: String(item.groupId ?? item.namespaceId ?? item.id ?? ""),
-          // Server returns `name` post-054a784f; fall back to `alias` for older nodes.
-          alias:
-            typeof item.name === "string"
-              ? item.name
-              : typeof item.alias === "string"
-                ? item.alias
-                : undefined,
-          appKey: String(item.appKey ?? item.app_key ?? ""),
-          targetApplicationId: String(
-            item.targetApplicationId ?? item.target_application_id ?? "",
-          ),
-          upgradePolicy: (item.upgradePolicy ??
-            item.upgrade_policy ??
-            "Automatic") as GroupSummary["upgradePolicy"],
-          createdAt:
-            typeof item.createdAt === "number"
-              ? item.createdAt
-              : Math.floor(Date.now() / 1000),
-        }))
-        .filter((g) => g.groupId.length > 0);
-
-      return ok(groups);
+      return this.toGroupSummaries(payload);
     } catch (error) {
       return catchError("listGroups", error);
     }
+  }
+
+  /**
+   * Normalise a namespace/group listing into `GroupSummary[]`.
+   *
+   * The server may return a bare array or nest under `.namespaces` / `.groups`,
+   * and names the id `namespaceId` or `groupId` depending on the route and the
+   * node's age. Shared by both listing paths so the filtered and unfiltered
+   * reads cannot disagree about the shape they produce.
+   */
+  private toGroupSummaries(payload: unknown): Result<GroupSummary[]> {
+    const p = payload as {
+      namespaces?: unknown[];
+      groups?: unknown[];
+    } | null;
+    const raw: unknown[] = Array.isArray(payload)
+      ? (payload as unknown[])
+      : Array.isArray(p?.namespaces)
+        ? p!.namespaces
+        : Array.isArray(p?.groups)
+          ? p!.groups
+          : [];
+
+    const groups: GroupSummary[] = raw
+      .filter((item): item is Record<string, unknown> => !!item && typeof item === "object")
+      .map((item) => ({
+        groupId: String(item.groupId ?? item.namespaceId ?? item.id ?? ""),
+        // Server returns `name` post-054a784f; fall back to `alias` for older nodes.
+        alias:
+          typeof item.name === "string"
+            ? item.name
+            : typeof item.alias === "string"
+              ? item.alias
+              : undefined,
+        appKey: String(item.appKey ?? item.app_key ?? ""),
+        targetApplicationId: String(
+          item.targetApplicationId ?? item.target_application_id ?? "",
+        ),
+        upgradePolicy: (item.upgradePolicy ??
+          item.upgrade_policy ??
+          "Automatic") as GroupSummary["upgradePolicy"],
+        createdAt:
+          typeof item.createdAt === "number"
+            ? item.createdAt
+            : Math.floor(Date.now() / 1000),
+      }))
+      .filter((g) => g.groupId.length > 0);
+
+    return ok(groups);
   }
 
   async deleteGroup(groupId: string): ApiResponse<boolean> {
@@ -886,6 +919,22 @@ export class GroupApiDataSource implements GroupApi {
       return ok(undefined as void);
     } catch (error) {
       return catchError("setMemberMetadata", error);
+    }
+  }
+
+  /**
+   * The group's replicated metadata record, or `null` if none was ever set.
+   *
+   * This is where a workspace name belongs: `GroupMetadataSet` replicates, so
+   * every member sees the same name and a new device sees it too — unlike the
+   * `localStorage` alias, which is one browser's label.
+   */
+  async getGroupMetadata(groupId: string): ApiResponse<MetadataRecord | null> {
+    try {
+      const record = await getMeroJs().admin.getGroupMetadata(groupId);
+      return ok(record ?? null);
+    } catch (error) {
+      return catchError("getGroupMetadata", error);
     }
   }
 

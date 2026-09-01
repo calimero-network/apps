@@ -476,7 +476,15 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
 
       const { groupId, memberIdentity } = joinRes.data;
       setGroupMemberIdentity(groupId, memberIdentity);
-      if (parsed.groupAlias?.trim()) setStoredGroupAlias(groupId, parsed.groupAlias.trim());
+      if (parsed.groupAlias?.trim()) {
+        const alias = parsed.groupAlias.trim();
+        setStoredGroupAlias(groupId, alias);
+        // Also publish it, so the name is the workspace's rather than this
+        // browser's. Best-effort: a joiner usually lacks CAN_MANAGE_METADATA
+        // and the node refuses, which is fine — the local alias still shows,
+        // and whoever can write it will.
+        void api.current.setGroupMetadata(groupId, alias).catch(() => {});
+      }
 
       setInviteStatus("Syncing…");
       await api.current.syncGroup(groupId).catch(() => {});
@@ -670,6 +678,12 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
 
       const { groupId } = createRes.data;
       setStoredGroupAlias(groupId, trimmedNs);
+      // The `alias` passed to createNamespace above does not reach the group's
+      // metadata record — a freshly created namespace reads back
+      // `metadata: null` — so write it explicitly. The creator is admin, so
+      // this is the call that actually succeeds and gives the workspace a name
+      // everyone can see.
+      await api.current.setGroupMetadata(groupId, trimmedNs).catch(() => {});
 
       await api.current.setDefaultCapabilities(groupId, { defaultCapabilities: DEFAULT_MEMBER_CAPABILITIES }).catch(() => {});
 

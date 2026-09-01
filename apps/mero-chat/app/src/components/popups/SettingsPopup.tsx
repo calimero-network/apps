@@ -10,10 +10,10 @@ import {
 import {
   clearWorkspaceSelection,
   getGroupId,
-  getStoredGroupAlias,
 } from "../../constants/config";
 import { clearMessengerDisplayName, getMessengerDisplayName } from "../../utils/messengerName";
 import { useCurrentGroupPermissions } from "../../hooks/useCurrentGroupPermissions";
+import { useWorkspaceName } from "../../hooks/useWorkspaceName";
 import { GroupApiDataSource, uploadBlobDirect } from "../../api/dataSource/groupApiDataSource";
 import { ClientApiDataSource } from "../../api/dataSource/clientApiDataSource";
 import { downloadBlob, getMeroJs } from "../../api/meroJsClient";
@@ -422,7 +422,10 @@ export default function SettingsPopup({
   const navigate = useNavigate();
   const { addToast } = useToast();
   const groupId = getGroupId();
-  const alias = getStoredGroupAlias(groupId);
+  // The one resolver, shared with the workspace switcher. Reading the local
+  // alias directly here is what let the two disagree: Settings showed the name
+  // while the switcher showed a truncated id.
+  const alias = useWorkspaceName(groupId);
   const { isAdmin, isModerator } = useCurrentGroupPermissions(groupId);
   const [confirmLeave, setConfirmLeave] = useState(false);
   const [leaving, setLeaving] = useState(false);

@@ -7,16 +7,26 @@ const {
   mockGetGroupId,
   mockSetGroupId,
   mockClearStoredSession,
+  mockGetGroupMetadata,
+  mockSetGroupMetadata,
 } = vi.hoisted(() => ({
   mockListGroups: vi.fn(),
   mockGetGroupId: vi.fn(),
   mockSetGroupId: vi.fn(),
   mockClearStoredSession: vi.fn(),
+  mockGetGroupMetadata: vi.fn(),
+  mockSetGroupMetadata: vi.fn(),
 }));
 
 vi.mock("../../api/dataSource/groupApiDataSource", () => ({
   GroupApiDataSource: class MockGroupApiDataSource {
     listGroups = mockListGroups;
+    // The switcher now reads each workspace's replicated name and backfills a
+    // local-only one. Both are best-effort in the component, but an undefined
+    // method throws synchronously rather than rejecting, so the mock has to
+    // carry them or the listing never renders.
+    getGroupMetadata = mockGetGroupMetadata;
+    setGroupMetadata = mockSetGroupMetadata;
   },
 }));
 
@@ -33,6 +43,10 @@ vi.mock("../../utils/session", () => ({
 describe("WorkspaceSwitcher", () => {
   beforeEach(() => {
     mockListGroups.mockReset();
+    // No replicated name by default: these tests are about switching, and the
+    // component must render the listing whether or not metadata resolves.
+    mockGetGroupMetadata.mockReset().mockResolvedValue({ data: null, error: null });
+    mockSetGroupMetadata.mockReset().mockResolvedValue({ data: undefined, error: null });
     mockGetGroupId.mockReset();
     mockSetGroupId.mockReset();
     mockClearStoredSession.mockReset();

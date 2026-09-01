@@ -12,6 +12,8 @@ const {
   mockListGroupContexts,
   mockSetMemberMetadata,
   mockCreateGroupInNamespace,
+  mockListNamespaces,
+  mockListNamespacesForApplication,
 } = vi.hoisted(() => ({
   mockAxiosGet: vi.fn(),
   mockAxiosPost: vi.fn(),
@@ -23,6 +25,8 @@ const {
   mockListGroupContexts: vi.fn(),
   mockSetMemberMetadata: vi.fn(),
   mockCreateGroupInNamespace: vi.fn(),
+  mockListNamespaces: vi.fn(),
+  mockListNamespacesForApplication: vi.fn(),
 }));
 
 vi.mock("axios", () => ({
@@ -36,6 +40,11 @@ vi.mock("axios", () => ({
 
 vi.mock("@calimero-network/mero-react", () => ({
   getNodeUrl: () => "http://localhost:2428",
+}));
+
+vi.mock("../../constants/config", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../constants/config")>()),
+  getApplicationId: () => "runtime-app-id",
 }));
 
 // The data source now issues its admin calls through mero-js rather than
@@ -53,11 +62,47 @@ vi.mock("../meroJsClient", () => ({
       joinNamespace: mockJoinNamespace,
       joinContext: mockJoinContext,
       createGroupInNamespace: mockCreateGroupInNamespace,
+      listNamespaces: mockListNamespaces,
+      listNamespacesForApplication: mockListNamespacesForApplication,
     },
   }),
 }));
 
 describe("GroupApiDataSource", () => {
+  it("filters namespaces by the RUNTIME application id, not the build-time one", async () => {
+    // `getApplicationId()` resolves `app-id` (URL) -> stored -> env. Reading
+    // `import.meta.env.VITE_APPLICATION_ID` directly instead pins a deployed
+    // build to whatever was set when it was built, so it cannot follow an
+    // app-id change — and the app id changes whenever the wasm does.
+    //
+    // The node rejects an id it does not know with `400 Invalid application
+    // id`, which surfaced as an empty workspace list and a truncated group id
+    // where the workspace name should be.
+    mockListNamespacesForApplication.mockResolvedValue({
+      namespaces: [{ namespaceId: "ns-1", name: "Calimero" }],
+    });
+
+    const response = await new GroupApiDataSource().listGroups();
+
+    expect(mockListNamespacesForApplication).toHaveBeenCalledWith("runtime-app-id");
+    expect(response.data?.[0]).toMatchObject({ groupId: "ns-1", alias: "Calimero" });
+  });
+
+  it("falls back to every namespace when the node rejects the application id", async () => {
+    // A stale or unknown app id must not hide the user's workspaces. Showing
+    // all of them is wrong-ish; showing none looks like the workspace is gone.
+    const rejected = Object.assign(new Error("Invalid application id"), { status: 400 });
+    mockListNamespacesForApplication.mockRejectedValue(rejected);
+    mockListNamespaces.mockResolvedValue({
+      namespaces: [{ namespaceId: "ns-1", name: "Calimero" }],
+    });
+
+    const response = await new GroupApiDataSource().listGroups();
+
+    expect(mockListNamespaces).toHaveBeenCalled();
+    expect(response.data?.[0]).toMatchObject({ groupId: "ns-1", alias: "Calimero" });
+  });
+
   beforeEach(() => {
     mockAxiosGet.mockReset();
     mockAxiosPost.mockReset();

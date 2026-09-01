@@ -49,6 +49,11 @@ vi.mock("../../api/dataSource/groupApiDataSource", () => ({
   GroupApiDataSource: class {
     leaveGroup = vi.fn();
     leaveNamespace = vi.fn().mockResolvedValue({ data: null, error: null });
+    // `useWorkspaceName` reads the workspace's replicated name and backfills a
+    // local-only one. An undefined method throws synchronously rather than
+    // rejecting, so the hook's `.catch` does not cover it.
+    getGroupMetadata = vi.fn().mockResolvedValue({ data: null, error: null });
+    setGroupMetadata = vi.fn().mockResolvedValue({ data: undefined, error: null });
   },
 }));
 
