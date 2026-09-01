@@ -671,6 +671,9 @@ impl MeroSignState {
                     .map_err(|e| {
                         AppError::msg(format!("Failed to get permission for user: {:?}", e))
                     })?
+                    // `get` returns a `ValueRef`; deref out before defaulting so
+                    // both arms are the same owned type.
+                    .map(|v| (*v).clone())
                     .unwrap_or(PermissionLevel::Read);
 
                 participants_with_permissions.push(ParticipantInfo {
@@ -708,7 +711,13 @@ impl MeroSignState {
         }
 
         let current_user = *self.owner.get();
-        match self.permissions.get(&current_user) {
+        // `.as_deref()` so the pattern sees `PermissionLevel`, not the
+        // `ValueRef` wrapper the map hands back.
+        match self
+            .permissions
+            .get(&current_user)
+            .map(|o| o.map(|v| (*v).clone()))
+        {
             Ok(Some(PermissionLevel::Admin)) => Ok(()),
             Ok(Some(_)) => Err(AppError::msg(
                 "Admin permissions required for this operation".to_string(),
