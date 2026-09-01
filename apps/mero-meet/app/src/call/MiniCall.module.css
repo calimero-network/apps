@@ -1,0 +1,102 @@
+.mini {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 50;
+  width: 232px;
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--call-bg);
+  border: 1px solid var(--border-strong);
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  animation: pop 0.16s ease;
+}
+@keyframes pop {
+  from { transform: scale(0.9); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+.dragHandle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px 6px 10px;
+  background: rgba(0, 0, 0, 0.35);
+  cursor: grab;
+  touch-action: none;
+}
+.dragHandle:active {
+  cursor: grabbing;
+}
+.count {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #cdd5e6;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+.iconBtn {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  border: none;
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  cursor: pointer;
+}
+.iconBtn:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.stage {
+  position: relative;
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  padding: 0;
+  border: none;
+  background: var(--tile-bg);
+  cursor: pointer;
+}
+
+.bar {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  padding: 8px;
+  background: rgba(0, 0, 0, 0.35);
+}
+.ctrl {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  cursor: pointer;
+}
+.ctrl svg {
+  width: 16px;
+  height: 16px;
+}
+.ctrl:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+.off {
+  background: var(--red);
+  border-color: var(--red);
+}
+.leave {
+  background: var(--red);
+  border-color: var(--red);
+}
+.leave:hover {
+  background: #ff6675;
+}
