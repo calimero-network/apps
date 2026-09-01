@@ -34,7 +34,7 @@ slug        = "com.calimero.mero-forum"
 icon        = "default"
 tags        = ["forum", "social", "discussion"]
 github      = "https://github.com/calimero-network/apps"
-min-runtime-version = "0.11.0-rc.26"
+min-runtime-version = "0.11.0-rc.28"
 frontend    = "https://mero-forum.vercel.app"
 
 [dependencies]
@@ -47,6 +47,10 @@ calimero-sdk            = { workspace = true }
 # CRDT collections are available to the rewrite; see the PR body.
 calimero-storage        = { workspace = true }
 calimero-storage-macros = { workspace = true }
+# `fresh_id` renders 16 random bytes from the host. Not decorative: the old
+# design keyed a post by `posts.len()`, a positional index that a remote insert
+# silently renumbers.
+hex                     = { workspace = true }
 
 [dev-dependencies]
 # Enables register_crdt_merge + the native mock host so TestHost can drive CRDT
