@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Button, Input, CopyToClipboard } from '@calimero-network/mero-ui';
-import type { MatchSummary, MatchRecord, PlayerStatsView } from '../api/lobby/LobbyClient';
+import type { MatchSummary, MatchRecord, PlayerStatsView } from '../generated/lobby/LobbyClient';
 
 interface GroupMember {
   identity: string;

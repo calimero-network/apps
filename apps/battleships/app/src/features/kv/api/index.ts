@@ -1,5 +1,5 @@
-import { LobbyClient } from '../../../api/lobby/LobbyClient';
-import { GameClient } from '../../../api/game/GameClient';
+import { LobbyClient } from '../../../generated/lobby/LobbyClient';
+import { GameClient } from '../../../generated/game/GameClient';
 import type { MeroJs } from '@calimero-network/mero-react';
 
 import { resolveAppContext } from './context';

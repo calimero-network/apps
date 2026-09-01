@@ -9,7 +9,7 @@ import {
 } from '@calimero-network/mero-react';
 import { createLobbyClient, createGameClient, LobbyClient, GameClient } from '../../features/kv/api';
 import type { ContextRole } from '../../features/kv/api';
-import type { MatchSummary, MatchRecord, PlayerStatsView } from '../../api/lobby/LobbyClient';
+import type { MatchSummary, MatchRecord, PlayerStatsView } from '../../generated/lobby/LobbyClient';
 import type { AllGameEvents } from '../../types/events';
 import { useGameSubscriptions } from '../../hooks/useGameSubscriptions';
 import { useBattleshipsLobby } from '../../hooks/useBattleshipsLobby';
