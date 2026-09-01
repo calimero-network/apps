@@ -28,7 +28,10 @@ name        = "Battleships"
 description = "Two-player Battleships over Calimero: a lobby service for matchmaking and a game service per match, with commit-reveal ship placement."
 author      = "Calimero"
 slug        = "com.calimero.battleships"
-icon        = "default"
+# A real icon, not the placeholder — this is what gives the app an icon in the
+# registry and, via tauri-app's `ensure_app_launcher_icon`, in the macOS Dock.
+# Regenerate with `node app/scripts/gen-icons.mjs`.
+icon        = "../app/public/icon-512.png"
 tags        = ["game", "multiplayer", "turn-based"]
 github      = "https://github.com/calimero-network/apps"
 min-runtime-version = "0.11.0-rc.28"

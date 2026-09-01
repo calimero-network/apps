@@ -30,8 +30,8 @@
 //!
 //! ### Creating a Ship
 //! ```rust
-//! use battleship::board::Coordinate;
-//! use battleship::ships::Ship;
+//! use battleships_game::board::Coordinate;
+//! use battleships_game::ships::Ship;
 //!
 //! let coords = vec![
 //!     Coordinate::new(0, 0).unwrap(),
@@ -44,8 +44,8 @@
 //!
 //! ### Creating a Fleet
 //! ```rust
-//! use battleship::ships::{Ship, Fleet};
-//! use battleship::board::Coordinate;
+//! use battleships_game::ships::{Ship, Fleet};
+//! use battleships_game::board::Coordinate;
 //!
 //! let ships = vec![
 //!     Ship::new(vec![Coordinate::new(0, 0).unwrap(), Coordinate::new(0, 1).unwrap()])?,
@@ -83,8 +83,8 @@ use calimero_sdk::serde::{Deserialize, Serialize};
 ///
 /// # Example
 /// ```rust
-/// use battleship::board::Coordinate;
-/// use battleship::ships::Ship;
+/// use battleships_game::board::Coordinate;
+/// use battleships_game::ships::Ship;
 ///
 /// let coords = vec![
 ///     Coordinate::new(0, 0).unwrap(),
@@ -229,8 +229,8 @@ impl Ship {
 ///
 /// # Example
 /// ```rust
-/// use battleship::ships::{Ship, Fleet};
-/// use battleship::board::Coordinate;
+/// use battleships_game::ships::{Ship, Fleet};
+/// use battleships_game::board::Coordinate;
 ///
 /// let ships = vec![
 ///     Ship::new(vec![Coordinate::new(0, 0).unwrap(), Coordinate::new(0, 1).unwrap()])?,

@@ -20,7 +20,7 @@
 //!
 //! ### Creating Coordinates
 //! ```rust
-//! use battleship::board::{Coordinate, BOARD_SIZE};
+//! use battleships_game::board::{Coordinate, BOARD_SIZE};
 //!
 //! let coord = Coordinate::new(5, 3)?; // (5, 3) position
 //! assert!(coord.is_valid());
@@ -28,7 +28,7 @@
 //!
 //! ### Working with Boards
 //! ```rust
-//! use battleship::board::{Board, Cell, BOARD_SIZE};
+//! use battleships_game::board::{Board, Cell, BOARD_SIZE};
 //!
 //! let mut board = Board::new_zeroed(BOARD_SIZE);
 //! board.set(BOARD_SIZE, 0, 0, Cell::Ship);
@@ -59,7 +59,7 @@ pub const BOARD_SIZE: u8 = 10;
 ///
 /// # Example
 /// ```rust
-/// use battleship::board::Coordinate;
+/// use battleships_game::board::Coordinate;
 ///
 /// let coord = Coordinate::new(5, 3)?;
 /// assert_eq!(coord.x, 5);
@@ -116,7 +116,7 @@ impl Coordinate {
 ///
 /// # Example
 /// ```rust
-/// use battleship::board::Cell;
+/// use battleships_game::board::Cell;
 ///
 /// let cell = Cell::Ship;
 /// assert_eq!(cell.to_u8(), 1);
@@ -184,7 +184,7 @@ impl Cell {
 ///
 /// # Example
 /// ```rust
-/// use battleship::board::{Board, Cell, BOARD_SIZE};
+/// use battleships_game::board::{Board, Cell, BOARD_SIZE};
 ///
 /// let mut board = Board::new_zeroed(BOARD_SIZE);
 /// board.set(BOARD_SIZE, 0, 0, Cell::Ship);

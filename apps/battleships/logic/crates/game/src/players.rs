@@ -25,7 +25,7 @@
 //!
 //! ### Creating a Public Key
 //! ```rust
-//! use battleship::players::PublicKey;
+//! use battleships_game::players::PublicKey;
 //!
 //! let key = PublicKey::from_executor_id()?;
 //! let encoded = key.to_base58();
@@ -34,7 +34,7 @@
 //!
 //! ### Managing Player Boards
 //! ```rust
-//! use battleship::players::PlayerBoard;
+//! use battleships_game::players::PlayerBoard;
 //!
 //! let mut board = PlayerBoard::new();
 //! let ships = vec!["0,0;0,1;0,2".to_string()];
@@ -69,7 +69,7 @@ use calimero_storage::collections::UnorderedMap;
 ///
 /// # Example
 /// ```rust
-/// use battleship::players::PlayerBoard;
+/// use battleships_game::players::PlayerBoard;
 ///
 /// let mut board = PlayerBoard::new();
 /// let ships = vec![
