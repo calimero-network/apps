@@ -308,7 +308,9 @@ steps:
       post_id: "{{post_id}}"
     executor_public_key: "{{alice_key}}"
     outputs:
-      scored: result
+      # `result.output`, not `result`: `result` is the envelope and json_subset
+      # compares structurally, so it would be matching against {"output": {…}}.
+      scored: result.output
 
   - name: Assert two accounts made two points
     type: json_assert
@@ -341,7 +343,7 @@ steps:
       post_id: "{{post_id}}"
     executor_public_key: "{{alice_key}}"
     outputs:
-      scored_again: result
+      scored_again: result.output
 
   - name: Assert one account still counts once
     type: json_assert
