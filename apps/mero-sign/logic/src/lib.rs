@@ -370,49 +370,52 @@ pub enum MeroSignEvent {
 }
 
 /// Helper to decode base58 blob_id from API input
-fn parse_blob_id_base58(blob_id_str: &str) -> Result<BlobId, String> {
+fn parse_blob_id_base58(blob_id_str: &str) -> app::Result<BlobId> {
     match bs58::decode(blob_id_str).into_vec() {
         Ok(bytes) => {
             if bytes.len() != 32 {
-                return Err(format!(
+                return Err(AppError::msg(format!(
                     "Invalid blob ID length: expected 32 bytes, got {}",
                     bytes.len()
-                ));
+                )));
             }
             let mut blob_id = [0u8; 32];
             blob_id.copy_from_slice(&bytes);
             Ok(blob_id)
         }
-        Err(e) => Err(format!("Failed to decode blob ID '{}': {}", blob_id_str, e)),
+        Err(e) => Err(AppError::msg(format!(
+            "Failed to decode blob ID '{}': {}",
+            blob_id_str, e
+        ))),
     }
 }
 
 /// Helper to decode base58 public key from API input
-fn parse_public_key_base58(key_str: &str) -> Result<UserId, String> {
+fn parse_public_key_base58(key_str: &str) -> app::Result<UserId> {
     key_str
         .parse::<PublicKey>()
         .map(|pk| *pk.as_ref())
-        .map_err(|e| format!("Failed to parse public key '{}': {}", key_str, e))
+        .map_err(|e| AppError::msg(format!("Failed to parse public key '{}': {}", key_str, e)))
 }
 
 /// Helper to decode base58 context ID from API input
-fn parse_context_id_base58(context_id_str: &str) -> Result<ContextId, String> {
+fn parse_context_id_base58(context_id_str: &str) -> app::Result<ContextId> {
     match bs58::decode(context_id_str).into_vec() {
         Ok(bytes) => {
             if bytes.len() != 32 {
-                return Err(format!(
+                return Err(AppError::msg(format!(
                     "Invalid context ID length: expected 32 bytes, got {}",
                     bytes.len()
-                ));
+                )));
             }
             let mut context_id = [0u8; 32];
             context_id.copy_from_slice(&bytes);
             Ok(context_id)
         }
-        Err(e) => Err(format!(
+        Err(e) => Err(AppError::msg(format!(
             "Failed to decode context ID '{}': {}",
             context_id_str, e
-        )),
+        ))),
     }
 }
 
@@ -425,7 +428,9 @@ fn encode_context_id_base58(context_id: &ContextId) -> String {
 impl MeroSignState {
     #[app::init]
     pub fn init(is_private: bool, context_name: String) -> MeroSignState {
-        let owner_raw = env::executor_id();
+        // The ACCOUNT, not the device: a document is signed by a PERSON, and one
+        // signer on two machines must not read as two distinct signatories.
+        let owner_raw = env::account_id();
 
         let mut state = MeroSignState {
             is_private: is_private.into(),
@@ -498,7 +503,7 @@ impl MeroSignState {
 
         self.signatures
             .insert(signature_id.to_string(), signature)
-            .map_err(|e| format!("Failed to store signature: {:?}", e))?;
+            .map_err(|e| AppError::msg(format!("Failed to store signature: {:?}", e)))?;
 
         app::emit!(MeroSignEvent::SignatureCreated {
             id: signature_id,
@@ -597,11 +602,11 @@ impl MeroSignState {
 
         self.joined_contexts
             .insert(context_id_key.clone(), metadata)
-            .map_err(|e| format!("Failed to join context: {:?}", e))?;
+            .map_err(|e| AppError::msg(format!("Failed to join context: {:?}", e)))?;
 
         self.identity_mappings
             .insert(context_id_key.clone(), identity_mapping)
-            .map_err(|e| format!("Failed to store identity mapping: {:?}", e))?;
+            .map_err(|e| AppError::msg(format!("Failed to store identity mapping: {:?}", e)))?;
 
         app::emit!(MeroSignEvent::ContextJoined {
             context_id: context_id_str,
@@ -663,7 +668,9 @@ impl MeroSignState {
                 let permission = self
                     .permissions
                     .get(&participant)
-                    .map_err(|e| format!("Failed to get permission for user: {:?}", e))?
+                    .map_err(|e| {
+                        AppError::msg(format!("Failed to get permission for user: {:?}", e))
+                    })?
                     .unwrap_or(PermissionLevel::Read);
 
                 participants_with_permissions.push(ParticipantInfo {
@@ -673,10 +680,11 @@ impl MeroSignState {
             }
         }
 
-        let document_count =
-            self.documents
-                .len()
-                .map_err(|e| format!("Failed to get document count: {:?}", e))? as u64;
+        let document_count = self
+            .documents
+            .len()
+            .map_err(|e| AppError::msg(format!("Failed to get document count: {:?}", e)))?
+            as u64;
 
         let context_details = ContextDetails {
             context_id,
@@ -762,11 +770,13 @@ impl MeroSignState {
 
         self.documents
             .insert(document_id.clone(), document)
-            .map_err(|e| format!("Failed to upload document: {:?}", e))?;
+            .map_err(|e| AppError::msg(format!("Failed to upload document: {:?}", e)))?;
 
         self.document_signatures
             .insert(document_id.clone(), Vector::new())
-            .map_err(|e| format!("Failed to initialize document signatures: {:?}", e))?;
+            .map_err(|e| {
+                AppError::msg(format!("Failed to initialize document signatures: {:?}", e))
+            })?;
 
         app::emit!(MeroSignEvent::DocumentUploaded {
             id: document_id.clone(),
@@ -814,7 +824,7 @@ impl MeroSignState {
         let key = format!("{}|{}", bs58::encode(&user_id).into_string(), document_id);
         self.consents
             .insert(key, true.into())
-            .map_err(|e| format!("Failed to store consent: {:?}", e))?;
+            .map_err(|e| AppError::msg(format!("Failed to store consent: {:?}", e)))?;
         Ok(())
     }
 
@@ -879,7 +889,7 @@ impl MeroSignState {
 
         self.documents
             .insert(document_id.clone(), document)
-            .map_err(|e| format!("Failed to update document: {:?}", e))?;
+            .map_err(|e| AppError::msg(format!("Failed to update document: {:?}", e)))?;
 
         let signature = DocumentSignature {
             signer: signer_id,
@@ -889,16 +899,16 @@ impl MeroSignState {
         let mut signatures = self
             .document_signatures
             .get(&document_id)
-            .map_err(|e| format!("Failed to get document signatures: {:?}", e))?
+            .map_err(|e| AppError::msg(format!("Failed to get document signatures: {:?}", e)))?
             .unwrap_or_else(Vector::new);
 
         signatures
             .push(signature)
-            .map_err(|e| format!("Failed to add signature: {:?}", e))?;
+            .map_err(|e| AppError::msg(format!("Failed to add signature: {:?}", e)))?;
 
         self.document_signatures
             .insert(document_id.clone(), signatures)
-            .map_err(|e| format!("Failed to update document signatures: {:?}", e))?;
+            .map_err(|e| AppError::msg(format!("Failed to update document signatures: {:?}", e)))?;
 
         app::emit!(MeroSignEvent::DocumentSigned {
             document_id,
@@ -947,7 +957,7 @@ impl MeroSignState {
         let signatures = self
             .document_signatures
             .get(&document_id)
-            .map_err(|e| format!("Failed to get document signatures: {:?}", e))?
+            .map_err(|e| AppError::msg(format!("Failed to get document signatures: {:?}", e)))?
             .unwrap_or_else(Vector::new);
 
         let mut already_signed = false;
@@ -988,7 +998,7 @@ impl MeroSignState {
             document.status = DocumentStatus::FullySigned;
             self.documents
                 .insert(document_id, document)
-                .map_err(|e| format!("Failed to update document status: {:?}", e))?;
+                .map_err(|e| AppError::msg(format!("Failed to update document status: {:?}", e)))?;
         }
 
         Ok(())
@@ -1002,7 +1012,8 @@ impl MeroSignState {
             ));
         }
 
-        let executor_id = env::executor_id();
+        // The ACCOUNT — see the note in `init`. `executor_id()` no longer exists.
+        let executor_id = env::account_id();
 
         // Check if already a participant
         if self.participants.contains(&executor_id).unwrap_or(false) {
@@ -1014,11 +1025,11 @@ impl MeroSignState {
         // Add as participant with Sign permission
         self.participants
             .insert(executor_id)
-            .map_err(|e| format!("Failed to register as participant: {:?}", e))?;
+            .map_err(|e| AppError::msg(format!("Failed to register as participant: {:?}", e)))?;
 
         self.permissions
             .insert(executor_id, PermissionLevel::Sign)
-            .map_err(|e| format!("Failed to set permissions: {:?}", e))?;
+            .map_err(|e| AppError::msg(format!("Failed to set permissions: {:?}", e)))?;
 
         // Update document statuses since new signer joined
         let mut docs_to_update = Vec::new();
@@ -1058,11 +1069,11 @@ impl MeroSignState {
 
         self.participants
             .insert(user_id)
-            .map_err(|e| format!("Failed to add participant: {:?}", e))?;
+            .map_err(|e| AppError::msg(format!("Failed to add participant: {:?}", e)))?;
 
         self.permissions
             .insert(user_id, permission.clone())
-            .map_err(|e| format!("Failed to set permissions: {:?}", e))?;
+            .map_err(|e| AppError::msg(format!("Failed to set permissions: {:?}", e)))?;
 
         if permission == PermissionLevel::Sign {
             let mut docs_to_update = Vec::new();
@@ -1097,11 +1108,11 @@ impl MeroSignState {
 
         self.participants
             .remove(&user_id)
-            .map_err(|e| format!("Failed to remove participant: {:?}", e))?;
+            .map_err(|e| AppError::msg(format!("Failed to remove participant: {:?}", e)))?;
 
         self.permissions
             .remove(&user_id)
-            .map_err(|e| format!("Failed to remove permissions: {:?}", e))?;
+            .map_err(|e| AppError::msg(format!("Failed to remove permissions: {:?}", e)))?;
 
         app::emit!(MeroSignEvent::ParticipantLeft { user_id });
 
