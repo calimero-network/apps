@@ -22,7 +22,13 @@ auth_service: true
 
 nodes:
   count: 2
-  image: ghcr.io/calimero-network/merod:0.11.0-rc.26
+  # rc.26 made mDNS opt-in (core#3620); without this the nodes never peer
+  # and it surfaces as a 500 on join_namespace, not as a discovery error.
+  mdns: true
+  # Distinct per scenario so a local run of both does not contend.
+  base_port: 2960
+  base_rpc_port: 2860
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.28
   prefix: calimero-node
 
 steps:
@@ -68,6 +74,10 @@ steps:
     type: wait
     seconds: 10
     message: Waiting for namespace gossip to reach node 2
+
+  - name: Settle before the namespace join (cold-join KeyDelivery)
+    type: wait
+    seconds: 12
 
   - name: Node 2 Joins Namespace
     type: join_namespace
