@@ -86,9 +86,17 @@ steps:
     node: app-node-1
     context_id: '{{issue_tracker_ctx}}'
     method: create_issue
+    # ⚠️ These five text fields are all REQUIRED and none may be renamed. This
+    # step sent `description` and omitted impact/repro/resolution_criteria, so
+    # the call panicked in the guest with `unknown field \`description\``. The
+    # scenario had drifted behind the contract while parked in probes/ — which
+    # is the argument for gating it rather than keeping it as a manual runbook.
     args:
       title: "Login button broken"
-      description: "Clicking login does nothing on Safari"
+      summary: "Clicking login does nothing on Safari"
+      impact: "Safari users cannot sign in at all"
+      repro: "Open the app in Safari 17, click Login, observe no navigation"
+      resolution_criteria: "Clicking Login starts the auth flow in Safari"
       priority: "high"
       labels: ["bug"]
     outputs:
