@@ -91,7 +91,7 @@ async function authenticate(adminUrl: string): Promise<{
       client_name: 'playwright-e2e',
       timestamp: Date.now(),
       permissions: ['context:create', 'context:list', 'context:execute', 'admin:*'],
-      provider_data: { username: 'admin', password: 'admin' },
+      provider_data: { username: ADMIN_USER, password: ADMIN_PASSWORD },
     }),
   });
 
