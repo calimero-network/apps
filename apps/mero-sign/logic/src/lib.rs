@@ -677,7 +677,7 @@ impl MeroSignState {
                     .unwrap_or(PermissionLevel::Read);
 
                 participants_with_permissions.push(ParticipantInfo {
-                    user_id: *participant,
+                    user_id: participant,
                     permission_level: permission,
                 });
             }
@@ -1158,7 +1158,7 @@ impl MeroSignState {
         let mut participants = Vec::new();
         if let Ok(iter) = self.participants.iter() {
             for participant in iter {
-                participants.push(*participant);
+                participants.push(participant);
             }
         }
         Ok(participants)

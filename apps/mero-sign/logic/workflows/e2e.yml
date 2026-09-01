@@ -1,0 +1,243 @@
+name: MeroSign — a shared agreement across two nodes (2-node e2e)
+description: >
+  Replaces three legacy scenarios that could not run at all: they used
+  `invite_open`/`join_open`, step types no app in this monorepo uses, and created
+  a context per node with no namespace — two independently-created contexts that
+  never sync. See probes/README.md.
+
+  Proves the shared-agreement path: two members join one agreement context, a
+  participant registers itself, a document uploaded on one node is listed on the
+  other, and a delete replicates.
+
+force_pull_image: true
+
+nodes:
+  chain_id: testnet-1
+  count: 2
+  # Was `:edge`, a FLOATING tag — the node changed release under the contract
+  # whenever it moved. Pinned to [workspace.metadata.mero-apps].merod-image,
+  # which check-app-metadata.sh asserts.
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.28
+  prefix: calimero-node
+  # rc.26 made mDNS opt-in (core#3620); without this the nodes never peer and it
+  # surfaces as a 500 on join_namespace rather than as a discovery error.
+  mdns: true
+  base_port: 2920
+  base_rpc_port: 2820
+
+steps:
+  # ── Bootstrap ───────────────────────────────────────────────────────────────
+  - name: Install application on Node 1
+    type: install_application
+    node: calimero-node-1
+    path: res/mero_sign.wasm
+    dev: true
+    outputs:
+      app_id: applicationId
+
+  - name: Install application on Node 2
+    type: install_application
+    node: calimero-node-2
+    path: res/mero_sign.wasm
+    dev: true
+
+  - name: Create namespace
+    type: create_namespace
+    node: calimero-node-1
+    application_id: "{{app_id}}"
+    outputs:
+      namespace_id: namespaceId
+
+  - name: Set default member capabilities
+    type: set_default_capabilities
+    node: calimero-node-1
+    group_id: "{{namespace_id}}"
+    capabilities: 15
+
+  - name: Generate identity for Node 2
+    type: create_identity
+    node: calimero-node-2
+    outputs:
+      bob_identity: publicKey
+
+  - name: Wait for identity propagation
+    type: wait
+    seconds: 3
+
+  - name: Node 1 creates invitation for Node 2
+    type: create_namespace_invitation
+    node: calimero-node-1
+    group_id: "{{namespace_id}}"
+    outputs:
+      invite_bob: invitation
+
+  - name: Settle before the namespace join (cold-join KeyDelivery)
+    type: wait
+    seconds: 12
+
+  - name: Node 2 joins namespace
+    type: join_namespace
+    node: calimero-node-2
+    group_id: "{{namespace_id}}"
+    invitation: "{{invite_bob}}"
+
+  - name: Settle after namespace join
+    type: wait
+    seconds: 5
+
+  # ── One shared agreement context ────────────────────────────────────────────
+  # `is_private: false` — the shared side of the app, which is what has
+  # participants and documents. The private side (personal signatures) is
+  # single-node and covered by the parked probes.
+  - name: Node 1 creates the agreement
+    type: create_context
+    node: calimero-node-1
+    application_id: "{{app_id}}"
+    group_id: "{{namespace_id}}"
+    params: '{"is_private": false, "context_name": "Series A Agreement"}'
+    outputs:
+      agreement_id: contextId
+      alice_key: memberPublicKey
+
+  - name: Force Node 2 to sync namespace state
+    type: sync_group
+    node: calimero-node-2
+    group_id: "{{namespace_id}}"
+
+  - name: Settle after sync
+    type: wait
+    seconds: 5
+
+  - name: Bob joins the agreement
+    type: join_context
+    node: calimero-node-2
+    context_id: "{{agreement_id}}"
+    outputs:
+      bob_key: memberPublicKey
+
+  - name: Wait for agreement sync
+    type: wait_for_sync
+    context_id: "{{agreement_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  # ── Participants ────────────────────────────────────────────────────────────
+  # `register_self_as_participant` rather than `add_participant`: it resolves the
+  # caller's own account inside the contract, so the scenario never has to pass
+  # an id. That matters — since rc.27 a device key and an account id are BOTH 64
+  # hex characters, so handing over the wrong one type-checks, sends, and is
+  # rejected as an unauthorized signer with nothing pointing at the cause.
+  - name: Bob registers himself as a participant
+    type: call
+    node: calimero-node-2
+    context_id: "{{agreement_id}}"
+    method: register_self_as_participant
+    args: {}
+    executor_public_key: "{{bob_key}}"
+
+  - name: Sync the participant
+    type: wait_for_sync
+    context_id: "{{agreement_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Alice lists participants
+    type: call
+    node: calimero-node-1
+    context_id: "{{agreement_id}}"
+    method: list_participants
+    args: {}
+    executor_public_key: "{{alice_key}}"
+    outputs:
+      participants: result
+
+  - name: Assert the registration replicated
+    type: assert
+    statements:
+      - "is_set({{participants}})"
+
+  # ── A document uploaded on one node is listed on the other ─────────────────
+  - name: Upload the agreement PDF as a blob
+    type: upload_blob
+    node: calimero-node-1
+    context_id: "{{agreement_id}}"
+    file_path: workflows/test-files/sample-agreement.txt
+    outputs:
+      blob_id: blobId
+
+  - name: Alice uploads the document
+    type: call
+    node: calimero-node-1
+    context_id: "{{agreement_id}}"
+    method: upload_document
+    args:
+      name: "series-a.pdf"
+      hash: "0000000000000000000000000000000000000000000000000000000000000000"
+      pdf_blob_id_str: "{{blob_id}}"
+      file_size: 1024
+      embeddings: null
+      extracted_text: null
+      chunks: null
+    executor_public_key: "{{alice_key}}"
+    outputs:
+      document_id: result.output
+
+  - name: Sync the document
+    type: wait_for_sync
+    context_id: "{{agreement_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Bob lists documents
+    type: call
+    node: calimero-node-2
+    context_id: "{{agreement_id}}"
+    method: list_documents
+    args: {}
+    executor_public_key: "{{bob_key}}"
+    outputs:
+      bob_docs: result
+
+  - name: Assert the document replicated
+    type: assert
+    statements:
+      - 'contains({{bob_docs}}, "series-a.pdf")'
+
+  # ── A delete replicates ─────────────────────────────────────────────────────
+  - name: Alice deletes the document
+    type: call
+    node: calimero-node-1
+    context_id: "{{agreement_id}}"
+    method: delete_document
+    args:
+      document_id: "{{document_id}}"
+    executor_public_key: "{{alice_key}}"
+
+  - name: Sync the delete
+    type: wait_for_sync
+    context_id: "{{agreement_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Bob lists documents again
+    type: call
+    node: calimero-node-2
+    context_id: "{{agreement_id}}"
+    method: list_documents
+    args: {}
+    executor_public_key: "{{bob_key}}"
+    outputs:
+      bob_docs_after: result
+
+  - name: Assert the delete reached Node 2
+    type: assert
+    statements:
+      - 'not_contains({{bob_docs_after}}, "series-a.pdf")'
