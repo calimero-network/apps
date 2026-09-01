@@ -271,6 +271,10 @@ steps:
     outputs:
       node3_invitation: invitation
 
+  - name: Settle before the namespace join (cold-join KeyDelivery)
+    type: wait
+    seconds: 12
+
   - name: node-3 joins the namespace
     type: join_namespace
     node: kvc-node-3
