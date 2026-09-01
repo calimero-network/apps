@@ -854,6 +854,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "meropass"
+version = "0.1.0"
+dependencies = [
+ "calimero-sdk",
+ "calimero-storage",
+ "calimero-storage-macros",
+ "hex",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "meropixart"
 version = "0.0.2"
 dependencies = [

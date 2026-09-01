@@ -1,0 +1,367 @@
+{
+  "schema_version": "wasm-abi/1",
+  "types": {
+    "AuditLogEntry": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "action",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "details",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "user_public_key",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "timestamp",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "Event_SecretAdded": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "secret_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_SecretDeleted": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "secret_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_SecretUpdated": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "secret_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "MeroPassApp": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "secrets",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "SecretItem"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "audit_logs",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "AuditLogEntry"
+            },
+            "crdt_type": "unordered_map"
+          }
+        }
+      ]
+    },
+    "SecretItem": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "secret_type",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "data",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "tags",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "version",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "created_by",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    }
+  },
+  "methods": [
+    {
+      "name": "add_secret",
+      "params": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "secret_type",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "data",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "tags",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      }
+    },
+    {
+      "name": "delete_secret",
+      "params": [
+        {
+          "name": "secret_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "get_audit_logs",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "AuditLogEntry"
+        }
+      }
+    },
+    {
+      "name": "get_secret",
+      "params": [
+        {
+          "name": "secret_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "SecretItem"
+      }
+    },
+    {
+      "name": "get_secrets_by_tag",
+      "params": [
+        {
+          "name": "tag",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "SecretItem"
+        }
+      }
+    },
+    {
+      "name": "init",
+      "params": [],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "list_secrets",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "SecretItem"
+        }
+      }
+    },
+    {
+      "name": "search_secrets",
+      "params": [
+        {
+          "name": "query",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "SecretItem"
+        }
+      }
+    },
+    {
+      "name": "update_secret",
+      "params": [
+        {
+          "name": "secret_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "data",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "tags",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    }
+  ],
+  "events": [
+    {
+      "name": "SecretAdded",
+      "payload": {
+        "$ref": "Event_SecretAdded"
+      }
+    },
+    {
+      "name": "SecretDeleted",
+      "payload": {
+        "$ref": "Event_SecretDeleted"
+      }
+    },
+    {
+      "name": "SecretUpdated",
+      "payload": {
+        "$ref": "Event_SecretUpdated"
+      }
+    }
+  ],
+  "state_root": "MeroPassApp",
+  "state_version": 1
+}
