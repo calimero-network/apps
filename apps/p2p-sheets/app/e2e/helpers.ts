@@ -54,6 +54,17 @@ export function getNode(index: number): NodeState {
  */
 export async function loginViaHash(page: Page, nodeIndex = 0) {
   const node = getNode(nodeIndex);
+  // ⚠️ Seed `mero:node_url` FIRST. mero-react (>=6) will not adopt a callback
+  // bundle from a node it cannot trust, and its rule needs either a node this
+  // browser context already logged into, or `allowedNodeUrls`. A fresh
+  // Playwright context has neither, so without this the provider logs "OAuth
+  // callback node_url is not trusted" and silently drops the tokens — the app
+  // never leaves /login and waitForURL below times out. This is what an in-app
+  // login's connectToNode would have done. (Matches apps/kv-store.)
+  await page.addInitScript(
+    ([key, url]) => window.localStorage.setItem(key, url),
+    ['mero:node_url', node.adminUrl] as const,
+  );
   const hash = new URLSearchParams({
     access_token: node.accessToken,
     refresh_token: node.refreshToken,
