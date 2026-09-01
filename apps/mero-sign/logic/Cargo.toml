@@ -33,7 +33,7 @@ slug        = "com.calimero.mero-sign"
 icon        = "default"
 tags        = ["documents", "signing", "pdf"]
 github      = "https://github.com/calimero-network/apps"
-min-runtime-version = "0.11.0-rc.26"
+min-runtime-version = "0.11.0-rc.28"
 frontend    = "https://mero-sign.vercel.app"
 
 [dependencies]
