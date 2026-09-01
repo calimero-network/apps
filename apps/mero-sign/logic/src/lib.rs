@@ -370,8 +370,15 @@ pub enum MeroSignEvent {
 }
 
 /// Helper to decode base58 blob_id from API input
-fn parse_blob_id_base58(blob_id_str: &str) -> app::Result<BlobId> {
-    match bs58::decode(blob_id_str).into_vec() {
+/// Ids are HEX, not base58.
+///
+/// core 0.11.0-rc.27 removed base58 from ids entirely, so every id this contract
+/// receives — a blob id from `upload_blob`, a context id, an account — is hex.
+/// Decoding base58 failed with `contained invalid character '0' at byte 1`,
+/// because base58 has no `0`: the alphabet omits it. That is what a hex id looks
+/// like to a base58 decoder, and it is not an obvious message.
+fn parse_blob_id_hex(blob_id_str: &str) -> app::Result<BlobId> {
+    match hex::decode(blob_id_str) {
         Ok(bytes) => {
             if bytes.len() != 32 {
                 return Err(AppError::msg(format!(
@@ -384,14 +391,14 @@ fn parse_blob_id_base58(blob_id_str: &str) -> app::Result<BlobId> {
             Ok(blob_id)
         }
         Err(e) => Err(AppError::msg(format!(
-            "Failed to decode blob ID '{}': {}",
+            "Failed to decode blob ID (expected hex) '{}': {}",
             blob_id_str, e
         ))),
     }
 }
 
 /// Helper to decode base58 public key from API input
-fn parse_public_key_base58(key_str: &str) -> app::Result<UserId> {
+fn parse_public_key_hex(key_str: &str) -> app::Result<UserId> {
     key_str
         .parse::<PublicKey>()
         .map(|pk| *pk.as_ref())
@@ -399,8 +406,8 @@ fn parse_public_key_base58(key_str: &str) -> app::Result<UserId> {
 }
 
 /// Helper to decode base58 context ID from API input
-fn parse_context_id_base58(context_id_str: &str) -> app::Result<ContextId> {
-    match bs58::decode(context_id_str).into_vec() {
+fn parse_context_id_hex(context_id_str: &str) -> app::Result<ContextId> {
+    match hex::decode(context_id_str) {
         Ok(bytes) => {
             if bytes.len() != 32 {
                 return Err(AppError::msg(format!(
@@ -413,7 +420,7 @@ fn parse_context_id_base58(context_id_str: &str) -> app::Result<ContextId> {
             Ok(context_id)
         }
         Err(e) => Err(AppError::msg(format!(
-            "Failed to decode context ID '{}': {}",
+            "Failed to decode context ID (expected hex) '{}': {}",
             context_id_str, e
         ))),
     }
@@ -421,7 +428,7 @@ fn parse_context_id_base58(context_id_str: &str) -> app::Result<ContextId> {
 
 /// Helper to encode context ID to base58 string
 fn encode_context_id_base58(context_id: &ContextId) -> String {
-    bs58::encode(context_id).into_string()
+    hex::encode(context_id)
 }
 
 #[app::logic]
@@ -477,7 +484,7 @@ impl MeroSignState {
         let signature_id = *self.signature_count.get();
         self.signature_count.set(signature_id + 1);
 
-        let blob_id = parse_blob_id_base58(&blob_id_str)?;
+        let blob_id = parse_blob_id_hex(&blob_id_str)?;
 
         // Announce the signature blob to the network for discovery
         let current_context = env::context_id();
@@ -570,7 +577,7 @@ impl MeroSignState {
             ));
         }
 
-        let context_id = parse_context_id_base58(&context_id_str)?;
+        let context_id = parse_context_id_hex(&context_id_str)?;
         let context_id_key = encode_context_id_base58(&context_id);
 
         if self
@@ -582,7 +589,7 @@ impl MeroSignState {
         }
 
         let private_identity = *self.owner.get();
-        let shared_identity = parse_public_key_base58(&shared_identity_str)?;
+        let shared_identity = parse_public_key_hex(&shared_identity_str)?;
 
         let metadata = ContextMetadata {
             context_id,
@@ -623,7 +630,7 @@ impl MeroSignState {
             ));
         }
 
-        let context_id = parse_context_id_base58(&context_id_str)?;
+        let context_id = parse_context_id_hex(&context_id_str)?;
         let context_id_key = encode_context_id_base58(&context_id);
 
         match self.joined_contexts.remove(&context_id_key) {
@@ -660,7 +667,7 @@ impl MeroSignState {
 
     /// Get detailed information about the shared context
     pub fn get_context_details(&self, context_id_str: String) -> app::Result<ContextDetails> {
-        let context_id = parse_context_id_base58(&context_id_str)?;
+        let context_id = parse_context_id_hex(&context_id_str)?;
         let mut participants_with_permissions = Vec::new();
 
         if let Ok(iter) = self.participants.iter() {
@@ -756,7 +763,7 @@ impl MeroSignState {
             ));
         }
 
-        let pdf_blob_id = parse_blob_id_base58(&pdf_blob_id_str)?;
+        let pdf_blob_id = parse_blob_id_hex(&pdf_blob_id_str)?;
 
         // Announce blob to the network for discovery
         let current_context = env::context_id();
@@ -845,8 +852,8 @@ impl MeroSignState {
 
     /// Set consent for a user on a document
     pub fn set_consent(&mut self, user_id_str: String, document_id: String) -> app::Result<()> {
-        let user_id = parse_public_key_base58(&user_id_str)?;
-        let key = format!("{}|{}", bs58::encode(&user_id).into_string(), document_id);
+        let user_id = parse_public_key_hex(&user_id_str)?;
+        let key = format!("{}|{}", hex::encode(user_id), document_id);
         self.consents
             .insert(key, true.into())
             .map_err(|e| AppError::msg(format!("Failed to store consent: {:?}", e)))?;
@@ -855,7 +862,7 @@ impl MeroSignState {
 
     /// Check if user has given consent for a document (internal helper)
     fn check_consent(&self, user_id: &UserId, document_id: &str) -> app::Result<bool> {
-        let key = format!("{}|{}", bs58::encode(user_id).into_string(), document_id);
+        let key = format!("{}|{}", hex::encode(user_id), document_id);
         match self.consents.get(&key) {
             Ok(Some(consented)) => Ok(*consented.get()),
             Ok(None) => Ok(false),
@@ -865,7 +872,7 @@ impl MeroSignState {
 
     /// Check if user has given consent for a document (public API)
     pub fn has_consented(&self, user_id_str: String, document_id: String) -> app::Result<bool> {
-        let user_id = parse_public_key_base58(&user_id_str)?;
+        let user_id = parse_public_key_hex(&user_id_str)?;
         self.check_consent(&user_id, &document_id)
     }
 
@@ -877,7 +884,7 @@ impl MeroSignState {
         new_hash: String,
         signer_id_str: String,
     ) -> app::Result<()> {
-        let signer_id = parse_public_key_base58(&signer_id_str)?;
+        let signer_id = parse_public_key_hex(&signer_id_str)?;
         let has_consent = self.check_consent(&signer_id, &document_id)?;
         if !has_consent {
             return Err(AppError::msg(
@@ -893,7 +900,7 @@ impl MeroSignState {
             Err(e) => return Err(AppError::msg(format!("Failed to get document: {:?}", e))),
         };
 
-        let pdf_blob_id = parse_blob_id_base58(&pdf_blob_id_str)?;
+        let pdf_blob_id = parse_blob_id_hex(&pdf_blob_id_str)?;
 
         // Announce the signed blob to the network for discovery
         let current_context = env::context_id();
@@ -967,7 +974,7 @@ impl MeroSignState {
         document_id: String,
         user_id_str: String,
     ) -> app::Result<()> {
-        let user_id = parse_public_key_base58(&user_id_str)?;
+        let user_id = parse_public_key_hex(&user_id_str)?;
         let has_consent = self.check_consent(&user_id, &document_id)?;
         if !has_consent {
             return Err(AppError::msg(
@@ -1095,7 +1102,7 @@ impl MeroSignState {
     ) -> app::Result<()> {
         self.validate_admin_permissions()?;
 
-        let user_id = parse_public_key_base58(&user_id_str)?;
+        let user_id = parse_public_key_hex(&user_id_str)?;
 
         if self.participants.contains(&user_id).unwrap_or(false) {
             return Err(AppError::msg("User is already a participant".to_string()));
@@ -1134,7 +1141,7 @@ impl MeroSignState {
     pub fn remove_participant(&mut self, user_id_str: String) -> app::Result<()> {
         self.validate_admin_permissions()?;
 
-        let user_id = parse_public_key_base58(&user_id_str)?;
+        let user_id = parse_public_key_hex(&user_id_str)?;
 
         if !self.participants.contains(&user_id).unwrap_or(false) {
             return Err(AppError::msg("User is not a participant".to_string()));
@@ -1166,7 +1173,7 @@ impl MeroSignState {
 
     /// Get user permission level
     pub fn get_user_permission(&self, user_id_str: String) -> app::Result<PermissionLevel> {
-        let user_id = parse_public_key_base58(&user_id_str)?;
+        let user_id = parse_public_key_hex(&user_id_str)?;
         match self.permissions.get(&user_id) {
             Ok(Some(perm)) => Ok(perm.clone()),
             Ok(None) => Err(AppError::msg("User not found".to_string())),
@@ -1187,7 +1194,7 @@ impl MeroSignState {
             ));
         }
 
-        let context_id = parse_context_id_base58(&context_id_str)?;
+        let context_id = parse_context_id_hex(&context_id_str)?;
         let context_id_key = encode_context_id_base58(&context_id);
 
         match self.identity_mappings.get(&context_id_key) {
@@ -1220,7 +1227,7 @@ impl MeroSignState {
         shared_identity_str: String,
     ) -> app::Result<Option<UserId>> {
         if *self.is_private.get() {
-            let shared_identity = parse_public_key_base58(&shared_identity_str)?;
+            let shared_identity = parse_public_key_hex(&shared_identity_str)?;
             if let Ok(entries) = self.identity_mappings.entries() {
                 for (_, mapping) in entries {
                     if mapping.shared_identity == shared_identity {

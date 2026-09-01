@@ -40,7 +40,7 @@ min-runtime-version = "0.11.0-rc.28"
 frontend    = "https://mero-sign.vercel.app"
 
 [dependencies]
-bs58                    = { workspace = true }
+
 # WAS pinned to core rev 770d93c1 (2026-01-17) — roughly nine releases before
 # rc.26. This bump is the substance of the port; see the PR body.
 calimero-sdk            = { workspace = true }
