@@ -79,7 +79,10 @@ impl RekeyTarget for MatchSummary {
     fn rekey_relative_to(&mut self, _parent_id: Id) {}
 }
 
-#[derive(Mergeable, BorshSerialize, BorshDeserialize)]
+// AbiType because it is a stored map's value type and the ABI is derived from
+// the type system — not because PlayerStats itself crosses the RPC boundary
+// (PlayerStatsView does that).
+#[derive(AbiType, Mergeable, BorshSerialize, BorshDeserialize)]
 #[borsh(crate = "calimero_sdk::borsh")]
 pub struct PlayerStats {
     pub wins: Counter,
