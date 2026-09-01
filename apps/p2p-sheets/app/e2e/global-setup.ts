@@ -127,12 +127,21 @@ async function isHealthy(url: string): Promise<boolean> {
   }
 }
 
+// merod provisions the admin account at `init` and refuses to start embedded
+// auth without one. `--auth-storage memory` mints it from these env vars at
+// every startup and ignores init-time credential flags, so they must be in the
+// environment for BOTH init and run (matches apps/kv-store). Throwaway creds for
+// a loopback node deleted at teardown.
+const ADMIN_USER = 'admin';
+const ADMIN_PASSWORD = 'adminadmin';
+const NODE_ENV = { ...process.env, MERO_AUTH_ADMIN_USER: ADMIN_USER, MERO_AUTH_ADMIN_PASSWORD: ADMIN_PASSWORD };
+
 function initNode(node: typeof NODES[0]): void {
   execSync(
     `"${MEROD_BINARY}" --home "${DATA_DIR}" --node "${node.name}" init ` +
     `--server-port ${node.serverPort} --swarm-port ${node.swarmPort} ` +
-    `--auth-mode embedded`,
-    { stdio: 'pipe' },
+    `--auth-mode embedded --auth-storage memory`,
+    { stdio: 'pipe', env: NODE_ENV },
   );
   execSync(
     `"${MEROD_BINARY}" --home "${DATA_DIR}" --node "${node.name}" ` +
@@ -164,6 +173,7 @@ function runNode(node: typeof NODES[0]): ChildProcess {
   const proc = spawn(MEROD_BINARY, ['--home', DATA_DIR, '--node', node.name, 'run'], {
     stdio: ['ignore', 'pipe', 'pipe'],
     detached: false,
+    env: NODE_ENV,
   });
   const logFile = path.join(DATA_DIR, `${node.name}.log`);
   const logStream = createWriteStream(logFile);
