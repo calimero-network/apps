@@ -878,8 +878,10 @@ impl MeroSignState {
             ));
         }
 
+        // `.clone()` out of the `ValueRef`: this edits the record and writes it
+        // back, and a ValueRef is a read handle.
         let mut document = match self.documents.get(&document_id) {
-            Ok(Some(doc)) => doc,
+            Ok(Some(doc)) => (*doc).clone(),
             Ok(None) => return Err(AppError::msg("Document not found".to_string())),
             Err(e) => return Err(AppError::msg(format!("Failed to get document: {:?}", e))),
         };
@@ -966,17 +968,24 @@ impl MeroSignState {
             ));
         }
 
+        // `.clone()` out of the `ValueRef`: this edits the record and writes it
+        // back, and a ValueRef is a read handle.
         let mut document = match self.documents.get(&document_id) {
-            Ok(Some(doc)) => doc,
+            Ok(Some(doc)) => (*doc).clone(),
             Ok(None) => return Err(AppError::msg("Document not found".to_string())),
             Err(e) => return Err(AppError::msg(format!("Failed to get document: {:?}", e))),
         };
 
+        // Read-only here, so `get` is right — but the empty case cannot be a
+        // freshly-built `Vector`: `unwrap_or_else(Vector::new)` mixes a detached
+        // collection into a `ValueRef` branch, and a detached nested CRDT has a
+        // random id that would never converge if it were ever stored.
         let signatures = self
             .document_signatures
-            .get(&document_id)
-            .map_err(|e| AppError::msg(format!("Failed to get document signatures: {:?}", e)))?
-            .unwrap_or_else(Vector::new);
+            .entry(document_id.clone())
+            .map_err(|e| AppError::msg(format!("document_signatures.entry failed: {:?}", e)))?
+            .or_default()
+            .map_err(|e| AppError::msg(format!("Failed to get document signatures: {:?}", e)))?;
 
         let mut already_signed = false;
         if let Ok(iter) = signatures.iter() {
