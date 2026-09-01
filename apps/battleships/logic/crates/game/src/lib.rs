@@ -79,7 +79,7 @@ pub struct ExportedSeed {
 /// key are both 64 hex and nothing objects to the wrong one.
 ///
 /// (`UserStorage` is the exception and IS account-keyed since rc.21 — see
-/// `sdk_account`. A private board belongs to the person; a player id identifies
+/// `caller_account`. A private board belongs to the person; a player id identifies
 /// the context member.)
 fn from_executor_id() -> Result<PublicKey, GameError> {
     let v = calimero_sdk::env::device_id();
@@ -93,15 +93,20 @@ fn from_executor_id() -> Result<PublicKey, GameError> {
 
 /// Bridge between our `battleships_types::PublicKey` and the SDK's own `PublicKey`
 /// (needed for `UserStorage::get_for_user` and similar SDK-typed APIs).
-/// The caller as an SDK `AccountId`, for the `UserStorage` APIs.
+/// The caller's real ACCOUNT, for the `UserStorage` APIs.
 ///
-/// Was `calimero_sdk::PublicKey`. core rc.21 rekeyed UserStorage from the device
-/// key to the ACCOUNT, and this is the conversion that follows it — which is the
-/// same principal `from_executor_id` resolves, so a player's private board is
-/// reachable from either of their machines rather than only the one that placed
-/// the ships.
-fn sdk_account(pk: &PublicKey) -> calimero_sdk::AccountId {
-    calimero_sdk::AccountId::from(pk.0)
+/// ⚠️ NOT derived from the player's PublicKey. `UserStorage::insert` keys by the
+/// account the SDK resolves for the caller (rc.21 rekeyed it from the device
+/// key), so a read must use that same account. Converting the DEVICE key's bytes
+/// into an `AccountId` — which is what this function used to do — type-checks,
+/// is the right length, and silently addresses a slot nothing was ever written
+/// to: `reveal` answered "no commitment for caller" for the player who had just
+/// committed.
+///
+/// A player id is a context member (a device); a private board belongs to the
+/// PERSON. Both are true, and this is the seam between them.
+fn caller_account() -> calimero_sdk::AccountId {
+    calimero_sdk::AccountId::from(calimero_sdk::env::account_id())
 }
 
 // ---------------------------------------------------------------------------
@@ -392,7 +397,7 @@ impl GameState {
             // Winning shot — run audit.
             let commitment = self
                 .commitments
-                .get_for_user(&sdk_account(&caller))
+                .get_for_user(&caller_account())
                 .map_err(|e| AppError::msg(format!("commitments.get_for_user: {e}")))?
                 .ok_or_else(|| {
                     AppError::from(GameError::Invalid("no commitment for caller".into()))
@@ -491,7 +496,7 @@ impl GameState {
         let caller = from_executor_id()?;
         let commitment = self
             .commitments
-            .get_for_user(&sdk_account(&caller))
+            .get_for_user(&caller_account())
             .map_err(|e| AppError::msg(format!("commitments.get_for_user: {e}")))?
             .ok_or_else(|| AppError::from(GameError::Invalid("no commitment for caller".into())))?;
         let commitment_hash = *commitment.get();
@@ -564,7 +569,7 @@ impl GameState {
         let caller = from_executor_id()?;
         let expected = self
             .commitments
-            .get_for_user(&sdk_account(&caller))
+            .get_for_user(&caller_account())
             .map_err(|e| AppError::msg(format!("commitments.get_for_user: {e}")))?
             .ok_or_else(|| AppError::from(GameError::Invalid("no commitment for caller".into())))?;
         let expected_hash = *expected.get();
