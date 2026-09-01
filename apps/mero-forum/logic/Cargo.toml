@@ -1,0 +1,64 @@
+[package]
+# Renamed from `only-peers`. The app was Calimero's original demo and the name
+# reads as a joke; nothing is published under any only-peers id, so the rename is
+# free — no installed copies and no invite links to orphan. Directory == cargo
+# package == npm package, which publish-bundle.yml relies on (it uses one value as
+# both `apps/$APP/logic` and `pnpm -F $APP`).
+name        = "mero-forum"
+description = "A peer-to-peer discussion forum on Calimero"
+version     = "0.1.0"
+edition.workspace    = true
+authors.workspace    = true
+license.workspace    = true
+repository.workspace = true
+
+[lib]
+# `rlib` added alongside cdylib so TestHost tests can link the crate. There are
+# none today — the contract has no tests at all.
+crate-type = ["cdylib", "rlib"]
+
+# NEW. The standalone repo had no [package.metadata.calimero], so this app was
+# never bundled by cargo-mero and never published. Verified against the registry:
+# nothing under com.calimero.only-peers, .onlypeers, or .mero-forum. So this is a
+# FIRST publish and the id below is settled now rather than migrated later.
+[package.metadata.calimero]
+package     = "com.calimero.mero-forum"
+# The display name the registry, the launcher and the macOS Dock render. Free to
+# change later; `package`/`slug` are not.
+name        = "Mero Forum"
+description = "A peer-to-peer discussion forum: threads and comments replicated across your own nodes, with no server in the middle."
+author      = "Calimero"
+slug        = "com.calimero.mero-forum"
+# `cargo mero bundle` refuses to run without an icon DECISION and fails at BUNDLE
+# time — after a green PR, on the release run. No PNG in the repo yet.
+# A real icon, not the placeholder. This is what gives the app an icon in the
+# registry and — via tauri-app's `ensure_app_launcher_icon` — in the macOS Dock.
+# Regenerate with `node app/scripts/gen-icons.mjs`.
+icon        = "../app/public/icon-512.png"
+tags        = ["forum", "social", "discussion"]
+github      = "https://github.com/calimero-network/apps"
+min-runtime-version = "0.11.0-rc.28"
+frontend    = "https://mero-forum.vercel.app"
+
+[dependencies]
+# WAS `calimero-sdk` alone on `branch = "master"`, resolved around 2025-10 — it
+# rides unreleased protocol work against nodes running a release and drifts
+# silently between builds.
+calimero-sdk            = { workspace = true }
+# NEW, and the crux of the rewrite: the contract currently has NO storage
+# dependency at all and keeps posts in a plain `Vec<Post>`. Added here so the
+# CRDT collections are available to the rewrite; see the PR body.
+calimero-storage        = { workspace = true }
+calimero-storage-macros = { workspace = true }
+# `fresh_id` renders 16 random bytes from the host. Not decorative: the old
+# design keyed a post by `posts.len()`, a positional index that a remote insert
+# silently renumbers.
+hex                     = { workspace = true }
+
+[dev-dependencies]
+# Enables register_crdt_merge + the native mock host so TestHost can drive CRDT
+# state under `cargo test`.
+calimero-storage = { workspace = true, features = ["testing"] }
+
+# NOTE: no [profile.*] — cargo ignores profiles in a workspace member and
+# `cargo mero build` then fails with `profile 'app-release' is not defined`.
