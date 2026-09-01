@@ -79,7 +79,7 @@ impl RekeyTarget for MatchSummary {
     fn rekey_relative_to(&mut self, _parent_id: Id) {}
 }
 
-#[derive(Mergeable, BorshSerialize, BorshDeserialize)]
+#[derive(Mergeable, Clone, BorshSerialize, BorshDeserialize)]
 #[borsh(crate = "calimero_sdk::borsh")]
 pub struct PlayerStats {
     pub wins: Counter,
@@ -374,11 +374,10 @@ fn bump_stats(
     player_key: &str,
     is_winner: bool,
 ) -> Result<(), GameError> {
-    // NOT get-clone-mutate-insert. `PlayerStats` holds `Counter`s, which are
-    // CRDTs: cloning one out and writing it back would discard the per-replica
-    // merge metadata that makes two concurrent increments on two nodes both
-    // count, silently turning +1 +1 into +1. So mutate through the `ValueRef`
-    // the map hands back, and only construct-and-insert when the row is absent.
+    // `ValueRef` is READ-ONLY — it has no DerefMut — so a stored record can only
+    // be updated by taking an owned copy, mutating it and writing it back. The
+    // `Counter`s inside `PlayerStats` carry their own CRDT state as data, so the
+    // clone carries it too and concurrent increments on two nodes still merge.
     fn bump(stats: &mut PlayerStats, is_winner: bool) -> Result<(), GameError> {
         if is_winner {
             stats
@@ -393,19 +392,17 @@ fn bump_stats(
         }
     }
 
-    match stats_map
+    let mut stats = match stats_map
         .get(&player_key.to_string())
         .map_err(|e| GameError::Invalid(format!("stats.get failed: {e}")))?
     {
-        Some(mut stats) => bump(&mut stats, is_winner)?,
-        None => {
-            let mut stats = PlayerStats::new(player_key);
-            bump(&mut stats, is_winner)?;
-            stats_map
-                .insert(player_key.to_string(), stats)
-                .map_err(|e| GameError::Invalid(format!("stats.insert failed: {e}")))?;
-        }
-    }
+        Some(existing) => (*existing).clone(),
+        None => PlayerStats::new(player_key),
+    };
+    bump(&mut stats, is_winner)?;
+    stats_map
+        .insert(player_key.to_string(), stats)
+        .map_err(|e| GameError::Invalid(format!("stats.insert failed: {e}")))?;
     Ok(())
 }
 
