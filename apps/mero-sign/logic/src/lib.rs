@@ -772,8 +772,17 @@ impl MeroSignState {
             .insert(document_id.clone(), document)
             .map_err(|e| AppError::msg(format!("Failed to upload document: {:?}", e)))?;
 
-        self.document_signatures
-            .insert(document_id.clone(), Vector::new())
+        // NOT `insert(k, Vector::new())`. A freshly-built nested collection
+        // carries a RANDOM internal id, so two nodes that each create this
+        // document's signature list independently would hold lists that never
+        // converge. `entry(…).or_default()` re-keys the new value
+        // deterministically under this entry's id — the SDK calls this the
+        // blessed path for nested CRDTs, and rejects the other one outright.
+        let _ = self
+            .document_signatures
+            .entry(document_id.clone())
+            .map_err(|e| AppError::msg(format!("document_signatures.entry failed: {:?}", e)))?
+            .or_default()
             .map_err(|e| {
                 AppError::msg(format!("Failed to initialize document signatures: {:?}", e))
             })?;
@@ -896,19 +905,19 @@ impl MeroSignState {
             signed_at: env::time_now(),
         };
 
+        // Same reasoning as `upload_document`: get → push → re-insert would put a
+        // detached Vector back under the key, and `get` hands back a read-only
+        // `ValueRef` in any case. The entry guard re-persists on drop.
         let mut signatures = self
             .document_signatures
-            .get(&document_id)
-            .map_err(|e| AppError::msg(format!("Failed to get document signatures: {:?}", e)))?
-            .unwrap_or_else(Vector::new);
+            .entry(document_id.clone())
+            .map_err(|e| AppError::msg(format!("document_signatures.entry failed: {:?}", e)))?
+            .or_default()
+            .map_err(|e| AppError::msg(format!("Failed to get document signatures: {:?}", e)))?;
 
         signatures
             .push(signature)
             .map_err(|e| AppError::msg(format!("Failed to add signature: {:?}", e)))?;
-
-        self.document_signatures
-            .insert(document_id.clone(), signatures)
-            .map_err(|e| AppError::msg(format!("Failed to update document signatures: {:?}", e)))?;
 
         app::emit!(MeroSignEvent::DocumentSigned {
             document_id,
