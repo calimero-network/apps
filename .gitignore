@@ -35,6 +35,13 @@ apps/*/logic/dist/
 # Local env
 .env
 .env.local
+
+# ⚠️ Written by the e2e provisioners (mero-drive's scripts/e2e-up.ts, and the
+# equivalent for battleships) and it holds LIVE JWT access AND refresh tokens
+# for the local nodes. Only mero-drive's own .gitignore covered it, so for the
+# other 15 apps the file sat untracked — one `git add -A` from being committed.
+# Ignored repo-wide, and `.env.integration.example` stays committable.
+.env.integration
 *.local
 
 # Playwright
