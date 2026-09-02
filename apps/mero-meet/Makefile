@@ -20,7 +20,7 @@ help:
 	@echo "    dev-e2e          HEADLESS asserted call lifecycle (join/media/leave/rejoin/die)"
 	@echo "    dev-invite-test  Clean slate; node2 left UNjoined to test the in-app invite flow"
 	@echo "    dev-stop         Stop both dev nodes"
-	@echo "  See DEV-TESTING.md."
+	@echo "  See docs/DEV-TESTING.md."
 	@echo ""
 	@echo "  workflows      merobox signaling e2e (needs Docker + merobox)"
 	@echo "  clean          Remove build artifacts"
@@ -59,7 +59,7 @@ dev: app-install
 
 # ── Solo call testing ─────────────────────────────────────────────────────────
 # Two local nodes both joined to one room, so a single dev can place a real call
-# between two browser profiles (fake cameras). See DEV-TESTING.md.
+# between two browser profiles (fake cameras). See docs/DEV-TESTING.md.
 dev-nodes:
 	@bash scripts/dev-node.sh
 	@bash scripts/dev-node2.sh

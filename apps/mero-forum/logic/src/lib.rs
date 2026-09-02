@@ -1,7 +1,7 @@
 //! Mero Forum — a peer-to-peer discussion forum on Calimero.
 //!
 //! A rewrite of `only-peers`, Calimero's original demo app, whose design could
-//! not work peer-to-peer at all. See REWRITE.md; the three defects that forced
+//! not work peer-to-peer at all. See ../../docs/REWRITE.md; the three defects that forced
 //! it, and how the state below answers each:
 //!
 //! * **Posts lived in a bare `Vec`**, which rc.26 now rejects by name ("it has

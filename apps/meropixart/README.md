@@ -19,9 +19,11 @@ A collaborative image editor built on the Calimero p2p network. Think Photoshop 
 - **Real-time sync & presence** (live cursors) over SSE — no central server
 - Undo / redo, zoom & pan, keyboard shortcuts
 
-> Remaining follow-ups (standalone adjustment layers, a finer warp mesh than four
-> corner pins, per-parent layer ordering) are tracked in
-> [`TRACKER.md`](./TRACKER.md).
+> Remaining follow-ups: standalone adjustment layers, a finer warp mesh than four
+> corner pins, and per-parent layer ordering. These used to be tracked in
+> `TRACKER.md`, whose other 38 items had all shipped without being ticked off —
+> so the file said 39 things were outstanding when three were. Removed; the three
+> that are real are the ones named here.
 
 ### Showcase projects
 
