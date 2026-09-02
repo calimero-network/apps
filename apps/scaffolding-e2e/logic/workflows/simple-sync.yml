@@ -34,6 +34,21 @@ steps:
     path: res/scaffolding_e2e.wasm
     dev: true
 
+  # ⚠️ `create_mesh` JOINS INTERNALLY, so it races the same KeyDelivery window as
+  # an explicit `join_namespace` — and until now only the `join_namespace`
+  # scenarios carried a settle. Fresh nodes plus a few seconds of install and
+  # context creation left mDNS discovery AND the group-key transfer under ~6
+  # seconds between them; the join then 500s and, because `create_mesh` has no
+  # step boundary to retry at, the whole scenario is lost. It lost all three CI
+  # attempts on `authored-shared.yml` repeatedly, reddening main and every PR.
+  #
+  # Same 12s and the same reasoning as group-late-joiner.yml, which documents why
+  # 5s is not enough and why no wait-for-connectivity gate exists in merobox
+  # today. If meshes still flake at 12s, stop widening this and fix core.
+  - name: Settle before the mesh joins
+    type: wait
+    seconds: 12
+
   - name: Create mesh with node-2
     type: create_mesh
     context_node: e2e-node-1
