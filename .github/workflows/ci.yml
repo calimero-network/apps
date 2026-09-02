@@ -645,7 +645,7 @@ jobs:
       # rather than failing. A bare `timeout-minutes` does not help: the step
       # timeout FAILS THE JOB, so a transient apt stall reads as a broken app.
       # It killed three jobs in one afternoon — Browser E2E (mero-sign) on main
-      # and (meropixart) on a PR, both with no test output at all, the log
+      # and (mero-pixart) on a PR, both with no test output at all, the log
       # ending in `Terminate orphan process: (npm exec playwright install-deps
       # chromium)`. A rerun passed every time.
       #
