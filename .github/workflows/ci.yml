@@ -260,6 +260,12 @@ jobs:
       - name: Test the lockfile fan-out rules
         run: python3 scripts/tests/lockfile-fanout-test.py
 
+      # A consumer job cannot run where its artifact's producer is gated off —
+      # GitHub skips a job whose `needs:` was skipped, whatever its own `if:`
+      # says. That failure is silent, so the gates are asserted here.
+      - name: Assert artifact producers are not gated more narrowly than consumers
+        run: python3 scripts/tests/producer-gate-test.py
+
   rust:
     name: Rust (fmt, clippy, test)
     needs: changes
@@ -305,13 +311,26 @@ jobs:
   wasm:
     name: Build WASM (${{ matrix.app }})
     needs: changes
-    # Only when a CONTRACT moved. A frontend-only change cannot alter the wasm or
-    # the ABI, so building it proves nothing — and the frontend job's codegen
-    # gate reads the COMMITTED ABI, which this job is what validates.
+    # ⚠️ This condition MUST stay identical to the `browser` job's, and it is not
+    # about what a wasm build proves. This job is the only producer of
+    # `mpk-<app>-<sha>`, and `browser` both `needs:` it and downloads that
+    # artifact. A skipped `needs:` dependency skips the dependent job, so gating
+    # this on contract-only changes silently skipped the browser e2e on every
+    # frontend-only PR — while `browser`'s own `if` said, correctly, that a
+    # frontend change is exactly what a UI-against-a-real-node test should catch.
+    # Nothing failed; the check just read "skipping" and the PR looked green.
+    # Measured on #35 (a login-wiring change across four frontends): Build WASM
+    # skipped → Browser E2E skipped, zero browser coverage.
+    #
+    # The extra cost is small: the cargo cache below is keyed on `Cargo.lock`,
+    # which a frontend-only change does not move, so this is a warm no-op
+    # rebuild plus the bundling step, not a cold fat-LTO build. `e2e` keeps its
+    # own contract-only gate, so the expensive two-node merobox legs are
+    # unaffected.
     #
     # `apps != '[]'` is what makes an empty matrix a skipped job rather than a
     # job that silently succeeds having built nothing.
-    if: (needs.changes.outputs.logic == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.tooling == 'true') && needs.changes.outputs.apps != '[]'
+    if: (needs.changes.outputs.frontend == 'true' || needs.changes.outputs.logic == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.tooling == 'true' || needs.changes.outputs.js_deps == 'true') && needs.changes.outputs.apps != '[]'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
