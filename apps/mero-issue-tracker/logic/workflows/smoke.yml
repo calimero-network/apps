@@ -73,6 +73,14 @@ steps:
     outputs:
       invitation: invitation
 
+  # ⚠️ A join races core's KeyDelivery window: the group key is gossiped with a
+  # ~5s budget and, on fresh nodes, mDNS discovery has to complete inside it too.
+  # Without a settle the join 500s. 12s, matching every other join in the fleet
+  # and the write-up in
+  # apps/scaffolding-e2e/logic/workflows/group-late-joiner.yml.
+  - type: wait
+    seconds: 12
+
   - type: join_namespace
     name: Node 2 joins namespace
     node: app-node-2

@@ -627,15 +627,42 @@ jobs:
       # ~170 MB browser download is skipped.
       - name: Install Chromium
         if: steps.pw-cache.outputs.cache-hit != 'true'
-        timeout-minutes: 8
+        timeout-minutes: 15
         working-directory: apps/${{ matrix.app }}/app
-        run: npx playwright install --with-deps chromium
+        # Same apt hang as the cache-hit step below; same bounded retry.
+        run: |
+          for attempt in 1 2 3; do
+            if timeout 300 npx playwright install --with-deps chromium; then exit 0; fi
+            echo "::warning::playwright install attempt $attempt hung or failed; retrying"
+            sleep 15
+          done
+          echo "::error::playwright install failed three times — this is the apt hang, not the app"
+          exit 1
 
+      # ⚠️ Retried, and each ATTEMPT is bounded rather than just the step.
+      #
+      # `playwright install-deps` shells out to apt, which intermittently hangs
+      # rather than failing. A bare `timeout-minutes` does not help: the step
+      # timeout FAILS THE JOB, so a transient apt stall reads as a broken app.
+      # It killed three jobs in one afternoon — Browser E2E (mero-sign) on main
+      # and (meropixart) on a PR, both with no test output at all, the log
+      # ending in `Terminate orphan process: (npm exec playwright install-deps
+      # chromium)`. A rerun passed every time.
+      #
+      # `timeout` bounds each attempt so a hang becomes a retry instead of a
+      # dead job; the step budget covers three of them.
       - name: Install Chromium OS deps (cache hit)
         if: steps.pw-cache.outputs.cache-hit == 'true'
-        timeout-minutes: 8
+        timeout-minutes: 15
         working-directory: apps/${{ matrix.app }}/app
-        run: npx playwright install-deps chromium
+        run: |
+          for attempt in 1 2 3; do
+            if timeout 240 npx playwright install-deps chromium; then exit 0; fi
+            echo "::warning::playwright install-deps attempt $attempt hung or failed; retrying"
+            sleep 15
+          done
+          echo "::error::playwright install-deps failed three times — this is the apt hang, not the app"
+          exit 1
 
       # An app opts into a specific CI suite with `test:e2e:ci`; otherwise the
       # default projects run. scaffolding-e2e needs this: its default config has
@@ -833,13 +860,46 @@ jobs:
           for f in workflows/*.yml; do
             echo "::group::$f"
             ok=0
-            for attempt in 1 2 3; do
+            # 4 attempts with an ESCALATING gap, not 3 with a flat 5s. The
+            # in-scenario settle before each join is already 12s and
+            # group-late-joiner.yml is explicit that widening it further is the
+            # wrong lever; what is left is the gap BETWEEN attempts. A retry
+            # starting 5s after a torn-down stack races the same cold state the
+            # previous attempt lost to.
+            #
+            # Observed on a full-fanout run (a `shared` change reaches all 16
+            # apps): battleships, mero-design, mero-calendar and scaffolding-e2e
+            # each lost all THREE attempts at `Node 2 Joins Namespace`, while the
+            # same legs pass on a narrow run.
+            # 6 attempts, and the count is chosen from the observed failure
+            # SHAPE rather than picked round.
+            #
+            # `create_mesh` joins its `nodes:` list in a sequential loop with NO
+            # delay between them (merobox mesh.py), so a settle before the step
+            # only helps the FIRST node — the second joins with nothing. That is
+            # why `authored-shared.yml` (2 nodes in one mesh) is the worst leg,
+            # while `access-control.yml` (1 node) fails an attempt and passes the
+            # next. Losing 4 independent attempts puts its per-attempt success
+            # near 1 in 4; 6 attempts with teardown between each is what makes
+            # the leg reliable without pretending the underlying race is fixed.
+            #
+            # This cannot be fixed from this repository: the join races core's
+            # KeyDelivery window, merobox exposes no wait-for-connectivity gate
+            # (`wait_for_sync` needs membership the joining node does not yet
+            # have), `bootstrap_nodes` wants a peer id unknown until runtime, and
+            # group-late-joiner.yml rules out widening the in-scenario settle.
+            for attempt in 1 2 3 4 5 6; do
               if run_one "$f"; then ok=1; break; fi
-              [ "$attempt" -lt 3 ] && echo "::warning file=$f::attempt $attempt failed — retrying (cold-join KeyDelivery flake)" && sleep 5
+              if [ "$attempt" -lt 6 ]; then
+                # capped so six attempts do not blow the 40-minute job budget
+                gap=$(( attempt * 15 )); [ "$gap" -gt 45 ] && gap=45
+                echo "::warning file=$f::attempt $attempt failed — retrying in ${gap}s (cold-join KeyDelivery flake)"
+                sleep "$gap"
+              fi
             done
             echo "::endgroup::"
             if [ "$ok" -ne 1 ]; then
-              echo "::error file=$f::scenario failed on all 3 attempts"
+              echo "::error file=$f::scenario failed on all 4 attempts — not the known flake"
               exit 1
             fi
           done

@@ -76,17 +76,96 @@ steps:
     type: wait
     seconds: 12
 
-  - name: Create Mesh for Scaffolding E2E
-    type: create_mesh
-    context_node: fuzzy-e2e-node-1
+  # ⚠️ NOT a multi-node `create_mesh` — see authored-shared.yml. It joins its
+  # `nodes:` list sequentially with NO delay between them, so a settle in front
+  # covers only the first node; with three joiners that is three unsettled races.
+  - name: Create the namespace on node-1
+    type: create_namespace
+    node: fuzzy-e2e-node-1
     application_id: "{{e2e_app_id}}"
-    nodes:
-      - fuzzy-e2e-node-2
-      - fuzzy-e2e-node-3
-      - fuzzy-e2e-node-4
+    outputs:
+      ns_id: namespaceId
+
+  - name: Create the context on node-1
+    type: create_context
+    node: fuzzy-e2e-node-1
+    application_id: "{{e2e_app_id}}"
+    group_id: "{{ns_id}}"
     outputs:
       e2e_context_id: contextId
       node1_key: memberPublicKey
+
+  - name: Invitation for node-2
+    type: create_namespace_invitation
+    node: fuzzy-e2e-node-1
+    namespace_id: "{{ns_id}}"
+    outputs:
+      invite_2: invitation
+
+  - name: Settle before node-2 joins
+    type: wait
+    seconds: 12
+
+  - name: Node-2 joins the namespace
+    type: join_namespace
+    node: fuzzy-e2e-node-2
+    namespace_id: "{{ns_id}}"
+    invitation: "{{invite_2}}"
+
+  - name: Node-2 joins the context
+    type: join_context
+    node: fuzzy-e2e-node-2
+    context_id: "{{e2e_context_id}}"
+    outputs:
+      public_key_fuzzy-e2e-node-2: memberPublicKey
+
+  - name: Invitation for node-3
+    type: create_namespace_invitation
+    node: fuzzy-e2e-node-1
+    namespace_id: "{{ns_id}}"
+    outputs:
+      invite_3: invitation
+
+  - name: Settle before node-3 joins
+    type: wait
+    seconds: 12
+
+  - name: Node-3 joins the namespace
+    type: join_namespace
+    node: fuzzy-e2e-node-3
+    namespace_id: "{{ns_id}}"
+    invitation: "{{invite_3}}"
+
+  - name: Node-3 joins the context
+    type: join_context
+    node: fuzzy-e2e-node-3
+    context_id: "{{e2e_context_id}}"
+    outputs:
+      public_key_fuzzy-e2e-node-3: memberPublicKey
+
+  - name: Invitation for node-4
+    type: create_namespace_invitation
+    node: fuzzy-e2e-node-1
+    namespace_id: "{{ns_id}}"
+    outputs:
+      invite_4: invitation
+
+  - name: Settle before node-4 joins
+    type: wait
+    seconds: 12
+
+  - name: Node-4 joins the namespace
+    type: join_namespace
+    node: fuzzy-e2e-node-4
+    namespace_id: "{{ns_id}}"
+    invitation: "{{invite_4}}"
+
+  - name: Node-4 joins the context
+    type: join_context
+    node: fuzzy-e2e-node-4
+    context_id: "{{e2e_context_id}}"
+    outputs:
+      public_key_fuzzy-e2e-node-4: memberPublicKey
 
   - name: Wait for mesh formation and sync
     type: wait_for_sync
