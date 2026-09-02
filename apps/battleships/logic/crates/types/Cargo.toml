@@ -1,0 +1,18 @@
+[package]
+name    = "battleships-types"
+version = "0.1.0"
+edition.workspace    = true
+authors.workspace    = true
+license.workspace    = true
+repository.workspace = true
+
+[dependencies]
+# NEW. `PublicKey` and `GameError` cross the RPC boundary of BOTH services, and
+# the ABI is derived from the type system now, so they need `AbiType` — which
+# means this crate needs the SDK it previously did without.
+calimero-sdk = { workspace = true }
+thiserror = { workspace = true }
+# `hex`, not `bs58`: core rc.27 removed base58 from ids entirely.
+hex                     = { workspace = true }
+borsh     = { workspace = true, features = ["derive"] }
+serde     = { version = "1.0", features = ["derive"] }

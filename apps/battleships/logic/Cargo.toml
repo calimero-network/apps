@@ -1,0 +1,67 @@
+[package]
+# The LOBBY service crate, promoted to logic/ and renamed. `apps/*/logic` must be
+# a PACKAGE (a members-glob match cannot be a nested `[workspace]`), and the
+# directory / cargo package / npm package must be one value.
+#
+# Lobby rather than game because it is the entry service: the app bootstraps a
+# namespace with `serviceName: 'lobby'` before any game context exists. The
+# SERVICE names are unchanged (`lobby`, `game`) — the frontend passes them at
+# createContext and every scenario asserts on them.
+name        = "battleships"
+version     = "0.3.2"
+edition.workspace    = true
+authors.workspace    = true
+license.workspace    = true
+repository.workspace = true
+
+[lib]
+# `rlib` added alongside cdylib so TestHost tests can link the crate.
+crate-type = ["cdylib", "rlib"]
+
+# NEW. The standalone repo had NO [package.metadata.calimero] anywhere — not at
+# workspace level either — so this app was never bundled by cargo-mero and never
+# published. The registry has nothing under any battleships id, so the id below is
+# a FIRST publish with no installed copies and no invite links to orphan.
+[package.metadata.calimero]
+package     = "com.calimero.battleships"
+name        = "Battleships"
+description = "Two-player Battleships over Calimero: a lobby service for matchmaking and a game service per match, with commit-reveal ship placement."
+author      = "Calimero"
+slug        = "com.calimero.battleships"
+# A real icon, not the placeholder — this is what gives the app an icon in the
+# registry and, via tauri-app's `ensure_app_launcher_icon`, in the macOS Dock.
+# Regenerate with `node app/scripts/gen-icons.mjs`.
+icon        = "../app/public/icon-512.png"
+tags        = ["game", "multiplayer", "turn-based"]
+github      = "https://github.com/calimero-network/apps"
+min-runtime-version = "0.11.0-rc.28"
+frontend    = "https://battleships.vercel.app"
+
+# Two services, one bundle. PACKAGE level, because cargo-mero REPLACES an app's
+# package table with `[workspace.metadata.calimero]` when both exist — which in a
+# many-app workspace masks every other app.
+[[package.metadata.calimero.services]]
+name  = "lobby"
+crate = "battleships"
+
+[[package.metadata.calimero.services]]
+name  = "game"
+crate = "battleships-game"
+
+[dependencies]
+battleships-types       = { path = "crates/types" }
+# `hex`, not `bs58`: core rc.27 removed base58 from ids entirely.
+hex                     = { workspace = true }
+# WAS `branch = "master"`, which rides unreleased protocol work against nodes
+# running a release and drifts silently between builds.
+calimero-sdk            = { workspace = true }
+calimero-storage        = { workspace = true }
+calimero-storage-macros = { workspace = true }
+
+# NOTE: build.rs and its calimero-wasm-abi [build-dependencies] are GONE, in both
+# service crates. Core deleted all 60 per-app ABI build scripts (#3319) and
+# derives the ABI from the type system (#3364); `cargo mero build` is the emitter.
+# calimero-wasm-abi is not even resolvable as an app dependency at the workspace
+# tag any more.
+#
+# NOTE: no [profile.*] — cargo ignores profiles in a workspace member.
