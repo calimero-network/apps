@@ -33,7 +33,8 @@ function RedirectIfAuthed({ children }: { children: ReactNode }) {
 }
 
 export default function App() {
-  const registryUrl = import.meta.env.VITE_REGISTRY_URL?.trim() || undefined;
+  const registryUrl =
+    import.meta.env.VITE_REGISTRY_URL?.trim() || 'https://apps.calimero.network';
   // P4 RUNTIME defense against package shadowing: APP_PACKAGE (from
   // studio.config via ./config) takes precedence over a stale
   // VITE_PACKAGE_NAME left in app/.env. The canonical strip lives in
