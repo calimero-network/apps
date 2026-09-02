@@ -266,6 +266,12 @@ jobs:
       - name: Assert artifact producers are not gated more narrowly than consumers
         run: python3 scripts/tests/producer-gate-test.py
 
+      # `create_mesh` joins internally and has no step boundary to retry at, so
+      # an unsettled one loses the whole scenario to a KeyDelivery race. The
+      # symptom is a flake, which is why six scenarios shipped without a settle.
+      - name: Assert every create_mesh is preceded by a settle
+        run: python3 scripts/tests/mesh-settle-test.py
+
   rust:
     name: Rust (fmt, clippy, test)
     needs: changes
