@@ -66,7 +66,7 @@ github = "https://github.com/calimero-network/apps"
 # Asserted equal to [workspace.metadata.mero-apps] in CI. Three bundles in the
 # registry still advertise 0.1.0 — cargo-mero's placeholder floor, which nobody
 # verified — which is the failure that check exists to prevent.
-min-runtime-version = "0.11.0-rc.28"
+min-runtime-version = "0.11.0-rc.31"
 # Doubles as this app's registered redirect URI: the auth frontend treats the
 # registry-declared frontend origin as the only callback it will authorize, and
 # compares it by EXACT ORIGIN. Get it wrong and hosted login breaks *after*

@@ -34,7 +34,7 @@ nodes:
   # now writes `discovery.mdns = false`. merobox does not pass the flag, so peer
   # discovery changed at the image bump with nothing here changing.
   mdns: true
-  image: ghcr.io/calimero-network/merod:0.11.0-rc.28
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.31
   prefix: calimero-node
 
 steps:

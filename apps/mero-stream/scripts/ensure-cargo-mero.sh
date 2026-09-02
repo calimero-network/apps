@@ -26,7 +26,7 @@ set -euo pipefail
 # Keep in lockstep with the four git tags in logic/Cargo.toml and the merod image
 # in workflows/*.yml. See reference: core has NO moving `latest` tag, so an
 # explicit rc is the only honest pin.
-CARGO_MERO_TAG="${CARGO_MERO_TAG:-0.11.0-rc.25}"
+CARGO_MERO_TAG="${CARGO_MERO_TAG:-0.11.0-rc.31}"
 CORE_GIT="${CARGO_MERO_CORE_GIT:-https://github.com/calimero-network/core}"
 
 green() { printf '\033[32m  ✓  %s\033[0m\n' "$*"; }

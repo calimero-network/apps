@@ -37,7 +37,7 @@ github = "https://github.com/calimero-network/merraria"
 # meaning change inside two of them, not a new one. So this stays the
 # conservative, truthful "what it was built and e2e'd against", not a floor
 # anyone measured.
-min-runtime-version = "0.11.0-rc.28"
+min-runtime-version = "0.11.0-rc.31"
 frontend = "https://merraria.vercel.app/"
 
 [dependencies]

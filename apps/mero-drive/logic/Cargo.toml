@@ -34,7 +34,7 @@ icon        = "assets/icon-512x512.png"
 # contract is built against rc.26, and a node older than that installs the bundle
 # happily and then dies at context creation with `link error: unknown import`.
 # check-app-metadata.sh now asserts this equals the workspace value.
-min-runtime-version = "0.11.0-rc.28"
+min-runtime-version = "0.11.0-rc.31"
 frontend    = "https://mero-drive.vercel.app"
 
 # Two services, ONE bundle. Declared at PACKAGE level, which cargo-mero supports

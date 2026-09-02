@@ -34,7 +34,7 @@ slug        = "com.calimero.merostream"
 icon        = "../app/public/icon-512.png"
 tags        = ["streaming", "video", "webcodecs", "capacity-probe"]
 github      = "https://github.com/calimero-network/apps"
-min-runtime-version = "0.11.0-rc.28"
+min-runtime-version = "0.11.0-rc.31"
 # MUST be the exact origin the frontend is deployed on, and a BARE one.
 #
 # This is not cosmetic: the embedded auth frontend uses it as the

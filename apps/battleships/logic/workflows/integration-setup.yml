@@ -28,7 +28,7 @@ nodes:
   # Distinct per scenario so a local run of both does not contend.
   base_port: 2960
   base_rpc_port: 2860
-  image: ghcr.io/calimero-network/merod:0.11.0-rc.28
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.31
   prefix: calimero-node
 
 steps:

@@ -28,7 +28,7 @@ nodes:
   # rc.25, matching the calimero-sdk tag in logic/Cargo.toml. The other
   # workflows in this directory still say rc.24 — they predate the SDK bump in
   # #21 and are being brought forward separately.
-  image: ghcr.io/calimero-network/merod:0.11.0-rc.28
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.31
   # rc.26 made mDNS opt-in (core#3620) and merobox does not pass the flag,
   # so discovery changed at the image bump. Stated, not inherited.
   mdns: true
