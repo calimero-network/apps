@@ -7,7 +7,7 @@ import { resolve } from 'path';
 export default defineConfig({
   base: '/',
   build: {
-    outDir: 'build',
+    outDir: 'dist',
   },
   plugins: [nodePolyfills(), react()],
   test: {

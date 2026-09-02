@@ -15,7 +15,7 @@ export default defineConfig({
     'react-app',
     'plugin:prettier/recommended',
   ],
-  ignorePatterns: ['build', '.eslint.config.mjs'],
+  ignorePatterns: ['dist', '.eslint.config.mjs'],
   parser: '@typescript-eslint/parser',
   parserOptions: {
     ecmaVersion: 'latest',
