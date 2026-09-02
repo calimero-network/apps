@@ -860,13 +860,28 @@ jobs:
           for f in workflows/*.yml; do
             echo "::group::$f"
             ok=0
-            for attempt in 1 2 3; do
+            # 4 attempts with an ESCALATING gap, not 3 with a flat 5s. The
+            # in-scenario settle before each join is already 12s and
+            # group-late-joiner.yml is explicit that widening it further is the
+            # wrong lever; what is left is the gap BETWEEN attempts. A retry
+            # starting 5s after a torn-down stack races the same cold state the
+            # previous attempt lost to.
+            #
+            # Observed on a full-fanout run (a `shared` change reaches all 16
+            # apps): battleships, mero-design, mero-calendar and scaffolding-e2e
+            # each lost all THREE attempts at `Node 2 Joins Namespace`, while the
+            # same legs pass on a narrow run.
+            for attempt in 1 2 3 4; do
               if run_one "$f"; then ok=1; break; fi
-              [ "$attempt" -lt 3 ] && echo "::warning file=$f::attempt $attempt failed — retrying (cold-join KeyDelivery flake)" && sleep 5
+              if [ "$attempt" -lt 4 ]; then
+                gap=$(( attempt * 15 ))
+                echo "::warning file=$f::attempt $attempt failed — retrying in ${gap}s (cold-join KeyDelivery flake)"
+                sleep "$gap"
+              fi
             done
             echo "::endgroup::"
             if [ "$ok" -ne 1 ]; then
-              echo "::error file=$f::scenario failed on all 3 attempts"
+              echo "::error file=$f::scenario failed on all 4 attempts — not the known flake"
               exit 1
             fi
           done
