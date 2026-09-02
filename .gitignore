@@ -47,6 +47,13 @@ apps/*/logic/dist/
 # Playwright
 test-results/
 playwright-report/
+# ⚠️ Root-level, not per-app. `apps/meropixart/.gitignore` carried
+# `app/e2e-artifacts/`, which stops covering the files the moment the directory
+# is renamed on another branch — and untracked files survive a branch switch, so
+# a `git add -A` there commits Playwright output under a path no rule reaches.
+# That happened twice, and the second time it made check-vercel-output.sh report
+# a phantom app (`mero-pixart NO vercel.json`) and fail the Frontend job.
+e2e-artifacts/
 # Node home + logs the browser e2e global-setup creates.
 .playwright-data/
 blob-report/
