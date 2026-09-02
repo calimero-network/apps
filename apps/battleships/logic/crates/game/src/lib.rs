@@ -566,7 +566,10 @@ impl GameState {
         board_bytes: Vec<u8>,
         salt: [u8; 16],
     ) -> app::Result<()> {
-        let caller = from_executor_id()?;
+        // No `from_executor_id()` here: this function only ever reads the
+        // CALLER's own commitment, and `caller_account()` asks the environment
+        // directly. The binding became dead when the lookup stopped deriving an
+        // account from the player id.
         let expected = self
             .commitments
             .get_for_user(&caller_account())
