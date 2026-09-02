@@ -6,6 +6,7 @@ import {
   useCreateNamespaceInvitation,
   useJoinNamespace,
   useMero,
+  useNodeIdentity,
 } from '@calimero-network/mero-react';
 import type { GroupMember } from '@calimero-network/mero-react';
 import { useNamespaceBootstrap } from './useNamespaceBootstrap';
@@ -92,7 +93,7 @@ export function useBattleshipsLobby(): UseBattleshipsLobbyReturn {
     namespaceId: ns.namespaceId,
     lobbyContextId: null, // resolved below for the selected namespace
     applicationId: ns.targetApplicationId,
-    alias: ns.alias,
+    alias: ns.name,
   }));
 
   // --- Namespace selection ---
@@ -125,9 +126,28 @@ export function useBattleshipsLobby(): UseBattleshipsLobbyReturn {
   // --- Members of the namespace root group ---
   const {
     members,
-    selfIdentity,
     loading: membersLoading,
   } = useGroupMembers(namespaceId);
+
+  // ⚠️ `useGroupMembers` used to return `selfIdentity`; mero-react 6 removed it,
+  // and the value it returned was the wrong id anyway. `members[].identity` is
+  // keyed by ACCOUNT id (core rekeyed group members at rc.21) while the old
+  // `selfIdentity` was the context public key. Both are 64 hex at rc.27+, so
+  // `m.identity === selfIdentity` never matched and nothing errored: the "(you)"
+  // marker never rendered, and `isAdmin` below was ALWAYS false — hiding admin
+  // controls from the actual admin.
+  //
+  // `useNodeIdentity` takes no key, so it resolves once on mount — and on the
+  // onboarding path the node has no account yet at that point, because it is
+  // creating or joining the namespace that enrols it. Re-ask on every namespace
+  // change or this stays null for the whole first session.
+  const { identity: nodeIdentity, refetch: refetchNodeIdentity } = useNodeIdentity();
+  const refetchNodeIdentityRef = useRef(refetchNodeIdentity);
+  refetchNodeIdentityRef.current = refetchNodeIdentity;
+  useEffect(() => {
+    if (namespaceId) void refetchNodeIdentityRef.current();
+  }, [namespaceId]);
+  const selfIdentity = nodeIdentity?.accountId ?? null;
 
   // --- Mutations ---
   const { createNamespaceInvitation, loading: inviteLoading } = useCreateNamespaceInvitation();
@@ -265,7 +285,7 @@ export function useBattleshipsLobby(): UseBattleshipsLobbyReturn {
         throw new Error('Invalid invitation: cannot determine namespace ID');
       }
 
-      const result = await joinNamespace(nsId, { invitation, groupAlias });
+      const result = await joinNamespace(nsId, { invitation, groupName: groupAlias });
 
       if (result) {
         await refetchNamespaces();

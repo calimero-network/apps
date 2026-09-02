@@ -497,7 +497,7 @@ export default function MatchPage() {
       const id = await lobbyApi.createMatch({ player2 });
       show({ title: `Match allocated: ${id}`, variant: 'success' });
 
-      const { groupId: matchSubgroupId } = await mero.admin.createGroupInNamespace(lobby.namespaceId, { alias: `match-${id}` });
+      const { groupId: matchSubgroupId } = await mero.admin.createGroupInNamespace(lobby.namespaceId, { name: `match-${id}` });
       await mero.admin.addGroupMembers(matchSubgroupId, { members: [{ identity: player2, role: 'Member' }] });
 
       const executorKey = lobby.executorPublicKey ?? contextIdentity;

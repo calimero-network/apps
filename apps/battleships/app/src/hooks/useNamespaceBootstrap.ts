@@ -43,8 +43,7 @@ export function useNamespaceBootstrap(
         // 1. Create namespace (root group bound to the battleships application)
         const ns = await mero.admin.createNamespace({
           applicationId,
-          upgradePolicy: 'Automatic',
-          alias,
+          name: alias,
         });
 
         const namespaceId = ns.namespaceId;
