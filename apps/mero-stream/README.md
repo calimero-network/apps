@@ -198,7 +198,7 @@ the server side scales with geometry while the client overhead is close to fixed
 ```bash
 make logic-test     # contract unit tests (native TestHost) — C1..C3
 make logic-build    # cargo mero build → logic/res/mero_stream.wasm (ABI embedded)
-make logic-bundle   # cargo mero bundle → logic/dist/com.calimero.merostream.mpk
+make logic-bundle   # cargo mero bundle → logic/dist/com.calimero.mero-stream.mpk
 make app-build      # frontend bundle (tsc + vite)
 make app-test       # frontend unit tests (incl. the §4 metric arithmetic)
 make dev            # vite dev server (the /stream dev route)

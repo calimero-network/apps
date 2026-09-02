@@ -115,7 +115,7 @@ async function boot(): Promise<HTMLDivElement> {
     root!.render(
       <MeroProvider
         mode={AppMode.MultiContext}
-        packageName="com.calimero.meromeet"
+        packageName="com.calimero.mero-meet"
         registryUrl="https://apps.calimero.network"
         allowedNodeUrls={hashNodeUrl ? [hashNodeUrl] : undefined}
       >

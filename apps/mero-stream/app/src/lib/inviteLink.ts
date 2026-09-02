@@ -8,7 +8,7 @@
 // same way mero-chat-pwa builds them, and that is the point — it is one
 // ecosystem convention rather than one app's idea:
 //
-//   https://links.calimero.network/com.calimero.merostream/join?invitation=<code>
+//   https://links.calimero.network/com.calimero.mero-stream/join?invitation=<code>
 //
 // The SDK is HTTPS-ONLY by design. An HTTPS link works everywhere: it opens the
 // web/PWA app directly, and on a device with the desktop installed and
@@ -57,7 +57,7 @@ import { createLink, parseIntent } from "@calimero-network/mero-platform";
  * ⚠️ Changing the package id in the manifest without changing this produces
  * links that resolve to nothing, with no error anywhere.
  */
-export const APP_SLUG = "com.calimero.merostream";
+export const APP_SLUG = "com.calimero.mero-stream";
 
 /** The intent verb. `join` is the ecosystem convention; chat-pwa uses it too. */
 export const JOIN_ACTION = "join";
@@ -118,7 +118,7 @@ export function invitationDeepLink(code: string): string {
  * Parsing goes through the SDK's `parseIntent`, which matters for one specific
  * reason: `calimero://<slug>/<action>` is split by hand there rather than with
  * `new URL().hostname`, because non-special-scheme host parsing mangles a dotted
- * slug like `com.calimero.merostream`.
+ * slug like `com.calimero.mero-stream`.
  *
  * Returns null when there is no invitation in it — including for a URL that
  * carries some other app's slug, which is not ours to redeem.

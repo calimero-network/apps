@@ -61,7 +61,7 @@ any change you made. If Vercel ignores the field, opt in explicitly with
 
 | Variable | Required | Default | Purpose |
 |---|---|---|---|
-| `VITE_APPLICATION_PACKAGE` | No | `com.calimero.merostream` | Registry package id passed to `MeroProvider` |
+| `VITE_APPLICATION_PACKAGE` | No | `com.calimero.mero-stream` | Registry package id passed to `MeroProvider` |
 
 Set it only when publishing under a different package id (e.g. a staging bundle).
 
@@ -90,7 +90,7 @@ end to end against a real merod rc.19 (`app/e2e/web-login.mjs --node …`):
    `user_password` for a standard node.
 3. **Username / password.**
 4. **Install & Continue** — mero-react resolves the app from the registry
-   (`com.calimero.merostream`) and installs it on the node. Expected on a fresh
+   (`com.calimero.mero-stream`) and installs it on the node. Expected on a fresh
    node, and skipped once installed.
 5. **Review Permissions** → **Generate Token** — the node shows the resolved
    Application ID and the granted scopes (`context:list/create/execute`,
@@ -103,7 +103,7 @@ cannot observe replication.
 
 This path depends on the app being published: step 4 resolves from the registry,
 and before publication it failed with `No versions found for package
-'com.calimero.merostream'`. It is published now, so it works.
+'com.calimero.mero-stream'`. It is published now, so it works.
 
 **2. Arrive with a session in the URL hash** — what tauri-app's `openAppFrontend`
 builds and `scripts/dev-invite.sh` prints:
@@ -159,7 +159,7 @@ applications — republishing under a real key changes the app id.
 
 ⚠️ **cargo-mero's help says a dev-signed bundle is "REFUSED by the registry". That
 is not what happens.** The bundle currently published at
-`apps.calimero.network/apps/com.calimero.merostream` (appVersion 0.1.0) carries
+`apps.calimero.network/apps/com.calimero.mero-stream` (appVersion 0.1.0) carries
 `signerId: did:key:z6MknF3p5L5FDHJQ7FREUapuX4Wmp4MtF6WrHYaXS2B3eZQd` — the dev key
 — and the registry reports `verified: true`. So the tool's documented guarantee
 does not hold; don't rely on the registry to stop a dev-signed publish.

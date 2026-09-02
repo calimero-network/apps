@@ -135,7 +135,7 @@ export async function enterOnline(page: Page): Promise<void> {
 // The picker states (logged into a node, no world yet) and the admin routes
 // world creation walks are shared by landing.spec and auth.spec.
 
-export const PACKAGE_NAME = "com.calimero.meroblocks";
+export const PACKAGE_NAME = "com.calimero.mero-blocks";
 export const APP_ID = "app-e2e";
 export const NS_ID = "ns-e2e";
 export const GROUP_ID = "grp-e2e";

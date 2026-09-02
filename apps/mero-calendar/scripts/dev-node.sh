@@ -343,7 +343,7 @@ ENV_FILE="$REPO_ROOT/app/.env.integration"
   printf 'E2E_MEMBER_KEY=%s\n'         "${MEMBER_KEY:-}"
   printf 'E2E_MEMBER_KEY_2=\n'
   printf 'VITE_APPLICATION_ID=%s\n'    "$APP_ID"
-  printf 'VITE_APPLICATION_PACKAGE=com.calimero.merocalendar\n'
+  printf 'VITE_APPLICATION_PACKAGE=com.calimero.mero-calendar\n'
 } > "$ENV_FILE"
 green "Wrote $ENV_FILE"
 

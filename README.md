@@ -62,7 +62,7 @@ single atomic change with a single CI signal.
 | --- | --- |
 | [mero-design](https://github.com/calimero-network/mero-design) | Figma-style infinite canvas — shapes, text, images, SVG blobs, real-time multi-member editing. |
 | [mero-pixart](https://github.com/calimero-network/mero-pixart) | Photoshop/Photopea-style image editor — layers, masks, adjustments, curves, collaborative. |
-| [p2p-sheets](https://github.com/calimero-network/p2p-sheets) | Collaborative spreadsheet — CRDT inputs, derive-on-read recalc engine, formulas, live cursors. |
+| [mero-sheets](https://github.com/calimero-network/mero-sheets) | Collaborative spreadsheet — CRDT inputs, derive-on-read recalc engine, formulas, live cursors. |
 | [mero-calendar](https://github.com/calimero-network/mero-calendar) | Shared team calendars in replicated state, plus genuinely private events in node-local storage. |
 | [mero-drive](https://github.com/calimero-network/mero-drive) | Peer-to-peer file storage and documents. |
 | [mero-issue-tracker](https://github.com/calimero-network/mero-issue-tracker) | Issue tracker for dev teams whose backlog lives on their own nodes. |

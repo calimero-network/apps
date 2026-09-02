@@ -8,7 +8,7 @@ help:
 	@echo "  build          Build Rust WASM logic + frontend bundle"
 	@echo "  bundle         Build WASM + create signed .mpk release bundle"
 	@echo "  logic-build    Compile logic/src → logic/res/mero_meet.wasm"
-	@echo "  logic-bundle   Build WASM + sign + package logic/dist/com.calimero.meromeet-<ver>.mpk"
+	@echo "  logic-bundle   Build WASM + sign + package logic/dist/com.calimero.mero-meet-<ver>.mpk"
 	@echo "  app-build      Bundle frontend (app/dist)"
 	@echo "  app-typecheck  tsc --noEmit on the frontend"
 	@echo "  dev            Vite dev server (desktop opens this in a window)"

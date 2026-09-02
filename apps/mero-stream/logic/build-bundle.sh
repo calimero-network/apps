@@ -31,7 +31,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
-PACKAGE="com.calimero.merostream"
+PACKAGE="com.calimero.mero-stream"
 FALLBACK_VERSION="0.1.0"
 REGISTRY_URL="${REGISTRY_URL:-https://apps.calimero.network}"
 

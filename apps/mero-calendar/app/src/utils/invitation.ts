@@ -101,7 +101,7 @@ export function decodeInvitationObject<T = Record<string, unknown>>(
  * asking the registry for that same package — so the slug IS the package id.
  * Keep equal to `slug`/`package` in `logic/Cargo.toml`.
  */
-export const APP_SLUG = "com.calimero.merocalendar";
+export const APP_SLUG = "com.calimero.mero-calendar";
 
 /** The intent action an invitation link carries. */
 export const JOIN_ACTION = "join";
@@ -141,7 +141,7 @@ export function invitationTokenFrom(input: string): string {
  * Parsing goes through the SDK's `parseIntent` rather than `new URL()`, for one
  * specific reason: `calimero://<slug>/<action>` has to be split by hand,
  * because non-special-scheme host parsing mangles a dotted slug like
- * `com.calimero.merocalendar`.
+ * `com.calimero.mero-calendar`.
  *
  * Returns null when there is no invitation in it — including a link carrying
  * some other app's slug, which is not ours to redeem.

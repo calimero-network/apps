@@ -5,7 +5,7 @@
 // context_identity). Desktop (tauri) skips all of this: its SSO hash already
 // contains everything, including node_url.
 
-export const PACKAGE_NAME = "com.calimero.meroblocks";
+export const PACKAGE_NAME = "com.calimero.mero-blocks";
 export const REGISTRY_URL = "https://apps.calimero.network";
 const PENDING_NODE_KEY = "mb-pending-node";
 

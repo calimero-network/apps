@@ -139,11 +139,11 @@ On `main`, a fifth job then builds and deploys to Vercel
 
 A push to `main` touching `logic/**` also builds, signs, and publishes the
 contract bundle to the [Calimero App Registry](https://apps.calimero.network)
-as `com.calimero.meroblocks` (`.github/workflows/deploy-bundle.yml`; version =
+as `com.calimero.mero-blocks` (`.github/workflows/deploy-bundle.yml`; version =
 latest published + patch bump). Locally:
 
 ```bash
-make bundle          # cargo mero bundle --dev → logic/dist/com.calimero.meroblocks-<ver>.mpk
+make bundle          # cargo mero bundle --dev → logic/dist/com.calimero.mero-blocks-<ver>.mpk
 make bundle-release  # signed with $MERO_SIGN_KEY_FILE, version bumped off the registry
 make publish         # calimero-registry bundle push --remote (needs $CALIMERO_API_KEY)
 ```

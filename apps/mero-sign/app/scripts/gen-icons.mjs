@@ -211,7 +211,7 @@ function encodeICO(entries) {
 
 // ---- art -------------------------------------------------------------------
 // A signature stroke resting on a signing line. Indigo into cyan — a fifth
-// distinct hue across the launcher (violet: stream/meet, green: meropass,
+// distinct hue across the launcher (violet: stream/meet, green: mero-pass,
 // amber: mero-forum, teal-red: battleships).
 
 const BG = "#0a0c14";

@@ -5,7 +5,7 @@ downloads the `mpk-<app>-<sha>` artifact and names it `dist/<package-id>.mpk`,
 which is exactly the path these scenarios install from. A bundle-installing
 scenario is runnable under CI as of that change — proved by
 `mero-issue-tracker/logic/workflows/smoke.yml` and
-`p2p-sheets/logic/workflows/spec-smoke.yml`, which moved up out of their own
+`mero-sheets/logic/workflows/spec-smoke.yml`, which moved up out of their own
 `probes/` in the same PR.
 
 These eleven stayed down here for a **different** reason: the e2e job runs every

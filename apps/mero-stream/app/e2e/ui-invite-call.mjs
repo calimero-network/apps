@@ -297,7 +297,7 @@ async function main() {
       `minted a platform invitation link (${inviteLink.length} chars)`,
     );
     check(
-      inviteLink.includes("com.calimero.merostream/join"),
+      inviteLink.includes("com.calimero.mero-stream/join"),
       "the link addresses this app by slug and the join intent, not a route",
     );
 
@@ -309,7 +309,7 @@ async function main() {
       .locator('[data-testid="invite-deep-link"]')
       .inputValue();
     check(
-      deepLink.startsWith("calimero://com.calimero.merostream/join?"),
+      deepLink.startsWith("calimero://com.calimero.mero-stream/join?"),
       "the desktop link uses the custom scheme and the same slug",
     );
     const codeInput = peerA.page.locator('[data-testid="invite-code"]');
