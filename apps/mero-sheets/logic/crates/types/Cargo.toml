@@ -1,0 +1,13 @@
+[package]
+name    = "mero-sheets-types"
+version = "0.1.0"
+edition.workspace    = true
+authors.workspace    = true
+license.workspace    = true
+repository.workspace = true
+
+[dependencies]
+thiserror = { workspace = true }
+hex       = { workspace = true }
+borsh     = { workspace = true, features = ["derive"] }
+serde     = { version = "1.0", features = ["derive"] }

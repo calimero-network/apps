@@ -1,0 +1,52 @@
+{
+  "name": "mero-pixart",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@9.15.9",
+  "description": "MeroPixArt \u2014 collaborative p2p image editor on Calimero",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "preview": "vite preview",
+    "e2e": "playwright test --project=mocked",
+    "e2e:ui": "playwright test --ui --project=mocked",
+    "test:all": "vitest run && playwright test --project=mocked"
+  },
+  "dependencies": {
+    "@calimero-network/mero-js": "catalog:",
+    "@calimero-network/mero-platform": "catalog:",
+    "@calimero-network/mero-react": "catalog:",
+    "@calimero-network/mero-ui": "catalog:",
+    "axios": "^1.12.0",
+    "bs58": "catalog:",
+    "clsx": "^2.1.1",
+    "fflate": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "react-router-dom": "^7.15.1",
+    "uuid": "^11.1.0",
+    "zustand": "^5.0.5"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.25.0",
+    "@playwright/test": "catalog:",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@types/uuid": "^10.0.0",
+    "@vitejs/plugin-react-swc": "^3.9.0",
+    "eslint": "^9.29.0",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "eslint-plugin-react-refresh": "^0.4.19",
+    "globals": "^16.0.0",
+    "jsdom": "^28.1.0",
+    "typescript": "catalog:",
+    "typescript-eslint": "^8.30.1",
+    "vite": "catalog:",
+    "vitest": "catalog:"
+  }
+}

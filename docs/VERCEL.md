@@ -82,49 +82,70 @@ and republish the bundle if a domain changes.
 | `mero-meet` | `mero-meet` | `apps/mero-meet/app` | `dist` | https://mero-meet.vercel.app |
 | `mero-sign` | `mero-sign` | `apps/mero-sign/app` | `dist` | https://mero-sign.vercel.app |
 | `mero-stream` | `mero-stream-neon` | `apps/mero-stream/app` | `dist` | https://mero-stream-neon.vercel.app |
-| `merodesign` | `mero-design` | `apps/merodesign/app` | `dist` | https://mero-design.vercel.app/ |
-| `meropass` | `meropass` | `apps/meropass/app` | `dist` | https://meropass.vercel.app |
-| `meropixart` | `mero-pixart` | `apps/meropixart/app` | `dist` | https://mero-pixart.vercel.app/ |
+| `mero-design` | `mero-design` | `apps/mero-design/app` | `dist` | https://mero-design.vercel.app/ |
+| `mero-pass` | `mero-pass` | `apps/mero-pass/app` | `dist` | https://mero-pass.vercel.app |
+| `mero-pixart` | `mero-pixart` | `apps/mero-pixart/app` | `dist` | https://mero-pixart.vercel.app/ |
 | `merraria` | `merraria` | `apps/merraria/app` | `dist` | https://merraria.vercel.app/ |
-| `p2p-sheets` | `p2p-sheets` | `apps/p2p-sheets/app` | `dist` | https://p2p-sheets.vercel.app |
+| `mero-sheets` | `mero-sheets` | `apps/mero-sheets/app` | `dist` | https://mero-sheets.vercel.app |
 | `scaffolding-e2e` | `scaffolding-e2e-application` | `apps/scaffolding-e2e/app` | `dist` | https://scaffolding-e2e-application.vercel.app/ |
 
 The project names above are inferred from each published `links.frontend` host,
 so they are what the URLs imply rather than what the dashboard says — confirm on
-re-linking. Note the ones that do **not** simply match the directory:
+re-linking. Four do **not** match the directory:
 `kv-store` → `mero-kv-store`, `mero-issue-tracker` → `mero-issue-tracker-app`,
-`mero-stream` → `mero-stream-neon`, `merodesign` → `mero-design`,
-`meropixart` → `mero-pixart`, `scaffolding-e2e` → `scaffolding-e2e-application`.
+`mero-stream` → `mero-stream-neon`, `scaffolding-e2e` → `scaffolding-e2e-application`.
+
+### ⚠️ Four Root Directory settings changed
+
+`merodesign`, `meropass`, `meropixart` and `p2p-sheets` were renamed to
+`mero-design`, `mero-pass`, `mero-pixart` and `mero-sheets`. A Vercel project's
+Root Directory is a dashboard setting the repo cannot carry, so **each of those
+four projects deploys nothing until its Root Directory is updated** to the new
+`apps/<app>/app` path.
+
+`mero-pass` and `mero-sheets` need creating rather than editing: their old
+origins (`meropass.vercel.app`, `p2p-sheets.vercel.app`) already returned
+`DEPLOYMENT_NOT_FOUND`, so no project existed to rename. mero-forum is in the
+same position.
 
 ## Package ids
 
-The registry package id is **not** derivable from the directory name for four
-apps, and it is what the frontend sends at login:
+The registry package id is what the frontend sends at login. Since the `mero-`
+rename, **every app's package id is `com.calimero.<directory>`** — with one
+exception, noted below:
 
 | app | package |
 |---|---|
 | `battleships` | `com.calimero.battleships` |
 | `kv-store` | `com.calimero.kv-store` |
-| `mero-blocks` | `com.calimero.meroblocks` |
-| `mero-calendar` | `com.calimero.merocalendar` |
+| `mero-blocks` | `com.calimero.mero-blocks` |
+| `mero-calendar` | `com.calimero.mero-calendar` |
 | `mero-drive` | `com.calimero.mero-drive-docs` ⚠️ |
 | `mero-forum` | `com.calimero.mero-forum` |
 | `mero-issue-tracker` | `com.calimero.mero-issue-tracker` |
-| `mero-meet` | `com.calimero.meromeet` |
+| `mero-meet` | `com.calimero.mero-meet` |
 | `mero-sign` | `com.calimero.mero-sign` |
-| `mero-stream` | `com.calimero.merostream` |
-| `merodesign` | `com.calimero.merodesign` |
-| `meropass` | `com.calimero.meropass` |
-| `meropixart` | `com.calimero.meropixart` |
+| `mero-stream` | `com.calimero.mero-stream` |
+| `mero-design` | `com.calimero.mero-design` |
+| `mero-pass` | `com.calimero.mero-pass` |
+| `mero-pixart` | `com.calimero.mero-pixart` |
 | `merraria` | `com.calimero.merraria` |
-| `p2p-sheets` | `com.calimero.mero-sheets` ⚠️ |
+| `mero-sheets` | `com.calimero.mero-sheets` |
 | `scaffolding-e2e` | `com.calimero.scaffolding-e2e` |
 
-Two are not derivable from the directory name at all, and are the ones to get
-wrong: **`p2p-sheets` publishes as `com.calimero.mero-sheets`** and
-**`mero-drive` as `com.calimero.mero-drive-docs`**. Five more merely drop the
-hyphen — `mero-blocks` → `meroblocks`, and likewise `merocalendar`, `meromeet`,
-`merostream`, `meropixart`.
+The one exception is **`mero-drive`, which publishes as
+`com.calimero.mero-drive-docs`** — the `-docs` suffix names the primary service
+of a two-service bundle (`docs` + `registry`). It was left alone in the rename
+because it already carries the `mero-` prefix; changing it would orphan its
+published bundles for no naming gain.
+
+⚠️ **The seven package ids renamed in this pass are NEW packages, not renamed
+ones.** The node derives an ApplicationId from `(package, signer)` and the id is
+also the deep-link slug, so the previous ids
+(`com.calimero.meroblocks`, `merocalendar`, `meromeet`, `merostream`,
+`merodesign`, `meropass`, `meropixart`) keep serving their old bundles, every
+invite link ever shared under them stops resolving, and the version counter for
+each new id restarts at 0.0.1.
 
 A wrong package id is not a visible error: the login request names a package the
 registry does not have, no applicationId comes back, and the app sits there

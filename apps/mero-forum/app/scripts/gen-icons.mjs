@@ -211,7 +211,7 @@ function encodeICO(entries) {
 
 // ---- art -------------------------------------------------------------------
 // Three stacked bars of decreasing width — a thread list. Amber, so it is not
-// mistaken at 16 px for mero-stream or mero-meet (violet) or meropass (green),
+// mistaken at 16 px for mero-stream or mero-meet (violet) or mero-pass (green),
 // all of which sit beside it in the launcher.
 
 const BG = "#0b0d12";

@@ -9,7 +9,7 @@ help:
 	@echo "  bundle         Build WASM + create signed .mpk release bundle"
 	@echo "  logic-build    Compile logic/src → logic/res/mero_stream.wasm"
 	@echo "  logic-test     Contract unit tests (native TestHost — determinism/C1..C3)"
-	@echo "  logic-bundle   cargo mero bundle → logic/dist/com.calimero.merostream.mpk"
+	@echo "  logic-bundle   cargo mero bundle → logic/dist/com.calimero.mero-stream.mpk"
 	@echo "  app-build      Bundle frontend (app/dist)"
 	@echo "  app-typecheck  tsc --noEmit on the frontend"
 	@echo "  app-test       Frontend unit tests (vitest)"

@@ -94,7 +94,7 @@ def wasm_digests(source):
 def local_bundle(bundles_dir, app, pkg):
     """CI names the artifact after the DIRECTORY (`dry-run-<app>.mpk`); a
     hand-run `cargo mero build` names it after the PACKAGE. Accept either —
-    the two differ for p2p-sheets (com.calimero.mero-sheets) and mero-drive
+    the two differ for mero-sheets (com.calimero.mero-sheets) and mero-drive
     (com.calimero.mero-drive-docs)."""
     d = pathlib.Path(bundles_dir)
     for pattern in (f"*{app}.mpk", f"{pkg}*.mpk", f"*{pkg}*.mpk"):

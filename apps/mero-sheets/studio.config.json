@@ -1,0 +1,22 @@
+{
+  "appName": "mero-sheets",
+  "appVersion": "1.0.0",
+  "package": "com.calimero.mero-sheets",
+  "metadata": {
+    "name": "mero-sheets",
+    "description": "Collaborative peer-to-peer spreadsheet with live cursors, multiple sheet tabs, formula autocomplete, a built-in function help section, and download support",
+    "author": "Calimero",
+    "route": "/mero-sheets"
+  },
+  "theme": {
+    "primaryColor": "#1A7F64",
+    "accentColor": "#3B82F6",
+    "style": "clean-productivity"
+  },
+  "services": [
+    {
+      "name": "spreadsheet",
+      "crate": "mero-sheets"
+    }
+  ]
+}

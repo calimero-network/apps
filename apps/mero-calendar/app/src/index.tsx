@@ -92,7 +92,7 @@ root.render(
   <React.StrictMode>
     <MeroProvider
       mode={MeroAppMode.MultiContext}
-      packageName={import.meta.env.VITE_APPLICATION_PACKAGE ?? "com.calimero.merocalendar"}
+      packageName={import.meta.env.VITE_APPLICATION_PACKAGE ?? "com.calimero.mero-calendar"}
       registryUrl="https://apps.calimero.network"
       allowedNodeUrls={tauriHashNodeUrl ? [tauriHashNodeUrl] : undefined}
     >

@@ -74,7 +74,7 @@ describe("resolveApplicationId", () => {
       okJson({
         data: {
           apps: [
-            { id: "other", package: "com.calimero.meroblocks" },
+            { id: "other", package: "com.calimero.mero-blocks" },
             { id: "mine", package: "com.calimero.merraria" },
           ],
         },

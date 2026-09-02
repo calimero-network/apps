@@ -424,6 +424,103 @@ importers:
         specifier: 'catalog:'
         version: 4.1.11(@types/node@22.20.1)(jsdom@25.0.1)(vite@6.4.3(@types/node@22.20.1)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.103.1)(tsx@4.23.13))
 
+  apps/mero-design/app:
+    dependencies:
+      '@calimero-network/mero-js':
+        specifier: 'catalog:'
+        version: 13.3.0
+      '@calimero-network/mero-platform':
+        specifier: 'catalog:'
+        version: 0.1.0
+      '@calimero-network/mero-react':
+        specifier: 'catalog:'
+        version: 6.0.4(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      '@calimero-network/mero-ui':
+        specifier: 'catalog:'
+        version: 1.5.1(@floating-ui/dom@1.8.0)(@tiptap/core@3.30.5(@tiptap/pm@3.30.5))(@tiptap/pm@3.30.5)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      axios:
+        specifier: 'catalog:'
+        version: 1.20.0
+      bs58:
+        specifier: 'catalog:'
+        version: 6.0.0
+      clsx:
+        specifier: 'catalog:'
+        version: 2.1.1
+      fabric:
+        specifier: ^7.4.0
+        version: 7.4.0
+      fflate:
+        specifier: 'catalog:'
+        version: 0.8.3
+      react:
+        specifier: 'catalog:'
+        version: 19.2.8
+      react-dom:
+        specifier: 'catalog:'
+        version: 19.2.8(react@19.2.8)
+      react-router-dom:
+        specifier: 'catalog:'
+        version: 7.18.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      uuid:
+        specifier: 'catalog:'
+        version: 11.1.1
+      zustand:
+        specifier: 'catalog:'
+        version: 5.0.15(@types/react@19.2.18)(immer@9.0.21)(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8))
+    devDependencies:
+      '@eslint/js':
+        specifier: 'catalog:'
+        version: 9.39.5
+      '@playwright/test':
+        specifier: 'catalog:'
+        version: 1.62.1
+      '@testing-library/jest-dom':
+        specifier: 'catalog:'
+        version: 6.10.0(@testing-library/dom@10.4.1)
+      '@testing-library/react':
+        specifier: 'catalog:'
+        version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      '@types/react':
+        specifier: 'catalog:'
+        version: 19.2.18
+      '@types/react-dom':
+        specifier: 'catalog:'
+        version: 19.2.5(@types/react@19.2.18)
+      '@types/uuid':
+        specifier: 'catalog:'
+        version: 10.0.0
+      '@vitejs/plugin-react-swc':
+        specifier: 'catalog:'
+        version: 3.11.0(vite@6.4.3(@types/node@26.4.0)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.103.1)(tsx@4.23.13))
+      eslint:
+        specifier: 'catalog:'
+        version: 9.39.5(jiti@2.7.0)
+      eslint-plugin-react-hooks:
+        specifier: 'catalog:'
+        version: 5.2.0(eslint@9.39.5(jiti@2.7.0))
+      eslint-plugin-react-refresh:
+        specifier: 'catalog:'
+        version: 0.4.26(eslint@9.39.5(jiti@2.7.0))
+      globals:
+        specifier: 'catalog:'
+        version: 16.5.0
+      jsdom:
+        specifier: ^28.1.0
+        version: 28.1.0(canvas@3.2.3)
+      typescript:
+        specifier: 'catalog:'
+        version: 5.8.3
+      typescript-eslint:
+        specifier: 'catalog:'
+        version: 8.68.0(eslint@9.39.5(jiti@2.7.0))(typescript@5.8.3)
+      vite:
+        specifier: 'catalog:'
+        version: 6.4.3(@types/node@26.4.0)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.103.1)(tsx@4.23.13)
+      vitest:
+        specifier: 'catalog:'
+        version: 4.1.11(@types/node@26.4.0)(jsdom@28.1.0(canvas@3.2.3))(vite@6.4.3(@types/node@26.4.0)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.103.1)(tsx@4.23.13))
+
   apps/mero-drive/app:
     dependencies:
       '@blocknote/core':
@@ -833,6 +930,252 @@ importers:
         specifier: 'catalog:'
         version: 4.1.11(@types/node@22.20.1)(jsdom@25.0.1)(vite@6.4.3(@types/node@22.20.1)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.103.1)(tsx@4.23.13))
 
+  apps/mero-pass/app:
+    dependencies:
+      '@calimero-network/mero-js':
+        specifier: 'catalog:'
+        version: 13.3.0
+      '@calimero-network/mero-react':
+        specifier: 'catalog:'
+        version: 6.0.4(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      '@calimero-network/mero-ui':
+        specifier: 'catalog:'
+        version: 1.5.1(@floating-ui/dom@1.8.0)(@tiptap/core@3.30.5(@tiptap/pm@3.30.5))(@tiptap/pm@3.30.5)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      bs58:
+        specifier: 'catalog:'
+        version: 6.0.0
+      fflate:
+        specifier: 'catalog:'
+        version: 0.8.3
+      react:
+        specifier: 'catalog:'
+        version: 19.2.8
+      react-dom:
+        specifier: 'catalog:'
+        version: 19.2.8(react@19.2.8)
+      react-router-dom:
+        specifier: 'catalog:'
+        version: 7.18.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+    devDependencies:
+      '@calimero-network/abi-codegen':
+        specifier: 'catalog:'
+        version: 1.2.2
+      '@eslint/js':
+        specifier: 'catalog:'
+        version: 9.39.5
+      '@playwright/test':
+        specifier: 'catalog:'
+        version: 1.62.1
+      '@testing-library/jest-dom':
+        specifier: 'catalog:'
+        version: 6.10.0(@testing-library/dom@10.4.1)
+      '@testing-library/react':
+        specifier: 'catalog:'
+        version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      '@types/node':
+        specifier: 'catalog:'
+        version: 22.20.1
+      '@types/react':
+        specifier: 'catalog:'
+        version: 19.2.18
+      '@types/react-dom':
+        specifier: 'catalog:'
+        version: 19.2.5(@types/react@19.2.18)
+      '@vitejs/plugin-react':
+        specifier: 'catalog:'
+        version: 4.7.0(vite@6.4.3(@types/node@22.20.1)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.103.1)(tsx@4.23.13))
+      eslint:
+        specifier: 'catalog:'
+        version: 9.39.5(jiti@2.7.0)
+      eslint-plugin-react-hooks:
+        specifier: 'catalog:'
+        version: 5.2.0(eslint@9.39.5(jiti@2.7.0))
+      eslint-plugin-react-refresh:
+        specifier: 'catalog:'
+        version: 0.4.26(eslint@9.39.5(jiti@2.7.0))
+      globals:
+        specifier: 'catalog:'
+        version: 16.5.0
+      jsdom:
+        specifier: 'catalog:'
+        version: 25.0.1
+      prettier:
+        specifier: ^3.3.2
+        version: 3.9.6
+      typescript:
+        specifier: 'catalog:'
+        version: 5.8.3
+      typescript-eslint:
+        specifier: 'catalog:'
+        version: 8.68.0(eslint@9.39.5(jiti@2.7.0))(typescript@5.8.3)
+      vite:
+        specifier: 'catalog:'
+        version: 6.4.3(@types/node@22.20.1)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.103.1)(tsx@4.23.13)
+      vitest:
+        specifier: 'catalog:'
+        version: 4.1.11(@types/node@22.20.1)(jsdom@25.0.1)(vite@6.4.3(@types/node@22.20.1)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.103.1)(tsx@4.23.13))
+
+  apps/mero-pixart/app:
+    dependencies:
+      '@calimero-network/mero-js':
+        specifier: 'catalog:'
+        version: 13.3.0
+      '@calimero-network/mero-platform':
+        specifier: 'catalog:'
+        version: 0.1.0
+      '@calimero-network/mero-react':
+        specifier: 'catalog:'
+        version: 6.0.4(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      '@calimero-network/mero-ui':
+        specifier: 'catalog:'
+        version: 1.5.1(@floating-ui/dom@1.8.0)(@tiptap/core@3.30.5(@tiptap/pm@3.30.5))(@tiptap/pm@3.30.5)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      axios:
+        specifier: ^1.12.0
+        version: 1.20.0
+      bs58:
+        specifier: 'catalog:'
+        version: 6.0.0
+      clsx:
+        specifier: ^2.1.1
+        version: 2.1.1
+      fflate:
+        specifier: 'catalog:'
+        version: 0.8.3
+      react:
+        specifier: 'catalog:'
+        version: 19.2.8
+      react-dom:
+        specifier: 'catalog:'
+        version: 19.2.8(react@19.2.8)
+      react-router-dom:
+        specifier: ^7.15.1
+        version: 7.18.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      uuid:
+        specifier: ^11.1.0
+        version: 11.1.1
+      zustand:
+        specifier: ^5.0.5
+        version: 5.0.15(@types/react@19.2.18)(immer@9.0.21)(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8))
+    devDependencies:
+      '@eslint/js':
+        specifier: ^9.25.0
+        version: 9.39.5
+      '@playwright/test':
+        specifier: 'catalog:'
+        version: 1.62.1
+      '@testing-library/jest-dom':
+        specifier: ^6.9.1
+        version: 6.10.0(@testing-library/dom@10.4.1)
+      '@testing-library/react':
+        specifier: ^16.3.2
+        version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      '@types/react':
+        specifier: 'catalog:'
+        version: 19.2.18
+      '@types/react-dom':
+        specifier: 'catalog:'
+        version: 19.2.5(@types/react@19.2.18)
+      '@types/uuid':
+        specifier: ^10.0.0
+        version: 10.0.0
+      '@vitejs/plugin-react-swc':
+        specifier: ^3.9.0
+        version: 3.11.0(vite@6.4.3(@types/node@26.4.0)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.103.1)(tsx@4.23.13))
+      eslint:
+        specifier: ^9.29.0
+        version: 9.39.5(jiti@2.7.0)
+      eslint-plugin-react-hooks:
+        specifier: ^5.2.0
+        version: 5.2.0(eslint@9.39.5(jiti@2.7.0))
+      eslint-plugin-react-refresh:
+        specifier: ^0.4.19
+        version: 0.4.26(eslint@9.39.5(jiti@2.7.0))
+      globals:
+        specifier: ^16.0.0
+        version: 16.5.0
+      jsdom:
+        specifier: ^28.1.0
+        version: 28.1.0(canvas@3.2.3)
+      typescript:
+        specifier: 'catalog:'
+        version: 5.8.3
+      typescript-eslint:
+        specifier: ^8.30.1
+        version: 8.68.0(eslint@9.39.5(jiti@2.7.0))(typescript@5.8.3)
+      vite:
+        specifier: 'catalog:'
+        version: 6.4.3(@types/node@26.4.0)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.103.1)(tsx@4.23.13)
+      vitest:
+        specifier: 'catalog:'
+        version: 4.1.11(@types/node@26.4.0)(jsdom@28.1.0(canvas@3.2.3))(vite@6.4.3(@types/node@26.4.0)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.103.1)(tsx@4.23.13))
+
+  apps/mero-sheets/app:
+    dependencies:
+      '@calimero-network/mero-icons':
+        specifier: 0.0.6
+        version: 0.0.6(react@19.2.8)
+      '@calimero-network/mero-js':
+        specifier: 'catalog:'
+        version: 13.3.0
+      '@calimero-network/mero-react':
+        specifier: 'catalog:'
+        version: 6.0.4(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      '@calimero-network/mero-ui':
+        specifier: 'catalog:'
+        version: 1.5.1(@floating-ui/dom@1.8.0)(@tiptap/core@3.30.5(@tiptap/pm@3.30.5))(@tiptap/pm@3.30.5)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      react:
+        specifier: 'catalog:'
+        version: 19.2.8
+      react-dom:
+        specifier: 'catalog:'
+        version: 19.2.8(react@19.2.8)
+      react-router-dom:
+        specifier: ^6.22.3
+        version: 6.30.6(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      styled-components:
+        specifier: ^6.1.11
+        version: 6.5.3(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+    devDependencies:
+      '@calimero-network/abi-codegen':
+        specifier: 'catalog:'
+        version: 1.2.2
+      '@playwright/test':
+        specifier: ^1.59.1
+        version: 1.62.1
+      '@types/node':
+        specifier: ^25.6.0
+        version: 25.9.5
+      '@types/react':
+        specifier: 'catalog:'
+        version: 19.2.18
+      '@types/react-dom':
+        specifier: 'catalog:'
+        version: 19.2.5(@types/react@19.2.18)
+      '@types/styled-components':
+        specifier: ^5.1.34
+        version: 5.1.36
+      '@vitejs/plugin-react':
+        specifier: 'catalog:'
+        version: 4.7.0(vite@6.4.3(@types/node@25.9.5)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.103.1)(tsx@4.23.13))
+      tweetnacl:
+        specifier: ^1.0.3
+        version: 1.0.3
+      tweetnacl-util:
+        specifier: ^0.15.1
+        version: 0.15.1
+      typescript:
+        specifier: 'catalog:'
+        version: 5.8.3
+      vite:
+        specifier: 'catalog:'
+        version: 6.4.3(@types/node@25.9.5)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.103.1)(tsx@4.23.13)
+      vite-plugin-node-polyfills:
+        specifier: ^0.24.0
+        version: 0.24.0(rollup@4.63.0)(vite@6.4.3(@types/node@25.9.5)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.103.1)(tsx@4.23.13))
+      vitest:
+        specifier: 'catalog:'
+        version: 4.1.11(@types/node@25.9.5)(jsdom@29.1.1)(vite@6.4.3(@types/node@25.9.5)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.103.1)(tsx@4.23.13))
+
   apps/mero-sign/app:
     dependencies:
       '@calimero-network/calimero-client':
@@ -1090,282 +1433,6 @@ importers:
         specifier: 'catalog:'
         version: 4.1.11(@types/node@22.20.1)(jsdom@25.0.1)(vite@6.4.3(@types/node@22.20.1)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.103.1)(tsx@4.23.13))
 
-  apps/merodesign/app:
-    dependencies:
-      '@calimero-network/mero-js':
-        specifier: 'catalog:'
-        version: 13.3.0
-      '@calimero-network/mero-platform':
-        specifier: 'catalog:'
-        version: 0.1.0
-      '@calimero-network/mero-react':
-        specifier: 'catalog:'
-        version: 6.0.4(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      '@calimero-network/mero-ui':
-        specifier: 'catalog:'
-        version: 1.5.1(@floating-ui/dom@1.8.0)(@tiptap/core@3.30.5(@tiptap/pm@3.30.5))(@tiptap/pm@3.30.5)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      axios:
-        specifier: 'catalog:'
-        version: 1.20.0
-      bs58:
-        specifier: 'catalog:'
-        version: 6.0.0
-      clsx:
-        specifier: 'catalog:'
-        version: 2.1.1
-      fabric:
-        specifier: ^7.4.0
-        version: 7.4.0
-      fflate:
-        specifier: 'catalog:'
-        version: 0.8.3
-      react:
-        specifier: 'catalog:'
-        version: 19.2.8
-      react-dom:
-        specifier: 'catalog:'
-        version: 19.2.8(react@19.2.8)
-      react-router-dom:
-        specifier: 'catalog:'
-        version: 7.18.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      uuid:
-        specifier: 'catalog:'
-        version: 11.1.1
-      zustand:
-        specifier: 'catalog:'
-        version: 5.0.15(@types/react@19.2.18)(immer@9.0.21)(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8))
-    devDependencies:
-      '@eslint/js':
-        specifier: 'catalog:'
-        version: 9.39.5
-      '@playwright/test':
-        specifier: 'catalog:'
-        version: 1.62.1
-      '@testing-library/jest-dom':
-        specifier: 'catalog:'
-        version: 6.10.0(@testing-library/dom@10.4.1)
-      '@testing-library/react':
-        specifier: 'catalog:'
-        version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      '@types/react':
-        specifier: 'catalog:'
-        version: 19.2.18
-      '@types/react-dom':
-        specifier: 'catalog:'
-        version: 19.2.5(@types/react@19.2.18)
-      '@types/uuid':
-        specifier: 'catalog:'
-        version: 10.0.0
-      '@vitejs/plugin-react-swc':
-        specifier: 'catalog:'
-        version: 3.11.0(vite@6.4.3(@types/node@26.4.0)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.103.1)(tsx@4.23.13))
-      eslint:
-        specifier: 'catalog:'
-        version: 9.39.5(jiti@2.7.0)
-      eslint-plugin-react-hooks:
-        specifier: 'catalog:'
-        version: 5.2.0(eslint@9.39.5(jiti@2.7.0))
-      eslint-plugin-react-refresh:
-        specifier: 'catalog:'
-        version: 0.4.26(eslint@9.39.5(jiti@2.7.0))
-      globals:
-        specifier: 'catalog:'
-        version: 16.5.0
-      jsdom:
-        specifier: ^28.1.0
-        version: 28.1.0(canvas@3.2.3)
-      typescript:
-        specifier: 'catalog:'
-        version: 5.8.3
-      typescript-eslint:
-        specifier: 'catalog:'
-        version: 8.68.0(eslint@9.39.5(jiti@2.7.0))(typescript@5.8.3)
-      vite:
-        specifier: 'catalog:'
-        version: 6.4.3(@types/node@26.4.0)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.103.1)(tsx@4.23.13)
-      vitest:
-        specifier: 'catalog:'
-        version: 4.1.11(@types/node@26.4.0)(jsdom@28.1.0(canvas@3.2.3))(vite@6.4.3(@types/node@26.4.0)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.103.1)(tsx@4.23.13))
-
-  apps/meropass/app:
-    dependencies:
-      '@calimero-network/mero-js':
-        specifier: 'catalog:'
-        version: 13.3.0
-      '@calimero-network/mero-react':
-        specifier: 'catalog:'
-        version: 6.0.4(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      '@calimero-network/mero-ui':
-        specifier: 'catalog:'
-        version: 1.5.1(@floating-ui/dom@1.8.0)(@tiptap/core@3.30.5(@tiptap/pm@3.30.5))(@tiptap/pm@3.30.5)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      bs58:
-        specifier: 'catalog:'
-        version: 6.0.0
-      fflate:
-        specifier: 'catalog:'
-        version: 0.8.3
-      react:
-        specifier: 'catalog:'
-        version: 19.2.8
-      react-dom:
-        specifier: 'catalog:'
-        version: 19.2.8(react@19.2.8)
-      react-router-dom:
-        specifier: 'catalog:'
-        version: 7.18.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-    devDependencies:
-      '@calimero-network/abi-codegen':
-        specifier: 'catalog:'
-        version: 1.2.2
-      '@eslint/js':
-        specifier: 'catalog:'
-        version: 9.39.5
-      '@playwright/test':
-        specifier: 'catalog:'
-        version: 1.62.1
-      '@testing-library/jest-dom':
-        specifier: 'catalog:'
-        version: 6.10.0(@testing-library/dom@10.4.1)
-      '@testing-library/react':
-        specifier: 'catalog:'
-        version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      '@types/node':
-        specifier: 'catalog:'
-        version: 22.20.1
-      '@types/react':
-        specifier: 'catalog:'
-        version: 19.2.18
-      '@types/react-dom':
-        specifier: 'catalog:'
-        version: 19.2.5(@types/react@19.2.18)
-      '@vitejs/plugin-react':
-        specifier: 'catalog:'
-        version: 4.7.0(vite@6.4.3(@types/node@22.20.1)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.103.1)(tsx@4.23.13))
-      eslint:
-        specifier: 'catalog:'
-        version: 9.39.5(jiti@2.7.0)
-      eslint-plugin-react-hooks:
-        specifier: 'catalog:'
-        version: 5.2.0(eslint@9.39.5(jiti@2.7.0))
-      eslint-plugin-react-refresh:
-        specifier: 'catalog:'
-        version: 0.4.26(eslint@9.39.5(jiti@2.7.0))
-      globals:
-        specifier: 'catalog:'
-        version: 16.5.0
-      jsdom:
-        specifier: 'catalog:'
-        version: 25.0.1
-      prettier:
-        specifier: ^3.3.2
-        version: 3.9.6
-      typescript:
-        specifier: 'catalog:'
-        version: 5.8.3
-      typescript-eslint:
-        specifier: 'catalog:'
-        version: 8.68.0(eslint@9.39.5(jiti@2.7.0))(typescript@5.8.3)
-      vite:
-        specifier: 'catalog:'
-        version: 6.4.3(@types/node@22.20.1)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.103.1)(tsx@4.23.13)
-      vitest:
-        specifier: 'catalog:'
-        version: 4.1.11(@types/node@22.20.1)(jsdom@25.0.1)(vite@6.4.3(@types/node@22.20.1)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.103.1)(tsx@4.23.13))
-
-  apps/meropixart/app:
-    dependencies:
-      '@calimero-network/mero-js':
-        specifier: 'catalog:'
-        version: 13.3.0
-      '@calimero-network/mero-platform':
-        specifier: 'catalog:'
-        version: 0.1.0
-      '@calimero-network/mero-react':
-        specifier: 'catalog:'
-        version: 6.0.4(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      '@calimero-network/mero-ui':
-        specifier: 'catalog:'
-        version: 1.5.1(@floating-ui/dom@1.8.0)(@tiptap/core@3.30.5(@tiptap/pm@3.30.5))(@tiptap/pm@3.30.5)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      axios:
-        specifier: ^1.12.0
-        version: 1.20.0
-      bs58:
-        specifier: 'catalog:'
-        version: 6.0.0
-      clsx:
-        specifier: ^2.1.1
-        version: 2.1.1
-      fflate:
-        specifier: 'catalog:'
-        version: 0.8.3
-      react:
-        specifier: 'catalog:'
-        version: 19.2.8
-      react-dom:
-        specifier: 'catalog:'
-        version: 19.2.8(react@19.2.8)
-      react-router-dom:
-        specifier: ^7.15.1
-        version: 7.18.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      uuid:
-        specifier: ^11.1.0
-        version: 11.1.1
-      zustand:
-        specifier: ^5.0.5
-        version: 5.0.15(@types/react@19.2.18)(immer@9.0.21)(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8))
-    devDependencies:
-      '@eslint/js':
-        specifier: ^9.25.0
-        version: 9.39.5
-      '@playwright/test':
-        specifier: 'catalog:'
-        version: 1.62.1
-      '@testing-library/jest-dom':
-        specifier: ^6.9.1
-        version: 6.10.0(@testing-library/dom@10.4.1)
-      '@testing-library/react':
-        specifier: ^16.3.2
-        version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      '@types/react':
-        specifier: 'catalog:'
-        version: 19.2.18
-      '@types/react-dom':
-        specifier: 'catalog:'
-        version: 19.2.5(@types/react@19.2.18)
-      '@types/uuid':
-        specifier: ^10.0.0
-        version: 10.0.0
-      '@vitejs/plugin-react-swc':
-        specifier: ^3.9.0
-        version: 3.11.0(vite@6.4.3(@types/node@26.4.0)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.103.1)(tsx@4.23.13))
-      eslint:
-        specifier: ^9.29.0
-        version: 9.39.5(jiti@2.7.0)
-      eslint-plugin-react-hooks:
-        specifier: ^5.2.0
-        version: 5.2.0(eslint@9.39.5(jiti@2.7.0))
-      eslint-plugin-react-refresh:
-        specifier: ^0.4.19
-        version: 0.4.26(eslint@9.39.5(jiti@2.7.0))
-      globals:
-        specifier: ^16.0.0
-        version: 16.5.0
-      jsdom:
-        specifier: ^28.1.0
-        version: 28.1.0(canvas@3.2.3)
-      typescript:
-        specifier: 'catalog:'
-        version: 5.8.3
-      typescript-eslint:
-        specifier: ^8.30.1
-        version: 8.68.0(eslint@9.39.5(jiti@2.7.0))(typescript@5.8.3)
-      vite:
-        specifier: 'catalog:'
-        version: 6.4.3(@types/node@26.4.0)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.103.1)(tsx@4.23.13)
-      vitest:
-        specifier: 'catalog:'
-        version: 4.1.11(@types/node@26.4.0)(jsdom@28.1.0(canvas@3.2.3))(vite@6.4.3(@types/node@26.4.0)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.103.1)(tsx@4.23.13))
-
   apps/merraria/app:
     dependencies:
       '@calimero-network/mero-js':
@@ -1408,73 +1475,6 @@ importers:
       vitest:
         specifier: 'catalog:'
         version: 4.1.11(@types/node@24.13.3)(jsdom@28.1.0(canvas@3.2.3))(vite@6.4.3(@types/node@24.13.3)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.103.1)(tsx@4.23.13))
-
-  apps/p2p-sheets/app:
-    dependencies:
-      '@calimero-network/mero-icons':
-        specifier: 0.0.6
-        version: 0.0.6(react@19.2.8)
-      '@calimero-network/mero-js':
-        specifier: 'catalog:'
-        version: 13.3.0
-      '@calimero-network/mero-react':
-        specifier: 'catalog:'
-        version: 6.0.4(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      '@calimero-network/mero-ui':
-        specifier: 'catalog:'
-        version: 1.5.1(@floating-ui/dom@1.8.0)(@tiptap/core@3.30.5(@tiptap/pm@3.30.5))(@tiptap/pm@3.30.5)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      react:
-        specifier: 'catalog:'
-        version: 19.2.8
-      react-dom:
-        specifier: 'catalog:'
-        version: 19.2.8(react@19.2.8)
-      react-router-dom:
-        specifier: ^6.22.3
-        version: 6.30.6(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      styled-components:
-        specifier: ^6.1.11
-        version: 6.5.3(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-    devDependencies:
-      '@calimero-network/abi-codegen':
-        specifier: 'catalog:'
-        version: 1.2.2
-      '@playwright/test':
-        specifier: ^1.59.1
-        version: 1.62.1
-      '@types/node':
-        specifier: ^25.6.0
-        version: 25.9.5
-      '@types/react':
-        specifier: 'catalog:'
-        version: 19.2.18
-      '@types/react-dom':
-        specifier: 'catalog:'
-        version: 19.2.5(@types/react@19.2.18)
-      '@types/styled-components':
-        specifier: ^5.1.34
-        version: 5.1.36
-      '@vitejs/plugin-react':
-        specifier: 'catalog:'
-        version: 4.7.0(vite@6.4.3(@types/node@25.9.5)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.103.1)(tsx@4.23.13))
-      tweetnacl:
-        specifier: ^1.0.3
-        version: 1.0.3
-      tweetnacl-util:
-        specifier: ^0.15.1
-        version: 0.15.1
-      typescript:
-        specifier: 'catalog:'
-        version: 5.8.3
-      vite:
-        specifier: 'catalog:'
-        version: 6.4.3(@types/node@25.9.5)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.103.1)(tsx@4.23.13)
-      vite-plugin-node-polyfills:
-        specifier: ^0.24.0
-        version: 0.24.0(rollup@4.63.0)(vite@6.4.3(@types/node@25.9.5)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.103.1)(tsx@4.23.13))
-      vitest:
-        specifier: 'catalog:'
-        version: 4.1.11(@types/node@25.9.5)(jsdom@29.1.1)(vite@6.4.3(@types/node@25.9.5)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.103.1)(tsx@4.23.13))
 
   apps/scaffolding-e2e/app:
     dependencies:

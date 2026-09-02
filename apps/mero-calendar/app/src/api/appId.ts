@@ -27,7 +27,7 @@ const ENV_APP_ID =
   (import.meta.env.VITE_APPLICATION_ID as string | undefined)?.trim() ?? "";
 const APP_PACKAGE =
   (import.meta.env.VITE_APPLICATION_PACKAGE as string | undefined)?.trim() ||
-  "com.calimero.merocalendar";
+  "com.calimero.mero-calendar";
 
 export interface AppEntry {
   id: string;

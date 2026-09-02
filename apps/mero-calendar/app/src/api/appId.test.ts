@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { pickApplicationId } from "./appId";
 
-const OURS = { id: "CalendarAppId1111111111111111111111111111111", package: "com.calimero.merocalendar" };
-const DEV_INSTALL = { id: "CalendarDevId2222222222222222222222222222222", package: "com.calimero.merocalendar" };
+const OURS = { id: "CalendarAppId1111111111111111111111111111111", package: "com.calimero.mero-calendar" };
+const DEV_INSTALL = { id: "CalendarDevId2222222222222222222222222222222", package: "com.calimero.mero-calendar" };
 const OTHER_APP = { id: "SomeOtherAppId33333333333333333333333333333", package: "com.calimero.curb" };
 
 describe("pickApplicationId", () => {

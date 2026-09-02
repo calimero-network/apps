@@ -384,7 +384,7 @@ jobs:
       # wasm build in this job — the build below, the dry-run bundle, and any
       # fixture bundle — picks it up. Additive: an app with no file sets nothing.
       #
-      # p2p-sheets needs `-Ctarget-feature=-nontrapping-fptoint`: its recalc
+      # mero-sheets needs `-Ctarget-feature=-nontrapping-fptoint`: its recalc
       # engine casts f64->i64, lowering to the `i64.trunc_sat_f64_s` opcode that
       # cargo-mero's bundled wasm-opt rejects. The flag lowers the SAME
       # saturating cast without that opcode. Safe job-wide — this job only ever
@@ -754,7 +754,7 @@ jobs:
       # the same name `cargo mero bundle` writes locally, which is what makes a
       # scenario runnable by hand as well as in CI. Read the id out of the
       # manifest rather than assuming it equals the directory name; the two are
-      # deliberately allowed to differ (merodesign/meropixart already do).
+      # deliberately allowed to differ (mero-design/mero-pixart already do).
       #
       # tomllib is stdlib from 3.11, which the step above just installed.
       - name: Name the bundle after its package id
@@ -799,7 +799,7 @@ jobs:
       #     Bind for 0.0.0.0:2428 failed: port is already allocated
       #
       # which reads like a runner problem rather than a missing teardown. Any
-      # app with ONE scenario — kv-store, merodesign, merraria — never sees it;
+      # app with ONE scenario — kv-store, mero-design, merraria — never sees it;
       # scaffolding-e2e has 18.
       - name: Run workflows
         working-directory: apps/${{ matrix.app }}/logic

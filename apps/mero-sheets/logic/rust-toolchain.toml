@@ -1,0 +1,8 @@
+[toolchain]
+# Pinned like the compute-heavy apps (merraria, mero-blocks, mero-pixart): the
+# recalc formula engine makes rustc emit wasm features that `cargo mero`'s
+# bundled wasm-opt rejects ("all used features should be allowed") on a newer
+# stable. 1.89.0 emits the baseline set wasm-opt validates.
+channel = "1.89.0"
+components = ["cargo", "clippy", "rustfmt"]
+targets = ["wasm32-unknown-unknown"]

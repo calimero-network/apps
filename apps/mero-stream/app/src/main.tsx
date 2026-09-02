@@ -43,7 +43,7 @@ createRoot(document.getElementById("root")!).render(
     <MeroProvider
       mode={MeroAppMode.MultiContext}
       packageName={
-        import.meta.env.VITE_APPLICATION_PACKAGE ?? "com.calimero.merostream"
+        import.meta.env.VITE_APPLICATION_PACKAGE ?? "com.calimero.mero-stream"
       }
       registryUrl="https://apps.calimero.network"
       allowedNodeUrls={hashNodeUrl ? [hashNodeUrl] : undefined}

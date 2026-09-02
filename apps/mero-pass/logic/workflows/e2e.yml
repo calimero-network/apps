@@ -1,0 +1,277 @@
+name: MeroPass — a shared vault across two nodes (2-node e2e)
+description: >
+  Proves the thesis of MeroPass: a Calimero context IS a vault, and a secret
+  written on one member's node is readable, editable and deletable by another
+  member on a different node, with the audit trail replicating alongside it.
+
+  This app had no merobox scenario at all before the monorepo migration, so
+  nothing had ever exercised the contract across a real network — only the
+  frontend against a single node by hand.
+
+force_pull_image: true
+
+nodes:
+  chain_id: testnet-1
+  count: 2
+  # Must match the `calimero-*` tag in the root Cargo.toml — contract and node
+  # have to agree. check-app-metadata.sh asserts this against
+  # [workspace.metadata.mero-apps].merod-image.
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.28
+  prefix: calimero-node
+  # Stated, not inherited. core 0.11.0-rc.26 made mDNS opt-in (core#3620), so
+  # `merod init` now writes `discovery.mdns = false` and merobox does not pass
+  # the flag. Without this the two nodes never peer and the run dies as a 500 on
+  # join_namespace, which reads like a contract break.
+  mdns: true
+  # Off the defaults (2428/2528) and off every other app's pair, so a developer
+  # running this beside another scenario does not collide.
+  base_port: 2880
+  base_rpc_port: 2780
+
+steps:
+  # ── Bootstrap ───────────────────────────────────────────────────────────────
+  # A bare wasm, not a bundle: mero-pass declares no `services` table, so
+  # `create_context` passes no service_name and there is nothing to select from.
+  - name: Install application on Node 1
+    type: install_application
+    node: calimero-node-1
+    path: res/mero_pass.wasm
+    dev: true
+    outputs:
+      app_id: applicationId
+
+  - name: Install application on Node 2
+    type: install_application
+    node: calimero-node-2
+    path: res/mero_pass.wasm
+    dev: true
+
+  - name: Create namespace
+    type: create_namespace
+    node: calimero-node-1
+    application_id: "{{app_id}}"
+    outputs:
+      namespace_id: namespaceId
+
+  - name: Set default member capabilities
+    type: set_default_capabilities
+    node: calimero-node-1
+    group_id: "{{namespace_id}}"
+    capabilities: 15
+
+  - name: Generate identity for Node 2
+    type: create_identity
+    node: calimero-node-2
+    outputs:
+      bob_identity: publicKey
+
+  - name: Wait for identity propagation
+    type: wait
+    seconds: 3
+
+  - name: Node 1 creates invitation for Node 2
+    type: create_namespace_invitation
+    node: calimero-node-1
+    group_id: "{{namespace_id}}"
+    outputs:
+      invite_bob: invitation
+
+  # core gives the group key a 5s gossip window, which on a loaded runner has to
+  # cover peer discovery too. Without this the join 500s intermittently.
+  - name: Settle before the namespace join (cold-join KeyDelivery)
+    type: wait
+    seconds: 12
+
+  - name: Node 2 joins namespace
+    type: join_namespace
+    node: calimero-node-2
+    group_id: "{{namespace_id}}"
+    invitation: "{{invite_bob}}"
+
+  - name: Settle after namespace join
+    type: wait
+    seconds: 5
+
+  # ── The vault is a context ──────────────────────────────────────────────────
+  - name: Node 1 creates the vault
+    type: create_context
+    node: calimero-node-1
+    application_id: "{{app_id}}"
+    group_id: "{{namespace_id}}"
+    params: '{}'
+    outputs:
+      vault_id: contextId
+      alice_key: memberPublicKey
+
+  - name: Force Node 2 to sync namespace state
+    type: sync_group
+    node: calimero-node-2
+    group_id: "{{namespace_id}}"
+
+  - name: Settle after sync
+    type: wait
+    seconds: 5
+
+  - name: Bob joins the vault
+    type: join_context
+    node: calimero-node-2
+    context_id: "{{vault_id}}"
+    outputs:
+      bob_key: memberPublicKey
+
+  - name: Wait for vault sync
+    type: wait_for_sync
+    context_id: "{{vault_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  # ── A secret written on node 1 is readable on node 2 ────────────────────────
+  - name: Alice adds a secret
+    type: call
+    node: calimero-node-1
+    context_id: "{{vault_id}}"
+    method: add_secret
+    args:
+      name: "GitHub"
+      secret_type: "login"
+      data: '{"username":"alice","password":"hunter2"}'
+      tags: ["dev", "work"]
+    executor_public_key: "{{alice_key}}"
+    outputs:
+      secret_id: result.output
+
+  - name: Sync the new secret
+    type: wait_for_sync
+    context_id: "{{vault_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Bob lists the vault
+    type: call
+    node: calimero-node-2
+    context_id: "{{vault_id}}"
+    method: list_secrets
+    args: {}
+    executor_public_key: "{{bob_key}}"
+    outputs:
+      bob_list: result
+
+  - name: Assert the secret replicated with its payload and tags
+    type: assert
+    statements:
+      - 'contains({{bob_list}}, "GitHub")'
+      - 'contains({{bob_list}}, "hunter2")'
+      - 'contains({{bob_list}}, "dev")'
+
+  # ── Search runs on the replicated copy ──────────────────────────────────────
+  - name: Bob searches by tag, case-insensitively
+    type: call
+    node: calimero-node-2
+    context_id: "{{vault_id}}"
+    method: search_secrets
+    args:
+      query: "WORK"
+    executor_public_key: "{{bob_key}}"
+    outputs:
+      bob_search: result
+
+  - name: Assert search matched the tag on the replica
+    type: assert
+    statements:
+      - 'contains({{bob_search}}, "GitHub")'
+
+  # ── An edit on node 2 converges back to node 1 ──────────────────────────────
+  - name: Bob rotates the password
+    type: call
+    node: calimero-node-2
+    context_id: "{{vault_id}}"
+    method: update_secret
+    args:
+      secret_id: "{{secret_id}}"
+      name: "GitHub (work)"
+      data: '{"username":"alice","password":"rotated"}'
+      tags: ["work"]
+    executor_public_key: "{{bob_key}}"
+
+  - name: Sync the edit
+    type: wait_for_sync
+    context_id: "{{vault_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Alice reads the secret back
+    type: call
+    node: calimero-node-1
+    context_id: "{{vault_id}}"
+    method: get_secret
+    args:
+      secret_id: "{{secret_id}}"
+    executor_public_key: "{{alice_key}}"
+    outputs:
+      alice_secret: result
+
+  - name: Assert the edit converged, version included
+    type: assert
+    statements:
+      - 'contains({{alice_secret}}, "GitHub (work)")'
+      - 'contains({{alice_secret}}, "rotated")'
+      # The superseded password must be GONE, not merged alongside. This is the
+      # assertion that would catch a merge that resurrected the older record —
+      # the failure mode the LWW total order exists to prevent.
+      - 'not_contains({{alice_secret}}, "hunter2")'
+
+  # ── The audit trail replicates too ──────────────────────────────────────────
+  - name: Alice reads the audit log
+    type: call
+    node: calimero-node-1
+    context_id: "{{vault_id}}"
+    method: get_audit_logs
+    args: {}
+    executor_public_key: "{{alice_key}}"
+    outputs:
+      alice_audit: result
+
+  - name: Assert both the add and the remote edit are audited
+    type: assert
+    statements:
+      - 'contains({{alice_audit}}, "secret_added")'
+      - 'contains({{alice_audit}}, "secret_updated")'
+
+  # ── Deletion converges ──────────────────────────────────────────────────────
+  - name: Alice deletes the secret
+    type: call
+    node: calimero-node-1
+    context_id: "{{vault_id}}"
+    method: delete_secret
+    args:
+      secret_id: "{{secret_id}}"
+    executor_public_key: "{{alice_key}}"
+
+  - name: Sync the deletion
+    type: wait_for_sync
+    context_id: "{{vault_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Bob lists the vault again
+    type: call
+    node: calimero-node-2
+    context_id: "{{vault_id}}"
+    method: list_secrets
+    args: {}
+    executor_public_key: "{{bob_key}}"
+    outputs:
+      bob_after_delete: result
+
+  - name: Assert the delete converged to node 2
+    type: assert
+    statements:
+      - 'not_contains({{bob_after_delete}}, "GitHub")'

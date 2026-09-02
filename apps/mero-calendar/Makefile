@@ -81,7 +81,7 @@ bundle-release:
 	cd logic && cargo mero bundle --key "$$MERO_SIGN_KEY_FILE" --bump patch
 
 publish:
-	cd logic && cargo mero publish dist/com.calimero.merocalendar-*.mpk
+	cd logic && cargo mero publish dist/com.calimero.mero-calendar-*.mpk
 
 logic-test-rust:
 	cd logic && cargo test

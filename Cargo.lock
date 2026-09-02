@@ -787,6 +787,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "mero-design"
+version = "0.0.2"
+dependencies = [
+ "calimero-sdk",
+ "calimero-storage",
+ "calimero-storage-macros",
+ "serde_json",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "mero-drive"
 version = "10.1.3"
 dependencies = [
@@ -853,6 +864,55 @@ dependencies = [
 ]
 
 [[package]]
+name = "mero-pass"
+version = "0.1.0"
+dependencies = [
+ "calimero-sdk",
+ "calimero-storage",
+ "calimero-storage-macros",
+ "hex",
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "mero-pixart"
+version = "0.0.2"
+dependencies = [
+ "calimero-sdk",
+ "calimero-storage",
+ "calimero-storage-macros",
+ "serde_json",
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "mero-sheets"
+version = "0.1.0"
+dependencies = [
+ "calimero-sdk",
+ "calimero-storage",
+ "calimero-storage-macros",
+ "hex",
+ "mero-sheets-recalc",
+ "mero-sheets-types",
+ "serial_test",
+]
+
+[[package]]
+name = "mero-sheets-recalc"
+version = "0.1.0"
+
+[[package]]
+name = "mero-sheets-types"
+version = "0.1.0"
+dependencies = [
+ "borsh",
+ "hex",
+ "serde",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "mero-sign"
 version = "0.1.0"
 dependencies = [
@@ -873,39 +933,6 @@ dependencies = [
  "calimero-storage",
  "calimero-storage-macros",
  "hex",
- "thiserror 1.0.69",
-]
-
-[[package]]
-name = "merodesign"
-version = "0.0.2"
-dependencies = [
- "calimero-sdk",
- "calimero-storage",
- "calimero-storage-macros",
- "serde_json",
- "thiserror 1.0.69",
-]
-
-[[package]]
-name = "meropass"
-version = "0.1.0"
-dependencies = [
- "calimero-sdk",
- "calimero-storage",
- "calimero-storage-macros",
- "hex",
- "thiserror 1.0.69",
-]
-
-[[package]]
-name = "meropixart"
-version = "0.0.2"
-dependencies = [
- "calimero-sdk",
- "calimero-storage",
- "calimero-storage-macros",
- "serde_json",
  "thiserror 1.0.69",
 ]
 
@@ -977,33 +1004,6 @@ name = "once_cell"
 version = "1.21.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
-
-[[package]]
-name = "p2p-sheets"
-version = "0.1.0"
-dependencies = [
- "calimero-sdk",
- "calimero-storage",
- "calimero-storage-macros",
- "hex",
- "p2p-sheets-recalc",
- "p2p-sheets-types",
- "serial_test",
-]
-
-[[package]]
-name = "p2p-sheets-recalc"
-version = "0.1.0"
-
-[[package]]
-name = "p2p-sheets-types"
-version = "0.1.0"
-dependencies = [
- "borsh",
- "hex",
- "serde",
- "thiserror 1.0.69",
-]
 
 [[package]]
 name = "parking_lot"
@@ -1139,7 +1139,7 @@ dependencies = [
 name = "recalc-wasm"
 version = "0.1.0"
 dependencies = [
- "p2p-sheets-recalc",
+ "mero-sheets-recalc",
  "serde",
  "serde_json",
  "wasm-bindgen",

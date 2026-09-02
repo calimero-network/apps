@@ -99,7 +99,7 @@ test.describe("landing page", () => {
 
     const params = new URL(authUrl!).searchParams;
     expect(params.get("mode")).toBe("multi-context");
-    expect(params.get("package-name")).toBe("com.calimero.meroblocks");
+    expect(params.get("package-name")).toBe("com.calimero.mero-blocks");
   });
 
   test("manual url: validates, then redirects to the node's auth page", async ({ page }) => {
@@ -123,7 +123,7 @@ test.describe("landing page", () => {
 
     const params = new URL(authUrl!).searchParams;
     expect(params.get("mode")).toBe("multi-context");
-    expect(params.get("package-name")).toBe("com.calimero.meroblocks");
+    expect(params.get("package-name")).toBe("com.calimero.mero-blocks");
     expect(params.get("callback-url")).toContain("localhost");
     expect(params.get("permissions")).toContain("context:execute");
   });

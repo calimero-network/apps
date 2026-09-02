@@ -13,7 +13,7 @@ import { createLink, parseIntent } from "@calimero-network/mero-platform";
  * asking the registry for that same package — so the slug IS the package id.
  * Keep equal to `slug`/`package` in `logic/Cargo.toml`.
  */
-export const APP_SLUG = "com.calimero.meroblocks";
+export const APP_SLUG = "com.calimero.mero-blocks";
 
 /**
  * The shareable form of an invite code: a canonical HTTPS link that opens the
@@ -38,7 +38,7 @@ export const INVITATION_PARAM = "invitation";
  * Parsing goes through the SDK's `parseIntent` rather than `new URL()`, for one
  * specific reason: `calimero://<slug>/<action>` has to be split by hand, because
  * non-special-scheme host parsing mangles a dotted slug like
- * `com.calimero.meroblocks`.
+ * `com.calimero.mero-blocks`.
  *
  * Returns null when there is no invite in it — including a link carrying some
  * other app's slug, which is not ours to redeem.

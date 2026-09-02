@@ -11,8 +11,8 @@ cargo build --target wasm32-unknown-unknown --profile app-release
 
 mkdir -p res
 
-cp $TARGET/wasm32-unknown-unknown/app-release/only_peers.wasm ./res/
+cp $TARGET/wasm32-unknown-unknown/app-release/mero_forum.wasm ./res/
 
 if command -v wasm-opt > /dev/null; then
-  wasm-opt -Oz ./res/only_peers.wasm -o ./res/only_peers.wasm
+  wasm-opt -Oz ./res/mero_forum.wasm -o ./res/mero_forum.wasm
 fi

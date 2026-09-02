@@ -22,7 +22,7 @@ crate-type = ["cdylib", "rlib"]
 # `[workspace.metadata.mero-apps]` and scripts/check-app-metadata.sh asserts this
 # table agrees with them.
 [package.metadata.calimero]
-package     = "com.calimero.merocalendar"
+package     = "com.calimero.mero-calendar"
 name        = "Mero Calendar"
 description = "A collaborative, peer-to-peer calendar on the Calimero network. Shared team calendars and private events — your schedule on your own nodes."
 author      = "Calimero"
@@ -30,7 +30,7 @@ author      = "Calimero"
 # https://links.calimero.network/<slug>/…) by Application.package, so the slug IS
 # the package id. Unchanged from the standalone repo: it is in every invite link
 # already shared.
-slug        = "com.calimero.merocalendar"
+slug        = "com.calimero.mero-calendar"
 # The app's OWN icon, embedded into the manifest as a data: URI. That is what
 # gives it a real icon in the registry listing and — via tauri-app's
 # `ensure_app_launcher_icon` — in the macOS Dock when the desktop opens it.

@@ -63,8 +63,8 @@ describe("shape-tolerant parsers", () => {
 });
 
 describe("pickApplicationId (precedence, and every candidate validated)", () => {
-  const blocks = { id: "blocks", package: "com.calimero.meroblocks" };
-  const meet = { id: "meet", package: "com.calimero.meromeet" };
+  const blocks = { id: "blocks", package: "com.calimero.mero-blocks" };
+  const meet = { id: "meet", package: "com.calimero.mero-meet" };
 
   it("prefers the session id when the node has it installed", () => {
     expect(pickApplicationId([meet, blocks], "meet")).toBe("meet");
@@ -87,7 +87,7 @@ describe("resolveApplicationId", () => {
   it("checks the session app id against the node instead of trusting it", async () => {
     updateSession({ applicationId: "app-hash" });
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      okJson({ data: { apps: [{ id: "app-hash", package: "com.calimero.meroblocks" }] } }),
+      okJson({ data: { apps: [{ id: "app-hash", package: "com.calimero.mero-blocks" }] } }),
     );
     expect(await resolveApplicationId()).toBe("app-hash");
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -97,7 +97,7 @@ describe("resolveApplicationId", () => {
   it("drops a stale session app id the node does not know", async () => {
     updateSession({ applicationId: "stale" });
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      okJson({ data: { apps: [{ id: "real", package: "com.calimero.meroblocks" }] } }),
+      okJson({ data: { apps: [{ id: "real", package: "com.calimero.mero-blocks" }] } }),
     );
     expect(await resolveApplicationId()).toBe("real");
     // cleared, so the next call cannot resurrect it
@@ -109,8 +109,8 @@ describe("resolveApplicationId", () => {
       okJson({
         data: {
           apps: [
-            { id: "other", package: "com.calimero.meromeet" },
-            { id: "mine", package: "com.calimero.meroblocks" },
+            { id: "other", package: "com.calimero.mero-meet" },
+            { id: "mine", package: "com.calimero.mero-blocks" },
           ],
         },
       }),

@@ -21,7 +21,7 @@ describe("APP_SLUG", () => {
     // logic/Cargo.toml under [package.metadata.calimero] and mirrored here
     // because the frontend cannot read the manifest at build time — a mismatch
     // produces links that resolve to nothing, with no error anywhere.
-    expect(APP_SLUG).toBe("com.calimero.merostream");
+    expect(APP_SLUG).toBe("com.calimero.mero-stream");
   });
 });
 
@@ -72,7 +72,7 @@ describe("invitationDeepLink", () => {
 
   it("round-trips, and a DOTTED slug survives parsing", () => {
     // The reason parsing goes through the SDK: `new URL().hostname` mangles a
-    // dotted host on a non-special scheme, so `com.calimero.merostream` would
+    // dotted host on a non-special scheme, so `com.calimero.mero-stream` would
     // come back reshaped or empty.
     expect(invitationFromRaw(invitationDeepLink(CODE))).toBe(CODE);
   });

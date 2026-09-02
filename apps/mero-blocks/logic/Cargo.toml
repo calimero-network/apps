@@ -18,14 +18,14 @@ crate-type = ["cdylib", "rlib"]
 # into a manifest.json any more. `appVersion` is deliberately absent — the
 # deploy workflow resolves it from the registry with `--bump patch`.
 [package.metadata.calimero]
-package = "com.calimero.meroblocks"
+package = "com.calimero.mero-blocks"
 name = "Mero Blocks"
 description = "Minecraft-style P2P voxel sandbox. The world is a Calimero context: seed + block-edit diff + player presence, no game server."
 author = "Calimero"
 # The desktop resolves a deep link (calimero://<slug>/… and
 # https://links.calimero.network/<slug>/…) by this slug, so it MUST stay equal
 # to the package id the app's invite links carry.
-slug = "com.calimero.meroblocks"
+slug = "com.calimero.mero-blocks"
 icon = "../app/public/icon-512.png"
 tags = ["game", "sandbox", "multiplayer"]
 github = "https://github.com/calimero-network/mero-blocks"

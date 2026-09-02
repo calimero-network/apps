@@ -1,0 +1,1490 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
+import { v4 as uuid } from "uuid";
+import {
+  rpcCall, adminGet, adminUploadBlob, adminGetBlob, joinContext,
+} from "../api/rpc";
+import { resetMethodSupport, rpcWithFallback } from "../api/compat";
+import { mapLimit } from "../utils/concurrency";
+import { useSse } from "../hooks/useSse";
+import { useToast } from "../contexts/ToastContext";
+import { useEditorStore } from "../store/editorStore";
+import {
+  getLayerCanvas, peekLayerCanvas, getMaskCanvas, peekMaskCanvas,
+  setLayerCanvas, dropLayerCanvas, dropMaskCanvas, clearAllCanvases,
+} from "../store/layerCanvases";
+import {
+  bytesToImage, canvasToPngBytes, createCanvas, ctx2d, applyCurves, parseCurves,
+  applyLevels, type LevelsData,
+} from "../utils/raster";
+import { composite, invalidatePrepared } from "../utils/compositor";
+import { applyFilter } from "../utils/filters";
+import { invertSelection, selectionPathLocal } from "../utils/geometry";
+import { bakeTransform, unionBounds } from "../utils/transform";
+import { commonParentId, nextGroupName, topmostSelected } from "../utils/layerTree";
+import {
+  NEUTRAL_ADJUSTMENTS, type Adjustments, type CursorState, type DocumentInfo,
+  type FilterKind, type Layer, type LayerKind, type Member, type Role, type TextProps,
+} from "../types";
+import { buildShowcase } from "../showcase/build";
+import { findShowcase } from "../showcase";
+import type { ShowcaseProject } from "../showcase/types";
+import Toolbar from "../components/Toolbar";
+import OptionsBar from "../components/OptionsBar";
+import CanvasStage from "../components/CanvasStage";
+import LayersPanel from "../components/LayersPanel";
+import AdjustmentsPanel from "../components/AdjustmentsPanel";
+import TransformPanel from "../components/TransformPanel";
+import HistoryPanel from "../components/HistoryPanel";
+import Navigator from "../components/Navigator";
+import TopBar from "../components/TopBar";
+import Ruler from "../components/Rulers";
+import StatusBar from "../components/StatusBar";
+import CursorsOverlay from "../components/CursorsOverlay";
+import InviteModal from "../components/InviteModal";
+import SettingsModal from "../components/SettingsModal";
+import ShowcasePicker from "../components/ShowcasePicker";
+import UsernameModal from "../components/UsernameModal";
+import styles from "./EditorPage.module.css";
+
+const ts = () => Date.now();
+
+/** How many blob uploads to keep in flight while loading a showcase. Enough to
+ *  hide the round-trips, few enough that a node is not hammered by one click. */
+const UPLOAD_CONCURRENCY = 4;
+// Downloads are cheaper than uploads (no PNG encode, and `adminGetBlob` serves
+// repeat opens straight from IndexedDB), so this can sit higher than the upload
+// width without burying the node.
+const DOWNLOAD_CONCURRENCY = 6;
+
+export default function EditorPage() {
+  const { teamId, projectId } = useParams();
+  const ctxId = projectId ?? "";
+  const navigate = useNavigate();
+  const { showToast } = useToast();
+
+  const {
+    doc, layers, selectedLayerId, editingMaskOf, showRulers, panels,
+    setDoc, setLayers, upsertLayer, removeLayer, selectLayer, setEditingMask,
+    setRole, setZoom, setPan, bumpRender, canEdit, clearHistory, setSelection,
+  } = useEditorStore();
+
+  const myId = useRef<string>("");
+  const loadedBlobs = useRef<Set<string>>(new Set());
+  const lastCursor = useRef(0);
+  const refetchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const adjTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const [members, setMembers] = useState<Member[]>([]);
+  const [cursors, setCursors] = useState<CursorState[]>([]);
+  const [subgroupId, setSubgroupId] = useState("");
+  const [needName, setNeedName] = useState(false);
+  const [showInvite, setShowInvite] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [showShowcase, setShowShowcase] = useState(false);
+  /** id of the showcase currently being written to the node ("" = none) */
+  const [loadingShowcase, setLoadingShowcase] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [ready, setReady] = useState(false);
+  const [fatal, setFatal] = useState("");
+
+  // ── Identity ────────────────────────────────────────────────────────────
+  const resolveIdentity = useCallback(async (): Promise<string> => {
+    try {
+      const owned = await adminGet<string[] | { identities?: string[] }>(
+        `/contexts/${ctxId}/identities-owned`,
+      );
+      const arr = Array.isArray(owned) ? owned : owned?.identities ?? [];
+      if (arr[0]) return arr[0];
+    } catch { /* not joined yet */ }
+    try {
+      const r = await joinContext(ctxId);
+      if (r?.memberPublicKey) return r.memberPublicKey;
+    } catch { /* ignore */ }
+    const key = `mp-identity-${ctxId}`;
+    let id = localStorage.getItem(key);
+    if (!id) { id = uuid(); localStorage.setItem(key, id); }
+    return id;
+  }, [ctxId]);
+
+  // ── Loaders ───────────────────────────────────────────────────────────────
+  //
+  // Opening a showcase means pulling ~15-17 blobs. Two things used to make that
+  // the slowest thing in the app, and they compounded:
+  //
+  //   • the fetches were a `for` loop with an `await` in it, so 15 round-trips to
+  //     the node happened strictly one after another — the upload path had
+  //     already been given `mapLimit` for exactly this reason (see the showcase
+  //     writer below), the download path never was;
+  //   • every single arriving blob called `bumpRender()`, and a bump invalidates
+  //     the flattened-document cache, so the whole document was recomposited once
+  //     per blob. Measured on the bundled showcases (scripts/perf-bench.html):
+  //     Aurora 135ms, Sunset Ridge 154ms, Bauhaus 116ms of pure recompositing,
+  //     on top of a React render cascade each time.
+  //
+  // Now: bounded-concurrency fetches, and redraws coalesced onto an animation
+  // frame. The canvas still fills in progressively — that is worth keeping — but
+  // at most one recomposite per frame instead of one per blob.
+  const renderFrame = useRef<number | null>(null);
+  const scheduleRender = useCallback(() => {
+    if (renderFrame.current !== null) return;
+    renderFrame.current = requestAnimationFrame(() => {
+      renderFrame.current = null;
+      bumpRender();
+    });
+  }, [bumpRender]);
+  useEffect(() => () => {
+    if (renderFrame.current !== null) cancelAnimationFrame(renderFrame.current);
+  }, []);
+
+  const loadBlobs = useCallback(async (ls: Layer[]) => {
+    // One job per blob rather than per layer, so a layer's pixels and its mask
+    // are two independent fetches and neither waits on the other.
+    const jobs: { blobId: string; layer: Layer; kind: "pixels" | "mask" }[] = [];
+    for (const l of ls) {
+      if (l.blobId && !loadedBlobs.current.has(l.blobId)) {
+        loadedBlobs.current.add(l.blobId);
+        jobs.push({ blobId: l.blobId, layer: l, kind: "pixels" });
+      }
+      if (l.maskBlobId && !loadedBlobs.current.has(l.maskBlobId)) {
+        loadedBlobs.current.add(l.maskBlobId);
+        jobs.push({ blobId: l.maskBlobId, layer: l, kind: "mask" });
+      }
+    }
+    if (jobs.length === 0) return;
+
+    await mapLimit(jobs, DOWNLOAD_CONCURRENCY, async ({ blobId, layer, kind }) => {
+      try {
+        const buf = await adminGetBlob(blobId, ctxId);
+        const img = await bytesToImage(buf);
+        const c = kind === "pixels"
+          ? getLayerCanvas(layer.id, layer.width || img.width, layer.height || img.height)
+          : getMaskCanvas(layer.id, layer.width || img.width, layer.height || img.height);
+        const cx = ctx2d(c);
+        cx.clearRect(0, 0, c.width, c.height);
+        cx.drawImage(img, 0, 0);
+        if (kind === "pixels") setLayerCanvas(layer.id, c);
+        scheduleRender();
+      } catch {
+        // Let it be retried by the next refetch rather than leaving the layer
+        // permanently blank.
+        loadedBlobs.current.delete(blobId);
+      }
+    }).catch(() => { /* individual failures are already swallowed above */ });
+
+    // A final bump, in case the last frame's redraw landed before the last blob.
+    scheduleRender();
+  }, [ctxId, scheduleRender]);
+
+  const refetch = useCallback(async () => {
+    try {
+      const [d, ls, ms, cs] = await Promise.all([
+        rpcCall<DocumentInfo>(ctxId, "get_document", {}),
+        rpcCall<Layer[]>(ctxId, "get_layers", {}),
+        rpcCall<Member[]>(ctxId, "get_members", {}),
+        rpcCall<CursorState[]>(ctxId, "get_cursors", {}),
+      ]);
+      if (d) setDoc(d);
+      if (Array.isArray(ls)) { setLayers(ls); loadBlobs(ls); }
+      if (Array.isArray(ms)) setMembers(ms);
+      if (Array.isArray(cs)) setCursors(cs);
+    } catch { /* transient */ }
+  }, [ctxId, setDoc, setLayers, loadBlobs]);
+
+  // ── Init ────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!ctxId) { setFatal("No project specified."); return; }
+    // Hard-reset all editor state when switching projects. The route component
+    // stays mounted across :projectId changes, so the global store, the
+    // off-DOM canvas registry and the loaded-blob cache would otherwise carry
+    // one document's pixels into the next (every project looking identical).
+    const reset = useEditorStore.getState();
+    reset.setLayers([]);
+    reset.selectLayer(null);
+    reset.setSelection(null);
+    reset.clearGuides();
+    reset.clearHistory();
+    clearAllCanvases();
+    invalidatePrepared();
+    // A different project can be running a different app build, so the
+    // "this method is missing" verdicts must not carry over.
+    resetMethodSupport();
+    loadedBlobs.current = new Set();
+    setReady(false);
+    setMembers([]);
+    setCursors([]);
+
+    let cancelled = false;
+    (async () => {
+      myId.current = await resolveIdentity();
+      // Resolve the subgroup (group) id this context lives under, for
+      // SettingsModal's governance member/role queries. `/contexts/{id}` does
+      // NOT expose the owning group, so walk the namespace's subgroups and
+      // match by context id. The base58 context id can't be used directly —
+      // `/groups/{id}/members` rejects it ("expected hex-encoded 32 bytes"),
+      // which is why members showed 0. Fall back to the namespace (teamId, hex)
+      // so Settings can still list members if the walk turns up nothing.
+      try {
+        let resolved = "";
+        if (teamId) {
+          const sgRes = await adminGet<{
+            subgroups?: { groupId?: string; group_id?: string; id?: string }[];
+          }>(`/groups/${teamId}/subgroups`).catch(() => ({ subgroups: [] }));
+          const subs = Array.isArray(sgRes?.subgroups) ? sgRes.subgroups : [];
+          for (const sg of subs) {
+            const gid = sg.groupId ?? sg.group_id ?? sg.id ?? "";
+            if (!gid) continue;
+            const ctxs = await adminGet<{ contextId?: string; id?: string }[]>(
+              `/groups/${gid}/contexts`,
+            ).catch(() => [] as { contextId?: string; id?: string }[]);
+            const list = Array.isArray(ctxs) ? ctxs : [];
+            if (list.some((c) => (c.contextId ?? c.id) === ctxId)) { resolved = gid; break; }
+          }
+        }
+        if (!cancelled) setSubgroupId(resolved || teamId || "");
+      } catch { /* optional — Settings falls back to namespace scope */ }
+
+      try {
+        const d = await rpcCall<DocumentInfo>(ctxId, "get_document", {});
+        if (cancelled) return;
+        if (d) {
+          setDoc(d);
+          // fit-to-screen-ish default
+          setZoom(1);
+          setPan(48, 48);
+        }
+      } catch {
+        if (!cancelled) setFatal("Could not load the project. The node may still be syncing — try reopening.");
+        return;
+      }
+
+      const ls = await rpcCall<Layer[]>(ctxId, "get_layers", {}).catch(() => [] as Layer[]);
+      if (!cancelled && Array.isArray(ls)) { setLayers(ls); loadBlobs(ls); if (ls[0]) selectLayer(ls[ls.length - 1].id); }
+
+      const role = await rpcCall<Role>(ctxId, "my_role", {}).catch(() => "viewer" as Role);
+      if (!cancelled) setRole(role);
+
+      const ms = await rpcCall<Member[]>(ctxId, "get_members", {}).catch(() => [] as Member[]);
+      if (!cancelled && Array.isArray(ms)) {
+        setMembers(ms);
+        const alreadyMember = ms.some((m) => m.id === myId.current);
+        const storedName = localStorage.getItem("mp-username") ?? "";
+        if (!alreadyMember) {
+          setNeedName(true);
+        } else if (storedName) {
+          // Re-announce even as an existing member. `join` records this device's
+          // device→account pairing before its early return, and that pairing is
+          // the ONLY thing that lets an admin name us in a role grant — the
+          // members list an admin sees comes from the node's group membership,
+          // which knows nothing about accounts. A member whose row predates the
+          // account-keyed contract (or who has never moved a cursor) is otherwise
+          // permanently un-grantable: the grant fails with "that member hasn't
+          // opened this document yet". Idempotent — an unchanged pairing writes
+          // no CRDT delta.
+          rpcCall(ctxId, "join", { username: storedName, avatar: null, timestamp: ts() })
+            .catch(() => {});
+        }
+      }
+
+      const cs = await rpcCall<CursorState[]>(ctxId, "get_cursors", {}).catch(() => [] as CursorState[]);
+      if (!cancelled && Array.isArray(cs)) setCursors(cs);
+
+      if (!cancelled) { setReady(true); clearHistory(); }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ctxId]);
+
+  // ── Block native trackpad/browser gestures while editing ───────────────────
+  // macOS pinch maps to ctrl+wheel (page zoom) and Safari fires gesture* events;
+  // two-finger horizontal scroll triggers history back/forward. We swallow those
+  // so external inputs can't disrupt the canvas. (Canvas zoom/pan still work via
+  // the canvas's own wheel handler.)
+  useEffect(() => {
+    const onWheel = (e: WheelEvent) => { if (e.ctrlKey) e.preventDefault(); };
+    const onGesture = (e: Event) => e.preventDefault();
+    window.addEventListener("wheel", onWheel, { passive: false });
+    document.addEventListener("gesturestart", onGesture);
+    document.addEventListener("gesturechange", onGesture);
+    document.addEventListener("gestureend", onGesture);
+    return () => {
+      window.removeEventListener("wheel", onWheel);
+      document.removeEventListener("gesturestart", onGesture);
+      document.removeEventListener("gesturechange", onGesture);
+      document.removeEventListener("gestureend", onGesture);
+    };
+  }, []);
+
+  // ── SSE: debounced refetch on any contract event ──────────────────────────
+  useSse(ctxId || null, () => {
+    if (refetchTimer.current) clearTimeout(refetchTimer.current);
+    refetchTimer.current = setTimeout(() => { refetch(); }, 300);
+  });
+
+  // ── Join / username ───────────────────────────────────────────────────────
+  const handleJoin = useCallback(async (username: string) => {
+    try {
+      await rpcCall(ctxId, "join", { username, avatar: null, timestamp: ts() });
+      setNeedName(false);
+      localStorage.setItem("mp-username", username);
+      const role = await rpcCall<Role>(ctxId, "my_role", {}).catch(() => "viewer" as Role);
+      setRole(role);
+      refetch();
+    } catch (e) {
+      showToast(errMsg(e), "error");
+    }
+  }, [ctxId, setRole, refetch, showToast]);
+
+  // ── Pixel commit (raster) ───────────────────────────────────────────────
+  const commitPixels = useCallback(async (layerId: string) => {
+    const c = peekLayerCanvas(layerId);
+    if (!c) return;
+    setSaving(true);
+    try {
+      const bytes = await canvasToPngBytes(c);
+      const { blobId } = await adminUploadBlob(bytes, ctxId);
+      if (!blobId) throw new Error("blob upload failed");
+      loadedBlobs.current.add(blobId);
+      const now = ts();
+      await rpcCall(ctxId, "update_layer_content", {
+        id: layerId, blob_id: blobId, width: c.width, height: c.height, updated_at: now,
+      });
+      const l = useEditorStore.getState().layers.find((x) => x.id === layerId);
+      if (l) upsertLayer({ ...l, blobId, width: c.width, height: c.height, updatedAt: now });
+    } catch (e) {
+      showToast(errMsg(e), "error");
+    } finally {
+      setSaving(false);
+    }
+  }, [ctxId, upsertLayer, showToast]);
+
+  const commitMaskPixels = useCallback(async (layerId: string) => {
+    const c = peekMaskCanvas(layerId);
+    if (!c) return;
+    setSaving(true);
+    try {
+      const bytes = await canvasToPngBytes(c);
+      const { blobId } = await adminUploadBlob(bytes, ctxId);
+      if (!blobId) throw new Error("mask upload failed");
+      loadedBlobs.current.add(blobId);
+      const now = ts();
+      await rpcCall(ctxId, "update_layer_mask", { id: layerId, mask_blob_id: blobId, updated_at: now });
+      const l = useEditorStore.getState().layers.find((x) => x.id === layerId);
+      if (l) upsertLayer({ ...l, maskBlobId: blobId, updatedAt: now });
+    } catch (e) {
+      showToast(errMsg(e), "error");
+    } finally { setSaving(false); }
+  }, [ctxId, upsertLayer, showToast]);
+
+  // ── Metadata commit (transform / props) ───────────────────────────────────
+  const commitMeta = useCallback(async (layerId: string, patch: Partial<Layer>) => {
+    const now = ts();
+    // The contract types x/y as i64, width/height as u32, rotation/scale/opacity
+    // as integers — snapping & drag math can produce fractional values, which
+    // make borsh deserialization panic ("invalid type: floating point …").
+    // Round every numeric field defensively before sending.
+    const ri = (v: number | undefined | null) => (v == null ? null : Math.round(v));
+    const args: Record<string, unknown> = {
+      id: layerId,
+      name: patch.name ?? null,
+      visible: patch.visible ?? null,
+      locked: patch.locked ?? null,
+      opacity: ri(patch.opacity),
+      blend_mode: patch.blendMode ?? null,
+      x: ri(patch.x),
+      y: ri(patch.y),
+      width: ri(patch.width),
+      height: ri(patch.height),
+      rotation: ri(patch.rotation),
+      scale_x: ri(patch.scaleX),
+      scale_y: ri(patch.scaleY),
+      fill: patch.fill ?? null,
+      updated_at: now,
+    };
+    try {
+      await rpcCall(ctxId, "update_layer", args);
+    } catch (e) { showToast(errMsg(e), "error"); }
+  }, [ctxId, showToast]);
+
+  /**
+   * Re-parent layers, preferring the one-shot `move_layers`.
+   *
+   * A document whose installed app predates that method falls back to one
+   * `move_layer` per layer — the same result, more round-trips. Without this,
+   * grouping on an older contract failed outright with
+   * `method "move_layers" not found`.
+   */
+  const persistMoves = useCallback(async (
+    moves: Array<[string, string | null]>, updatedAt: number,
+  ) => {
+    if (moves.length === 0) return;
+    const layersNow = useEditorStore.getState().layers;
+    await rpcWithFallback(
+      "move_layers",
+      () => rpcCall(ctxId, "move_layers", { moves, updated_at: updatedAt }),
+      async () => {
+        for (const [id, parentId] of moves) {
+          const layer = layersNow.find((l) => l.id === id);
+          await rpcCall(ctxId, "move_layer", {
+            id,
+            parent_id: parentId,
+            layer_index: layer?.layerIndex ?? 0,
+            updated_at: updatedAt,
+          });
+        }
+      },
+      () => showToast(
+        "This project's app build predates folders — grouping is being saved one layer at a time.",
+      ),
+    );
+  }, [ctxId, showToast]);
+
+  /**
+   * Persist a free-transform patch via `update_transform`.
+   *
+   * Kept apart from `commitMeta` so the two never fight: position/props go
+   * through `update_layer`, rotate/scale/skew/flip/warp through here. Both are
+   * applied locally first so the canvas never waits on the network.
+   */
+  const onTransform = useCallback((id: string, patch: Partial<Layer>) => {
+    const l = useEditorStore.getState().layers.find((x) => x.id === id);
+    if (!l || !canEdit()) return;
+    const now = ts();
+    upsertLayer({ ...l, ...patch, updatedAt: now });
+    bumpRender();
+    const ri = (v: number | undefined) => (v == null ? null : Math.round(v));
+    // An older app build has no `update_transform`; rotation and scale still fit
+    // through `update_layer`, and shear/mirror/warp are told they cannot be saved
+    // rather than failing the whole call.
+    rpcWithFallback(
+      "update_transform",
+      () => rpcCall(ctxId, "update_transform", {
+        id,
+        rotation: ri(patch.rotation),
+        scale_x: ri(patch.scaleX),
+        scale_y: ri(patch.scaleY),
+        skew_x: ri(patch.skewX),
+        skew_y: ri(patch.skewY),
+        flip_h: patch.flipH ?? null,
+        flip_v: patch.flipV ?? null,
+        warp: patch.warp ?? null,
+        updated_at: now,
+      }),
+      () => commitMeta(id, {
+        rotation: patch.rotation, scaleX: patch.scaleX, scaleY: patch.scaleY,
+      }),
+      () => showToast(
+        "This project's app build predates shear, mirror and warp — those stay local; "
+        + "rotation and scale are still saved.",
+      ),
+    ).catch((e) => showToast(errMsg(e), "error"));
+  }, [ctxId, canEdit, upsertLayer, bumpRender, showToast]);
+
+  const onUpdateMeta = useCallback((id: string, patch: Partial<Layer>) => {
+    const l = useEditorStore.getState().layers.find((x) => x.id === id);
+    if (!l) return;
+    const next = { ...l, ...patch, updatedAt: ts() };
+    upsertLayer(next);
+    bumpRender();
+    if (patch.parentId !== undefined) {
+      rpcCall(ctxId, "move_layer", {
+        id, parent_id: patch.parentId ?? null, layer_index: next.layerIndex, updated_at: next.updatedAt,
+      }).catch((e) => showToast(errMsg(e), "error"));
+    } else {
+      commitMeta(id, patch);
+    }
+  }, [ctxId, upsertLayer, bumpRender, commitMeta, showToast]);
+
+  // ── Layer lifecycle ────────────────────────────────────────────────────────
+  const nextIndex = () => Math.max(0, ...useEditorStore.getState().layers.map((l) => l.layerIndex)) + 1;
+
+  const makeLayer = (kind: LayerKind): Layer => {
+    const id = uuid();
+    const w = kind === "text" ? 520 : doc?.width ?? 1280;
+    const h = kind === "text" ? 160 : doc?.height ?? 720;
+    return {
+      id,
+      name: kind === "raster" ? "Layer" : kind === "text" ? "Text" : kind === "fill" ? "Fill" : kind === "group" ? "Group" : "Adjustment",
+      kind,
+      parentId: null,
+      layerIndex: nextIndex(),
+      visible: true,
+      locked: false,
+      opacity: 100,
+      blendMode: "normal",
+      x: 0, y: 0, width: w, height: h, rotation: 0, scaleX: 100, scaleY: 100,
+      skewX: 0, skewY: 0, flipH: false, flipV: false, warp: "",
+      blobId: "",
+      maskBlobId: null,
+      fill: kind === "fill" ? useEditorStore.getState().primaryColor : "",
+      adjustments: { ...NEUTRAL_ADJUSTMENTS },
+      text: kind === "text"
+        ? { content: "Double-click to edit", fontFamily: "Inter", fontSize: 72, color: useEditorStore.getState().primaryColor, bold: true, italic: false }
+        : null,
+      createdBy: myId.current,
+      createdAt: ts(),
+      updatedAt: ts(),
+    };
+  };
+
+  const onAdd = useCallback(async (kind: LayerKind) => {
+    if (!canEdit() || !doc) return;
+    useEditorStore.getState().pushHistory([], "Add Layer"); // so the new layer is undoable
+    const layer = makeLayer(kind);
+    // Folders are referred to by name in conversation ("drag it into Header"), so
+    // a new one gets the first free number rather than a third layer called
+    // "Group" — the same helper ⌘G uses.
+    if (kind === "group") layer.name = nextGroupName(useEditorStore.getState().layers);
+    if (kind === "raster") getLayerCanvas(layer.id, layer.width, layer.height); // blank transparent
+    upsertLayer(layer);
+    selectLayer(layer.id);
+    bumpRender();
+    try { await rpcCall(ctxId, "add_layer", { layer }); }
+    catch (e) { showToast(errMsg(e), "error"); }
+  }, [ctxId, doc, canEdit, upsertLayer, selectLayer, bumpRender, showToast]);
+
+  const onDelete = useCallback(async (id: string) => {
+    // Deleting a folder lifts its children to the top level rather than taking
+    // them with it — the same rule `delete_layer` applies on the node, mirrored
+    // locally so the panel does not flash a dangling parent while the RPC flies.
+    const children = useEditorStore.getState().layers.filter((l) => l.parentId === id);
+    for (const c of children) upsertLayer({ ...c, parentId: null, updatedAt: ts() });
+    removeLayer(id);
+    dropLayerCanvas(id);
+    dropMaskCanvas(id);
+    bumpRender();
+    try { await rpcCall(ctxId, "delete_layer", { id }); }
+    catch (e) { showToast(errMsg(e), "error"); }
+  }, [ctxId, removeLayer, upsertLayer, bumpRender, showToast]);
+
+  const onDuplicate = useCallback(async (id: string) => {
+    const src = useEditorStore.getState().layers.find((l) => l.id === id);
+    if (!src || !canEdit()) return;
+    useEditorStore.getState().pushHistory([], "Duplicate Layer");
+    const copy: Layer = { ...src, id: uuid(), name: `${src.name} copy`, layerIndex: nextIndex(), blobId: "", maskBlobId: null, updatedAt: ts(), createdAt: ts() };
+    const srcCanvas = peekLayerCanvas(id);
+    if (srcCanvas) {
+      const c = getLayerCanvas(copy.id, srcCanvas.width, srcCanvas.height);
+      ctx2d(c).drawImage(srcCanvas, 0, 0);
+    }
+    upsertLayer(copy);
+    selectLayer(copy.id);
+    bumpRender();
+    try {
+      await rpcCall(ctxId, "add_layer", { layer: copy });
+      if (srcCanvas) await commitPixels(copy.id);
+    } catch (e) { showToast(errMsg(e), "error"); }
+  }, [ctxId, canEdit, upsertLayer, selectLayer, bumpRender, commitPixels, showToast]);
+
+  const onReorder = useCallback(async (topToBottom: string[]) => {
+    // top of panel = highest index
+    const n = topToBottom.length;
+    const order: Array<[string, number]> = topToBottom.map((id, i) => [id, n - 1 - i]);
+    const now = ts();
+    const cur = useEditorStore.getState().layers;
+    setLayers(cur.map((l) => {
+      const found = order.find((o) => o[0] === l.id);
+      return found ? { ...l, layerIndex: found[1], updatedAt: now } : l;
+    }));
+    bumpRender();
+    try { await rpcCall(ctxId, "reorder_layers", { order, updated_at: now }); }
+    catch (e) { showToast(errMsg(e), "error"); }
+  }, [ctxId, setLayers, bumpRender, showToast]);
+
+  /**
+   * Wrap the whole selection in a new folder — the Cmd/Ctrl-G every editor has.
+   *
+   * Three details that make it behave like a folder rather than a tag:
+   *   • members are the TOPMOST selected layers, so a layer already inside a
+   *     selected folder is not yanked out of it;
+   *   • the new folder is created inside the folder the members already share,
+   *     so grouping inside "Header" nests rather than escaping to the root;
+   *   • the folder takes the frontmost member's index and its position covers
+   *     the members' bounds, so its own x/y is meaningful when you drag it.
+   */
+  const onGroupSelected = useCallback(async () => {
+    const st = useEditorStore.getState();
+    if (!canEdit()) return;
+    const ids = topmostSelected(st.layers, st.selectedLayerIds.length > 0
+      ? st.selectedLayerIds
+      : st.selectedLayerId ? [st.selectedLayerId] : []);
+    const members = st.layers.filter((l) => ids.includes(l.id));
+    if (members.length === 0) return;
+
+    st.pushHistory([], members.length > 1 ? "Group Layers" : "Group Layer");
+    const group = makeLayer("group");
+    group.name = nextGroupName(st.layers);
+    group.parentId = commonParentId(st.layers, ids);
+    group.layerIndex = Math.max(...members.map((l) => l.layerIndex));
+    // Cover the members, so dragging the folder row reads as one object.
+    const box = groupBox(members);
+    group.x = box.x; group.y = box.y; group.width = box.w; group.height = box.h;
+
+    const now = ts();
+    upsertLayer(group);
+    for (const m of members) upsertLayer({ ...m, parentId: group.id, updatedAt: now });
+    useEditorStore.getState().setGroupCollapsed(group.id, false);
+    useEditorStore.getState().selectLayer(group.id);
+    bumpRender();
+
+    try {
+      await rpcCall(ctxId, "add_layer", { layer: group });
+      // One RPC for the whole selection where the contract has it: `move_layers`
+      // also refuses any pair that would close a cycle.
+      await persistMoves(members.map((m) => [m.id, group.id]), now);
+    } catch (e) { showToast(errMsg(e), "error"); }
+  }, [ctxId, canEdit, upsertLayer, bumpRender, persistMoves, showToast]);
+
+  /** Dissolve a folder: its children move up to the folder's own parent, and the
+   *  now-empty folder layer is deleted. Contents keep their pixels and order. */
+  const onUngroup = useCallback(async (id: string) => {
+    const st = useEditorStore.getState();
+    if (!canEdit()) return;
+    const group = st.layers.find((l) => l.id === id);
+    if (!group || group.kind !== "group") return;
+    const children = st.layers.filter((l) => l.parentId === id);
+    const grandparent = group.parentId ?? null;
+
+    st.pushHistory([], "Ungroup");
+    const now = ts();
+    for (const c of children) upsertLayer({ ...c, parentId: grandparent, updatedAt: now });
+    removeLayer(id);
+    dropLayerCanvas(id);
+    dropMaskCanvas(id);
+    useEditorStore.getState().setSelectedLayers(children.map((c) => c.id));
+    bumpRender();
+
+    try {
+      await persistMoves(children.map((c) => [c.id, grandparent]), now);
+      await rpcCall(ctxId, "delete_layer", { id });
+    } catch (e) { showToast(errMsg(e), "error"); }
+  }, [ctxId, canEdit, upsertLayer, removeLayer, bumpRender, persistMoves, showToast]);
+
+  /**
+   * Bake a layer's live transform into its pixels: render it through its own
+   * matrix + warp, then store the result as an upright layer at the transformed
+   * bounds. Painting on a rotated/warped layer works in its local space, so at
+   * some point you want the transform frozen — this is that point.
+   */
+  const onApplyTransform = useCallback(async (id: string) => {
+    const st = useEditorStore.getState();
+    const l = st.layers.find((x) => x.id === id);
+    if (!l || !canEdit()) return;
+    if (l.kind !== "raster") { showToast("Only raster layers can be baked — rasterize it first.", "error"); return; }
+    const src = peekLayerCanvas(id);
+    if (!src) { showToast("This layer has no pixels yet.", "error"); return; }
+    const neutral = l.rotation === 0 && l.scaleX === 100 && l.scaleY === 100
+      && l.skewX === 0 && l.skewY === 0 && !l.flipH && !l.flipV && !l.warp;
+    if (neutral) { showToast("Nothing to apply — this layer has no transform.", "error"); return; }
+
+    st.pushHistory([id], "Apply Transform");
+    const { canvas, x, y } = bakeTransform(l, src);
+    const target = getLayerCanvas(id, canvas.width, canvas.height);
+    target.width = canvas.width;
+    target.height = canvas.height;
+    const cx = ctx2d(target);
+    cx.clearRect(0, 0, target.width, target.height);
+    cx.drawImage(canvas, 0, 0);
+    setLayerCanvas(id, target);
+
+    const now = ts();
+    const flat: Layer = {
+      ...l, x, y, width: canvas.width, height: canvas.height,
+      rotation: 0, scaleX: 100, scaleY: 100, skewX: 0, skewY: 0,
+      flipH: false, flipV: false, warp: "", updatedAt: now,
+    };
+    upsertLayer(flat);
+    bumpRender();
+    try {
+      await commitPixels(id);
+      await commitMeta(id, { x, y, width: canvas.width, height: canvas.height });
+      await rpcCall(ctxId, "update_transform", {
+        id, rotation: 0, scale_x: 100, scale_y: 100, skew_x: 0, skew_y: 0,
+        flip_h: false, flip_v: false, warp: "", updated_at: now,
+      });
+    } catch (e) { showToast(errMsg(e), "error"); }
+  }, [ctxId, canEdit, upsertLayer, bumpRender, commitPixels, commitMeta, showToast]);
+
+  // ── Merge / flatten / rasterize ─────────────────────────────────────────────
+  // Composite `sources` (bottom→top) into one doc-sized raster layer, replace
+  // them with it, and persist (add + content + delete) on the node.
+  const bakeMerge = useCallback(async (
+    sources: Layer[], label: string, name: string, background?: string,
+  ) => {
+    if (!canEdit() || !doc || sources.length === 0) return;
+    useEditorStore.getState().pushHistory(sources.map((l) => l.id), label);
+    const flat = composite(sources, doc.width, doc.height, background ? { background } : {});
+    const targetIndex = Math.min(...sources.map((l) => l.layerIndex));
+    const merged = makeLayer("raster");
+    merged.name = name;
+    merged.x = 0; merged.y = 0; merged.width = doc.width; merged.height = doc.height;
+    merged.layerIndex = targetIndex;
+    const c = getLayerCanvas(merged.id, doc.width, doc.height);
+    const cx = ctx2d(c);
+    cx.clearRect(0, 0, c.width, c.height);
+    cx.drawImage(flat, 0, 0);
+    setLayerCanvas(merged.id, c);
+    for (const l of sources) { removeLayer(l.id); dropLayerCanvas(l.id); dropMaskCanvas(l.id); }
+    upsertLayer(merged);
+    selectLayer(merged.id);
+    bumpRender();
+    try {
+      await rpcCall(ctxId, "add_layer", { layer: merged });
+      await commitPixels(merged.id);
+      for (const l of sources) await rpcCall(ctxId, "delete_layer", { id: l.id });
+    } catch (e) { showToast(errMsg(e), "error"); }
+  }, [ctxId, doc, canEdit, upsertLayer, removeLayer, selectLayer, bumpRender, commitPixels, showToast]);
+
+  const onRasterize = useCallback(() => {
+    const sel = useEditorStore.getState().selectedLayer();
+    if (!sel) return;
+    if (sel.kind === "raster") { showToast("Layer is already raster.", "error"); return; }
+    if (sel.kind === "group") { showToast("Can't rasterize a group — flatten instead.", "error"); return; }
+    bakeMerge([sel], "Rasterize Layer", sel.name);
+  }, [bakeMerge, showToast]);
+
+  const onMergeDown = useCallback(() => {
+    const st = useEditorStore.getState();
+    const sel = st.selectedLayer();
+    if (!sel) return;
+    // the layer immediately below in z-order (same parent scope), skipping groups
+    const below = [...st.layers]
+      .filter((l) => l.kind !== "group" && l.layerIndex < sel.layerIndex)
+      .sort((a, b) => b.layerIndex - a.layerIndex)[0];
+    if (!below) { showToast("No layer below to merge into.", "error"); return; }
+    bakeMerge([below, sel], "Merge Down", below.name);
+  }, [bakeMerge, showToast]);
+
+  const onMergeVisible = useCallback(() => {
+    const st = useEditorStore.getState();
+    const visible = st.layers.filter((l) => l.visible && l.kind !== "group");
+    if (visible.length < 2) { showToast("Need at least two visible layers.", "error"); return; }
+    bakeMerge(visible, "Merge Visible", "Merged");
+  }, [bakeMerge, showToast]);
+
+  const onFlatten = useCallback(() => {
+    const st = useEditorStore.getState();
+    if (st.layers.length === 0 || !doc) return;
+    bakeMerge([...st.layers].filter((l) => l.kind !== "group"), "Flatten Image", "Background", doc.background);
+  }, [bakeMerge, doc]);
+
+  const onToggleMask = useCallback(async (id: string) => {
+    const l = useEditorStore.getState().layers.find((x) => x.id === id);
+    if (!l || !canEdit()) return;
+    if (l.maskBlobId) {
+      // remove mask
+      dropMaskCanvas(id);
+      upsertLayer({ ...l, maskBlobId: null, updatedAt: ts() });
+      setEditingMask(null);
+      bumpRender();
+      try { await rpcCall(ctxId, "update_layer_mask", { id, mask_blob_id: null, updated_at: ts() }); }
+      catch (e) { showToast(errMsg(e), "error"); }
+    } else {
+      getMaskCanvas(id, l.width, l.height); // white = fully visible
+      setEditingMask(id);
+      await commitMaskPixels(id);
+      bumpRender();
+    }
+  }, [ctxId, canEdit, upsertLayer, setEditingMask, bumpRender, commitMaskPixels, showToast]);
+
+  // ── Adjustments ─────────────────────────────────────────────────────────
+  const onAdjust = useCallback((patch: Partial<Adjustments>) => {
+    const sel = useEditorStore.getState().selectedLayer();
+    if (!sel || !canEdit()) return;
+    const adjustments = { ...sel.adjustments, ...patch };
+    upsertLayer({ ...sel, adjustments, updatedAt: ts() });
+    bumpRender();
+    if (adjTimer.current) clearTimeout(adjTimer.current);
+    const id = sel.id;
+    adjTimer.current = setTimeout(() => {
+      rpcCall(ctxId, "update_adjustments", {
+        id,
+        brightness: adjustments.brightness,
+        contrast: adjustments.contrast,
+        saturation: adjustments.saturation,
+        hue: adjustments.hue,
+        exposure: adjustments.exposure,
+        blur: adjustments.blur,
+        invert: adjustments.invert,
+        curves: adjustments.curves ?? "",
+        updated_at: ts(),
+      }).catch((e) => showToast(errMsg(e), "error"));
+    }, 350);
+  }, [ctxId, canEdit, upsertLayer, bumpRender, showToast]);
+
+  const onApplyCurves = useCallback(async (curvesJson: string) => {
+    const sel = useEditorStore.getState().selectedLayer();
+    if (!sel || !canEdit()) return;
+    const curves = parseCurves(curvesJson);
+    const c = peekLayerCanvas(sel.id);
+    if (curves && c && (sel.kind === "raster" || sel.kind === "fill")) {
+      const baked = applyCurves(c, curves);
+      const ctx = ctx2d(c);
+      ctx.clearRect(0, 0, c.width, c.height);
+      ctx.drawImage(baked, 0, 0);
+      bumpRender();
+      await commitPixels(sel.id);
+    }
+    // record the curve on the layer too
+    rpcCall(ctxId, "update_adjustments", {
+      id: sel.id,
+      brightness: sel.adjustments.brightness, contrast: sel.adjustments.contrast,
+      saturation: sel.adjustments.saturation, hue: sel.adjustments.hue,
+      exposure: sel.adjustments.exposure, blur: sel.adjustments.blur,
+      invert: sel.adjustments.invert, curves: curvesJson, updated_at: ts(),
+    }).catch(() => {});
+  }, [ctxId, canEdit, bumpRender, commitPixels]);
+
+  const onApplyLevels = useCallback(async (levels: LevelsData) => {
+    const sel = useEditorStore.getState().selectedLayer();
+    if (!sel || !canEdit()) return;
+    if (sel.kind !== "raster") { showToast("Select a raster layer for Levels.", "error"); return; }
+    const c = peekLayerCanvas(sel.id);
+    if (!c) { showToast("This layer has no pixels yet.", "error"); return; }
+    useEditorStore.getState().pushHistory([sel.id], "Levels");
+    const baked = applyLevels(c, levels);
+    const ctx = ctx2d(c);
+    ctx.clearRect(0, 0, c.width, c.height);
+    ctx.drawImage(baked, 0, 0);
+    bumpRender();
+    await commitPixels(sel.id);
+  }, [canEdit, bumpRender, commitPixels, showToast]);
+
+  // ── Image import ───────────────────────────────────────────────────────────
+  const onImportImage = useCallback(async (file: File) => {
+    if (!canEdit() || !doc) { showToast("You need editor access to add images.", "error"); return; }
+    setSaving(true);
+    try {
+      const buf = await file.arrayBuffer();
+      const img = await bytesToImage(buf, file.type || "image/png");
+      useEditorStore.getState().pushHistory([], "Place Image");
+      const layer = makeLayer("raster");
+      layer.name = file.name.replace(/\.[^.]+$/, "") || "Image";
+      layer.width = img.width;
+      layer.height = img.height;
+      layer.x = Math.round((doc.width - img.width) / 2);
+      layer.y = Math.round((doc.height - img.height) / 2);
+      const c = getLayerCanvas(layer.id, img.width, img.height);
+      ctx2d(c).drawImage(img, 0, 0);
+      upsertLayer(layer);
+      selectLayer(layer.id);
+      bumpRender();
+      await rpcCall(ctxId, "add_layer", { layer });
+      await commitPixels(layer.id);
+    } catch (e) {
+      showToast(errMsg(e), "error");
+    } finally { setSaving(false); }
+  }, [ctxId, doc, canEdit, upsertLayer, selectLayer, bumpRender, commitPixels, showToast]);
+
+  const onImportSvg = useCallback(async (file: File) => {
+    if (!canEdit() || !doc) { showToast("You need editor access to add SVGs.", "error"); return; }
+    setSaving(true);
+    try {
+      const buf = await file.arrayBuffer();
+      const img = await bytesToImage(buf, "image/svg+xml");
+      useEditorStore.getState().pushHistory([], "Place SVG");
+      // SVGs often lack an intrinsic size — fall back to a sensible box.
+      const w = img.width || Math.min(doc.width, 640);
+      const h = img.height || Math.min(doc.height, 640);
+      const layer = makeLayer("raster");
+      layer.name = file.name.replace(/\.[^.]+$/, "") || "SVG";
+      layer.width = w; layer.height = h;
+      layer.x = Math.round((doc.width - w) / 2);
+      layer.y = Math.round((doc.height - h) / 2);
+      const c = getLayerCanvas(layer.id, w, h);
+      ctx2d(c).drawImage(img, 0, 0, w, h);
+      upsertLayer(layer);
+      selectLayer(layer.id);
+      bumpRender();
+      await rpcCall(ctxId, "add_layer", { layer });
+      await commitPixels(layer.id);
+    } catch (e) {
+      showToast(errMsg(e), "error");
+    } finally { setSaving(false); }
+  }, [ctxId, doc, canEdit, upsertLayer, selectLayer, bumpRender, commitPixels, showToast]);
+
+  // ── Shape / gradient → new raster layer ────────────────────────────────────
+  const onCreateRasterLayer = useCallback(async ({ name, x, y, canvas }: { name: string; x: number; y: number; canvas: HTMLCanvasElement }) => {
+    if (!canEdit() || !doc) return;
+    useEditorStore.getState().pushHistory([], name === "Pasted" ? "Paste" : `Add ${name}`);
+    const layer = makeLayer("raster");
+    layer.name = name;
+    layer.x = x; layer.y = y;
+    layer.width = canvas.width; layer.height = canvas.height;
+    const c = getLayerCanvas(layer.id, canvas.width, canvas.height);
+    ctx2d(c).drawImage(canvas, 0, 0);
+    setLayerCanvas(layer.id, c);
+    upsertLayer(layer);
+    selectLayer(layer.id);
+    bumpRender();
+    try { await rpcCall(ctxId, "add_layer", { layer }); await commitPixels(layer.id); }
+    catch (e) { showToast(errMsg(e), "error"); }
+  }, [ctxId, doc, canEdit, upsertLayer, selectLayer, bumpRender, commitPixels, showToast]);
+
+  // ── Text layer create / commit ──────────────────────────────────────────────
+  const onCreateTextLayer = useCallback(async (x: number, y: number): Promise<string | undefined> => {
+    if (!canEdit() || !doc) return undefined;
+    useEditorStore.getState().pushHistory([], "Add Text");
+    const layer = makeLayer("text");
+    layer.x = x; layer.y = y;
+    layer.width = 320;
+    layer.height = Math.round((layer.text?.fontSize ?? 72) * 1.4);
+    layer.text = { ...(layer.text as TextProps), content: "" };
+    upsertLayer(layer);
+    selectLayer(layer.id);
+    bumpRender();
+    try { await rpcCall(ctxId, "add_layer", { layer }); }
+    catch (e) { showToast(errMsg(e), "error"); }
+    return layer.id;
+  }, [ctxId, doc, canEdit, upsertLayer, selectLayer, bumpRender, showToast]);
+
+  const onCommitText = useCallback((id: string, text: TextProps, width: number, height: number) => {
+    const l = useEditorStore.getState().layers.find((x) => x.id === id);
+    if (!l) return;
+    const now = ts();
+    upsertLayer({ ...l, text, width, height, updatedAt: now });
+    bumpRender();
+    rpcCall(ctxId, "update_text", {
+      id, content: text.content, font_family: text.fontFamily, font_size: text.fontSize,
+      color: text.color, bold: text.bold, italic: text.italic, align: text.align ?? "left", updated_at: now,
+    }).catch((e) => showToast(errMsg(e), "error"));
+    commitMeta(id, { width, height });
+  }, [ctxId, upsertLayer, bumpRender, commitMeta, showToast]);
+
+  /** Typography change from the options bar — re-fit the layer box to the text. */
+  const onUpdateText = useCallback((id: string, patch: Partial<TextProps>) => {
+    const l = useEditorStore.getState().layers.find((x) => x.id === id);
+    if (!l || !l.text) return;
+    const text = { ...l.text, ...patch };
+    const m = ctx2d(createCanvas(8, 8));
+    m.font = `${text.italic ? "italic " : ""}${text.bold ? "700 " : "400 "}${text.fontSize}px ${text.fontFamily}, sans-serif`;
+    const lines = (text.content || "Text").split("\n");
+    const width = Math.max(8, ...lines.map((s) => Math.ceil(m.measureText(s).width))) + 8;
+    const height = Math.ceil(lines.length * text.fontSize * 1.2) + 8;
+    onCommitText(id, text, width, height);
+  }, [onCommitText]);
+
+  // ── Crop the document ───────────────────────────────────────────────────────
+  const onCrop = useCallback(async (rect: { x: number; y: number; w: number; h: number }) => {
+    if (!canEdit() || !doc) return;
+    const ox = Math.round(rect.x);
+    const oy = Math.round(rect.y);
+    const w = Math.max(1, Math.round(rect.w));
+    const h = Math.max(1, Math.round(rect.h));
+    const now = ts();
+    // snapshot doc size + layer positions so the crop can be undone
+    useEditorStore.getState().pushHistory([], "Crop");
+    const moved = useEditorStore.getState().layers.map((l) => ({ ...l, x: l.x - ox, y: l.y - oy, updatedAt: now }));
+    setLayers(moved);
+    setDoc({ ...doc, width: w, height: h });
+    setSelection(null);
+    bumpRender();
+    try {
+      await rpcCall(ctxId, "update_document", { width: w, height: h });
+      for (const l of moved) await commitMeta(l.id, { x: l.x, y: l.y });
+    } catch (e) { showToast(errMsg(e), "error"); }
+  }, [ctxId, doc, canEdit, setLayers, setDoc, setSelection, bumpRender, commitMeta, showToast]);
+
+  // ── Filters (Image menu) — destructive, on the active raster/fill layer ─────
+  const onApplyFilter = useCallback(async (kind: FilterKind) => {
+    const sel = useEditorStore.getState().selectedLayer();
+    if (!sel || !canEdit()) return;
+    if (sel.kind !== "raster" && sel.kind !== "fill") {
+      showToast("Select a raster or fill layer to filter.", "error"); return;
+    }
+    // A fill layer is procedural until painted — bake its solid colour into a
+    // pixel buffer so the filter has something to act on.
+    let c = peekLayerCanvas(sel.id);
+    if (!c && sel.kind === "fill") {
+      c = getLayerCanvas(sel.id, sel.width, sel.height);
+      const fc = ctx2d(c);
+      fc.fillStyle = sel.fill || "#000000";
+      fc.fillRect(0, 0, c.width, c.height);
+    }
+    if (!c) { showToast("This layer has no pixels yet.", "error"); return; }
+    useEditorStore.getState().pushHistory([sel.id], `Filter: ${kind}`);
+    const out = applyFilter(c, kind);
+    const ctx = ctx2d(c);
+    ctx.clearRect(0, 0, c.width, c.height);
+    ctx.drawImage(out, 0, 0);
+    bumpRender();
+    await commitPixels(sel.id);
+  }, [canEdit, bumpRender, commitPixels, showToast]);
+
+  const onSelectAll = useCallback(() => {
+    const d = useEditorStore.getState().doc;
+    if (d) setSelection({ kind: "rect", x: 0, y: 0, w: d.width, h: d.height });
+  }, [setSelection]);
+  const onDeselect = useCallback(() => setSelection(null), [setSelection]);
+
+  // ── Showcase projects ─────────────────────────────────────────────────────
+  /**
+   * Load a bundled showcase into this document.
+   *
+   * It goes through the same contract calls a person would make by hand —
+   * `update_document`, `add_layer`, `update_layer_content`, `move_layers` — so
+   * every layer lands in WASM and reaches every other member, rather than living
+   * in local canvas state that vanishes on reload.
+   *
+   * Order matters: folders must exist on the node before their children name
+   * them, and pixels are uploaded per layer, so this is deliberately sequential
+   * and reports progress instead of firing forty requests at once.
+   */
+  const loadShowcase = useCallback(async (project: ShowcaseProject) => {
+    if (!canEdit()) { showToast("You need editor access to load a project.", "error"); return; }
+    setLoadingShowcase(project.id);
+    try {
+      const built = buildShowcase(project, { author: myId.current, now: ts() });
+      if (built.warnings.length > 0) {
+        // A recipe naming a folder that does not exist is an authoring bug, not a
+        // user error — load anyway (those layers land at the top level) but say so.
+        console.warn("[MeroPixArt] showcase warnings:", built.warnings);
+      }
+
+      // 1. Clear what is there. One delete per layer rather than `clear_layers`,
+      //    which is admin-only — an editor may load a showcase too.
+      const existing = useEditorStore.getState().layers;
+      for (const l of existing) {
+        removeLayer(l.id);
+        dropLayerCanvas(l.id);
+        dropMaskCanvas(l.id);
+      }
+      for (const l of existing) {
+        await rpcCall(ctxId, "delete_layer", { id: l.id }).catch(() => {});
+      }
+
+      // 2. Resize the document to the project's canvas.
+      setDoc({
+        ...(doc ?? { name: project.name, description: "", layerCount: 0, memberCount: 1, owner: null }),
+        width: project.width,
+        height: project.height,
+        background: project.background,
+      } as DocumentInfo);
+      await rpcCall(ctxId, "update_document", {
+        width: project.width, height: project.height, background: project.background,
+      }).catch((e) => showToast(errMsg(e), "error"));
+      setZoom(Math.min(1, 900 / project.width));
+      setPan(40, 40);
+
+      // 3. Register pixels locally first, so the canvas fills in as it goes.
+      for (const [id, canvas] of built.canvases) {
+        const target = getLayerCanvas(id, canvas.width, canvas.height);
+        ctx2d(target).drawImage(canvas, 0, 0);
+        setLayerCanvas(id, target);
+      }
+      for (const [id, mask] of built.masks) {
+        const layer = built.layers.find((l) => l.id === id)!;
+        const target = getMaskCanvas(id, layer.width, layer.height);
+        const mctx = ctx2d(target);
+        mctx.clearRect(0, 0, target.width, target.height);
+        mctx.drawImage(mask, 0, 0);
+      }
+      // Folders start expanded so the structure is the first thing you see.
+      for (const l of built.layers) {
+        if (l.kind === "group") useEditorStore.getState().setGroupCollapsed(l.id, false);
+      }
+      setLayers(built.layers);
+      clearHistory();
+      selectLayer(null);
+      bumpRender();
+
+      // 4. Persist.
+      //
+      // Strictly sequentially this was ~90 round-trips with a PNG encode between
+      // each — and because the per-layer commit path also writes to the store, it
+      // recomposited the whole document 28 times on the way. Loading a showcase
+      // took seconds and pinned the main thread.
+      //
+      // So: bounded-concurrency phases, and the store is written once at the end.
+      // `parentId` is applied by a single `move_layers` afterwards, which is why
+      // the layers can be created in any order.
+      await mapLimit(built.layers, UPLOAD_CONCURRENCY, (layer) =>
+        rpcCall(ctxId, "add_layer", { layer: { ...layer, parentId: null } }));
+
+      const contentPatches = await mapLimit(
+        built.layers.filter((l) => built.canvases.has(l.id) || built.masks.has(l.id)),
+        UPLOAD_CONCURRENCY,
+        async (layer) => {
+          const patch: { id: string; blobId?: string; maskBlobId?: string } = { id: layer.id };
+          const pixels = built.canvases.get(layer.id);
+          if (pixels) {
+            const { blobId } = await adminUploadBlob(await canvasToPngBytes(pixels), ctxId);
+            if (blobId) {
+              loadedBlobs.current.add(blobId);
+              patch.blobId = blobId;
+              await rpcCall(ctxId, "update_layer_content", {
+                id: layer.id, blob_id: blobId,
+                width: pixels.width, height: pixels.height, updated_at: ts(),
+              });
+            }
+          }
+          const mask = built.masks.get(layer.id);
+          if (mask) {
+            const { blobId } = await adminUploadBlob(await canvasToPngBytes(mask), ctxId);
+            if (blobId) {
+              loadedBlobs.current.add(blobId);
+              patch.maskBlobId = blobId;
+              await rpcCall(ctxId, "update_layer_mask", {
+                id: layer.id, mask_blob_id: blobId, updated_at: ts(),
+              });
+            }
+          }
+          return patch;
+        },
+      );
+
+      await persistMoves(
+        built.layers.filter((l) => l.parentId).map((l) => [l.id, l.parentId!]),
+        ts(),
+      );
+
+      // One store write for every blob id we just minted, instead of one per layer.
+      const patchById = new Map(contentPatches.map((p) => [p.id, p]));
+      setLayers(built.layers.map((l) => {
+        const patch = patchById.get(l.id);
+        return patch
+          ? { ...l, blobId: patch.blobId ?? l.blobId, maskBlobId: patch.maskBlobId ?? l.maskBlobId }
+          : l;
+      }));
+      bumpRender();
+
+      setShowShowcase(false);
+      showToast(`Loaded “${project.name}” — ${built.layers.length} layers.`, "success");
+    } catch (e) {
+      showToast(errMsg(e), "error");
+    } finally {
+      setLoadingShowcase("");
+    }
+  }, [
+    ctxId, doc, canEdit, setDoc, setLayers, selectLayer, clearHistory, removeLayer,
+    setZoom, setPan, bumpRender, persistMoves, showToast,
+  ]);
+
+  // A deep link (`?showcase=aurora`) opens straight into a populated document —
+  // that is what the "start from a showcase" option on the projects page uses.
+  const autoLoaded = useRef(false);
+  useEffect(() => {
+    if (!ready || autoLoaded.current) return;
+    const wanted = new URLSearchParams(window.location.search).get("showcase");
+    if (!wanted) return;
+    autoLoaded.current = true;
+    const project = findShowcase(wanted);
+    // Only into an empty document: a deep link must never wipe someone's work.
+    if (!project) { showToast(`Unknown showcase “${wanted}”.`, "error"); return; }
+    if (useEditorStore.getState().layers.length > 0) {
+      showToast("This project already has layers — open a showcase from the File menu to replace them.");
+      return;
+    }
+    if (!canEdit()) return;
+    loadShowcase(project);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready]);
+
+  // ── Export ───────────────────────────────────────────────────────────────
+  const onExport = useCallback((format: "png" | "jpeg" | "svg") => {
+    if (!doc) return;
+    if (format === "svg") {
+      const flat = composite(useEditorStore.getState().layers, doc.width, doc.height, { background: doc.background });
+      const dataUrl = flat.toDataURL("image/png");
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${doc.width}" height="${doc.height}" viewBox="0 0 ${doc.width} ${doc.height}"><image href="${dataUrl}" width="${doc.width}" height="${doc.height}"/></svg>`;
+      const blob = new Blob([svg], { type: "image/svg+xml" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${doc.name || "mero-pixart"}.svg`;
+      a.click();
+      URL.revokeObjectURL(url);
+      return;
+    }
+    const bg = format === "jpeg" ? (doc.background && doc.background !== "#00000000" ? doc.background : "#ffffff") : doc.background;
+    let flat = composite(useEditorStore.getState().layers, doc.width, doc.height, { background: bg });
+    if (format === "jpeg") {
+      const opaque = createCanvas(flat.width, flat.height);
+      const oc = ctx2d(opaque);
+      oc.fillStyle = "#ffffff";
+      oc.fillRect(0, 0, opaque.width, opaque.height);
+      oc.drawImage(flat, 0, 0);
+      flat = opaque;
+    }
+    const url = flat.toDataURL(format === "png" ? "image/png" : "image/jpeg", 0.92);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${doc.name || "mero-pixart"}.${format === "png" ? "png" : "jpg"}`;
+    a.click();
+  }, [doc]);
+
+  // ── Cursor broadcast ───────────────────────────────────────────────────────
+  const onCursorMove = useCallback((x: number, y: number) => {
+    const now = Date.now();
+    if (now - lastCursor.current < 1500) return;
+    lastCursor.current = now;
+    rpcCall(ctxId, "update_cursor", { x: Math.round(x), y: Math.round(y), updated_at: now }).catch(() => {});
+  }, [ctxId]);
+
+  // ── Keyboard shortcuts ─────────────────────────────────────────────────────
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const tgt = e.target as HTMLElement;
+      if (tgt && (tgt.tagName === "INPUT" || tgt.tagName === "TEXTAREA")) return;
+      const st = useEditorStore.getState();
+      const mod = e.metaKey || e.ctrlKey;
+      if (mod && e.key.toLowerCase() === "z") {
+        e.preventDefault();
+        if (e.shiftKey) st.redo(); else st.undo();
+        return;
+      }
+      if (mod && e.key.toLowerCase() === "a") {
+        e.preventDefault();
+        if (st.doc) st.setSelection({ kind: "rect", x: 0, y: 0, w: st.doc.width, h: st.doc.height });
+        return;
+      }
+      if (mod && e.key.toLowerCase() === "d") {
+        e.preventDefault();
+        st.setSelection(null);
+        return;
+      }
+      // ⌘G groups the selection, ⌘⇧G ungroups the folder it is in (or is).
+      if (mod && e.key.toLowerCase() === "g") {
+        e.preventDefault();
+        if (!st.canEdit()) return;
+        if (e.shiftKey) {
+          const primary = st.selectedLayer();
+          const target = primary?.kind === "group"
+            ? primary
+            : st.layers.find((l) => l.id === primary?.parentId && l.kind === "group");
+          if (target) onUngroup(target.id);
+        } else {
+          onGroupSelected();
+        }
+        return;
+      }
+      if (mod && e.shiftKey && e.key.toLowerCase() === "i") {
+        e.preventDefault();
+        if (st.selection) st.setSelection(invertSelection(st.selection));
+        return;
+      }
+      if (e.key === "Delete" || e.key === "Backspace") {
+        if (st.editingTextId) return;
+        const layer = st.selectedLayer();
+        if (!layer || !st.canEdit()) return;
+        e.preventDefault();
+        // Clear pixels within a selection on raster layers — and on fill layers,
+        // which we first bake into pixels (so Delete erases the selected region
+        // instead of doing nothing). Otherwise delete the selected layer(s).
+        const pixelKind = layer.kind === "raster" || layer.kind === "fill";
+        if (st.selection && pixelKind) {
+          let c = peekLayerCanvas(layer.id);
+          if (!c && layer.kind === "fill") {
+            c = getLayerCanvas(layer.id, layer.width, layer.height);
+            const fc = ctx2d(c);
+            fc.fillStyle = layer.fill || "#000000";
+            fc.fillRect(0, 0, c.width, c.height);
+          }
+          if (c) {
+            st.pushHistory([layer.id], "Clear Selection");
+            const cx = ctx2d(c);
+            cx.save();
+            cx.globalCompositeOperation = "destination-out";
+            cx.fillStyle = "#000";
+            cx.fill(selectionPathLocal(st.selection, layer, st.doc ? { width: st.doc.width, height: st.doc.height } : undefined), "evenodd");
+            cx.restore();
+            bumpRender();
+            commitPixels(layer.id);
+          }
+        } else {
+          // delete every selected layer (multi-selection), else just the active one
+          const ids = st.selectedLayerIds.length > 1 ? st.selectedLayerIds : [layer.id];
+          for (const id of ids) onDelete(id);
+        }
+        return;
+      }
+      if (!mod) {
+        const key = e.key.toLowerCase();
+        if (key === "x") { e.preventDefault(); st.swapColors(); return; }
+        if (key === "d") { e.preventDefault(); st.setPrimaryColor("#000000"); st.setSecondaryColor("#ffffff"); return; }
+        const map: Record<string, string> = {
+          v: "move", b: "brush", e: "eraser", g: "bucket", i: "eyedropper",
+          t: "text", m: "marquee", l: "lasso", h: "hand", c: "crop",
+          u: "shape", k: "clone", z: "zoom",
+        };
+        if (map[key]) st.setTool(map[key] as never);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onDelete, commitPixels, bumpRender, onGroupSelected, onUngroup]);
+
+  // ── Remote cursors transformed to screen space ─────────────────────────────
+  const screenCursors = useMemo(() => {
+    const { zoom, panX, panY } = useEditorStore.getState();
+    return cursors.map((c) => ({ ...c, x: c.x * zoom + panX, y: c.y * zoom + panY }));
+    // re-derive when cursors or view changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cursors, useEditorStore((s) => s.zoom), useEditorStore((s) => s.panX), useEditorStore((s) => s.panY)]);
+
+  const selLayer = layers.find((l) => l.id === selectedLayerId);
+  const role = useEditorStore((s) => s.myRole);
+
+  if (fatal) {
+    return (
+      <div className={styles.fatal}>
+        <p>{fatal}</p>
+        <button className="mp-btn mp-btn--primary" onClick={() => navigate(`/teams/${teamId}/projects`)}>Back to projects</button>
+      </div>
+    );
+  }
+
+  return (
+    <div className={styles.editor}>
+      <TopBar
+        docName={doc?.name ?? ""}
+        members={members}
+        role={role}
+        saving={saving}
+        onBack={() => navigate(`/teams/${teamId}/projects`)}
+        onImportImage={onImportImage}
+        onImportSvg={onImportSvg}
+        onExport={onExport}
+        onApplyFilter={onApplyFilter}
+        onSelectAll={onSelectAll}
+        onDeselect={onDeselect}
+        onAddLayer={onAdd}
+        onDuplicateLayer={onDuplicate}
+        onDeleteLayer={onDelete}
+        onGroupSelected={onGroupSelected}
+        onToggleMask={onToggleMask}
+        onRasterize={onRasterize}
+        onMergeDown={onMergeDown}
+        onMergeVisible={onMergeVisible}
+        onFlatten={onFlatten}
+        onUngroup={onUngroup}
+        onOpenShowcase={() => setShowShowcase(true)}
+        onOpenInvite={() => setShowInvite(true)}
+        onOpenSettings={() => setShowSettings(true)}
+      />
+      <OptionsBar onUpdateText={onUpdateText} onTransform={onTransform} />
+
+      <div className={styles.body}>
+        <Toolbar />
+        <div className={`${styles.canvasArea} ${showRulers ? styles.withRulers : ""}`}>
+          {showRulers && (
+            <>
+              <div className={styles.rulerCorner} />
+              <div className={styles.rulerTop}><Ruler orientation="h" /></div>
+              <div className={styles.rulerLeft}><Ruler orientation="v" /></div>
+            </>
+          )}
+          <div className={styles.canvasCell}>
+            <CanvasStage
+              commitPixels={commitPixels}
+              commitMaskPixels={commitMaskPixels}
+              commitMeta={commitMeta}
+              commitTransform={onTransform}
+              onCreateRasterLayer={onCreateRasterLayer}
+              onCreateTextLayer={onCreateTextLayer}
+              onCommitText={onCommitText}
+              onDeleteLayer={onDelete}
+              onCrop={onCrop}
+              onCursorMove={onCursorMove}
+              overlay={<CursorsOverlay cursors={screenCursors} myIdentity={myId.current} members={members} />}
+            />
+          </div>
+        </div>
+        <div className={styles.rightDock}>
+          {panels.navigator && (
+            <section className={styles.dockSection}><Navigator /></section>
+          )}
+          {panels.adjustments && (
+            <section className={styles.dockSection}>
+              <AdjustmentsPanel
+                layer={selLayer}
+                onAdjust={onAdjust}
+                onApplyCurves={onApplyCurves}
+                onApplyLevels={onApplyLevels}
+                disabled={!canEdit()}
+              />
+            </section>
+          )}
+          {panels.transform && (
+            <section className={styles.dockSection}>
+              <TransformPanel
+                layer={selLayer}
+                onTransform={onTransform}
+                onMove={(id, x, y) => onUpdateMeta(id, { x: Math.round(x), y: Math.round(y) })}
+                onApplyTransform={onApplyTransform}
+                disabled={!canEdit()}
+              />
+            </section>
+          )}
+          {panels.history && (
+            <section className={styles.dockSection}>
+              <HistoryPanel />
+            </section>
+          )}
+          {panels.layers && (
+            <section className={`${styles.dockSection} ${styles.dockGrow}`}>
+              <LayersPanel
+                onAdd={onAdd}
+                onDelete={onDelete}
+                onDuplicate={onDuplicate}
+                onUpdateMeta={onUpdateMeta}
+                onUpdateText={onUpdateText}
+                onReorder={onReorder}
+                onGroupSelected={onGroupSelected}
+                onUngroup={onUngroup}
+                onToggleMask={onToggleMask}
+              />
+            </section>
+          )}
+        </div>
+      </div>
+
+      <StatusBar />
+
+      {editingMaskOf && (
+        <div className={styles.maskBanner}>
+          Editing mask — paint black to hide, white to reveal.
+          <button onClick={() => setEditingMask(null)}>Done</button>
+        </div>
+      )}
+
+      {!ready && !fatal && <div className={styles.loading}>Loading project…</div>}
+      {showShowcase && (
+        <ShowcasePicker
+          hasContent={layers.length > 0}
+          busy={loadingShowcase}
+          onPick={loadShowcase}
+          onClose={() => setShowShowcase(false)}
+        />
+      )}
+      {needName && <UsernameModal onSubmit={handleJoin} initialValue={localStorage.getItem("mp-username") ?? ""} />}
+      {showInvite && teamId && <InviteModal teamId={teamId} onClose={() => setShowInvite(false)} />}
+      {showSettings && (
+        <SettingsModal
+          type="project"
+          id={ctxId}
+          groupId={subgroupId}
+          name={doc?.name ?? "Project"}
+          onClose={() => setShowSettings(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+function errMsg(e: unknown): string {
+  if (e instanceof Error) return e.message;
+  return String(e);
+}
+
+/** Integer box covering several layers, used to give a new folder a real
+ *  position/size instead of a document-sized placeholder. */
+function groupBox(members: Layer[]): { x: number; y: number; w: number; h: number } {
+  const b = unionBounds(members);
+  return {
+    x: Math.round(b.x),
+    y: Math.round(b.y),
+    w: Math.max(1, Math.round(b.w)),
+    h: Math.max(1, Math.round(b.h)),
+  };
+}

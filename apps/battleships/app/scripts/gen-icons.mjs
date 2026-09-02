@@ -212,7 +212,7 @@ function encodeICO(entries) {
 // ---- art -------------------------------------------------------------------
 // A targeting reticle with a struck centre — the moment the game is about.
 // Steel blue into red: distinct at 16 px from mero-stream/mero-meet (violet),
-// meropass (green) and mero-forum (amber), which share the launcher with it.
+// mero-pass (green) and mero-forum (amber), which share the launcher with it.
 
 const BG = "#0a0e14";
 const FROM = "#5eead4";

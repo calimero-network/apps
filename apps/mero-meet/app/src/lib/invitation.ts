@@ -113,7 +113,7 @@ export function decodeInvitationObject<T = Record<string, unknown>>(
  * asking the registry for that same package — so the slug IS the package id.
  * Keep equal to `slug`/`package` in `logic/Cargo.toml`.
  */
-export const APP_SLUG = "com.calimero.meromeet";
+export const APP_SLUG = "com.calimero.mero-meet";
 
 /**
  * The shareable form of a room token: a canonical HTTPS link that opens the
@@ -179,7 +179,7 @@ export const INVITATION_PARAM = "invitation";
  * Parsing goes through the SDK's `parseIntent` rather than `new URL()`, for one
  * specific reason: `calimero://<slug>/<action>` has to be split by hand,
  * because non-special-scheme host parsing mangles a dotted slug like
- * `com.calimero.meromeet`.
+ * `com.calimero.mero-meet`.
  *
  * Returns null when there is no invitation in it — including a link carrying
  * some other app's slug, which is not ours to redeem.
