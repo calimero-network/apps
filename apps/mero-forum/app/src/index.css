@@ -116,13 +116,12 @@ button.ghost { background: transparent; color: var(--muted); border: 1px solid v
 .back { color: var(--muted); font-size: 13px; display: inline-block; margin-bottom: 14px; }
 .back:hover { color: var(--text); }
 
-/* ── unauthenticated intro ──────────────────────────────────────────────────
-   Shown in place of the composer and feed until a node is connected. Before
-   this the page rendered a composer that could only throw and a feed that
-   could only be empty, with nothing explaining why. */
-.intro { padding: 56px 0 24px; }
-.intro h1 { margin: 0 0 10px; font-size: 26px; letter-spacing: -0.01em; }
-.intro p { margin: 0 0 14px; color: var(--muted); max-width: 56ch; line-height: 1.6; }
-.intro-links { display: flex; gap: 16px; }
-.intro-links a { color: var(--muted); font-size: 14px; border-bottom: 1px solid transparent; }
-.intro-links a:hover { color: var(--text); border-bottom-color: var(--border); }
+/* ── unauthenticated notice ─────────────────────────────────────────────────
+   The page keeps its chrome with no node attached (the browser e2e asserts that
+   graceful degradation), so this explains the empty feed rather than replacing
+   it. Before, there was no explanation and no way to connect at all. */
+.notice {
+  border: 1px solid var(--border); background: var(--surface); color: var(--muted);
+  border-radius: var(--radius); padding: 12px 14px; margin-bottom: 12px;
+  font-size: 14px; line-height: 1.55; max-width: 62ch;
+}
