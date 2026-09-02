@@ -1,0 +1,1234 @@
+{
+  "schema_version": "wasm-abi/1",
+  "types": {
+    "ContextDetails": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "context_id",
+          "type": {
+            "kind": "bytes",
+            "size": 32
+          }
+        },
+        {
+          "name": "context_name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "owner",
+          "type": {
+            "kind": "bytes",
+            "size": 32
+          }
+        },
+        {
+          "name": "is_private",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "participant_count",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "participants",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "ParticipantInfo"
+            }
+          }
+        },
+        {
+          "name": "document_count",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "ContextMetadata": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "context_id",
+          "type": {
+            "kind": "bytes",
+            "size": 32
+          }
+        },
+        {
+          "name": "context_name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "role",
+          "type": {
+            "$ref": "ParticipantRole"
+          }
+        },
+        {
+          "name": "joined_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "private_identity",
+          "type": {
+            "kind": "bytes",
+            "size": 32
+          }
+        },
+        {
+          "name": "shared_identity",
+          "type": {
+            "kind": "bytes",
+            "size": 32
+          }
+        }
+      ]
+    },
+    "DocumentChunk": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "text",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "embedding",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "f32"
+            }
+          }
+        },
+        {
+          "name": "start_position",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "end_position",
+          "type": {
+            "kind": "u32"
+          }
+        }
+      ]
+    },
+    "DocumentInfo": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "hash",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "uploaded_by",
+          "type": {
+            "kind": "bytes",
+            "size": 32
+          }
+        },
+        {
+          "name": "uploaded_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "status",
+          "type": {
+            "$ref": "DocumentStatus"
+          }
+        },
+        {
+          "name": "pdf_blob_id",
+          "type": {
+            "kind": "bytes",
+            "size": 32
+          }
+        },
+        {
+          "name": "size",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "embeddings",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "f32"
+            }
+          },
+          "nullable": true
+        },
+        {
+          "name": "extracted_text",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "chunks",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "DocumentChunk"
+            }
+          },
+          "nullable": true
+        }
+      ]
+    },
+    "DocumentSignature": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "signer",
+          "type": {
+            "kind": "bytes",
+            "size": 32
+          }
+        },
+        {
+          "name": "signed_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "DocumentStatus": {
+      "kind": "variant",
+      "variants": [
+        {
+          "name": "Pending"
+        },
+        {
+          "name": "PartiallySigned"
+        },
+        {
+          "name": "FullySigned"
+        }
+      ]
+    },
+    "IdentityMapping": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "private_identity",
+          "type": {
+            "kind": "bytes",
+            "size": 32
+          }
+        },
+        {
+          "name": "shared_identity",
+          "type": {
+            "kind": "bytes",
+            "size": 32
+          }
+        },
+        {
+          "name": "context_id",
+          "type": {
+            "kind": "bytes",
+            "size": 32
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "MeroSignEvent_ContextJoined": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "context_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "context_name",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "MeroSignEvent_ContextLeft": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "context_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "MeroSignEvent_DocumentDeleted": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "MeroSignEvent_DocumentSigned": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "document_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "signer",
+          "type": {
+            "kind": "bytes",
+            "size": 32
+          }
+        }
+      ]
+    },
+    "MeroSignEvent_DocumentUploaded": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "uploaded_by",
+          "type": {
+            "kind": "bytes",
+            "size": 32
+          }
+        }
+      ]
+    },
+    "MeroSignEvent_ParticipantInvited": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "user_id",
+          "type": {
+            "kind": "bytes",
+            "size": 32
+          }
+        },
+        {
+          "name": "role",
+          "type": {
+            "$ref": "ParticipantRole"
+          }
+        }
+      ]
+    },
+    "MeroSignEvent_ParticipantJoined": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "user_id",
+          "type": {
+            "kind": "bytes",
+            "size": 32
+          }
+        }
+      ]
+    },
+    "MeroSignEvent_ParticipantLeft": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "user_id",
+          "type": {
+            "kind": "bytes",
+            "size": 32
+          }
+        }
+      ]
+    },
+    "MeroSignEvent_SignatureCreated": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "size",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "MeroSignEvent_SignatureDeleted": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "MeroSignState": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "is_private",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "bool"
+            }
+          }
+        },
+        {
+          "name": "owner",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "bytes",
+              "size": 32
+            }
+          }
+        },
+        {
+          "name": "context_name",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "signatures",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "SignatureRecord"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "joined_contexts",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "ContextMetadata"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "identity_mappings",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "IdentityMapping"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "signature_count",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "u64"
+            }
+          }
+        },
+        {
+          "name": "participants",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "bytes",
+              "size": 32
+            },
+            "crdt_type": "unordered_set"
+          }
+        },
+        {
+          "name": "documents",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "DocumentInfo"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "document_signatures",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "list",
+              "items": {
+                "$ref": "DocumentSignature"
+              },
+              "crdt_type": "vector"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "permissions",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "PermissionLevel"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "consents",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "record",
+              "fields": [],
+              "crdt_type": "lww_register",
+              "inner_type": {
+                "kind": "bool"
+              }
+            },
+            "crdt_type": "unordered_map"
+          }
+        }
+      ]
+    },
+    "ParticipantInfo": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "user_id",
+          "type": {
+            "kind": "bytes",
+            "size": 32
+          }
+        },
+        {
+          "name": "permission_level",
+          "type": {
+            "$ref": "PermissionLevel"
+          }
+        }
+      ]
+    },
+    "ParticipantRole": {
+      "kind": "variant",
+      "variants": [
+        {
+          "name": "Owner"
+        },
+        {
+          "name": "Signer"
+        },
+        {
+          "name": "Viewer"
+        },
+        {
+          "name": "Unknown"
+        }
+      ]
+    },
+    "PermissionLevel": {
+      "kind": "variant",
+      "variants": [
+        {
+          "name": "Read"
+        },
+        {
+          "name": "Sign"
+        },
+        {
+          "name": "Admin"
+        }
+      ]
+    },
+    "SignatureRecord": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "blob_id",
+          "type": {
+            "kind": "bytes",
+            "size": 32
+          }
+        },
+        {
+          "name": "size",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    }
+  },
+  "methods": [
+    {
+      "name": "add_participant",
+      "params": [
+        {
+          "name": "user_id_str",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "permission",
+          "type": {
+            "$ref": "PermissionLevel"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "create_signature",
+      "params": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "blob_id_str",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "data_size",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "u64"
+      }
+    },
+    {
+      "name": "delete_document",
+      "params": [
+        {
+          "name": "document_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "delete_signature",
+      "params": [
+        {
+          "name": "signature_id",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "get_context_details",
+      "params": [
+        {
+          "name": "context_id_str",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "ContextDetails"
+      }
+    },
+    {
+      "name": "get_context_id",
+      "params": [],
+      "returns": {
+        "kind": "bytes",
+        "size": 32
+      }
+    },
+    {
+      "name": "get_document_signatures",
+      "params": [
+        {
+          "name": "document_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "DocumentSignature"
+        }
+      }
+    },
+    {
+      "name": "get_identity_mapping",
+      "params": [
+        {
+          "name": "context_id_str",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "IdentityMapping"
+      }
+    },
+    {
+      "name": "get_shared_identity",
+      "params": [
+        {
+          "name": "context_id_str",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "bytes",
+        "size": 32
+      }
+    },
+    {
+      "name": "get_user_permission",
+      "params": [
+        {
+          "name": "user_id_str",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "PermissionLevel"
+      }
+    },
+    {
+      "name": "has_consented",
+      "params": [
+        {
+          "name": "user_id_str",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "document_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "bool"
+      }
+    },
+    {
+      "name": "init",
+      "params": [
+        {
+          "name": "is_private",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "context_name",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "is_default_private_context",
+      "params": [],
+      "returns": {
+        "kind": "bool"
+      }
+    },
+    {
+      "name": "join_shared_context",
+      "params": [
+        {
+          "name": "context_id_str",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "shared_identity_str",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "context_name",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "leave_shared_context",
+      "params": [
+        {
+          "name": "context_id_str",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "list_documents",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "DocumentInfo"
+        }
+      }
+    },
+    {
+      "name": "list_joined_contexts",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "ContextMetadata"
+        }
+      }
+    },
+    {
+      "name": "list_participants",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "kind": "bytes",
+          "size": 32
+        }
+      }
+    },
+    {
+      "name": "list_signatures",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "SignatureRecord"
+        }
+      }
+    },
+    {
+      "name": "mark_participant_signed",
+      "params": [
+        {
+          "name": "document_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "user_id_str",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "register_self_as_participant",
+      "params": [],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "remove_participant",
+      "params": [
+        {
+          "name": "user_id_str",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "resolve_private_identity",
+      "params": [
+        {
+          "name": "shared_identity_str",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "bytes",
+        "size": 32
+      }
+    },
+    {
+      "name": "search_document_by_embedding",
+      "params": [
+        {
+          "name": "query_embedding",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "f32"
+            }
+          }
+        },
+        {
+          "name": "document_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      }
+    },
+    {
+      "name": "set_consent",
+      "params": [
+        {
+          "name": "user_id_str",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "document_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "sign_document",
+      "params": [
+        {
+          "name": "document_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "pdf_blob_id_str",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "file_size",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "new_hash",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "signer_id_str",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "upload_document",
+      "params": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "hash",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "pdf_blob_id_str",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "file_size",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "embeddings",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "f32"
+            }
+          },
+          "nullable": true
+        },
+        {
+          "name": "extracted_text",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "chunks",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "DocumentChunk"
+            }
+          },
+          "nullable": true
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      }
+    }
+  ],
+  "events": [
+    {
+      "name": "ContextJoined",
+      "payload": {
+        "$ref": "MeroSignEvent_ContextJoined"
+      }
+    },
+    {
+      "name": "ContextLeft",
+      "payload": {
+        "$ref": "MeroSignEvent_ContextLeft"
+      }
+    },
+    {
+      "name": "DocumentDeleted",
+      "payload": {
+        "$ref": "MeroSignEvent_DocumentDeleted"
+      }
+    },
+    {
+      "name": "DocumentSigned",
+      "payload": {
+        "$ref": "MeroSignEvent_DocumentSigned"
+      }
+    },
+    {
+      "name": "DocumentUploaded",
+      "payload": {
+        "$ref": "MeroSignEvent_DocumentUploaded"
+      }
+    },
+    {
+      "name": "ParticipantInvited",
+      "payload": {
+        "$ref": "MeroSignEvent_ParticipantInvited"
+      }
+    },
+    {
+      "name": "ParticipantJoined",
+      "payload": {
+        "$ref": "MeroSignEvent_ParticipantJoined"
+      }
+    },
+    {
+      "name": "ParticipantLeft",
+      "payload": {
+        "$ref": "MeroSignEvent_ParticipantLeft"
+      }
+    },
+    {
+      "name": "SignatureCreated",
+      "payload": {
+        "$ref": "MeroSignEvent_SignatureCreated"
+      }
+    },
+    {
+      "name": "SignatureDeleted",
+      "payload": {
+        "$ref": "MeroSignEvent_SignatureDeleted"
+      }
+    }
+  ],
+  "state_root": "MeroSignState",
+  "state_version": 1
+}

@@ -818,6 +818,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "mero-forum"
+version = "0.1.0"
+dependencies = [
+ "calimero-sdk",
+ "calimero-storage",
+ "calimero-storage-macros",
+ "hex",
+]
+
+[[package]]
 name = "mero-issue-tracker"
 version = "0.1.0"
 dependencies = [
@@ -843,6 +853,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "mero-sign"
+version = "0.1.0"
+dependencies = [
+ "calimero-sdk",
+ "calimero-storage",
+ "calimero-storage-macros",
+ "hex",
+]
+
+[[package]]
 name = "mero-stream"
 version = "0.0.2"
 dependencies = [
@@ -864,6 +884,17 @@ dependencies = [
  "calimero-storage",
  "calimero-storage-macros",
  "serde_json",
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "meropass"
+version = "0.1.0"
+dependencies = [
+ "calimero-sdk",
+ "calimero-storage",
+ "calimero-storage-macros",
+ "hex",
  "thiserror 1.0.69",
 ]
 
