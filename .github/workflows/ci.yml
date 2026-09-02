@@ -621,15 +621,42 @@ jobs:
       # ~170 MB browser download is skipped.
       - name: Install Chromium
         if: steps.pw-cache.outputs.cache-hit != 'true'
-        timeout-minutes: 8
+        timeout-minutes: 15
         working-directory: apps/${{ matrix.app }}/app
-        run: npx playwright install --with-deps chromium
+        # Same apt hang as the cache-hit step below; same bounded retry.
+        run: |
+          for attempt in 1 2 3; do
+            if timeout 300 npx playwright install --with-deps chromium; then exit 0; fi
+            echo "::warning::playwright install attempt $attempt hung or failed; retrying"
+            sleep 15
+          done
+          echo "::error::playwright install failed three times — this is the apt hang, not the app"
+          exit 1
 
+      # ⚠️ Retried, and each ATTEMPT is bounded rather than just the step.
+      #
+      # `playwright install-deps` shells out to apt, which intermittently hangs
+      # rather than failing. A bare `timeout-minutes` does not help: the step
+      # timeout FAILS THE JOB, so a transient apt stall reads as a broken app.
+      # It killed three jobs in one afternoon — Browser E2E (mero-sign) on main
+      # and (meropixart) on a PR, both with no test output at all, the log
+      # ending in `Terminate orphan process: (npm exec playwright install-deps
+      # chromium)`. A rerun passed every time.
+      #
+      # `timeout` bounds each attempt so a hang becomes a retry instead of a
+      # dead job; the step budget covers three of them.
       - name: Install Chromium OS deps (cache hit)
         if: steps.pw-cache.outputs.cache-hit == 'true'
-        timeout-minutes: 8
+        timeout-minutes: 15
         working-directory: apps/${{ matrix.app }}/app
-        run: npx playwright install-deps chromium
+        run: |
+          for attempt in 1 2 3; do
+            if timeout 240 npx playwright install-deps chromium; then exit 0; fi
+            echo "::warning::playwright install-deps attempt $attempt hung or failed; retrying"
+            sleep 15
+          done
+          echo "::error::playwright install-deps failed three times — this is the apt hang, not the app"
+          exit 1
 
       # An app opts into a specific CI suite with `test:e2e:ci`; otherwise the
       # default projects run. scaffolding-e2e needs this: its default config has
