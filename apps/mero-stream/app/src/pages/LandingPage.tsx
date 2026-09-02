@@ -93,7 +93,7 @@ export default function LandingPage() {
           </div>
           <a
             className={styles.secondary}
-            href="https://github.com/calimero-network/mero-stream"
+            href="https://github.com/calimero-network/apps/tree/main/apps/mero-stream"
             target="_blank"
             rel="noreferrer"
           >

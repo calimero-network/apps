@@ -115,3 +115,13 @@ button.ghost { background: transparent; color: var(--muted); border: 1px solid v
 
 .back { color: var(--muted); font-size: 13px; display: inline-block; margin-bottom: 14px; }
 .back:hover { color: var(--text); }
+
+/* ── unauthenticated notice ─────────────────────────────────────────────────
+   The page keeps its chrome with no node attached (the browser e2e asserts that
+   graceful degradation), so this explains the empty feed rather than replacing
+   it. Before, there was no explanation and no way to connect at all. */
+.notice {
+  border: 1px solid var(--border); background: var(--surface); color: var(--muted);
+  border-radius: var(--radius); padding: 12px 14px; margin-bottom: 12px;
+  font-size: 14px; line-height: 1.55; max-width: 62ch;
+}

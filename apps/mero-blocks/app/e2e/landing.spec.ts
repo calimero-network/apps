@@ -28,8 +28,8 @@ test.describe("landing page", () => {
     for (const href of [
       "https://www.calimero.network/",
       "https://docs.calimero.network",
-      "https://github.com/calimero-network",
-      "https://github.com/calimero-network/mero-blocks",
+      "https://github.com/calimero-network/apps",
+      "https://github.com/calimero-network/apps/tree/main/apps/mero-blocks",
       "https://x.com/CalimeroNetwork",
       "https://discord.gg/wZRC73DVpU",
       "https://www.linkedin.com/company/calimero-network/",

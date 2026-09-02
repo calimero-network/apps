@@ -205,7 +205,7 @@ export default function LandingPage() {
           <a href="#features" onClick={go('features')}>Features</a>
           <a href="#faq" onClick={go('faq')}>FAQ</a>
           <a href="https://docs.calimero.network" target="_blank" rel="noreferrer">Docs ↗</a>
-          <a href="https://github.com/calimero-network" target="_blank" rel="noreferrer">GitHub ↗</a>
+          <a href="https://github.com/calimero-network/apps/tree/main/apps/mero-issue-tracker" target="_blank" rel="noreferrer">GitHub ↗</a>
         </Nav>
         <div className="cta"><ConnectButton /></div>
       </Header>
@@ -326,7 +326,7 @@ export default function LandingPage() {
             </div>
             <div>
               <h5>Community</h5>
-              <a href="https://github.com/calimero-network" target="_blank" rel="noreferrer">GitHub</a>
+              <a href="https://github.com/calimero-network/apps/tree/main/apps/mero-issue-tracker" target="_blank" rel="noreferrer">GitHub</a>
               <a href="https://x.com/CalimeroNetwork" target="_blank" rel="noreferrer">X / Twitter</a>
               <a href="https://discord.gg/calimero" target="_blank" rel="noreferrer">Discord</a>
             </div>

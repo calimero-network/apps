@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { ConnectButton, useMero } from "@calimero-network/mero-react";
 
 import Composer from "../components/Composer";
 import InfiniteScroll from "../components/InfiniteScroll";
@@ -7,6 +8,12 @@ import type { Sort } from "../lib/forum";
 import { useFeed, useForumClient } from "../lib/forum";
 
 export default function FeedPage() {
+  // ⚠️ This app shipped with NO way to log in: no ConnectButton, no LoginModal,
+  // no `connectToNode`, not even an `isAuthenticated` read. `useForumClient()`
+  // returns null until a node is connected, so the composer threw "not
+  // connected to a node" on submit and the feed stayed permanently empty — with
+  // nothing on the page offering to fix it.
+  const { isAuthenticated } = useMero();
   const client = useForumClient();
   const [sort, setSort] = useState<Sort>("new");
   const { items, loadMore, hasMore, loading, error, reset, setItems } = useFeed(client, sort);
@@ -47,7 +54,20 @@ export default function FeedPage() {
             </button>
           ))}
         </div>
+        <ConnectButton label="Connect a node" />
       </div>
+
+      {/* The chrome below stays mounted unauthenticated on purpose — the browser
+          e2e asserts the page degrades gracefully when every read fails rather
+          than blanking. What was missing was any way OUT of that state, and any
+          explanation of it: the composer could only throw and the feed could
+          only be empty. */}
+      {!isAuthenticated && (
+        <div className="notice">
+          Connect the node you run to read and post — a forum lives in a context
+          on your own node, so there is nothing to show until then.
+        </div>
+      )}
 
       <Composer
         onSubmit={async (title, body) => {
@@ -63,7 +83,7 @@ export default function FeedPage() {
         <PostCard key={post.id} post={post} onVote={(v) => void vote(post.id, v)} />
       ))}
 
-      {!loading && items.length === 0 && !hasMore && (
+      {!loading && items.length === 0 && !hasMore && isAuthenticated && (
         <div className="empty">Nothing here yet. Start the first discussion.</div>
       )}
 
