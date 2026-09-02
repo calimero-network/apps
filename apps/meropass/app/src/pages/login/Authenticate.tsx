@@ -232,7 +232,7 @@ export default function Authenticate() {
                         variant="secondary"
                         onClick={() =>
                           window.open(
-                            'https://github.com/calimero-network',
+                            'https://github.com/calimero-network/apps/tree/main/apps/meropass',
                             '_blank',
                             'noopener,noreferrer',
                           )

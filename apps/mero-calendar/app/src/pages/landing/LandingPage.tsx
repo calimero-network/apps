@@ -120,7 +120,7 @@ export default function LandingPage() {
               FAQ
             </a>
             <a
-              href="https://github.com/calimero-network"
+              href="https://github.com/calimero-network/apps/tree/main/apps/mero-calendar"
               target="_blank"
               rel="noopener noreferrer"
               className={styles.navLink}
@@ -189,7 +189,7 @@ export default function LandingPage() {
             </button>
             <a
               className={styles.ctaSecondary}
-              href="https://github.com/calimero-network"
+              href="https://github.com/calimero-network/apps/tree/main/apps/mero-calendar"
               target="_blank"
               rel="noopener noreferrer"
             >
@@ -373,7 +373,7 @@ export default function LandingPage() {
                 Docs
               </a>
               <a
-                href="https://github.com/calimero-network"
+                href="https://github.com/calimero-network/apps/tree/main/apps/mero-calendar"
                 target="_blank"
                 rel="noopener noreferrer"
                 className={styles.footerLink}

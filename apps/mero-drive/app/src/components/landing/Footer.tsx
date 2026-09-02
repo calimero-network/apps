@@ -18,7 +18,7 @@ export const Footer: React.FC = () => {
           
           <div className="flex items-center gap-4">
             <a 
-              href="https://github.com/calimero-network" 
+              href="https://github.com/calimero-network/apps/tree/main/apps/mero-drive" 
               target="_blank"
               rel="noopener noreferrer"
               className="w-10 h-10 rounded-lg flex items-center justify-center text-text-secondary hover:text-foreground hover:bg-muted transition-colors"

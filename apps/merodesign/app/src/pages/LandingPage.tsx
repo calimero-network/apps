@@ -136,7 +136,7 @@ export default function LandingPage() {
           <nav className={styles.headerNav}>
             <a href="#features" className={styles.navLink}>Features</a>
             <a href="#faq" className={styles.navLink}>FAQ</a>
-            <a href="https://github.com/calimero-network" target="_blank" rel="noopener noreferrer" className={styles.navLink}>GitHub</a>
+            <a href="https://github.com/calimero-network/apps/tree/main/apps/merodesign" target="_blank" rel="noopener noreferrer" className={styles.navLink}>GitHub</a>
           </nav>
           <button className={styles.connectBtn} onClick={() => navigate("/login")}>
             Connect to node
@@ -154,7 +154,7 @@ export default function LandingPage() {
             <div className={styles.mobileMenu}>
               <a href="#features" className={styles.mobileMenuItem} onClick={closeMenu}>Features</a>
               <a href="#faq" className={styles.mobileMenuItem} onClick={closeMenu}>FAQ</a>
-              <a href="https://github.com/calimero-network" target="_blank" rel="noopener noreferrer" className={styles.mobileMenuItem} onClick={closeMenu}>GitHub</a>
+              <a href="https://github.com/calimero-network/apps/tree/main/apps/merodesign" target="_blank" rel="noopener noreferrer" className={styles.mobileMenuItem} onClick={closeMenu}>GitHub</a>
               <button className={styles.mobileMenuCta} onClick={() => { navigate("/login"); closeMenu(); }}>
                 Connect to node
               </button>
@@ -184,7 +184,7 @@ export default function LandingPage() {
             </button>
             <a
               className={styles.ctaSecondary}
-              href="https://github.com/calimero-network"
+              href="https://github.com/calimero-network/apps/tree/main/apps/merodesign"
               target="_blank"
               rel="noopener noreferrer"
             >
@@ -306,7 +306,7 @@ export default function LandingPage() {
               <a href="https://calimero.network" target="_blank" rel="noopener noreferrer" className={styles.footerLink}>Website</a>
               <a href="https://docs.calimero.network" target="_blank" rel="noopener noreferrer" className={styles.footerLink}>Docs</a>
               <a href="https://github.com/calimero-network/core" target="_blank" rel="noopener noreferrer" className={styles.footerLink}>Core node</a>
-              <a href="https://github.com/calimero-network" target="_blank" rel="noopener noreferrer" className={styles.footerLink}>GitHub org</a>
+              <a href="https://github.com/calimero-network/apps/tree/main/apps/merodesign" target="_blank" rel="noopener noreferrer" className={styles.footerLink}>GitHub org</a>
             </div>
             <div className={styles.footerCol}>
               <div className={styles.footerColTitle}>Community</div>

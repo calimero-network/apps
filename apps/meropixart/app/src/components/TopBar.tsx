@@ -233,7 +233,7 @@ export default function TopBar({
           </Menu>
 
           <Menu id="help" label="Help" open={menu === "help"} anyOpen={menu !== null} onToggle={setMenu}>
-            <button onClick={() => { window.open("https://github.com/calimero-network/mero-pixart", "_blank", "noopener"); close(); }}>GitHub Repository</button>
+            <button onClick={() => { window.open("https://github.com/calimero-network/apps/tree/main/apps/meropixart", "_blank", "noopener"); close(); }}>GitHub Repository</button>
             <button onClick={() => { window.open("https://calimero.network", "_blank", "noopener"); close(); }}>About Calimero</button>
           </Menu>
         </nav>

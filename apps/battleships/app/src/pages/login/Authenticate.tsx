@@ -56,7 +56,7 @@ export default function Authenticate() {
             <Button
               variant="secondary"
               onClick={() =>
-                window.open('https://github.com/calimero-network/battleships', '_blank', 'noopener,noreferrer')
+                window.open('https://github.com/calimero-network/apps/tree/main/apps/battleships', '_blank', 'noopener,noreferrer')
               }
             >
               {translations.home.github}
