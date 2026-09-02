@@ -50,15 +50,14 @@ steps:
   #
   # `create_mesh` joins its `nodes:` list in a sequential loop with NO delay
   # between them (merobox mesh.py), so a settle in front of the step only covers
-  # the FIRST node — the second joins with nothing. Each join races core's
-  # KeyDelivery window, and this scenario lost SIX consecutive CI attempts at
-  # `Create mesh with node-2 and node-3` while the one-node meshes in this same
-  # directory fail once and pass on retry.
+  # the FIRST node — the second joins with nothing and races core's KeyDelivery
+  # window. This scenario lost SIX consecutive CI attempts at
+  # `Create mesh with node-2 and node-3`, while the one-node meshes beside it
+  # fail once and pass on retry.
   #
-  # So it is spelled out the way group-3node.yml does it — which passes — giving
-  # every node its own invitation and its own settle. `outputs:` binds the same
-  # variable names the mesh used to export, so the 25 downstream references are
-  # untouched.
+  # Spelled out the way group-3node.yml does it — which passes — giving every
+  # node its own invitation and its own settle. `outputs:` keeps the variable
+  # names the mesh exported, so downstream references are untouched.
   - name: Create the namespace on node-1
     type: create_namespace
     node: e2e-node-1
@@ -106,7 +105,6 @@ steps:
     outputs:
       invite_node3: invitation
 
-  # node-3 gets its OWN settle. This is the one the mesh never gave it.
   - name: Settle before node-3 joins
     type: wait
     seconds: 12

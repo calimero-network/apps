@@ -76,12 +76,9 @@ steps:
     type: wait
     seconds: 12
 
-  # ⚠️ NOT a multi-node `create_mesh`. It joins its `nodes:` list in a sequential
-  # loop with NO delay between them (merobox mesh.py), so a settle in front of
-  # the step only covers the FIRST node — every later one joins with nothing and
-  # races core's KeyDelivery window. With three extra nodes that is three races.
-  # Spelled out the way group-3node.yml does it (which passes): one invitation
-  # and one settle per node. `outputs:` keeps the names the mesh exported.
+  # ⚠️ NOT a multi-node `create_mesh` — see authored-shared.yml. It joins its
+  # `nodes:` list sequentially with NO delay between them, so a settle in front
+  # covers only the first node; with three joiners that is three unsettled races.
   - name: Create the namespace on node-1
     type: create_namespace
     node: fuzzy-e2e-node-1
