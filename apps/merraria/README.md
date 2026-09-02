@@ -11,7 +11,10 @@ world-as-a-context architecture one dimension lower, and radically lighter —
 the entire game (engine, renderer, networking, UI) is plain TypeScript on a
 Canvas2D and bundles to **~45 kB** with zero rendering dependencies.
 
-See **[PLAN.md](./PLAN.md)** for the full design document.
+The original design document lived in `PLAN.md`; it described work that has
+since shipped and was removed when the app moved into this monorepo. `git log
+--diff-filter=D -- apps/merraria/PLAN.md` still has it if the rationale is ever
+wanted.
 
 ---
 

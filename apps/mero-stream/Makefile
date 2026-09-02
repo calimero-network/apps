@@ -18,7 +18,7 @@ help:
 	@echo "  Solo 2-node testing (two local nodes, two browser profiles):"
 	@echo "    dev-nodes      Start node1 + node2 + install app + create a stream context"
 	@echo "    dev-stop       Stop both dev nodes"
-	@echo "  See DEV-TESTING.md."
+	@echo "  See docs/DEV-TESTING.md."
 	@echo ""
 	@echo "  Fully automated 480p call (nodes + install + invite + 2 browsers):"
 	@echo "    e2e-call            Everything, headed Chrome, torn down after"

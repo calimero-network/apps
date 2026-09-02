@@ -58,7 +58,7 @@ export const IS_TAURI = detectTauri(window);
 // Mero Meet is desktop-only in production, but a real video call needs TWO
 // context members, which a single desktop instance can't provide on one laptop.
 // For solo testing we run two local nodes and point two browser profiles at
-// them — see scripts/dev-node*.sh + DEV-TESTING.md. The desktop normally hands
+// them — see scripts/dev-node*.sh + ../../../docs/DEV-TESTING.md. The desktop normally hands
 // the node + auth + room in via the URL hash; the harness builds the exact same
 // hash by hand, so when one is present we let the full app run in a plain
 // browser. Gated on import.meta.env.DEV so it can NEVER be true in a prod build.

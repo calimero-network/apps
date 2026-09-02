@@ -151,7 +151,7 @@ approach 1 removes the storage wall as well; what is left on approach 1 is a
   cannot: that the receiver's canvas holds real 640×480 pixels *and that they
   change*, with the state read from the receiver's own node. Needs real Google
   Chrome — Playwright's bundled Chromium has no proprietary codecs, so no H.264.
-  See DEV-TESTING.md.
+  See docs/DEV-TESTING.md.
 - **Two people getting into a call — ✅ IN THE UI, AND CLICKED IN A TEST.**
   `/streams` lists **namespaces** (a "stream"), `/streams/:namespaceId` lists that
   stream's **rooms** — a room being a subgroup plus the context that is the call.

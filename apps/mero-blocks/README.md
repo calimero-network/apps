@@ -11,7 +11,10 @@ real-time multiplayer game backend: block edits are CRDT contract state
 replicated peer-to-peer, players are presence heartbeats, and the game itself
 runs entirely in the browser (TypeScript + Three.js, custom voxel engine).
 
-See **[PLAN.md](./PLAN.md)** for the full design document.
+The original design document lived in `PLAN.md`; it described work that has
+since shipped and was removed when the app moved into this monorepo. `git log
+--diff-filter=D -- apps/mero-blocks/PLAN.md` still has it if the rationale is
+ever wanted.
 
 ---
 

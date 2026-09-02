@@ -11,7 +11,7 @@
 #   ./scripts/dev-node.sh --clean    # --stop + delete node home
 #
 # A video call needs TWO context members, so after this run dev-node2.sh +
-# dev-invite.sh, then dev-call.sh. See DEV-TESTING.md.
+# dev-invite.sh, then dev-call.sh. See ../docs/DEV-TESTING.md.
 
 set -euo pipefail
 
