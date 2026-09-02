@@ -18,7 +18,10 @@ test.describe("unauthenticated entry", () => {
 
   test("the page identifies itself as MeroPass", async ({ page }) => {
     await page.goto("/");
-    await expect(page).toHaveTitle(/mero-pass/i);
+    // The package is `com.calimero.mero-pass`, but the <title> is the DISPLAY
+    // name and stays "MeroPass" — the mero- rename moved identifiers, not
+    // product names. `/meropass/i` matches "MeroPass"; `/mero-pass/i` does not.
+    await expect(page).toHaveTitle(/meropass/i);
     // The brand in the navbar, not just the tab — a blank shell would still
     // have the right title.
     await expect(page.getByText("MeroPass").first()).toBeVisible();

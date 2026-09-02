@@ -403,7 +403,7 @@ export default function Toolbar({
         <input
           ref={importFileInputRef}
           type="file"
-          accept=".mero-design,application/json"
+          accept=".merodesign,application/json"
           style={{ display: "none" }}
           onChange={handleImportFileChange}
           data-testid="import-file-input"

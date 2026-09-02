@@ -1,4 +1,6 @@
-const DB_NAME = "mero-design-blobs";
+// ⚠️ Pre-rename spelling on purpose: an IndexedDB name change orphans every
+// blob already cached rather than migrating it.
+const DB_NAME = "merodesign-blobs";
 const STORE = "blobs";
 const DB_VERSION = 1;
 

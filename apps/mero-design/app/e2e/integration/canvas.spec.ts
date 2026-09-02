@@ -92,7 +92,7 @@ test.describe("Canvas with real node", () => {
         localStorage.setItem("mero:node_url", nodeUrl);
         localStorage.setItem("mero:application_id", applicationId);
         // Clear saved username so modal shows
-        localStorage.removeItem("mero-design-usernames");
+        localStorage.removeItem("merodesign-usernames");
       },
       { nodeUrl: NODE_URL, accessToken: uniqueToken, refreshToken: REFRESH, applicationId: APP_ID },
     );

@@ -833,7 +833,7 @@ test.describe("T15 – Save/Open project buttons", () => {
     expect(calls).toContain("get_elements");
     expect(calls).toContain("get_comments");
     expect(calls).toContain("get_board");
-    if (download) expect(download.suggestedFilename()).toMatch(/\.mero-design$/);
+    if (download) expect(download.suggestedFilename()).toMatch(/\.merodesign$/);
   });
 });
 

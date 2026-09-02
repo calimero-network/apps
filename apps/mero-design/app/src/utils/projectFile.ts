@@ -40,7 +40,7 @@ export async function exportProject(contextId: string): Promise<void> {
   // the Tauri webview ignores (item 9).
   await saveText(
     JSON.stringify(snapshot, null, 2),
-    `${snapshot.boardName || "mero-design"}.mero-design`,
+    `${snapshot.boardName || "mero-design"}.merodesign`,
     "application/json",
   );
 }

@@ -74,7 +74,7 @@ describe("saveBytes", () => {
   it("never uses a blob: URL under Tauri — revoking races the download", async () => {
     stubBridge();
     const clicked = captureAnchor();
-    await saveBytes(new Uint8Array([1]), "board.mero-design", "application/json");
+    await saveBytes(new Uint8Array([1]), "board.merodesign", "application/json");
     expect(clicked[0].href.startsWith("blob:")).toBe(false);
   });
 

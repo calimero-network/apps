@@ -16,6 +16,8 @@ export const useUsernameStore = create<UsernameState>()(
         set((s) => ({ usernames: { ...s.usernames, [identity]: username } })),
       getUsername: (identity) => get().usernames[identity],
     }),
-    { name: "mero-design-usernames", version: 0 },
+    // ⚠️ Keeps the pre-rename spelling on purpose: this is a localStorage key,
+    // and renaming it would silently discard every username already saved.
+    { name: "merodesign-usernames", version: 0 },
   ),
 );

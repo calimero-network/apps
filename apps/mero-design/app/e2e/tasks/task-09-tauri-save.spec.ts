@@ -71,12 +71,12 @@ test.describe("item 9: saving under Tauri", () => {
     expect(text).toContain("<svg");
   });
 
-  test("Save (.mero-design) downloads the project snapshot", async ({ page }) => {
+  test("Save (.merodesign) downloads the project snapshot", async ({ page }) => {
     await openWithBridge(page);
     await exportVia(page, "save-project");
     await expect.poll(async () => (await downloads(page)).length, { timeout: 20000 }).toBe(1);
     const [file] = await downloads(page);
-    expect(file.download.endsWith(".mero-design")).toBe(true);
+    expect(file.download.endsWith(".merodesign")).toBe(true);
     const json = await page.evaluate((href) => JSON.parse(atob(href.split(",")[1])), file.href);
     expect(json.version).toBe(1);
     expect(json.elements).toHaveLength(1);
