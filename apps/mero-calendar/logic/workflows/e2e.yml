@@ -41,6 +41,15 @@ steps:
     path: res/mero_calendar.wasm
     dev: true
 
+  # ⚠️ The nodes must be UP before the first admin call. merobox waits for
+  # container health, which is not the same as ready: on a genuinely cold
+  # host `create_namespace` returns 500 about four seconds into the run.
+  # This was masked while the teardown left the previous scenario's
+  # containers behind, because the nodes were then already warm.
+  - name: Settle before the first admin call
+    type: wait
+    seconds: 12
+
   - name: Create Namespace
     type: create_namespace
     node: calimero-node-1
