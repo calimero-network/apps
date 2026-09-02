@@ -1,0 +1,19 @@
+<!-- Hand-kept in sync with scripts/gen-icons.mjs, which generates every other
+     icon here. Same geometry in the same 64×64 design space. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="g" x1="14" y1="14" x2="50" y2="50" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#5eead4"/>
+      <stop offset="1" stop-color="#ef4444"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="#0a0e14"/>
+  <circle cx="32" cy="32" r="17" fill="none" stroke="url(#g)" stroke-width="4.5"/>
+  <g fill="url(#g)">
+    <rect x="30" y="6" width="4" height="12" rx="2"/>
+    <rect x="30" y="46" width="4" height="12" rx="2"/>
+    <rect x="6" y="30" width="12" height="4" rx="2"/>
+    <rect x="46" y="30" width="12" height="4" rx="2"/>
+  </g>
+  <circle cx="32" cy="32" r="6" fill="#ef4444"/>
+</svg>

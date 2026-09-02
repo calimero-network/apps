@@ -1,0 +1,872 @@
+{
+  "schema_version": "wasm-abi/1",
+  "types": {
+    "Board": {
+      "kind": "alias",
+      "target": {
+        "kind": "bytes"
+      }
+    },
+    "Cell": {
+      "kind": "variant",
+      "variants": [
+        {
+          "name": "Empty"
+        },
+        {
+          "name": "Ship"
+        },
+        {
+          "name": "Hit"
+        },
+        {
+          "name": "Miss"
+        },
+        {
+          "name": "Pending"
+        }
+      ]
+    },
+    "Coordinate": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "x",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "u32"
+          }
+        }
+      ]
+    },
+    "Event_AuditFailed": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "player",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "reason",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_AuditPassed": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "player",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_BoardCommitted": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "player",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "commitment",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_BoardRevealed": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "player",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_MatchEnded": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_ShipsPlaced": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_ShotFired": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "x",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "result",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_ShotProposed": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "x",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "u32"
+          }
+        }
+      ]
+    },
+    "Event_Winner": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "ExportedSeed": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "board_bytes",
+          "type": {
+            "kind": "bytes"
+          }
+        },
+        {
+          "name": "salt",
+          "type": {
+            "kind": "bytes",
+            "size": 16
+          }
+        }
+      ]
+    },
+    "Fleet": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "ships",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "Ship"
+            }
+          }
+        }
+      ]
+    },
+    "GameState": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "lobby_context_id",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "match_id",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "player1",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "bytes",
+              "size": 32
+            }
+          }
+        },
+        {
+          "name": "player2",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "bytes",
+              "size": 32
+            }
+          }
+        },
+        {
+          "name": "turn",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "bytes",
+              "size": 32
+            }
+          }
+        },
+        {
+          "name": "winner",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "bytes",
+              "size": 32
+            }
+          }
+        },
+        {
+          "name": "placed_p1",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "bool"
+            }
+          }
+        },
+        {
+          "name": "placed_p2",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "bool"
+            }
+          }
+        },
+        {
+          "name": "pending",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "$ref": "PendingShot"
+            }
+          }
+        },
+        {
+          "name": "shots_p1",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "record",
+              "fields": [],
+              "crdt_type": "lww_register",
+              "inner_type": {
+                "kind": "u32"
+              }
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "shots_p2",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "record",
+              "fields": [],
+              "crdt_type": "lww_register",
+              "inner_type": {
+                "kind": "u32"
+              }
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "commitments",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "record",
+              "fields": [],
+              "crdt_type": "lww_register",
+              "inner_type": {
+                "kind": "bytes",
+                "size": 32
+              }
+            }
+          }
+        }
+      ]
+    },
+    "OwnBoardView": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "size",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "board",
+          "type": {
+            "kind": "bytes"
+          }
+        }
+      ]
+    },
+    "PendingShot": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "x",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "shooter",
+          "type": {
+            "kind": "bytes",
+            "size": 32
+          }
+        },
+        {
+          "name": "target",
+          "type": {
+            "kind": "bytes",
+            "size": 32
+          }
+        }
+      ]
+    },
+    "PlayerBoard": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "own",
+          "type": {
+            "$ref": "Board"
+          }
+        },
+        {
+          "name": "ships",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "placed",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "salt",
+          "type": {
+            "kind": "bytes",
+            "size": 16
+          }
+        },
+        {
+          "name": "pristine",
+          "type": {
+            "kind": "bytes"
+          }
+        }
+      ]
+    },
+    "Ship": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "coordinates",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "Coordinate"
+            }
+          }
+        },
+        {
+          "name": "length",
+          "type": {
+            "kind": "u32"
+          }
+        }
+      ]
+    },
+    "ShotsView": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "size",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "shots",
+          "type": {
+            "kind": "bytes"
+          }
+        }
+      ]
+    },
+    "ValidationInput": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "board",
+          "type": {
+            "$ref": "Board"
+          },
+          "nullable": true
+        },
+        {
+          "name": "coordinates",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "Coordinate"
+            }
+          },
+          "nullable": true
+        },
+        {
+          "name": "size",
+          "type": {
+            "kind": "u32"
+          },
+          "nullable": true
+        },
+        {
+          "name": "ship_length",
+          "type": {
+            "kind": "u32"
+          },
+          "nullable": true
+        },
+        {
+          "name": "fleet_composition",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "u32"
+            }
+          },
+          "nullable": true
+        },
+        {
+          "name": "ships",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "list",
+              "items": {
+                "$ref": "Coordinate"
+              }
+            }
+          },
+          "nullable": true
+        }
+      ]
+    }
+  },
+  "methods": [
+    {
+      "name": "init",
+      "params": [
+        {
+          "name": "player1",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "player2",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "lobby_context_id",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "match_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "place_ships",
+      "params": [
+        {
+          "name": "match_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "ships",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "propose_shot",
+      "params": [
+        {
+          "name": "match_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "x",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "u32"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "acknowledge_shot",
+      "params": [
+        {
+          "name": "match_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      }
+    },
+    {
+      "name": "reveal_board",
+      "params": [
+        {
+          "name": "match_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "export_board_seed",
+      "params": [
+        {
+          "name": "match_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "ExportedSeed"
+      }
+    },
+    {
+      "name": "import_board_seed",
+      "params": [
+        {
+          "name": "match_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "board_bytes",
+          "type": {
+            "kind": "bytes"
+          }
+        },
+        {
+          "name": "salt",
+          "type": {
+            "kind": "bytes",
+            "size": 16
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "get_own_board",
+      "params": [
+        {
+          "name": "match_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "OwnBoardView"
+      }
+    },
+    {
+      "name": "get_shots",
+      "params": [
+        {
+          "name": "match_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "ShotsView"
+      }
+    },
+    {
+      "name": "get_active_match_id",
+      "params": [],
+      "returns": {
+        "kind": "string"
+      }
+    },
+    {
+      "name": "get_current_turn",
+      "params": [],
+      "returns": {
+        "kind": "string"
+      }
+    },
+    {
+      "name": "get_current_user",
+      "params": [],
+      "returns": {
+        "kind": "string"
+      }
+    },
+    {
+      "name": "acknowledge_shot_handler",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "x",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "u32"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    }
+  ],
+  "events": [
+    {
+      "name": "ShipsPlaced",
+      "payload": {
+        "$ref": "Event_ShipsPlaced"
+      }
+    },
+    {
+      "name": "BoardCommitted",
+      "payload": {
+        "$ref": "Event_BoardCommitted"
+      }
+    },
+    {
+      "name": "BoardRevealed",
+      "payload": {
+        "$ref": "Event_BoardRevealed"
+      }
+    },
+    {
+      "name": "AuditPassed",
+      "payload": {
+        "$ref": "Event_AuditPassed"
+      }
+    },
+    {
+      "name": "AuditFailed",
+      "payload": {
+        "$ref": "Event_AuditFailed"
+      }
+    },
+    {
+      "name": "ShotProposed",
+      "payload": {
+        "$ref": "Event_ShotProposed"
+      }
+    },
+    {
+      "name": "ShotFired",
+      "payload": {
+        "$ref": "Event_ShotFired"
+      }
+    },
+    {
+      "name": "Winner",
+      "payload": {
+        "$ref": "Event_Winner"
+      }
+    },
+    {
+      "name": "MatchEnded",
+      "payload": {
+        "$ref": "Event_MatchEnded"
+      }
+    }
+  ],
+  "state_root": "GameState"
+}

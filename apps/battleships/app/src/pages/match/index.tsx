@@ -1,0 +1,1004 @@
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import {
+  CopyToClipboard,
+  useToast,
+} from '@calimero-network/mero-ui';
+import {
+  useMero,
+} from '@calimero-network/mero-react';
+import { createLobbyClient, createGameClient, LobbyClient, GameClient } from '../../features/kv/api';
+import type { ContextRole } from '../../features/kv/api';
+import type { MatchSummary, MatchRecord, PlayerStatsView } from '../../generated/lobby/LobbyClient';
+import type { AllGameEvents } from '../../types/events';
+import { useGameSubscriptions } from '../../hooks/useGameSubscriptions';
+import { useBattleshipsLobby } from '../../hooks/useBattleshipsLobby';
+import { resolveEffectiveMatchId, SHIP_TARGETS, validateFleetPayload } from './config';
+
+import NavBar from '../../components/NavBar';
+import LobbySelect from '../../components/LobbySelect';
+import LobbyView from '../../components/LobbyView';
+import GameBoard from '../../components/GameBoard';
+import ShotGrid from '../../components/ShotGrid';
+import PlacementGrid from '../../components/PlacementGrid';
+import ShipSelector from '../../components/ShipSelector';
+
+// Pure error-shape predicates — hoisted out of the component so they have a
+// stable identity and don't fight react-hooks/exhaustive-deps.
+const errorMessage = (error: unknown): string =>
+  error instanceof Error ? error.message : typeof error === 'string' ? error : '';
+
+const isUninitializedError = (error: unknown): boolean =>
+  errorMessage(error).includes('Uninitialized');
+
+// merod returns one of two strings when a node touches a context whose state
+// hasn't been bootstrapped locally yet. Both recover via admin.joinContext.
+const isContextNotAvailableError = (error: unknown): boolean => {
+  const m = errorMessage(error).toLowerCase();
+  return m.includes('not available on this node') || m.includes('context not found');
+};
+
+// Fired when joinContext races ahead of the subgroup-membership delta on the
+// joiner's node. Transient — caller retries with backoff.
+const isNotMemberError = (error: unknown): boolean => {
+  const m = errorMessage(error).toLowerCase();
+  return m.includes('not a member of group') || m.includes('not a member');
+};
+
+export default function MatchPage() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const {
+    isAuthenticated,
+    isLoading: authLoading,
+    logout,
+    mero,
+    nodeUrl,
+    contextIdentity,
+  } = useMero();
+  const defaultNodeUrl =
+    import.meta.env.VITE_NODE_URL?.trim() || 'http://node1.127.0.0.1.nip.io';
+  const { show } = useToast();
+
+  const lobby = useBattleshipsLobby();
+
+  // View state
+  const [view, setView] = useState<'lobby-select' | 'lobby' | 'game'>('lobby-select');
+  const manualLobbySelect = useRef(false);
+
+  // Lobby creation form
+  const [newLobbyName, setNewLobbyName] = useState('');
+  const [invitationJson, setInvitationJson] = useState<string | null>(null);
+  const [joinInvitationInput, setJoinInvitationInput] = useState('');
+
+  // Lobby API and context
+  const [lobbyApi, setLobbyApi] = useState<LobbyClient | null>(null);
+  const [currentContext, setCurrentContext] = useState<{
+    applicationId: string;
+    contextId: string;
+    nodeUrl: string;
+  } | null>(null);
+
+  // Match API client
+  const [matchApi, setMatchApi] = useState<GameClient | null>(null);
+  const [matchContextId, setMatchContextId] = useState<string | null>(null);
+
+  // Match management
+  const [matchId, setMatchId] = useState<string>('');
+  const [runtimeMatchId, setRuntimeMatchId] = useState<string | null>(null);
+  const [player2, setPlayer2] = useState<string>('');
+  const [myMatches, setMyMatches] = useState<MatchSummary[]>([]);
+  const [creatingMatch, setCreatingMatch] = useState(false);
+  const [playerStats, setPlayerStats] = useState<PlayerStatsView | null>(null);
+  const [history, setHistory] = useState<MatchRecord[]>([]);
+
+  // Game state
+  const [size, setSize] = useState<number>(10);
+  const [ownBoard, setOwnBoard] = useState<number[]>([]);
+  const [shotsBoard, setShotsBoard] = useState<number[]>([]);
+  const [placed, setPlaced] = useState<boolean>(false);
+  const [currentTurn, setCurrentTurn] = useState<string | null>(null);
+  const [isMyTurn, setIsMyTurn] = useState<boolean>(false);
+  const [currentUser, setCurrentUser] = useState<string | null>(null);
+  const [pendingShot, setPendingShot] = useState<{ x: number; y: number } | null>(null);
+
+  // Ship placement
+  const [grid, setGrid] = useState<boolean[][]>(() =>
+    Array.from({ length: 10 }, () => Array(10).fill(false)),
+  );
+  const [selectedShip, setSelectedShip] = useState<number | null>(null);
+  const [shipCounts, setShipCounts] = useState<number[]>([0, 0, 0, 0]);
+  const [shipTargets] = useState<number[]>([...SHIP_TARGETS]);
+  const [isHorizontal, setIsHorizontal] = useState<boolean>(true);
+  const [isRemovalMode, setIsRemovalMode] = useState<boolean>(false);
+
+  // Shooting
+  const [selectedShotX, setSelectedShotX] = useState<number | null>(null);
+  const [selectedShotY, setSelectedShotY] = useState<number | null>(null);
+
+  const loadingRef = useRef<boolean>(false);
+  const effectiveMatchId = resolveEffectiveMatchId(matchId, runtimeMatchId);
+  const [matchApiReady, setMatchApiReady] = useState(false);
+
+  // Match-join progress, surfaced in the UI as a loader card while the
+  // joiner side waits for subgroup membership / context state to converge.
+  // Mirrors merobox's `wait_for_sync` semantics in the UX: each phase only
+  // advances when the local node has actually observed the precondition.
+  type MatchJoinPhase = 'idle' | 'connecting' | 'joining' | 'syncing' | 'failed';
+  const [matchJoinPhase, setMatchJoinPhase] = useState<MatchJoinPhase>('idle');
+  const [matchJoinError, setMatchJoinError] = useState<string | null>(null);
+
+  // Finish-state derived from the lobby match list. Needed because the on-chain
+  // `MatchEnded` / `Winner` event can be dropped when its state-delta arrives
+  // via periodic sync instead of gossipsub broadcast (see calimero core #2139),
+  // so we fall back to reading the lobby's authoritative `status` / `winner`.
+  const currentMatch = myMatches.find((m) => m.match_id === effectiveMatchId);
+  const matchFinished = currentMatch?.status === 'Finished';
+  const matchWinner = currentMatch?.winner ?? null;
+  const isWinner = matchFinished && matchWinner !== null && matchWinner === currentUser;
+
+  // ---------------------------------------------------------------------------
+  // Utilities
+  // ---------------------------------------------------------------------------
+
+  const sleep = (ms: number) => new Promise<void>((resolve) => { setTimeout(resolve, ms); });
+
+  const ensureMatchContextReady = useCallback(
+    async (client: GameClient, attempts = 10, delayMs = 400): Promise<void> => {
+      for (let attempt = 0; attempt < attempts; attempt += 1) {
+        try {
+          await client.getActiveMatchId();
+          return;
+        } catch (error) {
+          if (!isUninitializedError(error)) throw error;
+          if (attempt === attempts - 1) throw error;
+          await sleep(delayMs);
+        }
+      }
+    },
+    [],
+  );
+
+  // ---------------------------------------------------------------------------
+  // Navigation & auth
+  // ---------------------------------------------------------------------------
+
+  useEffect(() => {
+    // Wait for the auth SDK to finish initializing before redirecting —
+    // otherwise a transient `isAuthenticated = false` during the loading
+    // phase navigates to '/', the Authenticate page bounces back to
+    // '/lobby' (without the ?id param), and the query-string is lost.
+    if (!authLoading && !isAuthenticated) {
+      navigate('/', { state: { returnTo: location.pathname + location.search } });
+    }
+  }, [authLoading, isAuthenticated, navigate, location.pathname, location.search]);
+
+  // URL-driven lobby entry: if `/lobby?id=<ns_id>` is in the address bar,
+  // select that namespace and advance to 'lobby' view once it's ready.
+  // A bare `/lobby` (no ?id) always stays on 'lobby-select'.
+  useEffect(() => {
+    if (view !== 'lobby-select') return;
+    if (manualLobbySelect.current) return;
+    const params = new URLSearchParams(location.search);
+    const urlNsId = params.get('id');
+    if (!urlNsId) return; // bare /lobby → stay on select screen
+    // If the URL says ?id=X but we haven't selected it yet, select it.
+    if (lobby.selectedLobby?.namespaceId !== urlNsId) {
+      lobby.selectLobby(urlNsId);
+      return;
+    }
+    if (lobby.selectedLobby && lobby.lobbyJoined && lobby.lobbyContextId) {
+      setView('lobby');
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- lobby is an object ref that changes every render; we only need the specific fields listed
+  }, [view, location.search, lobby.selectedLobby, lobby.lobbyJoined, lobby.lobbyContextId]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const urlMatchId = params.get('match_id');
+    const urlContextId = params.get('context_id');
+    if (urlMatchId && urlContextId && location.pathname === '/match') {
+      setMatchId(urlMatchId);
+      setRuntimeMatchId(null);
+      setMatchContextId(urlContextId);
+      setView('game');
+    }
+  }, [location.pathname, location.search]);
+
+  // ---------------------------------------------------------------------------
+  // Board & turn loading
+  // ---------------------------------------------------------------------------
+
+  const loadBoards = useCallback(async () => {
+    if (!matchApi || !effectiveMatchId) return;
+    try {
+      const own = await matchApi.getOwnBoard({ match_id: effectiveMatchId });
+      const shots = await matchApi.getShots({ match_id: effectiveMatchId });
+      setSize(own.size);
+      const ownArr = own.board.toArray();
+      const shotsArr = shots.shots.toArray();
+      setOwnBoard(ownArr);
+      setShotsBoard(shotsArr);
+      const anyShip = ownArr.some((v) => v === 1 || v === 2 || v === 3);
+      setPlaced(anyShip);
+    } catch {
+      // board not yet available
+    }
+  }, [matchApi, effectiveMatchId]);
+
+  const loadTurnInfo = useCallback(async () => {
+    if (!matchApi || !effectiveMatchId) return;
+    try {
+      const turn = await matchApi.getCurrentTurn();
+      setCurrentTurn(turn);
+    } catch {
+      // turn info not yet available
+    }
+  }, [matchApi, effectiveMatchId]);
+
+  useEffect(() => {
+    if (currentUser && currentTurn) {
+      setIsMyTurn(currentUser === currentTurn);
+    }
+  }, [currentTurn, currentUser]);
+
+  const handleBoardUpdate = useCallback(() => { loadBoards(); loadTurnInfo(); }, [loadBoards, loadTurnInfo]);
+  const handleTurnUpdate = useCallback(() => { loadTurnInfo(); }, [loadTurnInfo]);
+
+  const refreshMatchList = useCallback(async () => {
+    if (!lobbyApi) return;
+    try {
+      const summaries = await lobbyApi.getMatches();
+      setMyMatches(summaries);
+    } catch { /* non-critical */ }
+  }, [lobbyApi]);
+
+  const refreshHistory = useCallback(async () => {
+    if (!lobbyApi) return;
+    try {
+      const records = await lobbyApi.getHistory();
+      setHistory(records);
+    } catch { /* non-critical */ }
+  }, [lobbyApi]);
+
+  const refreshPlayerStats = useCallback(async () => {
+    if (!lobbyApi || !currentUser) return;
+    try {
+      const stats = await lobbyApi.getPlayerStats({ player: currentUser });
+      setPlayerStats(stats);
+    } catch { /* non-critical — no record yet for this player */ }
+  }, [lobbyApi, currentUser]);
+
+  // Initial fetch + refresh whenever the lobby client or current user changes.
+  useEffect(() => { refreshHistory(); }, [refreshHistory]);
+  useEffect(() => { refreshPlayerStats(); }, [refreshPlayerStats]);
+
+  // Safety-net poll for match status. The `MatchEnded` / `Winner` events are
+  // emitted from the game context and delivered over SSE, but when the winning
+  // delta arrives on the losing node via sync catch-up instead of a gossipsub
+  // broadcast the event handler never fires (calimero core #2139). Polling the
+  // lobby's authoritative match list every 5s while a game is active lets the
+  // UI transition to the finish state within the poll interval even when the
+  // event is dropped.
+  useEffect(() => {
+    if (view !== 'game' || !lobbyApi) return;
+    const interval = setInterval(() => { refreshMatchList(); }, 5000);
+    return () => clearInterval(interval);
+  }, [view, lobbyApi, refreshMatchList]);
+
+  const handleGameEvent = useCallback(
+    (event: AllGameEvents) => {
+      if (event.type === 'ShotProposed' && !isMyTurn && typeof event.x === 'number' && typeof event.y === 'number') {
+        setPendingShot({ x: event.x, y: event.y });
+      }
+      if (event.type === 'ShotFired' || event.type === 'MatchEnded' || event.type === 'Winner') {
+        setPendingShot(null);
+      }
+      if (event.type === 'MatchListUpdated' || event.type === 'MatchCreated' || event.type === 'MatchEnded' || event.type === 'Winner') {
+        refreshMatchList();
+        refreshHistory();
+      }
+      if (event.type === 'PlayerStatsUpdated') {
+        refreshPlayerStats();
+      }
+    },
+    [isMyTurn, refreshMatchList, refreshHistory, refreshPlayerStats],
+  );
+
+  // ---------------------------------------------------------------------------
+  // Subscriptions
+  // ---------------------------------------------------------------------------
+
+  const subscriptionContextId = view === 'game' && matchContextId
+    ? matchContextId
+    : (currentContext?.contextId || '');
+
+  const lobbySubscriptionContextId =
+    view === 'game' ? (currentContext?.contextId ?? undefined) : undefined;
+
+  const { isSubscribed: isEventSubscribed } = useGameSubscriptions({
+    contextId: subscriptionContextId,
+    lobbyContextId: lobbySubscriptionContextId,
+    matchId: effectiveMatchId,
+    onBoardUpdate: handleBoardUpdate,
+    onTurnUpdate: handleTurnUpdate,
+    onGameEvent: handleGameEvent,
+  });
+
+  // ---------------------------------------------------------------------------
+  // Lobby API init
+  // ---------------------------------------------------------------------------
+
+  useEffect(() => {
+    if (!mero || !lobby.lobbyContextId) {
+      return;
+    }
+
+    const lobbyContextId = lobby.lobbyContextId;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        // Resolve executor identity
+        let executorKey = lobby.executorPublicKey;
+        if (!executorKey) {
+          try {
+            const { identities } = await mero.admin.getContextIdentitiesOwned(lobbyContextId);
+            if (identities.length > 0) executorKey = identities[0];
+          } catch {
+            // context identity lookup failed
+          }
+        }
+        if (!executorKey) executorKey = contextIdentity;
+        if (!executorKey || cancelled) return;
+
+        const { client, context } = await createLobbyClient(mero, {
+          contextId: lobbyContextId,
+          contextIdentity: executorKey,
+          role: 'lobby' as ContextRole,
+        });
+        if (cancelled) return;
+        setLobbyApi(client);
+        setCurrentContext({
+          applicationId: context.applicationId,
+          contextId: context.contextId,
+          nodeUrl: nodeUrl || defaultNodeUrl,
+        });
+        try { const summaries = await client.getMatches(); if (!cancelled) setMyMatches(summaries); } catch { /* noop */ }
+        if (!cancelled) setCurrentUser(executorKey);
+      } catch (e) {
+        console.error('Lobby API init failed:', e);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [contextIdentity, defaultNodeUrl, lobby.lobbyContextId, lobby.executorPublicKey, mero, nodeUrl]);
+
+  // ---------------------------------------------------------------------------
+  // Match API init
+  // ---------------------------------------------------------------------------
+
+  useEffect(() => {
+    const executorKey = lobby.executorPublicKey ?? contextIdentity;
+    // Reset all join state on any precondition miss — including a missing
+    // executor identity. Without resetting, a previous run that set
+    // matchJoinPhase = 'connecting' could leave the loader card visible
+    // forever if a dep change drops executorKey before the join completes.
+    if (!mero || !matchContextId || view !== 'game' || !executorKey) {
+      setMatchApi(null);
+      setMatchApiReady(false);
+      setMatchJoinPhase('idle');
+      setMatchJoinError(null);
+      return;
+    }
+
+    let cancelled = false;
+    setMatchApiReady(false);
+    setMatchJoinError(null);
+    setMatchJoinPhase('connecting');
+
+    // Build the match GameClient, retrying through the two transient races
+    // the joiner-side hits when match deltas arrive in any order:
+    //
+    //   1. The match context-state hasn't been bootstrapped on this node yet
+    //      → createGameClient throws "context not available" → we explicitly
+    //        admin.joinContext() and retry.
+    //   2. The subgroup-membership delta hasn't been processed yet, so
+    //      joinContext throws "not a member of group" → retry with backoff
+    //        until the membership op converges.
+    //
+    // Each phase advances the visible loader so the user sees the same
+    // sync progression merobox enforces with `wait_for_sync` between steps.
+    const buildClient = () =>
+      createGameClient(mero, {
+        contextId: matchContextId,
+        contextIdentity: executorKey,
+        role: 'match' as ContextRole,
+      });
+
+    // Up to ~30s of joinContext retries (10 attempts: 200ms, 400ms, ... up
+    // to 3s, then 3s thereafter). Three full broadcast/heartbeat cycles is
+    // typically enough for the membership op to land even on a noisy mesh.
+    const joinContextWithBackoff = async (): Promise<void> => {
+      const attempts = 10;
+      for (let i = 0; i < attempts; i += 1) {
+        if (cancelled) return;
+        try {
+          await mero.admin.joinContext(matchContextId);
+          return;
+        } catch (joinErr) {
+          if (!isNotMemberError(joinErr) || i === attempts - 1) throw joinErr;
+          const delay = Math.min(3000, 200 * 2 ** i);
+          await sleep(delay);
+        }
+      }
+    };
+
+    (async () => {
+      try {
+        let client: GameClient;
+        try {
+          ({ client } = await buildClient());
+        } catch (firstErr) {
+          if (!isContextNotAvailableError(firstErr)) throw firstErr;
+          if (cancelled) return;
+          setMatchJoinPhase('joining');
+          await joinContextWithBackoff();
+          if (cancelled) return;
+          ({ client } = await buildClient());
+        }
+
+        if (cancelled) return;
+        setMatchJoinPhase('syncing');
+        await ensureMatchContextReady(client);
+        if (cancelled) return;
+        setMatchApi(client);
+        setMatchApiReady(true);
+        setMatchJoinPhase('idle');
+      } catch (e) {
+        if (cancelled) return;
+        console.error('Match join failed:', e);
+        setMatchApi(null);
+        setMatchApiReady(false);
+        setMatchJoinError(errorMessage(e) || 'Failed to join match');
+        setMatchJoinPhase('failed');
+        show({ title: 'Failed to join match', variant: 'error' });
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [contextIdentity, lobby.executorPublicKey, matchContextId, mero, show, view, ensureMatchContextReady]);
+
+  // Fetch runtime match ID
+  useEffect(() => {
+    if (!matchApi || view !== 'game') { setRuntimeMatchId(null); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const activeId = await matchApi.getActiveMatchId();
+        if (!cancelled) { setRuntimeMatchId(typeof activeId === 'string' && activeId.trim().length > 0 ? activeId : null); }
+      } catch { if (!cancelled) setRuntimeMatchId(null); }
+    })();
+    return () => { cancelled = true; };
+  }, [matchApi, view]);
+
+  // ---------------------------------------------------------------------------
+  // Actions
+  // ---------------------------------------------------------------------------
+
+  const createMatch = useCallback(async () => {
+    if (!lobbyApi || !mero || !currentContext || !lobby.namespaceId) {
+      console.warn('[createMatch] blocked:', { lobbyApi: !!lobbyApi, mero: !!mero, currentContext: !!currentContext, namespaceId: lobby.namespaceId });
+      show({ title: 'Lobby not ready yet — please wait a moment', variant: 'warning' });
+      return;
+    }
+    setCreatingMatch(true);
+    try {
+      const id = await lobbyApi.createMatch({ player2 });
+      show({ title: `Match allocated: ${id}`, variant: 'success' });
+
+      const { groupId: matchSubgroupId } = await mero.admin.createGroupInNamespace(lobby.namespaceId, { alias: `match-${id}` });
+      await mero.admin.addGroupMembers(matchSubgroupId, { members: [{ identity: player2, role: 'Member' }] });
+
+      const executorKey = lobby.executorPublicKey ?? contextIdentity;
+      const initParams = JSON.stringify({ player1: executorKey, player2, lobby_context_id: currentContext.contextId, match_id: id });
+      const initBytes = Array.from(new TextEncoder().encode(initParams));
+
+      const { contextId: newContextId } = await mero.admin.createContext({
+        applicationId: currentContext.applicationId,
+        initializationParams: initBytes,
+        groupId: matchSubgroupId,
+        serviceName: 'game',
+      });
+
+      await lobbyApi.setMatchContextId({ match_id: id, context_id: newContextId });
+      try { const summaries = await lobbyApi.getMatches(); setMyMatches(summaries); } catch { /* noop */ }
+
+      setMatchId(id);
+      setRuntimeMatchId(null);
+      setMatchContextId(newContextId);
+      setView('game');
+      navigate(`/match?match_id=${encodeURIComponent(id)}&context_id=${encodeURIComponent(newContextId)}`, { replace: true });
+      show({ title: 'Match created', variant: 'success' });
+    } catch (e) {
+      console.error('createMatch', e);
+      show({ title: e instanceof Error ? e.message : 'Failed to create match', variant: 'error' });
+    } finally {
+      setCreatingMatch(false);
+    }
+  }, [lobbyApi, mero, currentContext, player2, lobby.executorPublicKey, lobby.namespaceId, contextIdentity, show, navigate]);
+
+  const openGame = useCallback((id: string, contextId: string) => {
+    setMatchId(id);
+    setRuntimeMatchId(null);
+    setMatchContextId(contextId);
+    setView('game');
+    navigate(`/match?match_id=${encodeURIComponent(id)}&context_id=${encodeURIComponent(contextId)}`, { replace: true });
+  }, [navigate]);
+
+  useEffect(() => {
+    if (view === 'game') { loadBoards(); loadTurnInfo(); }
+  }, [view, loadBoards, loadTurnInfo]);
+
+  // ---------------------------------------------------------------------------
+  // Ship placement logic
+  // ---------------------------------------------------------------------------
+
+  const floodFillShip = (
+    g: boolean[][], visited: boolean[][], startX: number, startY: number, sz: number,
+  ): [number, number][] => {
+    const ship: [number, number][] = [];
+    const stack: [number, number][] = [[startX, startY]];
+    while (stack.length > 0) {
+      const [cx, cy] = stack.pop()!;
+      if (cx < 0 || cx >= sz || cy < 0 || cy >= sz || visited[cy][cx] || !g[cy][cx]) continue;
+      visited[cy][cx] = true;
+      ship.push([cx, cy]);
+      stack.push([cx + 1, cy], [cx - 1, cy], [cx, cy + 1], [cx, cy - 1]);
+    }
+    return ship;
+  };
+
+  const toggleCell = useCallback(
+    (x: number, y: number) => {
+      if (isRemovalMode) {
+        if (!grid[y][x]) return;
+        const visited = Array.from({ length: size }, () => Array(size).fill(false));
+        const ship = floodFillShip(grid, visited, x, y, size);
+        if (ship.length > 0) {
+          const shipLen = ship.length;
+          if (shipLen >= 2 && shipLen <= 5) {
+            const idx = shipLen - 2;
+            setShipCounts((prev) => { const next = [...prev]; next[idx] = Math.max(0, next[idx] - 1); return next; });
+          }
+          setGrid((prev) => { const next = prev.map((row) => row.slice()); ship.forEach(([sx, sy]) => (next[sy][sx] = false)); return next; });
+        }
+      } else if (selectedShip === null) {
+        show({ title: 'Select a ship length first', variant: 'warning' });
+      } else {
+        const shipLen = selectedShip + 2;
+        if (shipCounts[selectedShip] >= shipTargets[selectedShip]) {
+          show({ title: `Already placed ${shipTargets[selectedShip]} ship(s) of length ${shipLen}`, variant: 'warning' });
+          return;
+        }
+        const coords: [number, number][] = [];
+        for (let i = 0; i < shipLen; i++) {
+          const nx = isHorizontal ? x + i : x;
+          const ny = isHorizontal ? y : y + i;
+          if (nx >= size || ny >= size || grid[ny][nx]) break;
+          coords.push([nx, ny]);
+        }
+        if (coords.length === shipLen) {
+          const coordsSet = new Set(coords.map(([nx, ny]) => `${nx},${ny}`));
+          const hasAdjacentExisting = coords.some(([nx, ny]) =>
+            [[nx+1,ny],[nx-1,ny],[nx,ny+1],[nx,ny-1],[nx+1,ny+1],[nx+1,ny-1],[nx-1,ny+1],[nx-1,ny-1]].some(([ax, ay]) => {
+              if (ax < 0 || ay < 0 || ax >= size || ay >= size) return false;
+              if (coordsSet.has(`${ax},${ay}`)) return false;
+              return grid[ay][ax];
+            }),
+          );
+          if (hasAdjacentExisting) { show({ title: 'Ships cannot touch each other', variant: 'error' }); return; }
+          setGrid((prev) => { const next = prev.map((row) => row.slice()); coords.forEach(([nx, ny]) => (next[ny][nx] = true)); return next; });
+          setShipCounts((prev) => { const next = [...prev]; next[selectedShip] += 1; return next; });
+        } else {
+          show({ title: `Cannot place ship of length ${shipLen} here`, variant: 'error' });
+        }
+      }
+    },
+    [selectedShip, shipCounts, shipTargets, size, show, isHorizontal, isRemovalMode, grid],
+  );
+
+  const placeShips = useCallback(async () => {
+    if (!matchApi || !matchApiReady) { show({ title: 'Match context is still syncing', variant: 'warning' }); return; }
+    if (!effectiveMatchId) { show({ title: 'Set match id first', variant: 'error' }); return; }
+    if (loadingRef.current) return;
+    loadingRef.current = true;
+    try {
+      const groups: string[] = [];
+      const visited = Array.from({ length: size }, () => Array(size).fill(false));
+      for (let yy = 0; yy < size; yy++) {
+        for (let xx = 0; xx < size; xx++) {
+          if (grid[yy][xx] && !visited[yy][xx]) {
+            const ship = floodFillShip(grid, visited, xx, yy, size);
+            if (ship.length > 0) groups.push(ship.map(([sx, sy]) => `${sx},${sy}`).join(';'));
+          }
+        }
+      }
+      if (groups.length === 0) { show({ title: 'Place ships on the grid', variant: 'error' }); loadingRef.current = false; return; }
+      const fleetError = validateFleetPayload(groups);
+      if (fleetError) { show({ title: fleetError, variant: 'error' }); loadingRef.current = false; return; }
+      await ensureMatchContextReady(matchApi);
+      await matchApi.placeShips({ match_id: effectiveMatchId, ships: groups });
+      show({ title: 'Fleet deployed', variant: 'success' });
+      await loadBoards();
+      await loadTurnInfo();
+    } catch (e) {
+      console.error('placeShips', e);
+      show({ title: e instanceof Error ? e.message : 'Failed to place ships', variant: 'error' });
+    } finally {
+      loadingRef.current = false;
+    }
+  }, [matchApi, matchApiReady, effectiveMatchId, grid, size, show, loadBoards, loadTurnInfo, ensureMatchContextReady]);
+
+  // ---------------------------------------------------------------------------
+  // Shooting logic
+  // ---------------------------------------------------------------------------
+
+  const handleShotGridClick = useCallback((clickX: number, clickY: number) => {
+    if (!isMyTurn || matchFinished) return;
+    setSelectedShotX(clickX);
+    setSelectedShotY(clickY);
+  }, [isMyTurn, matchFinished]);
+
+  const proposeShot = useCallback(async (shotX?: number, shotY?: number) => {
+    if (matchFinished) return;
+    if (!matchApi || !matchApiReady) { show({ title: 'Match context is still syncing', variant: 'warning' }); return; }
+    if (!effectiveMatchId) { show({ title: 'Set match id first', variant: 'error' }); return; }
+    if (loadingRef.current) return;
+    loadingRef.current = true;
+    try {
+      const finalX = shotX !== undefined ? shotX : 0;
+      const finalY = shotY !== undefined ? shotY : 0;
+      await ensureMatchContextReady(matchApi);
+      await matchApi.proposeShot({ match_id: effectiveMatchId, x: finalX, y: finalY });
+      show({ title: `Shot fired at (${finalX}, ${finalY})`, variant: 'success' });
+      await loadBoards();
+      await loadTurnInfo();
+      setSelectedShotX(null);
+      setSelectedShotY(null);
+      setPendingShot(null);
+    } catch (e) {
+      console.error('proposeShot', e);
+      // Match-over errors arrive as a JSON payload from the game WASM, e.g.
+      // `{"kind":"Finished"}`. Translate into a refresh instead of the raw
+      // error toast so the UI transitions cleanly even if the winner event
+      // was lost to core #2139.
+      const message = e instanceof Error ? e.message : '';
+      if (message.includes('Finished') || message.includes('"kind":"Finished"')) {
+        refreshMatchList();
+        show({ title: 'Match already finished', variant: 'info' });
+      } else {
+        show({ title: message || 'Failed to fire shot', variant: 'error' });
+      }
+    } finally {
+      loadingRef.current = false;
+    }
+  }, [matchApi, matchApiReady, effectiveMatchId, matchFinished, refreshMatchList, show, loadBoards, loadTurnInfo, ensureMatchContextReady]);
+
+  // ---------------------------------------------------------------------------
+  // Lobby actions
+  // ---------------------------------------------------------------------------
+
+  const doLogout = useCallback(() => { logout(); navigate('/'); }, [logout, navigate]);
+
+  const handleCreateLobby = useCallback(async () => {
+    const id = await lobby.createLobby(newLobbyName || undefined);
+    if (id) { setNewLobbyName(''); show({ title: 'Namespace created', variant: 'success' }); }
+    else if (lobby.createLobbyError) { show({ title: lobby.createLobbyError.message, variant: 'error' }); }
+  }, [lobby, newLobbyName, show]);
+
+  const handleCreateInvitation = useCallback(async () => {
+    const result = await lobby.invitePlayer();
+    if (result) { setInvitationJson(JSON.stringify(result, null, 2)); show({ title: 'Invitation created', variant: 'success' }); }
+  }, [lobby, show]);
+
+  const handleJoinLobby = useCallback(async () => {
+    if (!joinInvitationInput.trim()) { show({ title: 'Paste an invitation JSON', variant: 'error' }); return; }
+    try {
+      const success = await lobby.joinLobby(joinInvitationInput);
+      if (success) { show({ title: 'Joined namespace', variant: 'success' }); setJoinInvitationInput(''); }
+    } catch (e) { show({ title: e instanceof Error ? e.message : 'Failed to join', variant: 'error' }); }
+  }, [joinInvitationInput, lobby, show]);
+
+  const handleEnterLobby = useCallback(() => {
+    if (!lobby.lobbyContextId) { show({ title: 'No namespace context available', variant: 'error' }); return; }
+    if (!lobby.namespaceId) { show({ title: 'No namespace selected', variant: 'error' }); return; }
+    manualLobbySelect.current = false;
+    setView('lobby');
+    navigate(`/lobby?id=${encodeURIComponent(lobby.namespaceId)}`, { replace: true });
+  }, [lobby, show, navigate]);
+
+  const resetToLobby = useCallback(() => {
+    setMatchId('');
+    setRuntimeMatchId(null);
+    setMatchContextId(null);
+    setMatchApi(null);
+    setPlaced(false);
+    setOwnBoard([]);
+    setShotsBoard([]);
+    setCurrentTurn(null);
+    setIsMyTurn(false);
+    setPendingShot(null);
+    setSelectedShotX(null);
+    setSelectedShotY(null);
+    setGrid(Array.from({ length: 10 }, () => Array(10).fill(false)));
+    setShipCounts([0, 0, 0, 0]);
+    setView('lobby');
+    navigate('/lobby', { replace: true });
+  }, [navigate]);
+
+  // ===========================================================================
+  // RENDER
+  // ===========================================================================
+
+  const navProps = {
+    namespaceName: lobby.selectedLobby?.alias,
+    namespaceId: lobby.namespaceId,
+    contextId: currentContext?.contextId || null,
+    currentUser,
+    onLogout: doLogout,
+  };
+
+  // --- Lobby Select ---
+  if (view === 'lobby-select') {
+    return (
+      <div className="app-bg">
+        <NavBar {...navProps} />
+        <div className="page-shell">
+          <div className="page-content">
+            <LobbySelect
+              lobbies={lobby.lobbies}
+              lobbiesLoading={lobby.lobbiesLoading}
+              selectedNamespaceId={lobby.selectedLobby?.namespaceId || null}
+              lobbyContextId={lobby.lobbyContextId}
+              namespaceId={lobby.namespaceId}
+              joinLoading={lobby.joinLoading}
+              createLobbyLoading={lobby.createLobbyLoading}
+              newLobbyName={newLobbyName}
+              joinInvitationInput={joinInvitationInput}
+              onNewLobbyNameChange={setNewLobbyName}
+              onJoinInputChange={setJoinInvitationInput}
+              onSelectLobby={lobby.selectLobby}
+              onCreateLobby={handleCreateLobby}
+              onJoinLobby={handleJoinLobby}
+              onEnter={handleEnterLobby}
+            />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // --- Lobby ---
+  if (view === 'lobby') {
+    return (
+      <div className="app-bg">
+        <NavBar {...navProps} onBack={() => { manualLobbySelect.current = true; setView('lobby-select'); navigate('/lobby', { replace: true }); }} />
+        <div className="page-shell">
+          <div className="page-content">
+            <LobbyView
+              lobbyAlias={lobby.selectedLobby?.alias}
+              isAdmin={lobby.isAdmin}
+              members={lobby.members}
+              selfIdentity={lobby.selfIdentity}
+              executorPublicKey={lobby.executorPublicKey}
+              inviteLoading={lobby.inviteLoading}
+              invitationJson={invitationJson}
+              onCreateInvitation={handleCreateInvitation}
+              onDismissInvitation={() => setInvitationJson(null)}
+              player2={player2}
+              creatingMatch={creatingMatch}
+              onPlayer2Change={setPlayer2}
+              onCreateMatch={createMatch}
+              matches={myMatches}
+              onOpenGame={openGame}
+              playerStats={playerStats}
+              history={history}
+              currentUser={currentUser}
+            />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // --- Game ---
+  return (
+    <div className="app-bg">
+      <NavBar {...navProps} onBack={resetToLobby} />
+      <div className="page-shell">
+        <div className="page-content page-content-wide">
+          {/* Match header */}
+          <div className="naval-card fade-in">
+            <div className="naval-card-header">
+              <div className="naval-card-title">
+                Match
+                <span className="mono-sm" style={{ fontSize: '0.75rem' }}>
+                  {effectiveMatchId}
+                </span>
+              </div>
+            </div>
+            <div className="naval-card-body">
+              <div className="info-row">
+                <span className="mono-sm">
+                  {placed ? 'Fleet deployed' : 'Deploy your fleet to begin'}
+                </span>
+                {matchContextId && (
+                  <div className="info-pair">
+                    <span className="info-label">CTX</span>
+                    <span className="info-value">
+                      {matchContextId.slice(0, 6)}...{matchContextId.slice(-6)}
+                    </span>
+                    <CopyToClipboard text={matchContextId} variant="icon" size="small" successMessage="Copied!" />
+                  </div>
+                )}
+                <span className={`badge ${isEventSubscribed ? 'badge-live' : 'badge-offline'}`}>
+                  {isEventSubscribed ? 'Live' : 'Offline'}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Match-join progress: surfaced while the joiner side waits for
+               subgroup membership and match-context state to converge.
+               Mirrors merobox's wait_for_sync pacing in the UI so the user
+               sees deterministic progress instead of a permanently disabled
+               Deploy Fleet button. */}
+          {!matchApiReady && matchJoinPhase !== 'idle' && (
+            <div className="naval-card fade-in fade-in-delay-1">
+              <div className="naval-card-header">
+                <div className="naval-card-title">
+                  {matchJoinPhase === 'failed' ? 'Could not join match' : 'Joining match…'}
+                </div>
+              </div>
+              <div className="naval-card-body" style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                <span className="mono-sm">
+                  {matchJoinPhase === 'connecting' && 'Connecting to match context on this node…'}
+                  {matchJoinPhase === 'joining' && 'Waiting for match group membership to propagate…'}
+                  {matchJoinPhase === 'syncing' && 'Synchronizing match state with peers…'}
+                  {matchJoinPhase === 'failed' && (matchJoinError ?? 'Unknown error.')}
+                </span>
+                {matchJoinPhase === 'failed' && (
+                  <span className="mono-sm" style={{ opacity: 0.8 }}>
+                    The other player may not have shared this match yet. Try again in a moment.
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Ship placement */}
+          {!placed && matchApiReady && (
+            <div className="naval-card fade-in fade-in-delay-1">
+              <div className="naval-card-header">
+                <div className="naval-card-title">Deploy Fleet</div>
+              </div>
+              <div className="naval-card-body" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                <ShipSelector
+                  selectedShip={selectedShip}
+                  shipCounts={shipCounts}
+                  shipTargets={shipTargets}
+                  isHorizontal={isHorizontal}
+                  isRemovalMode={isRemovalMode}
+                  onSelectShip={(idx) => { setSelectedShip(idx); setIsRemovalMode(false); }}
+                  onSetHorizontal={setIsHorizontal}
+                  onToggleRemoval={() => { setIsRemovalMode(!isRemovalMode); setSelectedShip(null); }}
+                />
+                <PlacementGrid size={size} grid={grid} onCellClick={toggleCell} />
+                <button
+                  className="btn-deploy"
+                  onClick={placeShips}
+                  disabled={!matchApiReady || shipCounts.some((c, i) => c !== shipTargets[i])}
+                  style={{ alignSelf: 'flex-start' }}
+                >
+                  Deploy Fleet
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Active game boards */}
+          {placed && (
+            <div className="boards-grid fade-in fade-in-delay-1">
+              <div className="naval-card">
+                <div className="naval-card-header">
+                  <div className="naval-card-title">Your Waters</div>
+                </div>
+                <div className="naval-card-body">
+                  <GameBoard
+                    size={size}
+                    board={ownBoard}
+                    label="Defense Grid"
+                    pendingShot={pendingShot}
+                  />
+                </div>
+              </div>
+
+              <div className="naval-card">
+                <div className="naval-card-header">
+                  <div className="naval-card-title">
+                    Enemy Waters
+                    {matchFinished ? (
+                      <span className="badge badge-live">{isWinner ? 'Victory' : 'Defeat'}</span>
+                    ) : (
+                      isMyTurn && <span className="badge badge-live">Your Turn</span>
+                    )}
+                  </div>
+                </div>
+                <div className="naval-card-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  <ShotGrid
+                    size={size}
+                    shots={shotsBoard}
+                    isMyTurn={isMyTurn && !matchFinished}
+                    selectedX={selectedShotX}
+                    selectedY={selectedShotY}
+                    onCellClick={handleShotGridClick}
+                  />
+
+                  {matchFinished && (
+                    <div
+                      style={{
+                        padding: '0.75rem 1rem',
+                        border: '1px solid var(--select-cyan)',
+                        borderRadius: 4,
+                        background: 'rgba(0, 255, 255, 0.05)',
+                      }}
+                    >
+                      <div className="mono" style={{ fontWeight: 700, marginBottom: '0.25rem' }}>
+                        {isWinner ? '🏆 You won this match.' : 'Match over.'}
+                      </div>
+                      {matchWinner && (
+                        <div className="mono-sm" style={{ opacity: 0.75, wordBreak: 'break-all' }}>
+                          Winner: {matchWinner}
+                        </div>
+                      )}
+                      <button
+                        className="btn-fire"
+                        style={{ marginTop: '0.75rem' }}
+                        onClick={resetToLobby}
+                      >
+                        Back to Lobby
+                      </button>
+                    </div>
+                  )}
+
+                  {!matchFinished && selectedShotX !== null && selectedShotY !== null && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                      <div className="info-pair">
+                        <span className="info-label">Target</span>
+                        <span className="mono" style={{ color: 'var(--select-cyan)', fontWeight: 700 }}>
+                          {'ABCDEFGHIJ'[selectedShotX]}{selectedShotY + 1}
+                        </span>
+                      </div>
+                      <button
+                        className="btn-fire"
+                        disabled={!matchApiReady || !isMyTurn}
+                        onClick={() => proposeShot(selectedShotX, selectedShotY)}
+                      >
+                        Fire
+                      </button>
+                    </div>
+                  )}
+
+                  {!matchFinished && !isMyTurn && placed && (
+                    <span className="mono-sm">Waiting for opponent...</span>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
