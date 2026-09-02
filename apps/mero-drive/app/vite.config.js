@@ -22,7 +22,7 @@ export default defineConfig({
     // Match battleships (apps/battleships/app/vite.config.js): outDir
     // is `build`, not the vite default `dist`. Keeps downstream deploy
     // scripts consistent across Calimero sample apps.
-    outDir: 'build',
+    outDir: 'dist',
     chunkSizeWarningLimit: 600,
     rollupOptions: {
       input: {

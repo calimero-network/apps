@@ -16,7 +16,7 @@ import { fileURLToPath } from 'node:url';
 // fileURLToPath, not `.pathname`: the latter keeps percent-encoding, so a
 // checkout under a path with a space resolves to a directory that does not
 // exist and the check fails for the wrong reason.
-const BUILD_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'build');
+const BUILD_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'dist');
 const INDEX = join(BUILD_DIR, 'index.html');
 
 // Chunks that must never be reachable by static import from the entry. These

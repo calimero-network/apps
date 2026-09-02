@@ -14,7 +14,7 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true,
-    "outDir": "build",
+    "outDir": "dist",
     "jsx": "react",
     "baseUrl": ".",
     "paths": {
