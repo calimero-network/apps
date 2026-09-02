@@ -526,6 +526,15 @@ jobs:
       - run: pnpm -r test
       - run: pnpm -r build
 
+      # `pnpm -r build` succeeding does not mean Vercel will serve anything: it
+      # uploads whatever `outputDirectory` names, and an empty or wrong path is
+      # not an error. mero-sign deployed that way — its `vercel.json` pointed at
+      # `apps/mero-sign/build`, which no build ever wrote. This asserts every
+      # app's declared output directory is the one its build produced, and that
+      # each carries the SPA rewrite its client-side router needs.
+      - name: Assert vercel.json matches the real build output
+        run: scripts/check-vercel-output.sh
+
   browser:
     name: Browser E2E (${{ matrix.app }})
     # `needs: wasm` for the same reason the merobox e2e does: run the bundle
