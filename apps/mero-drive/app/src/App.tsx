@@ -60,7 +60,8 @@ function InviteRedirect() {
 
 export default function App() {
   const packageName = PACKAGE_NAME || undefined;
-  const registryUrl = import.meta.env.VITE_REGISTRY_URL?.trim() || undefined;
+  const registryUrl =
+    import.meta.env.VITE_REGISTRY_URL?.trim() || 'https://apps.calimero.network';
 
   return (
     <ThemeProvider>

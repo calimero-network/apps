@@ -16,7 +16,8 @@ export const ENV_APPLICATION_ID: string =
  *  MeroProvider registry lookup and invite deep links (the deep-link
  *  slug IS the package). */
 export const PACKAGE_NAME: string =
-  (import.meta.env.VITE_PACKAGE_NAME as string | undefined)?.trim() || '';
+  (import.meta.env.VITE_PACKAGE_NAME as string | undefined)?.trim() ||
+  'com.calimero.mero-drive-docs';
 
 // Canonical deep-link host. links.calimero.network resolves the app by
 // package: desktop installs via Application.package, web forwards the

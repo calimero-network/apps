@@ -9,8 +9,15 @@ import Authenticate from './pages/login/Authenticate';
 import PlayPage from './pages/play';
 
 export default function App() {
-  const packageName = import.meta.env.VITE_PACKAGE_NAME?.trim() || undefined;
-  const registryUrl = import.meta.env.VITE_REGISTRY_URL?.trim() || undefined;
+  // Both default to the published values so a plain `vite build` — Vercel's
+  // included — resolves the application id off the registry with no env at all.
+  // mero-js only forwards `package-name`/`registry-url` to /auth/login when
+  // BOTH are truthy, so leaving either undefined means the login callback
+  // carries no applicationId and there is nothing to fall back to.
+  const packageName =
+    import.meta.env.VITE_PACKAGE_NAME?.trim() || 'com.calimero.battleships';
+  const registryUrl =
+    import.meta.env.VITE_REGISTRY_URL?.trim() || 'https://apps.calimero.network';
 
   return (
     <MeroProvider
