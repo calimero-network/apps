@@ -872,10 +872,38 @@ jobs:
             # EARLIER (at `create_namespace`), which means the teardown is the
             # suspect — and with the output thrown away there was no way to tell
             # whether `nuke` even ran.
+            # ⚠️ `stop --all` and `nuke` are BOTH insufficient, and the
+            # diagnostics above are what showed it:
+            #
+            #   --- teardown after attempt (exit 0) ---
+            #   No Calimero nodes are currently running
+            #   No Calimero node data directories found.
+            #   kvc-node-3-init Exited (0) About a minute ago
+            #   kvc-node-2-init Exited (0) About a minute ago
+            #   kvc-node-1-init Exited (0) About a minute ago
+            #
+            # `stop` does not see the `*-init` containers, and `nuke` finds no
+            # host data directories at all because the state lives in Docker. So
+            # the next scenario started on a host still holding the previous
+            # one's containers and network, and its join then hung ~50s and
+            # 500d: kv-store's `converge.yml` passed, and `simple-store.yml`
+            # failed at `Create mesh with node-2` on all SIX attempts, always at
+            # the same step. Deterministic, not flaky.
+            #
+            # A CI runner is disposable and only ever holds merobox containers
+            # here, so removing all of them plus the networks is both safe and
+            # the only thing that actually makes the next attempt cold.
             echo "--- teardown after attempt (exit $s) ---"
-            merobox stop --all 2>&1 | tail -5 || true
-            merobox nuke --force 2>&1 | tail -5 || true
-            docker ps -a --format '{{.Names}} {{.Status}}' 2>/dev/null | head -10 || true
+            merobox stop --all 2>&1 | tail -3 || true
+            merobox nuke --force 2>&1 | tail -3 || true
+            leftover=$(docker ps -aq 2>/dev/null || true)
+            if [ -n "$leftover" ]; then
+              echo "removing $(echo "$leftover" | wc -l | tr -d ' ') leftover container(s)"
+              docker rm -f $leftover >/dev/null 2>&1 || true
+            fi
+            docker network prune -f >/dev/null 2>&1 || true
+            docker volume prune -f >/dev/null 2>&1 || true
+            echo "remaining: $(docker ps -aq 2>/dev/null | wc -l | tr -d ' ') container(s)"
             return $s
           }
 
