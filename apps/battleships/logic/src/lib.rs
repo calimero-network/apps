@@ -328,6 +328,18 @@ impl LobbyState {
         Ok(iter.map(|f| f.0).collect())
     }
 
+    /// Recorded by the game context when a match ends.
+    ///
+    /// ⚠️ `#[app::xcall]` is what makes this reachable from another context at
+    /// all. Without it the ABI carries no `xcall_callable` for any method and
+    /// the node rejects the dispatch as "not an xcall entry point" — which is
+    /// how a finished match silently recorded no winner, no history and no
+    /// stats. `from_same_app` narrows callers to contexts running this same
+    /// application id, enforced by the node: the lobby and the game are two
+    /// services of one bundle, so nothing else has any business reporting a
+    /// result. That is stronger than checking `env::xcall_origin()` here,
+    /// because it does not depend on this method remembering to.
+    #[app::xcall(from_same_app)]
     pub fn on_match_finished(
         &mut self,
         match_id: String,
@@ -360,6 +372,15 @@ impl LobbyState {
             .map_err(|e| GameError::Invalid(format!("matches.get failed: {e}")))?
             .ok_or(GameError::Invalid("unknown match_id".into()))?)
         .clone();
+        // Idempotent on purpose. xcall dispatch is fire-and-forget, and both
+        // players' replicas can resolve the same final shot, so this may be
+        // delivered more than once for one match. Re-running it would push a
+        // duplicate `history` row and bump BOTH players' win/loss counters a
+        // second time — corruption that no error would announce.
+        if matches!(summary.status, MatchStatus::Finished) {
+            return Ok(());
+        }
+
         summary.status = MatchStatus::Finished;
         summary.winner = Some(winner.to_string());
         self.matches
@@ -541,6 +562,54 @@ mod tests {
         assert_eq!(loser_view.games_played, 1); // derived: 0 + 1
 
         assert_eq!(state.history.len().unwrap(), 1);
+    }
+
+    /// xcall dispatch is fire-and-forget and both players' replicas can resolve
+    /// the same final shot, so `on_match_finished` must survive being delivered
+    /// twice. Before the guard the second delivery pushed a duplicate history
+    /// row and bumped BOTH players' counters again — corruption that no error
+    /// would announce.
+    #[test]
+    fn on_match_finished_is_idempotent() {
+        let mut state = LobbyState::init();
+        let winner = hex::encode([1u8; 32]);
+        let loser = hex::encode([2u8; 32]);
+        let id = state
+            .create_match_with_id(&winner, &loser, 1_700_000_000_000, "deadbeef")
+            .unwrap();
+
+        for _ in 0..3 {
+            state
+                .on_match_finished_inner(&id, &winner, &loser, 1_700_000_000_999)
+                .unwrap();
+        }
+
+        let summary = state.matches.get(&id).unwrap().unwrap();
+        assert!(matches!(summary.status, MatchStatus::Finished));
+        assert_eq!(summary.winner.as_deref(), Some(winner.as_str()));
+
+        // One row, one win, one loss — not three of each.
+        assert_eq!(state.history.len().unwrap(), 1);
+
+        let winner_view = state
+            .player_stats
+            .get(&winner)
+            .unwrap()
+            .unwrap()
+            .to_view()
+            .unwrap();
+        assert_eq!(winner_view.wins, 1);
+        assert_eq!(winner_view.losses, 0);
+
+        let loser_view = state
+            .player_stats
+            .get(&loser)
+            .unwrap()
+            .unwrap()
+            .to_view()
+            .unwrap();
+        assert_eq!(loser_view.wins, 0);
+        assert_eq!(loser_view.losses, 1);
     }
 
     #[test]
