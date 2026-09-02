@@ -46,6 +46,14 @@ steps:
     path: res/scaffolding_e2e.wasm
     dev: true
 
+  # ⚠️ The nodes need to be UP before the first admin call. Three fresh
+  # containers plus three installs is not enough on its own: without this,
+  # `create_namespace` fails about nine seconds into the run, which the rewrite
+  # below originally lost by replacing the pre-mesh wait rather than keeping it.
+  - name: Settle before the first admin call
+    type: wait
+    seconds: 12
+
   # ⚠️ NOT `create_mesh` with two nodes, and that is the whole point.
   #
   # `create_mesh` joins its `nodes:` list in a sequential loop with NO delay
