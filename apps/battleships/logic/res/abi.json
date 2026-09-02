@@ -292,7 +292,9 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "xcall_callable": true,
+      "xcall_callers": "same_app"
     },
     {
       "name": "set_match_context_id",

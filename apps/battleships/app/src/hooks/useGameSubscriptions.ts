@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSubscription } from '@calimero-network/mero-react';
+import type { SubscriptionEventData } from '@calimero-network/mero-react';
 import type { AllGameEvents } from '../types/events';
 import { isLobbyEvent } from '../types/events';
 
@@ -24,10 +25,14 @@ export interface UseGameSubscriptionsReturn {
   unsubscribe: () => void;
 }
 
-type SubscriptionEvent = {
-  contextId: string;
-  data: unknown;
-};
+// mero-react 6 widened the subscription callback to
+// `SseEventData | GroupMembershipEventData | GroupMigrationEventData`, and only
+// the first carries a `contextId`. This hook only ever needed the payload, so it
+// reads `data` when the variant has it and ignores the rest — a membership or
+// migration event is simply not a game event.
+function eventPayload(event: SubscriptionEventData): unknown {
+  return 'data' in event ? (event as { data: unknown }).data : undefined;
+}
 
 type GameEventRefreshMode = 'none' | 'debounced' | 'immediate';
 
@@ -273,9 +278,9 @@ export function useGameSubscriptions({
   }, [onBoardUpdate]);
 
   const eventCallback = useCallback(
-    (event: SubscriptionEvent) => {
+    (event: SubscriptionEventData) => {
       try {
-        const gameEvents = parseSubscriptionEvents(event.data).filter((gameEvent) =>
+        const gameEvents = parseSubscriptionEvents(eventPayload(event)).filter((gameEvent) =>
           matchesActiveMatch(matchId, gameEvent),
         );
         if (gameEvents.length === 0) {

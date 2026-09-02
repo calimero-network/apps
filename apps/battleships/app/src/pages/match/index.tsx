@@ -497,9 +497,23 @@ export default function MatchPage() {
       const id = await lobbyApi.createMatch({ player2 });
       show({ title: `Match allocated: ${id}`, variant: 'success' });
 
-      const { groupId: matchSubgroupId } = await mero.admin.createGroupInNamespace(lobby.namespaceId, { alias: `match-${id}` });
-      await mero.admin.addGroupMembers(matchSubgroupId, { members: [{ identity: player2, role: 'Member' }] });
-
+      // ⚠️ The game context is attached to the NAMESPACE ROOT group, the same
+      // group the lobby context lives in — NOT to a per-match subgroup.
+      //
+      // A per-match subgroup is the more natural isolation, and it is what this
+      // did before. It also made `on_match_finished` impossible: core allows an
+      // `env::xcall` only between two contexts in the SAME owning group
+      // (`xcall_same_owning_group` compares `get_group_for_context` for source
+      // and target, and both must be Some and equal). With the game in
+      // `match-<id>` and the lobby in the namespace root the node denied every
+      // dispatch — `xcall denied: owning group boundary` in its log — so a
+      // finished match recorded no winner, no history and no stats, silently.
+      //
+      // The subgroup was defence-in-depth rather than the actual control: the
+      // game contract already refuses a non-participant ("not a player",
+      // Forbidden) and each player's board lives in `UserStorage`, which is
+      // per-identity. So this trades a second lock on the same door for a match
+      // result that is recorded by the contract instead of not at all.
       const executorKey = lobby.executorPublicKey ?? contextIdentity;
       const initParams = JSON.stringify({ player1: executorKey, player2, lobby_context_id: currentContext.contextId, match_id: id });
       const initBytes = Array.from(new TextEncoder().encode(initParams));
@@ -507,7 +521,7 @@ export default function MatchPage() {
       const { contextId: newContextId } = await mero.admin.createContext({
         applicationId: currentContext.applicationId,
         initializationParams: initBytes,
-        groupId: matchSubgroupId,
+        groupId: lobby.namespaceId,
         serviceName: 'game',
       });
 
