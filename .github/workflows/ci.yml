@@ -867,8 +867,15 @@ jobs:
             # `merobox nuke` deletes the node data folders, which is what makes a
             # retry an actual retry. `nuke_on_start: true` covers this for the
             # scenarios that set it; 39 of them do not.
-            merobox stop --all >/dev/null 2>&1 || true
-            merobox nuke --force >/dev/null 2>&1 || true
+            # NOT silenced. Suppressing this hid the very thing that needed
+            # reading: after any failed attempt, every later attempt failed
+            # EARLIER (at `create_namespace`), which means the teardown is the
+            # suspect — and with the output thrown away there was no way to tell
+            # whether `nuke` even ran.
+            echo "--- teardown after attempt (exit $s) ---"
+            merobox stop --all 2>&1 | tail -5 || true
+            merobox nuke --force 2>&1 | tail -5 || true
+            docker ps -a --format '{{.Names}} {{.Status}}' 2>/dev/null | head -10 || true
             return $s
           }
 
