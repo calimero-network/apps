@@ -844,11 +844,25 @@ jobs:
           run_one() {
             merobox bootstrap run "$1" --log-level info
             local s=$?
+            # ⚠️ `stop` alone is not enough between attempts, which made the
+            # retry loop actively misleading.
+            #
+            # Observed on main: kv-store's attempt 1 lost the join race
+            # (`join_namespace … 500`), then attempts 2-5 all failed EARLIER, at
+            # `create_namespace … 500` — a step that had just succeeded.
+            # Stopping a container leaves its data folder behind, so each retry
+            # started on a host still holding the previous attempt's state and
+            # failed for a different reason than the one being retried.
+            #
+            # `merobox nuke` deletes the node data folders, which is what makes a
+            # retry an actual retry. `nuke_on_start: true` covers this for the
+            # scenarios that set it; 39 of them do not.
             merobox stop --all >/dev/null 2>&1 || true
+            merobox nuke --force >/dev/null 2>&1 || true
             return $s
           }
 
-          # Up to 3 attempts per scenario, for the cold-namespace-join
+          # Up to 6 attempts per scenario, for the cold-namespace-join
           # KeyDelivery flake: `join_namespace` (and `create_mesh`, which joins
           # internally) 500s when the group key misses its 5s gossip window — a
           # core-side timing race CI load provokes. It has been observed to lose
@@ -899,7 +913,10 @@ jobs:
             done
             echo "::endgroup::"
             if [ "$ok" -ne 1 ]; then
-              echo "::error file=$f::scenario failed on all 4 attempts — not the known flake"
+              # Deliberately NOT "this is a real failure". Six backed-off
+              # attempts still lose sometimes, and saying otherwise sends the
+              # reader after the app instead of the race.
+              echo "::error file=$f::scenario failed on all 6 attempts — most likely the cold-join KeyDelivery race (core-side); check the node-logs artifact before treating it as an app defect"
               exit 1
             fi
           done
