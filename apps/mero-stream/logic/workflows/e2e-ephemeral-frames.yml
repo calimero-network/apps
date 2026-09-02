@@ -65,6 +65,17 @@ steps:
     outputs:
       app_id: applicationId
 
+  # ⚠️ `create_mesh` JOINS INTERNALLY, so it races the KeyDelivery window the
+  # same way an explicit `join_namespace` does. Fresh nodes plus a couple of
+  # seconds of install leave mDNS discovery AND the group-key transfer under ~6
+  # seconds between them, and the join then 500s. `create_mesh` has no step
+  # boundary to retry at, so the whole scenario is lost when it does.
+  # 12s, matching apps/scaffolding-e2e/logic/workflows/group-late-joiner.yml,
+  # which documents why 5s is not enough.
+  - name: Settle before the mesh joins
+    type: wait
+    seconds: 12
+
   - name: Create the stream mesh
     type: create_mesh
     context_node: calimero-node-1
