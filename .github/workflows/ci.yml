@@ -591,7 +591,17 @@ jobs:
           test -n "$ver"
           echo "merod $ver"
           url="https://github.com/calimero-network/core/releases/download/${ver}/merod_x86_64-unknown-linux-gnu.tar.gz"
-          curl -fsSL "$url" -o /tmp/merod.tgz
+          # ⚠️ Retried. This is the only unretried network fetch left in CI, and
+          # it killed `Browser E2E (mero-blocks)` with
+          #
+          #     curl: (35) Recv failure: Connection reset by peer
+          #
+          # before a single test ran — a GitHub releases blip reported as an app
+          # failure. `--retry-all-errors` so a reset counts as retryable (plain
+          # `--retry` is documented around transient HTTP/timeout cases);
+          # publish-bundle.yml already retries every call it makes.
+          curl -fsSL --retry 5 --retry-delay 3 --retry-all-errors \
+            --connect-timeout 20 --max-time 300 "$url" -o /tmp/merod.tgz
           mkdir -p "$HOME/.local/merod"
           tar -xzf /tmp/merod.tgz -C "$HOME/.local/merod"
           bin=$(find "$HOME/.local/merod" -type f -name merod -print -quit)
