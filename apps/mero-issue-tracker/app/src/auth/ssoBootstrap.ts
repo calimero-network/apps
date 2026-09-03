@@ -41,12 +41,18 @@ export function bootstrapSsoAndInvitation(): void {
 }
 
 /**
- * Pre-seed node_url / application_id from a TOKEN-LESS hash (cold desktop open).
+ * Pre-seed node_url / application_id from the hash (cold desktop open).
  *
  * A hash containing `access_token` is an auth callback owned by mero-react's
  * MeroProvider (parseAuthCallback) — used by both desktop SSO and web login.
- * We bail on it untouched so React can store the token where mero-js reads it
- * and strip the hash itself. See the file header for why touching it breaks auth.
+ * We leave the TOKEN and the hash itself untouched so React can store the token
+ * where mero-js reads it and strip the hash itself. See the file header for why
+ * touching either breaks auth.
+ *
+ * The wording above is not incidental: this docstring still said "TOKEN-LESS"
+ * and "we bail on it" long after the body stopped bailing, and the copy of this
+ * file in mero-sheets — which still had the early return — read as if that were
+ * the intended design.
  */
 function persistAuthHash(): void {
   const hash = window.location.hash.replace(/^#/, '');
