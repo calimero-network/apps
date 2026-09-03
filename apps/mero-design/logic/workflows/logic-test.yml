@@ -7,6 +7,29 @@ stop_all_nodes: true
 restart: false
 wait_timeout: 120
 
+# ⚠️ REQUIRED, and its absence is why namespace joins kept dying on
+# `KeyDelivery timed out`.
+#
+# Without it, `merod init`'s default `bootstrap.nodes` survives — the PUBLIC
+# calimero devnet boot-node. Every container then spends its startup dialing
+# unreachable public addresses, and the node log fills with
+#
+#     libp2p_relay: Dropping in-flight connect request because we are at capacity
+#     autonat: ✗ Address /ip4/52.226.124.20/udp/... test failed
+#
+# until the join gives up with
+#
+#     join_group: direct namespace-join request found no reachable mesh peer
+#     join_group: join response contained no group key
+#     KeyDelivery timed out for group ContextGroupId(...)
+#
+# The peers never found each other; it was never a timing race. `e2e_mode`
+# clears `bootstrap.nodes`, gives the workflow its own rendezvous namespace,
+# turns multicast discovery on (which is what populates the kad table on a
+# single Docker bridge) and tightens the sync intervals. merobox's own
+# `apply_e2e_defaults` documents measuring this exact failure with it off.
+e2e_mode: true
+
 nodes:
   chain_id: testnet-1
   count: 1
