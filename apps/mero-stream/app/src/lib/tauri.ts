@@ -1,30 +1,42 @@
 // ── Tauri desktop detection ───────────────────────────────────────────────────
 //
-// Detects the desktop shell, which supplies a node + auth/SSO implicitly. It is
-// one of two ways the app can get a session — see `hasHashSession` below for the
-// other — and NOT a requirement for the app to run.
+// ⚠️ THIS APP IS WEB ONLY. The Calimero desktop is not a supported target — see
+// "Platform support" in the app's README. What survives here is one thing: a
+// Tauri global counts as a session signal, alongside `hasHashSession()` below.
+// Neither is required for the app to run.
 //
-// tauri-app is built on **Tauri v1** (1.8): its webview injects
-// `window.__TAURI_INVOKE__` / `window.__TAURI_IPC__` — NOT the v2-only
-// `__TAURI_INTERNALS__`. Detecting only `__TAURI_INTERNALS__` therefore made
-// IS_TAURI always false inside the desktop shell, so the app fell through to the
-// landing page and never ran the hash-auth SSO step. Check the v1 globals first
-// (what tauri-app actually provides), keep the v2 ones for forward-compat.
+// The list below is kept as-is deliberately, and the comment that used to sit
+// here was wrong about why. It claimed "tauri-app is built on **Tauri v1**
+// (1.8)", so the v1 globals were "what tauri-app actually provides" and
+// `__TAURI_INTERNALS__` was the forward-compat afterthought. It is the other way
+// round: tauri-app is **Tauri v2** (`@tauri-apps/api ^2.11.1`,
+// `tauri = { version = "2" }`) with `withGlobalTauri: false`, so an app window
+// gets `__TAURI_INTERNALS__` and NONE of the three v1 names. The v1 entries are
+// therefore dead, and detection works only because of the last line.
+//
+// That mattered: the `invokeTauri` helper this file used to export read
+// `window.__TAURI_INVOKE__` and so always returned `null`, making its one
+// caller-facing command (`closeWindow`) a silent no-op. Both have been removed
+// rather than left looking functional — nothing in src/ called either, and even
+// a correct v2 invoke would not have worked, because `close_current_window` is
+// not among the commands tauri-app grants to `app-*` windows (see its
+// `capabilities/remote.json`: `core:window:allow-close` plus the node proxy and
+// token-broker commands, and nothing else).
 
 declare global {
   interface Window {
     __TAURI_INTERNALS__?: unknown;
     __TAURI_IPC__?: unknown;
     __TAURI__?: unknown;
-    __TAURI_INVOKE__?: (cmd: string, args?: unknown) => Promise<unknown>;
+    __TAURI_INVOKE__?: unknown;
   }
 }
 
 export const IS_TAURI =
-  typeof window.__TAURI_INVOKE__ === "function" || // Tauri v1 (tauri-app 1.8)
-  "__TAURI_IPC__" in window || // Tauri v1 native IPC bridge
-  "__TAURI__" in window || // withGlobalTauri builds
-  "__TAURI_INTERNALS__" in window; // Tauri v2 (forward-compat)
+  typeof window.__TAURI_INVOKE__ === "function" || // Tauri v1 — dead, see above
+  "__TAURI_IPC__" in window || // Tauri v1 native IPC bridge — dead
+  "__TAURI__" in window || // withGlobalTauri builds — tauri-app sets it false
+  "__TAURI_INTERNALS__" in window; // Tauri v2 — the only one that ever matches
 
 // ── Hash-handed browser session ───────────────────────────────────────────────
 //
@@ -66,26 +78,3 @@ function hasHashSession(): boolean {
  * hash — so the detection still sees the hash.
  */
 export const APP_ENABLED = IS_TAURI || hasHashSession();
-
-/**
- * Invoke a Tauri Rust command if running inside the desktop shell. When the
- * command surface isn't present (running the webview before the Rust side ships,
- * or in a unit test) this resolves to `null` so callers can gracefully fall back.
- */
-export async function invokeTauri<T = unknown>(
-  cmd: string,
-  args?: Record<string, unknown>,
-): Promise<T | null> {
-  const invoke = window.__TAURI_INVOKE__;
-  if (!invoke) return null;
-  try {
-    return (await invoke(cmd, args)) as T;
-  } catch {
-    return null;
-  }
-}
-
-/** Ask tauri-app to close this window (used by the error / leave flows). */
-export async function closeWindow(): Promise<void> {
-  await invokeTauri("close_current_window");
-}
