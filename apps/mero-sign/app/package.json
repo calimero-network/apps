@@ -3,7 +3,6 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "homepage": "https://calimero-network.github.io/core-app-template/",
   "dependencies": {
     "@calimero-network/calimero-client": "^1.25.0-beta.1",
     "bs58": "catalog:",
@@ -55,7 +54,6 @@
     "eslint-plugin-react": "^7.34.2",
     "eslint-plugin-react-hooks": "catalog:",
     "eslint-plugin-react-refresh": "catalog:",
-    "gh-pages": "^6.1.1",
     "prettier": "3.3.2",
     "typescript": "catalog:",
     "typescript-eslint": "catalog:",
@@ -71,8 +69,6 @@
     "lint:fix": "concurrently \"pnpm:lint:*:fix\"",
     "lint:src:fix": "eslint . --ext .ts,.tsx --fix src",
     "preview": "vite preview",
-    "predeploy": "pnpm run build",
-    "deploy": "gh-pages -d build",
     "prettier": "exec prettier . --write",
     "test:e2e": "playwright test"
   },
