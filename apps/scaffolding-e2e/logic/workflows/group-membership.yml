@@ -58,7 +58,7 @@ steps:
   # containers behind, because the nodes were then already warm.
   - name: Settle before the first admin call
     type: wait
-    seconds: 12
+    seconds: 20
 
   - name: Create namespace on node-1
     type: create_namespace

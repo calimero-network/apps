@@ -81,7 +81,7 @@ steps:
   # which documents why 5s is not enough.
   - name: Settle before the mesh joins
     type: wait
-    seconds: 12
+    seconds: 20
 
   - name: Create mesh with node-2
     type: create_mesh
