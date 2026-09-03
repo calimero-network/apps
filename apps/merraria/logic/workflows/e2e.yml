@@ -44,7 +44,7 @@ nodes:
   # rc.20 + merobox >=0.6.54 fails `create_namespace` with
   # "missing field `upgradePolicy`". rc.23 needs >=0.6.55 for the same reason
   # (core#3483 rebuilt merobox's bundled client-py), which is what CI pins.
-  image: ghcr.io/calimero-network/merod:0.11.0-rc.28
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.32
   # rc.26 made mDNS opt-in (core#3620) and merobox does not pass the flag,
   # so discovery changed at the image bump. Stated, not inherited.
   mdns: true

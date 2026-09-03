@@ -49,9 +49,9 @@ repository = "https://github.com/calimero-network/apps"
 # Bumping core: edit these three lines, update `min-runtime-version` and
 # `merod-image` below, run `cargo update`, and let CI rebuild every app.
 [workspace.dependencies]
-calimero-sdk            = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.28" }
-calimero-storage        = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.28" }
-calimero-storage-macros = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.28" }
+calimero-sdk            = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.32" }
+calimero-storage        = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.32" }
+calimero-storage-macros = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.32" }
 
 thiserror = "1.0.56"
 bs58      = "0.5.1"
@@ -93,10 +93,10 @@ borsh     = "1.6.1"
 # Keep equal to the SDK tag above. A build imports host functions that only
 # exist from that release on; an older node installs the bundle happily and then
 # dies at context creation with `link error: unknown import`.
-min-runtime-version = "0.11.0-rc.28"
+min-runtime-version = "0.11.0-rc.32"
 # The merod image every merobox workflow runs against, matched to the SDK tag so
 # contract and node always agree.
-merod-image = "ghcr.io/calimero-network/merod:0.11.0-rc.28"
+merod-image = "ghcr.io/calimero-network/merod:0.11.0-rc.32"
 
 # ── profiles MUST live here ──────────────────────────────────────────────────
 #

@@ -33,7 +33,7 @@ github = "https://github.com/calimero-network/mero-blocks"
 # SDK tag below rather than sitting at a floor nobody re-reads. It was "0.1.0"
 # through rc.20 — a version no node has ever run, which made the field say
 # nothing.
-min-runtime-version = "0.11.0-rc.28"
+min-runtime-version = "0.11.0-rc.32"
 frontend = "https://mero-blocks.vercel.app/"
 
 [dependencies]

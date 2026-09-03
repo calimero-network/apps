@@ -40,7 +40,7 @@ nodes:
   count: 2
   # Must match the `calimero-*` tag in the root Cargo.toml. check-app-metadata.sh
   # asserts this against [workspace.metadata.mero-apps].merod-image.
-  image: ghcr.io/calimero-network/merod:0.11.0-rc.28
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.32
   prefix: calimero-node
   # Stated, not inherited. rc.26 made mDNS opt-in (core#3620) and merobox does
   # not pass the flag, so without this the nodes never peer and the run dies as a
