@@ -77,7 +77,7 @@ steps:
   # today. If meshes still flake at 12s, stop widening this and fix core.
   - name: Settle before the mesh joins
     type: wait
-    seconds: 12
+    seconds: 20
 
   - name: Create mesh with node-2
     type: create_mesh

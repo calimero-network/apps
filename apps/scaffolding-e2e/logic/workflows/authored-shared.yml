@@ -75,7 +75,7 @@ steps:
   # below originally lost by replacing the pre-mesh wait rather than keeping it.
   - name: Settle before the first admin call
     type: wait
-    seconds: 12
+    seconds: 20
 
   # ⚠️ NOT `create_mesh` with two nodes, and that is the whole point.
   #

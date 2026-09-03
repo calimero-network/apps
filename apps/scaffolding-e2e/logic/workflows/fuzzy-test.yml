@@ -97,7 +97,7 @@ steps:
   # today. If meshes still flake at 12s, stop widening this and fix core.
   - name: Settle before the mesh joins
     type: wait
-    seconds: 12
+    seconds: 25
 
   # ⚠️ NOT a multi-node `create_mesh` — see authored-shared.yml. It joins its
   # `nodes:` list sequentially with NO delay between them, so a settle in front

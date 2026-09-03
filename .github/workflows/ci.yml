@@ -881,7 +881,55 @@ jobs:
 
           # Run one scenario; always tear the containers down afterwards so a
           # retry (or the next scenario) starts from a clean host.
+          # ⚠️ THE DATA DIRECTORIES SURVIVE EVERY TEARDOWN WE HAD, and a scenario
+          # that inherits one dies at its FIRST admin call for a reason that
+          # names nothing.
+          #
+          # Observed on this job, seconds apart, in the same working directory:
+          #
+          #   --- teardown after attempt (exit 0) ---      # access-control.yml, passed
+          #   No Calimero node data directories found.     # ← merobox nuke sees ZERO
+          #   ##[group]workflows/authored-shared.yml
+          #   Found 2 Calimero node data directory(ies)    # ← nuke_on_start sees TWO
+          #   Deleting 2 data directory(ies)...
+          #   No data directories were deleted.            # ← and removes NEITHER
+          #
+          # So `merobox nuke --force` and the in-scenario `nuke_on_start` disagree
+          # about what exists, and the one that finds the directories cannot
+          # delete them — merod writes them from inside the container as root, so
+          # the runner user owns nothing under ./data.
+          #
+          # The 3-node scenario then "initialized" node-1 on top of the 2-node
+          # scenario's home, and `create_namespace` — its first admin call —
+          # answered HTTP 500 on all SIX attempts with, in the node log:
+          #
+          #   failed to mint this node's account credential: join credential:
+          #   could not resolve this node's account root
+          #     at crates/context/src/handlers/create_group.rs:93
+          #
+          # An account root is provisioned by `merod init` and never lazily
+          # (governance-store `provision_account_root` vs `require_account_root`),
+          # so a home that init skipped has none for the rest of its life. That is
+          # why the first scenario in a job always passes and the next 3-node one
+          # always fails, and why it is deterministic rather than flaky —
+          # widening the settle in front of the call cannot touch it.
+          #
+          # Not silenced and not best-effort: a scenario starting on inherited
+          # state produces a failure that points nowhere near its cause, so if the
+          # directory cannot be removed we stop instead of running blind.
+          cold_host() {
+            sudo rm -rf ./data 2>/dev/null || rm -rf ./data 2>/dev/null || true
+            if [ -d ./data ] && [ -n "$(ls -A ./data 2>/dev/null)" ]; then
+              echo "::error::./data survived cleanup — a scenario starting here would inherit another node home and fail at its first admin call"
+              ls -la ./data
+              return 1
+            fi
+          }
+
           run_one() {
+            # Cold BEFORE, not only after: the once-per-job prep step runs before
+            # the loop, so without this the second scenario onwards inherits.
+            cold_host || return 1
             merobox bootstrap run "$1" --log-level info
             local s=$?
             # ⚠️ `stop` alone is not enough between attempts, which made the
@@ -933,6 +981,10 @@ jobs:
             fi
             docker network prune -f >/dev/null 2>&1 || true
             docker volume prune -f >/dev/null 2>&1 || true
+            # The containers are gone, so nothing holds the directories open and
+            # ./data can go. `merobox nuke` above has already claimed to have
+            # done this; it has not (see cold_host).
+            cold_host || true
             echo "remaining: $(docker ps -aq 2>/dev/null | wc -l | tr -d ' ') container(s)"
             return $s
           }
