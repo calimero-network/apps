@@ -186,6 +186,10 @@ pnpm -r test
 bash scripts/check-app-metadata.sh    # registry metadata vs the workspace
 ```
 
+`docs/SESSION-AND-INVITES.md` is the current audit of the three flows every app
+is meant to share — login, the desktop hand-off, and invitations — with a
+per-app table and a list of which invariants CI actually holds.
+
 ### Bumping core
 
 Edit the three `calimero-sdk*` tags plus `min-runtime-version` and `merod-image`
