@@ -270,6 +270,18 @@ jobs:
       - name: Assert every app can adopt a desktop hand-off
         run: python3 scripts/check-desktop-sso.py
 
+      # `battleships.vercel.app` served a create-react-app build for an unknown
+      # length of time after the app moved to Vite in this repo. The repo was
+      # fine and every existing check passed; the Vercel project simply never
+      # deployed from here. That URL is what the registry publishes as
+      # links.frontend, so it is what the desktop launcher opens, what invite
+      # links resolve to, and what authorizes a login callback — a stale
+      # deployment silently becomes the app. An unreachable host reports as
+      # skipped, not as a failure: a check that reds the build when a third
+      # party is down gets switched off, and then it catches nothing.
+      - name: Assert each live deployment is the app this repo builds
+        run: python3 scripts/check-live-frontends.py
+
       # The matrix resolver decides what the rest of this file runs, and both of
       # its wrong answers are silent — too broad only costs money, too narrow
       # skips an app with nothing to notice. So its rules are tested.
