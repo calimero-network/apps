@@ -6,6 +6,7 @@ import { ToastProvider } from '@calimero-network/mero-ui';
 import MatchPage from './pages/match';
 import HomePage from './pages/home';
 import Authenticate from './pages/login/Authenticate';
+import LandingPage from './pages/landing/LandingPage';
 import PlayPage from './pages/play';
 
 // ── Desktop auth-skip ─────────────────────────────────────────────────────────
@@ -63,7 +64,12 @@ export default function App() {
       <ToastProvider>
         <BrowserRouter basename="/">
           <Routes>
-            <Route path="/" element={<Authenticate />} />
+            {/* The explainer is the front door; Authenticate keeps the
+                ConnectButton and its returnTo handling, on /login. Both
+                redirect an authenticated visitor onward, so the desktop
+                hand-off still lands in the lobby. */}
+            <Route path="/" element={<LandingPage />} />
+            <Route path="/login" element={<Authenticate />} />
             <Route path="/lobby" element={<MatchPage />} />
             <Route path="/match" element={<MatchPage />} />
             <Route path="/home" element={<HomePage />} />

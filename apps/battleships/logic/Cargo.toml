@@ -35,7 +35,21 @@ icon        = "../app/public/icon-512.png"
 tags        = ["game", "multiplayer", "turn-based"]
 github      = "https://github.com/calimero-network/apps"
 min-runtime-version = "0.11.0-rc.28"
-frontend    = "https://battleships.vercel.app"
+# ⚠️ `battleships.vercel.app` is NOT ours. It serves a third-party
+# single-player battleships game (create-react-app, "Start the game against the
+# computer"), and `battleships-app.vercel.app` is a different third-party one —
+# neither bundle carries a `com.calimero.*` id or any mero-react. A Vercel
+# project name decides its domain and the plain name was already claimed, which
+# is why every other app here carries a prefix or suffix: mero-kv-store,
+# mero-stream-neon, mero-issue-tracker-app, scaffolding-e2e-application.
+#
+# This value is published as the registry's `links.frontend`, so while it was
+# wrong the launcher, every invite link and the login-callback check all pointed
+# at a stranger's site.
+#
+# Bare origin, no trailing slash: the auth frontend compares it by EXACT ORIGIN
+# against `window.location.origin`, which never has one.
+frontend    = "https://battleships-fawn.vercel.app"
 
 # Two services, one bundle. PACKAGE level, because cargo-mero REPLACES an app's
 # package table with `[workspace.metadata.calimero]` when both exist — which in a

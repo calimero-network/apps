@@ -1,0 +1,600 @@
+/* Landing page for Battleships.
+ *
+ * Every colour comes from the tokens already on :root in index.css — the sonar
+ * green, the fire amber, the deep-water grounds the boards are drawn on — so the
+ * landing page and the game are one surface. Nothing here hardcodes a colour.
+ */
+
+.root {
+  --page-max: 1080px;
+}
+
+/* ── hero ──────────────────────────────────────────────────────────────── */
+
+.heroSection {
+  position: relative;
+  overflow: hidden;
+  border-bottom: 1px solid var(--grid-line);
+}
+
+.header {
+  position: relative;
+  z-index: 2;
+  max-width: var(--page-max);
+  margin: 0 auto;
+  padding: 18px 20px;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.logo {
+  font-weight: 700;
+  font-size: 17px;
+  letter-spacing: -0.02em;
+}
+.logo span {
+  color: var(--sonar-green);
+}
+
+.nav {
+  margin-left: auto;
+  display: flex;
+  gap: 22px;
+}
+.navLink {
+  color: var(--text-secondary);
+  font-size: 14px;
+  transition: color 140ms ease;
+}
+.navLink:hover,
+.navLink:focus-visible {
+  color: var(--text-primary);
+}
+
+.headerCta,
+.ctaPrimary,
+.mobileCta {
+  border: none;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+  /* On #00ff88 the readable foreground is the deep-water ground; near-white on
+     sonar green is about 1.2:1. */
+  color: var(--bg-deep);
+  background: var(--sonar-green);
+  border-radius: 999px;
+  transition: filter 140ms ease, transform 140ms ease;
+}
+.headerCta {
+  padding: 9px 18px;
+  font-size: 14px;
+}
+.headerCta:hover,
+.ctaPrimary:hover,
+.mobileCta:hover {
+  filter: brightness(1.08);
+}
+.headerCta:active,
+.ctaPrimary:active {
+  transform: translateY(1px);
+}
+
+.hamburger {
+  display: none;
+  background: none;
+  border: 1px solid var(--grid-line);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-size: 16px;
+  width: 38px;
+  height: 38px;
+  cursor: pointer;
+}
+
+.mobileMenu {
+  position: absolute;
+  top: 100%;
+  left: 12px;
+  right: 12px;
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  background: var(--bg-card);
+  border: 1px solid var(--grid-line);
+  border-radius: 12px;
+  z-index: 5;
+}
+.mobileItem {
+  padding: 10px 12px;
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-size: 15px;
+}
+.mobileItem:hover {
+  background: var(--bg-card-hover);
+}
+.mobileCta {
+  margin-top: 4px;
+  padding: 11px 14px;
+  border-radius: 8px;
+}
+
+/* Ambient glows. Decorative, so they are hidden from assistive tech and cost
+   nothing when motion is reduced (they do not animate at all). */
+.glow1,
+.glow2 {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(90px);
+  pointer-events: none;
+  z-index: 0;
+}
+.glow1 {
+  width: 520px;
+  height: 520px;
+  top: -220px;
+  right: -120px;
+  background: color-mix(in srgb, var(--sonar-green) 26%, transparent);
+}
+.glow2 {
+  width: 420px;
+  height: 420px;
+  bottom: -260px;
+  left: -140px;
+  background: color-mix(in srgb, var(--fire-amber) 16%, transparent);
+}
+
+.hero {
+  position: relative;
+  z-index: 1;
+  max-width: var(--page-max);
+  margin: 0 auto;
+  padding: 64px 20px 88px;
+  text-align: center;
+}
+
+.badge {
+  display: inline-block;
+  padding: 6px 14px;
+  border: 1px solid var(--grid-line);
+  border-radius: 999px;
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.headline {
+  margin: 22px auto 0;
+  max-width: 20ch;
+  font-size: clamp(34px, 6vw, 60px);
+  line-height: 1.04;
+  letter-spacing: -0.035em;
+  font-weight: 700;
+  text-wrap: balance;
+}
+.headlineAccent {
+  color: var(--sonar-green);
+}
+
+.sub {
+  margin: 20px auto 0;
+  max-width: 60ch;
+  font-size: 17px;
+  color: var(--text-secondary);
+}
+
+.heroActions {
+  margin-top: 32px;
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+.ctaPrimary {
+  padding: 13px 26px;
+  font-size: 15px;
+}
+.ctaSecondary {
+  padding: 13px 22px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+  border: 1px solid var(--grid-line);
+  border-radius: 999px;
+  background: var(--bg-card);
+  transition: background 140ms ease;
+}
+.ctaSecondary:hover {
+  background: var(--bg-card-hover);
+}
+
+/* ── preview ───────────────────────────────────────────────────────────── */
+
+.previewSection {
+  max-width: var(--page-max);
+  margin: 0 auto;
+  padding: 56px 20px 8px;
+  text-align: center;
+}
+
+.eyebrow {
+  color: var(--text-secondary);
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.previewWrap {
+  margin-top: 18px;
+}
+
+.preview {
+  max-width: 680px;
+  margin: 0 auto;
+  text-align: left;
+  background: var(--bg-card);
+  border: 1px solid var(--grid-line);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.previewTop {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--grid-line);
+}
+.previewBrand {
+  font-weight: 700;
+  font-size: 14px;
+}
+.previewBrand span {
+  color: var(--sonar-green);
+}
+.previewTabs {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+.previewTab,
+.previewTabActive {
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  color: var(--text-secondary);
+}
+.previewTabActive {
+  color: var(--text-primary);
+  background: var(--bg-card-hover);
+}
+.previewConnected {
+  font-size: 11px;
+  color: var(--sonar-green);
+  white-space: nowrap;
+}
+
+.previewPost {
+  display: flex;
+  gap: 14px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--grid-line);
+}
+.previewPost:last-child {
+  border-bottom: none;
+}
+.previewVote {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  min-width: 34px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.previewArrow {
+  color: var(--grid-line);
+}
+.previewArrowOn {
+  color: var(--fire-amber);
+}
+.previewScore {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+.previewBody {
+  min-width: 0;
+}
+.previewTitle {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.previewMeta {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+/* ── sections ──────────────────────────────────────────────────────────── */
+
+.section,
+.sectionAlt {
+  padding: 72px 20px;
+}
+.sectionAlt {
+  background: var(--bg-card);
+  border-block: 1px solid var(--grid-line);
+}
+
+.inner {
+  max-width: var(--page-max);
+  margin: 0 auto;
+}
+
+.sectionTitle {
+  margin: 0;
+  font-size: clamp(24px, 3.2vw, 34px);
+  letter-spacing: -0.025em;
+  font-weight: 700;
+  text-wrap: balance;
+}
+.sectionSub {
+  margin: 10px 0 0;
+  color: var(--text-secondary);
+  font-size: 16px;
+}
+
+.grid {
+  margin-top: 34px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+}
+
+.card {
+  padding: 22px;
+  background: var(--bg-card);
+  border: 1px solid var(--grid-line);
+  border-radius: 12px;
+}
+.sectionAlt .card {
+  background: var(--bg-deep);
+}
+.cardIcon {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--sonar-green) 16%, transparent);
+  color: var(--sonar-green);
+  font-size: 16px;
+}
+.card h3 {
+  margin: 14px 0 6px;
+  font-size: 16px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+.card p {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+/* The steps ARE a sequence, which is the only reason they are numbered. */
+.steps {
+  margin: 34px 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+  counter-reset: none;
+}
+.step {
+  padding: 20px;
+  background: var(--bg-deep);
+  border: 1px solid var(--grid-line);
+  border-radius: 12px;
+}
+.stepNum {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: var(--sonar-green);
+  font-variant-numeric: tabular-nums;
+}
+.step h3 {
+  margin: 10px 0 6px;
+  font-size: 16px;
+  font-weight: 650;
+}
+.step p {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.faq {
+  margin-top: 30px;
+  display: grid;
+  gap: 1px;
+  background: var(--grid-line);
+  border: 1px solid var(--grid-line);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.faqItem {
+  padding: 18px 22px;
+  background: var(--bg-card);
+}
+.faqItem strong {
+  display: block;
+  font-size: 15px;
+  font-weight: 650;
+}
+.faqItem p {
+  margin: 6px 0 0;
+  font-size: 14px;
+  color: var(--text-secondary);
+  max-width: 78ch;
+}
+
+/* ── footer ────────────────────────────────────────────────────────────── */
+
+.footer {
+  border-top: 1px solid var(--grid-line);
+  padding: 48px 20px 28px;
+}
+.footerTop {
+  max-width: var(--page-max);
+  margin: 0 auto;
+  display: flex;
+  gap: 40px;
+  flex-wrap: wrap;
+  justify-content: space-between;
+}
+.footerTagline {
+  margin: 10px 0 0;
+  max-width: 34ch;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+.footerCols {
+  display: flex;
+  gap: 56px;
+  flex-wrap: wrap;
+}
+.footerCol {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+.footerColTitle {
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+.footerLink {
+  font-size: 14px;
+  color: var(--text-primary);
+  transition: color 140ms ease;
+}
+.footerLink:hover {
+  color: var(--sonar-green);
+}
+.footerBottom {
+  max-width: var(--page-max);
+  margin: 36px auto 0;
+  padding-top: 18px;
+  border-top: 1px solid var(--grid-line);
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+/* ── no scroll-reveal ──────────────────────────────────────────────────────
+   There was one here, and it hid three whole sections.
+   `.reveal` parked them at `opacity: 0.001` and an IntersectionObserver added
+   `.visible` on scroll — so Features, How it works and FAQ rendered as empty
+   bands for anyone who did not scroll, and in every full-page capture, which is
+   also what a link preview and a thumbnail get. Content that is meant to be read
+   is visible when the page loads; the animation was worth nothing next to that.
+*/
+
+@media (max-width: 760px) {
+  .nav {
+    display: none;
+  }
+  .headerCta {
+    display: none;
+  }
+  .hamburger {
+    display: block;
+    margin-left: auto;
+  }
+  .hero {
+    padding: 44px 20px 64px;
+  }
+  .footerCols {
+    gap: 32px;
+  }
+}
+
+/* index.css has no anchor reset, so links would render underlined. */
+.root a {
+  text-decoration: none;
+  color: inherit;
+}
+
+/* ── board preview ─────────────────────────────────────────────────────────
+   Two 8x8 grids drawn from the game's own cell tokens, so the still matches
+   what the match actually looks like. Fixed, hand-placed shots — a generated
+   pattern would differ between renders and between screenshots. */
+.boardWrap {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  padding: 16px;
+}
+@media (min-width: 560px) {
+  .boardWrap {
+    grid-template-columns: auto 1fr auto 1fr;
+    align-items: center;
+    gap: 10px 14px;
+  }
+}
+.boardLabel {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.board {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 2px;
+  padding: 4px;
+  background: var(--grid-bg);
+  border: 1px solid var(--grid-line);
+  border-radius: 6px;
+  /* Square regardless of column width, so the cells never turn into bars. */
+  aspect-ratio: 1;
+  max-width: 220px;
+}
+.cell,
+.cellHit,
+.cellMiss,
+.cellShip {
+  border-radius: 2px;
+  background: var(--grid-cell);
+}
+.cellHit {
+  background: var(--fire-red);
+  box-shadow: 0 0 6px var(--fire-red-glow);
+}
+.cellMiss {
+  background: var(--miss-blue-dim);
+}
+.cellShip {
+  background: var(--sonar-green-dim);
+}
+
+/* The feature cards here hold a single line of copy from en.global.json rather
+   than a title + body, so they need no heading rhythm — just room to breathe. */
+.card p:only-of-type {
+  margin: 12px 0 0;
+  font-size: 14.5px;
+  color: var(--text-primary);
+}
