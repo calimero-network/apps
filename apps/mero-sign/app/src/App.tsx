@@ -6,6 +6,7 @@ import AgreementPage from './pages/agreement';
 import SignaturesPage from './pages/signatures';
 import { MobileLayout } from './components/MobileLayout';
 import { CalimeroConnectionRequired } from './components/CalimeroConnectionRequired';
+import LandingPage from './pages/landing/LandingPage';
 import InvitationHandlerPopup from './components/InvitationHandlerPopup';
 import { useCalimero } from '@calimero-network/calimero-client';
 import { hasPendingInvitation } from './utils/invitation';
@@ -33,6 +34,37 @@ function AppContent() {
   const handleInvitationError = () => {
     setShowInvitationHandler(false);
   };
+
+  // Unauthenticated, `/` is the explainer and every other path is the connect
+  // gate. The app had no landing page at all: an unauthenticated visitor got
+  // `CalimeroConnectionRequired` — a competent gate that says what to click and
+  // never what MeroSign is. That component stays, and stays reachable, because
+  // it is the right screen for losing a connection mid-session; it is just no
+  // longer the front door.
+  //
+  // Rendered OUTSIDE MobileLayout: the landing page carries its own header and
+  // footer, and nesting it in the app's sidebar chrome would show a signed-out
+  // visitor a navigation rail into screens they cannot open.
+  if (!isAuthenticated) {
+    return (
+      <Routes>
+        <Route
+          path="/"
+          element={<LandingPage onConnect={() => setSidebarOpen(true)} />}
+        />
+        <Route
+          path="*"
+          element={
+            <MobileLayout sidebarOpen={sidebarOpen} onSidebarToggle={setSidebarOpen}>
+              <CalimeroConnectionRequired
+                onOpenSidebar={() => setSidebarOpen(true)}
+              />
+            </MobileLayout>
+          }
+        />
+      </Routes>
+    );
+  }
 
   return (
     <>
