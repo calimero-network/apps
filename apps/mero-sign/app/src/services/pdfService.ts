@@ -68,22 +68,28 @@ class PDFService {
       const viewport = page.getViewport({ scale });
 
       const canvas = document.createElement('canvas');
-      const context = canvas.getContext('2d');
-
-      if (!context) {
+      // Kept as a CHECK, not as an argument: pdf.js is handed the canvas now
+      // (see below), but a canvas that cannot produce a 2D context will fail
+      // inside the renderer with a far less obvious message, so probe it here.
+      if (!canvas.getContext('2d')) {
         throw new Error('Unable to get 2D context');
       }
 
       canvas.height = viewport.height;
       canvas.width = viewport.width;
 
-      const renderContext = {
-        canvasContext: context,
-        viewport: viewport,
-        enableWebGL: false,
-      };
-
-      await page.render(renderContext).promise;
+      // pdfjs-dist 6 takes the CANVAS, not its context: `canvas` is required on
+      // RenderParameters and `canvasContext` is the legacy path, which its own
+      // docs say to stop using ("it is recommended to use the `canvas`
+      // parameter instead"). `enableWebGL` was dropped from pdf.js entirely and
+      // had been silently ignored here for as long as it has been written.
+      //
+      // ⚠️ TypeScript 4.9 could not see any of this. The app pinned TS 4.9.5,
+      // which does not support `moduleResolution: "bundler"` — so `tsc -b`
+      // failed on the tsconfig before it type-checked a single file, and this
+      // call went unchecked. It surfaced the moment the app moved to the
+      // workspace's TS 5.8.
+      await page.render({ canvas, viewport }).promise;
 
       return {
         pageNumber,
