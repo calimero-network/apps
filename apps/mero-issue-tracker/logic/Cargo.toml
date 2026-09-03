@@ -44,9 +44,14 @@ name        = "Mero Issue Tracker"
 description = "A private, real-time issue board for a small engineering team - create, triage, and discuss issues together"
 author      = "Calimero"
 slug        = "com.calimero.mero-issue-tracker"
-# The repo ships no icon of its own; `cargo mero bundle` refuses to run without
-# an icon DECISION and fails at bundle time — after a green PR, on the release run.
-icon        = "default"
+# WAS "default" — cargo-mero's placeholder, and the reason 0.0.13 in the registry
+# advertises the SAME 43,368-byte generic mark as mero-sheets. The app has shipped
+# its own icon in app/public/ since the migration (regenerate with
+# `node app/scripts/gen-icons.mjs`); nothing pointed the bundle at it. This is what
+# gives the app an icon in the registry and — via tauri-app's
+# `ensure_app_launcher_icon`, which pulls this PNG through sips/iconutil — in the
+# macOS Dock.
+icon        = "../app/public/icon-512.png"
 tags        = ["productivity", "issues", "collaboration"]
 github      = "https://github.com/calimero-network/apps"
 min-runtime-version = "0.11.0-rc.28"
