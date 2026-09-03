@@ -6,7 +6,7 @@ Live cursors, multiple sheet tabs, a formula engine (`SUM`/`AVERAGE`/`MIN`/`MAX`
 all data replicated between peers as CRDTs, no central server.
 
 - **Live app:** deployed on Vercel (see the repo's Deployments).
-- **Docs:** https://calimero-network.github.io/mero-sheets/
+- **Docs:** [`docs/`](docs/index.md) in this directory.
 
 ## What it is
 
@@ -23,7 +23,7 @@ mero-sheets is two halves:
 
 > **Note:** the Vercel deployment serves the client. A working end-to-end
 > session needs a merod node the app can reach (local or hosted). See the
-> [architecture docs](https://calimero-network.github.io/mero-sheets/architecture).
+> [architecture docs](docs/architecture.md).
 
 ## Repo layout
 
