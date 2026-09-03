@@ -3,17 +3,20 @@
 
 WHY THIS EXISTS
 
-`battleships.vercel.app` serves a **different application**. Rendered, it is a
-single-player battleships-vs-computer toy — "Player board" / "Computer board" /
-"Start the game against the computer" / "Show enemy ships!" — built with
-create-react-app (`<title>React App</title>`,
-`content="Web site created using create-react-app"`, a webpack runtime,
-`/logo192.png`). It is not a stale build of our app; it is not our app.
+`battleships.vercel.app` serves somebody else's application — a third-party
+single-player battleships-vs-computer toy built with create-react-app. Its
+bundle carries no `com.calimero.*` package id and no mero-react at all, and
+neither does `battleships-app.vercel.app`, which is a *different* third-party
+battleships game. The repo is fine: every component under
+`apps/battleships/app/src` matches the archived `calimero-network/battleships`
+and `vite build` is green.
 
-The repo is fine: every component under `apps/battleships/app/src` matches the
-archived `calimero-network/battleships` repo and `vite build` is green. The
-Vercel project is wired to the wrong source, and the URL has been answering 200
-with somebody else's game.
+The cause is the `frontend` value, not a project setting: `battleships` is a
+generic name that was already taken on Vercel. That is why every other app here
+carries a prefix or suffix — `mero-kv-store`, `mero-stream-neon`,
+`mero-issue-tracker-app`, `scaffolding-e2e-application`. battleships is the only
+one declaring a bare generic name, so it has been publishing a stranger's site
+as its own frontend.
 
 Nothing could catch that. `check-vercel-output.sh` asserts the declared
 `outputDirectory` matches what the build writes, which was true. CI builds and
@@ -66,16 +69,27 @@ CRA_MARKERS = (
 # check, so the entry has to be deleted rather than quietly kept.
 EXPECTED_STALE = {
     "battleships": (
-        "serves a COMPLETELY DIFFERENT APPLICATION — a single-player "
-        "battleships-vs-computer web toy ('Player board' / 'Computer board' / "
-        "'Start the game against the computer' / 'Show enemy ships!'), built "
-        "with create-react-app. It is not an old build of our app; it is not "
-        "our app at all. The repo is correct: every component under "
-        "apps/battleships/app/src matches the archived calimero-network/"
-        "battleships repo and `vite build` is green. So the fix is in Vercel — "
-        "the project is wired to the wrong source. Point it at this repo with "
-        "Root Directory apps/battleships/app and redeploy (docs/VERCEL.md). "
-        "Delete this entry once it does."
+        "points at a domain WE DO NOT OWN. battleships.vercel.app serves a "
+        "third-party single-player battleships game (create-react-app, "
+        "'Player board' / 'Start the game against the computer'); "
+        "battleships-app.vercel.app is a DIFFERENT third-party battleships "
+        "game. Neither bundle contains a `com.calimero.*` package id or any "
+        "mero-react. The repo is correct — every component under "
+        "apps/battleships/app/src matches the archived "
+        "calimero-network/battleships and `vite build` is green.\n"
+        "        This is not a Root Directory setting. `battleships` is a "
+        "generic name that was already claimed on Vercel, which is exactly why "
+        "every other app in this repo carries a prefix or suffix: "
+        "mero-kv-store (not kv-store), mero-stream-neon, "
+        "mero-issue-tracker-app, scaffolding-e2e-application. battleships is "
+        "the only `frontend` here using a bare generic name.\n"
+        "        FIX: read this project's real *.vercel.app URL off the Vercel "
+        "dashboard (or rename the project to a free name, e.g. "
+        "mero-battleships) and put THAT in "
+        "apps/battleships/logic/Cargo.toml `frontend`. Until then the registry "
+        "publishes a stranger's site as this app's links.frontend — which is "
+        "what the desktop launcher opens, what invite links resolve to, and "
+        "what the auth frontend authorizes a login callback against."
     ),
 }
 
