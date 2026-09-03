@@ -1,0 +1,151 @@
+/* Setup screen. Same tokens as the feed and the landing page — no literals. */
+
+.root {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 40px 20px;
+}
+
+.card {
+  width: 100%;
+  max-width: 560px;
+  padding: 32px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.brand {
+  font-weight: 700;
+  font-size: 16px;
+  letter-spacing: -0.02em;
+}
+.brand span {
+  color: var(--accent);
+}
+
+.title {
+  margin: 18px 0 0;
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  text-wrap: balance;
+}
+
+.lede {
+  margin: 10px 0 0;
+  max-width: 56ch;
+  font-size: 15px;
+  color: var(--muted);
+}
+
+.block {
+  margin-top: 28px;
+}
+.blockTitle {
+  margin: 0 0 10px;
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.input,
+.textarea {
+  flex: 1 1 220px;
+  min-width: 0;
+  padding: 11px 13px;
+  font: inherit;
+  font-size: 15px;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  outline: none;
+  transition: border-color 140ms ease;
+}
+.input:focus,
+.textarea:focus {
+  border-color: var(--accent);
+}
+.textarea {
+  width: 100%;
+  display: block;
+  resize: vertical;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.primary,
+.secondary {
+  font: inherit;
+  font-weight: 600;
+  font-size: 15px;
+  padding: 11px 22px;
+  border-radius: 9px;
+  cursor: pointer;
+  transition: filter 140ms ease, background 140ms ease;
+}
+.primary {
+  border: none;
+  color: var(--bg);
+  background: var(--accent);
+}
+.primary:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+.secondary {
+  margin-top: 10px;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+}
+.secondary:hover:not(:disabled) {
+  background: var(--surface-hover);
+}
+.primary:disabled,
+.secondary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.or {
+  margin: 24px 0 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.or::before,
+.or::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+/* Surfaced, never truncated: a bare 500 from POST /contexts means the
+   contract's `init` rejected the params, and that string is the only clue. */
+.error {
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--up);
+  background: color-mix(in srgb, var(--up) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--up) 34%, transparent);
+  border-radius: 8px;
+  overflow-wrap: anywhere;
+}
