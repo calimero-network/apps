@@ -1118,6 +1118,104 @@ function ModeSelector({ onSelect }: { onSelect: (m: "owner" | "joiner") => void 
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
+/**
+ * Namespace + group + context + activate, in one click.
+ *
+ * WHY. Every section of this app that touches state needs an ACTIVE context, and
+ * getting one meant walking three wizard steps and then finding the `Use`
+ * button — with a 64-hex application id to paste in the first of them. For an
+ * app whose whole purpose is exercising the SDK surface, that is four
+ * interactions before the first assertion can run, every time a node is reset.
+ *
+ * This does exactly what steps 1-3 plus `Use` do, in the same order, calling
+ * the same four functions. It is not a shortcut around them: the steps stay,
+ * because they are also the documentation of what the sequence IS, and a
+ * two-node setup still needs Step 4's invitation.
+ */
+function OwnerQuickSetup({
+  onDone,
+}: {
+  onDone: (nsId: string, appId: string, groupId: string) => void;
+}) {
+  const [appId, setAppId] = useState(currentApplicationId() ?? "");
+  const [busy, setBusy] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [ok, setOk] = useState<{ ns: string; group: string; ctx: string } | null>(null);
+
+  async function run() {
+    setErr(null);
+    setOk(null);
+    try {
+      setBusy("Creating the namespace…");
+      const { namespaceId } = await createNamespace(appId.trim());
+
+      setBusy("Creating the group…");
+      const { groupId } = await createGroup(namespaceId, "quick-setup");
+
+      setBusy("Creating the context…");
+      const { contextId } = await createContext(appId.trim(), groupId);
+
+      // The `Use` step. Without it every other section reports "No active
+      // context", which is the state this whole component exists to skip.
+      setBusy("Activating the context…");
+      const identities = await getContextIdentities(contextId);
+      setContextId(contextId);
+      if (identities[0]) setContextIdentity(identities[0]);
+
+      setOk({ ns: namespaceId, group: groupId, ctx: contextId });
+      onDone(namespaceId, appId.trim(), groupId);
+    } catch (e) {
+      // Surfaced verbatim: a bare 500 from POST /contexts means the contract's
+      // `init` rejected the params, and core hides untyped errors deliberately.
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <div style={{ background: C.surface, border: `1px solid ${C.brand}`, borderRadius: 10, padding: 16, marginBottom: 20 }}>
+      <div style={{ fontSize: 13, fontWeight: 600, color: C.brand, marginBottom: 6 }}>
+        Quick setup — one click
+      </div>
+      <div style={{ fontSize: 12.5, color: C.muted, lineHeight: 1.6, marginBottom: 12 }}>
+        Creates the namespace, a group, and a context, then activates that
+        context — steps 1 to 3 plus <em>Use</em>, in one go. Every section below
+        needs an active context; this is the shortest way to one. Walk the steps
+        individually instead if you want to see each call on its own, and use
+        Step&nbsp;4 when you need to invite a second node.
+      </div>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <input
+          className="form-control"
+          style={{ flex: 1, minWidth: 240, borderColor: appId.trim() && !isHexId(appId) ? C.error : undefined }}
+          value={appId}
+          onChange={(e) => setAppId(e.target.value)}
+          placeholder="Application ID (64 hex characters)"
+          aria-label="Application ID"
+        />
+        <button className="btn-calimero" onClick={run} disabled={!!busy || !isHexId(appId)}>
+          {busy ?? "Set it all up"}
+        </button>
+      </div>
+      {!appId.trim() && (
+        <div style={{ fontSize: 12, color: C.muted, marginTop: 8 }}>
+          No application id yet — it arrives with the login callback, or set
+          VITE_APP_ID. <code style={{ fontSize: 11 }}>meroctl app ls</code> prints it.
+        </div>
+      )}
+      {err && <Err>{err}</Err>}
+      {ok && (
+        <OK>
+          Ready. namespace <code style={{ fontSize: 11 }}>{ok.ns.slice(0, 16)}…</code>,
+          context <code style={{ fontSize: 11 }}>{ok.ctx.slice(0, 16)}…</code> — active.
+          Every section below can run now.
+        </OK>
+      )}
+    </div>
+  );
+}
+
 export function SetupWizard() {
   const [mode, setMode] = useState<"owner" | "joiner" | null>(null);
   const [openStep, setOpenStep] = useState(1);
@@ -1180,6 +1278,17 @@ export function SetupWizard() {
       {/* Owner flow */}
       {mode === "owner" && (
         <>
+          <OwnerQuickSetup
+            onDone={(ns, aid, group) => {
+              setNsId(ns);
+              setAppId(aid);
+              setGroupId(group);
+              // Steps 1-3 are genuinely complete, so mark them and open Step 4
+              // (the invitation) — the only thing still needed for two nodes.
+              setDone(new Set([1, 2, 3]));
+              setOpenStep(4);
+            }}
+          />
           <StepCard num={1} title="Namespace (root group)" status={status(1)} open={openStep === 1} onToggle={() => toggle(1)}>
             <OwnerStep1Namespace onDone={(id, aid) => { setNsId(id); setAppId(aid); markDone(1); }} />
           </StepCard>
