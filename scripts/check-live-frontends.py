@@ -64,19 +64,14 @@ CRA_MARKERS = (
 # main until somebody clicks something in a dashboard. The exception cannot
 # outlive its cause — an app listed here that turns out to be FINE fails the
 # check, so the entry has to be deleted rather than quietly kept.
-EXPECTED_STALE = {
-    "battleships": (
-        "serves a COMPLETELY DIFFERENT APPLICATION — a single-player "
-        "battleships-vs-computer web toy ('Player board' / 'Computer board' / "
-        "'Start the game against the computer' / 'Show enemy ships!'), built "
-        "with create-react-app. It is not an old build of our app; it is not "
-        "our app at all. The repo is correct: every component under "
-        "apps/battleships/app/src matches the archived calimero-network/"
-        "battleships repo and `vite build` is green. So the fix is in Vercel — "
-        "the project is wired to the wrong source. Point it at this repo with "
-        "Root Directory apps/battleships/app and redeploy (docs/VERCEL.md). "
-        "Delete this entry once it does."
-    ),
+EXPECTED_STALE: dict[str, str] = {
+    # Empty, and it should stay that way. battleships lived here while its
+    # `frontend` named battleships.vercel.app — a domain we do not own, serving
+    # a third-party game. Corrected to battleships-fawn.vercel.app, which is
+    # this project's real Vercel URL, so the entry is gone.
+    #
+    # An app listed here that turns out to be FINE fails this check, which is
+    # what forces the entry out rather than leaving it to be trusted forever.
 }
 
 failures: list[str] = []

@@ -51,10 +51,36 @@ test.describe('Landing (unauthenticated)', () => {
     ).toBeVisible();
   });
 
-  test('renders external-link buttons', async ({ page }) => {
-    await expect(page.getByRole('button', { name: 'Docs' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'GitHub' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Calimero' })).toBeVisible();
+  test('offers the outbound links', async ({ page }) => {
+    // LINKS now, not buttons. The old landing page used <Button> elements with
+    // `window.open`, which is the wrong element for outbound navigation: it
+    // loses middle-click, cmd-click, "copy link", and the status-bar preview,
+    // and it is announced as a button to a screen reader. The new page uses
+    // <a href> — so the assertion moves to the `link` role rather than the copy
+    // being changed to keep a weaker element passing.
+    // The labels come from this app's own en.global.json — documentation:
+    // "Docs", github: "GitHub", website: "Calimero" — so they are unchanged
+    // from the old page; only the element is.
+    await expect(page.getByRole('link', { name: 'Docs' }).first()).toBeVisible();
+    await expect(page.getByRole('link', { name: 'GitHub' }).first()).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Calimero' }).first()).toBeVisible();
+  });
+
+  test('the explainer is fully visible at rest, with no scrolling', async ({ page }) => {
+    // Regression guard, learned on mero-forum's equivalent page: a scroll-reveal
+    // that parks sections at opacity 0 behind an IntersectionObserver renders
+    // them as empty bands for anyone who does not scroll, and in every link
+    // preview and thumbnail.
+    const faint = await page.evaluate(() =>
+      [...document.querySelectorAll('section, h2, h3, li, p')]
+        .filter(
+          (el) =>
+            parseFloat(getComputedStyle(el).opacity) < 0.9 &&
+            (el.textContent ?? '').trim().length > 10,
+        )
+        .map((el) => `${el.tagName}: ${(el.textContent ?? '').trim().slice(0, 40)}`),
+    );
+    expect([...new Set(faint)], 'content parked below full opacity at rest').toEqual([]);
   });
 
   test('unknown routes redirect to /', async ({ page }) => {
