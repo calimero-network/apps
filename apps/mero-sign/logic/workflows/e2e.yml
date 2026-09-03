@@ -40,7 +40,7 @@ nodes:
   # Was `:edge`, a FLOATING tag — the node changed release under the contract
   # whenever it moved. Pinned to [workspace.metadata.mero-apps].merod-image,
   # which check-app-metadata.sh asserts.
-  image: ghcr.io/calimero-network/merod:0.11.0-rc.28
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.32
   prefix: calimero-node
   # rc.26 made mDNS opt-in (core#3620); without this the nodes never peer and it
   # surfaces as a 500 on join_namespace rather than as a discovery error.

@@ -47,7 +47,7 @@ nodes:
   # ponytail: pinned off `:edge` to the rc-matching tag so the verify merod
   # matches the SDK the logic pins. Bump in lockstep with logic/Cargo.toml's
   # SDK tag, or bootstrap skews.
-  image: ghcr.io/calimero-network/merod:0.11.0-rc.28
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.32
   # High base ports to avoid colliding with a host-native merod on the
   # defaults (2428 P2P / 2528 RPC). Each node gets base + i.
   base_port: 12428      # P2P / swarm

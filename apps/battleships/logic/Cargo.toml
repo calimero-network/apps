@@ -34,7 +34,7 @@ slug        = "com.calimero.battleships"
 icon        = "../app/public/icon-512.png"
 tags        = ["game", "multiplayer", "turn-based"]
 github      = "https://github.com/calimero-network/apps"
-min-runtime-version = "0.11.0-rc.28"
+min-runtime-version = "0.11.0-rc.32"
 # ⚠️ `battleships.vercel.app` is NOT ours. It serves a third-party
 # single-player battleships game (create-react-app, "Start the game against the
 # computer"), and `battleships-app.vercel.app` is a different third-party one —

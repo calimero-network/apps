@@ -37,7 +37,7 @@ nodes:
   # Was `:edge`, which FLOATS — the scenario silently changed release under
   # the contract every time the tag moved, and check-app-metadata.sh fails the
   # build for exactly that. Pinned to the workspace's merod-image.
-  image: ghcr.io/calimero-network/merod:0.11.0-rc.28
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.32
   prefix: merosign-node
 
 steps:

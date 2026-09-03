@@ -47,7 +47,7 @@ github = "https://github.com/calimero-network/apps"
 # build imports host functions that only exist from that release on, so a node
 # older than this installs the bundle happily and then dies at context creation
 # with `link error: unknown import`.
-min-runtime-version = "0.11.0-rc.28"
+min-runtime-version = "0.11.0-rc.32"
 # Where the desktop app and links.calimero.network send a deep link for this
 # package. The hosted build is the same `frontend/` in this repo (Vercel project
 # root = `frontend`); it still talks to whatever node the user connects to from

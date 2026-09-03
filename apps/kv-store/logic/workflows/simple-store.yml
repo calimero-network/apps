@@ -43,7 +43,7 @@ nodes:
   # lockstep: the wasm imports host functions that only exist from that release
   # on, and an older node installs it happily then dies at context creation
   # with `link error: unknown import`.
-  image: ghcr.io/calimero-network/merod:0.11.0-rc.28
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.32
   prefix: kv-node
   # Stated, not inherited. core 0.11.0-rc.26 made mDNS opt-in (core#3620):
   # `merod init` now writes `discovery.mdns = false`, where every earlier
