@@ -9,6 +9,39 @@
 > For real, low-latency calls, media rides native WebRTC peer-to-peer and never
 > touches the contract — that is **Mero Meet**, and it remains the right answer.
 
+## Platform support — web only
+
+**Mero Stream is a web app. The Calimero desktop is not a supported target.**
+
+It is not blocked there and it does not crash: the desktop opens an app at its
+registry `links.frontend` with a session in the URL fragment, and this app reads
+that fragment like any other, so it will render and run. What is *not* supported
+is the desktop integration around it — treat a desktop window as unsupported and
+reproduce anything you see there in a browser first.
+
+Concretely, as of this note:
+
+* The Tauri bridge in `app/src/lib/tauri.ts` was written against **Tauri v1**
+  (`window.__TAURI_INVOKE__`, `__TAURI_IPC__`, `__TAURI__`). tauri-app is
+  **Tauri v2** (`@tauri-apps/api ^2.11.1`, `tauri = { version = "2" }`) with
+  `withGlobalTauri: false`, so none of those globals exists in an app window and
+  every `invokeTauri()` call resolved to `null`. Nothing surfaced, because the
+  two commands built on it were never called from anywhere — they have been
+  removed rather than left looking functional.
+* Even with a correct v2 `invoke`, the command it reached for
+  (`close_current_window`) is not among the ones tauri-app grants to `app-*`
+  windows: `capabilities/remote.json` lists `core:window:allow-close` and the
+  node proxy/token-broker commands, and nothing else.
+* Session detection still accepts a Tauri global as a signal, but it never
+  needs to: the desktop always writes the fragment, which `hasHashSession()`
+  already covers.
+
+Everything the app actually does works from a browser without the shell: node
+traffic is direct HTTP + SSE from the page, there is no Tauri Rust proxy on any
+call path, and auth is an ordinary bearer token (PR #5). That is why web-only is
+a real position here and not a gap — but it does mean the desktop path carries
+no tests, no support, and no promises.
+
 ## The distinguishing move (approach 3)
 
 The toy **codec runs deterministically inside the WASM contract**, not in the
