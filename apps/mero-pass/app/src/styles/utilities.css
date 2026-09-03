@@ -43,7 +43,7 @@
   --mp-border: #2a2e2f;
   --mp-text: #e8ecea;
   --mp-text-dim: #9aa5a1;
-  --mp-text-faint: #6c7773;
+  --mp-text-faint: #77837e;
   --mp-radius: 10px;
 }
 
@@ -128,10 +128,19 @@
 .tracking-tight { letter-spacing: -0.02em; }
 .text-center { text-align: center; }
 
-/* The greys are the app's own dim tokens, not Tailwind's slate ramp: on a
-   #111111 ground Tailwind's `text-gray-500` (#6b7280) is 4.0:1 and its
-   `text-gray-600` (#4b5563) is 2.5:1 — both below AA for body text. These read
-   at 6.9:1 and above. `text-gray-900` inverts on the one light surface. */
+/* The greys are the app's own dim tokens, not Tailwind's slate ramp. Measured
+   on the #111111 ground this app declares:
+
+     Tailwind text-gray-500  #6b7280   3.91:1   large text only
+     Tailwind text-gray-600  #4b5563   2.50:1   fails outright
+     --mp-text-dim           #9aa5a1   7.44:1   AA body
+     --mp-text-faint         #77837e   4.79:1   AA body
+     --mp-text               #e8ecea  15.84:1   AA body
+
+   `--mp-text-faint` was #6c7773 and measured 4.07:1 — under the 4.5:1 body
+   threshold, so the fainter of the two greys would have shipped failing the bar
+   this comment claims. Both now clear it. `text-gray-900` inverts, for the one
+   light surface (`bg-gray-50`). */
 .text-gray-400 { color: var(--mp-text-dim); }
 .text-gray-500 { color: var(--mp-text-dim); }
 .text-gray-600 { color: var(--mp-text-faint); }
