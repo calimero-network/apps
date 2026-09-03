@@ -1,6 +1,10 @@
 .input {
   cursor: pointer;
   &:focus, &:hover {
-    background-color: #f6f6f6;
+    // Was #f6f6f6. The modal sets `color: var(--mc-text)`, which is #e6eaef in
+    // dark — so a light grey here put near-white text on near-white ground:
+    // 1.12:1, i.e. the time you were typing was invisible. `--mc-hover` gives
+    // 13.1:1. Same fix, same token, as the colour picker's header.
+    background-color: var(--mc-hover);
   }
 }

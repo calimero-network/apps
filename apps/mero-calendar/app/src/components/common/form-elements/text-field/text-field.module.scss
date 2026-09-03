@@ -10,11 +10,15 @@
   }
 
   &_error {
-    background-color: #fff2f2 !important;
+    // Was #fff2f2, a near-white pink: in dark mode the invalid field was the
+    // brightest thing in the modal AND its text was unreadable. `--danger-soft`
+    // is the themed tint, mirroring `--accent-soft`.
+    background-color: var(--danger-soft) !important;
   }
 
   &__error__text {
-    color: red;
+    // `red` is not the palette's red and does not shift with the theme.
+    color: var(--danger);
     padding: 0 9px;
     font-size: 12px;
     
@@ -42,7 +46,8 @@
   position: absolute;
   width: 0;
   height: 2px;
-  background-color: #1a73e8;
+  // Was #1a73e8, a stray Google blue unrelated to this app's accent.
+  background-color: var(--accent);
   bottom: 0;
   left: 50%;
 

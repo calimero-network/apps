@@ -8,13 +8,9 @@ body {
   color: var(--text);
 }
 
-/* Legacy variable names kept for the date-picker / year views — aliased onto
-   the themed tokens so they follow the active light/dark theme. */
-:root {
-  --color-text: var(--mc-text);
-  --primary: var(--accent);
-  --secondary: var(--accent);
-  --secondary-7: var(--accent-dim);
-  --color-placeholder: var(--mc-text-dim);
-  --background-color-calendar-header: var(--mc-header-bg);
-}
+/* The legacy aliases that used to live here are in styles/theme.css now. They
+   were NEVER EMITTED from this file — grep the built CSS for `--secondary-7`
+   and there are no hits, in a production build — so the eleven declarations
+   across the date-picker and year-calendar stylesheets that consume them all
+   resolved to nothing and fell back to their initial values. That is why the
+   date picker inside the create-event modal had no themed colours at all. */

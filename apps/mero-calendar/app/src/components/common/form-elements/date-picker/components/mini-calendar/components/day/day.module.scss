@@ -26,7 +26,11 @@
   }
   
   &_today {
-    color: white;
+    // Was `white`. `--primary` is aliased to `--accent`, which is #8aa6ff in
+    // dark mode — white on that is 2.3:1 and the selected date was the
+    // hardest thing in the picker to read. `--accent-text` is the token meant
+    // for text ON an accent fill: #ffffff in light, #0a0e13 in dark — 8.3:1.
+    color: var(--accent-text);
     background-color: var(--primary);
 
     &:hover {

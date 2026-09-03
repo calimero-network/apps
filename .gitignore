@@ -25,6 +25,7 @@ apps/*/app/dist-types/
 # Anchored: an unanchored `data/` would also swallow a source directory called
 # `data` at any depth, silently.
 /data/
+apps/*/data/
 apps/*/logic/data/
 apps/*/logic/workflows/data/
 
