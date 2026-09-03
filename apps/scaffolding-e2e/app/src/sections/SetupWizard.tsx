@@ -26,6 +26,7 @@ import {
 import { currentApplicationId, namespacesForThisApp } from "../api/appScope";
 import { wsInit, wsGetInfo, type WorkspaceInfo } from "../api/kvStore";
 import { FieldHelp } from "../components/FieldHelp";
+import { isHexId } from "../api/ids";
 
 const C = {
   card: "var(--color-bg-card)",
@@ -35,6 +36,7 @@ const C = {
   muted: "var(--color-text-muted)",
   brand: "var(--color-brand-600)",
   warning: "var(--color-warning)",
+  error: "var(--color-error)",
 };
 
 // ─── Compact encoding (base64url) ─────────────────────────────────────────────
@@ -495,9 +497,20 @@ function OwnerStep1Namespace({
       <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, padding: 14, marginTop: 4 }}>
         <div style={{ fontSize: 12, fontWeight: 600, color: C.muted, marginBottom: 10 }}>Create new namespace (group)</div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <input className="form-control" style={{ flex: 1 }} value={appId} onChange={(e) => setAppId(e.target.value)} placeholder="Application ID" />
-          <FieldHelp text="Your app's application ID — get it from: meroctl app ls, or set VITE_APP_ID in .env. It was output when you ran meroctl app install." />
-          <button className="btn-calimero" onClick={create} disabled={creating || !appId.trim()}>{creating ? "Creating…" : "Create Namespace"}</button>
+          <input
+            className="form-control"
+            style={{
+              flex: 1,
+              // Coloured only once there is something to judge, so an empty
+              // field does not read as an error before it has been touched.
+              borderColor: appId.trim() && !isHexId(appId) ? C.error : undefined,
+            }}
+            value={appId}
+            onChange={(e) => setAppId(e.target.value)}
+            placeholder="Application ID (64 hex characters)"
+          />
+          <FieldHelp text="Your app's application ID, as 64 hex characters (core rc.27 removed base58) — get it from: meroctl app ls, or set VITE_APP_ID in .env. It was output when you ran meroctl app install. ⚠️ Not the shortened value shown in the tables above: those are truncated for width and end in an ellipsis, and the node rejects a shortened id with a message that only names a JSON column." />
+          <button className="btn-calimero" onClick={create} disabled={creating || !isHexId(appId)}>{creating ? "Creating…" : "Create Namespace"}</button>
         </div>
       </div>
       {err && <Err>{err}</Err>}
@@ -692,6 +705,7 @@ function OwnerStep2Context({
 
   async function create() {
     if (!groupId.trim() || !appId.trim()) { setErr("Group ID and App ID are required. Complete Steps 1 and 2 first."); return; }
+    if (!isHexId(appId)) { setErr("App ID must be 64 hex characters (32 bytes). A value copied from a truncated display will not work — see Step 2."); return; }
     setCreating(true); setErr(null);
     try {
       const { contextId } = await createContext(appId.trim(), groupId.trim());
@@ -737,11 +751,11 @@ function OwnerStep2Context({
                 <tr key={ctx.id} style={{ borderBottom: i < contexts.length - 1 ? `1px solid ${C.border}` : "none", background: ctx.id === selectedCtxId ? C.brand + "10" : "transparent" }}>
                   <td style={{ padding: "10px 12px" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                      <code style={{ fontSize: 11 }}>{ctx.id.slice(0, 24)}…</code>
+                      <code style={{ fontSize: 11 }} title={ctx.id}>{ctx.id.slice(0, 24)}…</code>
                       {ctx.id === selectedCtxId && <span style={{ fontSize: 10, fontWeight: 600, padding: "1px 7px", borderRadius: 10, background: C.brand + "22", color: C.brand, border: `1px solid ${C.brand}55`, whiteSpace: "nowrap" as const }}>selected</span>}
                     </div>
                   </td>
-                  <td style={{ padding: "10px 12px", fontSize: 12, color: C.muted }}><code style={{ fontSize: 11 }}>{ctx.applicationId.slice(0, 16)}…</code></td>
+                  <td style={{ padding: "10px 12px", fontSize: 12, color: C.muted }}><code style={{ fontSize: 11 }} title={ctx.applicationId}>{ctx.applicationId.slice(0, 16)}…</code></td>
                   <td style={{ padding: "10px 12px", textAlign: "right" }}>
                     {confirmDeleteId === ctx.id ? (
                       <span style={{ display: "flex", gap: 6, justifyContent: "flex-end", alignItems: "center" }}>
