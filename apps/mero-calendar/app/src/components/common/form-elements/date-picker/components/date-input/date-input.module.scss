@@ -3,8 +3,18 @@
   font-size: 14px;
   flex: 1;
   padding: 5px;
+  // An <input> does NOT inherit `color` — the UA stylesheet sets its own — so
+  // with no declaration here this field rendered BLACK text on the dark
+  // modal's field: 1.32:1, measured. Every sibling input (title, description,
+  // time, peers) sets this and measures 14.5:1; this one was the odd one out,
+  // and it is the field in the reported screenshot.
+  color: var(--mc-text);
+  background-color: transparent;
+  border: none;
+  outline: none;
   
   &:focus, &:hover {
-    background-color: #f6f6f6;
+    // Was #f6f6f6 — see the note in time-input.module.scss.
+    background-color: var(--mc-hover);
   }
 }

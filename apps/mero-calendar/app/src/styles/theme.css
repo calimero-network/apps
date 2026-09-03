@@ -24,6 +24,9 @@
   --accent-text: #ffffff;
 
   --danger: #ff5d6c;
+  /* Tint for an invalid field, mirroring --accent-soft. Alpha rather than a
+     flat colour so it works over any surface in either theme. */
+  --danger-soft: rgba(255, 93, 108, 0.14);
   --ok: #43d17a;
   --warn: #ffb02e;
 
@@ -80,6 +83,7 @@
   --accent-dim: #6c8cff;
   --accent-soft: rgba(138, 166, 255, 0.18);
   --accent-text: #0a0e13;
+  --danger-soft: rgba(255, 93, 108, 0.22);
 
   --shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
   --shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.4);
@@ -98,6 +102,24 @@
   --mc-hover: #1b232c;
   --mc-grid-line: #232b34;
   --mc-shadow: 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+/* ── Legacy alias names ───────────────────────────────────────────────────
+   The date-picker and year-calendar stylesheets were written against an older
+   palette and still ask for these six names — 11 declarations across 8 files.
+   They used to be declared in index.module.scss, which never emitted them (no
+   `--secondary-7` in a production build), so every one of those declarations
+   was dead and the affected elements fell back to transparent backgrounds and
+   the UA's black text. Declared here, in a plain stylesheet that does ship,
+   and aliased onto the themed tokens so they follow [data-theme] like
+   everything else. */
+:root {
+  --color-text: var(--mc-text);
+  --primary: var(--accent);
+  --secondary: var(--accent);
+  --secondary-7: var(--accent-dim);
+  --color-placeholder: var(--mc-text-dim);
+  --background-color-calendar-header: var(--mc-header-bg);
 }
 
 * {
