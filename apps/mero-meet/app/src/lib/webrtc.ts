@@ -14,6 +14,8 @@
 // In the Tauri desktop webview this uses the system WebRTC stack (real ICE/UDP).
 // A bundled TURN relay (shipped by tauri-app) can be injected via setIceServers.
 
+import { acquireLocalMedia } from "./media";
+
 export type SignalKind = "offer" | "answer" | "ice" | "bye";
 
 export interface OutSignal {
@@ -170,10 +172,12 @@ export class CallEngine {
   /** Acquire camera + mic and publish the local stream. */
   async start(): Promise<MediaStream> {
     if (this.local) return this.local;
-    this.local = await navigator.mediaDevices.getUserMedia({
-      video: true,
-      audio: true,
-    });
+    // Guarded, and the guard is not paranoia: `navigator.mediaDevices` is
+    // absent outright on an insecure origin and in a webview that never
+    // published the API, and the unguarded dereference threw a TypeError that
+    // named a JavaScript expression and took the whole join with it. See
+    // lib/media.ts for which of the two causes is which.
+    this.local = await acquireLocalMedia({ video: true, audio: true });
     const v = this.local.getVideoTracks()[0]?.getSettings();
     this.diag(
       "info",
