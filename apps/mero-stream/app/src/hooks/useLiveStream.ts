@@ -18,6 +18,7 @@ import {
   nextMsgSeq,
 } from "../lib/ephemeralFrames";
 import { ProbeRecorder, type ProbeSnapshot } from "../lib/metrics";
+import { acquireCamera } from "../lib/media";
 import { evaluateSlots, type Claim, type SlotView } from "../lib/slots";
 import {
   adaptiveEncoding,
@@ -827,7 +828,7 @@ export function useLiveStream(enabled: boolean): LiveController {
             "WebCodecs VideoEncoder is unavailable in this browser — run this route in Chrome",
           );
         }
-        const media = await navigator.mediaDevices.getUserMedia({
+        const media = await acquireCamera({
           video: {
             width: LIVE_WIDTH,
             height: LIVE_HEIGHT,

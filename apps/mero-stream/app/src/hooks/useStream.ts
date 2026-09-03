@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useSubscription } from "@calimero-network/mero-react";
 import { useMeroStream } from "./useMeroStream";
 import { captureFrameLuma, paintLuma } from "../lib/luma";
+import { acquireCamera } from "../lib/media";
 import { ProbeRecorder, type ProbeSnapshot } from "../lib/metrics";
 import type { StreamStats } from "../types";
 
@@ -208,9 +209,7 @@ export function useStream(enabled: boolean): StreamController {
 
     (async () => {
       try {
-        const media = await navigator.mediaDevices.getUserMedia({
-          video: true,
-        });
+        const media = await acquireCamera({ video: true });
         if (cancelled) {
           media.getTracks().forEach((t) => t.stop());
           return;
