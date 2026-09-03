@@ -15,5 +15,10 @@
   },
   "devDependencies": {
     "typescript": "catalog:"
+  },
+  "pnpm": {
+    "overrides": {
+      "base-x@2.0.6": "3.0.11"
+    }
   }
 }

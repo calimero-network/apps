@@ -272,6 +272,13 @@ jobs:
       - name: Assert every create_mesh is preceded by a settle
         run: python3 scripts/tests/mesh-settle-test.py
 
+      # A lockfile inside a workspace member installs nothing (pnpm resolves
+      # from the root) but Dependabot scans it, so it generates security alerts
+      # forever. Two of them accounted for 176 of 182 open alerts, including all
+      # four criticals.
+      - name: Assert no lockfile lives inside a workspace member
+        run: python3 scripts/tests/no-nested-lockfiles-test.py
+
   rust:
     name: Rust (fmt, clippy, test)
     needs: changes
