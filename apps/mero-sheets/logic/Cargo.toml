@@ -26,7 +26,7 @@ name        = "P2P Sheets"
 description = "Collaborative peer-to-peer spreadsheet with live cursors, multiple sheet tabs, formula autocomplete, a built-in function help section, and download support"
 author      = "Calimero"
 slug        = "com.calimero.mero-sheets"
-icon        = "default"
+icon        = "../app/public/icon-512.png"
 tags        = ["productivity", "spreadsheet", "collaboration"]
 github      = "https://github.com/calimero-network/apps"
 # ⚠️ The contract was pinned to core 0.11.0-rc.8 — EIGHTEEN releases back. This
