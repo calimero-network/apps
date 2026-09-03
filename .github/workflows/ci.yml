@@ -262,6 +262,14 @@ jobs:
       - name: Assert every app's icon is real and safe to mask
         run: python3 scripts/check-app-icons.py
 
+      # A cold desktop open hands the app a minted session in the URL fragment,
+      # and mero-react's node-trust rule is default-DENY: an app that anchors
+      # neither way drops it with only a console error. Nothing throws and the
+      # web path is unaffected, so it survives any amount of green CI — three
+      # apps were in that state.
+      - name: Assert every app can adopt a desktop hand-off
+        run: python3 scripts/check-desktop-sso.py
+
       # The matrix resolver decides what the rest of this file runs, and both of
       # its wrong answers are silent — too broad only costs money, too narrow
       # skips an app with nothing to notice. So its rules are tested.
