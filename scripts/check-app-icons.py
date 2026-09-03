@@ -152,8 +152,14 @@ def check_registry_icon(app: str, manifest_path: str) -> None:
     """The `[package.metadata.calimero].icon` that becomes the registry icon and,
     downstream, the macOS launcher icon."""
     text = open(manifest_path).read()
+    # ⚠️ `(?=^\[|\Z)` — the alternative with \Z is load-bearing. Without it the
+    # lookahead needs a table AFTER this one, so an app whose
+    # `[package.metadata.calimero]` is the LAST table in its Cargo.toml does not
+    # match and is skipped in silence. kv-store is exactly that file, and it was
+    # skipped by this check from the day it was written: it printed a line like
+    # every other app and looked at nothing.
     table = re.search(
-        r"^\[package\.metadata\.calimero\]$(.*?)(?=^\[)", text, re.M | re.S
+        r"^\[package\.metadata\.calimero\]$(.*?)(?=^\[|\Z)", text, re.M | re.S
     )
     if not table:
         return  # a shared crate; check-app-metadata.sh owns that distinction
