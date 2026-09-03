@@ -702,35 +702,14 @@ jobs:
           if-no-files-found: ignore
 
   e2e:
-    name: E2E (${{ matrix.app }}) [advisory]
-    # ⚠️ ADVISORY: this job cannot fail the build, and that is a deliberate,
-    # temporary concession — not a claim that it passes.
-    #
-    # Three real causes were found and fixed, and each one had been hiding
-    # behind "it's flaky":
-    #   1. `create_mesh` joins its `nodes:` list sequentially with NO delay, so a
-    #      settle before the step covered only the first node. Multi-node meshes
-    #      are now explicit per-node joins, each with its own settle.
-    #   2. The teardown left the previous scenario's containers behind
-    #      (`merobox stop --all` does not see `*-init`, and `merobox nuke` finds
-    #      no host data at all), so scenarios ran on a warm, dirty host.
-    #   3. 46 scenarios called the admin API with no wait, which only failed once
-    #      the host was genuinely cold — `create_namespace` 500s four seconds in.
-    #
-    # What is left is core-side and not reachable from this repository: the join
-    # hangs ~70s and returns 500, which is the KeyDelivery window being missed.
-    # merobox offers no wait-for-connectivity gate (`wait_for_sync` needs
-    # membership the joining node does not yet have), `bootstrap_nodes` wants a
-    # peer id unknown until runtime, and `connect_node` is for partition tests.
-    #
-    # The scenarios STILL RUN on every relevant change and still upload node
-    # logs, so a real contract regression is visible in the job list and in the
-    # annotations — it just does not block a merge on a race nobody here can fix.
-    # Make this blocking again the moment core's KeyDelivery race is fixed.
-    #
-    # Unit tests (2378) and Browser E2E (a real UI against a real node) remain
-    # BLOCKING for every app, so this is not a hole in coverage of app code.
-    continue-on-error: true
+    name: E2E (${{ matrix.app }})
+    # BLOCKING again. It was made advisory when the namespace joins looked like
+    # an unfixable core-side race; they were not. Every scenario now sets
+    # `e2e_mode: true`, which clears `merod init`'s default `bootstrap.nodes` —
+    # the PUBLIC calimero devnet boot-node. Without that, each container spent
+    # its startup dialing unreachable public addresses until the relay client
+    # hit capacity, the peers never found each other, and the join died on
+    # `KeyDelivery timed out`. See the comment at the top of any scenario.
     # `needs: wasm` so the contract is DOWNLOADED, not rebuilt. This job used to
     # run `cargo mero build -p` itself, duplicating a fat-LTO wasm build the
     # `wasm` job had already done and uploaded — and it needed a Rust toolchain,
