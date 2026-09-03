@@ -1,0 +1,179 @@
+/* ── The utility classes this app's markup already uses ───────────────────────
+ *
+ * WHY THIS FILE EXISTS
+ *
+ * mero-pass is written in Tailwind class names — `grid grid-cols-1
+ * md:grid-cols-2 lg:grid-cols-3 gap-6`, `text-sm text-gray-500 mb-4`, and 86
+ * more — and Tailwind is NOT a dependency of this app. Never was. The deployed
+ * stylesheet is 2,615 bytes and contains no `grid-cols-3` and no
+ * `text-gray-500` rule at all, so every one of those 90 class names has been
+ * inert: no grid, no spacing, no type scale, no muted text. The vault screens
+ * were unstyled markup that happened to carry the vocabulary of a design.
+ *
+ * Two ways to fix that. Adding Tailwind means a build-system change and a
+ * workspace lockfile churn that fans CI out to all sixteen apps, and it would
+ * restyle every screen at once with nobody having reviewed the result. So
+ * instead: exactly the 88 utilities the markup actually asks for, written out,
+ * against this app's own tokens.
+ *
+ * ⚠️ This is NOT a Tailwind subset to grow. If a new screen needs a utility
+ * that is not here, add the rule deliberately or write a CSS module — do not
+ * assume an arbitrary Tailwind class will work, because the framework is not
+ * here to make it.
+ *
+ * Enumerated with:
+ *   grep -rhoE 'className="[^"]*"' src --include='*.tsx' \
+ *     | sed 's/className="//; s/"$//' | tr ' ' '\n' | sort -u
+ */
+
+:root {
+  /* The padlock's palette, from app/scripts/gen-icons.mjs — the same emerald
+     → teal the favicon and launcher icon are drawn in, so the app and its icon
+     are one identity. */
+  --mp-accent: #34d399;
+  --mp-accent-dim: #0d9488;
+  --mp-accent-soft: rgba(52, 211, 153, 0.14);
+
+  /* Neutrals biased slightly green so they read as chosen next to the accent
+     rather than as a default grey ramp. Ground is #111111, which is what
+     index.css and the <meta name="theme-color"> already declare. */
+  --mp-bg: #111111;
+  --mp-surface: #17191a;
+  --mp-surface-2: #1e2122;
+  --mp-border: #2a2e2f;
+  --mp-text: #e8ecea;
+  --mp-text-dim: #9aa5a1;
+  --mp-text-faint: #77837e;
+  --mp-radius: 10px;
+}
+
+/* ── layout ─────────────────────────────────────────────────────────────── */
+.container { width: 100%; max-width: 1152px; margin-inline: auto; padding-inline: 20px; }
+.block { display: block; }
+.flex { display: flex; }
+.grid { display: grid; }
+.flex-1 { flex: 1 1 0%; }
+.flex-wrap { flex-wrap: wrap; }
+.items-center { align-items: center; }
+.items-start { align-items: flex-start; }
+.justify-between { justify-content: space-between; }
+.justify-center { justify-content: center; }
+.justify-end { justify-content: flex-end; }
+.sticky { position: sticky; }
+.top-16 { top: 4rem; }
+.z-10 { z-index: 10; }
+.overflow-y-auto { overflow-y: auto; }
+.cursor-pointer { cursor: pointer; }
+
+.grid-cols-1 { grid-template-columns: repeat(1, minmax(0, 1fr)); }
+.grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+/* ── spacing ────────────────────────────────────────────────────────────── */
+.gap-1 { gap: 0.25rem; }
+.gap-2 { gap: 0.5rem; }
+.gap-3 { gap: 0.75rem; }
+.gap-4 { gap: 1rem; }
+.gap-6 { gap: 1.5rem; }
+
+.p-3 { padding: 0.75rem; }
+.p-4 { padding: 1rem; }
+.p-6 { padding: 1.5rem; }
+.p-8 { padding: 2rem; }
+.px-4 { padding-inline: 1rem; }
+.px-6 { padding-inline: 1.5rem; }
+.py-8 { padding-block: 2rem; }
+.pt-2 { padding-top: 0.5rem; }
+.pb-2 { padding-bottom: 0.5rem; }
+
+.m-4 { margin: 1rem; }
+.mx-auto { margin-inline: auto; }
+.-mx-6 { margin-inline: -1.5rem; }
+.mb-1 { margin-bottom: 0.25rem; }
+.mb-4 { margin-bottom: 1rem; }
+.mb-8 { margin-bottom: 2rem; }
+.mt-1 { margin-top: 0.25rem; }
+.mt-2 { margin-top: 0.5rem; }
+.mt-4 { margin-top: 1rem; }
+
+/* `space-y-*` is a sibling rule, not padding — the child-combinator form is
+   what makes it collapse-proof, which is the whole reason the markup uses it. */
+.space-y-1 > * + * { margin-top: 0.25rem; }
+.space-y-2 > * + * { margin-top: 0.5rem; }
+.space-y-3 > * + * { margin-top: 0.75rem; }
+.space-y-4 > * + * { margin-top: 1rem; }
+.space-y-6 > * + * { margin-top: 1.5rem; }
+
+/* ── sizing ─────────────────────────────────────────────────────────────── */
+.w-2 { width: 0.5rem; }
+.w-48 { width: 12rem; }
+.h-2 { height: 0.5rem; }
+.h-64 { height: 16rem; }
+.min-h-screen { min-height: 100vh; }
+.max-h-\[90vh\] { max-height: 90vh; }
+.max-w-md { max-width: 28rem; }
+.max-w-2xl { max-width: 42rem; }
+.max-w-6xl { max-width: 72rem; }
+
+/* ── type ───────────────────────────────────────────────────────────────── */
+.text-xs { font-size: 0.75rem; line-height: 1.4; }
+.text-sm { font-size: 0.875rem; line-height: 1.5; }
+.text-base { font-size: 1rem; line-height: 1.55; }
+.text-lg { font-size: 1.125rem; line-height: 1.45; }
+.text-2xl { font-size: 1.5rem; line-height: 1.25; }
+.text-3xl { font-size: 1.875rem; line-height: 1.2; }
+.font-medium { font-weight: 500; }
+.font-semibold { font-weight: 600; }
+.font-bold { font-weight: 700; }
+.font-mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.tracking-tight { letter-spacing: -0.02em; }
+.text-center { text-align: center; }
+
+/* The greys are the app's own dim tokens, not Tailwind's slate ramp. Measured
+   on the #111111 ground this app declares:
+
+     Tailwind text-gray-500  #6b7280   3.91:1   large text only
+     Tailwind text-gray-600  #4b5563   2.50:1   fails outright
+     --mp-text-dim           #9aa5a1   7.44:1   AA body
+     --mp-text-faint         #77837e   4.79:1   AA body
+     --mp-text               #e8ecea  15.84:1   AA body
+
+   `--mp-text-faint` was #6c7773 and measured 4.07:1 — under the 4.5:1 body
+   threshold, so the fainter of the two greys would have shipped failing the bar
+   this comment claims. Both now clear it. `text-gray-900` inverts, for the one
+   light surface (`bg-gray-50`). */
+.text-gray-400 { color: var(--mp-text-dim); }
+.text-gray-500 { color: var(--mp-text-dim); }
+.text-gray-600 { color: var(--mp-text-faint); }
+.text-gray-900 { color: #111827; }
+.opacity-80 { opacity: 0.8; }
+.opacity-90 { opacity: 0.9; }
+
+/* ── surface ────────────────────────────────────────────────────────────── */
+.border { border: 1px solid var(--mp-border); }
+.border-b { border-bottom: 1px solid var(--mp-border); }
+.border-white\/10 { border-color: rgba(255, 255, 255, 0.1); }
+.rounded-lg { border-radius: var(--mp-radius); }
+.rounded-full { border-radius: 999px; }
+.bg-gray-50 { background-color: #f9fafb; }
+.bg-blue-500 { background-color: var(--mp-accent); } /* the app's accent, not blue */
+.bg-black\/40 { background-color: rgba(0, 0, 0, 0.4); }
+.backdrop-blur { backdrop-filter: blur(8px); }
+.transition-shadow { transition: box-shadow 160ms ease; }
+.hover\:shadow-lg:hover {
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+}
+
+@supports (backdrop-filter: blur(1px)) {
+  .supports-\[backdrop-filter\]\:bg-black\/30 {
+    background-color: rgba(0, 0, 0, 0.3);
+  }
+}
+
+/* ── responsive ─────────────────────────────────────────────────────────── */
+@media (min-width: 768px) {
+  .md\:grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .md\:grid-cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (min-width: 1024px) {
+  .lg\:grid-cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}

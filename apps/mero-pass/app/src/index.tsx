@@ -5,6 +5,7 @@ import { AppMode, MeroProvider } from "@calimero-network/mero-react";
 import { ToastProvider } from "@calimero-network/mero-ui";
 import "@calimero-network/mero-ui/styles.css";
 import "./index.css";
+import "./styles/utilities.css";
 import App from "./App";
 
 // ── Desktop SSO ───────────────────────────────────────────────────────────────
