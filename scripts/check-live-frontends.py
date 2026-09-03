@@ -3,13 +3,17 @@
 
 WHY THIS EXISTS
 
-`battleships.vercel.app` served a **Create React App** build — `<title>React
-App</title>`, `content="Web site created using create-react-app"`, a webpack
-runtime, `/logo192.png` — for an unknown length of time after the app had been
-migrated to Vite in this monorepo. The repo was fine: every component under
-`apps/battleships/app/src` is byte-identical to the pre-migration original and
-`vite build` is green. The Vercel project simply never redeployed from here, so
-the URL kept answering 200 with an ancient bundle.
+`battleships.vercel.app` serves a **different application**. Rendered, it is a
+single-player battleships-vs-computer toy — "Player board" / "Computer board" /
+"Start the game against the computer" / "Show enemy ships!" — built with
+create-react-app (`<title>React App</title>`,
+`content="Web site created using create-react-app"`, a webpack runtime,
+`/logo192.png`). It is not a stale build of our app; it is not our app.
+
+The repo is fine: every component under `apps/battleships/app/src` matches the
+archived `calimero-network/battleships` repo and `vite build` is green. The
+Vercel project is wired to the wrong source, and the URL has been answering 200
+with somebody else's game.
 
 Nothing could catch that. `check-vercel-output.sh` asserts the declared
 `outputDirectory` matches what the build writes, which was true. CI builds and
@@ -62,11 +66,16 @@ CRA_MARKERS = (
 # check, so the entry has to be deleted rather than quietly kept.
 EXPECTED_STALE = {
     "battleships": (
-        "serves a pre-Vite create-react-app build. The repo is correct — every "
-        "component under apps/battleships/app/src is byte-identical to the "
-        "pre-migration original and `vite build` is green — so the fix is in "
-        "Vercel: set the project's Root Directory to apps/battleships/app and "
-        "redeploy (docs/VERCEL.md). Delete this entry once it does."
+        "serves a COMPLETELY DIFFERENT APPLICATION — a single-player "
+        "battleships-vs-computer web toy ('Player board' / 'Computer board' / "
+        "'Start the game against the computer' / 'Show enemy ships!'), built "
+        "with create-react-app. It is not an old build of our app; it is not "
+        "our app at all. The repo is correct: every component under "
+        "apps/battleships/app/src matches the archived calimero-network/"
+        "battleships repo and `vite build` is green. So the fix is in Vercel — "
+        "the project is wired to the wrong source. Point it at this repo with "
+        "Root Directory apps/battleships/app and redeploy (docs/VERCEL.md). "
+        "Delete this entry once it does."
     ),
 }
 
