@@ -1,4 +1,5 @@
 import { getAccessToken, getNodeUrl, nodeEndpoint } from "../lib/mero";
+import { requireHexId } from "./ids";
 
 let _onUnauthorized: (() => void) | null = null;
 
@@ -88,10 +89,18 @@ export async function createContext(
   applicationId: string,
   groupId: string,
 ): Promise<{ contextId: string }> {
+  // Same field, same node-side check — and a bare 500 here is ALSO what a wrong
+  // `init` parameter set looks like, so ruling the id out first keeps those two
+  // apart.
+  const appId = requireHexId("applicationId", applicationId);
   const body = await adminFetch("/admin-api/contexts", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ applicationId, groupId, initializationParams: [] }),
+    body: JSON.stringify({
+      applicationId: appId,
+      groupId,
+      initializationParams: [],
+    }),
   }) as { data?: { contextId?: string } };
   const contextId = body?.data?.contextId;
   if (!contextId) throw new Error(`createContext: no contextId in response: ${JSON.stringify(body)}`);
@@ -209,10 +218,15 @@ export async function listNamespaces(): Promise<NamespaceRecord[]> {
 export async function createNamespace(
   applicationId: string,
 ): Promise<{ namespaceId: string }> {
+  // Checked here rather than at the two call sites, so every caller gets the
+  // same message. Unchecked, a wrong shape comes back as serde's
+  // "applicationId: expected 64 hex characters (32 bytes) at line 1 column 28",
+  // which names a JSON column and not the text box the value came from.
+  const appId = requireHexId("applicationId", applicationId);
   const body = await adminFetch("/admin-api/namespaces", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ applicationId }),
+    body: JSON.stringify({ applicationId: appId }),
   }) as { data?: { namespaceId?: string } };
   const namespaceId = body?.data?.namespaceId;
   if (!namespaceId) throw new Error(`createNamespace: no namespaceId in response: ${JSON.stringify(body)}`);
