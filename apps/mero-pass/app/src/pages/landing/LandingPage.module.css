@@ -1,0 +1,540 @@
+/* Landing page for MeroPass.
+ *
+ * Every colour comes from the --mp-* tokens in styles/utilities.css — the same
+ * emerald/teal the padlock icon is drawn in (app/scripts/gen-icons.mjs), so the
+ * page, the app and the launcher icon are one identity. Nothing hardcodes a
+ * colour.
+ */
+
+.root {
+  --page-max: 1080px;
+}
+
+/* ── hero ──────────────────────────────────────────────────────────────── */
+
+.heroSection {
+  position: relative;
+  overflow: hidden;
+  border-bottom: 1px solid var(--mp-border);
+}
+
+.header {
+  position: relative;
+  z-index: 2;
+  max-width: var(--page-max);
+  margin: 0 auto;
+  padding: 18px 20px;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.logo {
+  font-weight: 700;
+  font-size: 17px;
+  letter-spacing: -0.02em;
+}
+.logo span {
+  color: var(--mp-accent);
+}
+
+.nav {
+  margin-left: auto;
+  display: flex;
+  gap: 22px;
+}
+.navLink {
+  color: var(--mp-text-dim);
+  font-size: 14px;
+  transition: color 140ms ease;
+}
+.navLink:hover,
+.navLink:focus-visible {
+  color: var(--mp-text);
+}
+
+.headerCta,
+.ctaPrimary,
+.mobileCta {
+  border: none;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+  color: var(--mp-bg);
+  background: var(--mp-accent);
+  border-radius: 999px;
+  transition: filter 140ms ease, transform 140ms ease;
+}
+.headerCta {
+  padding: 9px 18px;
+  font-size: 14px;
+}
+.headerCta:hover,
+.ctaPrimary:hover,
+.mobileCta:hover {
+  filter: brightness(1.08);
+}
+.headerCta:active,
+.ctaPrimary:active {
+  transform: translateY(1px);
+}
+
+.hamburger {
+  display: none;
+  background: none;
+  border: 1px solid var(--mp-border);
+  border-radius: 8px;
+  color: var(--mp-text);
+  font-size: 16px;
+  width: 38px;
+  height: 38px;
+  cursor: pointer;
+}
+
+.mobileMenu {
+  position: absolute;
+  top: 100%;
+  left: 12px;
+  right: 12px;
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  background: var(--mp-surface);
+  border: 1px solid var(--mp-border);
+  border-radius: var(--mp-radius);
+  z-index: 5;
+}
+.mobileItem {
+  padding: 10px 12px;
+  border-radius: 8px;
+  color: var(--mp-text);
+  font-size: 15px;
+}
+.mobileItem:hover {
+  background: var(--mp-surface-2);
+}
+.mobileCta {
+  margin-top: 4px;
+  padding: 11px 14px;
+  border-radius: 8px;
+}
+
+/* Ambient glows. Decorative, so they are hidden from assistive tech and cost
+   nothing when motion is reduced (they do not animate at all). */
+.glow1,
+.glow2 {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(90px);
+  pointer-events: none;
+  z-index: 0;
+}
+.glow1 {
+  width: 520px;
+  height: 520px;
+  top: -220px;
+  right: -120px;
+  background: color-mix(in srgb, var(--mp-accent) 26%, transparent);
+}
+.glow2 {
+  width: 420px;
+  height: 420px;
+  bottom: -260px;
+  left: -140px;
+  background: color-mix(in srgb, var(--mp-accent-dim) 16%, transparent);
+}
+
+.hero {
+  position: relative;
+  z-index: 1;
+  max-width: var(--page-max);
+  margin: 0 auto;
+  padding: 64px 20px 88px;
+  text-align: center;
+}
+
+.badge {
+  display: inline-block;
+  padding: 6px 14px;
+  border: 1px solid var(--mp-border);
+  border-radius: 999px;
+  background: var(--mp-surface);
+  color: var(--mp-text-dim);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.headline {
+  margin: 22px auto 0;
+  max-width: 20ch;
+  font-size: clamp(34px, 6vw, 60px);
+  line-height: 1.04;
+  letter-spacing: -0.035em;
+  font-weight: 700;
+  text-wrap: balance;
+}
+.headlineAccent {
+  color: var(--mp-accent);
+}
+
+.sub {
+  margin: 20px auto 0;
+  max-width: 60ch;
+  font-size: 17px;
+  color: var(--mp-text-dim);
+}
+
+.heroActions {
+  margin-top: 32px;
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+.ctaPrimary {
+  padding: 13px 26px;
+  font-size: 15px;
+}
+.ctaSecondary {
+  padding: 13px 22px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--mp-text);
+  border: 1px solid var(--mp-border);
+  border-radius: 999px;
+  background: var(--mp-surface);
+  transition: background 140ms ease;
+}
+.ctaSecondary:hover {
+  background: var(--mp-surface-2);
+}
+
+/* ── preview ───────────────────────────────────────────────────────────── */
+
+.previewSection {
+  max-width: var(--page-max);
+  margin: 0 auto;
+  padding: 56px 20px 8px;
+  text-align: center;
+}
+
+.eyebrow {
+  color: var(--mp-text-dim);
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.previewWrap {
+  margin-top: 18px;
+}
+
+.preview {
+  max-width: 680px;
+  margin: 0 auto;
+  text-align: left;
+  background: var(--mp-surface);
+  border: 1px solid var(--mp-border);
+  border-radius: var(--mp-radius);
+  overflow: hidden;
+}
+
+.previewTop {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--mp-border);
+}
+.previewBrand {
+  font-weight: 700;
+  font-size: 14px;
+}
+.previewBrand span {
+  color: var(--mp-accent);
+}
+.previewTabs {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+.previewTab,
+.previewTabActive {
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  color: var(--mp-text-dim);
+}
+.previewTabActive {
+  color: var(--mp-text);
+  background: var(--mp-surface-2);
+}
+.previewConnected {
+  font-size: 11px;
+  color: var(--mp-accent);
+  white-space: nowrap;
+}
+
+.previewPost {
+  display: flex;
+  gap: 14px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--mp-border);
+}
+.previewPost:last-child {
+  border-bottom: none;
+}
+.previewVote {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  min-width: 34px;
+  font-size: 11px;
+  color: var(--mp-text-dim);
+}
+.previewArrow {
+  color: var(--mp-border);
+}
+.previewArrowOn {
+  color: var(--mp-accent-dim);
+}
+.previewScore {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--mp-text);
+  font-variant-numeric: tabular-nums;
+}
+.previewBody {
+  min-width: 0;
+}
+.previewTitle {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.previewMeta {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--mp-text-dim);
+}
+
+/* ── sections ──────────────────────────────────────────────────────────── */
+
+.section,
+.sectionAlt {
+  padding: 72px 20px;
+}
+.sectionAlt {
+  background: var(--mp-surface);
+  border-block: 1px solid var(--mp-border);
+}
+
+.inner {
+  max-width: var(--page-max);
+  margin: 0 auto;
+}
+
+.sectionTitle {
+  margin: 0;
+  font-size: clamp(24px, 3.2vw, 34px);
+  letter-spacing: -0.025em;
+  font-weight: 700;
+  text-wrap: balance;
+}
+.sectionSub {
+  margin: 10px 0 0;
+  color: var(--mp-text-dim);
+  font-size: 16px;
+}
+
+.grid {
+  margin-top: 34px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+}
+
+.card {
+  padding: 22px;
+  background: var(--mp-surface);
+  border: 1px solid var(--mp-border);
+  border-radius: var(--mp-radius);
+}
+.sectionAlt .card {
+  background: var(--mp-bg);
+}
+.cardIcon {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--mp-accent) 16%, transparent);
+  color: var(--mp-accent);
+  font-size: 16px;
+}
+.card h3 {
+  margin: 14px 0 6px;
+  font-size: 16px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+.card p {
+  margin: 0;
+  font-size: 14px;
+  color: var(--mp-text-dim);
+}
+
+/* The steps ARE a sequence, which is the only reason they are numbered. */
+.steps {
+  margin: 34px 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+  counter-reset: none;
+}
+.step {
+  padding: 20px;
+  background: var(--mp-bg);
+  border: 1px solid var(--mp-border);
+  border-radius: var(--mp-radius);
+}
+.stepNum {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: var(--mp-accent);
+  font-variant-numeric: tabular-nums;
+}
+.step h3 {
+  margin: 10px 0 6px;
+  font-size: 16px;
+  font-weight: 650;
+}
+.step p {
+  margin: 0;
+  font-size: 14px;
+  color: var(--mp-text-dim);
+}
+
+.faq {
+  margin-top: 30px;
+  display: grid;
+  gap: 1px;
+  background: var(--mp-border);
+  border: 1px solid var(--mp-border);
+  border-radius: var(--mp-radius);
+  overflow: hidden;
+}
+.faqItem {
+  padding: 18px 22px;
+  background: var(--mp-surface);
+}
+.faqItem strong {
+  display: block;
+  font-size: 15px;
+  font-weight: 650;
+}
+.faqItem p {
+  margin: 6px 0 0;
+  font-size: 14px;
+  color: var(--mp-text-dim);
+  max-width: 78ch;
+}
+
+/* ── footer ────────────────────────────────────────────────────────────── */
+
+.footer {
+  border-top: 1px solid var(--mp-border);
+  padding: 48px 20px 28px;
+}
+.footerTop {
+  max-width: var(--page-max);
+  margin: 0 auto;
+  display: flex;
+  gap: 40px;
+  flex-wrap: wrap;
+  justify-content: space-between;
+}
+.footerTagline {
+  margin: 10px 0 0;
+  max-width: 34ch;
+  font-size: 14px;
+  color: var(--mp-text-dim);
+}
+.footerCols {
+  display: flex;
+  gap: 56px;
+  flex-wrap: wrap;
+}
+.footerCol {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+.footerColTitle {
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--mp-text-dim);
+}
+.footerLink {
+  font-size: 14px;
+  color: var(--mp-text);
+  transition: color 140ms ease;
+}
+.footerLink:hover {
+  color: var(--mp-accent);
+}
+.footerBottom {
+  max-width: var(--page-max);
+  margin: 36px auto 0;
+  padding-top: 18px;
+  border-top: 1px solid var(--mp-border);
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: var(--mp-text-dim);
+}
+
+/* ── no scroll-reveal ──────────────────────────────────────────────────────
+   There was one here, and it hid three whole sections.
+   `.reveal` parked them at `opacity: 0.001` and an IntersectionObserver added
+   `.visible` on scroll — so Features, How it works and FAQ rendered as empty
+   bands for anyone who did not scroll, and in every full-page capture, which is
+   also what a link preview and a thumbnail get. Content that is meant to be read
+   is visible when the page loads; the animation was worth nothing next to that.
+*/
+
+@media (max-width: 760px) {
+  .nav {
+    display: none;
+  }
+  .headerCta {
+    display: none;
+  }
+  .hamburger {
+    display: block;
+    margin-left: auto;
+  }
+  .hero {
+    padding: 44px 20px 64px;
+  }
+  .footerCols {
+    gap: 32px;
+  }
+}
+
+/* mero-pass's index.css has no `a { text-decoration: none }` reset — unlike
+   mero-forum's, which this stylesheet was derived from — so every link here
+   rendered underlined. Scoped to this page rather than added globally: the
+   vault screens are not in this PR's blast radius. */
+.root a {
+  text-decoration: none;
+  color: inherit;
+}

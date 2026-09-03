@@ -120,24 +120,14 @@ const VaultList: React.FC = () => {
       {/* Error */}
       {error && <Alert description={error} />}
 
-      {/* Debug Info */}
-      <div className="text-sm text-gray-500 mb-4">
-        Debug: {vaults.length} total vaults, {filteredVaults.length} filtered,{' '}
-        {contextIds.length} contexts
-        <br />
-        User: Connected
-        <br />
-        <div className="flex gap-2 mt-2">
-          <Button
-            onClick={() => {
-              console.log('Manual vault reload triggered');
-              loadVaults();
-            }}
-            variant="secondary"
-          >
-            Reload Vaults
-          </Button>
-        </div>
+      {/* A reload control, without the counters. What was here shipped
+          "Debug: 0 total vaults, 0 filtered, 0 contexts / User: Connected" to
+          every user — three internal numbers and a console.log, on the first
+          screen after login. */}
+      <div className="flex justify-end mb-4">
+        <Button onClick={() => loadVaults()} variant="secondary">
+          Reload vaults
+        </Button>
       </div>
 
       {/* Vaults Grid */}
@@ -148,8 +138,8 @@ const VaultList: React.FC = () => {
               {searchQuery ? 'No vaults match your search' : 'No vaults found'}
             </div>
             <div className="text-sm text-gray-400">
-              Vaults are created when you join contexts. Ask someone to invite
-              you to a vault!
+              A vault is a Calimero context. One appears here when you join a
+              namespace that has one — ask whoever runs it for an invitation.
             </div>
           </CardContent>
         </Card>
