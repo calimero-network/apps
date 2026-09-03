@@ -1,33 +1,23 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMero } from "@calimero-network/mero-react";
 
+import { useForumWorkspace } from "./workspace";
 import { ForumClient } from "../generated/ForumClient";
 import type { CommentView, PostView } from "../generated/ForumClient";
 
-/** The forum this node is a member of. One context == one forum. */
+/**
+ * The forum this node is a member of. One context == one forum.
+ *
+ * ⚠️ Delegates to `useForumWorkspace`, which scopes discovery to THIS
+ * application. This function used to be `getContexts().contexts[0]` — the first
+ * context on the node, whatever app it belonged to. On a node running more than
+ * one Calimero app that is somebody else's context, and every forum call
+ * against it came back `FunctionCallError`, because the method does not exist
+ * on that contract. It also had no way to create one, so a fresh node was a
+ * permanently empty feed.
+ */
 export function useForumContext(): { contextId: string | null; loading: boolean } {
-  const { mero } = useMero();
-  const [contextId, setContextId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    if (!mero) return;
-    let cancelled = false;
-    mero.admin
-      .getContexts()
-      .then((r) => {
-        if (cancelled) return;
-        setContextId(r.contexts?.[0]?.id ?? null);
-      })
-      .catch(() => {
-        if (!cancelled) setContextId(null);
-      })
-      .finally(() => !cancelled && setLoading(false));
-    return () => {
-      cancelled = true;
-    };
-  }, [mero]);
-
+  const { contextId, loading } = useForumWorkspace();
   return { contextId, loading };
 }
 
