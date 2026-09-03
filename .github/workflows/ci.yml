@@ -254,6 +254,13 @@ jobs:
       - uses: actions/checkout@v4
       - run: bash scripts/check-app-metadata.sh
 
+      # Two dependency PRs merged back to back red EVERY app: git line-merges
+      # pnpm-lock.yaml into a hybrid with a duplicated mapping key, pnpm refuses
+      # the whole file, and every job dies at install. The key is in NEITHER
+      # branch — git makes it. Cheap to check, and the message names the cause.
+      - name: Assert pnpm-lock.yaml is not a merged hybrid
+        run: python3 scripts/check-lockfile.py
+
       # `icon` is the one field check-app-metadata.sh never looked at, and every
       # way it can be wrong is silent: the bundle publishes, this job is green,
       # and the only symptom is the wrong picture in the registry and in the
