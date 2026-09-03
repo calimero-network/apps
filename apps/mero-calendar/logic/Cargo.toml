@@ -51,7 +51,7 @@ github      = "https://github.com/calimero-network/apps"
 # Kept equal to the workspace SDK tag — that is what this is built and tested
 # against. Was rc.23 in the standalone repo; check-app-metadata.sh now enforces
 # the match, so it cannot drift back.
-min-runtime-version = "0.11.0-rc.28"
+min-runtime-version = "0.11.0-rc.32"
 # A BARE https origin. Not cosmetic: the embedded auth frontend compares
 # `frontend.origin === callbackOrigin`, so a path or a wrong host fails hosted
 # login AFTER credentials are accepted, while loopback/desktop login keeps
