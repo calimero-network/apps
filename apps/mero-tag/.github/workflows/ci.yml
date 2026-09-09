@@ -108,9 +108,42 @@ jobs:
             -derivedDataPath .build -only-testing:MeroTagTests \
             CODE_SIGNING_ALLOWED=NO
 
-  logic-workflows:
-    name: WASM logic workflows (merobox)
+  # Every *.yml under workflows/ becomes its own matrix leg, so adding a scenario
+  # is adding a file — nothing here needs editing, which is what stopped
+  # convergence-test.yml from being wired up twice and forgotten once.
+  #
+  # The empty-glob guard is not paranoia. A matrix built from a glob that matches
+  # nothing produces ZERO legs and the job reports SUCCESS, so a renamed
+  # directory reads as "all scenarios passed" — green by absence. Fail instead.
+  discover-workflows:
+    name: Discover merobox scenarios
     runs-on: ubuntu-latest
+    outputs:
+      scenarios: ${{ steps.find.outputs.scenarios }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: find
+        run: |
+          set -euo pipefail
+          list=$(cd workflows && ls -1 *.yml 2>/dev/null | sort || true)
+          if [ -z "$list" ]; then
+            echo "::error::no *.yml under workflows/ — this lane would report success having run nothing"
+            exit 1
+          fi
+          echo "scenarios=$(printf '%s\n' "$list" | jq -R -s -c 'split("\n")|map(select(length>0))')" >> "$GITHUB_OUTPUT"
+          echo "will run:"; printf '  %s\n' $list
+
+  logic-workflows:
+    name: merobox (${{ matrix.scenario }})
+    needs: [discover-workflows]
+    runs-on: ubuntu-latest
+    strategy:
+      # One scenario's failure must not cancel the others: when a core release
+      # changes behaviour they usually fail for the SAME reason, and seeing which
+      # of them do is the diagnosis.
+      fail-fast: false
+      matrix:
+        scenario: ${{ fromJSON(needs.discover-workflows.outputs.scenarios) }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.89.0
@@ -119,12 +152,33 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y jq
       - name: Install cargo-mero
         uses: ./.github/actions/install-cargo-mero
-      - name: Build WASM
-        run: cd logic && cargo mero build
-      # Both pinned. merobox only requires `calimero-client-py>=0.6.28`, and
-      # client-py is the layer that actually builds the admin-API request — so an
+      # A BUNDLE, not a bare wasm: rc.32 refuses a raw `.wasm` on the dev
+      # install ("not a signed application bundle"), because an `.mpk` carries a
+      # signed manifest.json next to app.wasm. `--dev` signs with the well-known
+      # development key — accepted by a local node, refused by the registry,
+      # which is the right way round for a test.
+      #
+      # `--app-version` is pinned rather than left to `--bump`, which would ask
+      # the live registry what to call a throwaway test artifact and make this
+      # lane depend on the network. `--output` pins the filename so the
+      # scenarios can name it (the default embeds the version).
+      - name: Build signed dev bundle
+        run: cd logic && cargo mero bundle --dev --no-icon --app-version 0.0.1 --output dist/mero-tag-dev.mpk
+      # Both pinned, and the pair MUST match the merod image in workflows/.
+      # client-py is the layer that actually builds the admin-API request, so an
       # unpinned install tracks core master and reddens this job on a commit that
-      # changed nothing. The pair must match the merod image in workflows/.
+      # changed nothing — but a stale pin is just as bad in the other direction.
+      #
+      # It was: bumping the image to rc.32 while leaving client-py at 0.6.29 (a
+      # pin chosen for rc.24) failed the install with
+      #   Client error: buffer provided to decode base58 encoded string into
+      # because rc.27 removed base58 — device keys and account ids are both 64
+      # hex now — and 0.6.29 still decodes the old encoding.
+      #
+      # 0.6.75 + 0.7.0 is the pair merobox itself ships and tests: its
+      # pyproject requires `calimero-client-py>=0.7.0`, and its binary CI lane
+      # downloads the latest core RELEASE — rc.32, the image below — and is
+      # green on it. Bump both together, and bump the cache key with them.
       # merobox has had a console-verbosity knob since 0.6.30 (merobox#271): `quiet`
       # keeps the banners and the final pass/fail summary and drops the per-step
       # API-response dumps. Day to day that is what you want; to get the full detail
@@ -151,15 +205,24 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/pip
-          key: pip-${{ runner.os }}-merobox-0.6.55-ccpy-0.6.29
+          key: pip-${{ runner.os }}-merobox-0.6.75-ccpy-0.7.0
       - name: Install merobox
         run: |
-          pip install -q --disable-pip-version-check "merobox==0.6.55" "calimero-client-py==0.6.29"
+          pip install -q --disable-pip-version-check "merobox==0.6.75" "calimero-client-py==0.7.0"
           merobox --version
           pip show calimero-client-py | sed -n 's/^Version: /calimero-client-py /p'
       # Schema-check first: a typo in a step name or field otherwise only shows up
       # after several minutes of node boot.
+      #
+      # SCENARIO travels through the environment rather than being interpolated
+      # into the script. A `${{ }}` expression is substituted before the shell
+      # sees the line, and this value comes from a filename in the repo, so
+      # inlining it would let a crafted name run as code.
       - name: Validate workflow schema
-        run: cd workflows && merobox bootstrap validate logic-test.yml
+        env:
+          SCENARIO: ${{ matrix.scenario }}
+        run: cd workflows && merobox bootstrap validate "$SCENARIO"
       - name: Run merobox workflow (boots merod in Docker)
-        run: bash scripts/workflows.sh logic-test.yml
+        env:
+          SCENARIO: ${{ matrix.scenario }}
+        run: bash scripts/workflows.sh "$SCENARIO"
