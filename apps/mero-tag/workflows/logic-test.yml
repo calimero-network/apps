@@ -58,6 +58,27 @@ steps:
     statements:
       - "contains({{space}}, 'Test Space')"
 
+  # ⚠️ THE TIMESTAMPS BELOW ARE LOAD-BEARING, and were not always.
+  #
+  # Every record type is `#[app::mergeable]`, so core merges a stored entry
+  # against the incoming one on EVERY write — a node's own sequential writes
+  # included (`save_internal`'s `Custom` arm merges "regardless of timestamp
+  # ordering"). The app's rule is last-writer-wins on the record's own
+  # timestamp field, so a call carrying a timestamp OLDER than what is stored
+  # loses to the value it meant to replace: the method returns, the event
+  # fires, history still gets its sample, and the record does not change.
+  #
+  # This file used to open with `created_at: 1000001` for the tracker and then
+  # send `timestamp: 2000` for its first location — three orders of magnitude
+  # backwards. It passed anyway, because before core 0.11.0-rc.32 required the
+  # merge to be DECLARED the rule was never dispatched and every write was a
+  # plain overwrite. Declaring it made the rule real and this scenario failed
+  # on "Assert Location Stored" with `latest: None`.
+  #
+  # So: keep this one ascending clock, and add new steps to the end of it.
+  # 1000 join · 1100 create tracker · 2000 first fix · 1500 deliberately stale
+  # · 3000 share · 3500 group · 3600 add to group · 4000 geofence · 5000
+  # presence.
   # ── Members ────────────────────────────────────────────────────────────────
   - name: Join as Alice
     type: call
@@ -68,7 +89,7 @@ steps:
     args:
       member_id: "alice"
       username: "Alice"
-      timestamp: 1000000
+      timestamp: 1000
 
   - name: Get Members
     type: call
@@ -96,7 +117,7 @@ steps:
       id: "t1"
       name: "Alice Phone"
       owner_id: "alice"
-      created_at: 1000001
+      created_at: 1100
 
   - name: Get Trackers After Create
     type: call
