@@ -43,7 +43,7 @@ nodes:
   # lockstep: the wasm imports host functions that only exist from that release
   # on, and an older node installs it happily then dies at context creation
   # with `link error: unknown import`.
-  image: ghcr.io/calimero-network/merod:0.11.0-rc.28
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.32
   prefix: kv-node
   # Stated, not inherited. core 0.11.0-rc.26 made mDNS opt-in (core#3620):
   # `merod init` now writes `discovery.mdns = false`, where every earlier
@@ -60,13 +60,24 @@ nodes:
   mdns: true
 
 steps:
-  - name: Install application on node-1
+  - name: Install application on kv-node-1
     type: install_application
     node: kv-node-1
-    path: res/kv_store.wasm
+    path: dist/com.calimero.kv-store.mpk
     dev: true
     outputs:
       app_id: applicationId
+
+  # ⚠️ Installed on EVERY node, not just the first. Since core 0.11.0-rc.31 a
+  # node does NOT serve bytecode to its peers: a joiner finds the blob in the
+  # DHT, is told which peers hold it, and every fetch still comes back
+  # `Blob not found on peer`. The method call then fails as a bare
+  # `InternalError` naming neither the blob nor the reason.
+  - name: Install application on kv-node-2
+    type: install_application
+    node: kv-node-2
+    path: dist/com.calimero.kv-store.mpk
+    dev: true
 
   - name: Assert application installed
     type: assert

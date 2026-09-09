@@ -19,15 +19,14 @@
 //! In short: **this contract decides who is allowed in the room and relays the
 //! handshake; the media goes around it.**
 
+use std::cmp::Ordering;
 use std::str::FromStr;
 
 use calimero_sdk::abi::AbiType;
 use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use calimero_sdk::serde::{Deserialize, Serialize};
 use calimero_sdk::{app, env as sdk_env, AccountId, PublicKey};
-use calimero_storage::address::Id;
 use calimero_storage::collections::crdt_meta::MergeError;
-use calimero_storage::collections::rekey::RekeyTarget;
 use calimero_storage::collections::{
     AccessControl, LwwRegister, Mergeable as MergeableTrait, Ownable, UnorderedMap,
 };
@@ -74,7 +73,45 @@ const MAX_MESSAGE_CHARS: usize = 4096;
 
 // ── Presence (the lobby) ──────────────────────────────────────────────────────
 
+// ── LWW convergence helper ───────────────────────────────────────────────────
+
+/// Take `other` iff it wins a **total order** of (clock, canonical borsh bytes).
+///
+/// A bare `other.ts > self.ts` is not commutative, and from core 0.11.0-rc.32
+/// that is a live bug rather than a latent one. At an exact clock tie with
+/// differing content each replica keeps its own copy: `merge` changes nothing
+/// on either side, so re-merging never closes the gap and the two stay
+/// divergent permanently, with no error. Breaking the tie on the borsh
+/// encoding — a total order over values — makes both replicas elect the same
+/// winner independently, which is what convergence requires.
+///
+/// Before [core#3807] a collection value's `merge` was never called (entries
+/// resolved last-write-wins by write ORDER), so these rules were dead code and
+/// the tie could not be observed. `#[app::mergeable]` turns them on.
+///
+/// [core#3807]: https://github.com/calimero-network/core/pull/3807
+fn lww_take<T: BorshSerialize>(mine_ts: u64, theirs_ts: u64, mine: &T, theirs: &T) -> bool {
+    match theirs_ts.cmp(&mine_ts) {
+        Ordering::Greater => true,
+        Ordering::Less => false,
+        // Equal clocks: decide on the canonical encoding, so both replicas
+        // elect the same side.
+        //
+        // Infallible on purpose. Core's contract for a dispatched merge
+        // requires a TOTAL rule — "`Err` is not validation, it is a refusal to
+        // converge: the entity stays divergent and repair retries it
+        // indefinitely" — so this must not surface an encoding error. A value
+        // that came back out of storage was borsh-encoded to get there, which
+        // is why the fallback is unreachable rather than merely unlikely.
+        Ordering::Equal => {
+            let encode = |v: &T| calimero_sdk::borsh::to_vec(v).unwrap_or_default();
+            encode(theirs) > encode(mine)
+        }
+    }
+}
+
 /// One row in the lobby: a person who is (or recently was) in this room.
+#[app::mergeable(id = "mero_meet::Presence")]
 #[derive(AbiType, BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
@@ -100,18 +137,11 @@ impl MergeableTrait for Presence {
     fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
         // Pure last-writer-wins on the heartbeat clock. `joined_at` is immutable
         // after first join, so the newer `updated_at` always carries truth.
-        if other.updated_at > self.updated_at {
+        if lww_take(self.updated_at, other.updated_at, self, other) {
             *self = other.clone();
         }
         Ok(())
     }
-}
-
-// `Presence` is a flat record (no nested collections), so re-keying is a no-op —
-// but rc.9's `Mergeable: RekeyTarget` supertrait bound requires the impl. The
-// default `register_nested_value_types` (empty) is correct: nothing to cascade.
-impl RekeyTarget for Presence {
-    fn rekey_relative_to(&mut self, _parent_id: Id) {}
 }
 
 // ── Signaling ───────────────────────────────────────────────────────────────
@@ -122,6 +152,7 @@ impl RekeyTarget for Presence {
 /// serialized SDP description or ICE candidate produced by the WebRTC engine on
 /// the sender's machine. Per the WebRTC spec the signaling channel is a black
 /// box; this contract is exactly that black box, made decentralized.
+#[app::mergeable(id = "mero_meet::Signal")]
 #[derive(AbiType, BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
@@ -143,17 +174,11 @@ impl MergeableTrait for Signal {
     fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
         // Signals are immutable once posted; keyed by a unique id, so a merge of
         // "the same" signal is a no-op. Newer wins defensively.
-        if other.created_at > self.created_at {
+        if lww_take(self.created_at, other.created_at, self, other) {
             *self = other.clone();
         }
         Ok(())
     }
-}
-
-// Flat record (no nested collections) → re-key is a no-op; impl exists only to
-// satisfy rc.9's `Mergeable: RekeyTarget` supertrait bound.
-impl RekeyTarget for Signal {
-    fn rekey_relative_to(&mut self, _parent_id: Id) {}
 }
 
 // ── Reap marks (two-pass ghost detection) ─────────────────────────────────────
@@ -164,6 +189,7 @@ impl RekeyTarget for Signal {
 /// movement clears the mark — this is "observed staleness", the contract-side
 /// twin of the frontend's observed-liveness ghost logic, and it is what makes
 /// reaping immune to wall-clock skew between members' machines.
+#[app::mergeable(id = "mero_meet::ReapMark")]
 #[derive(AbiType, BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
@@ -179,22 +205,18 @@ impl MergeableTrait for ReapMark {
     fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
         // Later mark wins: concurrent observers converge on the most recent
         // observation, which only ever DELAYS a reap (the safe direction).
-        if other.marked_at > self.marked_at {
+        if lww_take(self.marked_at, other.marked_at, self, other) {
             *self = other.clone();
         }
         Ok(())
     }
 }
 
-// Flat record → no-op re-key; required by rc.9's `Mergeable: RekeyTarget`.
-impl RekeyTarget for ReapMark {
-    fn rekey_relative_to(&mut self, _parent_id: Id) {}
-}
-
 // ── Chat ──────────────────────────────────────────────────────────────────────
 
 /// One durable in-room chat message. Broadcast (not addressed): everyone in the
 /// room reads the same rolling history via `get_messages`.
+#[app::mergeable(id = "mero_meet::ChatMessage")]
 #[derive(AbiType, BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
@@ -215,16 +237,11 @@ impl MergeableTrait for ChatMessage {
     fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
         // Messages are immutable once posted; ids are unique per sender, so a
         // merge of "the same" message is a no-op. Newer wins defensively.
-        if other.created_at > self.created_at {
+        if lww_take(self.created_at, other.created_at, self, other) {
             *self = other.clone();
         }
         Ok(())
     }
-}
-
-// Flat record → no-op re-key; required by rc.9's `Mergeable: RekeyTarget`.
-impl RekeyTarget for ChatMessage {
-    fn rekey_relative_to(&mut self, _parent_id: Id) {}
 }
 
 // ── Views (read-model returned to the frontend) ───────────────────────────────

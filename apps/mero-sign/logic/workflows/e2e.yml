@@ -40,7 +40,7 @@ nodes:
   # Was `:edge`, a FLOATING tag — the node changed release under the contract
   # whenever it moved. Pinned to [workspace.metadata.mero-apps].merod-image,
   # which check-app-metadata.sh asserts.
-  image: ghcr.io/calimero-network/merod:0.11.0-rc.28
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.32
   prefix: calimero-node
   # rc.26 made mDNS opt-in (core#3620); without this the nodes never peer and it
   # surfaces as a 500 on join_namespace rather than as a discovery error.
@@ -53,7 +53,7 @@ steps:
   - name: Install application on Node 1
     type: install_application
     node: calimero-node-1
-    path: res/mero_sign.wasm
+    path: dist/com.calimero.mero-sign.mpk
     dev: true
     outputs:
       app_id: applicationId
@@ -61,7 +61,7 @@ steps:
   - name: Install application on Node 2
     type: install_application
     node: calimero-node-2
-    path: res/mero_sign.wasm
+    path: dist/com.calimero.mero-sign.mpk
     dev: true
 
   # ⚠️ The nodes must be UP before the first admin call. merobox waits for

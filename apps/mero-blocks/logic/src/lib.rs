@@ -13,13 +13,13 @@
 //! Lighting and chunk data are client-derived from (seed, overrides) and cost
 //! zero network traffic.
 
+use std::cmp::Ordering;
+
 use calimero_sdk::abi::AbiType;
 use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use calimero_sdk::serde::{Deserialize, Serialize};
 use calimero_sdk::{app, env as sdk_env, PublicKey};
-use calimero_storage::address::Id;
 use calimero_storage::collections::crdt_meta::MergeError;
-use calimero_storage::collections::rekey::RekeyTarget;
 use calimero_storage::collections::{LwwRegister, Mergeable as MergeableTrait, UnorderedMap};
 
 type MemberId = String;
@@ -42,9 +42,47 @@ const REAP_STALE_SECS: u64 = 30;
 /// Marked and still frozen after this long => actually reaped (pass 2).
 const REAP_GRACE_SECS: u64 = 30;
 
+// ── LWW convergence helper ───────────────────────────────────────────────────
+
+/// Take `other` iff it wins a **total order** of (clock, canonical borsh bytes).
+///
+/// A bare `other.ts > self.ts` is not commutative, and from core 0.11.0-rc.32
+/// that is a live bug rather than a latent one. At an exact clock tie with
+/// differing content each replica keeps its own copy: `merge` changes nothing
+/// on either side, so re-merging never closes the gap and the two stay
+/// divergent permanently, with no error. Breaking the tie on the borsh
+/// encoding — a total order over values — makes both replicas elect the same
+/// winner independently, which is what convergence requires.
+///
+/// Before [core#3807] a collection value's `merge` was never called (entries
+/// resolved last-write-wins by write ORDER), so these rules were dead code and
+/// the tie could not be observed. `#[app::mergeable]` turns them on.
+///
+/// [core#3807]: https://github.com/calimero-network/core/pull/3807
+fn lww_take<T: BorshSerialize>(mine_ts: u64, theirs_ts: u64, mine: &T, theirs: &T) -> bool {
+    match theirs_ts.cmp(&mine_ts) {
+        Ordering::Greater => true,
+        Ordering::Less => false,
+        // Equal clocks: decide on the canonical encoding, so both replicas
+        // elect the same side.
+        //
+        // Infallible on purpose. Core's contract for a dispatched merge
+        // requires a TOTAL rule — "`Err` is not validation, it is a refusal to
+        // converge: the entity stays divergent and repair retries it
+        // indefinitely" — so this must not surface an encoding error. A value
+        // that came back out of storage was borsh-encoded to get there, which
+        // is why the fallback is unreachable rather than merely unlikely.
+        Ordering::Equal => {
+            let encode = |v: &T| calimero_sdk::borsh::to_vec(v).unwrap_or_default();
+            encode(theirs) > encode(mine)
+        }
+    }
+}
+
 // ── Stored records ───────────────────────────────────────────────────────────
 
 /// One block override: `b` is the block id (0 = air / broken).
+#[app::mergeable(id = "mero_blocks::BlockOverride")]
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, AbiType, Clone, Debug)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
@@ -57,17 +95,15 @@ pub struct BlockOverride {
 
 impl MergeableTrait for BlockOverride {
     fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        if other.updated_at > self.updated_at {
+        if lww_take(self.updated_at, other.updated_at, self, other) {
             *self = other.clone();
         }
         Ok(())
     }
 }
-impl RekeyTarget for BlockOverride {
-    fn rekey_relative_to(&mut self, _parent_id: Id) {}
-}
 
 /// A player row: identity-keyed presence + last known transform.
+#[app::mergeable(id = "mero_blocks::Player")]
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, AbiType, Clone, Debug)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
@@ -91,18 +127,16 @@ pub struct Player {
 impl MergeableTrait for Player {
     fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
         // pure LWW on the heartbeat clock; joined_at is immutable after join
-        if other.updated_at > self.updated_at {
+        if lww_take(self.updated_at, other.updated_at, self, other) {
             *self = other.clone();
         }
         Ok(())
     }
 }
-impl RekeyTarget for Player {
-    fn rekey_relative_to(&mut self, _parent_id: Id) {}
-}
 
 /// Two-pass reap bookkeeping (see mero-meet): pass 1 marks, pass 2 reaps only
 /// if the row stayed frozen through the grace window.
+#[app::mergeable(id = "mero_blocks::ReapMark")]
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, AbiType, Clone, Debug)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
@@ -114,14 +148,11 @@ pub struct ReapMark {
 
 impl MergeableTrait for ReapMark {
     fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        if other.marked_at > self.marked_at {
+        if lww_take(self.marked_at, other.marked_at, self, other) {
             *self = other.clone();
         }
         Ok(())
     }
-}
-impl RekeyTarget for ReapMark {
-    fn rekey_relative_to(&mut self, _parent_id: Id) {}
 }
 
 // ── Views / args ─────────────────────────────────────────────────────────────

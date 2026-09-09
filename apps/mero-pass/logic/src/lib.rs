@@ -10,6 +10,7 @@ use calimero_storage::collections::rekey::RekeyTarget;
 use calimero_storage::collections::{Mergeable as MergeableTrait, UnorderedMap};
 use thiserror::Error;
 
+#[app::mergeable(id = "mero_pass::SecretItem")]
 #[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
@@ -48,19 +49,30 @@ impl MergeableTrait for SecretItem {
     // `Result<T> = Result<T, AppError>` alias, which otherwise shadows the one in
     // the trait signature and fails as "type alias takes 1 generic argument".
     fn merge(&mut self, other: &Self) -> std::result::Result<(), MergeError> {
-        let mine = (self.version, self.updated_at, &self.name, &self.data);
-        let theirs = (other.version, other.updated_at, &other.name, &other.data);
-        if theirs > mine {
+        // The tie-break spans the WHOLE record, because the branch replaces the
+        // whole record. The old tuple compared only (version, updated_at, name,
+        // data), so an exact tie on those four with a different `tags` or
+        // `secret_type` — both mutable — left each replica holding its own copy
+        // permanently: re-merging changed nothing on either side. The canonical
+        // borsh encoding is consulted only to break that exact tie, so
+        // version-then-clock precedence is unchanged and the result is still a
+        // `max` over a totally ordered set.
+        //
+        // Infallible by contract: core requires a dispatched merge to be TOTAL,
+        // since `Err` is a refusal to converge that repair retries forever. A
+        // value that came out of storage encoded to get there.
+        let key = |v: &Self| {
+            (
+                v.version,
+                v.updated_at,
+                calimero_sdk::borsh::to_vec(v).unwrap_or_default(),
+            )
+        };
+        if key(other) > key(self) {
             *self = other.clone();
         }
         Ok(())
     }
-}
-
-// Flat record, no nested collections, so re-keying is a no-op — but the
-// `Mergeable: RekeyTarget` supertrait bound still requires the impl.
-impl RekeyTarget for SecretItem {
-    fn rekey_relative_to(&mut self, _parent_id: Id) {}
 }
 
 #[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
@@ -78,6 +90,15 @@ pub struct AuditLogEntry {
 /// 16 random bytes, so two entries never contend for the same key. If one ever
 /// did, the copy already present wins: an audit trail that a later write can
 /// rewrite is not an audit trail.
+/// Declared undispatched rather than with `#[app::mergeable]`: the rule below
+/// is a no-op, so there is nothing for the merge point to call and no reason to
+/// pay a wasm hop to decide nothing. core 0.11.0-rc.32 (core#3807) requires
+/// that this distinction be *recorded* rather than assumed, which is what this
+/// impl does — the entry resolves without an app rule, by construction.
+impl calimero_storage::collections::MergeStrategy for AuditLogEntry {
+    const DISPATCHED: bool = false;
+}
+
 impl MergeableTrait for AuditLogEntry {
     fn merge(&mut self, _other: &Self) -> std::result::Result<(), MergeError> {
         Ok(())

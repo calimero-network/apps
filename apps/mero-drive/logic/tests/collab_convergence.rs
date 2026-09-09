@@ -30,17 +30,16 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
+use calimero_sdk::app;
 use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use calimero_storage::address::Id;
 use calimero_storage::collections::crdt_meta::MergeError;
-use calimero_storage::collections::rekey::{field_child_id, RekeyTarget};
+use calimero_storage::collections::rekey::RekeyTarget;
 use calimero_storage::collections::{Mergeable, Root, UnorderedMap, UnorderedSet};
 use calimero_storage::env::{self, RuntimeEnv};
 use calimero_storage::interface::ApplyContext;
 use calimero_storage::store::Key;
-use calimero_storage::{
-    register_crdt_merge_for_test, register_rekey_if_supported, rekey_field_if_supported,
-};
+use calimero_storage::{register_crdt_merge_for_test, register_rekey_if_supported};
 use serial_test::serial;
 
 // ---------------------------------------------------------------------------
@@ -59,6 +58,7 @@ use serial_test::serial;
 
 /// FIXED: a `RekeyTarget` whose nested update-set is re-keyed deterministically
 /// — the production `DocRecord` shape. Concurrent appends converge.
+#[app::mergeable(id = "collab_convergence::FixedDoc")]
 #[derive(BorshSerialize, BorshDeserialize, Default)]
 #[borsh(crate = "calimero_sdk::borsh")]
 struct FixedDoc {
@@ -71,21 +71,22 @@ impl Mergeable for FixedDoc {
     }
 }
 
-impl RekeyTarget for FixedDoc {
-    fn rekey_relative_to(&mut self, parent_id: Id) {
-        rekey_field_if_supported!(&mut self.updates, field_child_id(parent_id, "updates"));
-    }
-    fn register_nested_value_types() {
-        register_rekey_if_supported!(UnorderedSet<Vec<u8>>);
-    }
-}
-
 /// UNFIXED: identical shape, but never registered / re-keyed — the pre-fix
 /// world. Its nested set keeps a per-replica-random id and never merges.
 #[derive(BorshSerialize, BorshDeserialize, Default)]
 #[borsh(crate = "calimero_sdk::borsh")]
 struct UnfixedDoc {
     updates: UnorderedSet<Vec<u8>>,
+}
+
+// core 0.11.0-rc.32 (core#3807) requires every `Mergeable` type to declare HOW
+// it merges. `UnfixedDoc` declares by hand rather than via `#[app::mergeable]`
+// precisely BECAUSE that attribute would generate the deterministic re-key
+// cascade this negative control must not have. `DISPATCHED = false` is the
+// pre-fix world it models: the entry resolves last-write-wins and the nested
+// set is never merged.
+impl calimero_storage::collections::MergeStrategy for UnfixedDoc {
+    const DISPATCHED: bool = false;
 }
 
 impl Mergeable for UnfixedDoc {
@@ -114,6 +115,14 @@ macro_rules! docs_app {
         #[borsh(crate = "calimero_sdk::borsh")]
         struct $app {
             docs: UnorderedMap<String, $val>,
+        }
+        // rc.32 (core#3807): declare the strategy. Structural / undispatched,
+        // and NOT `#[app::mergeable]`, so the wrapper keeps the no-op re-key
+        // that both the fixed (converge) and unfixed (negative control)
+        // outcomes depend on. Root state merges through its own registered
+        // path either way — see `register_crdt_merge_for_test` below.
+        impl calimero_storage::collections::MergeStrategy for $app {
+            const DISPATCHED: bool = false;
         }
         impl Mergeable for $app {
             fn merge(&mut self, other: &Self) -> Result<(), MergeError> {

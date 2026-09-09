@@ -35,5 +35,11 @@
 # and can break a no-op commit. 0.6.36 is the version released alongside merobox
 # 0.6.69 (both 2026-08-28), not the newest: 0.6.37 landed 2026-08-31 and no
 # merobox release has been built against it yet.
-merobox==0.6.69
-calimero-client-py==0.6.36
+# ⚠️ 0.6.75 + 0.7.0 is the pair REQUIRED from core 0.11.0-rc.31, and they must
+# move TOGETHER. calimero-client-py 0.7.0 dropped the `metadata` kwarg that
+# older merobox passes, so 0.6.69 + 0.7.0 dies on the first call; and merobox
+# 0.6.75 declares `calimero-client-py>=0.7.0`, so 0.6.75 + 0.6.36 is an
+# unsatisfied requirement pip will resolve away from under the pin. Verified
+# against PyPI metadata, not release dates.
+merobox==0.6.75
+calimero-client-py==0.7.0

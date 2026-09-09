@@ -114,6 +114,7 @@ calimero_storage::impl_atomic_lww_leaf!(Element, updated_at);
 
 // ── Member ────────────────────────────────────────────────────────────────────
 
+#[app::mergeable(id = "mero_design::Member")]
 #[derive(AbiType, BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
@@ -134,20 +135,22 @@ impl MergeableTrait for Member {
     fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
         // Identity (`id`) and `joined_at` are immutable after first join; only
         // the mutable profile fields are LWW, keyed on `username_updated_at`.
-        if other.username_updated_at > self.username_updated_at {
+        // Tie-break over exactly the fields assigned below, making the rule a
+        // maximum over a total order — commutative, associative, idempotent.
+        // A bare `>` is none of those at an exact clock tie: two replicas that
+        // edited a profile in the same tick would each keep their own copy,
+        // and re-merging would never close the gap. This rule is DISPATCHED
+        // (`#[app::mergeable]`), so unlike the `impl_atomic_lww_leaf!` types
+        // below it really does run at every merge point.
+        let mine = (self.username_updated_at, &self.username, &self.avatar);
+        let theirs = (other.username_updated_at, &other.username, &other.avatar);
+        if theirs > mine {
             self.username = other.username.clone();
             self.avatar = other.avatar.clone();
             self.username_updated_at = other.username_updated_at;
         }
         Ok(())
     }
-}
-
-// `Member` uses a custom selective (not whole-record) merge, so it can't use
-// `impl_atomic_lww_leaf!`. It is still a leaf value with no nested collections,
-// so `RekeyTarget` (the new `Mergeable` supertrait) is a no-op.
-impl calimero_storage::collections::rekey::RekeyTarget for Member {
-    fn rekey_relative_to(&mut self, _parent_id: calimero_storage::address::Id) {}
 }
 
 // ── Board info ────────────────────────────────────────────────────────────────

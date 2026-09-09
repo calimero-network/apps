@@ -70,7 +70,7 @@ use events::Event;
 ///   the CRDT structure lives in Yjs at the client; the WASM is just a
 ///   replicated, convergent append-log.
 ///
-/// ## Why a hand-written `RekeyTarget` — the #1 correctness requirement
+/// ## Deterministic re-keying — the #1 correctness requirement
 ///
 /// A nested collection (`content_updates`) stored under a value type whose
 /// nested ids are NOT deterministically re-keyed keeps a per-replica RANDOM
@@ -83,14 +83,21 @@ use events::Event;
 /// from that parent, so every node computes the same set id and the blobs
 /// converge as entities (add-wins set-union), not as a last-writer-wins blob.
 ///
-/// We keep the hand-written `Mergeable` (the original `created_at: u64` field
-/// is immutable plain data, which `#[derive(Mergeable)]` cannot field-merge)
-/// and additionally hand-write `RekeyTarget` + `register_nested_value_types`,
-/// mirroring core's own `rekey_record` test precedent. The root
-/// `#[app::state]` scan names `DocRecord` (it is the `docs` map value type) and
-/// registers its thunk; `register_nested_value_types` then cascades the
-/// registration into `UnorderedSet<Vec<u8>>`, so the set's re-key thunk is
-/// present before any insert.
+/// `#[app::mergeable]` supplies that impl. It is required from core
+/// 0.11.0-rc.32 (core#3807: every `Mergeable` type must declare HOW it merges)
+/// and it generates exactly what this type used to hand-write — the cascade in
+/// `generate_struct_rekey` namespaces each field by NAME, emitting
+/// `field_child_id(parent_id, "content_updates")`, and `register_nested_value_types`
+/// cascades the registration into `UnorderedSet<Vec<u8>>` so the set's re-key
+/// thunk is present before any insert. The child ids are therefore unchanged
+/// from the hand-written version; nothing moves in storage.
+///
+/// The attribute rather than `#[derive(Mergeable)]` because the merge below is
+/// this app's own rule, and because `created_at: u64` is immutable plain data
+/// that the derive cannot field-merge. Being the dispatched form, the rule is
+/// actually called at every merge point — it delegates to `LwwRegister` and
+/// `UnorderedSet`, which are real CRDTs, so there is no timestamp tie to break
+/// here (contrast the plain-field records elsewhere in the fleet).
 ///
 /// `BorshDeserialize` is hand-written for forward compatibility: pre-collab
 /// records were serialized WITHOUT `content_updates`, so the derived decoder
@@ -106,6 +113,7 @@ use events::Event;
 /// record in place through `docs.get_mut(...)` (write-back-on-drop) rather than
 /// the old clone-mutate-reinsert pattern (which the LWW-only `FolderRecord`
 /// still uses, as it has no nested collection).
+#[app::mergeable(id = "mero_drive::DocRecord")]
 #[derive(BorshSerialize, AbiType)]
 #[borsh(crate = "calimero_sdk::borsh")]
 pub struct DocRecord {
@@ -237,27 +245,6 @@ impl Mergeable for DocRecord {
     }
 }
 
-// Deterministic re-keying of the nested `content_updates` set relative to the
-// record's storage parent. THIS is what makes two independently-created
-// replicas of the same doc converge their update logs instead of keeping
-// per-replica-random set ids that never merge. See the `DocRecord` doc.
-impl calimero_storage::collections::rekey::RekeyTarget for DocRecord {
-    fn rekey_relative_to(&mut self, parent_id: calimero_storage::address::Id) {
-        calimero_storage::rekey_field_if_supported!(
-            &mut self.content_updates,
-            calimero_storage::collections::rekey::field_child_id(parent_id, "content_updates")
-        );
-    }
-
-    // Register the value types THIS record nests so their re-key thunks are
-    // present when a record is stored as a map value. Only `content_updates`
-    // (an `UnorderedSet<Vec<u8>>`) carries a nested collection id; the
-    // `LwwRegister` / `u64` fields are leaves (no-op via autoref dispatch).
-    fn register_nested_value_types() {
-        calimero_storage::register_rekey_if_supported!(UnorderedSet<Vec<u8>>);
-    }
-}
-
 /// Flat projection of a `DocRecord` for list / get APIs.
 #[derive(Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize, AbiType)]
 #[borsh(crate = "calimero_sdk::borsh")]
@@ -296,6 +283,7 @@ fn project(id: &str, rec: &DocRecord) -> Result<DocDto, DriveError> {
 /// migration bumps the *state* schema and adds a top-level marker, never a
 /// field inside `Comment` (changing an authored value type is a content
 /// rewrite, a different and harder migration class).
+#[app::mergeable(id = "mero_drive::Comment")]
 #[derive(Clone, BorshSerialize, BorshDeserialize, AbiType)]
 #[borsh(crate = "calimero_sdk::borsh")]
 pub struct Comment {
@@ -312,14 +300,6 @@ impl Mergeable for Comment {
         <LwwRegister<String> as Mergeable>::merge(&mut self.body, &other.body)?;
         Ok(())
     }
-}
-
-// `Mergeable`'s `RekeyTarget` supertrait (core 0.11.0-rc.8+). `Comment` nests no
-// collections — `body` is an `LwwRegister` leaf, `doc_id`/`created_at` are plain
-// immutable fields — so re-keying is a no-op. See `DocRecord` for the case that
-// actually re-keys a nested set.
-impl calimero_storage::collections::rekey::RekeyTarget for Comment {
-    fn rekey_relative_to(&mut self, _parent_id: calimero_storage::address::Id) {}
 }
 
 /// Flat projection of a `Comment` for list / get APIs.
