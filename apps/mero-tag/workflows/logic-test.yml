@@ -12,15 +12,37 @@ wait_timeout: 120
 nodes:
   chain_id: testnet-1
   count: 1
-  image: ghcr.io/calimero-network/merod:0.11.0-rc.24
+  # MUST NOT trail `min-runtime-version` in logic/Cargo.toml. It did: this said
+  # rc.24 while the bundle declared rc.32, so CI proved the contract worked on a
+  # node EIGHT releases below the floor the published artifact refuses to install
+  # under. A real rc.24 node would reject the bundle outright, so the lane was
+  # green about a configuration that cannot exist.
+  #
+  # The storage layer is compiled INTO the wasm, which is why the mismatch went
+  # unnoticed — app-side merge logic ran fine against an old host. What an old
+  # host does not necessarily have is the other half: the host-initiated
+  # custom-entry merge callback that cross-node divergence needs. See
+  # convergence-test.yml, which depends on it.
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.32
   prefix: calimero-node
+
+# The bump is also why the install step below names a `.mpk` and not
+# `res/mero_tag.wasm`. rc.32 refuses a raw wasm on the dev install:
+#
+#   Failed to read tar entry 0: invalid gzip header
+#   not a signed application bundle: /app/data/mero_tag.wasm
+#
+# An `.mpk` is a gzipped tar carrying `manifest.json` alongside `app.wasm`, and
+# the manifest must be SIGNED. `cargo mero bundle --dev` signs with the
+# well-known development key, which a local node accepts and the registry
+# refuses — the right key for a test and the wrong one to publish with.
 
 steps:
   # ── Bootstrap ─────────────────────────────────────────────────────────────
   - name: Install Application
     type: install_application
     node: calimero-node-1
-    path: "../logic/res/mero_tag.wasm"
+    path: "../logic/dist/mero-tag-dev.mpk"
     dev: true
     outputs:
       app_id: applicationId

@@ -742,6 +742,7 @@ mod tests {
 // so none of this was covered — and two of the six did not hold.
 #[cfg(test)]
 mod merge_laws {
+    use super::pure::push_capped;
     use super::{
         Geofence, Group, History, LocationSample, Member, MergeableTrait, Presence, Tracker,
         MAX_HISTORY,
@@ -881,5 +882,49 @@ mod merge_laws {
             out.samples.windows(2).all(|w| w[0].timestamp <= w[1].timestamp),
             "samples must stay in timestamp order"
         );
+    }
+
+    #[test]
+    fn merge_cap_agrees_with_the_write_path_cap() {
+        // `History::merge`'s comment claims it caps "exactly the way
+        // `pure::push_capped` caps the write path". A comment asserting a
+        // guarantee is weaker than the guarantee, so assert it: the same
+        // samples, delivered one at a time by the write path or in two halves
+        // by the merge, must end at the same list.
+        let all: Vec<u64> = (0..MAX_HISTORY as u64 + 25).collect();
+
+        let mut via_writes = Vec::new();
+        for ts in &all {
+            push_capped(&mut via_writes, sample(*ts), MAX_HISTORY);
+        }
+
+        let mid = all.len() / 2;
+        let via_merge = merged(&history(&all[..mid]), &history(&all[mid..]));
+
+        let ts = |v: &[LocationSample]| -> Vec<u64> { v.iter().map(|s| s.timestamp).collect() };
+        assert_eq!(ts(&via_merge.samples), ts(&via_writes));
+    }
+
+    #[test]
+    fn merging_an_empty_history_changes_nothing() {
+        // The identity case, which the old "longer side wins" rule also
+        // happened to get right — kept here so a future rewrite cannot lose it
+        // while the interesting cases still pass.
+        let a = history(&[1, 2, 3]);
+        let empty = History::default();
+        let ts = |h: &History| -> Vec<u64> { h.samples.iter().map(|s| s.timestamp).collect() };
+        assert_eq!(ts(&merged(&a, &empty)), vec![1, 2, 3]);
+        assert_eq!(ts(&merged(&empty, &a)), vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn samples_sharing_a_timestamp_but_not_a_place_both_survive() {
+        // Dedup keys on (timestamp, lat, lng), not timestamp alone. Two devices
+        // reporting the same instant from different places are two samples; a
+        // timestamp-only key would silently drop one.
+        let a = History { samples: vec![LocationSample { latitude: 1.0, longitude: 2.0, timestamp: 9 }] };
+        let b = History { samples: vec![LocationSample { latitude: 3.0, longitude: 4.0, timestamp: 9 }] };
+        assert_eq!(merged(&a, &b).samples.len(), 2);
+        assert_eq!(merged(&b, &a).samples.len(), 2);
     }
 }

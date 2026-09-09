@@ -27,8 +27,21 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# Ensure the WASM exists.
-[ -f "$REPO_ROOT/logic/res/mero_tag.wasm" ] || (cd "$REPO_ROOT/logic" && bash build.sh)
+# Ensure the signed dev BUNDLE exists — the scenarios install `.mpk`, not a raw
+# `.wasm`, because merod refuses the latter on the dev install from 0.11.0-rc.32
+# ("not a signed application bundle"). `--dev` uses the well-known development
+# key: a local node accepts it, the registry refuses it.
+#
+# NOT build-bundle.sh, which hand-rolls the manifest, pins minRuntimeVersion to
+# 0.1.0, emits no ABI, and signs only if a sibling core checkout happens to be
+# present — leaving an UNSIGNED bundle the node rejects wherever that checkout
+# is missing, CI included.
+BUNDLE="$REPO_ROOT/logic/dist/mero-tag-dev.mpk"
+if [ ! -s "$BUNDLE" ]; then
+  step "Building signed dev bundle"
+  ( cd "$REPO_ROOT/logic" && cargo mero bundle --dev --no-icon --app-version 0.0.1 --output dist/mero-tag-dev.mpk ) \
+    || { red "cargo mero bundle failed — is cargo-mero installed?"; exit 1; }
+fi
 
 FILES=("$@")
 [ ${#FILES[@]} -eq 0 ] && FILES=("logic-test.yml")
