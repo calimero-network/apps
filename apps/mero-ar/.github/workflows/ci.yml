@@ -89,9 +89,44 @@ jobs:
             -derivedDataPath .build -only-testing:MeroARTests \
             CODE_SIGNING_ALLOWED=NO
 
-  logic-workflows:
-    name: WASM logic workflows (merobox)
+  # Every *.yml under workflows/ becomes its own matrix leg, so adding a
+  # scenario is adding a file — nothing here needs editing. The previous job
+  # named its two scenarios in two places (validate + run), which is how
+  # convergence-test.yml would have been wired up once and forgotten once.
+  #
+  # ⚠️ The empty-glob guard is load-bearing, not tidiness. A matrix built from a
+  # glob that matches nothing produces ZERO legs and the job reports SUCCESS, so
+  # a renamed directory would read as "all scenarios passed" — green by absence,
+  # which this repo has been bitten by before. Fail loudly instead.
+  discover-workflows:
+    name: Discover merobox scenarios
     runs-on: ubuntu-latest
+    outputs:
+      scenarios: ${{ steps.find.outputs.scenarios }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: find
+        run: |
+          set -euo pipefail
+          list=$(cd workflows && ls -1 *.yml 2>/dev/null | sort || true)
+          if [ -z "$list" ]; then
+            echo "::error::no *.yml under workflows/ — this lane would report success having run nothing"
+            exit 1
+          fi
+          echo "scenarios=$(printf '%s\n' "$list" | jq -R -s -c 'split("\n")|map(select(length>0))')" >> "$GITHUB_OUTPUT"
+          echo "will run:"; printf '  %s\n' $list
+
+  logic-workflows:
+    name: merobox (${{ matrix.scenario }})
+    needs: [discover-workflows]
+    runs-on: ubuntu-latest
+    strategy:
+      # One scenario's failure must not cancel the others: when a core release
+      # changes behaviour they tend to fail for the SAME reason, and seeing
+      # which ones do is the diagnosis.
+      fail-fast: false
+      matrix:
+        scenario: ${{ fromJSON(needs.discover-workflows.outputs.scenarios) }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.89.0
@@ -160,12 +195,16 @@ jobs:
         run: pip install -q --disable-pip-version-check "merobox==0.6.75" "calimero-client-py==0.7.0"
       # Schema-check first: a typo in a step name/field otherwise only shows up
       # after several minutes of node boot.
-      - name: Validate workflow schemas
-        run: |
-          cd workflows
-          merobox bootstrap validate logic-test.yml
-          merobox bootstrap validate identity-and-roles.yml
-      # logic-test.yml covers the single-identity surface; identity-and-roles.yml
-      # needs two accounts (viewer rejection, cross-identity locks, admin break).
-      - name: Run merobox workflows (boots merod in Docker)
-        run: bash scripts/workflows.sh logic-test.yml identity-and-roles.yml
+      #
+      # SCENARIO travels through the environment rather than being interpolated
+      # into the script. A `${{ }}` expression is substituted before the shell
+      # sees the line, and this value is a filename from the repo, so inlining
+      # it would let a crafted name run as code.
+      - name: Validate workflow schema
+        env:
+          SCENARIO: ${{ matrix.scenario }}
+        run: cd workflows && merobox bootstrap validate "$SCENARIO"
+      - name: Run merobox workflow (boots merod in Docker)
+        env:
+          SCENARIO: ${{ matrix.scenario }}
+        run: bash scripts/workflows.sh "$SCENARIO"
