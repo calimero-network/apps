@@ -57,13 +57,30 @@ nodes:
   mdns: true
 
 steps:
-  - name: Install application on node-1
+  - name: Install application on kvc-node-1
     type: install_application
     node: kvc-node-1
     path: dist/com.calimero.kv-store.mpk
     dev: true
     outputs:
       app_id: applicationId
+
+  # ⚠️ Installed on EVERY node, not just the first. Since core 0.11.0-rc.31 a
+  # node does NOT serve bytecode to its peers: a joiner finds the blob in the
+  # DHT, is told which peers hold it, and every fetch still comes back
+  # `Blob not found on peer`. The method call then fails as a bare
+  # `InternalError` naming neither the blob nor the reason.
+  - name: Install application on kvc-node-2
+    type: install_application
+    node: kvc-node-2
+    path: dist/com.calimero.kv-store.mpk
+    dev: true
+
+  - name: Install application on kvc-node-3
+    type: install_application
+    node: kvc-node-3
+    path: dist/com.calimero.kv-store.mpk
+    dev: true
 
   - name: Assert application installed
     type: assert

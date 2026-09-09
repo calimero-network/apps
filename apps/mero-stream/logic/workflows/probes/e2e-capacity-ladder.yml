@@ -81,7 +81,7 @@ nodes:
   base_rpc_port: 2760
 
 steps:
-  - name: Install application on Node 1
+  - name: Install application on calimero-node-1
     type: install_application
     node: calimero-node-1
     path: ../res/mero_stream.wasm
@@ -96,6 +96,54 @@ steps:
   # boundary to retry at, so the whole scenario is lost when it does.
   # 12s, matching apps/scaffolding-e2e/logic/workflows/group-late-joiner.yml,
   # which documents why 5s is not enough.
+
+  # ⚠️ Installed on EVERY node, not just the first. Since core 0.11.0-rc.31 a
+  # node does NOT serve bytecode to its peers: a joiner finds the blob in the
+  # DHT, is told which peers hold it, and every fetch still comes back
+  # `Blob not found on peer`. The method call then fails as a bare
+  # `InternalError` naming neither the blob nor the reason.
+  - name: Install application on calimero-node-2
+    type: install_application
+    node: calimero-node-2
+    path: ../res/mero_stream.wasm
+    dev: true
+
+  # ⚠️ `create_mesh` JOINS INTERNALLY, so it races the KeyDelivery window the
+  # same way an explicit `join_namespace` does. Fresh nodes plus a couple of
+  # seconds of install leave mDNS discovery AND the group-key transfer under ~6
+  # seconds between them, and the join then 500s. `create_mesh` has no step
+  # boundary to retry at, so the whole scenario is lost when it does.
+  # 12s, matching apps/scaffolding-e2e/logic/workflows/group-late-joiner.yml,
+  # which documents why 5s is not enough.
+
+  - name: Install application on calimero-node-3
+    type: install_application
+    node: calimero-node-3
+    path: ../res/mero_stream.wasm
+    dev: true
+
+  # ⚠️ `create_mesh` JOINS INTERNALLY, so it races the KeyDelivery window the
+  # same way an explicit `join_namespace` does. Fresh nodes plus a couple of
+  # seconds of install leave mDNS discovery AND the group-key transfer under ~6
+  # seconds between them, and the join then 500s. `create_mesh` has no step
+  # boundary to retry at, so the whole scenario is lost when it does.
+  # 12s, matching apps/scaffolding-e2e/logic/workflows/group-late-joiner.yml,
+  # which documents why 5s is not enough.
+
+  - name: Install application on calimero-node-4
+    type: install_application
+    node: calimero-node-4
+    path: ../res/mero_stream.wasm
+    dev: true
+
+  # ⚠️ `create_mesh` JOINS INTERNALLY, so it races the KeyDelivery window the
+  # same way an explicit `join_namespace` does. Fresh nodes plus a couple of
+  # seconds of install leave mDNS discovery AND the group-key transfer under ~6
+  # seconds between them, and the join then 500s. `create_mesh` has no step
+  # boundary to retry at, so the whole scenario is lost when it does.
+  # 12s, matching apps/scaffolding-e2e/logic/workflows/group-late-joiner.yml,
+  # which documents why 5s is not enough.
+
   - name: Settle before the mesh joins
     type: wait
     seconds: 25

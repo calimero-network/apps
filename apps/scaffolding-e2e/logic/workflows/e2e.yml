@@ -39,7 +39,7 @@ nodes:
 steps:
   # SETUP: Install app and create mesh
 
-  - name: Install application on node-1
+  - name: Install application on e2e-node-1
     type: install_application
     node: e2e-node-1
     path: dist/com.calimero.scaffolding-e2e.mpk
@@ -75,6 +75,30 @@ steps:
   # Same 12s and the same reasoning as group-late-joiner.yml, which documents why
   # 5s is not enough and why no wait-for-connectivity gate exists in merobox
   # today. If meshes still flake at 12s, stop widening this and fix core.
+
+  # ⚠️ Installed on EVERY node, not just the first. Since core 0.11.0-rc.31 a
+  # node does NOT serve bytecode to its peers: a joiner finds the blob in the
+  # DHT, is told which peers hold it, and every fetch still comes back
+  # `Blob not found on peer`. The method call then fails as a bare
+  # `InternalError` naming neither the blob nor the reason.
+  - name: Install application on e2e-node-3
+    type: install_application
+    node: e2e-node-3
+    path: dist/com.calimero.scaffolding-e2e.mpk
+    dev: true
+
+  # ⚠️ `create_mesh` JOINS INTERNALLY, so it races the same KeyDelivery window as
+  # an explicit `join_namespace` — and until now only the `join_namespace`
+  # scenarios carried a settle. Fresh nodes plus a few seconds of install and
+  # context creation left mDNS discovery AND the group-key transfer under ~6
+  # seconds between them; the join then 500s and, because `create_mesh` has no
+  # step boundary to retry at, the whole scenario is lost. It lost all three CI
+  # attempts on `authored-shared.yml` repeatedly, reddening main and every PR.
+  #
+  # Same 12s and the same reasoning as group-late-joiner.yml, which documents why
+  # 5s is not enough and why no wait-for-connectivity gate exists in merobox
+  # today. If meshes still flake at 12s, stop widening this and fix core.
+
   - name: Settle before the mesh joins
     type: wait
     seconds: 20

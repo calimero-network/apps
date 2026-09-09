@@ -46,7 +46,7 @@ steps:
   # Phase A: Bootstrap — Install, Namespace, Lobby
   # ============================================================
 
-  - name: Install Battleships App on Node 1
+  - name: Install application on calimero-node-1
     type: install_application
     node: calimero-node-1
     path: dist/com.calimero.battleships.mpk
@@ -59,6 +59,24 @@ steps:
   # host `create_namespace` returns 500 about four seconds into the run.
   # This was masked while the teardown left the previous scenario's
   # containers behind, because the nodes were then already warm.
+
+  # ⚠️ Installed on EVERY node, not just the first. Since core 0.11.0-rc.31 a
+  # node does NOT serve bytecode to its peers: a joiner finds the blob in the
+  # DHT, is told which peers hold it, and every fetch still comes back
+  # `Blob not found on peer`. The method call then fails as a bare
+  # `InternalError` naming neither the blob nor the reason.
+  - name: Install application on calimero-node-2
+    type: install_application
+    node: calimero-node-2
+    path: dist/com.calimero.battleships.mpk
+    dev: true
+
+  # ⚠️ The nodes must be UP before the first admin call. merobox waits for
+  # container health, which is not the same as ready: on a genuinely cold
+  # host `create_namespace` returns 500 about four seconds into the run.
+  # This was masked while the teardown left the previous scenario's
+  # containers behind, because the nodes were then already warm.
+
   - name: Settle before the first admin call
     type: wait
     seconds: 12
