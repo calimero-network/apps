@@ -54,9 +54,13 @@ public final class AppState: ObservableObject {
 
     // ── Login / resume ────────────────────────────────────────────────────────
 
+    /// No setup code. core#3276/#3277 (0.11.0-rc.17) deleted the first-login
+    /// bootstrap secret this used to carry: the admin account is created at
+    /// `merod init` now, so there is no "very first login" state left for a
+    /// secret to unlock. core still parses the key, only to discard it, and
+    /// `Credentials` in the SDK has no third field to put it in.
     public func login(
-        nodeUrl: String, username: String, password: String,
-        setupCode: String? = nil, contextId: String
+        nodeUrl: String, username: String, password: String, contextId: String
     ) async {
         guard let base = URL(string: trim(nodeUrl)), base.scheme != nil else {
             loginError = "Enter a valid node URL (e.g. http://localhost:2450)."
@@ -77,13 +81,7 @@ public final class AppState: ObservableObject {
 
         let client = Mero(config: MeroConfig(baseURL: base, tokenStore: tokenStore))
         do {
-            _ = try await client.authenticate(
-                Credentials(
-                    username: username, password: password,
-                    // A fresh node only mints its first root key when the login
-                    // presents its bootstrap secret (core rc.14+). Harmless once
-                    // an account exists, so it is always safe to send.
-                    bootstrapSecret: setupCode?.isEmpty == false ? setupCode : nil))
+            _ = try await client.authenticate(Credentials(username: username, password: password))
             // The one field takes either a room id or an invitation. An
             // invitation has to be redeemed on this node first — join the
             // namespace and wait for the room to sync — which yields the context
@@ -167,7 +165,7 @@ public final class AppState: ObservableObject {
         case MeroError.authRevoked:
             return "That session was revoked — sign in again."
         case MeroError.authenticationFailed:
-            return "Login failed — check the username, password, and setup code."
+            return "Login failed — check the username and password."
         case MeroError.network(let detail):
             return "Can't reach the node: \(detail)"
         case MeroARError.noIdentity:

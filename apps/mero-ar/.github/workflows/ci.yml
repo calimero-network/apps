@@ -100,8 +100,12 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y jq
       - name: Install cargo-mero
         uses: ./.github/actions/install-cargo-mero
-      - name: Build WASM
-        run: cd logic && cargo mero build
+      # A signed bundle, not just the wasm: since core#3652 (0.11.0-rc.31) the
+      # node refuses a raw .wasm on a dev install, which is what the workflow
+      # fixtures hand it. `scripts/workflows.sh` builds this too if it is
+      # missing; doing it here keeps the build failure in its own step.
+      - name: Build the .mpk bundle
+        run: cd logic && cargo mero bundle --dev --no-icon --app-version 0.0.0 --output res/mero-ar.mpk
       # merobox has had a console-verbosity knob since 0.6.30 (merobox#271): `quiet`
       # keeps the banners and the final pass/fail summary and drops the per-step
       # API-response dumps. Day to day that is what you want; to get the full detail
@@ -119,18 +123,41 @@ jobs:
           # None and merobox's `config.get("log_level")` fallback is unreachable — a
           # `log_level:` key in the workflow YAML is silently ignored.
           echo "MEROD_LOG=${{ runner.debug == '1' && 'debug' || 'info' }}" >> "$GITHUB_ENV"
-      # calimero-client-py publishes an sdist and no manylinux wheel, so a cold
-      # `pip install` compiles its Rust extension on the runner — 92 seconds of a
-      # 134-second step, measured. pip stores wheels it builds itself under
-      # ~/.cache/pip/wheels and reuses them, so keying this cache on the exact pins
-      # makes every run after the first a few seconds. Bump the key with the pins.
-      - name: Cache pip (calimero-client-py builds from source)
+      # ⚠️ BOTH pins are `==`, and they are a PAIR — see the comment below.
+      #
+      # ⚠️ Still load-bearing, despite 0.7.0 being the first calimero-client-py
+      # with a `bdist_wheel`: that wheel is **Windows only**
+      # (`cp313-cp313-win_amd64`, from client-py#103/#104). Linux gets the sdist,
+      # so a cold `pip install` still compiles the Rust extension on the runner —
+      # 92 seconds of a 134-second step, measured. pip reuses wheels it builds
+      # itself from ~/.cache/pip/wheels, so every run after the first is a few
+      # seconds. Do not drop this on the strength of "it ships a wheel now";
+      # check the wheel's platform tag first. Bump the key with the pins.
+      - name: Cache pip
         uses: actions/cache@v4
         with:
           path: ~/.cache/pip
-          key: pip-${{ runner.os }}-merobox-0.6.55-ccpy-0.6.29
+          key: pip-${{ runner.os }}-merobox-0.6.75-ccpy-0.7.0
+      # ⚠️ Pinning merobox pins NOTHING on its own: calimero-client-py is an
+      # unpinned transitive dependency that tracks core, so pip is free to take a
+      # newer one than the merobox on this line was ever built against. That is
+      # not hypothetical — 0.7.0 removed the `metadata` kwarg merobox passed, and
+      # every unpinned install in the fleet died at `install_application` with
+      # `TypeError: unexpected keyword argument 'metadata'` on 2026-09-02.
+      #
+      # The rule: take the client-py that was newest when THAT merobox was built.
+      # 0.6.75 (2026-09-02 21:34) is the first merobox built against 0.7.0 — it
+      # declares `calimero-client-py>=0.7.0` — so 0.7.0 is its pair.
+      #
+      # Moving up from 0.6.29 is not optional here. client-py 0.7.0 is the release
+      # that repinned onto 0.11.0-rc.31 and installs by coordinates (its #107),
+      # which is the same core#3652 change that took raw wasm out of the protocol;
+      # and 0.6.29 predates its #102/#105, which stopped the client dropping
+      # `admitters` and the admitter addresses from an invitation on re-encode —
+      # the drop that makes an rc.29+ node refuse the join in the two-node
+      # workflow. Bump both together, and bump the cache key with them.
       - name: Install merobox
-        run: pip install -q --disable-pip-version-check "merobox==0.6.55" "calimero-client-py==0.6.29"
+        run: pip install -q --disable-pip-version-check "merobox==0.6.75" "calimero-client-py==0.7.0"
       # Schema-check first: a typo in a step name/field otherwise only shows up
       # after several minutes of node boot.
       - name: Validate workflow schemas

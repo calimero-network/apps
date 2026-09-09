@@ -27,8 +27,14 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# Ensure the WASM exists.
-[ -f "$REPO_ROOT/logic/res/mero_ar.wasm" ] || (cd "$REPO_ROOT/logic" && cargo mero build)
+# Ensure the BUNDLE exists. Not the raw .wasm: core#3652 (0.11.0-rc.31) made
+# application distribution registry-only and took raw wasm out of the protocol,
+# so the node refuses a bare .wasm even on a dev install. `--dev` signs with the
+# well-known development key; `--app-version` is a placeholder, because the
+# registry — not this tree — owns the published number (see logic/Cargo.toml).
+BUNDLE="$REPO_ROOT/logic/res/mero-ar.mpk"
+[ -f "$BUNDLE" ] || (cd "$REPO_ROOT/logic" \
+  && cargo mero bundle --dev --no-icon --app-version 0.0.0 --output res/mero-ar.mpk)
 
 FILES=("$@")
 # identity-and-roles.yml boots TWO nodes and takes noticeably longer than

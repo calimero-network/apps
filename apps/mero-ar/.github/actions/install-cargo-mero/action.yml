@@ -7,25 +7,58 @@ description: >-
 
 inputs:
   version:
-    description: core release tag the tool is pinned to; keep equal to the calimero-sdk tag in logic/Cargo.toml
+    description: >-
+      core release tag the tool is pinned to. Leave unset to track the
+      `calimero-sdk` tag in logic/Cargo.toml, which is the right answer: the
+      tool that bundles the contract should be the release the contract is
+      built against.
     required: false
-    default: 0.11.0-rc.24
+    default: ""
 
 runs:
   using: composite
   steps:
+    # A literal default here drifts on every core release, silently. It did:
+    # the SDK pin moved rc.20 -> rc.24 -> rc.25 -> rc.32 while this default sat
+    # at rc.24, so the tool bundling the contract was five releases behind the
+    # SDK compiling it. `fleet-bump` rewrites logic/Cargo.toml on a release and
+    # has no idea this action exists, so the fix is to read the tag rather than
+    # to remember to bump it.
+    - name: Resolve the pinned version
+      id: resolve
+      shell: bash
+      env:
+        REQUESTED: ${{ inputs.version }}
+      run: |
+        set -euo pipefail
+        version="$REQUESTED"
+        if [ -z "$version" ]; then
+          # Addressed from the workspace root on purpose: a job's
+          # `defaults.run.working-directory` does not reach inside a composite
+          # action, so a relative path here would depend on the caller.
+          manifest="$GITHUB_WORKSPACE/logic/Cargo.toml"
+          test -f "$manifest" || { echo "::error::$manifest not found"; exit 1; }
+          version="$(sed -n 's/^calimero-sdk = .*tag = "\([^"]*\)".*/\1/p' "$manifest" | head -n1)"
+        fi
+        if [ -z "$version" ]; then
+          echo "::error::no version input, and no calimero-sdk tag = \"...\" in logic/Cargo.toml"
+          exit 1
+        fi
+        echo "version=$version" >> "$GITHUB_OUTPUT"
+        echo "cargo-mero pinned to $version"
+
     - name: Cache cargo-mero
       id: cache
       uses: actions/cache@v4
       with:
         path: ~/.local/bin/cargo-mero
-        key: cargo-mero-${{ inputs.version }}-${{ runner.os }}-${{ runner.arch }}
+        key: cargo-mero-${{ steps.resolve.outputs.version }}-${{ runner.os }}-${{ runner.arch }}
 
     - name: Download (or build) cargo-mero
       if: steps.cache.outputs.cache-hit != 'true'
       shell: bash
       env:
-        CARGO_MERO_VERSION: ${{ inputs.version }}
+        CARGO_MERO_VERSION: ${{ steps.resolve.outputs.version }}
       run: |
         set -euo pipefail
         mkdir -p "$HOME/.local/bin"
