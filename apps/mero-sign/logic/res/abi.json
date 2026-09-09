@@ -574,7 +574,7 @@
               "kind": "string"
             },
             "value": {
-              "$ref": "PermissionLevel"
+              "$ref": "PermissionCell"
             },
             "crdt_type": "unordered_map"
           }
@@ -631,6 +631,17 @@
         },
         {
           "name": "Unknown"
+        }
+      ]
+    },
+    "PermissionCell": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "level",
+          "type": {
+            "$ref": "PermissionLevel"
+          }
         }
       ]
     },

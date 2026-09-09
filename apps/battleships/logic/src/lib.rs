@@ -819,10 +819,8 @@ mod tests {
         // The old rule replaced the whole record on a rank advance, so a
         // Finished summary that had not yet learned the context id ERASED one
         // that had. Each field now resolves on its own.
-        let mut active_with_ctx =
-            sample_summary("m-1", MatchStatus::Active, Some("ctx-42"), None);
-        let finished_no_ctx =
-            sample_summary("m-1", MatchStatus::Finished, None, Some("alice"));
+        let mut active_with_ctx = sample_summary("m-1", MatchStatus::Active, Some("ctx-42"), None);
+        let finished_no_ctx = sample_summary("m-1", MatchStatus::Finished, None, Some("alice"));
         active_with_ctx.merge(&finished_no_ctx).unwrap();
 
         assert!(matches!(active_with_ctx.status, MatchStatus::Finished));
