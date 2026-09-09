@@ -38,6 +38,7 @@
 //!   contract quantizes luma to 4-bit and RLE-encodes. Trivially deterministic;
 //!   ratio tunable by geometry + (implicit) quant step.
 
+use std::cmp::Ordering;
 use std::str::FromStr;
 
 use base64::engine::general_purpose::STANDARD as BASE64;
@@ -46,9 +47,7 @@ use calimero_sdk::abi::AbiType;
 use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use calimero_sdk::serde::{Deserialize, Serialize};
 use calimero_sdk::{app, env as sdk_env, AccountId, PublicKey};
-use calimero_storage::address::Id;
 use calimero_storage::collections::crdt_meta::MergeError;
-use calimero_storage::collections::rekey::RekeyTarget;
 use calimero_storage::collections::{
     AccessControl, LwwRegister, Mergeable as MergeableTrait, Ownable, UnorderedMap,
 };
@@ -149,12 +148,50 @@ const MAX_MEDIA_CHUNK_BYTES: usize = 256 * 1024;
 
 // ── Fragment (the only thing that gossips) ─────────────────────────────────────
 
+// ── LWW convergence helper ───────────────────────────────────────────────────
+
+/// Take `other` iff it wins a **total order** of (clock, canonical borsh bytes).
+///
+/// A bare `other.ts > self.ts` is not commutative, and from core 0.11.0-rc.32
+/// that is a live bug rather than a latent one. At an exact clock tie with
+/// differing content each replica keeps its own copy: `merge` changes nothing
+/// on either side, so re-merging never closes the gap and the two stay
+/// divergent permanently, with no error. Breaking the tie on the borsh
+/// encoding — a total order over values — makes both replicas elect the same
+/// winner independently, which is what convergence requires.
+///
+/// Before [core#3807] a collection value's `merge` was never called (entries
+/// resolved last-write-wins by write ORDER), so these rules were dead code and
+/// the tie could not be observed. `#[app::mergeable]` turns them on.
+///
+/// [core#3807]: https://github.com/calimero-network/core/pull/3807
+fn lww_take<T: BorshSerialize>(mine_ts: u64, theirs_ts: u64, mine: &T, theirs: &T) -> bool {
+    match theirs_ts.cmp(&mine_ts) {
+        Ordering::Greater => true,
+        Ordering::Less => false,
+        // Equal clocks: decide on the canonical encoding, so both replicas
+        // elect the same side.
+        //
+        // Infallible on purpose. Core's contract for a dispatched merge
+        // requires a TOTAL rule — "`Err` is not validation, it is a refusal to
+        // converge: the entity stays divergent and repair retries it
+        // indefinitely" — so this must not surface an encoding error. A value
+        // that came back out of storage was borsh-encoded to get there, which
+        // is why the fallback is unreachable rather than merely unlikely.
+        Ordering::Equal => {
+            let encode = |v: &T| calimero_sdk::borsh::to_vec(v).unwrap_or_default();
+            encode(theirs) > encode(mine)
+        }
+    }
+}
+
 /// One compressed media fragment produced by the in-WASM encoder. A frame with
 /// an encoded stream over `MAX_CHUNK_BYTES` is split across several `Fragment`s
 /// sharing one `seq` (the frame's base seq), distinguished by `chunk`.
 ///
 /// `data` is the ONLY field that meaningfully crosses the wire — the raw input
 /// never leaves the sender (C1/approach-3 property).
+#[app::mergeable(id = "mero_stream::Fragment")]
 #[derive(AbiType, BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
@@ -202,17 +239,11 @@ impl MergeableTrait for Fragment {
         // Fragments are immutable once posted and keyed by a globally unique
         // (seq, chunk); a merge of "the same" fragment is a no-op. Newer wins
         // defensively.
-        if other.created_at > self.created_at {
+        if lww_take(self.created_at, other.created_at, self, other) {
             *self = other.clone();
         }
         Ok(())
     }
-}
-
-// Flat record (no nested collections) → re-key is a no-op; the impl exists only
-// to satisfy the `Mergeable: RekeyTarget` supertrait bound.
-impl RekeyTarget for Fragment {
-    fn rekey_relative_to(&mut self, _parent_id: Id) {}
 }
 
 // ── Approach 2: an opaque chunk from a real browser codec ──────────────────────
@@ -233,6 +264,7 @@ impl RekeyTarget for Fragment {
 ///   pruning depends on it (see `last_keyframe_seq`). A member lying about it
 ///   degrades their own stream's recoverability, which is why it is acceptable —
 ///   but it is asserted, not proven.
+#[app::mergeable(id = "mero_stream::MediaChunk")]
 #[derive(AbiType, BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
@@ -268,15 +300,11 @@ impl MergeableTrait for MediaChunk {
     fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
         // Immutable once posted and keyed by a globally unique seq, so a merge of
         // "the same" chunk is a no-op. Newer wins defensively.
-        if other.created_at > self.created_at {
+        if lww_take(self.created_at, other.created_at, self, other) {
             *self = other.clone();
         }
         Ok(())
     }
-}
-
-impl RekeyTarget for MediaChunk {
-    fn rekey_relative_to(&mut self, _parent_id: Id) {}
 }
 
 /// Per-sender chunk bookkeeping — one row per sender, in `chunk_cursors`.
@@ -293,6 +321,7 @@ impl RekeyTarget for MediaChunk {
 #[derive(
     AbiType, BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug, Default,
 )]
+#[app::mergeable(id = "mero_stream::ChunkCursor")]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 #[serde(rename_all = "camelCase")]
@@ -322,10 +351,6 @@ impl MergeableTrait for ChunkCursor {
         self.pruned = self.pruned.max(other.pruned);
         Ok(())
     }
-}
-
-impl RekeyTarget for ChunkCursor {
-    fn rekey_relative_to(&mut self, _parent_id: Id) {}
 }
 
 /// One sender's read cursor, both as input to `get_chunks` and as output from
@@ -399,6 +424,7 @@ pub struct LiveStats {
 
 /// A member of the stream context. Membership gates `encode_frame` (the probe
 /// still requires an authenticated context member — never trust a client id).
+#[app::mergeable(id = "mero_stream::Member")]
 #[derive(AbiType, BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
@@ -412,15 +438,11 @@ pub struct Member {
 
 impl MergeableTrait for Member {
     fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        if other.updated_at > self.updated_at {
+        if lww_take(self.updated_at, other.updated_at, self, other) {
             *self = other.clone();
         }
         Ok(())
     }
-}
-
-impl RekeyTarget for Member {
-    fn rekey_relative_to(&mut self, _parent_id: Id) {}
 }
 
 // ── Views (read-model returned to the frontend) ────────────────────────────────

@@ -23,9 +23,7 @@ use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use calimero_sdk::env;
 use calimero_sdk::serde::{Deserialize, Serialize};
 use calimero_sdk::types::Error as AppError;
-use calimero_storage::address::Id;
 use calimero_storage::collections::crdt_meta::MergeError;
-use calimero_storage::collections::rekey::{field_child_id, RekeyTarget};
 use calimero_storage::collections::{LwwRegister, Mergeable, UnorderedMap};
 use calimero_storage::env as storage_env;
 use issue_tracker_types::{generate_id, validate_label, Error};
@@ -53,6 +51,7 @@ const LABEL_SEP: char = '\u{1}';
 /// A single issue on the board. `id`, `created_by`, `created_at` are set once at
 /// creation; every mutable field is a `LwwRegister` so concurrent edits converge
 /// last-writer-wins. Labels live in a separate flat index (see `IssueTracker`).
+#[app::mergeable(id = "mero_issue_tracker::Issue")]
 #[derive(Debug, Clone, BorshSerialize, BorshDeserialize, AbiType)]
 #[borsh(crate = "calimero_sdk::borsh")]
 pub struct Issue {
@@ -91,46 +90,10 @@ impl Mergeable for Issue {
     }
 }
 
-impl RekeyTarget for Issue {
-    fn rekey_relative_to(&mut self, parent_id: Id) {
-        calimero_storage::rekey_field_if_supported!(
-            &mut self.title,
-            field_child_id(parent_id, "title")
-        );
-        calimero_storage::rekey_field_if_supported!(
-            &mut self.summary,
-            field_child_id(parent_id, "summary")
-        );
-        calimero_storage::rekey_field_if_supported!(
-            &mut self.impact,
-            field_child_id(parent_id, "impact")
-        );
-        calimero_storage::rekey_field_if_supported!(
-            &mut self.repro,
-            field_child_id(parent_id, "repro")
-        );
-        calimero_storage::rekey_field_if_supported!(
-            &mut self.resolution_criteria,
-            field_child_id(parent_id, "resolution_criteria")
-        );
-        calimero_storage::rekey_field_if_supported!(
-            &mut self.status,
-            field_child_id(parent_id, "status")
-        );
-        calimero_storage::rekey_field_if_supported!(
-            &mut self.priority,
-            field_child_id(parent_id, "priority")
-        );
-        calimero_storage::rekey_field_if_supported!(
-            &mut self.assignee,
-            field_child_id(parent_id, "assignee")
-        );
-    }
-}
-
 /// A discussion entry on an issue. `id`, `issue_id`, `author`, `created_at` are
 /// immutable; `body` and `edited_at` are LWW registers. Only the `author` may
 /// edit or delete (enforced in-logic against the immutable field).
+#[app::mergeable(id = "mero_issue_tracker::Comment")]
 #[derive(Debug, Clone, BorshSerialize, BorshDeserialize, AbiType)]
 #[borsh(crate = "calimero_sdk::borsh")]
 pub struct Comment {
@@ -153,19 +116,6 @@ impl Mergeable for Comment {
         self.body.merge(&other.body);
         self.edited_at.merge(&other.edited_at);
         Ok(())
-    }
-}
-
-impl RekeyTarget for Comment {
-    fn rekey_relative_to(&mut self, parent_id: Id) {
-        calimero_storage::rekey_field_if_supported!(
-            &mut self.body,
-            field_child_id(parent_id, "body")
-        );
-        calimero_storage::rekey_field_if_supported!(
-            &mut self.edited_at,
-            field_child_id(parent_id, "edited_at")
-        );
     }
 }
 

@@ -18,9 +18,7 @@ use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use calimero_sdk::serde::{Deserialize, Serialize};
 use calimero_sdk::types::Error as AppError;
 use calimero_sdk::{app, env, AccountId};
-use calimero_storage::address::Id;
 use calimero_storage::collections::crdt_meta::MergeError;
-use calimero_storage::collections::rekey::RekeyTarget;
 use calimero_storage::collections::{Mergeable, UnorderedMap};
 
 /// Longest a title may be. Not decoration: a post is replicated to every peer,
@@ -43,6 +41,7 @@ const DEFAULT_PAGE: usize = 20;
 /// and leave the replicas permanently disagreeing. `deleted` is separate — it is
 /// an OR-flag, so a delete can never be undone by a concurrent edit arriving
 /// later. Content LWW plus a monotone tombstone is the whole merge.
+#[app::mergeable(id = "mero_forum::Post")]
 #[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
@@ -73,11 +72,8 @@ impl Mergeable for Post {
     }
 }
 
-impl RekeyTarget for Post {
-    fn rekey_relative_to(&mut self, _parent_id: Id) {}
-}
-
 /// A reply on a thread. Deliberately flat — one level, no nesting.
+#[app::mergeable(id = "mero_forum::Comment")]
 #[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
@@ -102,15 +98,12 @@ impl Mergeable for Comment {
     }
 }
 
-impl RekeyTarget for Comment {
-    fn rekey_relative_to(&mut self, _parent_id: Id) {}
-}
-
 /// One account's vote on one post.
 ///
 /// Keyed per ACCOUNT rather than per device, which is what makes "one person,
 /// one vote" true: a bare counter would let the same person vote once from each
 /// machine, and there would be no way to take it back.
+#[app::mergeable(id = "mero_forum::Vote")]
 #[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
@@ -132,10 +125,6 @@ impl Mergeable for Vote {
         }
         Ok(())
     }
-}
-
-impl RekeyTarget for Vote {
-    fn rekey_relative_to(&mut self, _parent_id: Id) {}
 }
 
 // ── Views (what the RPC surface returns) ─────────────────────────────────────

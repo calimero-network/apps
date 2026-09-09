@@ -1,19 +1,57 @@
 #![allow(clippy::len_without_is_empty)]
 
+use std::cmp::Ordering;
+
 use calimero_sdk::abi::AbiType;
 use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use calimero_sdk::serde::{Deserialize, Serialize};
 use calimero_sdk::types::Error as AppError;
 use calimero_sdk::{app, env, PublicKey};
-use calimero_storage::address::Id;
-use calimero_storage::collections::rekey::RekeyTarget;
 use calimero_storage::collections::{LwwRegister, Mergeable, UnorderedMap, UnorderedSet, Vector};
 
 pub type UserId = [u8; 32];
 pub type BlobId = [u8; 32];
 pub type ContextId = [u8; 32];
 
+// ── LWW convergence helper ───────────────────────────────────────────────────
+
+/// Take `other` iff it wins a **total order** of (clock, canonical borsh bytes).
+///
+/// A bare `other.ts > self.ts` is not commutative, and from core 0.11.0-rc.32
+/// that is a live bug rather than a latent one. At an exact clock tie with
+/// differing content each replica keeps its own copy: `merge` changes nothing
+/// on either side, so re-merging never closes the gap and the two stay
+/// divergent permanently, with no error. Breaking the tie on the borsh
+/// encoding — a total order over values — makes both replicas elect the same
+/// winner independently, which is what convergence requires.
+///
+/// Before [core#3807] a collection value's `merge` was never called (entries
+/// resolved last-write-wins by write ORDER), so these rules were dead code and
+/// the tie could not be observed. `#[app::mergeable]` turns them on.
+///
+/// [core#3807]: https://github.com/calimero-network/core/pull/3807
+fn lww_take<T: BorshSerialize>(mine_ts: u64, theirs_ts: u64, mine: &T, theirs: &T) -> bool {
+    match theirs_ts.cmp(&mine_ts) {
+        Ordering::Greater => true,
+        Ordering::Less => false,
+        // Equal clocks: decide on the canonical encoding, so both replicas
+        // elect the same side.
+        //
+        // Infallible on purpose. Core's contract for a dispatched merge
+        // requires a TOTAL rule — "`Err` is not validation, it is a refusal to
+        // converge: the entity stays divergent and repair retries it
+        // indefinitely" — so this must not surface an encoding error. A value
+        // that came back out of storage was borsh-encoded to get there, which
+        // is why the fallback is unreachable rather than merely unlikely.
+        Ordering::Equal => {
+            let encode = |v: &T| calimero_sdk::borsh::to_vec(v).unwrap_or_default();
+            encode(theirs) > encode(mine)
+        }
+    }
+}
+
 /// Signature record - uses LWW based on created_at timestamp
+#[app::mergeable(id = "mero_sign::SignatureRecord")]
 #[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
@@ -25,18 +63,13 @@ pub struct SignatureRecord {
     pub created_at: u64,
 }
 
-// Flat record: re-keying is a no-op, but `Mergeable: RekeyTarget` requires it.
-impl RekeyTarget for SignatureRecord {
-    fn rekey_relative_to(&mut self, _parent_id: Id) {}
-}
-
 impl Mergeable for SignatureRecord {
     fn merge(
         &mut self,
         other: &Self,
     ) -> Result<(), calimero_storage::collections::crdt_meta::MergeError> {
         // LWW based on created_at - newer wins
-        if other.created_at > self.created_at {
+        if lww_take(self.created_at, other.created_at, self, other) {
             *self = other.clone();
         }
         Ok(())
@@ -65,36 +98,6 @@ pub enum ParticipantRole {
     Unknown,
 }
 
-// Flat record: re-keying is a no-op, but `Mergeable: RekeyTarget` requires it.
-impl RekeyTarget for ParticipantRole {
-    fn rekey_relative_to(&mut self, _parent_id: Id) {}
-}
-
-impl Mergeable for ParticipantRole {
-    fn merge(
-        &mut self,
-        other: &Self,
-    ) -> Result<(), calimero_storage::collections::crdt_meta::MergeError> {
-        // Take higher priority role (Owner > Signer > Viewer > Unknown)
-        let self_priority = match self {
-            ParticipantRole::Owner => 3,
-            ParticipantRole::Signer => 2,
-            ParticipantRole::Viewer => 1,
-            ParticipantRole::Unknown => 0,
-        };
-        let other_priority = match other {
-            ParticipantRole::Owner => 3,
-            ParticipantRole::Signer => 2,
-            ParticipantRole::Viewer => 1,
-            ParticipantRole::Unknown => 0,
-        };
-        if other_priority > self_priority {
-            *self = other.clone();
-        }
-        Ok(())
-    }
-}
-
 /// Document chunk with its embedding
 #[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
 #[borsh(crate = "calimero_sdk::borsh")]
@@ -107,6 +110,7 @@ pub struct DocumentChunk {
 }
 
 /// Document information - uses LWW based on uploaded_at timestamp
+#[app::mergeable(id = "mero_sign::DocumentInfo")]
 #[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
@@ -124,18 +128,13 @@ pub struct DocumentInfo {
     pub chunks: Option<Vec<DocumentChunk>>,
 }
 
-// Flat record: re-keying is a no-op, but `Mergeable: RekeyTarget` requires it.
-impl RekeyTarget for DocumentInfo {
-    fn rekey_relative_to(&mut self, _parent_id: Id) {}
-}
-
 impl Mergeable for DocumentInfo {
     fn merge(
         &mut self,
         other: &Self,
     ) -> Result<(), calimero_storage::collections::crdt_meta::MergeError> {
         // LWW based on uploaded_at - newer wins
-        if other.uploaded_at > self.uploaded_at {
+        if lww_take(self.uploaded_at, other.uploaded_at, self, other) {
             *self = other.clone();
         }
         Ok(())
@@ -153,6 +152,7 @@ pub enum DocumentStatus {
 }
 
 /// Signature record for documents - uses LWW based on signed_at timestamp
+#[app::mergeable(id = "mero_sign::DocumentSignature")]
 #[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
@@ -161,18 +161,13 @@ pub struct DocumentSignature {
     pub signed_at: u64,
 }
 
-// Flat record: re-keying is a no-op, but `Mergeable: RekeyTarget` requires it.
-impl RekeyTarget for DocumentSignature {
-    fn rekey_relative_to(&mut self, _parent_id: Id) {}
-}
-
 impl Mergeable for DocumentSignature {
     fn merge(
         &mut self,
         other: &Self,
     ) -> Result<(), calimero_storage::collections::crdt_meta::MergeError> {
         // LWW based on signed_at - newer wins
-        if other.signed_at > self.signed_at {
+        if lww_take(self.signed_at, other.signed_at, self, other) {
             *self = other.clone();
         }
         Ok(())
@@ -191,35 +186,65 @@ pub enum PermissionLevel {
     Admin,
 }
 
-// Flat record: re-keying is a no-op, but `Mergeable: RekeyTarget` requires it.
-impl RekeyTarget for PermissionLevel {
-    fn rekey_relative_to(&mut self, _parent_id: Id) {}
+/// Storage cell holding a participant's [`PermissionLevel`].
+///
+/// The enum cannot carry the declaration itself: from core 0.11.0-rc.32 every
+/// `Mergeable` type must declare HOW it merges, and both `#[app::mergeable]`
+/// and `#[derive(Mergeable)]` reject enums — differing variants have no
+/// canonical merge rule, and core's diagnostic says to wrap. This one-field
+/// struct is that wrapper, and it keeps the rank rule (Admin > Sign > Read)
+/// this app has always intended.
+///
+/// The rule is a maximum over a total order — the three ranks are distinct, so
+/// there is no tie to resolve — hence commutative, associative and idempotent,
+/// which is what core requires of a dispatched merge.
+///
+/// ⚠️ Rank-max raises a permission concurrently but can never LOWER one: a
+/// demotion that races anything else loses, so a revocation does not converge.
+/// That is this app's pre-existing intent, NOT a change made here — before
+/// core#3807 the rule was dead code that was never called, so the behaviour was
+/// never observable. Switching to `LwwRegister<PermissionLevel>` would make
+/// revocation converge (and is what core recommends for an enum) but changes an
+/// authorization semantic, so it is left as the owner's call.
+#[app::mergeable(id = "mero_sign::PermissionCell")]
+#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct PermissionCell {
+    pub level: PermissionLevel,
 }
 
-impl Mergeable for PermissionLevel {
+impl PermissionCell {
+    fn rank(level: &PermissionLevel) -> u8 {
+        match level {
+            PermissionLevel::Admin => 2,
+            PermissionLevel::Sign => 1,
+            PermissionLevel::Read => 0,
+        }
+    }
+}
+
+impl From<PermissionLevel> for PermissionCell {
+    fn from(level: PermissionLevel) -> Self {
+        PermissionCell { level }
+    }
+}
+
+impl Mergeable for PermissionCell {
     fn merge(
         &mut self,
         other: &Self,
     ) -> Result<(), calimero_storage::collections::crdt_meta::MergeError> {
-        // Take higher permission (Admin > Sign > Read)
-        let self_priority = match self {
-            PermissionLevel::Admin => 2,
-            PermissionLevel::Sign => 1,
-            PermissionLevel::Read => 0,
-        };
-        let other_priority = match other {
-            PermissionLevel::Admin => 2,
-            PermissionLevel::Sign => 1,
-            PermissionLevel::Read => 0,
-        };
-        if other_priority > self_priority {
-            *self = other.clone();
+        // Take the higher permission (Admin > Sign > Read).
+        if Self::rank(&other.level) > Self::rank(&self.level) {
+            self.level = other.level.clone();
         }
         Ok(())
     }
 }
 
 /// Metadata for tracking joined shared contexts
+#[app::mergeable(id = "mero_sign::ContextMetadata")]
 #[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
@@ -232,18 +257,13 @@ pub struct ContextMetadata {
     pub shared_identity: UserId,
 }
 
-// Flat record: re-keying is a no-op, but `Mergeable: RekeyTarget` requires it.
-impl RekeyTarget for ContextMetadata {
-    fn rekey_relative_to(&mut self, _parent_id: Id) {}
-}
-
 impl Mergeable for ContextMetadata {
     fn merge(
         &mut self,
         other: &Self,
     ) -> Result<(), calimero_storage::collections::crdt_meta::MergeError> {
         // LWW based on joined_at - newer wins
-        if other.joined_at > self.joined_at {
+        if lww_take(self.joined_at, other.joined_at, self, other) {
             *self = other.clone();
         }
         Ok(())
@@ -251,6 +271,7 @@ impl Mergeable for ContextMetadata {
 }
 
 /// Identity mapping for tracking user identities across contexts
+#[app::mergeable(id = "mero_sign::IdentityMapping")]
 #[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
@@ -261,18 +282,13 @@ pub struct IdentityMapping {
     pub created_at: u64,
 }
 
-// Flat record: re-keying is a no-op, but `Mergeable: RekeyTarget` requires it.
-impl RekeyTarget for IdentityMapping {
-    fn rekey_relative_to(&mut self, _parent_id: Id) {}
-}
-
 impl Mergeable for IdentityMapping {
     fn merge(
         &mut self,
         other: &Self,
     ) -> Result<(), calimero_storage::collections::crdt_meta::MergeError> {
         // LWW based on created_at - newer wins
-        if other.created_at > self.created_at {
+        if lww_take(self.created_at, other.created_at, self, other) {
             *self = other.clone();
         }
         Ok(())
@@ -321,7 +337,7 @@ pub struct MeroSignState {
     pub participants: UnorderedSet<UserId>,
     pub documents: UnorderedMap<String, DocumentInfo>,
     pub document_signatures: UnorderedMap<String, Vector<DocumentSignature>>,
-    pub permissions: UnorderedMap<UserId, PermissionLevel>,
+    pub permissions: UnorderedMap<UserId, PermissionCell>,
     pub consents: UnorderedMap<String, LwwRegister<bool>>,
 }
 
@@ -458,7 +474,9 @@ impl MeroSignState {
         // For shared contexts, add the creator as a participant with admin permissions
         if !is_private {
             let _ = state.participants.insert(owner_raw);
-            let _ = state.permissions.insert(owner_raw, PermissionLevel::Admin);
+            let _ = state
+                .permissions
+                .insert(owner_raw, PermissionLevel::Admin.into());
         }
 
         state
@@ -680,7 +698,7 @@ impl MeroSignState {
                     })?
                     // `get` returns a `ValueRef`; deref out before defaulting so
                     // both arms are the same owned type.
-                    .map(|v| (*v).clone())
+                    .map(|v| v.level.clone())
                     .unwrap_or(PermissionLevel::Read);
 
                 participants_with_permissions.push(ParticipantInfo {
@@ -723,7 +741,7 @@ impl MeroSignState {
         match self
             .permissions
             .get(&current_user)
-            .map(|o| o.map(|v| (*v).clone()))
+            .map(|o| o.map(|v| v.level.clone()))
         {
             Ok(Some(PermissionLevel::Admin)) => Ok(()),
             Ok(Some(_)) => Err(AppError::msg(
@@ -1069,7 +1087,7 @@ impl MeroSignState {
             .map_err(|e| AppError::msg(format!("Failed to register as participant: {:?}", e)))?;
 
         self.permissions
-            .insert(executor_id, PermissionLevel::Sign)
+            .insert(executor_id, PermissionLevel::Sign.into())
             .map_err(|e| AppError::msg(format!("Failed to set permissions: {:?}", e)))?;
 
         // Update document statuses since new signer joined
@@ -1113,7 +1131,7 @@ impl MeroSignState {
             .map_err(|e| AppError::msg(format!("Failed to add participant: {:?}", e)))?;
 
         self.permissions
-            .insert(user_id, permission.clone())
+            .insert(user_id, permission.clone().into())
             .map_err(|e| AppError::msg(format!("Failed to set permissions: {:?}", e)))?;
 
         if permission == PermissionLevel::Sign {
@@ -1175,7 +1193,7 @@ impl MeroSignState {
     pub fn get_user_permission(&self, user_id_str: String) -> app::Result<PermissionLevel> {
         let user_id = parse_public_key_hex(&user_id_str)?;
         match self.permissions.get(&user_id) {
-            Ok(Some(perm)) => Ok(perm.clone()),
+            Ok(Some(perm)) => Ok(perm.level.clone()),
             Ok(None) => Err(AppError::msg("User not found".to_string())),
             Err(e) => Err(AppError::msg(format!("Failed to get permission: {:?}", e))),
         }

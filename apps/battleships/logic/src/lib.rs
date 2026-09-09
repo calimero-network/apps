@@ -6,9 +6,7 @@ use calimero_sdk::app;
 use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use calimero_sdk::serde::{Deserialize, Serialize};
 use calimero_sdk::types::Error as AppError;
-use calimero_storage::address::Id;
 use calimero_storage::collections::crdt_meta::MergeError;
-use calimero_storage::collections::rekey::RekeyTarget;
 use calimero_storage::collections::{
     Counter, FrozenValue, LwwRegister, Mergeable, UnorderedMap, Vector,
 };
@@ -32,6 +30,7 @@ pub enum MatchStatus {
     Finished,
 }
 
+#[app::mergeable(id = "battleships::MatchSummary")]
 #[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
@@ -47,10 +46,17 @@ pub struct MatchSummary {
 
 impl Mergeable for MatchSummary {
     fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        // MatchSummary transitions are single-writer-per-stage in practice
-        // (Pending -> Active -> Finished). Fall back to a deterministic
-        // "Finished beats Active beats Pending" ordering if two replicas
-        // disagree, with `winner` and `context_id` carried along.
+        // Every field resolves independently by a maximum over a total order,
+        // so the whole merge is commutative, associative and idempotent. The
+        // previous rule was none of those — and from core 0.11.0-rc.32 it
+        // actually runs (`#[app::mergeable]` dispatches it) instead of being
+        // dead code that the storage layer resolved last-write-wins:
+        //
+        //   * `*self = other.clone()` on a rank advance DISCARDED this side's
+        //     `context_id` / `winner`, so a replica that reached Finished
+        //     before learning the context id erased one that already had it.
+        //   * at an equal rank two replicas each holding a DIFFERENT `Some`
+        //     both kept their own, diverging permanently with no error.
         fn rank(s: &MatchStatus) -> u8 {
             match s {
                 MatchStatus::Pending => 0,
@@ -58,25 +64,43 @@ impl Mergeable for MatchSummary {
                 MatchStatus::Finished => 2,
             }
         }
+
+        // A match only ever moves forward: Pending -> Active -> Finished.
         if rank(&other.status) > rank(&self.status) {
-            *self = other.clone();
-        } else if rank(&other.status) == rank(&self.status) {
-            // Same stage — prefer side that has more info filled in.
-            if self.context_id.is_none() && other.context_id.is_some() {
-                self.context_id = other.context_id.clone();
+            self.status = other.status.clone();
+        }
+
+        // `None < Some(_)`, then lexicographic — so "filled in beats empty",
+        // and two differing values settle on the same side for both replicas.
+        fn merge_opt(mine: &mut Option<String>, theirs: &Option<String>) {
+            if theirs > &*mine {
+                *mine = theirs.clone();
             }
-            if self.winner.is_none() && other.winner.is_some() {
-                self.winner = other.winner.clone();
-            }
+        }
+        merge_opt(&mut self.context_id, &other.context_id);
+        merge_opt(&mut self.winner, &other.winner);
+
+        // Set-once identity: keep the earliest creation, tie-broken on the ids,
+        // so even a raced initial insert converges rather than each side
+        // keeping its own. Identical in practice — the map key IS the match id.
+        if (
+            other.created_ms,
+            &other.match_id,
+            &other.player1,
+            &other.player2,
+        ) < (
+            self.created_ms,
+            &self.match_id,
+            &self.player1,
+            &self.player2,
+        ) {
+            self.match_id = other.match_id.clone();
+            self.player1 = other.player1.clone();
+            self.player2 = other.player2.clone();
+            self.created_ms = other.created_ms;
         }
         Ok(())
     }
-}
-
-// Flat record, no nested collections, so re-keying is a no-op — but
-// `Mergeable: RekeyTarget` still requires the impl.
-impl RekeyTarget for MatchSummary {
-    fn rekey_relative_to(&mut self, _parent_id: Id) {}
 }
 
 // AbiType because it is a stored map's value type and the ABI is derived from
@@ -760,36 +784,75 @@ mod tests {
     }
 
     #[test]
-    fn merge_match_summary_equal_rank_different_winner_is_not_commutative() {
-        // KNOWN LIMITATION (review point 1): with two Finished summaries
-        // carrying different winners, the hand-rolled merge keeps `self`'s
-        // value because `self.winner.is_some()` is true for both. This
-        // means merge(a, b) ≠ merge(b, a) — a CRDT lattice violation.
+    fn merge_match_summary_equal_rank_different_winner_is_commutative() {
+        // This used to pin the OPPOSITE — "self-wins, merge(a,b) != merge(b,a),
+        // a CRDT lattice violation, acknowledged" — as a deliberate known
+        // limitation awaiting review point 1. core 0.11.0-rc.32 (core#3807)
+        // forced the issue: `#[app::mergeable]` makes this rule DISPATCHED, so
+        // it now actually runs at every merge point instead of being dead code
+        // the storage layer resolved last-write-wins. A non-commutative rule
+        // that really runs leaves the two replicas divergent permanently.
         //
-        // In practice winner is single-writer (the xcall from the game
-        // context runs once per match), so this case shouldn't arise. Point
-        // 1 of the review proposes fixing this by decomposing MatchSummary
-        // into per-field CRDTs (winner: LwwRegister<Option<String>>) so
-        // the lattice property comes from the SDK by construction. Until
-        // then this test pins the actual behavior so a regression here is
-        // a deliberate change, not a silent break.
+        // The fix is a total order (`None < Some(_)`, then lexicographic), so
+        // both sides elect the same winner regardless of merge direction.
         let mut left = sample_summary("m-1", MatchStatus::Finished, None, Some("alice"));
         let right = sample_summary("m-1", MatchStatus::Finished, None, Some("bob"));
         left.merge(&right).unwrap();
-        assert_eq!(
-            left.winner.as_deref(),
-            Some("alice"),
-            "self-wins under current impl"
-        );
 
         let mut other = sample_summary("m-1", MatchStatus::Finished, None, Some("bob"));
         let left2 = sample_summary("m-1", MatchStatus::Finished, None, Some("alice"));
         other.merge(&left2).unwrap();
+
         assert_eq!(
-            other.winner.as_deref(),
-            Some("bob"),
-            "self-wins under current impl"
+            left.winner, other.winner,
+            "merge must be commutative: both directions have to converge on one winner"
         );
-        // The two outcomes disagree → not commutative. Acknowledged.
+        assert_eq!(
+            left.winner.as_deref(),
+            Some("bob"),
+            "the total order picks the lexicographic max, so `bob` wins either way"
+        );
+    }
+
+    #[test]
+    fn merge_match_summary_rank_advance_keeps_both_sides_fields() {
+        // The old rule replaced the whole record on a rank advance, so a
+        // Finished summary that had not yet learned the context id ERASED one
+        // that had. Each field now resolves on its own.
+        let mut active_with_ctx =
+            sample_summary("m-1", MatchStatus::Active, Some("ctx-42"), None);
+        let finished_no_ctx =
+            sample_summary("m-1", MatchStatus::Finished, None, Some("alice"));
+        active_with_ctx.merge(&finished_no_ctx).unwrap();
+
+        assert!(matches!(active_with_ctx.status, MatchStatus::Finished));
+        assert_eq!(
+            active_with_ctx.context_id.as_deref(),
+            Some("ctx-42"),
+            "advancing the stage must not discard a context id this side already had"
+        );
+        assert_eq!(active_with_ctx.winner.as_deref(), Some("alice"));
+    }
+
+    #[test]
+    fn merge_match_summary_is_associative() {
+        // Three concurrent views of one match, merged in two different orders.
+        let a = sample_summary("m-1", MatchStatus::Active, Some("ctx"), None);
+        let b = sample_summary("m-1", MatchStatus::Finished, None, Some("alice"));
+        let c = sample_summary("m-1", MatchStatus::Finished, Some("ctx-b"), Some("bob"));
+
+        let mut left = a.clone();
+        left.merge(&b).unwrap();
+        left.merge(&c).unwrap();
+
+        let mut right = b.clone();
+        right.merge(&c).unwrap();
+        let mut right_all = a.clone();
+        right_all.merge(&right).unwrap();
+
+        assert_eq!(left.context_id, right_all.context_id);
+        assert_eq!(left.winner, right_all.winner);
+        assert!(matches!(left.status, MatchStatus::Finished));
+        assert!(matches!(right_all.status, MatchStatus::Finished));
     }
 }

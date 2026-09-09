@@ -144,6 +144,7 @@ pub struct FolderRoleEntry {
 /// resolution picks the inherent one from the derive expansion, which then
 /// fails the macro's `?` — same workaround battleships uses on
 /// `MatchSummary`.
+#[app::mergeable(id = "mero_drive_registry::FolderRecord")]
 #[derive(Clone, BorshSerialize, BorshDeserialize, AbiType)]
 #[borsh(crate = "calimero_sdk::borsh")]
 pub struct FolderRecord {
@@ -171,15 +172,6 @@ impl Mergeable for FolderRecord {
         <LwwRegister<Visibility> as Mergeable>::merge(&mut self.visibility, &other.visibility)?;
         Ok(())
     }
-}
-
-// `Mergeable` gained a `RekeyTarget` supertrait (core 0.11.0-rc.8+): a value
-// type stored in a CRDT map must be able to deterministically re-key any nested
-// collection ids. Every `FolderRecord` field is an `LwwRegister<_>` leaf — none
-// carry a nested collection id — so both hooks are no-ops. Kept explicit (rather
-// than a blank impl) to mirror `DocRecord` and document the intent.
-impl calimero_storage::collections::rekey::RekeyTarget for FolderRecord {
-    fn rekey_relative_to(&mut self, _parent_id: calimero_storage::address::Id) {}
 }
 
 impl FolderRecord {
