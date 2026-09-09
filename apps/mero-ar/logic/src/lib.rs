@@ -9,7 +9,7 @@
 //! Element, Presence ≈ cursor, SpatialComment ≈ comment. Conflict resolution is
 //! version-then-timestamp LWW via `MergeableTrait`.
 //!
-//! # Identity (core 0.11.0-rc.24)
+//! # Identity (core 0.11.0-rc.32)
 //!
 //! Nothing here trusts a client-supplied member id. A member IS an account —
 //! `env::account_id()`, the person — and so is every ownership record: the
@@ -1090,5 +1090,159 @@ mod merge_tests {
             created_at: 5,
         };
         assert_converges(&comment("looks good"), &comment("needs work"));
+    }
+
+    // ── The merge rule and the write-path rule must not drift apart ───────────
+
+    /// `update_transform` gates the WRITE path on `pure::should_replace`, and
+    /// `SceneObject::merge` arbitrates on `pure::clock_cmp`. Those are two
+    /// statements of one rule, and a comment saying so is weaker than a test
+    /// saying so: an edit the write path would reject as stale must also lose
+    /// the merge, or the same edit is accepted or dropped depending only on
+    /// whether it arrived directly or through replication.
+    #[test]
+    fn the_merge_clock_agrees_with_the_write_path_clock() {
+        let clocks = [(1_u64, 100_u64), (1, 200), (2, 50), (2, 200), (7, 100)];
+        for &(cur_v, cur_t) in &clocks {
+            for &(inc_v, inc_t) in &clocks {
+                let cur = obj("seashell", cur_v, cur_t);
+                let inc = obj("thistle", inc_v, inc_t);
+                let write_path_would_replace = super::pure::should_replace(cur_v, cur_t, inc_v, inc_t);
+                let merge_took_incoming = merged(&cur, &inc).color == "thistle";
+
+                // Equal clocks are the one case where they legitimately differ:
+                // the write path drops the edit, while merge MUST still pick a
+                // side or the replicas diverge. Compare only the ordered cases.
+                if (cur_v, cur_t) != (inc_v, inc_t) {
+                    assert_eq!(
+                        write_path_would_replace, merge_took_incoming,
+                        "write path and merge disagree at ({cur_v},{cur_t}) vs ({inc_v},{inc_t})"
+                    );
+                }
+            }
+        }
+    }
+
+    /// Pins the value `workflows/convergence-test.yml` asserts.
+    ///
+    /// That scenario partitions two nodes, has each recolour one object at an
+    /// identical version AND timestamp, and requires both to land on
+    /// `chartreuse`. Which colour wins is decided by the canonical-bytes
+    /// tiebreak, so it is a fact about borsh field order — `color` precedes
+    /// every field that differs — not something the scenario can assert for
+    /// itself. Pinned here so a change to that order fails in two seconds with
+    /// a clear reason, instead of six minutes into the merobox lane looking
+    /// like a convergence bug.
+    #[test]
+    fn tie_break_picks_the_colour_the_convergence_scenario_expects() {
+        let aquamarine = obj("aquamarine", 3, 3000);
+        let chartreuse = obj("chartreuse", 3, 3000);
+        assert_eq!(merged(&aquamarine, &chartreuse).color, "chartreuse");
+        assert_eq!(merged(&chartreuse, &aquamarine).color, "chartreuse");
+    }
+
+    /// A total order has no ties left over: at an equal clock exactly one side
+    /// wins, and it is the same side whichever way the merge runs. Two records
+    /// that each "win" against the other is precisely the divergence this
+    /// tiebreak exists to remove.
+    #[test]
+    fn no_two_records_can_both_win() {
+        let left = obj("aquamarine", 3, 3000);
+        let right = obj("chartreuse", 3, 3000);
+
+        let left_won = merged(&left, &right).color == left.color;
+        let right_won = merged(&right, &left).color == right.color;
+        assert!(
+            left_won != right_won,
+            "both sides kept their own value — the replicas have diverged"
+        );
+    }
+
+    /// Associativity over every order, not just the two the earlier test folds.
+    /// A maximum over a total order cannot care about order; anything that does
+    /// converges or not depending on the sequence deltas happen to arrive in,
+    /// which is the least reproducible bug shape there is.
+    #[test]
+    fn every_arrival_order_of_three_edits_reaches_one_answer() {
+        let edits = [
+            obj("aquamarine", 3, 3000),
+            obj("chartreuse", 3, 3000),
+            obj("thistle", 3, 3000),
+        ];
+        // Annotated: an unsuffixed integer literal defaults to i32, which
+        // cannot index a slice.
+        let orders: [[usize; 3]; 6] = [
+            [0, 1, 2], [0, 2, 1], [1, 0, 2],
+            [1, 2, 0], [2, 0, 1], [2, 1, 0],
+        ];
+
+        let mut answers = orders.iter().map(|order| {
+            let mut acc = edits[order[0]].clone();
+            for &i in &order[1..] {
+                acc = merged(&acc, &edits[i]);
+            }
+            acc.color
+        });
+
+        let first = answers.next().expect("six orders");
+        for answer in answers {
+            assert_eq!(answer, first, "arrival order changed the outcome");
+        }
+    }
+
+    /// Totality: `Err` from a merge is not validation, it refuses to converge
+    /// and leaves the entity divergent while repair retries it. No pair of
+    /// these records may produce one.
+    #[test]
+    fn merge_never_refuses() {
+        let records = [
+            obj("aquamarine", 1, 100),
+            obj("chartreuse", 7, 100),
+            obj("thistle", 7, 100),
+        ];
+        for left in &records {
+            for right in &records {
+                let mut acc = left.clone();
+                acc.merge(right).expect("merge must be total");
+            }
+        }
+    }
+
+    // ── The other three records order on their own clocks ────────────────────
+
+    #[test]
+    fn member_takes_the_later_join_either_way() {
+        let early = member("ada", 42);
+        let late = member("grace", 99);
+        assert_eq!(merged(&early, &late).username, "grace");
+        assert_eq!(merged(&late, &early).username, "grace");
+    }
+
+    #[test]
+    fn presence_takes_the_newer_pose_either_way() {
+        let pose = |x: f64, updated_at: u64| Presence {
+            identity:        "d".repeat(64),
+            member:          "b".repeat(64),
+            camera_position: Vec3 { x, y: 0.0, z: 0.0 },
+            camera_rotation: Quat::default(),
+            updated_at,
+        };
+        let (old, new) = (pose(1.0, 10), pose(2.0, 20));
+        assert_eq!(merged(&old, &new).camera_position.x, 2.0);
+        assert_eq!(merged(&new, &old).camera_position.x, 2.0);
+    }
+
+    #[test]
+    fn comment_takes_the_later_post_either_way() {
+        let comment = |text: &str, created_at: u64| SpatialComment {
+            id:         "c1".to_owned(),
+            text:       text.to_owned(),
+            position:   Vec3::default(),
+            author:     "b".repeat(64),
+            created_at,
+        };
+        let (early, late) = (comment("first", 5), comment("second", 9));
+        assert_eq!(merged(&early, &late).text, "second");
+        assert_eq!(merged(&late, &early).text, "second");
     }
 }

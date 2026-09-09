@@ -1,18 +1,23 @@
 name: Mero AR Identity And Roles
 description: >
-  Two-node test of the rc.20 identity model — the half that a single node cannot
-  prove, because it needs two distinct ACCOUNTS.
+  Two-node test of the account identity model — the half that a single node
+  cannot prove, because it needs two distinct ACCOUNTS.
 
   Node 1 creates the room (so it is owner + sole admin). Node 2 joins by
   invitation and is therefore a viewer: its writes must be rejected by
   `require_editor`, not merely hidden by the app. Node 1 then grants it the editor
-  role, node 2 places an object that is attributed to node 2's own device key,
-  the advisory lock is shown to hold across identities, an admin is shown to be
-  able to break someone else's lock, and a revoke puts node 2 back to read-only.
+  role, node 2 places an object that is attributed to node 2's own ACCOUNT, the
+  advisory lock is shown to hold across identities, an admin is shown to be able
+  to break someone else's lock, and a revoke puts node 2 back to read-only.
 
-  `grant_editor` can only name a member whose device→account pairing the contract
-  has seen, which is what node 2's `join` registers — that bridge is the reason
-  the `accounts` map exists.
+  `grant_editor` can only name a member the contract has already seen, which is
+  what node 2's `join` records. There is no `accounts` map behind that and has
+  not been since rc.23: the device→account bridge this description used to cite
+  was retired by core#3510 and core#3522, and a member id IS an account now.
+
+  What this scenario does NOT cover is convergence — both nodes write, but they
+  write DIFFERENT keys, so no entry ever forks and no merge rule runs. That is
+  convergence-test.yml's job.
 
   Note how Bob's member id is obtained: from the contract's own roster, not from
   a `create_identity` call. In a namespace-backed context the member identity is

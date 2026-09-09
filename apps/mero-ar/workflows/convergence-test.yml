@@ -1,0 +1,439 @@
+name: Mero AR Convergence (2 nodes, partitioned)
+description: >
+  What neither existing scenario can test: that two nodes editing the SAME
+  object converge, and converge to the same thing.
+
+  `SceneObject` is `#[app::mergeable]`, so its merge rule lives in the wasm and
+  the host dispatches to it when an entry diverges. Nothing exercised that.
+  logic-test.yml boots one node, where every write is a plain sequential write
+  and no merge is ever reached; identity-and-roles.yml boots two, but they write
+  DIFFERENT keys (roles, presence, roster), so no entry ever forks. The merge
+  rule could be arbitrarily wrong with every lane green — and until core
+  0.11.0-rc.32 required the merge to be DECLARED, it was not even called.
+
+  A partition is what makes the divergence real. Steps run in sequence, so
+  without one node 2's write lands after node 1's has already replicated: the
+  entry never forks, no merge runs, and these assertions would pass against the
+  old rules. `partition_peers` cuts libp2p while leaving RPC up, so each node
+  accepts a write the other cannot see.
+
+  ⚠️ Why both writes carry the SAME version, which is the point of the whole
+  scenario. `version` is a single global counter in state, bumped per write, so
+  each node bumps its OWN copy from the same value while isolated — two writes
+  at "version 3", not 3 and 4. Version can therefore never break the tie here,
+  which is what pushes the decision onto the rest of the rule. That is not a
+  contrivance: it is what a partitioned counter always does, and it is exactly
+  the case a single-node scenario can never produce.
+
+  Two properties, each asserted on BOTH nodes — a rule that converges on one
+  node and not the other is the precise failure mode being guarded:
+
+    1. `lww-cube`: versions tie, so the LATER `updated_at` wins regardless of
+       which node wrote first. Node 1 writes first and stamps 2000; node 2
+       stamps 2100, so both nodes must end on node 2's colour.
+
+    2. `tie-cube`: version AND `updated_at` both tie (3000 on each side). This
+       is the case rc.32 makes reachable and that a bare `if other.ts > self.ts`
+       could not resolve: neither side replaces the other, each keeps its own
+       colour, and the two nodes disagree forever with nothing reporting it.
+       The tiebreak on canonical borsh bytes decides it instead.
+
+  The colours are single words that appear nowhere else in the scenario, and
+  `color` is one field, so a node holding `chartreuse` cannot also hold
+  `aquamarine` — asserting the winner is present is the same as asserting the
+  loser is gone, without needing a negation.
+
+  If property 2 fails on BOTH nodes with the same value, that is the byte order
+  predicted wrong (`chartreuse` > `aquamarine`), not a convergence failure. If
+  it fails on ONE node, convergence is broken. The two read differently on
+  purpose.
+
+stop_all_nodes: true
+wait_timeout: 180
+
+nodes:
+  chain_id: testnet-1
+  # Must match `min-runtime-version` in logic/Cargo.toml. It also has to be a
+  # release whose HOST can call back into the wasm to merge a custom-stamped
+  # collection entry — which is what every assertion below rests on.
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.32
+  count: 2
+  prefix: calimero-node
+
+steps:
+  # ── Bootstrap ─────────────────────────────────────────────────────────────
+  # Same sequence as identity-and-roles.yml, which is proven on rc.32. Both
+  # nodes execute the context locally, so both need the bytecode.
+  - name: Install Application on Node 1
+    type: install_application
+    node: calimero-node-1
+    # A signed .mpk, not a raw .wasm — core#3652 (0.11.0-rc.31) took raw wasm
+    # out of the protocol; the node refuses one even on a dev install.
+    path: "../logic/res/mero-ar.mpk"
+    dev: true
+    outputs:
+      app_id: applicationId
+
+  - name: Install Application on Node 2
+    type: install_application
+    node: calimero-node-2
+    path: "../logic/res/mero-ar.mpk"
+    dev: true
+
+  - name: Create Namespace
+    type: create_namespace
+    node: calimero-node-1
+    application_id: "{{app_id}}"
+    outputs:
+      namespace_id: namespaceId
+
+  # Namespaces are RESTRICTED by default, so a joining node 403s on its first
+  # `call` without this — which reads as a sync failure, not a permission one.
+  - name: Set Default Member Capabilities
+    type: set_default_capabilities
+    node: calimero-node-1
+    group_id: "{{namespace_id}}"
+    capabilities: 15
+
+  - name: Create Room Context
+    type: create_context
+    node: calimero-node-1
+    application_id: "{{app_id}}"
+    group_id: "{{namespace_id}}"
+    params: '{"name": "Converge Studio"}'
+    outputs:
+      context_id: contextId
+      member_public_key: memberPublicKey
+
+  - name: Invite Node 2
+    type: create_namespace_invitation
+    node: calimero-node-1
+    group_id: "{{namespace_id}}"
+    outputs:
+      invitation_2: invitation
+
+  - name: Node 2 Joins Namespace
+    type: join_namespace
+    node: calimero-node-2
+    group_id: "{{namespace_id}}"
+    invitation: "{{invitation_2}}"
+
+  - name: Node 2 Joins Context
+    type: join_context
+    node: calimero-node-2
+    context_id: "{{context_id}}"
+
+  - name: Sync After Join
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  # ── Node 2 has to be an EDITOR, or its isolated write is refused ──────────
+  # `join` writes the member entry in one call, and a grant can only name a
+  # member the contract has already seen.
+  - name: Node 2 Joins As Bob
+    type: call
+    node: calimero-node-2
+    context_id: "{{context_id}}"
+    method: join
+    args:
+      username: "Bob"
+      avatar: null
+      timestamp: 1000000
+
+  - name: Sync After Bob Joins
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  # `wait_for_sync` compares `contextStateHash` and has reported converged 160ms
+  # after a write, before that delta could have reached the other node. Give
+  # propagation real time rather than trusting the hash.
+  - name: Let Bob's Join Reach Node 1
+    type: wait
+    seconds: 20
+    message: "waiting for Bob's join to reach node 1 so he can be granted editor"
+
+  - name: Node 1 Reads The Members
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_members
+    args: {}
+    outputs:
+      members_on_node_1: result
+      # Bob's id as the CONTRACT recorded it — his account, not the key he
+      # signed with. Node 1 has not joined yet, so the roster is one entry.
+      bob_member_id: result.output.0.id
+
+  # A gate that localizes the next failure: if this is what fails, the problem
+  # is propagation between the nodes, not the merge rules below.
+  - name: Assert Node 1 Sees Bob
+    type: assert
+    statements:
+      - "contains({{members_on_node_1}}, 'Bob')"
+      - "is_set({{bob_member_id}})"
+
+  - name: Node 1 Grants Bob Editor
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: grant_editor
+    args:
+      member: "{{bob_member_id}}"
+
+  - name: Sync After The Grant
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Let The Grant Project
+    type: wait
+    seconds: 15
+    message: "an AccessControl grant confers nothing until it has projected"
+
+  - name: Bob's Role After The Grant
+    type: call
+    node: calimero-node-2
+    context_id: "{{context_id}}"
+    method: my_role
+    args: {}
+    outputs:
+      bob_role: result
+
+  # Another gate. A viewer's `update_color` is refused, and a refused write
+  # never forks the entry — the convergence assertions would then pass by
+  # having tested nothing at all.
+  - name: Assert Bob Can Actually Write
+    type: assert
+    statements:
+      - "contains({{bob_role}}, 'editor')"
+
+  # ── The two objects both nodes will fight over ────────────────────────────
+  - name: Node 1 Places The LWW Object
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: add_object
+    args:
+      object:
+        id: "lww-cube"
+        data: { kind: "cube" }
+        transform:
+          position: { x: 1.0, y: 0.0, z: 0.0 }
+          rotation: { x: 0.0, y: 0.0, z: 0.0, w: 1.0 }
+          scale: { x: 1.0, y: 1.0, z: 1.0 }
+        color: "seashell"
+        lockedBy: null
+        createdBy: "ignored"
+        createdAt: 1000
+        updatedAt: 1000
+        version: 0
+
+  - name: Node 1 Places The Tie Object
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: add_object
+    args:
+      object:
+        id: "tie-cube"
+        data: { kind: "cube" }
+        transform:
+          position: { x: 2.0, y: 0.0, z: 0.0 }
+          rotation: { x: 0.0, y: 0.0, z: 0.0, w: 1.0 }
+          scale: { x: 1.0, y: 1.0, z: 1.0 }
+        color: "seashell"
+        lockedBy: null
+        createdBy: "ignored"
+        createdAt: 1000
+        updatedAt: 1000
+        version: 0
+
+  - name: Replicate Both Objects To Node 2
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 90
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Settle Before Partitioning
+    type: wait
+    seconds: 10
+
+  - name: Node 2 Can See Both Objects
+    type: call
+    node: calimero-node-2
+    context_id: "{{context_id}}"
+    method: get_objects
+    args: {}
+    outputs:
+      objects_node2: result
+
+  # The third gate: both nodes must hold the entries BEFORE the partition, or
+  # each side writes a fresh entry instead of forking a shared one and no merge
+  # is ever reached.
+  - name: Assert Both Objects Replicated
+    type: assert
+    statements:
+      - "contains({{objects_node2}}, 'lww-cube')"
+      - "contains({{objects_node2}}, 'tie-cube')"
+
+  # ── Partition, so the next four writes genuinely fork ─────────────────────
+  # libp2p only; both nodes stay RPC-reachable, which is what lets each accept
+  # a write the other cannot see.
+  - name: Cut The Link Between The Two Nodes
+    type: partition_peers
+    node: calimero-node-1
+    peers:
+      - calimero-node-2
+
+  - name: Let The Partition Take Effect
+    type: wait
+    seconds: 10
+
+  # Each node performs the SAME two writes in the SAME order, which is what
+  # keeps their version counters in step and forces both ties.
+  - name: Node 1 Recolours The LWW Object While Isolated
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: update_color
+    args:
+      id: "lww-cube"
+      color: "aquamarine"
+      updated_at: 2000
+
+  - name: Node 1 Recolours The Tie Object While Isolated
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: update_color
+    args:
+      id: "tie-cube"
+      color: "aquamarine"
+      updated_at: 3000
+
+  # Node 1 wrote first but stamps EARLIER on lww-cube, so a rule that resolved
+  # by arrival order would keep aquamarine and this would fail.
+  - name: Node 2 Recolours The LWW Object While Isolated
+    type: call
+    node: calimero-node-2
+    context_id: "{{context_id}}"
+    method: update_color
+    args:
+      id: "lww-cube"
+      color: "chartreuse"
+      updated_at: 2100
+
+  # Same stamp as node 1's tie-cube write: 3000. Nothing in the clock can
+  # separate these two.
+  - name: Node 2 Recolours The Tie Object While Isolated
+    type: call
+    node: calimero-node-2
+    context_id: "{{context_id}}"
+    method: update_color
+    args:
+      id: "tie-cube"
+      color: "chartreuse"
+      updated_at: 3000
+
+  # ── Heal, and require both sides to agree ─────────────────────────────────
+  - name: Heal The Partition
+    type: heal_peers
+    node: calimero-node-1
+    peers:
+      - calimero-node-2
+
+  - name: Reconverge After Heal
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 120
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Settle After Reconvergence
+    type: wait
+    seconds: 15
+
+  # ── Property 1: the later updated_at wins, on BOTH nodes ──────────────────
+  - name: Read The LWW Object On Node 1
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_object
+    args:
+      id: "lww-cube"
+    outputs:
+      lww_node1: result
+
+  - name: Assert Node 1 Took The Later Stamp
+    type: assert
+    statements:
+      - "contains({{lww_node1}}, 'chartreuse')"
+
+  - name: Read The LWW Object On Node 2
+    type: call
+    node: calimero-node-2
+    context_id: "{{context_id}}"
+    method: get_object
+    args:
+      id: "lww-cube"
+    outputs:
+      lww_node2: result
+
+  - name: Assert Node 2 Agrees
+    type: assert
+    statements:
+      - "contains({{lww_node2}}, 'chartreuse')"
+
+  # ── Property 2: an exact tie still converges, on BOTH nodes ───────────────
+  # The case that used to leave the replicas permanently disagreeing.
+  - name: Read The Tie Object On Node 1
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_object
+    args:
+      id: "tie-cube"
+    outputs:
+      tie_node1: result
+
+  - name: Assert Node 1 Resolved The Tie
+    type: assert
+    statements:
+      - "contains({{tie_node1}}, 'chartreuse')"
+
+  - name: Read The Tie Object On Node 2
+    type: call
+    node: calimero-node-2
+    context_id: "{{context_id}}"
+    method: get_object
+    args:
+      id: "tie-cube"
+    outputs:
+      tie_node2: result
+
+  - name: Assert Node 2 Resolved The Tie The Same Way
+    type: assert
+    statements:
+      - "contains({{tie_node2}}, 'chartreuse')"

@@ -37,10 +37,13 @@ BUNDLE="$REPO_ROOT/logic/res/mero-ar.mpk"
   && cargo mero bundle --dev --no-icon --app-version 0.0.0 --output res/mero-ar.mpk)
 
 FILES=("$@")
-# identity-and-roles.yml boots TWO nodes and takes noticeably longer than
-# logic-test.yml; both run by default because the identity model is only half
-# testable with one account.
-[ ${#FILES[@]} -eq 0 ] && FILES=("logic-test.yml" "identity-and-roles.yml")
+# With no arguments, run every scenario in the directory — the same glob CI
+# builds its matrix from, so a new file cannot be picked up by one and missed by
+# the other. Named explicitly it runs just those, which is what CI does per leg.
+if [ ${#FILES[@]} -eq 0 ]; then
+  while IFS= read -r f; do FILES+=("$f"); done < <(cd "$WORKFLOWS_DIR" && ls -1 *.yml 2>/dev/null | sort)
+  [ ${#FILES[@]} -eq 0 ] && { red "no *.yml in $WORKFLOWS_DIR"; exit 1; }
+fi
 
 FAIL=0
 for f in "${FILES[@]}"; do
