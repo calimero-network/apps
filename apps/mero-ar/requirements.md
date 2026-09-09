@@ -94,10 +94,12 @@ Stop later with `make stop`.
 4. **In the app**, enter:
    - Node URL: `http://<your-mac-ip>:2450` (must be on the same Wi-Fi as the Mac)
    - Username `admin`, Password `calimero1234`
-   - Setup code: only for a **fresh** node that has never had a login — tap
-     *"Node needs a setup code?"* and paste the bootstrap secret `merod` printed
-     at startup (core rc.14+). Established nodes ignore it.
-   - Context ID: the value from `make node`
+   - Context ID: the value from `make node`, or paste an invite link
+
+   There is no setup code to enter. core#3276/#3277 (0.11.0-rc.17) deleted the
+   first-login bootstrap secret — the admin account is created at `merod init`,
+   so `merod` no longer prints a secret to paste and the field is gone from the
+   login card.
 
    The session is stored in the Keychain, so the next launch walks straight back
    into the room; the SDK refreshes an expired token on its own.
@@ -186,7 +188,7 @@ make clean         # remove build artifacts
 
 The phased plan, task tracker, and AR-specific gotchas are in
 [`../merointerier.md`](../merointerier.md). Built so far: the scene-graph
-contract on core rc.20 (device-attributed writes, account-keyed roles), the app
+contract on core rc.32 (account-attributed writes, account-keyed roles), the app
 on the shared swift-sdk (login, session resume, live SSE, roles UI), and the AR
 room (scan, place, sync, presence, publish + relocalize the world map). Next
 tickets: spatial comments UI, shared-cursor avatars, lock UX, and on-device

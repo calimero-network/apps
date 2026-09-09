@@ -27,22 +27,29 @@
 //! `env::device_id()` survives in exactly one place: presence. See
 //! [`MeroAR::update_presence`].
 
+use std::cmp::Ordering;
 use std::str::FromStr;
 
 use calimero_sdk::abi::AbiType;
-use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
+use calimero_sdk::borsh::{to_vec, BorshDeserialize, BorshSerialize};
 use calimero_sdk::serde::{Deserialize, Serialize};
 use calimero_sdk::{app, env as sdk_env, AccountId, BlobId};
-use calimero_storage::address::Id;
 use calimero_storage::collections::crdt_meta::MergeError;
-use calimero_storage::collections::rekey::RekeyTarget;
 use calimero_storage::collections::{
     AccessControl, LwwRegister, Mergeable as MergeableTrait, Ownable, UnorderedMap,
 };
 
 type ObjectId = String;
-/// A member, written the way `AccountId` renders: 64 hex characters. Never a
-/// bs58 key — those are 32 bytes too, so nothing downstream would object.
+/// A member, written the way `AccountId` renders: 64 hex characters.
+///
+/// ⚠️ Since core#3691 (0.11.0-rc.27) removed base58, there is exactly ONE id
+/// encoding — which makes an id harder to check, not easier: a DEVICE key and
+/// an ACCOUNT id are now both 64 hex, so `AccountId::from_str` accepts one in
+/// place of the other and nothing downstream objects. Passing a device key to
+/// `grant_editor` would authorize nobody, silently. What actually stops that is
+/// `AccessControl`, which refuses to grant to an account it has never seen —
+/// see the note at the top of `workflows/identity-and-roles.yml`, where an
+/// earlier version of that workflow made exactly this mistake.
 type MemberId = String;
 type CommentId = String;
 
@@ -55,10 +62,28 @@ const ROLE_EDITOR: &str = "editor";
 // ── Pure helpers (unit-testable without the runtime) ──────────────────────────
 
 pub mod pure {
+    /// How an incoming scene-object clock orders against the current one:
+    /// version first, timestamp as the tiebreak.
+    ///
+    /// `Equal` means the two edits are indistinguishable *by clock* — not that
+    /// they are the same edit. `merge` resolves that case on content; see
+    /// [`super::take_if_greater`].
+    pub fn clock_cmp(
+        cur_version: u64,
+        cur_ts: u64,
+        inc_version: u64,
+        inc_ts: u64,
+    ) -> ::core::cmp::Ordering {
+        (inc_version, inc_ts).cmp(&(cur_version, cur_ts))
+    }
+
     /// LWW for scene objects: an incoming edit replaces the current one if it
     /// has a higher version, or an equal version with a newer timestamp.
+    ///
+    /// The readable statement of the rule, defined in terms of [`clock_cmp`] so
+    /// the two cannot drift apart.
     pub fn should_replace(cur_version: u64, cur_ts: u64, inc_version: u64, inc_ts: u64) -> bool {
-        inc_version > cur_version || (inc_version == cur_version && inc_ts > cur_ts)
+        clock_cmp(cur_version, cur_ts, inc_version, inc_ts) == ::core::cmp::Ordering::Greater
     }
 
     /// Squared distance between two 3D points (cheap; avoids sqrt for comparisons).
@@ -154,8 +179,71 @@ pub enum ObjectData {
     },
 }
 
+// ── Convergence ───────────────────────────────────────────────────────────────
+//
+// Every record below is stored as a COLLECTION VALUE (`UnorderedMap<_, T>`),
+// and core 0.11.0-rc.32 changed what that means for a hand-written `Mergeable`.
+//
+// Before #3807 a collection entry was merged by matching on its `crdt_type`,
+// and a type that declared nothing resolved last-write-wins with the app's
+// `merge` NEVER CALLED. Every `impl Mergeable` here was therefore dead code —
+// it compiled, it was unit-testable, and the node ignored it. rc.32 refuses to
+// compile that ambiguity: a type implementing `Mergeable` must now say how it
+// merges, either `#[derive(Mergeable)]` (converge structurally, merge not
+// dispatched) or `#[app::mergeable]` (dispatch to the rule below).
+//
+// These four take `#[app::mergeable]`, because the rule is genuinely ours —
+// version-then-timestamp LWW, not field-by-field delegation, and the fields are
+// bare `String`/`u64`, which the derive could not converge anyway. The
+// attribute also generates the `RekeyTarget` impl each type used to write by
+// hand (flat records, so re-keying stays a no-op).
+//
+// ⚠️ Their `merge` is reachable for the first time, so it has to actually hold
+// up. core's contract is that merge be "deterministic, commutative,
+// associative, idempotent and total", and a bare `if other.ts > self.ts`
+// satisfies none of the last three at an exact tie: two different edits
+// carrying the same timestamp each keep their own copy, and the replicas stay
+// divergent with nothing reporting it. `take_if_greater` closes that by making
+// the merge a maximum over a TOTAL order — clock first, canonical bytes second.
+
+/// Deterministic tie-break for two records whose LWW clocks compare equal.
+///
+/// borsh is canonical for these flat records, so comparing the encodings is a
+/// total order on values, and equal values compare equal — which is what makes
+/// the merge idempotent as well as commutative.
+fn incoming_wins_tie<T: BorshSerialize>(cur: &T, inc: &T) -> bool {
+    match (to_vec(cur), to_vec(inc)) {
+        (Ok(cur_bytes), Ok(inc_bytes)) => inc_bytes > cur_bytes,
+        // A record that will not encode cannot be ordered. Keep what we hold
+        // rather than converge on a value we cannot read back.
+        _ => false,
+    }
+}
+
+/// Take `inc` if it wins a total order: the caller's LWW `clock` first, then
+/// content on an exact clock tie.
+///
+/// Every merge in this contract is this one function with a different clock,
+/// which is deliberate — the convergence argument is made once.
+fn take_if_greater<T: BorshSerialize + Clone>(cur: &mut T, inc: &T, clock: Ordering) {
+    let inc_wins = match clock {
+        Ordering::Greater => true,
+        Ordering::Less => false,
+        Ordering::Equal => incoming_wins_tie(cur, inc),
+    };
+    if inc_wins {
+        *cur = inc.clone();
+    }
+}
+
 // ── Scene object ────────────────────────────────────────────────────────────
 
+// `id` is pinned rather than left to default. The default is a digest of
+// `module_path!()::TypeName`, and the digest is WIRE FORMAT — stamped on every
+// entry holding this type. Moving the type into a module, or renaming the
+// crate, would change it and orphan every entry already stamped. Pinning it to
+// today's value costs nothing and survives that refactor.
+#[app::mergeable(id = "mero_ar::SceneObject")]
 #[derive(AbiType, BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
@@ -172,24 +260,22 @@ pub struct SceneObject {
     pub version:    u64,
 }
 
-// `SceneObject` is a flat record (no nested collections), so re-keying is a
-// no-op — but rc.9's `Mergeable: RekeyTarget` supertrait bound requires the
-// impl. The default `register_nested_value_types` (empty) is correct.
-impl RekeyTarget for SceneObject {
-    fn rekey_relative_to(&mut self, _parent_id: Id) {}
-}
-
 impl MergeableTrait for SceneObject {
     fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        if pure::should_replace(self.version, self.updated_at, other.version, other.updated_at) {
-            *self = other.clone();
-        }
+        // Two concurrent edits at the same version and timestamp are a real
+        // case here, not a theoretical one: the clock is the room's version
+        // counter plus a client-supplied `updated_at`, and two phones editing
+        // the same object inside the same millisecond produce it.
+        let clock =
+            pure::clock_cmp(self.version, self.updated_at, other.version, other.updated_at);
+        take_if_greater(self, other, clock);
         Ok(())
     }
 }
 
 // ── Member ────────────────────────────────────────────────────────────────────
 
+#[app::mergeable(id = "mero_ar::Member")]
 #[derive(AbiType, BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
@@ -201,20 +287,19 @@ pub struct Member {
     pub joined_at: u64,
 }
 
-// Flat record → no-op re-key; required by rc.9's `Mergeable: RekeyTarget`.
-impl RekeyTarget for Member {
-    fn rekey_relative_to(&mut self, _parent_id: Id) {}
-}
-
 impl MergeableTrait for Member {
     fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        if other.joined_at > self.joined_at { *self = other.clone(); }
+        // A rejoin is the same account with a later `joined_at`, so the newest
+        // write carries the current username/avatar.
+        let clock = other.joined_at.cmp(&self.joined_at);
+        take_if_greater(self, other, clock);
         Ok(())
     }
 }
 
 // ── Presence (camera pose per DEVICE) ─────────────────────────────────────────
 
+#[app::mergeable(id = "mero_ar::Presence")]
 #[derive(AbiType, BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
@@ -230,20 +315,19 @@ pub struct Presence {
     pub updated_at:      u64,
 }
 
-// Flat record → no-op re-key; required by rc.9's `Mergeable: RekeyTarget`.
-impl RekeyTarget for Presence {
-    fn rekey_relative_to(&mut self, _parent_id: Id) {}
-}
-
 impl MergeableTrait for Presence {
     fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        if other.updated_at > self.updated_at { *self = other.clone(); }
+        // Newest camera pose wins. Entries are keyed by device, so the two
+        // sides of a conflict are the same phone's own poses.
+        let clock = other.updated_at.cmp(&self.updated_at);
+        take_if_greater(self, other, clock);
         Ok(())
     }
 }
 
 // ── Spatial comment ───────────────────────────────────────────────────────────
 
+#[app::mergeable(id = "mero_ar::SpatialComment")]
 #[derive(AbiType, BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
@@ -256,14 +340,13 @@ pub struct SpatialComment {
     pub created_at: u64,
 }
 
-// Flat record → no-op re-key; required by rc.9's `Mergeable: RekeyTarget`.
-impl RekeyTarget for SpatialComment {
-    fn rekey_relative_to(&mut self, _parent_id: Id) {}
-}
-
 impl MergeableTrait for SpatialComment {
     fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        if other.created_at > self.created_at { *self = other.clone(); }
+        // A comment is immutable once posted, so a conflict on one id means two
+        // devices minted the same id. Converging on content keeps every replica
+        // showing the same comment instead of two readings of it.
+        let clock = other.created_at.cmp(&self.created_at);
+        take_if_greater(self, other, clock);
         Ok(())
     }
 }
@@ -883,5 +966,129 @@ mod tests {
     #[test]
     fn admin_may_delete_any_comment() {
         assert!(may_delete_comment("alice", "bob", true));
+    }
+}
+
+// ── Convergence tests ─────────────────────────────────────────────────────────
+//
+// These exercise the four `merge` impls that core rc.32 made reachable. They
+// are the only tests here that would have passed while the node ignored the
+// code they cover, which is the point of writing them now.
+//
+// Equality is compared on borsh bytes rather than `PartialEq`: those bytes ARE
+// the notion of equality the merge itself resolves ties on, and the records
+// hold `f64`s, so byte equality is the stricter and more honest check.
+
+#[cfg(test)]
+mod merge_tests {
+    use calimero_sdk::borsh::{to_vec, BorshSerialize};
+    use calimero_storage::collections::Mergeable;
+
+    use super::{Member, ObjectData, Presence, Quat, SceneObject, SpatialComment, Transform, Vec3};
+
+    fn obj(color: &str, version: u64, updated_at: u64) -> SceneObject {
+        SceneObject {
+            id:         "o1".to_owned(),
+            data:       ObjectData::Cube,
+            transform:  Transform::default(),
+            color:      color.to_owned(),
+            locked_by:  None,
+            created_by: "a".repeat(64),
+            created_at: 1,
+            updated_at,
+            version,
+        }
+    }
+
+    fn member(username: &str, joined_at: u64) -> Member {
+        Member {
+            id:        "b".repeat(64),
+            username:  username.to_owned(),
+            avatar:    None,
+            joined_at,
+        }
+    }
+
+    fn merged<T: Clone + Mergeable>(left: &T, right: &T) -> T {
+        let mut out = left.clone();
+        out.merge(right).expect("merge is total — it must never refuse");
+        out
+    }
+
+    fn bytes<T: BorshSerialize>(v: &T) -> Vec<u8> {
+        to_vec(v).expect("these records encode")
+    }
+
+    /// Merging both ways must reach the same value, or the two replicas have
+    /// permanently disagreed. This is the property a bare `>` comparison broke
+    /// at an exact clock tie.
+    fn assert_converges<T: Clone + Mergeable + BorshSerialize + core::fmt::Debug>(
+        left: &T,
+        right: &T,
+    ) {
+        let a = merged(left, right);
+        let b = merged(right, left);
+        assert_eq!(
+            bytes(&a),
+            bytes(&b),
+            "merge is not commutative:\n  a.merge(b) = {a:?}\n  b.merge(a) = {b:?}"
+        );
+    }
+
+    #[test]
+    fn scene_object_higher_version_wins_either_way() {
+        assert_converges(&obj("red", 1, 100), &obj("blue", 2, 50));
+    }
+
+    #[test]
+    fn scene_object_converges_on_an_exact_clock_tie() {
+        // Same version, same timestamp, different colour — the case that used
+        // to leave one replica red and the other blue forever.
+        assert_converges(&obj("red", 7, 100), &obj("blue", 7, 100));
+    }
+
+    #[test]
+    fn scene_object_merge_is_idempotent() {
+        let o = obj("red", 7, 100);
+        assert_eq!(bytes(&merged(&o, &o)), bytes(&o));
+    }
+
+    #[test]
+    fn scene_object_merge_is_associative_on_a_tie() {
+        let (a, b, c) = (obj("red", 7, 100), obj("blue", 7, 100), obj("green", 7, 100));
+
+        let left = merged(&merged(&a, &b), &c);
+        let right = merged(&a, &merged(&b, &c));
+
+        assert_eq!(bytes(&left), bytes(&right), "merge is not associative");
+    }
+
+    #[test]
+    fn member_converges_on_an_exact_join_tie() {
+        assert_converges(&member("ada", 42), &member("grace", 42));
+    }
+
+    #[test]
+    fn presence_converges_on_an_exact_pose_tie() {
+        let pose = |x: f64| Presence {
+            identity:        "d".repeat(64),
+            member:          "b".repeat(64),
+            camera_position: Vec3 { x, y: 0.0, z: 0.0 },
+            camera_rotation: Quat::default(),
+            updated_at:      9,
+        };
+        assert_converges(&pose(1.0), &pose(2.0));
+    }
+
+    #[test]
+    fn comment_converges_when_two_devices_mint_one_id() {
+        let comment = |text: &str| SpatialComment {
+            id:         "c1".to_owned(),
+            text:       text.to_owned(),
+            position:   Vec3::default(),
+            author:     "b".repeat(64),
+            created_at: 5,
+        };
+        assert_converges(&comment("looks good"), &comment("needs work"));
     }
 }

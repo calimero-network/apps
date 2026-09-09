@@ -14,10 +14,25 @@ options:
 # `branch: master` pin would make every clean build (and every CI run) resolve
 # to whatever landed upstream that morning. Bump this SHA deliberately, then run
 # `make app-gen && make app-test`.
+#
+# ⚠️ This pin is not optional maintenance — it is load-bearing for the invite
+# flow. The previous SHA predated swift-sdk#28, whose typed
+# `SignedGroupOpenInvitation` named 2 of the envelope's 5 keys and 5 of the
+# signed body's 6, and silently dropped the rest on re-encode. One of the
+# dropped keys is `admitters`, which core#3714 (0.11.0-rc.29) made non-empty on
+# EVERY invitation: the node verifies by re-encoding the JSON as borsh and
+# checking the signature over those bytes, so a dropped signed field invalidates
+# the signature and the join is refused. `RoomInvite` round-trips this type
+# through the share link, so on any node at rc.29 or later, an invite minted by
+# the old pin could not be redeemed. #28 fixed it by carrying unknown keys
+# verbatim at both levels.
+#
+# Also picked up here: #25's `expectedSlug:` on the invite parser (RoomInvite
+# now passes it instead of hand-rolling the check) and #26/#27's CI fixes.
 packages:
   MeroKit:
     url: https://github.com/calimero-network/swift-sdk
-    revision: 9cdfc51bc2f809ec36d1b0b36e2b9d826b018184
+    revision: e63250e22c4f630f41129be1ca47a6b42f239243
 
 targets:
   MeroAR:

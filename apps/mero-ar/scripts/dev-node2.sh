@@ -22,7 +22,9 @@ NODE1_P2P_PORT="${MEROAR_DEV_P2P_PORT:-2550}"
 
 ADMIN_USER="${E2E_ADMIN_USER:-admin}"
 ADMIN_PASS="${E2E_ADMIN_PASS:-calimero1234}"
-WASM_PATH="$REPO_ROOT/logic/res/mero_ar.wasm"
+# The signed bundle node 1 built — raw wasm is out of the protocol since
+# core#3652 (0.11.0-rc.31).
+BUNDLE_PATH="$REPO_ROOT/logic/res/mero-ar.mpk"
 
 green()  { printf '\033[32m  ✓  %s\033[0m\n' "$*"; }
 yellow() { printf '\033[33m  !  %s\033[0m\n' "$*"; }
@@ -58,7 +60,7 @@ if $STOP; then
 fi
 
 for cmd in merod jq curl python3; do command -v "$cmd" &>/dev/null || { red "'$cmd' not found"; exit 1; }; done
-[ -f "$WASM_PATH" ] || { red "mero_ar.wasm not found — run 'make node' first"; exit 1; }
+[ -f "$BUNDLE_PATH" ] || { red "mero-ar.mpk not found — run 'make node' first"; exit 1; }
 
 step "Clean slate (node2)"; nuke_node; rm -rf "$NODE_HOME"; green "Ready"
 
@@ -130,7 +132,7 @@ fi
 step "Installing Mero AR app on node2"
 APP_RES=$(curl -sf -X POST "${NODE_URL}/admin-api/install-dev-application" \
   -H "Authorization: Bearer ${ACCESS_TOKEN}" -H "Content-Type: application/json" \
-  -d "$(jq -n --arg p "$WASM_PATH" '{path:$p, metadata:[], package:null, version:null}')" ) || APP_RES="{}"
+  -d "$(jq -n --arg p "$BUNDLE_PATH" '{path:$p, metadata:[], package:null, version:null}')" ) || APP_RES="{}"
 APP_ID=$(echo "$APP_RES" | jq -r '.data.applicationId // empty' 2>/dev/null || true)
 [ -n "$APP_ID" ] && green "App installed on node2 (id: $APP_ID)" || yellow "App install uncertain"
 

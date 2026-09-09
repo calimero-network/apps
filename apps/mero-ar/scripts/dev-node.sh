@@ -27,7 +27,10 @@ NODE_URL="http://localhost:${NODE_PORT}"
 ADMIN_USER="${E2E_ADMIN_USER:-admin}"
 ADMIN_PASS="${E2E_ADMIN_PASS:-calimero1234}"
 
-WASM_PATH="$REPO_ROOT/logic/res/mero_ar.wasm"
+# A signed .mpk bundle, not the raw .wasm. core#3652 (0.11.0-rc.31) made
+# application distribution registry-only and took raw wasm out of the protocol,
+# so `install-dev-application` refuses a bare .wasm.
+BUNDLE_PATH="$REPO_ROOT/logic/res/mero-ar.mpk"
 
 green()  { printf '\033[32m  ✓  %s\033[0m\n' "$*"; }
 yellow() { printf '\033[33m  !  %s\033[0m\n' "$*"; }
@@ -80,12 +83,15 @@ rm -rf "$NODE_HOME"
 green "Ready"
 
 if $SKIP_BUILD; then
-  [ -f "$WASM_PATH" ] || { red "WASM not found at $WASM_PATH — run without --skip-build first"; exit 1; }
-  yellow "Skipping WASM build"
+  [ -f "$BUNDLE_PATH" ] || { red "bundle not found at $BUNDLE_PATH — run without --skip-build first"; exit 1; }
+  yellow "Skipping bundle build"
 else
-  step "Building WASM"
-  (cd "$REPO_ROOT/logic" && cargo mero build)
-  green "mero_ar.wasm built"
+  step "Building the .mpk bundle"
+  # `--dev` signs with the well-known development key (the registry refuses it,
+  # which is the point). `--app-version` is a placeholder: the registry owns the
+  # published number — see logic/Cargo.toml.
+  (cd "$REPO_ROOT/logic" && cargo mero bundle --dev --no-icon --app-version 0.0.0 --output res/mero-ar.mpk)
+  green "mero-ar.mpk built"
 fi
 
 step "Initialising node at $NODE_HOME"
@@ -143,7 +149,7 @@ fi
 step "Installing Mero AR app"
 APP_RES=$(curl -sf -X POST "${NODE_URL}/admin-api/install-dev-application" \
   -H "Authorization: Bearer ${ACCESS_TOKEN}" -H "Content-Type: application/json" \
-  -d "$(jq -n --arg p "$WASM_PATH" '{path: $p, metadata: [], package: null, version: null}')" ) || APP_RES="{}"
+  -d "$(jq -n --arg p "$BUNDLE_PATH" '{path: $p, metadata: [], package: null, version: null}')" ) || APP_RES="{}"
 APP_ID=$(echo "$APP_RES" | jq -r '.data.applicationId // empty' 2>/dev/null || true)
 if [ -z "$APP_ID" ]; then
   APP_ID=$(curl -sf "${NODE_URL}/admin-api/applications" -H "Authorization: Bearer ${ACCESS_TOKEN}" 2>/dev/null \

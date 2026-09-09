@@ -101,14 +101,26 @@ public final class MeroARService {
     /// The namespace join tolerates failure on purpose — it fails when this node
     /// is already a member, which is a perfectly good state to continue from. The
     /// context is what actually decides whether this worked.
+    ///
+    /// ⚠️ But the refusal is KEPT, not discarded. A rejected invitation and an
+    /// already-joined namespace both land in that `catch`, and they need
+    /// different words: the first is terminal, the second is fine. Swallowing it
+    /// outright reported every rejected invitation as "the room has not synced
+    /// here yet — try again shortly", nine seconds later, which is advice that
+    /// can never work. That mislabel is what a dropped `admitters` field looks
+    /// like from the outside (see the SDK pin note in `app/MeroAR/project.yml`),
+    /// so the reason is carried down to the failure message.
     public static func redeem(_ invite: RoomInvite, mero: Mero) async throws -> String {
+        var joinRefusal: Error?
         do {
             _ = try await mero.admin.joinNamespace(
                 invite.namespaceId,
                 request: JoinNamespaceRequest(invitation: invite.invitation)
             )
         } catch {
-            // Already a member, most likely. The sync + context join below decide.
+            // Already a member, most likely. The sync + context join below
+            // decide — but keep the reason in case they don't.
+            joinRefusal = error
         }
 
         // Cross-node sync is asynchronous: the room context does not exist here
@@ -126,8 +138,17 @@ public final class MeroARService {
             }
         }
 
-        // The namespace is joined but the room has not arrived. Returning the id
-        // anyway would drop the user into a room this node does not have.
+        // The room never arrived. If the join itself was refused, that is the
+        // real story and "try again shortly" is actively misleading — a
+        // signature the node rejects will be rejected on every retry.
+        if let joinRefusal {
+            throw MeroError.decoding(
+                "this invitation was not accepted by the node: \(joinRefusal)")
+        }
+
+        // Otherwise the namespace is joined and the room has genuinely not
+        // arrived yet. Returning the id anyway would drop the user into a room
+        // this node does not have.
         throw MeroError.decoding(
             "joined the space, but the room has not synced here yet — try again shortly")
     }
