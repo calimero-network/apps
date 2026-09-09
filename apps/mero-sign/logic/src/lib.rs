@@ -110,7 +110,6 @@ pub struct DocumentChunk {
 }
 
 /// Document information - uses LWW based on uploaded_at timestamp
-#[app::mergeable(id = "mero_sign::DocumentInfo")]
 #[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
@@ -128,17 +127,47 @@ pub struct DocumentInfo {
     pub chunks: Option<Vec<DocumentChunk>>,
 }
 
+/// Declared UNDISPATCHED, unlike its neighbours here, and the reason is
+/// specific: `DocumentInfo` is mutable after creation — `sign_document` rewrites
+/// `pdf_blob_id`, `size`, `hash` and `status`, and two more paths flip `status`
+/// when a signer joins — but its only timestamp is `uploaded_at`, which by
+/// design records the upload and never advances.
+///
+/// core 0.11.0-rc.32 runs a DISPATCHED merge on every write, including a node's
+/// own, merging the incoming record against the stored one. Dispatching a
+/// last-write-wins on `uploaded_at` would therefore compare two equal clocks on
+/// every update and keep the copy already on disk: every signature, hash and
+/// status change after upload would be silently discarded. The rule below was
+/// never called before #3807, so the app has always relied on the storage
+/// layer's own write-order resolution — this declaration records that rather
+/// than replacing it with a rule that is wrong for a mutable record.
+///
+/// Giving the record a real edit clock (and dispatching a total order on it, as
+/// the set-once types here now do) is the better end state, but it is a state
+/// layout and ABI change to a signing audit trail — the owner's call, not a
+/// dependency bump's.
+impl calimero_storage::collections::MergeStrategy for DocumentInfo {
+    const DISPATCHED: bool = false;
+}
+
 impl Mergeable for DocumentInfo {
     fn merge(
         &mut self,
         other: &Self,
     ) -> Result<(), calimero_storage::collections::crdt_meta::MergeError> {
-        // LWW based on uploaded_at - newer wins
+        // Reached only on a root-blob conflict, never at a collection entry —
+        // see the note above. Kept as last-write-wins by upload time.
         if lww_take(self.uploaded_at, other.uploaded_at, self, other) {
             *self = other.clone();
         }
         Ok(())
     }
+}
+
+// `Mergeable: RekeyTarget`, and an undispatched declaration does not generate
+// it. Flat record, no nested collections, so re-keying is a no-op.
+impl calimero_storage::collections::rekey::RekeyTarget for DocumentInfo {
+    fn rekey_relative_to(&mut self, _parent_id: calimero_storage::address::Id) {}
 }
 
 /// Document status tracking
