@@ -5,16 +5,23 @@
 //! bounded per-tracker location history). Every mutating method emits an event
 //! so subscribers update live over SSE.
 //!
-//! Conflict resolution is last-writer-wins by timestamp via `MergeableTrait`,
-//! so multiple nodes editing the same space converge.
+//! Conflict resolution is app-defined. Every stored record is
+//! `#[app::mergeable]` and resolves last-writer-wins by its own timestamp,
+//! except `History`, which unions append-only samples.
+//!
+//! `#[app::mergeable]` is what makes the storage layer CALL those rules. Before
+//! core 0.11.0-rc.32 began requiring the declaration, a collection value that
+//! declared nothing resolved last-write-wins by write order with the app's
+//! `merge` never consulted — so every rule below was dead code, and the claim
+//! that "multiple nodes editing the same space converge" was untested. Two of
+//! them did not converge once actually dispatched; see `lww_wins` and
+//! `History::merge`.
 
 use calimero_sdk::abi::AbiType;
 use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use calimero_sdk::serde::{Deserialize, Serialize};
 use calimero_sdk::app;
-use calimero_storage::address::Id;
 use calimero_storage::collections::crdt_meta::MergeError;
-use calimero_storage::collections::rekey::RekeyTarget;
 use calimero_storage::collections::{LwwRegister, Mergeable as MergeableTrait, UnorderedMap};
 
 // ── ID aliases ──────────────────────────────────────────────────────────────
@@ -89,6 +96,70 @@ pub mod pure {
     }
 }
 
+// ── Merge rules ───────────────────────────────────────────────────────────────
+//
+// `Mergeable::merge` is a CRDT merge, and the storage layer will call it in any
+// order, more than once, on any pair of divergent replicas. It must therefore be
+// deterministic, commutative, associative, idempotent and total. `Err` is not
+// validation — it refuses to converge and leaves repair retrying forever — so
+// nothing below can fail.
+
+/// Whether `candidate` should replace `incumbent` under last-writer-wins.
+///
+/// The timestamp decides; the borsh encoding breaks a tie.
+///
+/// The tiebreak is not decoration. A bare `candidate_ts > incumbent_ts` is NOT
+/// commutative: two concurrent writes stamped the same millisecond leave each
+/// node keeping its own copy, and they stay divergent permanently because every
+/// re-merge changes nothing on either side. Comparing encodings gives a total
+/// order over the whole record, so both replicas independently elect the same
+/// winner. WHICH side wins is arbitrary; that it is the same side everywhere is
+/// the property that matters.
+///
+/// ⚠️ **Every caller-supplied timestamp is now load-bearing.** `save_internal`
+/// merges a `Custom`-stamped entry against the stored one on every write, a
+/// node's own sequential writes included — its `Custom` arm merges "regardless
+/// of timestamp ordering", deliberately, because a rule that only ran in one
+/// direction would not be commutative. So a method handed a timestamp OLDER
+/// than the record's stored one loses to the value it meant to replace, and
+/// loses *quietly*: the method returns, `app::emit!` still fires, and the
+/// record does not change. Eight methods here take that timestamp from the
+/// caller (`rename_tracker`, `update_location`, `share_tracker`,
+/// `unshare_tracker`, `add_group_member`, `remove_group_member`,
+/// `add_tracker_to_group`, and the two constructors), so all of them share the
+/// requirement: the frontend must pass ONE monotonic clock. `workflows/
+/// logic-test.yml` violated it and is where this was found.
+fn lww_wins<T: BorshSerialize>(
+    candidate: &T,
+    candidate_ts: u64,
+    incumbent: &T,
+    incumbent_ts: u64,
+) -> bool {
+    candidate_ts > incumbent_ts
+        || (candidate_ts == incumbent_ts && encode(candidate) > encode(incumbent))
+}
+
+/// Borsh encoding, used only as a tiebreak key. Any failure would be
+/// deterministic — borsh carries no state across calls — so both replicas reach
+/// the same answer, and the empty fallback keeps the merge total.
+fn encode<T: BorshSerialize>(value: &T) -> Vec<u8> {
+    calimero_sdk::borsh::to_vec(value).unwrap_or_default()
+}
+
+/// Total, deterministic ordering key for a history sample.
+///
+/// `f64` has no `Ord` because of NaN, so the bit patterns stand in: they order
+/// every value including NaN, and two replicas holding the same sample derive
+/// the same key. Used for both sorting and dedup, so "same key" means "same
+/// sample" throughout.
+fn sample_key(sample: &LocationSample) -> (u64, u64, u64) {
+    (
+        sample.timestamp,
+        sample.latitude.to_bits(),
+        sample.longitude.to_bits(),
+    )
+}
+
 // ── Location ──────────────────────────────────────────────────────────────────
 
 #[derive(AbiType, BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug)]
@@ -118,6 +189,7 @@ pub struct LocationSample {
 
 // ── Tracker ─────────────────────────────────────────────────────────────────
 
+#[app::mergeable(id = "mero_tag::Tracker")]
 #[derive(AbiType, BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
@@ -133,22 +205,20 @@ pub struct Tracker {
     pub updated_at: u64,
 }
 
-// Flat record (no nested Calimero collections) → no-op re-key; required by
-// rc.9's `Mergeable: RekeyTarget` supertrait bound. The default (empty)
-// `register_nested_value_types` is correct: nothing to cascade.
-impl RekeyTarget for Tracker {
-    fn rekey_relative_to(&mut self, _parent_id: Id) {}
-}
-
+// The re-key impl these types used to hand-write is generated by
+// `#[app::mergeable]` now. Keeping a manual one would collide with it.
 impl MergeableTrait for Tracker {
     fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        if other.updated_at > self.updated_at { *self = other.clone(); }
+        if lww_wins(other, other.updated_at, self, self.updated_at) {
+            *self = other.clone();
+        }
         Ok(())
     }
 }
 
 // ── Group ─────────────────────────────────────────────────────────────────────
 
+#[app::mergeable(id = "mero_tag::Group")]
 #[derive(AbiType, BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
@@ -162,20 +232,18 @@ pub struct Group {
     pub updated_at:  u64,
 }
 
-// Flat record → no-op re-key; required by rc.9's `Mergeable: RekeyTarget`.
-impl RekeyTarget for Group {
-    fn rekey_relative_to(&mut self, _parent_id: Id) {}
-}
-
 impl MergeableTrait for Group {
     fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        if other.updated_at > self.updated_at { *self = other.clone(); }
+        if lww_wins(other, other.updated_at, self, self.updated_at) {
+            *self = other.clone();
+        }
         Ok(())
     }
 }
 
 // ── Geofence ────────────────────────────────────────────────────────────────
 
+#[app::mergeable(id = "mero_tag::Geofence")]
 #[derive(AbiType, BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
@@ -191,21 +259,19 @@ pub struct Geofence {
     pub created_at: u64,
 }
 
-// Flat record → no-op re-key; required by rc.9's `Mergeable: RekeyTarget`.
-impl RekeyTarget for Geofence {
-    fn rekey_relative_to(&mut self, _parent_id: Id) {}
-}
-
 impl MergeableTrait for Geofence {
     fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
         // Geofences are immutable once created; newest definition wins.
-        if other.created_at > self.created_at { *self = other.clone(); }
+        if lww_wins(other, other.created_at, self, self.created_at) {
+            *self = other.clone();
+        }
         Ok(())
     }
 }
 
 // ── Presence ────────────────────────────────────────────────────────────────
 
+#[app::mergeable(id = "mero_tag::Presence")]
 #[derive(AbiType, BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
@@ -216,20 +282,18 @@ pub struct Presence {
     pub last_seen: u64,
 }
 
-// Flat record → no-op re-key; required by rc.9's `Mergeable: RekeyTarget`.
-impl RekeyTarget for Presence {
-    fn rekey_relative_to(&mut self, _parent_id: Id) {}
-}
-
 impl MergeableTrait for Presence {
     fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        if other.last_seen > self.last_seen { *self = other.clone(); }
+        if lww_wins(other, other.last_seen, self, self.last_seen) {
+            *self = other.clone();
+        }
         Ok(())
     }
 }
 
 // ── Member ────────────────────────────────────────────────────────────────────
 
+#[app::mergeable(id = "mero_tag::Member")]
 #[derive(AbiType, BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
@@ -240,20 +304,18 @@ pub struct Member {
     pub joined_at: u64,
 }
 
-// Flat record → no-op re-key; required by rc.9's `Mergeable: RekeyTarget`.
-impl RekeyTarget for Member {
-    fn rekey_relative_to(&mut self, _parent_id: Id) {}
-}
-
 impl MergeableTrait for Member {
     fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        if other.joined_at > self.joined_at { *self = other.clone(); }
+        if lww_wins(other, other.joined_at, self, self.joined_at) {
+            *self = other.clone();
+        }
         Ok(())
     }
 }
 
 /// History entries are append-only; a list merges by taking the longer side
 /// (the frontend never edits past samples, only appends new ones).
+#[app::mergeable(id = "mero_tag::History")]
 #[derive(AbiType, BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug, Default)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
@@ -261,14 +323,34 @@ pub struct History {
     pub samples: Vec<LocationSample>,
 }
 
-// Flat record → no-op re-key; required by rc.9's `Mergeable: RekeyTarget`.
-impl RekeyTarget for History {
-    fn rekey_relative_to(&mut self, _parent_id: Id) {}
-}
-
 impl MergeableTrait for History {
     fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        if other.samples.len() > self.samples.len() { *self = other.clone(); }
+        // Union, not longest-wins. Samples are append-only and each node
+        // appends its OWN, so two nodes that each recorded one fix hold
+        // different one-element lists: "longer wins" discarded one outright,
+        // and on equal lengths it kept whichever side happened to be `self`,
+        // which is not commutative — the two never converged.
+        //
+        // Union by `sample_key`, ordered by it, then capped exactly the way
+        // `pure::push_capped` caps the write path: newest MAX_HISTORY kept,
+        // oldest dropped.
+        //
+        // The cap is still associative, which is the subtle part: dropping the
+        // OLDEST can only ever discard a sample that is older than MAX_HISTORY
+        // others in the same union, and such a sample cannot be in the newest
+        // MAX_HISTORY of the whole. So the result is "newest MAX_HISTORY of
+        // everything merged", however the merges were grouped.
+        self.samples.extend_from_slice(&other.samples);
+        self.samples.sort_unstable_by_key(sample_key);
+        // `dedup_by`, not `dedup_by_key`: the latter takes `&mut T` and the
+        // closure wrapping `sample_key` reads as a redundant one to clippy,
+        // which CI runs with `-D warnings`. Sorting first is what makes this
+        // remove all duplicates rather than only consecutive ones.
+        self.samples.dedup_by(|a, b| sample_key(a) == sample_key(b));
+        let len = self.samples.len();
+        if len > MAX_HISTORY {
+            self.samples.drain(0..len - MAX_HISTORY);
+        }
         Ok(())
     }
 }
@@ -645,5 +727,159 @@ mod tests {
         assert!(within_window(500, 500));   // boundary inclusive
         assert!(within_window(600, 500));   // inside window
         assert!(!within_window(400, 500));  // older than window
+    }
+}
+
+// ── Merge laws ────────────────────────────────────────────────────────────────
+//
+// The storage layer calls `merge` in any order, repeatedly, on any pair of
+// divergent replicas, so these are the properties convergence actually rests
+// on. They are asserted here rather than left to the merobox lane because a
+// two-node scenario shows one interleaving; commutativity is a claim about all
+// of them.
+//
+// Before `#[app::mergeable]` was added none of these functions was ever called,
+// so none of this was covered — and two of the six did not hold.
+#[cfg(test)]
+mod merge_laws {
+    use super::{
+        Geofence, Group, History, LocationSample, Member, MergeableTrait, Presence, Tracker,
+        MAX_HISTORY,
+    };
+
+    fn tracker(name: &str, updated_at: u64) -> Tracker {
+        Tracker {
+            id:         "t1".to_string(),
+            name:       name.to_string(),
+            owner_id:   "alice".to_string(),
+            viewers:    vec![],
+            latest:     None,
+            created_at: 0,
+            updated_at,
+        }
+    }
+
+    fn sample(ts: u64) -> LocationSample {
+        LocationSample { latitude: 1.0, longitude: 2.0, timestamp: ts }
+    }
+
+    fn history(timestamps: &[u64]) -> History {
+        History { samples: timestamps.iter().copied().map(sample).collect() }
+    }
+
+    fn merged<T: Clone + MergeableTrait>(a: &T, b: &T) -> T {
+        let mut out = a.clone();
+        out.merge(b).expect("merge must be total");
+        out
+    }
+
+    #[test]
+    fn newer_timestamp_wins_regardless_of_side() {
+        let (old, new) = (tracker("old", 1), tracker("new", 2));
+        assert_eq!(merged(&old, &new).name, "new");
+        assert_eq!(merged(&new, &old).name, "new");
+    }
+
+    #[test]
+    fn equal_timestamps_converge_on_the_same_winner() {
+        // The case a bare `>` got wrong: same timestamp, different content, so
+        // each replica kept its own copy and they stayed divergent forever.
+        let (a, b) = (tracker("a", 7), tracker("b", 7));
+        assert_eq!(merged(&a, &b).name, merged(&b, &a).name);
+    }
+
+    #[test]
+    fn merge_is_idempotent() {
+        let a = tracker("a", 5);
+        assert_eq!(merged(&a, &a).name, "a");
+        assert_eq!(merged(&merged(&a, &a), &a).name, "a");
+    }
+
+    #[test]
+    fn every_record_type_converges_on_a_timestamp_tie() {
+        // One assertion per type, because each names its own timestamp field
+        // and a copy-paste slip in any of them is silent.
+        let g = |name: &str| Geofence {
+            id:         "g1".to_string(),
+            name:       name.to_string(),
+            center_lat: 0.0,
+            center_lng: 0.0,
+            radius:     10.0,
+            created_by: "alice".to_string(),
+            created_at: 3,
+        };
+        assert_eq!(merged(&g("x"), &g("y")).name, merged(&g("y"), &g("x")).name);
+
+        let p = |online: bool| Presence {
+            user_id: "alice".to_string(),
+            online,
+            last_seen: 3,
+        };
+        assert_eq!(
+            merged(&p(true), &p(false)).online,
+            merged(&p(false), &p(true)).online
+        );
+
+        let m = |username: &str| Member {
+            id:        "alice".to_string(),
+            username:  username.to_string(),
+            joined_at: 3,
+        };
+        assert_eq!(merged(&m("a"), &m("b")).username, merged(&m("b"), &m("a")).username);
+
+        let gr = |name: &str| Group {
+            id:          "g1".to_string(),
+            name:        name.to_string(),
+            owner_id:    "alice".to_string(),
+            member_ids:  vec![],
+            tracker_ids: vec![],
+            updated_at:  3,
+        };
+        assert_eq!(merged(&gr("a"), &gr("b")).name, merged(&gr("b"), &gr("a")).name);
+    }
+
+    #[test]
+    fn history_unions_concurrent_appends_instead_of_discarding_one() {
+        // Each node appended its own fix, so both lists are length 1. The old
+        // "longer wins" rule kept one and lost the other.
+        let (a, b) = (history(&[10]), history(&[20]));
+        for out in [merged(&a, &b), merged(&b, &a)] {
+            let got: Vec<u64> = out.samples.iter().map(|s| s.timestamp).collect();
+            assert_eq!(got, vec![10, 20]);
+        }
+    }
+
+    #[test]
+    fn history_merge_is_idempotent_and_dedups() {
+        let a = history(&[1, 2, 3]);
+        let once = merged(&a, &a);
+        assert_eq!(once.samples.len(), 3, "identical samples must collapse");
+        assert_eq!(merged(&once, &a).samples.len(), 3);
+    }
+
+    #[test]
+    fn history_merge_is_associative() {
+        let (a, b, c) = (history(&[1]), history(&[2]), history(&[3]));
+        let left = merged(&merged(&a, &b), &c);
+        let right = merged(&a, &merged(&b, &c));
+        let ts = |h: &History| -> Vec<u64> { h.samples.iter().map(|s| s.timestamp).collect() };
+        assert_eq!(ts(&left), ts(&right));
+        assert_eq!(ts(&left), vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn history_merge_caps_to_the_newest_and_stays_ordered() {
+        // Union overflows the cap; the newest MAX_HISTORY must survive, oldest
+        // dropped — the same end the write path's `push_capped` reaches.
+        let older: Vec<u64> = (0..MAX_HISTORY as u64).collect();
+        let newer: Vec<u64> = (MAX_HISTORY as u64..MAX_HISTORY as u64 + 10).collect();
+        let out = merged(&history(&older), &history(&newer));
+        assert_eq!(out.samples.len(), MAX_HISTORY);
+        assert_eq!(out.samples.last().unwrap().timestamp, MAX_HISTORY as u64 + 9);
+        assert_eq!(out.samples.first().unwrap().timestamp, 10);
+        assert!(
+            out.samples.windows(2).all(|w| w[0].timestamp <= w[1].timestamp),
+            "samples must stay in timestamp order"
+        );
     }
 }
