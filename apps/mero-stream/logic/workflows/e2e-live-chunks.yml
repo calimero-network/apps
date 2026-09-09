@@ -56,7 +56,7 @@ steps:
   - name: Install application on Node 1
     type: install_application
     node: calimero-node-1
-    path: res/mero_stream.wasm
+    path: dist/com.calimero.mero-stream.mpk
     dev: true
     outputs:
       app_id: applicationId

@@ -63,7 +63,7 @@ steps:
   - name: Install application on node-1
     type: install_application
     node: kv-node-1
-    path: res/kv_store.wasm
+    path: dist/com.calimero.kv-store.mpk
     dev: true
     outputs:
       app_id: applicationId

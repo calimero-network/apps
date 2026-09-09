@@ -45,7 +45,7 @@ steps:
   - name: Install Application
     type: install_application
     node: calimero-node-1
-    path: "res/mero_pixart.wasm"
+    path: dist/com.calimero.mero-pixart.mpk
     dev: true
     outputs:
       app_id: applicationId

@@ -63,7 +63,7 @@ steps:
   - name: Install Application
     type: install_application
     node: calimero-node-1
-    path: res/mero_calendar.wasm
+    path: dist/com.calimero.mero-calendar.mpk
     dev: true
     outputs:
       app_id: applicationId
