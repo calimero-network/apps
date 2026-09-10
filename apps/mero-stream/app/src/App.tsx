@@ -3,7 +3,7 @@ import { Routes, Route, Navigate } from "react-router-dom";
 import { useMero } from "@calimero-network/mero-react";
 import { getContextId, clearActiveRoom } from "./lib/session";
 import InvitationPrompt from "./components/InvitationPrompt";
-import LandingPage from "./pages/LandingPage";
+import LandingPage from "./pages/landing/LandingPage";
 import StreamsPage from "./pages/StreamsPage";
 import RoomsPage from "./pages/RoomsPage";
 import StreamPage from "./pages/StreamPage";

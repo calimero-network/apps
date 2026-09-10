@@ -4,7 +4,7 @@ import { useMero } from "@calimero-network/mero-react";
 
 import FeedPage from "./pages/FeedPage";
 import PostPage from "./pages/PostPage";
-import LandingPage from "./pages/LandingPage";
+import LandingPage from "./pages/landing/LandingPage";
 import LoginPage from "./pages/LoginPage";
 import SetupPage from "./pages/SetupPage";
 import { useForumWorkspace } from "./lib/workspace";

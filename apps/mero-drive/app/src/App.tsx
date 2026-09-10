@@ -36,7 +36,7 @@ import { ThemeProvider } from '@/components/theme/ThemeProvider';
 import { PACKAGE_NAME } from '@/constants/config';
 import { hasInvitePayload } from '@/hooks/useNamespaceInvitation';
 
-import LandingPage from './pages/landing';
+import LandingPage from './pages/landing/LandingPage';
 import Authenticate from './pages/login/Authenticate';
 import WorkspacePage from './pages/workspace';
 import JoinPage from './pages/join';

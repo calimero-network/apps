@@ -4,7 +4,7 @@ import { useMero } from "@calimero-network/mero-react";
 import { APP_ENABLED } from "./lib/tauri";
 import { resolveBootScreen } from "./lib/boot";
 import { getContextId, clearActiveRoom } from "./lib/session";
-import LandingPage from "./pages/LandingPage";
+import LandingPage from "./pages/landing/LandingPage";
 import DesktopSignInPage from "./pages/DesktopSignInPage";
 import RoomsPage from "./pages/RoomsPage";
 import LobbyPage from "./pages/LobbyPage";

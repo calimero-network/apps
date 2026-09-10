@@ -20,6 +20,7 @@
     "tasks": "node scripts/task-status.mjs"
   },
   "dependencies": {
+    "@calimero-network/mero-icons": "catalog:",
     "@calimero-network/mero-js": "catalog:",
     "@calimero-network/mero-platform": "catalog:",
     "@calimero-network/mero-react": "catalog:",

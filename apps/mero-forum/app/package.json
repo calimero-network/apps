@@ -2,8 +2,15 @@
   "name": "mero-forum",
   "private": true,
   "version": "0.1.0",
-  "description": "Mero Forum — a peer-to-peer discussion forum on Calimero",
-  "keywords": ["calimero", "forum", "discussion", "react", "vite", "web3"],
+  "description": "Mero Forum \u2014 a peer-to-peer discussion forum on Calimero",
+  "keywords": [
+    "calimero",
+    "forum",
+    "discussion",
+    "react",
+    "vite",
+    "web3"
+  ],
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -18,6 +25,7 @@
     "prettier:write": "prettier --write 'src/**/*.{ts,tsx,json}'"
   },
   "dependencies": {
+    "@calimero-network/mero-icons": "catalog:",
     "@calimero-network/mero-js": "catalog:",
     "@calimero-network/mero-react": "catalog:",
     "react": "catalog:",
