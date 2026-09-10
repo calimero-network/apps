@@ -54,7 +54,7 @@ slug        = "com.calimero.mero-issue-tracker"
 icon        = "../app/public/icon-512.png"
 tags        = ["productivity", "issues", "collaboration"]
 github      = "https://github.com/calimero-network/apps"
-min-runtime-version = "0.11.0-rc.32"
+min-runtime-version = "0.11.0-rc.33"
 # A BARE https origin — it doubles as the login callback's registered redirect
 # URI and is compared by EXACT ORIGIN, so a trailing path breaks hosted login
 # after credentials are accepted while desktop login keeps working.
