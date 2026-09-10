@@ -1,28 +1,32 @@
 /**
- * Mero Drive Docs hero animation.
+ * Mero Drive Docs — a minimal mock of the app itself.
  *
- * HAND-OWNED: `pnpm landing:generate` wires this in but never rewrites it —
- * the animation is the one piece that should differ per app.
- *
- * Composed from the `.cal-lp-a-*` primitives in landing.css, so it themes with
- * the page, pauses under `prefers-reduced-motion`, and reads as a still frame.
+ * HAND-OWNED: `pnpm landing:generate` wires this in but never rewrites it.
+ * Shows REAL labels, the way the bespoke previews this replaced did.
  */
 
-/** A folder of documents; one uploads, then seals. */
+const DOCS: [string, string, string][] = [
+  ['Q3 roadmap.md', 'edited 2m ago', '0.4s'],
+  ['Security review', 'edited 1h ago', '1.0s'],
+  ['Launch checklist', 'edited yesterday', '1.6s'],
+];
+
+/** A folder of named documents; one uploads and seals. */
 export default function DriveAnimation() {
-  const rows = ['0.3s', '0.7s', '1.1s', '1.5s'];
   return (
     <div className="cal-lp-a" aria-hidden="true">
-      <span className="cal-lp-a-chip" style={{ left: 20, top: 14 }}>Product / specs</span>
-      {rows.map((d, i) => (
-        <span key={i} className="cal-lp-a-box cal-lp-a-rise" style={{ left: 20, top: 42 + i * 30, right: 20, height: 24, ['--d' as string]: d, ['--t' as string]: '5s' }} />
+      <span className="cal-lp-a-txt cal-lp-a-txt--head" style={{ left: 20, top: 10 }}>Product / specs</span>
+      <span className="cal-lp-a-txt cal-lp-a-txt--accent" style={{ right: 20, top: 10 }}>Private folder</span>
+      {DOCS.map(([name, meta, d], i) => (
+        <span key={name}>
+          <span className="cal-lp-a-box cal-lp-a-rise" style={{ left: 20, top: 32 + i * 34, right: 20, height: 28, ['--d' as string]: d, ['--t' as string]: '6s' }} />
+          <span className="cal-lp-a-txt cal-lp-a-txt--val cal-lp-a-rise" style={{ left: 30, top: 39 + i * 34, ['--d' as string]: d, ['--t' as string]: '6s' }}>{name}</span>
+          <span className="cal-lp-a-txt cal-lp-a-txt--dim cal-lp-a-rise" style={{ left: 30, top: 50 + i * 34, fontSize: 8.5, ['--d' as string]: d, ['--t' as string]: '6s' }}>{meta}</span>
+        </span>
       ))}
-      {rows.map((d, i) => (
-        <span key={`l${i}`} className="cal-lp-a-line cal-lp-a-rise" style={{ left: 32, top: 52 + i * 30, width: 60 + (i % 3) * 26, ['--d' as string]: d, ['--t' as string]: '5s' }} />
-      ))}
-      {/* the upload filling, then a lock chip */}
-      <span className="cal-lp-a-box cal-lp-a-grow" style={{ left: 20, top: 162, right: 20, height: 5, background: 'var(--cal-lp-accent)', borderColor: 'transparent', transformOrigin: 'left', ['--d' as string]: '1.9s', ['--t' as string]: '5s' }} />
-      <span className="cal-lp-a-chip cal-lp-a-rise" style={{ right: 20, top: 138, ['--d' as string]: '3.1s', ['--t' as string]: '5s' }}>Encrypted</span>
+      <span className="cal-lp-a-txt cal-lp-a-txt--dim" style={{ left: 20, top: 142, fontSize: 8.5 }}>Uploading design-system.pdf</span>
+      <span className="cal-lp-a-pane" style={{ left: 20, top: 154, right: 20, height: 6 }} />
+      <span className="cal-lp-a-box cal-lp-a-grow" style={{ left: 20, top: 154, right: 20, height: 6, background: 'var(--cal-lp-accent)', borderColor: 'transparent', transformOrigin: 'left', ['--d' as string]: '2.2s', ['--t' as string]: '6s' }} />
     </div>
   );
 }

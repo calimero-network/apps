@@ -143,6 +143,11 @@ const css = `
 .mbl-social a:hover { color: #fff; }
 .mbl-social svg { width: 14px; height: 14px; fill: currentColor; }
 .mbl-foot { margin-top: 6px; color: #93a2b3; font-size: 10px; text-shadow: 0 1px 3px rgba(0,0,0,0.8); }
+
+/* Chromeless: the unified landing page (src/pages/landing) has already shown the
+   logo, the name and the pitch, so when it hands off here the launcher must not
+   repeat them — it goes straight to the world picker. See main.ts. */
+#mb-landing.is-chromeless .mbl-logo, #mb-landing.is-chromeless .mbl-title, #mb-landing.is-chromeless .mbl-tag, #mb-landing.is-chromeless .mbl-social, #mb-landing.is-chromeless .mbl-foot { display: none !important; }
 `;
 
 export const LOGO_SVG = `
@@ -210,8 +215,17 @@ export class Landing {
     this.panorama = new Panorama(this.root);
   }
 
-  show(defaults: { name: string; seed: number }): Promise<LaunchChoice> {
+  /**
+   * `chromeless` skips this screen's own logo/title/pitch and goes straight to
+   * the world picker. Passed when the unified landing page has just shown all
+   * of that — repeating it would be two landing pages in a row.
+   */
+  show(
+    defaults: { name: string; seed: number },
+    opts: { chromeless?: boolean } = {},
+  ): Promise<LaunchChoice> {
     return new Promise((resolve) => {
+      if (opts.chromeless) this.root.classList.add("is-chromeless");
       this.render(defaults, (choice) => {
         this.panorama.destroy();
         this.root.remove();

@@ -1,30 +1,33 @@
 /**
- * Mero Forum hero animation.
+ * Mero Forum — a minimal mock of the app itself.
  *
- * HAND-OWNED: `pnpm landing:generate` wires this in but never rewrites it —
- * the animation is the one piece that should differ per app.
- *
- * Composed from the `.cal-lp-a-*` primitives in landing.css, so it themes with
- * the page, pauses under `prefers-reduced-motion`, and reads as a still frame.
+ * HAND-OWNED: `pnpm landing:generate` wires this in but never rewrites it.
+ * Shows REAL labels, the way the bespoke previews this replaced did.
  */
 
-/** A thread list: a new post arrives on top, then a reply nests under it. */
+const THREADS: [string, string, string][] = [
+  ['Should we pin the SDK per app?', '7 replies', '0.4s'],
+  ['Node keeps dropping on wifi', '3 replies', '1.0s'],
+  ['Welcome thread', '12 replies', '1.6s'],
+];
+
+/** A thread list with real titles; a reply arrives and nests. */
 export default function ForumAnimation() {
   return (
     <div className="cal-lp-a" aria-hidden="true">
-      <span className="cal-lp-a-box cal-lp-a-rise" style={{ left: 20, top: 18, right: 20, height: 40, background: 'var(--cal-lp-accent-soft)', borderColor: 'transparent', ['--d' as string]: '0.4s', ['--t' as string]: '5s' }} />
-      <span className="cal-lp-a-line cal-lp-a-rise" style={{ left: 34, top: 28, width: 118, ['--d' as string]: '0.5s', ['--t' as string]: '5s' }} />
-      <span className="cal-lp-a-line cal-lp-a-rise" style={{ left: 34, top: 42, width: 72, height: 5, ['--d' as string]: '0.6s', ['--t' as string]: '5s' }} />
-      {/* the nested reply */}
-      <span className="cal-lp-a-box cal-lp-a-rise" style={{ left: 44, top: 66, right: 20, height: 30, ['--d' as string]: '1.6s', ['--t' as string]: '5s' }} />
-      <span className="cal-lp-a-line cal-lp-a-rise" style={{ left: 58, top: 76, width: 94, ['--d' as string]: '1.7s', ['--t' as string]: '5s' }} />
-      {[0, 1].map((i) => (
-        <span key={i} className="cal-lp-a-box" style={{ left: 20, top: 106 + i * 34, right: 20, height: 28 }} />
+      <span className="cal-lp-a-txt cal-lp-a-txt--head" style={{ left: 20, top: 10 }}>Engineering</span>
+      <span className="cal-lp-a-txt cal-lp-a-txt--accent" style={{ right: 20, top: 10 }}>Invite only</span>
+      {THREADS.map(([title, meta, d], i) => (
+        <span key={title}>
+          <span className="cal-lp-a-box cal-lp-a-rise" style={{ left: 20, top: 30 + i * 38, right: 20, height: 32, ...(i === 0 ? { background: 'var(--cal-lp-accent-soft)', borderColor: 'transparent' } : {}), ['--d' as string]: d, ['--t' as string]: '6s' }} />
+          <span className="cal-lp-a-txt cal-lp-a-txt--val cal-lp-a-rise" style={{ left: 30, top: 38 + i * 38, ['--d' as string]: d, ['--t' as string]: '6s' }}>{title}</span>
+          <span className="cal-lp-a-txt cal-lp-a-txt--dim cal-lp-a-rise" style={{ left: 30, top: 50 + i * 38, fontSize: 8.5, ['--d' as string]: d, ['--t' as string]: '6s' }}>{meta}</span>
+        </span>
       ))}
-      {[0, 1].map((i) => (
-        <span key={`t${i}`} className="cal-lp-a-line" style={{ left: 34, top: 116 + i * 34, width: 106 - i * 24 }} />
-      ))}
-      <span className="cal-lp-a-chip cal-lp-a-blink" style={{ right: 20, top: 24, ['--t' as string]: '5s' }}>+1 reply</span>
+      {/* the nested reply landing */}
+      <span className="cal-lp-a-box cal-lp-a-rise" style={{ left: 44, top: 144, right: 20, height: 26, ['--d' as string]: '2.6s', ['--t' as string]: '6s' }} />
+      <span className="cal-lp-a-av cal-lp-a-rise" style={{ left: 54, top: 149, ['--d' as string]: '2.6s', ['--t' as string]: '6s' }}>A</span>
+      <span className="cal-lp-a-txt cal-lp-a-rise" style={{ left: 78, top: 154, fontSize: 8.5, ['--d' as string]: '2.6s', ['--t' as string]: '6s' }}>Agreed — pin it in the catalog.</span>
     </div>
   );
 }

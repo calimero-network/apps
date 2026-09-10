@@ -1,37 +1,31 @@
 /**
- * Mero Meet hero animation.
+ * Mero Meet — a minimal mock of the app itself.
  *
- * HAND-OWNED: `pnpm landing:generate` wires this in but never rewrites it —
- * the animation is the one piece that should differ per app.
- *
- * Composed from the `.cal-lp-a-*` primitives in landing.css, so it themes with
- * the page, pauses under `prefers-reduced-motion`, and reads as a still frame.
+ * HAND-OWNED: `pnpm landing:generate` wires this in but never rewrites it.
+ * Shows REAL labels, the way the bespoke previews this replaced did.
  */
 
-/** A call grid filling up, with the active speaker's mic bars moving. */
+const PEOPLE = ['Ana', 'Marko', 'Iva', 'You'];
+
+/** A call grid of named participants; the speaker's mic bars move. */
 export default function MeetAnimation() {
-  const tiles: [number, number, string][] = [[20, 26, '0.3s'], [124, 26, '0.9s'], [20, 108, '1.5s'], [124, 108, '2.1s']];
+  const pos: [number, number][] = [[20, 30], [124, 30], [20, 108], [124, 108]];
   return (
     <div className="cal-lp-a" aria-hidden="true">
-      {tiles.map(([x, y, d], i) => (
-        <span key={i} className="cal-lp-a-pane cal-lp-a-rise" style={{ left: x, top: y, width: 96, height: 70, ['--d' as string]: d, ['--t' as string]: '5.5s' }} />
+      <span className="cal-lp-a-txt cal-lp-a-txt--head" style={{ left: 20, top: 10 }}>Standup · 4 in call</span>
+      <span className="cal-lp-a-txt cal-lp-a-txt--accent" style={{ right: 20, top: 10 }}>P2P media</span>
+      {PEOPLE.map((who, i) => (
+        <span key={who}>
+          <span className="cal-lp-a-pane cal-lp-a-rise" style={{ left: pos[i][0], top: pos[i][1], width: 96, height: 66, ['--d' as string]: `${0.3 + i * 0.5}s`, ['--t' as string]: '6s' }} />
+          <span className="cal-lp-a-av cal-lp-a-rise" style={{ left: pos[i][0] + 39, top: pos[i][1] + 16, ...(i === 3 ? {} : { background: 'var(--cal-lp-border-strong)', color: 'var(--cal-lp-text)' }), ['--d' as string]: `${0.3 + i * 0.5}s`, ['--t' as string]: '6s' }}>{who[0]}</span>
+          <span className="cal-lp-a-txt cal-lp-a-txt--dim cal-lp-a-rise" style={{ left: pos[i][0] + 8, top: pos[i][1] + 50, fontSize: 8.5, ['--d' as string]: `${0.3 + i * 0.5}s`, ['--t' as string]: '6s' }}>{who}</span>
+        </span>
       ))}
-      {tiles.map(([x, y, d], i) => (
-        <span key={`f${i}`} className="cal-lp-a-dot cal-lp-a-rise" style={{ left: x + 36, top: y + 18, width: 24, height: 24, background: 'var(--cal-lp-border-strong)', ['--d' as string]: d, ['--t' as string]: '5.5s' }} />
-      ))}
-      {/* mic bars on the active speaker */}
+      {/* the active speaker's mic */}
       {[0, 1, 2, 3].map((i) => (
-        <span
-          key={`m${i}`}
-          className="cal-lp-a-box cal-lp-a-blink"
-          style={{
-            left: 44 + i * 7, top: 78, width: 4, height: 10 + (i % 2) * 8,
-            background: 'var(--cal-lp-accent)', borderColor: 'transparent',
-            ['--d' as string]: `${2.5 + i * 0.12}s`, ['--t' as string]: '5.5s',
-          }}
-        />
+        <span key={`m${i}`} className="cal-lp-a-box cal-lp-a-blink" style={{ left: 88 + i * 6, top: 76 - (i % 2) * 3, width: 3, height: 8 + (i % 2) * 7, background: 'var(--cal-lp-accent)', borderColor: 'transparent', ['--d' as string]: `${2.4 + i * 0.1}s`, ['--t' as string]: '6s' }} />
       ))}
-      <span className="cal-lp-a-chip" style={{ right: 18, top: 14 }}>P2P media</span>
+      <span className="cal-lp-a-txt cal-lp-a-txt--dim" style={{ left: 20, bottom: 2, fontSize: 8.5 }}>Signalling on your nodes · media direct</span>
     </div>
   );
 }

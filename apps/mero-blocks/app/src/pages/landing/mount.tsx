@@ -18,11 +18,16 @@ import LandingPage from './LandingPage';
 
 const SEEN = 'cal-lp-seen';
 
-export function showLandingOnce(): Promise<void> {
+/**
+ * @returns `true` if the landing page was actually shown, so the caller can
+ *   render the launcher CHROMELESS — straight to the world picker, without
+ *   repeating a logo and a pitch the visitor just read.
+ */
+export function showLandingOnce(): Promise<boolean> {
   const url = new URL(window.location.href);
-  if (url.searchParams.has('invitation')) return Promise.resolve();
+  if (url.searchParams.has('invitation')) return Promise.resolve(false);
   try {
-    if (sessionStorage.getItem(SEEN) === '1') return Promise.resolve();
+    if (sessionStorage.getItem(SEEN) === '1') return Promise.resolve(false);
   } catch {
     /* a private window is not a reason to block the game */
   }
@@ -41,7 +46,7 @@ export function showLandingOnce(): Promise<void> {
       }
       root.unmount();
       host.remove();
-      resolve();
+      resolve(true);
     };
 
     root.render(<LandingPage onConnect={done} />);

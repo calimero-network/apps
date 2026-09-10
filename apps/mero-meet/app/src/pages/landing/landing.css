@@ -720,6 +720,57 @@
   box-shadow: 0 0 0 2px var(--cal-lp-bg-1);
 }
 
+
+/* Text inside an animation. The old bespoke previews worked because they showed
+   REAL labels — column letters, project names, "=SUM(A1:A3)" — not grey boxes.
+   An abstract rectangle communicates nothing about what the app does. */
+.cal-lp-a-txt {
+  position: absolute;
+  font-family: var(--cal-lp-font);
+  font-size: 10px;
+  line-height: 1;
+  color: var(--cal-lp-text-dim);
+  white-space: nowrap;
+}
+.cal-lp-a-txt--dim { color: var(--cal-lp-text-faint); }
+.cal-lp-a-txt--head {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--cal-lp-text-faint);
+}
+.cal-lp-a-txt--val { color: var(--cal-lp-text); font-weight: 600; }
+.cal-lp-a-txt--accent { color: var(--cal-lp-accent-ink); font-weight: 650; }
+/* The window chrome every preview sits in. */
+.cal-lp-a-tool {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  width: 17px;
+  height: 17px;
+  border-radius: 4px;
+  background: var(--cal-lp-bg-3);
+  font-family: var(--cal-lp-font);
+  font-size: 9px;
+  font-weight: 650;
+  color: var(--cal-lp-text-faint);
+}
+/* A peer avatar. */
+.cal-lp-a-av {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  font-family: var(--cal-lp-font);
+  font-size: 8.5px;
+  font-weight: 700;
+  color: var(--cal-lp-accent-text);
+  background: var(--cal-lp-accent);
+}
+
 /* The motions. `--d` sets the delay, `--t` the duration, both from inline style.
    NO fill-mode, deliberately: `both` plus a delay parks an element at its 0%
    keyframe until its turn comes, so a still capture — the exact artefact used

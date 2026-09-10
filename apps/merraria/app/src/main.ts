@@ -62,8 +62,11 @@ async function boot(): Promise<void> {
     // itself for an ?invitation= link and after the first view in a session,
     // and it is deliberately NOT on the desktop-SSO branch above, which is
     // zero-click by design.
-    await showLandingOnce();
-    choice = await new Landing(app).show(defaults);
+    // The unified landing page first. If it actually showed, the launcher drops
+    // its own logo/title/pitch and opens on the world picker — join a world or
+    // create one — rather than making the visitor read a second landing page.
+    const sawLanding = await showLandingOnce();
+    choice = await new Landing(app).show(defaults, { chromeless: sawLanding });
   }
   localStorage.setItem("mt-name", choice.name);
 
