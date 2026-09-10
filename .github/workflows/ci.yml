@@ -673,6 +673,45 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
 
+      # ⚠️ Both Playwright install steps below shell out to `apt-get update`,
+      # and apt exits 100 when ANY configured index fails — including the
+      # third-party repos the runner image ships and Playwright never reads a
+      # package from. Playwright turns that into
+      # `Failed to install browser dependencies`, which reads as a broken app.
+      #
+      # On 2026-09-09 Google's Chrome repo served a `Release` file newer than
+      # its `Packages.gz` (Release created 17:16Z, Packages last modified
+      # 09:41Z). apt called it `Hash Sum mismatch` and ALL SIXTEEN Browser E2E
+      # legs went red on main with no test having run — on the very commit
+      # whose PR run had been green ninety minutes earlier. The bounded retry
+      # below cannot clear that: a stale CDN index is not a transient stall, so
+      # all three attempts hit the same mismatch.
+      #
+      # Playwright's deps come from Ubuntu main/universe only, so the fix is to
+      # take the other lists out of apt's view for this job. Parked by rename
+      # rather than deleted (apt reads only `*.list`/`*.sources`), and selected
+      # by CONTENT so a future runner image reshuffling the filenames cannot
+      # accidentally park the Ubuntu archive itself.
+      - name: Keep apt to the Ubuntu archive
+        run: |
+          set -euo pipefail
+          for f in /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources; do
+            [ -e "$f" ] || continue
+            # `ubuntu.com` matches the archive/security/ports hosts;
+            # `apt-mirrors.txt` matches the `mirror+file:` list the hosted
+            # images use. Deliberately NOT a bare `ubuntu`, which would also
+            # match `packages.microsoft.com/ubuntu/24.04/prod`.
+            if grep -qE 'ubuntu\.com|apt-mirrors\.txt' "$f"; then
+              echo "keeping   $(basename "$f")"
+              continue
+            fi
+            echo "parking   $(basename "$f")"
+            sudo mv "$f" "$f.ci-disabled"
+          done
+          # Defense in depth for the OTHER half of this failure class: a reset
+          # or timeout mid-fetch. apt does not retry by default, and the retry
+          # loops below can only re-run the whole install.
+          printf 'Acquire::Retries "3";\n' | sudo tee /etc/apt/apt.conf.d/99-ci-retries >/dev/null
       # ⚠️ `playwright install --with-deps` has no timeout of its own and has
       # been observed running to the 6-hour job default elsewhere in the fleet.
       # Capped, and the OS deps are installed separately on a cache hit so the
@@ -688,7 +727,8 @@ jobs:
             echo "::warning::playwright install attempt $attempt hung or failed; retrying"
             sleep 15
           done
-          echo "::error::playwright install failed three times — this is the apt hang, not the app"
+          echo "::error::playwright install failed three times — an apt stall or a broken index, not the app"
+          echo "apt sources still in play:"; cat /etc/apt/sources.list /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources 2>/dev/null || true
           exit 1
 
       # ⚠️ Retried, and each ATTEMPT is bounded rather than just the step.
@@ -713,7 +753,8 @@ jobs:
             echo "::warning::playwright install-deps attempt $attempt hung or failed; retrying"
             sleep 15
           done
-          echo "::error::playwright install-deps failed three times — this is the apt hang, not the app"
+          echo "::error::playwright install-deps failed three times — an apt stall or a broken index, not the app"
+          echo "apt sources still in play:"; cat /etc/apt/sources.list /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources 2>/dev/null || true
           exit 1
 
       # An app opts into a specific CI suite with `test:e2e:ci`; otherwise the
