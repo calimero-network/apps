@@ -88,7 +88,7 @@ cat > res/multi-bundle-temp/manifest.json <<EOF
   "version": "1.0",
   "package": "com.calimero.scaffolding-e2e-multi",
   "appVersion": "0.1.0",
-  "minRuntimeVersion": "0.11.0-rc.32",
+  "minRuntimeVersion": "0.11.0-rc.33",
   "services": [
     {
       "name": "store-a",
