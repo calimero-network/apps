@@ -10,6 +10,7 @@
  */
 import { Clock, CloudX, LockBox, LockStar, ShieldCheck } from '@calimero-network/mero-icons';
 
+import Animation from './animation';
 import type { LandingConfig } from './landingTypes';
 
 export const CONFIG: LandingConfig = {
@@ -17,6 +18,7 @@ export const CONFIG: LandingConfig = {
   packageId: "com.calimero.mero-pass",
   tagline: "A peer-to-peer secret manager: keep credentials in a vault on your own nodes and share them with namespace members.",
   dir: "mero-pass",
+  markSrc: "/favicon.svg",
   iconSrc: '/icon-512.png',
   availability: "web+desktop",
   trust: ["Vault on your nodes", "Five secret types", "No vendor to breach"],
@@ -51,4 +53,5 @@ export const CONFIG: LandingConfig = {
       body: "There is no central vault to attack, because there is no central vault.",
     },
   ],
+  animation: Animation,
 };

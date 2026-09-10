@@ -48,7 +48,13 @@ export interface LandingConfig {
   tagline: string;
   /** Directory under `apps/`, for the GitHub link. */
   dir: string;
-  /** The app's own 512x512 icon, served from `public/`. */
+  /**
+   * The app's own logo mark, served from `public/` — the SAME asset as the
+   * browser tab favicon and the Tauri icon, so the three never diverge. An SVG
+   * because the header renders it at 24px and a 512px raster is wasteful there.
+   */
+  markSrc: string;
+  /** The 512x512 raster, for anywhere a bitmap is genuinely wanted. */
   iconSrc: string;
   availability: Availability;
   /** Shown as an extra badge. `mero-stream` only, so far. */

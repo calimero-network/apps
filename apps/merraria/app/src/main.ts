@@ -18,6 +18,7 @@ import { loadWorld, playerInBounds, saveWorld } from "./state/persistence";
 import { WheelSteps } from "./input/wheel";
 import { Hud } from "./ui/hud";
 import { Landing, LaunchChoice } from "./ui/landing";
+import { showLandingOnce } from "./pages/landing/mount";
 import { PauseMenu } from "./ui/overlays";
 
 // ── Inbound invite links ──────────────────────────────────────────────────────
@@ -57,6 +58,11 @@ async function boot(): Promise<void> {
   if (captured === "full" && hasConnection()) {
     choice = { name: defaults.name };
   } else {
+    // The marketing landing page sits in front of the launcher. It skips
+    // itself for an ?invitation= link and after the first view in a session,
+    // and it is deliberately NOT on the desktop-SSO branch above, which is
+    // zero-click by design.
+    await showLandingOnce();
     choice = await new Landing(app).show(defaults);
   }
   localStorage.setItem("mt-name", choice.name);

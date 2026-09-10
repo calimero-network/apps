@@ -10,6 +10,7 @@
  */
 import { ExternalLink, FileCheck, GlobeCheck, LockBox, ShieldCheck } from '@calimero-network/mero-icons';
 
+import Animation from './animation';
 import type { LandingConfig } from './landingTypes';
 
 export const CONFIG: LandingConfig = {
@@ -17,6 +18,7 @@ export const CONFIG: LandingConfig = {
   packageId: "com.calimero.mero-sign",
   tagline: "Document signing on Calimero - upload a PDF, collect signatures from namespace members, and verify them peer-to-peer.",
   dir: "mero-sign",
+  markSrc: "/favicon.svg",
   iconSrc: '/icon-512.png',
   availability: "web+desktop",
   trust: ["No signing service", "Roles per signatory", "Verify peer-to-peer"],
@@ -51,4 +53,5 @@ export const CONFIG: LandingConfig = {
       body: "Check a signature without asking a service whether it is genuine.",
     },
   ],
+  animation: Animation,
 };

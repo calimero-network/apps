@@ -10,6 +10,7 @@
  */
 import { ArrowUpRight, ExternalLink, EyeOff, LockCheck, Target } from '@calimero-network/mero-icons';
 
+import Animation from './animation';
 import type { LandingConfig } from './landingTypes';
 
 export const CONFIG: LandingConfig = {
@@ -17,6 +18,7 @@ export const CONFIG: LandingConfig = {
   packageId: "com.calimero.battleships",
   tagline: "Two-player Battleships over Calimero: a lobby service for matchmaking and a game service per match, with commit-reveal ship placement.",
   dir: "battleships",
+  markSrc: "/favicon.svg",
   iconSrc: '/icon-512.png',
   availability: "web+desktop",
   trust: ["Boards never leave your node", "Commit-reveal placement", "No accounts"],
@@ -51,4 +53,5 @@ export const CONFIG: LandingConfig = {
       body: "Recursive namespace invitations. No sign-up, no account, no email address.",
     },
   ],
+  animation: Animation,
 };

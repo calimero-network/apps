@@ -10,6 +10,7 @@
  */
 import { CloudUpload, Cube, Download, FileText, Grid, Refresh } from '@calimero-network/mero-icons';
 
+import Animation from './animation';
 import type { LandingConfig } from './landingTypes';
 
 export const CONFIG: LandingConfig = {
@@ -17,6 +18,7 @@ export const CONFIG: LandingConfig = {
   packageId: "com.calimero.mero-design",
   tagline: "Collaborative design tool on the Calimero p2p network. Figma-style canvas, your data on your nodes.",
   dir: "mero-design",
+  markSrc: "/favicon.svg",
   iconSrc: '/icon-512.png',
   availability: "web+desktop",
   trust: ["Infinite canvas", "Real-time sync", "Files on your nodes"],
@@ -56,4 +58,5 @@ export const CONFIG: LandingConfig = {
       body: "Changes stream to every member over SSE. No central server arbitrating who edited what.",
     },
   ],
+  animation: Animation,
 };

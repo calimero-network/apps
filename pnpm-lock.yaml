@@ -298,6 +298,9 @@ importers:
 
   apps/mero-blocks/app:
     dependencies:
+      '@calimero-network/mero-icons':
+        specifier: 'catalog:'
+        version: 0.0.5(react@19.2.8)
       '@calimero-network/mero-js':
         specifier: 'catalog:'
         version: 13.3.0
@@ -329,6 +332,12 @@ importers:
       '@types/node':
         specifier: ^26.1.2
         version: 26.4.0
+      '@types/react':
+        specifier: 'catalog:'
+        version: 19.2.18
+      '@types/react-dom':
+        specifier: 'catalog:'
+        version: 19.2.5(@types/react@19.2.18)
       '@types/three':
         specifier: ^0.185.4
         version: 0.185.4
@@ -1462,6 +1471,9 @@ importers:
 
   apps/merraria/app:
     dependencies:
+      '@calimero-network/mero-icons':
+        specifier: 'catalog:'
+        version: 0.0.5(react@19.2.8)
       '@calimero-network/mero-js':
         specifier: 'catalog:'
         version: 13.3.0
@@ -1490,6 +1502,12 @@ importers:
       '@types/node':
         specifier: ^24.13.3
         version: 24.13.3
+      '@types/react':
+        specifier: 'catalog:'
+        version: 19.2.18
+      '@types/react-dom':
+        specifier: 'catalog:'
+        version: 19.2.5(@types/react@19.2.18)
       jsdom:
         specifier: ^28.1.0
         version: 28.1.0(canvas@3.2.3)

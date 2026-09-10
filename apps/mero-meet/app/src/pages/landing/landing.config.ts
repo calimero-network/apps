@@ -10,6 +10,7 @@
  */
 import { CloudX, ExternalLink, Shield, Wifi } from '@calimero-network/mero-icons';
 
+import Animation from './animation';
 import type { LandingConfig } from './landingTypes';
 
 export const CONFIG: LandingConfig = {
@@ -17,6 +18,7 @@ export const CONFIG: LandingConfig = {
   packageId: "com.calimero.mero-meet",
   tagline: "Decentralized, peer-to-peer video calling on Calimero. WebRTC media; signaling rides your nodes — no signaling server.",
   dir: "mero-meet",
+  markSrc: "/favicon.svg",
   iconSrc: '/icon-512.png',
   availability: "desktop",
   trust: ["Media stays peer-to-peer", "No signalling server", "Rooms are namespaces"],
@@ -52,4 +54,5 @@ export const CONFIG: LandingConfig = {
       a: "Mero Meet uses the Calimero desktop app for its node, its sign-in, and the media bridge that connects WebRTC to the room. On the plain web there is no node to talk to, so this page is the front door rather than the app itself.",
     },
   ],
+  animation: Animation,
 };

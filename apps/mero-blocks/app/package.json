@@ -14,6 +14,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@calimero-network/mero-icons": "catalog:",
     "@calimero-network/mero-js": "catalog:",
     "@calimero-network/mero-platform": "catalog:",
     "@calimero-network/mero-react": "catalog:",
@@ -26,6 +27,8 @@
   "devDependencies": {
     "@playwright/test": "catalog:",
     "@types/node": "^26.1.2",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
     "@types/three": "^0.185.4",
     "jsdom": "catalog:",
     "typescript": "~7.0.2",

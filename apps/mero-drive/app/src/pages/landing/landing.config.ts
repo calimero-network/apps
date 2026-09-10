@@ -10,6 +10,7 @@
  */
 import { Eye, FileText, Folder, Shield, Table } from '@calimero-network/mero-icons';
 
+import Animation from './animation';
 import type { LandingConfig } from './landingTypes';
 
 export const CONFIG: LandingConfig = {
@@ -17,6 +18,7 @@ export const CONFIG: LandingConfig = {
   packageId: "com.calimero.mero-drive-docs",
   tagline: "Namespace-based document workspace - registry + docs multi-service bundle.",
   dir: "mero-drive",
+  markSrc: "/icons/icon.svg",
   iconSrc: '/icon-512.png',
   availability: "web+desktop",
   trust: ["Folders are contexts", "Rich-text editing", "Private by default"],
@@ -51,4 +53,5 @@ export const CONFIG: LandingConfig = {
       body: "Decide what is shared and what stays yours, folder by folder.",
     },
   ],
+  animation: Animation,
 };

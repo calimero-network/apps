@@ -25,18 +25,15 @@
  * `kv-store`      contract/test fixture, no user-facing frontend.
  * `scaffolding-e2e`  e2e harness app, same.
  *
- * `mero-blocks` and `merraria` are excluded for a different and temporary
- * reason: they are **not React apps**. Both boot from `src/main.ts` with no
- * `.tsx` anywhere, and their `Landing` (`src/ui/landing.ts`, ~770 lines each)
- * is an imperative launcher that RESOLVES A `LaunchChoice` PROMISE `main.ts`
- * awaits before starting the game — online, offline, or join-by-invitation.
- * It is game-boot logic wearing a landing page, not decoration.
- *
- * Giving them this template means mounting React purely for the landing and
- * bridging its "Connect to node" back into that promise. That is a real change
- * to how each game starts, it is app-specific, and it belongs in its own pull
- * request with its own testing rather than riding a fleet-wide sweep. Twelve
- * apps here; those two tracked separately.
+ * `mero-blocks` and `merraria` ARE included, but they need one extra piece.
+ * Neither is a React app — both boot from `src/main.ts` with no `.tsx` — and
+ * their `Landing` (`src/ui/landing.ts`) is an imperative launcher resolving a
+ * `LaunchChoice` promise `main.ts` awaits before the game starts. Rather than
+ * rewrite that, the marketing page sits IN FRONT of it: a hand-written
+ * `mount.tsx` renders this template into a throwaway root and resolves when the
+ * CTA is clicked, then hands off to the launcher untouched. It is skipped for
+ * an `?invitation=` link and after the first view in a session, so joining a
+ * world and coming back to play never pay for it.
  */
 
 /** @type {Record<string, import('./types.js').AppLanding>} */
@@ -58,6 +55,45 @@ export const APPS = {
     ],
   },
 
+
+  'mero-blocks': {
+    e2eDir: 'e2e',
+    // Its own landing.spec.ts tests the game launcher; do not clobber it.
+    specName: 'marketing-landing.spec.ts',
+    availability: 'web+desktop',
+    playableOffline: true,
+    trust: ['No game server', 'Deterministic world', 'Plays offline'],
+    explainer: [
+      'A Minecraft-style voxel sandbox you can build in with other people, hosted by nobody. The world is not a server you connect to — it is a Calimero context holding a seed plus the diff of every block anyone has edited.',
+      'Because the terrain generator is deterministic, the same seed and the same diff produce the same world on every peer, so all that has to replicate is the edits. And if you just want to dig around on your own, it runs with no node at all.',
+    ],
+    features: [
+      { icon: 'CloudX', title: 'No game server', body: 'The world is a seed plus a block-edit diff, in a context you own. Nothing to host, nothing to pay for.' },
+      { icon: 'WifiOff', title: 'Plays fully offline', body: 'No node required. The world persists to localStorage and is yours alone until you want company.' },
+      { icon: 'Cube3DStacked', title: 'Deterministic terrain', body: 'The same seed builds the same world on every peer, so only the edits need to travel.' },
+      { icon: 'Wifi', title: 'See other players', body: 'Presence replicates alongside the edits, so you watch people build in real time.' },
+      { icon: 'Monitor', title: 'Runs in a browser', body: 'A Three.js renderer over a pure-TypeScript engine. Nothing to install to start playing.' },
+    ],
+  },
+
+  merraria: {
+    e2eDir: 'e2e',
+    specName: 'marketing-landing.spec.ts',
+    availability: 'web+desktop',
+    playableOffline: true,
+    trust: ['No game server', 'Deterministic world', 'Plays offline'],
+    explainer: [
+      'A Terraria-style mining and building sandbox, seen from the side, shared with other players and hosted by nobody. Like Mero Blocks, the world is a Calimero context: a seed, the diff of every tile anyone has changed, and player presence.',
+      'The terrain generator is deterministic, so the seed plus the edits reproduce the same world everywhere and only the edits have to travel. It also runs with no node at all if you want to dig alone.',
+    ],
+    features: [
+      { icon: 'CloudX', title: 'No game server', body: 'The world is a seed plus a tile-edit diff, in a context you own. Nothing to host.' },
+      { icon: 'WifiOff', title: 'Plays fully offline', body: 'No node needed. The world persists locally and is yours until you invite anyone.' },
+      { icon: 'Cube3DStacked', title: 'Deterministic terrain', body: 'The same seed builds the same world on every peer, so only your changes replicate.' },
+      { icon: 'Wifi', title: 'See other players', body: 'Presence rides alongside the tile edits, so you watch people mine in real time.' },
+      { icon: 'Monitor', title: 'Runs in a browser', body: 'A Canvas2D renderer over a pure-TypeScript engine. Nothing to install.' },
+    ],
+  },
 
   'mero-calendar': {
     e2eDir: 'e2e',
@@ -96,6 +132,7 @@ export const APPS = {
   },
 
   'mero-drive': {
+    markSrc: '/icons/icon.svg',
     e2eDir: 'e2e',
     availability: 'web+desktop',
     trust: ['Folders are contexts', 'Rich-text editing', 'Private by default'],

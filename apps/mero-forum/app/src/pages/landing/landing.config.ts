@@ -10,6 +10,7 @@
  */
 import { CloudX, MessageCircle, Refresh, Shield } from '@calimero-network/mero-icons';
 
+import Animation from './animation';
 import type { LandingConfig } from './landingTypes';
 
 export const CONFIG: LandingConfig = {
@@ -17,6 +18,7 @@ export const CONFIG: LandingConfig = {
   packageId: "com.calimero.mero-forum",
   tagline: "A peer-to-peer discussion forum: threads and comments replicated across your own nodes, with no server in the middle.",
   dir: "mero-forum",
+  markSrc: "/favicon.svg",
   iconSrc: '/icon-512.png',
   availability: "web+desktop",
   trust: ["Invite-only threads", "No feed ranking", "Replicated peer-to-peer"],
@@ -46,4 +48,5 @@ export const CONFIG: LandingConfig = {
       body: "New posts and replies appear as peers sync, without a refresh button.",
     },
   ],
+  animation: Animation,
 };

@@ -10,6 +10,7 @@
  */
 import { FileCheck, Package, Refresh, Shield, Zap } from '@calimero-network/mero-icons';
 
+import Animation from './animation';
 import type { LandingConfig } from './landingTypes';
 
 export const CONFIG: LandingConfig = {
@@ -17,6 +18,7 @@ export const CONFIG: LandingConfig = {
   packageId: "com.calimero.mero-issue-tracker",
   tagline: "A private, real-time issue board for a small engineering team - create, triage, and discuss issues together",
   dir: "mero-issue-tracker",
+  markSrc: "/favicon.svg",
   iconSrc: '/icon-512.png',
   availability: "web+desktop",
   trust: ["Structured issues", "MCP server included", "Private to your team"],
@@ -51,4 +53,5 @@ export const CONFIG: LandingConfig = {
       body: "A namespace you own, not a workspace in a product that reserves the right to read it.",
     },
   ],
+  animation: Animation,
 };

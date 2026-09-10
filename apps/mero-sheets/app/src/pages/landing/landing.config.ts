@@ -10,6 +10,7 @@
  */
 import { BarChart, Download, FileText, Lock, Table, Zap } from '@calimero-network/mero-icons';
 
+import Animation from './animation';
 import type { LandingConfig } from './landingTypes';
 
 export const CONFIG: LandingConfig = {
@@ -17,6 +18,7 @@ export const CONFIG: LandingConfig = {
   packageId: "com.calimero.mero-sheets",
   tagline: "Collaborative peer-to-peer spreadsheet with live cursors, multiple sheet tabs, formula autocomplete, a built-in function help section, and download support",
   dir: "mero-sheets",
+  markSrc: "/favicon.svg",
   iconSrc: '/icon-512.png',
   availability: "web+desktop",
   trust: ["Live cursors", "Formulas recompute for all peers", "Sheet on your node"],
@@ -56,4 +58,5 @@ export const CONFIG: LandingConfig = {
       body: "Export whenever you want. Nothing here is designed to keep your numbers hostage.",
     },
   ],
+  animation: Animation,
 };

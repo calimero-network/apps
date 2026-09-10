@@ -10,6 +10,7 @@
  */
 import { EyeOff, Grid, HeartCheck, Moon, Shield } from '@calimero-network/mero-icons';
 
+import Animation from './animation';
 import type { LandingConfig } from './landingTypes';
 
 export const CONFIG: LandingConfig = {
@@ -17,6 +18,7 @@ export const CONFIG: LandingConfig = {
   packageId: "com.calimero.mero-calendar",
   tagline: "A collaborative, peer-to-peer calendar on the Calimero network. Shared team calendars and private events — your schedule on your own nodes.",
   dir: "mero-calendar",
+  markSrc: "/favicon.svg",
   iconSrc: '/icon-512.png',
   availability: "web+desktop",
   trust: ["Teams are namespaces", "Private events never sync", "Light and dark"],
@@ -51,4 +53,5 @@ export const CONFIG: LandingConfig = {
       body: "Display names instead of key hashes, so a shared calendar reads like one.",
     },
   ],
+  animation: Animation,
 };

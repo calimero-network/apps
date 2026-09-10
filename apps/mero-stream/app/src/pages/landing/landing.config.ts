@@ -10,6 +10,7 @@
  */
 import { ArrowsUpDown, BarChart, CheckSquare, Trash } from '@calimero-network/mero-icons';
 
+import Animation from './animation';
 import type { LandingConfig } from './landingTypes';
 
 export const CONFIG: LandingConfig = {
@@ -17,6 +18,7 @@ export const CONFIG: LandingConfig = {
   packageId: "com.calimero.mero-stream",
   tagline: "Capacity probe: streaming media OVER Calimero. /stream runs a toy codec inside the WASM app (approach 3); /live stores opaque browser-encoded H.264 (approach 2). Experimental; not shippable media.",
   dir: "mero-stream",
+  markSrc: "/favicon.svg",
   iconSrc: '/icon-512.png',
   availability: "web",
   experimental: true,
@@ -57,4 +59,5 @@ export const CONFIG: LandingConfig = {
       a: "Not because it breaks on the desktop — it renders and runs there. What is unsupported is the desktop integration around it, so anything you see in a desktop window should be reproduced in a browser before it is believed.",
     },
   ],
+  animation: Animation,
 };

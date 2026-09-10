@@ -269,10 +269,10 @@ export default function LandingPage({ onConnect }: LandingPageProps = {}) {
   return (
     <div className="cal-lp-root" data-cal-lp-theme={theme.attr ?? undefined}>
       <header className="cal-lp-header">
-        <span className="cal-lp-brand">
-          <img className="cal-lp-brandicon" src={CONFIG.iconSrc} alt="" width={26} height={26} />
+        <a className="cal-lp-brand" href="/" aria-label={CONFIG.name}>
+          <img className="cal-lp-brandicon" src={CONFIG.markSrc} alt="" width={24} height={24} />
           {CONFIG.name}
-        </span>
+        </a>
         <nav className="cal-lp-nav">
           <a className="cal-lp-navlink" href="#about">About</a>
           <a className="cal-lp-navlink" href="#features">Features</a>

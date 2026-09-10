@@ -10,6 +10,7 @@
  */
 import { Circle, Cube3D, Cube3DLayers, Eye, LineChart, Zap } from '@calimero-network/mero-icons';
 
+import Animation from './animation';
 import type { LandingConfig } from './landingTypes';
 
 export const CONFIG: LandingConfig = {
@@ -17,6 +18,7 @@ export const CONFIG: LandingConfig = {
   packageId: "com.calimero.mero-pixart",
   tagline: "Collaborative p2p image editor on the Calimero network. Photoshop-style layers, masks, and adjustments — your pixels on your nodes.",
   dir: "mero-pixart",
+  markSrc: "/favicon.svg",
   iconSrc: '/icon-512.png',
   availability: "web+desktop",
   trust: ["Non-destructive edits", "Real layer folders", "Pixels on your nodes"],
@@ -56,4 +58,5 @@ export const CONFIG: LandingConfig = {
       body: "Brush, eraser, bucket fill and eyedropper, each re-rendering the layer to a new blob.",
     },
   ],
+  animation: Animation,
 };

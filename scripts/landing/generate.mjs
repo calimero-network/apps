@@ -198,6 +198,12 @@ function renderConfig(app, entry, meta) {
   lines.push(' */');
   lines.push(`import { ${icons.join(', ')} } from '@calimero-network/mero-icons';`);
   lines.push('');
+  // An app's animation is hand-owned: the ONE piece that should differ per app,
+  // and the one this generator must never overwrite. Wired in only if present.
+  const hasAnimation = existsSync(
+    join(ROOT, 'apps', app, 'app', 'src', 'pages', 'landing', 'animation.tsx'),
+  );
+  if (hasAnimation) lines.push("import Animation from './animation';");
   lines.push("import type { LandingConfig } from './landingTypes';");
   lines.push('');
   lines.push('export const CONFIG: LandingConfig = {');
@@ -205,6 +211,7 @@ function renderConfig(app, entry, meta) {
   lines.push(`  packageId: ${q(meta.packageId)},`);
   lines.push(`  tagline: ${q(meta.tagline)},`);
   lines.push(`  dir: ${q(app)},`);
+  lines.push(`  markSrc: ${q(entry.markSrc ?? '/favicon.svg')},`);
   lines.push(`  iconSrc: '/icon-512.png',`);
   lines.push(`  availability: ${q(entry.availability)},`);
   if (entry.experimental) lines.push('  experimental: true,');
@@ -232,6 +239,7 @@ function renderConfig(app, entry, meta) {
     }
     lines.push('  ],');
   }
+  if (hasAnimation) lines.push('  animation: Animation,');
   lines.push('};');
   lines.push('');
   return lines.join('\n');
@@ -249,7 +257,10 @@ for (const [app, entry] of Object.entries(APPS)) {
   const meta = readCalimeroMeta(app);
   const files = { ...templateFiles, 'landing.config.ts': renderConfig(app, entry, meta) };
 
-  const specDest = join(ROOT, 'apps', app, 'app', entry.e2eDir, 'landing.spec.ts');
+  // `specName` exists for the two canvas games: their own `landing.spec.ts`
+  // tests the game LAUNCHER (invite codec, mock node, sessions) and must not be
+  // clobbered by the marketing page's spec.
+  const specDest = join(ROOT, 'apps', app, 'app', entry.e2eDir, entry.specName ?? 'landing.spec.ts');
   const targets = Object.entries(files).map(([n, c]) => [join(outDir, n), c, n]);
   targets.push([specDest, renderSpec(app, entry, meta), `${entry.e2eDir}/landing.spec.ts`]);
 

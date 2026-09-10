@@ -32,30 +32,42 @@
    declared here on the root; the dark block below only redefines. Never let a
    colour exist solely inside a media query or a [data-theme] block. */
 .cal-lp-root {
-  --cal-lp-bg-0: #f6f8fc;
+  /* Calimero brand, taken from calimero.network: the green is #a5ff11, the
+     near-black #131215, the off-white #fcfcfc. Same green in BOTH themes — it
+     is the one constant across every app. */
+  --cal-lp-bg-0: #fcfcfc;
   --cal-lp-bg-1: #ffffff;
   --cal-lp-bg-2: #ffffff;
-  --cal-lp-bg-3: #eef1f6;
-  --cal-lp-border: #e2e6ee;
-  --cal-lp-border-strong: #cdd4e0;
-  --cal-lp-text: #1d2433;
-  --cal-lp-text-dim: #5b6577;
-  --cal-lp-text-faint: #97a0b0;
+  --cal-lp-bg-3: #f2f2f3;
+  --cal-lp-border: #e4e4e6;
+  --cal-lp-border-strong: #c8c8c8;
+  --cal-lp-text: #131215;
+  --cal-lp-text-dim: #404040;
+  --cal-lp-text-faint: #8e8e8e;
 
-  /* Calimero green is the constant brand thread across every app. */
-  --cal-lp-accent: #16a34a;
-  --cal-lp-accent-dim: #15803d;
-  --cal-lp-accent-soft: rgba(22, 163, 74, 0.12);
-  --cal-lp-accent-text: #ffffff;
+  --cal-lp-accent: #a5ff11;
+  --cal-lp-accent-soft: rgba(165, 255, 17, 0.18);
+  /* Text ON the green. Near-black in both themes, because #a5ff11 is a fill
+     colour: white on it is unreadable. */
+  --cal-lp-accent-text: #131215;
+  /* Accent TEXT on the page background. #a5ff11 on white is ~1.5:1, so light
+     mode deepens the same hue to stay legible; dark mode uses the brand green
+     itself, which is what the marketing site does on #131215. */
+  --cal-lp-accent-ink: #5f9400;
+  --cal-lp-accent-hover: #b6ff3d;
 
   --cal-lp-radius: 10px;
   --cal-lp-radius-sm: 7px;
   --cal-lp-radius-lg: 16px;
   --cal-lp-font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
-  --cal-lp-shadow: 0 10px 34px rgba(16, 24, 40, 0.10);
-  --cal-lp-shadow-sm: 0 2px 10px rgba(16, 24, 40, 0.07);
+  --cal-lp-shadow: 0 10px 34px rgba(19, 18, 21, 0.10);
+  --cal-lp-shadow-sm: 0 2px 10px rgba(19, 18, 21, 0.07);
 
-  /* Motion, so `prefers-reduced-motion` can zero it in one place. */
+  /* Fixed chrome dimensions, so a host app's global CSS cannot make one app's
+     header or hero a different height from another's. */
+  --cal-lp-header-h: 60px;
+  --cal-lp-hero-min: 520px;
+
   --cal-lp-anim: running;
   --cal-lp-reveal: 0.55s;
 }
@@ -64,41 +76,43 @@
    light, so the toggle wins in both directions. */
 @media (prefers-color-scheme: dark) {
   .cal-lp-root:not([data-cal-lp-theme='light']) {
-    --cal-lp-bg-0: #0a0e13;
-    --cal-lp-bg-1: #0f1419;
-    --cal-lp-bg-2: #141a21;
-    --cal-lp-bg-3: #1b232c;
-    --cal-lp-border: #232b34;
-    --cal-lp-border-strong: #303a45;
-    --cal-lp-text: #e6eaef;
-    --cal-lp-text-dim: #9aa6b2;
-    --cal-lp-text-faint: #5c6772;
-    --cal-lp-accent: #22c55e;
-    --cal-lp-accent-dim: #16a34a;
-    --cal-lp-accent-soft: rgba(34, 197, 94, 0.16);
-    --cal-lp-accent-text: #07120b;
-    --cal-lp-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
-    --cal-lp-shadow-sm: 0 2px 12px rgba(0, 0, 0, 0.35);
+    --cal-lp-bg-0: #131215;
+    --cal-lp-bg-1: #1a191d;
+    --cal-lp-bg-2: #141216;
+    --cal-lp-bg-3: #232227;
+    --cal-lp-border: #2b2a30;
+    --cal-lp-border-strong: #3b3b3b;
+    --cal-lp-text: #fcfcfc;
+    --cal-lp-text-dim: #c8c8c8;
+    --cal-lp-text-faint: #8e8e8e;
+    --cal-lp-accent: #a5ff11;
+    --cal-lp-accent-soft: rgba(165, 255, 17, 0.14);
+    --cal-lp-accent-text: #131215;
+    --cal-lp-accent-ink: #a5ff11;
+    --cal-lp-accent-hover: #b6ff3d;
+    --cal-lp-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+    --cal-lp-shadow-sm: 0 2px 12px rgba(0, 0, 0, 0.4);
   }
 }
 
 /* Explicit dark, so the toggle beats the OS in the other direction too. */
 .cal-lp-root[data-cal-lp-theme='dark'] {
-  --cal-lp-bg-0: #0a0e13;
-  --cal-lp-bg-1: #0f1419;
-  --cal-lp-bg-2: #141a21;
-  --cal-lp-bg-3: #1b232c;
-  --cal-lp-border: #232b34;
-  --cal-lp-border-strong: #303a45;
-  --cal-lp-text: #e6eaef;
-  --cal-lp-text-dim: #9aa6b2;
-  --cal-lp-text-faint: #5c6772;
-  --cal-lp-accent: #22c55e;
-  --cal-lp-accent-dim: #16a34a;
-  --cal-lp-accent-soft: rgba(34, 197, 94, 0.16);
-  --cal-lp-accent-text: #07120b;
-  --cal-lp-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
-  --cal-lp-shadow-sm: 0 2px 12px rgba(0, 0, 0, 0.35);
+  --cal-lp-bg-0: #131215;
+  --cal-lp-bg-1: #1a191d;
+  --cal-lp-bg-2: #141216;
+  --cal-lp-bg-3: #232227;
+  --cal-lp-border: #2b2a30;
+  --cal-lp-border-strong: #3b3b3b;
+  --cal-lp-text: #fcfcfc;
+  --cal-lp-text-dim: #c8c8c8;
+  --cal-lp-text-faint: #8e8e8e;
+  --cal-lp-accent: #a5ff11;
+  --cal-lp-accent-soft: rgba(165, 255, 17, 0.14);
+  --cal-lp-accent-text: #131215;
+  --cal-lp-accent-ink: #a5ff11;
+  --cal-lp-accent-hover: #b6ff3d;
+  --cal-lp-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+  --cal-lp-shadow-sm: 0 2px 12px rgba(0, 0, 0, 0.4);
 }
 
 /* An explicit background: a transparent root borrows whatever the host painted. */
@@ -138,6 +152,35 @@
   }
 }
 
+/* Type is stated, never inherited. `font: inherit` on the interactive elements
+   plus an explicit family on every text element means a host app's global
+   `h1 {}` / `button {}` / `body {}` rules cannot change this page's metrics —
+   which is what made the navbar and hero come out different heights per app. */
+.cal-lp-root h1,
+.cal-lp-root h2,
+.cal-lp-root h3,
+.cal-lp-root h4,
+.cal-lp-root p,
+.cal-lp-root a,
+.cal-lp-root span,
+.cal-lp-root li,
+.cal-lp-root button,
+.cal-lp-root input {
+  font-family: var(--cal-lp-font);
+}
+.cal-lp-root h1,
+.cal-lp-root h2,
+.cal-lp-root h3,
+.cal-lp-root h4,
+.cal-lp-root p,
+.cal-lp-root ul {
+  margin: 0;
+  padding: 0;
+}
+.cal-lp-root ul {
+  list-style: none;
+}
+
 /* ── Layout ─────────────────────────────────────────────────────────────── */
 .cal-lp-shell {
   max-width: 1140px;
@@ -154,11 +197,12 @@
 }
 
 .cal-lp-kicker {
+  font-family: var(--cal-lp-font);
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.09em;
   text-transform: uppercase;
-  color: var(--cal-lp-accent);
+  color: var(--cal-lp-accent-ink);
 }
 .cal-lp-h2 {
   margin: 12px 0 0;
@@ -183,7 +227,9 @@
   display: flex;
   align-items: center;
   gap: 14px;
-  padding: 12px 22px;
+  height: var(--cal-lp-header-h);
+  padding: 0 22px;
+  font-family: var(--cal-lp-font);
   background: color-mix(in srgb, var(--cal-lp-bg-0) 88%, transparent);
   backdrop-filter: blur(10px);
   border-bottom: 1px solid var(--cal-lp-border);
@@ -191,17 +237,20 @@
 .cal-lp-brand {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
-  font-weight: 700;
-  font-size: 15.5px;
-  letter-spacing: -0.01em;
+  gap: 9px;
+  /* Small and quiet: the mark is the identity, the name is a label. */
+  font-weight: 640;
+  font-size: 13.5px;
+  letter-spacing: 0.005em;
+  color: var(--cal-lp-text);
+  text-decoration: none;
 }
 .cal-lp-brandicon {
-  width: 26px;
-  height: 26px;
-  border-radius: 7px;
-  object-fit: cover;
-  box-shadow: var(--cal-lp-shadow-sm);
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  object-fit: contain;
+  flex: 0 0 auto;
 }
 .cal-lp-nav {
   display: flex;
@@ -258,7 +307,7 @@
   color: var(--cal-lp-accent-text);
 }
 .cal-lp-btn--primary:hover {
-  background: var(--cal-lp-accent-dim);
+  background: var(--cal-lp-accent-hover);
 }
 .cal-lp-btn--ghost {
   background: var(--cal-lp-bg-1);
@@ -295,7 +344,7 @@
 .cal-lp-badge--accent {
   border-color: transparent;
   background: var(--cal-lp-accent-soft);
-  color: var(--cal-lp-accent);
+  color: var(--cal-lp-accent-ink);
 }
 .cal-lp-badge--warn {
   border-color: transparent;
@@ -312,6 +361,7 @@
   grid-template-columns: 1.05fr 0.95fr;
   gap: 54px;
   align-items: center;
+  min-height: var(--cal-lp-hero-min);
   padding-block: 74px 84px;
 }
 .cal-lp-h1 {
@@ -404,7 +454,7 @@
   height: 38px;
   border-radius: var(--cal-lp-radius-sm);
   background: var(--cal-lp-accent-soft);
-  color: var(--cal-lp-accent);
+  color: var(--cal-lp-accent-ink);
 }
 .cal-lp-featuretitle {
   margin: 1px 0 0;
@@ -489,7 +539,7 @@
 }
 .cal-lp-whycheck {
   flex: 0 0 auto;
-  color: var(--cal-lp-accent);
+  color: var(--cal-lp-accent-ink);
   margin-top: 1px;
 }
 
@@ -586,7 +636,7 @@
   text-decoration: none;
 }
 .cal-lp-footerlink:hover {
-  color: var(--cal-lp-accent);
+  color: var(--cal-lp-accent-ink);
 }
 .cal-lp-footerbase {
   display: flex;
@@ -598,6 +648,125 @@
   border-top: 1px solid var(--cal-lp-border);
   font-size: 12.5px;
   color: var(--cal-lp-text-faint);
+}
+
+
+/* ── Animation primitives ───────────────────────────────────────────────
+   Every app's hero animation is its OWN component (`animation.tsx`), but they
+   all compose from these, so fourteen animations do not mean fourteen
+   stylesheets — and every one of them themes, pauses under
+   `prefers-reduced-motion`, and reads correctly as a still frame.
+
+   Positions and delays come from inline style on the element; the motion lives
+   here. Colour is always a token, never a literal, or dark mode breaks. */
+.cal-lp-a {
+  position: absolute;
+  inset: 0;
+  padding: 20px;
+}
+.cal-lp-a * {
+  animation-play-state: var(--cal-lp-anim);
+}
+
+/* A panel/board/canvas the app's content sits on. */
+.cal-lp-a-pane {
+  position: absolute;
+  border-radius: 8px;
+  background: var(--cal-lp-bg-3);
+  border: 1px solid var(--cal-lp-border);
+}
+/* A rectangular thing: a cell, a card, a tile, a layer row, a block. */
+.cal-lp-a-box {
+  position: absolute;
+  border-radius: 5px;
+  background: var(--cal-lp-bg-3);
+  border: 1px solid var(--cal-lp-border);
+}
+/* A text line. */
+.cal-lp-a-line {
+  position: absolute;
+  height: 7px;
+  border-radius: 4px;
+  background: var(--cal-lp-border);
+}
+/* A round thing: an avatar, a player, a node, a brush dab. */
+.cal-lp-a-dot {
+  position: absolute;
+  border-radius: 50%;
+  background: var(--cal-lp-accent);
+}
+/* A label chip. */
+.cal-lp-a-chip {
+  position: absolute;
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--cal-lp-accent-soft);
+  color: var(--cal-lp-accent-ink);
+  font-family: var(--cal-lp-font);
+  font-size: 10.5px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+/* A second peer's cursor. */
+.cal-lp-a-cursor {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border-radius: 50% 50% 50% 0;
+  transform: rotate(-45deg);
+  background: var(--cal-lp-accent);
+  box-shadow: 0 0 0 2px var(--cal-lp-bg-1);
+}
+
+/* The motions. `--d` sets the delay, `--t` the duration, both from inline style.
+   NO fill-mode, deliberately: `both` plus a delay parks an element at its 0%
+   keyframe until its turn comes, so a still capture — the exact artefact used
+   to review this — shows an almost empty frame. Without a fill mode the resting
+   state is the element as authored, i.e. VISIBLE, and the animation only adds
+   emphasis on top. Every keyframe below therefore ends where it started. */
+.cal-lp-a-in     { animation: cal-lp-a-in     var(--t, 4s) ease-in-out var(--d, 0s) infinite; }
+.cal-lp-a-fill   { animation: cal-lp-a-fill   var(--t, 4s) ease-in-out var(--d, 0s) infinite; }
+.cal-lp-a-flash  { animation: cal-lp-a-flash  var(--t, 4s) ease-in-out var(--d, 0s) infinite; }
+.cal-lp-a-grow   { animation: cal-lp-a-grow   var(--t, 4s) ease-out    var(--d, 0s) infinite; }
+.cal-lp-a-drift  { animation: cal-lp-a-drift  var(--t, 4s) ease-in-out var(--d, 0s) infinite; }
+.cal-lp-a-blink  { animation: cal-lp-a-blink  var(--t, 4s) ease-in-out var(--d, 0s) infinite; }
+.cal-lp-a-rise   { animation: cal-lp-a-rise   var(--t, 4s) ease-out    var(--d, 0s) infinite; }
+
+@keyframes cal-lp-a-in {
+  0%, 100%  { opacity: 1; transform: none; }
+  6%        { opacity: 0.15; transform: translateY(7px) scale(0.96); }
+  20%, 92%  { opacity: 1; transform: none; }
+}
+@keyframes cal-lp-a-fill {
+  0%, 10%, 100% { background: var(--cal-lp-bg-3); }
+  26%, 76%      { background: var(--cal-lp-accent-soft); }
+}
+@keyframes cal-lp-a-flash {
+  0%, 16%   { border-color: var(--cal-lp-border); }
+  24%, 40%  { border-color: var(--cal-lp-accent); }
+  56%, 100% { border-color: var(--cal-lp-border); }
+}
+@keyframes cal-lp-a-grow {
+  0%        { transform: scaleX(1); }
+  8%        { transform: scaleX(0.06); }
+  58%, 100% { transform: scaleX(1); }
+}
+@keyframes cal-lp-a-drift {
+  0%, 100%  { transform: translate(0, 0); }
+  30%       { transform: translate(var(--dx, 18px), var(--dy, 10px)); }
+  65%       { transform: translate(calc(var(--dx, 18px) * 0.3), calc(var(--dy, 10px) * 1.6)); }
+}
+@keyframes cal-lp-a-blink {
+  0%, 100%  { opacity: 1; }
+  40%       { opacity: 0.3; }
+  70%       { opacity: 1; }
+}
+@keyframes cal-lp-a-rise {
+  0%, 100%  { opacity: 1; transform: none; }
+  10%       { opacity: 0.2; transform: translateY(11px); }
+  34%       { opacity: 1; transform: none; }
 }
 
 /* ── Default peer-sync animation ────────────────────────────────────────
@@ -644,7 +813,7 @@
   }
   18% {
     border-color: var(--cal-lp-accent);
-    color: var(--cal-lp-accent);
+    color: var(--cal-lp-accent-ink);
   }
 }
 .cal-lp-wire {
