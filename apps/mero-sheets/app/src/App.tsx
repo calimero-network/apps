@@ -4,9 +4,12 @@ import { AppMode, MeroProvider, useMero } from '@calimero-network/mero-react';
 import { ToastProvider } from '@calimero-network/mero-ui';
 
 import LandingPage from './pages/landing/LandingPage';
-import LoginPage from './pages/login/LoginPage';
 import AppPage from './pages/app/AppPage';
 import { APP_PACKAGE, APP_ROUTE } from './config';
+
+/** Every path the shared landing page serves. See src/pages/landing. */
+const LANDING_PATHS = ['/', '/docs', '/preview'];
+
 
 /**
  * Auth route guards. The MeroProvider resolves auth ASYNCHRONOUSLY — on first
@@ -54,8 +57,33 @@ export default function App() {
           <Routes>
             {/* Landing is the front door; authenticated users (incl. desktop
                 SSO skip) are redirected straight into the app. */}
-            <Route path="/" element={<RedirectIfAuthed><LandingPage /></RedirectIfAuthed>} />
-            <Route path="/login" element={<RedirectIfAuthed><LoginPage /></RedirectIfAuthed>} />
+            {/* The landing page is three pages: `/`, `/docs` and `/preview`. They are
+                real URLs so they can be shared and opened cold, which needs a route
+                here — otherwise this app's catch-all swallows the deep link before
+                the page ever renders. */}
+            {LANDING_PATHS.map((landingPath) => (
+              <Route
+                key={landingPath}
+                path={landingPath}
+                // ⚠️ Only `/` bounces a signed-in visitor into the app. `/docs` and
+                // `/preview` are reference pages, and somebody already signed in is
+                // exactly the person most likely to want to read them.
+                element={
+                  landingPath === '/' ? (
+                    <RedirectIfAuthed>
+                      <LandingPage />
+                    </RedirectIfAuthed>
+                  ) : (
+                    <LandingPage />
+                  )
+                }
+              />
+            ))}
+            {/* The /login PAGE is gone — every app had one, every one looked
+                different, and its whole content was a button the visitor had
+                already pressed to get there. The path stays as a redirect so a
+                bookmark lands on the front door instead of a blank route. */}
+            <Route path="/login" element={<Navigate to="/" replace />} />
             <Route path={APP_ROUTE} element={<RequireAuth><AppPage /></RequireAuth>} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

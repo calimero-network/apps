@@ -11,6 +11,7 @@
 import { EyeOff, Grid, HeartCheck, Moon, Shield } from '@calimero-network/mero-icons';
 
 import Animation from './animation';
+import LoginPopup from './loginPopup';
 import type { LandingConfig } from './landingTypes';
 
 export const CONFIG: LandingConfig = {
@@ -55,4 +56,71 @@ export const CONFIG: LandingConfig = {
     },
   ],
   animation: Animation,
+  docs: [
+    {
+      id: "concepts",
+      heading: "The words, and what they mean here",
+      paragraphs: [
+        "Mero Calendar is unusual among these apps in holding two kinds of event with genuinely different privacy, in the same screen.",
+      ],
+      concepts: [
+        { term: "Namespace", def: "A team. The people in it are the people who can be invited to events." },
+        { term: "Context", def: "The team’s shared calendar. One per team." },
+        { term: "Shared event", def: "An event in replicated state, owned by whoever created it. Reads are gated in the contract: you see an event only if you own it or were invited to it." },
+        { term: "Private event", def: "An event declared `#[app::private]`. It is stored on your node only and is never replicated to anyone — not even to other members of the team." },
+        { term: "Username", def: "A display name you set, so the UI shows people rather than public keys. Last-writer-wins on its own clock." },
+      ],
+    },
+    {
+      id: "start",
+      heading: "Getting started",
+      steps: [
+        { title: "Connect a node", body: "Press Connect to node and pick the node the popup discovers, or enter a URL." },
+        { title: "Create a team", body: "A team is a namespace you own, with one calendar inside it." },
+        { title: "Set your name", body: "Set a username so your teammates see a name instead of a key." },
+        { title: "Create an event", body: "Choose shared or private when you create it. Shared events can be given invitees; private ones cannot, because they never leave your node." },
+      ],
+    },
+    {
+      id: "sharing",
+      heading: "Inviting people",
+      paragraphs: [
+        "Joining a team is an invite link to the namespace. Once someone is a member, you can add them as an invitee on individual events.",
+        "Adding someone to a team does not retroactively show them past events they were not invited to — the read gate is per event, evaluated in the contract rather than in the UI.",
+      ],
+    },
+    {
+      id: "storage",
+      heading: "What is stored, and where",
+      bullets: [
+        "Shared events: title, time, owner and invitee list, replicated to team members and read-gated per event.",
+        "Private events: the same fields, stored only on the node that created them and never replicated.",
+        "Members: one username per member, so names can change without touching events.",
+      ],
+    },
+    {
+      id: "offline",
+      heading: "Offline, and what happens when you reconnect",
+      paragraphs: [
+        "Your node holds the whole state, so the app keeps working with no network — every change is written locally and queued.",
+        "When your node reaches a peer again, the two exchange changes and merge them. Merging is CRDT-based, not last-write-wins-by-clock, so two people editing different things at the same time both keep their work. Where two people genuinely changed the same single value, the later write wins on that one value and nothing else is lost.",
+      ],
+    },
+    {
+      id: "trouble",
+      heading: "When something looks wrong",
+      concepts: [
+        { term: "A teammate cannot see your event", def: "Shared events are visible to the owner and the invitees. Add them as an invitee — being in the team is not by itself enough." },
+        { term: "A private event vanished on another device", def: "Private events are node-local by design. A second device with a different node has its own set." },
+        { term: "Names show as keys", def: "That member has not set a username yet." },
+      ],
+    },
+  ],
+  previewSteps: [
+    { title: "A week, shared", body: "Team events sit in replicated state, each visible to its owner and the people invited to it." },
+    { title: "An event is added", body: "Creating one writes to the team’s context; every member’s node converges on the same week." },
+    { title: "A private event, dashed", body: "The dashed block is `#[app::private]` — stored on one node and never replicated to anyone." },
+    { title: "Names, not keys", body: "Each member carries a username so the calendar reads like a calendar." },
+  ],
+  loginPopup: LoginPopup,
 };

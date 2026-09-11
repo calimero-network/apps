@@ -17,14 +17,13 @@ import { expect, test } from "@playwright/test";
 test.describe("unauthenticated entry", () => {
   test("the entry route renders and offers a way to connect", async ({ page }) => {
     await page.goto("/");
-    // The landing's CTA is a link to /login, where mero-react's ConnectButton
-    // lives. What matters is that a real destination is offered from `/` and
-    // that the connect affordance is actually there when you arrive.
+    // A BUTTON, not a link, and there is no second page behind it. The CTA
+    // used to navigate to /login, where mero-react's ConnectButton lived; it
+    // now opens the connection popup over this page. What matters is unchanged
+    // — that a real way in is offered from `/`.
     await expect(
-      page.getByRole("link", { name: "Connect to node" }).first(),
+      page.getByRole("button", { name: "Connect to node" }).first(),
     ).toBeVisible();
-    await page.goto("/login");
-    await expect(page.getByRole("button", { name: /connect a node/i })).toBeVisible();
   });
 
   test("the page identifies itself as MeroPass", async ({ page }) => {

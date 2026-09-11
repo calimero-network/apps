@@ -39,6 +39,54 @@ export interface FaqItem {
   a: string;
 }
 
+/**
+ * One section of the `/docs` page — this app's real documentation, not a link
+ * to somebody else's.
+ *
+ * Every field is optional except the heading, because the sections genuinely
+ * differ in shape: "What it is" is prose, "Concepts" is a term list, "Getting
+ * started" is ordered steps, "Troubleshooting" is symptom and fix. Rendering
+ * whichever ones are present beats forcing six sections into one mould.
+ */
+export interface DocsSection {
+  /** Anchor id, also the TOC link target. */
+  id: string;
+  heading: string;
+  paragraphs?: string[];
+  /**
+   * What a Calimero noun means IN THIS APP — `namespace` → "a vault",
+   * `context` → "a board". The single most useful thing a per-app doc can say,
+   * because the platform words are the ones a newcomer cannot map.
+   */
+  concepts?: { term: string; def: string }[];
+  /** Ordered, numbered. Getting started, inviting someone. */
+  steps?: { title: string; body: string }[];
+  bullets?: string[];
+}
+
+/** One captioned beat of the hero animation, for the `/preview` page. */
+export interface PreviewStep {
+  title: string;
+  body: string;
+}
+
+/**
+ * The login popup, wired in by the generator for every app that depends on
+ * `@calimero-network/mero-react` — which is thirteen of the fourteen.
+ *
+ * ⚠️ A component, not a direct import, for two reasons. `mero-sign` has no
+ * mero-react dependency at all (it signs in through its own sidebar and passes
+ * `onConnect`), so a top-level import in the shared template would fail to
+ * build there. And the component calls `useMero()`, which throws outside a
+ * `MeroProvider` — the two canvas games render this page into a detached root
+ * with no provider above it, and they also pass `onConnect`. Keeping it in the
+ * config means the import only exists where the provider does.
+ */
+export interface LoginPopupProps {
+  isOpen: boolean;
+  onClose: () => void;
+}
+
 export interface LandingConfig {
   /** `name` from `[package.metadata.calimero]`. */
   name: string;
@@ -75,8 +123,19 @@ export interface LandingConfig {
   features: Feature[];
   /** Appended to the shared FAQ. */
   faq?: FaqItem[];
-  /** Route the primary CTA goes to. Almost always `/login`. */
-  loginPath?: string;
   /** Per-app hero animation. Falls back to the shared peer-sync animation. */
   animation?: ComponentType;
+  /**
+   * The `/docs` page. Written per app: what it stores, how the platform's nouns
+   * map onto this app's, how to invite people, what happens offline, and what
+   * to do when something looks wrong.
+   */
+  docs: DocsSection[];
+  /** The `/preview` page: what each beat of the animation is showing. */
+  previewSteps: PreviewStep[];
+  /**
+   * Opens the node-connection + sign-in popup. Absent only where the app has no
+   * mero-react dependency; see `LoginPopupProps`.
+   */
+  loginPopup?: ComponentType<LoginPopupProps>;
 }

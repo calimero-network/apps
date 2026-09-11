@@ -55,4 +55,70 @@ export const CONFIG: LandingConfig = {
     },
   ],
   animation: Animation,
+  docs: [
+    {
+      id: "concepts",
+      heading: "The words, and what they mean here",
+      paragraphs: [
+        "Same model as Mero Blocks, in two dimensions: a world is a seed plus the tiles somebody changed, which is why it needs no game server and fits in a context.",
+      ],
+      concepts: [
+        { term: "Namespace", def: "A world you own. Invite people and they dig in the same one." },
+        { term: "Seed", def: "One number. Terrain is generated from it deterministically on every machine, so no terrain is ever sent over the network." },
+        { term: "Tile override", def: "One changed tile, keyed by coordinate. Mining or placing writes an override; the override map is the only terrain data that syncs." },
+        { term: "Presence", def: "Other players’ positions, refreshed by heartbeat and kept apart from the world itself." },
+        { term: "Offline mode", def: "The game runs with no node at all, persisted to your browser. Nothing shared, nothing to set up." },
+      ],
+    },
+    {
+      id: "start",
+      heading: "Getting started",
+      steps: [
+        { title: "Play offline", body: "Start digging immediately with no node and no account. Progress is saved locally." },
+        { title: "Connect a node", body: "Press Connect to node when you want to share a world." },
+        { title: "Create a world", body: "Name it; you get a seed and you own the world." },
+        { title: "Invite people", body: "Share the link. Their client generates the same terrain and applies your edits on top." },
+      ],
+    },
+    {
+      id: "sharing",
+      heading: "Digging together",
+      paragraphs: [
+        "Edits are batched, so a run of mining goes to the contract as one call rather than one per tile.",
+        "Overrides keyed by coordinate mean two players in different places never conflict. Two players changing the same tile converge on one result, and both then see the same world.",
+      ],
+    },
+    {
+      id: "storage",
+      heading: "What is stored, and where",
+      bullets: [
+        "World name, seed and creation time.",
+        "Tile overrides, keyed by coordinate.",
+        "Players and their positions, refreshed by heartbeat and reaped when they leave.",
+      ],
+    },
+    {
+      id: "offline",
+      heading: "Offline, and what happens when you reconnect",
+      paragraphs: [
+        "Your node holds the whole state, so the app keeps working with no network — every change is written locally and queued.",
+        "When your node reaches a peer again, the two exchange changes and merge them. Merging is CRDT-based, not last-write-wins-by-clock, so two people editing different things at the same time both keep their work. Where two people genuinely changed the same single value, the later write wins on that one value and nothing else is lost.",
+      ],
+    },
+    {
+      id: "trouble",
+      heading: "When something looks wrong",
+      concepts: [
+        { term: "The world looks different to them", def: "Terrain comes from the seed, so different terrain means different worlds. Check you opened the same invite link." },
+        { term: "A tile you mined came back", def: "Someone placed one there concurrently. One of the two wins; mine it again." },
+        { term: "Offline progress is missing", def: "Offline worlds live in that browser’s storage and are separate from any shared world." },
+      ],
+    },
+  ],
+  previewSteps: [
+    { title: "A world from a seed", body: "Side-on terrain generated identically on every machine — none of it is transmitted." },
+    { title: "Tiles are mined", body: "Each change is an override keyed by coordinate, batched into one call." },
+    { title: "A second player digs", body: "Presence arrives separately, so another player joining never rewrites your world." },
+    { title: "No game server", body: "Seed plus overrides is the entire world. Nobody hosts it." },
+  ],
 };

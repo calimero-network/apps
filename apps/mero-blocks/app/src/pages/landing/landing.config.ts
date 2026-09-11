@@ -55,4 +55,69 @@ export const CONFIG: LandingConfig = {
     },
   ],
   animation: Animation,
+  docs: [
+    {
+      id: "concepts",
+      heading: "The words, and what they mean here",
+      paragraphs: [
+        "A voxel world is not stored as a world. It is stored as a seed plus the list of blocks somebody changed — which is why an entire shared world fits in a context and needs no game server.",
+      ],
+      concepts: [
+        { term: "Namespace", def: "A world you own. Invite people into it and they build in the same world." },
+        { term: "Seed", def: "A single number. Terrain is generated from it deterministically, so every player computes an identical world without anyone sending terrain over the network." },
+        { term: "Override", def: "One changed block, keyed by its coordinates. Placing or breaking a block writes an override; the map of overrides is the only terrain data that ever syncs." },
+        { term: "Presence", def: "Where other players are right now. Kept in a players map refreshed by a heartbeat, and deliberately not part of the world itself." },
+      ],
+    },
+    {
+      id: "start",
+      heading: "Getting started",
+      steps: [
+        { title: "Play offline first, if you like", body: "The game runs with no node at all, persisting to your browser. Nothing is shared, and nothing needs setting up." },
+        { title: "Connect a node", body: "Press Connect to node to move from a local world to a shared one." },
+        { title: "Create a world", body: "Pick a name. You get a seed, and the world is yours — you are its owner." },
+        { title: "Invite people", body: "Share the link. Their client generates the same terrain from the seed and then applies your overrides." },
+      ],
+    },
+    {
+      id: "sharing",
+      heading: "Building together",
+      paragraphs: [
+        "Edits are batched: a burst of placements goes to the contract as one call rather than one call per block, which is what keeps a building session from flooding the network.",
+        "Because overrides are keyed by coordinate, two players changing different blocks never conflict. Two players changing the same block converge on one of the two, and both then see the same thing.",
+      ],
+    },
+    {
+      id: "storage",
+      heading: "What is stored, and where",
+      bullets: [
+        "The world name, the seed, and the creation time.",
+        "A map of block overrides, keyed \"x,y,z\". Breaking a block is recorded as an override too, never as a deletion, so a break cannot be lost to a concurrent edit.",
+        "A players map with each player’s position, refreshed by heartbeat and cleaned up when they leave.",
+      ],
+    },
+    {
+      id: "offline",
+      heading: "Offline, and what happens when you reconnect",
+      paragraphs: [
+        "Your node holds the whole state, so the app keeps working with no network — every change is written locally and queued.",
+        "When your node reaches a peer again, the two exchange changes and merge them. Merging is CRDT-based, not last-write-wins-by-clock, so two people editing different things at the same time both keep their work. Where two people genuinely changed the same single value, the later write wins on that one value and nothing else is lost.",
+      ],
+    },
+    {
+      id: "trouble",
+      heading: "When something looks wrong",
+      concepts: [
+        { term: "Your terrain differs from theirs", def: "Terrain comes from the seed, so a mismatch means you are in different worlds — check you both opened the same invite link." },
+        { term: "A block came back after you broke it", def: "A break is an override like any other. If someone placed a block there concurrently, one of the two wins; break it again." },
+        { term: "Other players are not moving", def: "Presence is heartbeat-driven and separate from the world. Losing presence does not lose your build." },
+      ],
+    },
+  ],
+  previewSteps: [
+    { title: "Terrain from a seed", body: "No terrain is transmitted. Both machines generate the same world from the same number." },
+    { title: "A block is placed", body: "The change is stored as one override keyed by coordinate, batched with any others in the same burst." },
+    { title: "A peer appears", body: "Presence arrives separately from the world, so someone joining never rewrites what you built." },
+    { title: "Both worlds agree", body: "Seed plus overrides is the whole world. There is no server holding the authoritative copy." },
+  ],
 };

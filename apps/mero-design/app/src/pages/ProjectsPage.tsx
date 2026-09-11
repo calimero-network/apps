@@ -73,7 +73,7 @@ export default function ProjectsPage() {
 
   function handleLogout() {
     logout();
-    navigate("/login");
+    navigate("/");
   }
 
   useEffect(() => {

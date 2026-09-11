@@ -11,6 +11,7 @@
 import { BarChart, Download, FileText, Lock, Table, Zap } from '@calimero-network/mero-icons';
 
 import Animation from './animation';
+import LoginPopup from './loginPopup';
 import type { LandingConfig } from './landingTypes';
 
 export const CONFIG: LandingConfig = {
@@ -60,4 +61,72 @@ export const CONFIG: LandingConfig = {
     },
   ],
   animation: Animation,
+  docs: [
+    {
+      id: "concepts",
+      heading: "The words, and what they mean here",
+      paragraphs: [
+        "The unusual thing about this spreadsheet is how formulas are stored: raw, never as a cached result. Every peer re-evaluates a formula whenever a cell it references changes, so nobody is ever looking at a stale total computed on someone else’s machine.",
+      ],
+      concepts: [
+        { term: "Namespace", def: "A project you own and invite collaborators into." },
+        { term: "Context", def: "One workbook: its sheets, its cells and its cursors." },
+        { term: "Sheet", def: "A tab. Stored as a record; a workbook can hold several." },
+        { term: "Cell", def: "One entry in a map keyed by sheet and coordinate. Value, formula and format are separate, so formatting a cell does not fight with typing in it." },
+        { term: "Cursor", def: "Where each collaborator is, in their own colour. Authored presence, kept out of the data." },
+      ],
+    },
+    {
+      id: "start",
+      heading: "Getting started",
+      steps: [
+        { title: "Connect a node", body: "Press Connect to node and choose your node." },
+        { title: "Create a project", body: "A namespace you own, with one workbook in it." },
+        { title: "Type something", body: "Enter values, or a formula: SUM, AVERAGE, MIN, MAX, COUNT and IF are built in, with autocomplete and inline help." },
+        { title: "Invite collaborators", body: "Share the link. Their cursor appears in its own colour as soon as they arrive." },
+      ],
+    },
+    {
+      id: "sharing",
+      heading: "Editing at the same time",
+      paragraphs: [
+        "Edits are applied per cell, so two people in different cells never queue behind each other. A burst of changes can be sent as one batch rather than one call per keystroke.",
+        "Formulas are re-evaluated per peer. If you change A1 and someone else is looking at a SUM over A1:A3, their total updates from the raw formula on their own machine — no stale cached value travels between you.",
+      ],
+    },
+    {
+      id: "storage",
+      heading: "What is stored, and where",
+      bullets: [
+        "Project name and creation time.",
+        "Sheets, keyed by id, with their names.",
+        "Cells, keyed by sheet and coordinate, holding the raw value, the raw formula and the format separately.",
+        "Cursors, as authored presence — each one owned by the person it belongs to.",
+      ],
+    },
+    {
+      id: "offline",
+      heading: "Offline, and what happens when you reconnect",
+      paragraphs: [
+        "Your node holds the whole state, so the app keeps working with no network — every change is written locally and queued.",
+        "When your node reaches a peer again, the two exchange changes and merge them. Merging is CRDT-based, not last-write-wins-by-clock, so two people editing different things at the same time both keep their work. Where two people genuinely changed the same single value, the later write wins on that one value and nothing else is lost.",
+      ],
+    },
+    {
+      id: "trouble",
+      heading: "When something looks wrong",
+      concepts: [
+        { term: "A total looks wrong", def: "Totals are computed locally from the raw formula. A wrong total means a referenced cell has not arrived yet; it corrects itself on sync." },
+        { term: "Your formatting was lost", def: "Value, formula and format are separate fields. Losing formatting but keeping the value means someone reformatted the same cell, not that the write failed." },
+        { term: "A collaborator’s cursor is stuck", def: "Presence stopped, not their edits. Cells continue to sync regardless." },
+      ],
+    },
+  ],
+  previewSteps: [
+    { title: "A filled grid", body: "Cells are individual records keyed by sheet and coordinate — not one document blob." },
+    { title: "Two cursors", body: "Every collaborator in their own colour, carried as presence beside the data." },
+    { title: "A formula recalculates", body: "The formula is stored raw. Each peer re-evaluates it, so nobody sees a total computed somewhere else." },
+    { title: "Edits merge", body: "Different cells never contend; the same cell converges on the later write." },
+  ],
+  loginPopup: LoginPopup,
 };

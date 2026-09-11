@@ -11,6 +11,7 @@
 import { CloudUpload, Cube, Download, FileText, Grid, Refresh } from '@calimero-network/mero-icons';
 
 import Animation from './animation';
+import LoginPopup from './loginPopup';
 import type { LandingConfig } from './landingTypes';
 
 export const CONFIG: LandingConfig = {
@@ -59,4 +60,72 @@ export const CONFIG: LandingConfig = {
     },
   ],
   animation: Animation,
+  docs: [
+    {
+      id: "concepts",
+      heading: "The words, and what they mean here",
+      paragraphs: [
+        "A board is a shared canvas with real roles on it. Ownership is enforced at merge time, not only in the UI, which is the part worth understanding.",
+      ],
+      concepts: [
+        { term: "Namespace", def: "A design space you own and invite collaborators into." },
+        { term: "Context", def: "One board — its elements, comments and cursors." },
+        { term: "Element", def: "A shape, a frame, a text node. Stored in a map keyed by id, with each mutable field as its own register so two people editing different properties of the same element do not collide." },
+        { term: "Owner / editor / viewer", def: "The three roles. The board name and description live in owner-gated storage: a rename from a non-owner is rejected when the change merges, not merely hidden by the interface." },
+        { term: "Cursor", def: "Where each collaborator is pointing. Ephemeral presence, kept apart from the board so a cursor update never touches your artwork." },
+      ],
+    },
+    {
+      id: "start",
+      heading: "Getting started",
+      steps: [
+        { title: "Connect a node", body: "Press Connect to node and choose your node in the popup." },
+        { title: "Create a board", body: "You are its owner. Name it, and set a description if it needs one." },
+        { title: "Draw something", body: "Add frames, shapes and text. Each element is a separate record, so collaborators editing different elements never queue behind each other." },
+        { title: "Invite editors", body: "Grant the editor role to the people who should be able to change things; everyone else can look." },
+      ],
+    },
+    {
+      id: "sharing",
+      heading: "Working together",
+      paragraphs: [
+        "Roles are granted and revoked by the owner, and ownership itself can be transferred. Comments carry their author, and only that author may edit or delete their own.",
+        "Layer order, grouping and multi-select all operate on the same element records, so two people rearranging different groups converge without either losing a move.",
+      ],
+    },
+    {
+      id: "storage",
+      heading: "What is stored, and where",
+      bullets: [
+        "Elements, keyed by id, with per-field registers for position, style, text and label.",
+        "Comments and replies, each owned by its author.",
+        "Members and their usernames, plus the role list.",
+        "Cursors, as presence — deliberately not part of the document.",
+      ],
+    },
+    {
+      id: "offline",
+      heading: "Offline, and what happens when you reconnect",
+      paragraphs: [
+        "Your node holds the whole state, so the app keeps working with no network — every change is written locally and queued.",
+        "When your node reaches a peer again, the two exchange changes and merge them. Merging is CRDT-based, not last-write-wins-by-clock, so two people editing different things at the same time both keep their work. Where two people genuinely changed the same single value, the later write wins on that one value and nothing else is lost.",
+      ],
+    },
+    {
+      id: "trouble",
+      heading: "When something looks wrong",
+      concepts: [
+        { term: "A rename did not stick", def: "The board name is owner-gated. A non-owner’s rename is refused at merge, so it can appear locally for a moment and then revert." },
+        { term: "You cannot edit", def: "You have the viewer role. Ask the owner to grant editor." },
+        { term: "Cursors are frozen", def: "Presence stopped, not the board. Your elements are unaffected; reconnecting restores cursors." },
+      ],
+    },
+  ],
+  previewSteps: [
+    { title: "A board with tools", body: "Frames, shapes and text, each stored as its own record rather than one blob." },
+    { title: "Two people editing", body: "Separate elements mean separate records, so concurrent edits merge instead of overwriting." },
+    { title: "Properties change live", body: "Every mutable field is its own register — moving a shape does not conflict with recolouring it." },
+    { title: "Cursors alongside", body: "Presence rides separately from the document, so it can never rewrite the artwork." },
+  ],
+  loginPopup: LoginPopup,
 };

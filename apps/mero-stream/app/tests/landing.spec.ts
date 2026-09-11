@@ -30,7 +30,9 @@ test.describe("unauthenticated web entry", () => {
     // the assertion that matters: it is what makes the web a real entry point
     // instead of a dead end, and it is exactly what the old short-circuit removed.
     await expect(
-      page.getByRole("link", { name: "Connect to node" }).first(),
+      // A button, not a link: the CTA opens the connection popup in place
+      // rather than navigating to a /login page that no longer exists.
+      page.getByRole("button", { name: "Connect to node" }).first(),
     ).toBeVisible();
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
   });

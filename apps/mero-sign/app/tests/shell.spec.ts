@@ -27,14 +27,17 @@ test.describe("unauthenticated shell", () => {
 
     await page.goto("/");
     await expect(page.getByRole("heading", { level: 1, name: "Mero Sign" })).toBeVisible();
-    await expect(
-      page.getByRole("heading", { name: "Mero Sign, in plain terms" }),
-    ).toBeVisible();
     await expect(page.getByRole("heading", { name: "What you can do" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Four steps, no server" })).toBeVisible();
-    await expect(
-      page.getByRole("heading", { name: "Questions people actually ask" }),
-    ).toBeVisible();
+
+    // ⚠️ The explainer, the four steps and the FAQ now live on `/docs`. The
+    // landing is three pages: `/` sells it, `/docs` explains it, `/preview`
+    // shows it. Asserting them all on `/` was asserting the old shape.
+    await page.goto("/docs");
+    await expect(page.getByRole("heading", { name: "What this is" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "How Calimero works" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "FAQ" })).toBeVisible();
+
+    await page.goto("/");
     // A way in, twice over: the header and the hero. Buttons rather than links
     // because this app signs in through mero-react's modal, with no /login route.
     await expect(page.getByRole("button", { name: "Connect to node" })).toHaveCount(2);

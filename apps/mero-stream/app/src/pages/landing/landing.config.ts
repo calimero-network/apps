@@ -11,6 +11,7 @@
 import { ArrowsUpDown, BarChart, CheckSquare, Trash } from '@calimero-network/mero-icons';
 
 import Animation from './animation';
+import LoginPopup from './loginPopup';
 import type { LandingConfig } from './landingTypes';
 
 export const CONFIG: LandingConfig = {
@@ -60,4 +61,72 @@ export const CONFIG: LandingConfig = {
     },
   ],
   animation: Animation,
+  docs: [
+    {
+      id: "concepts",
+      heading: "The words, and what they mean here",
+      paragraphs: [
+        "Mero Stream is a capacity probe, not a finished product, and this page would rather say so than oversell it. It exists to find out how far live media can be pushed through a peer-to-peer context, and to report the answer honestly.",
+      ],
+      concepts: [
+        { term: "Namespace", def: "A stream you own and invite viewers into." },
+        { term: "Context", def: "The stream: its members, its frames and its chunks." },
+        { term: "Frame", def: "A picture encoded by a deterministic, integer-only codec running inside the WASM app. No floating point, no SIMD, no threads — so every node computes a byte-identical result." },
+        { term: "Chunk", def: "The other path: H.264 encoded by the browser’s WebCodecs and stored as fragments. Faster, but the browser is doing the encoding rather than the contract." },
+        { term: "Tombstone", def: "How a deleted fragment is recorded. Fragment keys are monotone and never reused, so a delete can never be confused with a fragment that has not arrived yet." },
+      ],
+    },
+    {
+      id: "start",
+      heading: "Getting started",
+      steps: [
+        { title: "Use a browser", body: "This app is web only. The desktop is not a supported target — it is not blocked there and does not crash; the integration around it is what is unsupported." },
+        { title: "Connect a node", body: "Press Connect to node and choose your node." },
+        { title: "Create a stream", body: "A namespace you own. You are its admin." },
+        { title: "Watch the numbers", body: "Throughput and delivery are reported as you go. That measurement is the actual output of this app." },
+      ],
+    },
+    {
+      id: "sharing",
+      heading: "What it is honest about",
+      paragraphs: [
+        "Measured, not promised. Presence-based delivery carries roughly 96% of frames with one author and materially less with two — the bandwidth arithmetic suggested a higher number and the measurement did not agree.",
+        "The deterministic codec is deliberately primitive. It exists so that every peer computes an identical frame, which makes the capacity question answerable at all.",
+      ],
+    },
+    {
+      id: "storage",
+      heading: "What is stored, and where",
+      bullets: [
+        "Members and their roles.",
+        "Frames from the deterministic codec, with a sequence number and a checksum.",
+        "Media chunks from the WebCodecs path, with cursors marking keyframes.",
+        "Pruning counters, so old frames can be dropped without breaking the monotone sequence.",
+      ],
+    },
+    {
+      id: "offline",
+      heading: "Offline, and what happens when you reconnect",
+      paragraphs: [
+        "Your node holds the whole state, so the app keeps working with no network — every change is written locally and queued.",
+        "When your node reaches a peer again, the two exchange changes and merge them. Merging is CRDT-based, not last-write-wins-by-clock, so two people editing different things at the same time both keep their work. Where two people genuinely changed the same single value, the later write wins on that one value and nothing else is lost.",
+      ],
+    },
+    {
+      id: "trouble",
+      heading: "When something looks wrong",
+      concepts: [
+        { term: "Frames are dropping", def: "Expected, and the point. The app reports what got through rather than pretending everything did." },
+        { term: "The camera does not start", def: "WebCodecs H.264 needs a browser build that ships the codec. A stock Chromium without it will not encode." },
+        { term: "It behaves oddly in the desktop app", def: "Web only. Use a browser." },
+      ],
+    },
+  ],
+  previewSteps: [
+    { title: "Two nodes", body: "An encoder and a decoder, with a real context between them rather than a media server." },
+    { title: "Frames flow", body: "Either deterministic frames computed inside the WASM app, or browser-encoded H.264 chunks." },
+    { title: "Throughput is measured", body: "The bar is the actual figure, not an illustration. Measuring it is what this app is for." },
+    { title: "The ceiling is reported", body: "Where delivery falls off, the app says so. An honest experiment beats a confident demo." },
+  ],
+  loginPopup: LoginPopup,
 };

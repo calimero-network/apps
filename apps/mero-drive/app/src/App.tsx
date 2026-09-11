@@ -37,9 +37,12 @@ import { PACKAGE_NAME } from '@/constants/config';
 import { hasInvitePayload } from '@/hooks/useNamespaceInvitation';
 
 import LandingPage from './pages/landing/LandingPage';
-import Authenticate from './pages/login/Authenticate';
 import WorkspacePage from './pages/workspace';
 import JoinPage from './pages/join';
+
+/** Every path the shared landing page serves. See src/pages/landing. */
+const LANDING_PATHS = ['/', '/docs', '/preview'];
+
 
 // Deep-link landings arrive on the frontend ROOT with the forwarded query
 // (links.calimero.network appends the full query string), so an
@@ -118,8 +121,18 @@ export default function App() {
               >
                 <InviteRedirect />
                 <Routes>
-                  <Route path="/" element={<LandingPage />} />
-                  <Route path="/login" element={<Authenticate />} />
+                  {/* The landing page is three pages: `/`, `/docs` and `/preview`. They are
+                      real URLs so they can be shared and opened cold, which needs a route
+                      here — otherwise this app's catch-all swallows the deep link before
+                      the page ever renders. */}
+                  {LANDING_PATHS.map((landingPath) => (
+                    <Route key={landingPath} path={landingPath} element={<LandingPage />} />
+                  ))}
+                  {/* The /login PAGE is gone — every app had one, every one looked
+                      different, and its whole content was a button the visitor had
+                      already pressed to get there. The path stays as a redirect so a
+                      bookmark lands on the front door instead of a blank route. */}
+                  <Route path="/login" element={<Navigate to="/" replace />} />
                   <Route path="/join" element={<JoinPage />} />
                   <Route
                     path="/app/*"

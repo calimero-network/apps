@@ -5,9 +5,12 @@ import { useMero } from "@calimero-network/mero-react";
 import FeedPage from "./pages/FeedPage";
 import PostPage from "./pages/PostPage";
 import LandingPage from "./pages/landing/LandingPage";
-import LoginPage from "./pages/LoginPage";
 import SetupPage from "./pages/SetupPage";
 import { useForumWorkspace } from "./lib/workspace";
+
+/** Every path the shared landing page serves. See src/pages/landing. */
+const LANDING_PATHS = ['/', '/docs', '/preview'];
+
 
 /**
  * Gate every contract-backed route.
@@ -31,17 +34,10 @@ function RequireForum({ children }: { children: ReactNode }) {
 
   if (isLoading) return null;
   if (!isAuthenticated) {
-    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+    return <Navigate to="/" replace state={{ from: location.pathname }} />;
   }
   if (ws.loading) return null;
   if (ws.needsSetup) return <SetupPage ws={ws} />;
-  return <>{children}</>;
-}
-
-function RedirectIfAuthed({ children }: { children: ReactNode }) {
-  const { isAuthenticated, isLoading } = useMero();
-  if (isLoading) return null;
-  if (isAuthenticated) return <Navigate to="/f" replace />;
   return <>{children}</>;
 }
 
@@ -49,15 +45,18 @@ export default function App() {
   return (
     <Routes>
       {/* The explainer is the front door now, not the feed. */}
-      <Route path="/" element={<LandingPage />} />
-      <Route
-        path="/login"
-        element={
-          <RedirectIfAuthed>
-            <LoginPage />
-          </RedirectIfAuthed>
-        }
-      />
+      {/* The landing page is three pages: `/`, `/docs` and `/preview`. They are
+          real URLs so they can be shared and opened cold, which needs a route
+          here — otherwise this app's catch-all swallows the deep link before
+          the page ever renders. */}
+      {LANDING_PATHS.map((landingPath) => (
+        <Route key={landingPath} path={landingPath} element={<LandingPage />} />
+      ))}
+      {/* The /login PAGE is gone — every app had one, every one looked
+          different, and its whole content was a button the visitor had
+          already pressed to get there. The path stays as a redirect so a
+          bookmark lands on the front door instead of a blank route. */}
+      <Route path="/login" element={<Navigate to="/" replace />} />
       <Route
         path="/f"
         element={

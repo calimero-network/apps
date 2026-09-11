@@ -961,6 +961,195 @@
   }
 }
 
+/* ══════════════════════════════════════════════════════════════════════════
+   Three views: overview, docs, preview
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* The header's right-hand slot. `margin-inline-start: auto` lives here rather
+   than on the button, so the nav can centre itself and the CTA still pins right
+   whether or not the app offers one (a desktop-only app does not). */
+.cal-lp-headerend {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-inline-start: auto;
+}
+.cal-lp-nav {
+  margin-inline: auto;
+}
+.cal-lp-navlink[data-cal-lp-active] {
+  color: var(--cal-lp-text);
+  background: var(--cal-lp-bg-3);
+}
+
+/* The theme switch, now in the footer's small print. Text beside the icon
+   because down here it has room, and a lone moon in a row of legal text reads
+   as decoration. */
+.cal-lp-themebtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-inline-start: auto;
+  padding: 6px 12px;
+  border: 1px solid var(--cal-lp-border);
+  border-radius: 999px;
+  background: var(--cal-lp-bg-0);
+  color: var(--cal-lp-text-dim);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.cal-lp-themebtn:hover {
+  color: var(--cal-lp-text);
+  border-color: var(--cal-lp-border-strong);
+}
+
+.cal-lp-inlinelink {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--cal-lp-accent-ink);
+  font-weight: 640;
+  text-decoration: none;
+}
+.cal-lp-inlinelink:hover {
+  text-decoration: underline;
+}
+
+.cal-lp-stagewrap {
+  display: flex;
+  flex-direction: column;
+  /* ⚠️ `stretch`, not `flex-start`. The stage sizes itself from an
+     `aspect-ratio` and has no width of its own, so a non-stretch alignment
+     makes it shrink-to-fit its only in-flow content — the three title-bar
+     dots — and the frame collapses to a thumbnail. The link below gets
+     `align-self` instead. Same trap as the auto-margin one at 940px. */
+  align-items: stretch;
+}
+
+/* A quiet way out of the hero frame and into the full-size preview. */
+.cal-lp-stagelink {
+  display: inline-flex;
+  align-self: flex-start;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
+  font-size: 13px;
+  font-weight: 620;
+  color: var(--cal-lp-text-faint);
+  text-decoration: none;
+}
+.cal-lp-stagelink:hover {
+  color: var(--cal-lp-accent-ink);
+}
+
+/* ── Docs ───────────────────────────────────────────────────────────────── */
+.cal-lp-docshead {
+  padding-block: 56px 10px;
+}
+.cal-lp-h1--docs {
+  font-size: clamp(30px, 3.6vw, 42px);
+}
+.cal-lp-docs {
+  display: grid;
+  grid-template-columns: 210px minmax(0, 1fr);
+  gap: 54px;
+  padding-block: 34px 78px;
+  align-items: start;
+}
+.cal-lp-toc {
+  position: sticky;
+  top: calc(var(--cal-lp-header-h) + 22px);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.cal-lp-toclink {
+  padding: 6px 10px;
+  border-radius: var(--cal-lp-radius-sm);
+  font-size: 13.5px;
+  color: var(--cal-lp-text-dim);
+  text-decoration: none;
+}
+.cal-lp-toclink:hover {
+  color: var(--cal-lp-text);
+  background: var(--cal-lp-bg-3);
+}
+.cal-lp-docsbody {
+  /* `minmax(0, 1fr)` above plus this: a grid item's default `min-width: auto`
+     is its CONTENT width, so one long unbreakable token in a doc would widen
+     the column and scroll the whole page sideways. */
+  min-width: 0;
+}
+.cal-lp-docsection {
+  padding-block: 0 52px;
+  scroll-margin-top: calc(var(--cal-lp-header-h) + 20px);
+}
+.cal-lp-docsection .cal-lp-h2 {
+  margin-bottom: 4px;
+}
+
+/* Term → what it means IN THIS APP. The most useful rows on the page, so they
+   get a real definition list rather than a bulleted fudge. */
+.cal-lp-concepts {
+  margin: 26px 0 0;
+  display: grid;
+  gap: 12px;
+}
+.cal-lp-concept {
+  display: grid;
+  grid-template-columns: 190px minmax(0, 1fr);
+  gap: 18px;
+  padding: 15px 18px;
+  border: 1px solid var(--cal-lp-border);
+  border-radius: var(--cal-lp-radius);
+  background: var(--cal-lp-bg-1);
+}
+.cal-lp-conceptterm {
+  margin: 0;
+  font-size: 14.5px;
+  font-weight: 680;
+  color: var(--cal-lp-text);
+}
+.cal-lp-conceptdef {
+  margin: 0;
+  font-size: 14.5px;
+  line-height: 1.62;
+  color: var(--cal-lp-text-dim);
+}
+.cal-lp-steps--docs {
+  margin-top: 26px;
+  /* A narrower track than the overview's, so four steps sit on one row in the
+     docs column instead of leaving a single orphan card underneath three. */
+  grid-template-columns: repeat(auto-fit, minmax(min(168px, 100%), 1fr));
+}
+
+/* ── Preview ────────────────────────────────────────────────────────────── */
+.cal-lp-previewwrap {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+  gap: 48px;
+  align-items: start;
+  padding-block: 34px 60px;
+}
+.cal-lp-stage--big {
+  width: 100%;
+}
+.cal-lp-beats {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 18px;
+}
+.cal-lp-beat {
+  display: grid;
+  grid-template-columns: 27px minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+
 /* ── Responsive ──────────────────────────────────────────────────────────
    Four things break on a phone if nothing here runs, and all four were seen in
    a 360px capture rather than guessed at:
@@ -975,6 +1164,29 @@
    Verified by `does not scroll sideways on a phone` in every app's generated
    marketing-landing.spec.ts, at 390px AND at 320px. */
 @media (max-width: 940px) {
+  /* Both new views are two-column and both collapse here, for the same reason
+     the hero does. The TOC un-sticks: pinned above the prose on a short screen
+     it would eat most of it. */
+  .cal-lp-docs,
+  .cal-lp-previewwrap {
+    grid-template-columns: 1fr;
+    gap: 30px;
+  }
+  .cal-lp-toc {
+    position: static;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 4px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--cal-lp-border);
+  }
+  .cal-lp-toc .cal-lp-footerhead {
+    width: 100%;
+    margin-bottom: 4px;
+  }
+  .cal-lp-toclink {
+    border: 1px solid var(--cal-lp-border);
+  }
   .cal-lp-hero {
     grid-template-columns: 1fr;
     gap: 36px;
@@ -983,15 +1195,33 @@
        its content and nothing else. */
     min-height: 0;
   }
+  /* ⚠️ NOT `display: none` any more. The nav used to be four in-page anchors
+     and hiding it cost a visitor nothing — the sections were below them. It is
+     now the only way to reach two of the three pages, so it wraps under the
+     header instead of disappearing. */
   .cal-lp-nav {
+    order: 3;
+    width: 100%;
+    margin-inline: 0;
+    gap: 2px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .cal-lp-nav::-webkit-scrollbar {
     display: none;
+  }
+  .cal-lp-header {
+    height: auto;
+    flex-wrap: wrap;
+    padding-block: 10px;
+    row-gap: 6px;
   }
   .cal-lp-section {
     padding-block: 56px;
   }
   /* One column would otherwise stretch the art to the full page width — 896px
      on a 940px viewport, nearly twice the size it was drawn at. */
-  .cal-lp-stage {
+  .cal-lp-stagewrap {
     /* `width: 100%` is load-bearing next to the auto margins: an auto margin
        turns a grid item's default stretch into shrink-to-fit, and the only
        in-flow content here is the three title-bar dots — so without it the
@@ -1003,6 +1233,20 @@
 }
 
 @media (max-width: 640px) {
+  /* A 190px term column leaves nothing for the definition on a phone. */
+  .cal-lp-concept {
+    grid-template-columns: 1fr;
+    gap: 5px;
+  }
+  .cal-lp-docshead {
+    padding-block: 34px 6px;
+  }
+  .cal-lp-docs {
+    padding-block: 24px 52px;
+  }
+  .cal-lp-docsection {
+    padding-block: 0 38px;
+  }
   .cal-lp-shell {
     padding-inline: 16px;
   }

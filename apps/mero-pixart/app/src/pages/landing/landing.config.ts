@@ -11,6 +11,7 @@
 import { Circle, Cube3D, Cube3DLayers, Eye, LineChart, Zap } from '@calimero-network/mero-icons';
 
 import Animation from './animation';
+import LoginPopup from './loginPopup';
 import type { LandingConfig } from './landingTypes';
 
 export const CONFIG: LandingConfig = {
@@ -59,4 +60,72 @@ export const CONFIG: LandingConfig = {
     },
   ],
   animation: Animation,
+  docs: [
+    {
+      id: "concepts",
+      heading: "The words, and what they mean here",
+      paragraphs: [
+        "A genuinely deep raster editor — layers, masks, blend modes, curves — that several people can work in at once. The reason that is possible is that a document is a set of layer records, not one image file.",
+      ],
+      concepts: [
+        { term: "Namespace", def: "A workspace you own and invite collaborators into." },
+        { term: "Context", def: "One document: its canvas size, its layers, its members and their cursors." },
+        { term: "Layer", def: "A record in a map keyed by layer id — raster, text or fill. Content, mask, transform and adjustments are separate fields, so painting on a layer does not conflict with moving it." },
+        { term: "Adjustment", def: "Non-destructive. Brightness, contrast, saturation, hue, exposure, blur and invert are stored as parameters and applied at render time, so the pixels underneath are never rewritten." },
+        { term: "Owner / editor", def: "The document name and description are owner-gated: a rename from a non-owner is rejected when it merges, not merely hidden." },
+      ],
+    },
+    {
+      id: "start",
+      heading: "Getting started",
+      steps: [
+        { title: "Connect a node", body: "Press Connect to node and pick your node." },
+        { title: "Create a document", body: "Choose a canvas size. You are the owner." },
+        { title: "Work in layers", body: "Add raster, text and fill layers, group them in folders, and reorder freely." },
+        { title: "Invite editors", body: "Grant the editor role. Everyone else can watch the document change without being able to change it." },
+      ],
+    },
+    {
+      id: "sharing",
+      heading: "Working together",
+      paragraphs: [
+        "Because each layer is its own record with separate fields, two people working on different layers never contend, and two people doing different things to one layer — one painting, one transforming — usually do not either.",
+        "Cursors are presence, kept apart from the document, so watching someone move never touches the artwork.",
+      ],
+    },
+    {
+      id: "storage",
+      heading: "What is stored, and where",
+      bullets: [
+        "Canvas size and background.",
+        "Layers, keyed by id, with content, mask, transform, adjustments and text as separate fields.",
+        "Members and their usernames, plus roles.",
+        "Cursors, as presence.",
+      ],
+    },
+    {
+      id: "offline",
+      heading: "Offline, and what happens when you reconnect",
+      paragraphs: [
+        "Your node holds the whole state, so the app keeps working with no network — every change is written locally and queued.",
+        "When your node reaches a peer again, the two exchange changes and merge them. Merging is CRDT-based, not last-write-wins-by-clock, so two people editing different things at the same time both keep their work. Where two people genuinely changed the same single value, the later write wins on that one value and nothing else is lost.",
+      ],
+    },
+    {
+      id: "trouble",
+      heading: "When something looks wrong",
+      concepts: [
+        { term: "A layer jumped back", def: "Two people moved the same layer. The transform is one field and converges to the later move; the pixels are untouched." },
+        { term: "An adjustment looks different on their screen", def: "Adjustments render from parameters, so a difference means one node has not received the latest parameter yet. It resolves on sync." },
+        { term: "You cannot edit", def: "You hold the viewer role. Ask the owner for editor." },
+      ],
+    },
+  ],
+  previewSteps: [
+    { title: "A layer stack", body: "Raster, text and fill layers in a tree — each one a separate record in the context." },
+    { title: "A stroke is drawn", body: "Painting writes to that layer’s content field and nothing else on it." },
+    { title: "An adjustment applies", body: "Non-destructive: parameters are stored, the pixels underneath are not rewritten." },
+    { title: "A collaborator joins", body: "Their cursor rides separately from the document, so presence can never damage the art." },
+  ],
+  loginPopup: LoginPopup,
 };

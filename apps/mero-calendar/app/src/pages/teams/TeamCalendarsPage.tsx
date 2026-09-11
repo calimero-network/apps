@@ -264,7 +264,7 @@ export default function TeamCalendarsPage() {
 
   function handleLogout() {
     logout();
-    navigate("/login");
+    navigate("/");
   }
 
   return (

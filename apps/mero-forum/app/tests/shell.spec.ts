@@ -34,14 +34,16 @@ test.describe("app shell", () => {
     await page.goto("/");
 
     await expect(page.getByRole("heading", { level: 1, name: "Mero Forum" })).toBeVisible();
-    await expect(
-      page.getByRole("heading", { name: "Mero Forum, in plain terms" }),
-    ).toBeVisible();
     await expect(page.getByRole("heading", { name: "What you can do" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Four steps, no server" })).toBeVisible();
-    await expect(
-      page.getByRole("heading", { name: "Questions people actually ask" }),
-    ).toBeVisible();
+
+    // ⚠️ The explainer, the four steps and the FAQ now live on `/docs`. The
+    // landing is three pages: `/` sells it, `/docs` explains it, `/preview`
+    // shows it. Asserting them all on `/` was asserting the old shape.
+    await page.goto("/docs");
+    await expect(page.getByRole("heading", { name: "What this is" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "How Calimero works" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "FAQ" })).toBeVisible();
+    await page.goto("/");
 
     // The thing the old test asserted must NOT be here: a composer with no node
     // behind it can only throw.
@@ -69,19 +71,23 @@ test.describe("app shell", () => {
     expect(faint, "content parked below full opacity at rest").toEqual([]);
   });
 
-  test("the feed redirects to the connect screen instead of failing", async ({ page }) => {
+  // ⚠️ These used to expect `/login`. That page is gone across the fleet — its
+  // whole content was a button the visitor had already pressed to get there —
+  // so a signed-out visitor is sent to the front door, which is where the way
+  // in now lives.
+  test("the feed redirects to the front door instead of failing", async ({ page }) => {
     const errors: string[] = [];
     page.on("pageerror", (e) => errors.push(e.message));
 
     await page.goto("/f");
-    await expect(page).toHaveURL(/\/login$/);
-    await expect(page.getByRole("heading", { name: /connect your node/i })).toBeVisible();
+    await expect(page).toHaveURL(/\/$/);
+    await expect(page.getByRole("heading", { level: 1, name: "Mero Forum" })).toBeVisible();
     expect(errors, "an unhandled error escaped to the page").toEqual([]);
   });
 
   test("a post permalink redirects too, rather than rendering a dead shell", async ({ page }) => {
     await page.goto("/p/deadbeef");
-    await expect(page).toHaveURL(/\/login$/);
+    await expect(page).toHaveURL(/\/$/);
   });
 
   test("an unknown route falls back to the explainer", async ({ page }) => {
@@ -90,10 +96,13 @@ test.describe("app shell", () => {
     await expect(page.getByRole("heading", { level: 1, name: "Mero Forum" })).toBeVisible();
   });
 
-  test("the connect screen offers the shared ConnectButton", async ({ page }) => {
+  test("/login is a redirect now, not a second sign-in page", async ({ page }) => {
+    // The node-discovery modal it used to render is opened from the landing
+    // page's own CTA. The path stays so a bookmark is not a blank route.
     await page.goto("/login");
-    // mero-react's ConnectButton — the same control every app in the fleet uses,
-    // which owns the node-discovery modal.
-    await expect(page.getByRole("button", { name: /connect a node/i })).toBeVisible();
+    await expect(page).toHaveURL(/\/$/);
+    await expect(
+      page.locator("button").filter({ hasText: /^Connect to node$/ }).first(),
+    ).toBeVisible();
   });
 });

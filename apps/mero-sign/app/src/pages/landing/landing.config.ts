@@ -54,4 +54,71 @@ export const CONFIG: LandingConfig = {
     },
   ],
   animation: Animation,
+  docs: [
+    {
+      id: "concepts",
+      heading: "The words, and what they mean here",
+      paragraphs: [
+        "An e-signature workflow with no signing service in the middle. An agreement is a context you administer, and your signature library is a separate, private one only you can read.",
+      ],
+      concepts: [
+        { term: "Namespace", def: "An agreement. You create it, and you administer who signs." },
+        { term: "Context", def: "The agreement’s documents, participants and signature records." },
+        { term: "Private context", def: "Your signature library. A context only you are in, so the signatures you have drawn never replicate to anyone — including the people you sign agreements with." },
+        { term: "Participant", def: "Someone invited to sign, in a role you assign. Participation is recorded in the contract, not just in the interface." },
+        { term: "Consent", def: "An explicit, recorded agreement to sign electronically, stored alongside the signature record." },
+      ],
+    },
+    {
+      id: "start",
+      heading: "Getting started",
+      steps: [
+        { title: "Connect a node", body: "Mero Sign opens its connection panel from the landing page; choose your node there." },
+        { title: "Create an agreement", body: "A context you administer. Upload the PDF that needs signing." },
+        { title: "Add participants", body: "Invite the signatories and assign their roles." },
+        { title: "Sign", body: "Signatures are drawn from your private library and recorded against the document." },
+      ],
+    },
+    {
+      id: "sharing",
+      heading: "Inviting signatories",
+      paragraphs: [
+        "Invitations are tied to identities and carry permissions, so an agreement is not a link anyone can open and sign.",
+        "Verification is peer-to-peer: a signature can be checked against the record without asking a service whether it is genuine.",
+      ],
+    },
+    {
+      id: "storage",
+      heading: "What is stored, and where",
+      bullets: [
+        "Documents uploaded to the agreement, and the signature records against them.",
+        "Participants, their roles, and their recorded consent.",
+        "Identity mappings, so a person’s shared identity and private identity can be resolved without exposing one to the other.",
+        "Your signature library, in a private context that replicates to nobody.",
+      ],
+    },
+    {
+      id: "offline",
+      heading: "Offline, and what happens when you reconnect",
+      paragraphs: [
+        "Your node holds the whole state, so the app keeps working with no network — every change is written locally and queued.",
+        "When your node reaches a peer again, the two exchange changes and merge them. Merging is CRDT-based, not last-write-wins-by-clock, so two people editing different things at the same time both keep their work. Where two people genuinely changed the same single value, the later write wins on that one value and nothing else is lost.",
+      ],
+    },
+    {
+      id: "trouble",
+      heading: "When something looks wrong",
+      concepts: [
+        { term: "A signatory cannot sign", def: "They must be a participant with a role on that agreement. Being a member of the namespace is not the same as being a signatory." },
+        { term: "Your signature is missing on another device", def: "Your library is a private context, node-local by design. A different node has a different library." },
+        { term: "A document will not open", def: "The blob must have replicated to your node. Large uploads land after the record that references them." },
+      ],
+    },
+  ],
+  previewSteps: [
+    { title: "A document to sign", body: "The PDF lives in the agreement’s context, replicated only to its participants." },
+    { title: "Fields fill in", body: "Each signature is recorded against the document with its signer and role." },
+    { title: "Consent is recorded", body: "Agreeing to sign electronically is stored with the signature, not assumed." },
+    { title: "Verified peer-to-peer", body: "A signature is checked against the record — there is no service to ask whether it is real." },
+  ],
 };

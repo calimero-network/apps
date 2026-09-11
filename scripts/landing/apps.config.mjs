@@ -36,6 +36,8 @@
  * world and coming back to play never pay for it.
  */
 
+import { DOCS } from './docs.config.mjs';
+
 /** @type {Record<string, import('./types.js').AppLanding>} */
 export const APPS = {
   battleships: {
@@ -57,6 +59,9 @@ export const APPS = {
 
 
   'mero-blocks': {
+    // Keeps its own sign-in — a sidebar, or the game launcher — so the
+    // landing gets an onConnect callback and never mounts the shared popup.
+    ownConnect: true,
     e2eDir: 'e2e',
     availability: 'web+desktop',
     playableOffline: true,
@@ -75,6 +80,9 @@ export const APPS = {
   },
 
   merraria: {
+    // Keeps its own sign-in — a sidebar, or the game launcher — so the
+    // landing gets an onConnect callback and never mounts the shared popup.
+    ownConnect: true,
     e2eDir: 'e2e',
     availability: 'web+desktop',
     playableOffline: true,
@@ -273,6 +281,9 @@ export const APPS = {
   },
 
   'mero-sign': {
+    // Keeps its own sign-in — a sidebar, or the game launcher — so the
+    // landing gets an onConnect callback and never mounts the shared popup.
+    ownConnect: true,
     displayName: 'Mero Sign',
     e2eDir: 'tests',
     availability: 'web+desktop',
@@ -318,3 +329,15 @@ export const APPS = {
   },
 
 };
+
+/**
+ * The `/docs` and `/preview` copy is long enough to be its own file, but it is
+ * still one entry per app: merged in here so `generate.mjs` reads a single
+ * table and a missing entry is a loud failure rather than a page that renders
+ * with no documentation on it.
+ */
+for (const [app, entry] of Object.entries(APPS)) {
+  const extra = DOCS[app];
+  if (!extra) throw new Error(`landing: no docs.config.mjs entry for ${app}`);
+  Object.assign(entry, extra);
+}

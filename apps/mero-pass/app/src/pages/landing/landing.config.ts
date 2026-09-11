@@ -11,6 +11,7 @@
 import { Clock, CloudX, LockBox, LockStar, ShieldCheck } from '@calimero-network/mero-icons';
 
 import Animation from './animation';
+import LoginPopup from './loginPopup';
 import type { LandingConfig } from './landingTypes';
 
 export const CONFIG: LandingConfig = {
@@ -54,4 +55,68 @@ export const CONFIG: LandingConfig = {
     },
   ],
   animation: Animation,
+  docs: [
+    {
+      id: "concepts",
+      heading: "The words, and what they mean here",
+      concepts: [
+        { term: "Namespace", def: "A vault. You create it and invite the people who should hold its secrets." },
+        { term: "Context", def: "The vault’s contents — the secrets themselves and the audit log." },
+        { term: "Secret", def: "One entry in a map keyed by id. Five kinds: a login, a secure note, a TOTP seed, an SSH key, and free-form." },
+        { term: "TOTP", def: "A time-based one-time-password seed. Codes are generated locally from the seed; no code is ever stored or transmitted." },
+        { term: "Audit log", def: "A record of what happened in the vault, replicated with it, so the history is not something a vendor could withhold." },
+      ],
+    },
+    {
+      id: "start",
+      heading: "Getting started",
+      steps: [
+        { title: "Connect a node", body: "Press Connect to node and choose your node." },
+        { title: "Create a vault", body: "A namespace you own. Nothing in it leaves the members you invite." },
+        { title: "Add a secret", body: "Pick one of the five types. Logins carry a URL; TOTP entries carry a seed and generate codes on your own machine." },
+        { title: "Share with the team", body: "Invite the people who need it. Their node replicates the vault; there is no vendor holding a copy." },
+      ],
+    },
+    {
+      id: "sharing",
+      heading: "Sharing, and taking it back",
+      paragraphs: [
+        "Membership is the access model. Revoking someone stops the vault replicating to them — it is an action you take, not a support request.",
+        "Because there is no central store, there is no central store to breach. The threat model moves from \"a vendor is compromised\" to \"a member’s node is compromised\", which is a risk you can see and act on.",
+      ],
+    },
+    {
+      id: "storage",
+      heading: "What is stored, and where",
+      bullets: [
+        "Secrets, keyed by id, each with its type, tags and payload.",
+        "An audit log of vault activity.",
+        "Nothing on any server: the vault exists on the nodes of the people you invited, and nowhere else.",
+      ],
+    },
+    {
+      id: "offline",
+      heading: "Offline, and what happens when you reconnect",
+      paragraphs: [
+        "Your node holds the whole state, so the app keeps working with no network — every change is written locally and queued.",
+        "When your node reaches a peer again, the two exchange changes and merge them. Merging is CRDT-based, not last-write-wins-by-clock, so two people editing different things at the same time both keep their work. Where two people genuinely changed the same single value, the later write wins on that one value and nothing else is lost.",
+      ],
+    },
+    {
+      id: "trouble",
+      heading: "When something looks wrong",
+      concepts: [
+        { term: "A TOTP code is rejected", def: "Codes are time-based and generated locally. A wrong code almost always means your machine’s clock has drifted." },
+        { term: "A teammate cannot see a secret", def: "They must be a member of that vault. Being in another vault with you grants nothing here." },
+        { term: "A secret you deleted is back", def: "A peer that was offline when you deleted it can resurface its copy on reconnect if it also edited it. Delete it again once both nodes are in sync." },
+      ],
+    },
+  ],
+  previewSteps: [
+    { title: "A vault of secrets", body: "Entries in a context replicated only to the people invited to that vault." },
+    { title: "One reveals", body: "Decryption happens on your machine. Nothing is fetched from a service to show it." },
+    { title: "A TOTP ticks", body: "Generated locally from a stored seed — the code itself is never stored or sent." },
+    { title: "A member is added", body: "Sharing is membership. Revoking it stops replication rather than filing a request." },
+  ],
+  loginPopup: LoginPopup,
 };

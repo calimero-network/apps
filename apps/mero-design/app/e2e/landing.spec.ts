@@ -15,8 +15,12 @@ test.describe("Landing page", () => {
     await expect(page).toHaveTitle(/MeroDesign/);
   });
 
-  test("the CTA navigates to /login", async ({ page }) => {
-    await page.getByRole("link", { name: "Connect to node" }).first().click();
-    await expect(page).toHaveURL(/\/login/);
+  // ⚠️ This used to assert the CTA navigated to `/login`. There is no /login
+  // page any more — it opens the shared connection popup over the page you are
+  // already on — and the generated spec beside this file owns that contract.
+  test("offers a way to connect", async ({ page }) => {
+    await expect(
+      page.locator("button").filter({ hasText: /^Connect to node$/ }).first(),
+    ).toBeVisible();
   });
 });

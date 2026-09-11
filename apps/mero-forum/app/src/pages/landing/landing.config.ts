@@ -11,6 +11,7 @@
 import { CloudX, MessageCircle, Refresh, Shield } from '@calimero-network/mero-icons';
 
 import Animation from './animation';
+import LoginPopup from './loginPopup';
 import type { LandingConfig } from './landingTypes';
 
 export const CONFIG: LandingConfig = {
@@ -49,4 +50,68 @@ export const CONFIG: LandingConfig = {
     },
   ],
   animation: Animation,
+  docs: [
+    {
+      id: "concepts",
+      heading: "The words, and what they mean here",
+      concepts: [
+        { term: "Namespace", def: "A forum. Invite-only: the members are the audience, and there is no wider public." },
+        { term: "Context", def: "The forum’s posts, comments and votes." },
+        { term: "Post", def: "A thread, stored in a map keyed by id." },
+        { term: "Comment", def: "A reply. Every comment lives in one flat map carrying its post id, rather than a nested collection per post — a nested structure created independently on two nodes needs deterministic re-keying to converge, and a flat map has no such hazard." },
+        { term: "Vote", def: "One row per voter per post, keyed by both. That keying is what makes a vote idempotent: voting twice cannot count twice." },
+      ],
+    },
+    {
+      id: "start",
+      heading: "Getting started",
+      steps: [
+        { title: "Connect a node", body: "Press Connect to node and choose your node." },
+        { title: "Create a forum", body: "A namespace you own. Nothing in it is public." },
+        { title: "Post something", body: "Write a post; it replicates to members as their nodes sync." },
+        { title: "Invite people", body: "Share the link. Membership is the whole access model." },
+      ],
+    },
+    {
+      id: "sharing",
+      heading: "Who can see it",
+      paragraphs: [
+        "Only members. There is no ranking algorithm, no advertising and no anonymous readership, because there is no server hosting the forum for strangers to reach.",
+        "Authorship is enforced in the contract: only a comment’s author may edit or delete it, whatever the interface offers.",
+      ],
+    },
+    {
+      id: "storage",
+      heading: "What is stored, and where",
+      bullets: [
+        "Posts, keyed by id, with the author and body.",
+        "Comments, in one flat map, each carrying the id of the post it belongs to.",
+        "Votes, keyed by post and voter together, so a repeat vote replaces rather than accumulates.",
+      ],
+    },
+    {
+      id: "offline",
+      heading: "Offline, and what happens when you reconnect",
+      paragraphs: [
+        "Your node holds the whole state, so the app keeps working with no network — every change is written locally and queued.",
+        "When your node reaches a peer again, the two exchange changes and merge them. Merging is CRDT-based, not last-write-wins-by-clock, so two people editing different things at the same time both keep their work. Where two people genuinely changed the same single value, the later write wins on that one value and nothing else is lost.",
+      ],
+    },
+    {
+      id: "trouble",
+      heading: "When something looks wrong",
+      concepts: [
+        { term: "A new post is not showing", def: "Posts appear as peers sync. If a member’s node has been offline, it catches up on reconnect." },
+        { term: "You cannot edit a comment", def: "Only its author can. This is checked in the contract, not the UI." },
+        { term: "A vote count looks low", def: "One row per voter per post is the design — the count is voters, not clicks." },
+      ],
+    },
+  ],
+  previewSteps: [
+    { title: "A thread list", body: "Posts in a context only the forum’s members replicate." },
+    { title: "A post arrives", body: "A peer’s new thread appears as the nodes sync — nothing polled a server." },
+    { title: "A reply nests", body: "Comments live in one flat map carrying their post id, which is what lets them converge reliably." },
+    { title: "No ranking", body: "Order is time, not an algorithm. There is no operator to tune it." },
+  ],
+  loginPopup: LoginPopup,
 };

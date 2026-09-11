@@ -28,7 +28,7 @@ export default function WorkspacePage() {
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
-      navigate('/login', {
+      navigate('/', {
         replace: true,
         state: { returnTo: location.pathname + location.search },
       });

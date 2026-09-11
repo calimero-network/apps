@@ -197,7 +197,7 @@ export default function TeamsPage() {
 
   function handleLogout() {
     logout();
-    navigate("/login");
+    navigate("/");
   }
 
   return (
