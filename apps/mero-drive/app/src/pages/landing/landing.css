@@ -30,7 +30,15 @@
    Names deliberately match mero-calendar's theme.css so an app that already
    themes is speaking the same vocabulary. The COMPLETE light palette is
    declared here on the root; the dark block below only redefines. Never let a
-   colour exist solely inside a media query or a [data-theme] block. */
+   colour exist solely inside a media query or a [data-theme] block.
+
+   ⚠️ LIGHT IS THE DEFAULT, and it is not a `prefers-color-scheme` default.
+   There is deliberately NO `@media (prefers-color-scheme: dark)` rule in this
+   file: dark is reachable only by an explicit `[data-cal-lp-theme='dark']`,
+   which is to say only by someone clicking the toggle. A landing page is the
+   first thing a stranger sees and it is the same page in a screenshot, a
+   review and a share card, so it renders the same for everyone until asked
+   otherwise. The toggle still works, and the choice still persists. */
 .cal-lp-root {
   /* Calimero brand, taken from calimero.network: the green is #a5ff11, the
      near-black #131215, the off-white #fcfcfc. Same green in BOTH themes — it
@@ -72,30 +80,7 @@
   --cal-lp-reveal: 0.55s;
 }
 
-/* Dark by OS preference — but only when the viewer has NOT explicitly chosen
-   light, so the toggle wins in both directions. */
-@media (prefers-color-scheme: dark) {
-  .cal-lp-root:not([data-cal-lp-theme='light']) {
-    --cal-lp-bg-0: #131215;
-    --cal-lp-bg-1: #1a191d;
-    --cal-lp-bg-2: #141216;
-    --cal-lp-bg-3: #232227;
-    --cal-lp-border: #2b2a30;
-    --cal-lp-border-strong: #3b3b3b;
-    --cal-lp-text: #fcfcfc;
-    --cal-lp-text-dim: #c8c8c8;
-    --cal-lp-text-faint: #8e8e8e;
-    --cal-lp-accent: #a5ff11;
-    --cal-lp-accent-soft: rgba(165, 255, 17, 0.14);
-    --cal-lp-accent-text: #131215;
-    --cal-lp-accent-ink: #a5ff11;
-    --cal-lp-accent-hover: #b6ff3d;
-    --cal-lp-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
-    --cal-lp-shadow-sm: 0 2px 12px rgba(0, 0, 0, 0.4);
-  }
-}
-
-/* Explicit dark, so the toggle beats the OS in the other direction too. */
+/* Dark, and ONLY by explicit choice — see the note above the tokens. */
 .cal-lp-root[data-cal-lp-theme='dark'] {
   --cal-lp-bg-0: #131215;
   --cal-lp-bg-1: #1a191d;

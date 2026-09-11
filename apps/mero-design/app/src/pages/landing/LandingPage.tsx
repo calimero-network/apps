@@ -37,21 +37,31 @@ const THEME_KEY = 'cal-lp-theme';
  */
 const HOST_THEME_KEY = CONFIG.themeStorageKey;
 
+/**
+ * What the landing page was last TOLD to be, by its own toggle. Nothing else.
+ *
+ * ⚠️ Reads only `THEME_KEY`, and this is load-bearing — both of the other
+ * plausible sources are OS preference in disguise:
+ *
+ *   - `<html data-theme>` cannot say whether the host is dark because somebody
+ *     asked for dark or merely because the OS is;
+ *   - `HOST_THEME_KEY` looks like a stored choice and is not. mero-calendar's
+ *     ThemeProvider (mero-meet, mero-sheets and mero-issue-tracker are the
+ *     same shape) seeds its state from `prefers-color-scheme` and then WRITES
+ *     that straight to localStorage in a mount effect. So on an OS-dark
+ *     machine the first visit is light — the effect has not run yet — and
+ *     every visit after it is dark. Measured, not theorised.
+ *
+ * The toggle still writes both keys, so a choice made here carries into the
+ * app. The direction that leaked is the one that is closed.
+ */
 function readStoredTheme(): 'light' | 'dark' | null {
-  for (const key of [HOST_THEME_KEY, THEME_KEY]) {
-    if (!key) continue;
-    try {
-      const v = localStorage.getItem(key);
-      if (v === 'light' || v === 'dark') return v;
-    } catch {
-      /* a private window is not a reason to fail */
-    }
+  try {
+    const v = localStorage.getItem(THEME_KEY);
+    if (v === 'light' || v === 'dark') return v;
+  } catch {
+    /* a private window is not a reason to fail */
   }
-  // Nothing stored yet, but the app around this page may already have stamped
-  // its own default onto <html> before we mounted. Adopting it stops the
-  // landing rendering light inside a dark app until the first click.
-  const stamped = document.documentElement.getAttribute('data-theme');
-  if (stamped === 'light' || stamped === 'dark') return stamped;
   return null;
 }
 
@@ -189,13 +199,12 @@ function useStageScale<T extends HTMLElement = HTMLDivElement>() {
 function useTheme() {
   const [theme, setTheme] = useState<'light' | 'dark' | null>(readStoredTheme);
 
-  // `null` means "follow the OS", which the CSS already does via
-  // prefers-color-scheme. Only an explicit choice stamps the attribute.
-  const resolved =
-    theme ??
-    (typeof window !== 'undefined' && window.matchMedia?.('(prefers-color-scheme: dark)').matches
-      ? 'dark'
-      : 'light');
+  // ⚠️ LIGHT, not the OS. A landing page is the first thing a stranger sees and
+  // the same page in a screenshot, a review and a share card, so it looks the
+  // same for everyone until someone asks for dark. `landing.css` agrees: it
+  // carries no prefers-color-scheme rule at all, so there is one default here
+  // and not a second one hidden in the stylesheet.
+  const resolved = theme ?? 'light';
 
   // Mirrored onto <html> as well as the landing root: that attribute is what an
   // app's own theme CSS keys off, so the choice survives the walk from this page
@@ -218,7 +227,10 @@ function useTheme() {
     }
   }
 
-  return { attr: theme, resolved, toggle };
+  // Always stamped, never left off. `light` matches no override block — the
+  // base tokens are already light — but the attribute is the page's statement
+  // of which theme it is in, which is what a test and a reader can both check.
+  return { attr: resolved, resolved, toggle };
 }
 
 /** The fallback animation, so no app ships with an empty frame. */
@@ -338,7 +350,7 @@ export default function LandingPage({ onConnect }: LandingPageProps = {}) {
   );
 
   return (
-    <div className="cal-lp-root" data-cal-lp-theme={theme.attr ?? undefined}>
+    <div className="cal-lp-root" data-cal-lp-theme={theme.attr}>
       <header className="cal-lp-header">
         <a className="cal-lp-brand" href="/" aria-label={CONFIG.name}>
           <img className="cal-lp-brandicon" src={CONFIG.markSrc} alt="" width={24} height={24} />

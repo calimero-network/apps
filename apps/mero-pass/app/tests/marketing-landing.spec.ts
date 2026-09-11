@@ -36,6 +36,30 @@ test.describe('Mero Pass landing page', () => {
     await expect(page.locator('.cal-lp-step')).toHaveCount(4);
   });
 
+  test('defaults to light, even when the OS asks for dark', async ({ page }) => {
+    // The page is deliberately NOT prefers-color-scheme aware: a landing page
+    // is the first thing a stranger sees, and the same page in a screenshot, a
+    // review and a share card. Dark is reachable only by clicking the toggle.
+    await page.emulateMedia({ colorScheme: 'dark' });
+    await page.reload();
+    const root = page.locator('.cal-lp-root');
+    await expect(root).toHaveAttribute('data-cal-lp-theme', 'light');
+    // The attribute states the intent; this is what actually got painted. A
+    // stray prefers-color-scheme rule anywhere in landing.css would pass the
+    // line above and fail this one.
+    await expect(root).toHaveCSS('background-color', 'rgb(252, 252, 252)');
+
+    // ⚠️ And again on a REPEAT visit, which is a different code path and the
+    // one that was actually broken. mero-calendar, mero-meet, mero-sheets and
+    // mero-issue-tracker each seed their own ThemeProvider from
+    // prefers-color-scheme and then WRITE that to localStorage in a mount
+    // effect — so a one-shot check sees light (the effect has not run yet)
+    // while every visit after it is dark.
+    await page.reload();
+    await expect(root).toHaveAttribute('data-cal-lp-theme', 'light');
+    await expect(root).toHaveCSS('background-color', 'rgb(252, 252, 252)');
+  });
+
   test('the theme toggle flips the palette both ways', async ({ page }) => {
     const root = page.locator('.cal-lp-root');
     const toggle = page.getByRole('button', { name: /Switch to (light|dark) theme/ });
