@@ -57,6 +57,13 @@ export interface LandingConfig {
   /** The 512x512 raster, for anywhere a bitmap is genuinely wanted. */
   iconSrc: string;
   availability: Availability;
+  /**
+   * The localStorage key this app's OWN theme switch uses, for the apps that
+   * ship one. Set it and the landing toggle writes that key too, so choosing
+   * dark here is still dark after sign-in. Omit it for apps with no theme of
+   * their own — the landing then keeps its choice to itself.
+   */
+  themeStorageKey?: string;
   /** Shown as an extra badge. `mero-stream` only, so far. */
   experimental?: boolean;
   /** True for apps that run with no node at all — `mero-blocks`, `merraria`. */

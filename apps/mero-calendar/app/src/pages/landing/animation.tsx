@@ -9,7 +9,9 @@
  */
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
-const W = 40;
+/* Wide enough for the longest event label: at 40 `Design review` ran straight
+   under Thursday's column. */
+const W = 62;
 
 /** A week with named events; one is private and never leaves the node. */
 export default function CalendarAnimation() {

@@ -22,13 +22,19 @@ export default function PassAnimation() {
         <span key={name}>
           <span className="cal-lp-a-box cal-lp-a-rise" style={{ left: 20, top: 32 + i * 32, right: 20, height: 26, ['--d' as string]: d, ['--t' as string]: '6s' }} />
           <span className="cal-lp-a-txt cal-lp-a-txt--val cal-lp-a-rise" style={{ left: 30, top: 41 + i * 32, ['--d' as string]: d, ['--t' as string]: '6s' }}>{name}</span>
-          <span className="cal-lp-a-txt cal-lp-a-txt--dim cal-lp-a-rise" style={{ left: 78, top: 41 + i * 32, fontSize: 8.5, ['--d' as string]: d, ['--t' as string]: '6s' }}>{kind}</span>
-          {/* the masked value */}
-          <span className="cal-lp-a-txt cal-lp-a-txt--dim cal-lp-a-rise" style={{ right: 30, top: 41 + i * 32, letterSpacing: 2, ['--d' as string]: d, ['--t' as string]: '6s' }}>••••••••</span>
+          <span className="cal-lp-a-txt cal-lp-a-txt--dim cal-lp-a-rise" style={{ left: 100, top: 41 + i * 32, fontSize: 8.5, ['--d' as string]: d, ['--t' as string]: '6s' }}>{kind}</span>
+          {/* The masked value. Row 0 unmasks below, so it steps out of the way
+              for exactly that window rather than being written over. */}
+          <span
+            className={`cal-lp-a-txt cal-lp-a-txt--dim ${i === 0 ? 'cal-lp-a-hide' : 'cal-lp-a-rise'}`}
+            style={{ right: 30, top: 41 + i * 32, letterSpacing: 2, ['--d' as string]: i === 0 ? '3s' : d, ['--t' as string]: '6s' }}
+          >
+            ••••••••
+          </span>
         </span>
       ))}
       {/* the one that reveals */}
-      <span className="cal-lp-a-txt cal-lp-a-txt--accent cal-lp-a-in" style={{ right: 30, top: 41, ['--d' as string]: '3s', ['--t' as string]: '6s' }}>tr7-Kq2-9xF</span>
+      <span className="cal-lp-a-txt cal-lp-a-txt--accent cal-lp-a-peek" style={{ right: 30, top: 41, ['--d' as string]: '3s', ['--t' as string]: '6s' }}>tr7-Kq2-9xF</span>
       <span className="cal-lp-a-txt cal-lp-a-txt--dim" style={{ left: 20, bottom: 2, fontSize: 8.5 }}>Vault lives on your nodes, not a vendor's</span>
     </div>
   );

@@ -118,7 +118,12 @@ test.describe('${meta.name} landing page', () => {
   });
 
   test('shows the availability badge', async ({ page }) => {
-    await expect(page.getByText(${q(badge)}, { exact: true })).toBeVisible();
+    // Scoped to the badge row on purpose: the same words legitimately appear
+    // again in the trust strip, and an unscoped getByText is a strict-mode
+    // violation the moment an app says both.
+    await expect(
+      page.locator('.cal-lp-badge').filter({ hasText: ${q(badge)} }),
+    ).toHaveCount(1);
   });
 
   test('every section is present and NOT blank', async ({ page }) => {
@@ -151,12 +156,55 @@ test.describe('${meta.name} landing page', () => {
     await expect(page.locator('.cal-lp-faqa').first()).toBeVisible();
   });
 
-  test('does not scroll sideways on a phone', async ({ page }) => {
-    await page.setViewportSize({ width: 400, height: 780 });
-    const overflow = await page.evaluate(
-      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
-    );
-    expect(overflow).toBeLessThanOrEqual(1);
+  // 320px is the narrowest phone still in use and 390 is the common one. Both,
+  // because the header and the hero art break at different widths.
+  for (const width of [390, 320]) {
+    test(\`does not scroll sideways on a \${width}px phone\`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 780 });
+      // Measured on the landing root as well as the document.
+      //
+      // ⚠️ The document alone is VACUOUS for the two canvas games: their
+      // mount.tsx renders this page into a fixed, inset-0, overflow-y-auto
+      // host, so nothing it contains can ever move
+      // documentElement.scrollWidth and the assertion passes without looking.
+      const overflow = await page.evaluate(() => {
+        const root = document.querySelector('.cal-lp-root');
+        const doc = document.documentElement;
+        return Math.max(
+          doc.scrollWidth - doc.clientWidth,
+          root ? root.scrollWidth - root.clientWidth : 0,
+          root?.parentElement
+            ? root.parentElement.scrollWidth - root.parentElement.clientWidth
+            : 0,
+        );
+      });
+      expect(overflow).toBeLessThanOrEqual(1);
+    });
+  }
+
+  test('the header stays one line on a phone', async ({ page }) => {
+    // \`Mero Issue Tracker\` wrapped under its own icon and pushed the sticky
+    // header from 60px to 120px, eating a fifth of the screen on every scroll.
+    await page.setViewportSize({ width: 360, height: 780 });
+    const header = page.locator('.cal-lp-header');
+    await expect(header).toBeVisible();
+    const box = await header.boundingBox();
+    expect(box?.height ?? 0).toBeLessThanOrEqual(72);
+  });
+
+  test('the hero art is drawn to fit its frame on a phone', async ({ page }) => {
+    // The animations position their parts in literal pixels against a 495px
+    // stage, so an unscaled box writes its rows over each other inside a 328px
+    // phone frame. useStageScale() is what stops that, and it is invisible in
+    // a screenshot review until you measure it.
+    await page.setViewportSize({ width: 360, height: 780 });
+    const body = page.locator('.cal-lp-stagebody');
+    await expect(body).toBeVisible();
+    const art = page.locator('.cal-lp-a').first();
+    await expect(art).toBeAttached();
+    const [bodyBox, artBox] = await Promise.all([body.boundingBox(), art.boundingBox()]);
+    // Rendered width, after the scale — within a pixel of the frame it sits in.
+    expect(Math.abs((artBox?.width ?? 0) - (bodyBox?.width ?? 0))).toBeLessThanOrEqual(1.5);
   });
 
   test('offers the desktop download', async ({ page }) => {
@@ -166,14 +214,23 @@ test.describe('${meta.name} landing page', () => {
   });
 ${desktopOnly ? `
   test('a desktop-only app does not offer a node it cannot reach', async ({ page }) => {
-    await expect(page.getByRole('link', { name: 'Connect to node' })).toHaveCount(0);
-    await expect(page.getByRole('button', { name: 'Connect to node' })).toHaveCount(0);
+    // Wait for the page to actually exist first — \`toHaveCount(0)\` passes
+    // instantly against a blank document, which would make this vacuous.
+    await expect(page.locator('.cal-lp-hero')).toBeVisible();
+    await expect(page.locator('a, button').filter({ hasText: /^Connect to node$/ })).toHaveCount(0);
   });
 ` : `
   test('offers a way to connect', async ({ page }) => {
-    const link = page.getByRole('link', { name: 'Connect to node' }).first();
-    const button = page.getByRole('button', { name: 'Connect to node' }).first();
-    expect((await link.count()) + (await button.count())).toBeGreaterThan(0);
+    // \`count()\` takes one synchronous reading and never retries, so asserting
+    // on it races React's first paint. The CTA is a link for most apps and a
+    // button for the ones whose sign-in is in-page, hence the union selector,
+    // which \`toBeVisible\` then waits on properly.
+    await expect(
+      page
+        .locator('a, button')
+        .filter({ hasText: /^Connect to node$/ })
+        .first(),
+    ).toBeVisible();
   });
 `}});
 `;
@@ -214,6 +271,7 @@ function renderConfig(app, entry, meta) {
   lines.push(`  markSrc: ${q(entry.markSrc ?? '/favicon.svg')},`);
   lines.push(`  iconSrc: '/icon-512.png',`);
   lines.push(`  availability: ${q(entry.availability)},`);
+  if (entry.themeStorageKey) lines.push(`  themeStorageKey: ${q(entry.themeStorageKey)},`);
   if (entry.experimental) lines.push('  experimental: true,');
   if (entry.playableOffline) lines.push('  playableOffline: true,');
   lines.push(`  trust: [${entry.trust.map(q).join(', ')}],`);
@@ -257,12 +315,14 @@ for (const [app, entry] of Object.entries(APPS)) {
   const meta = readCalimeroMeta(app);
   const files = { ...templateFiles, 'landing.config.ts': renderConfig(app, entry, meta) };
 
-  // `specName` exists for the two canvas games: their own `landing.spec.ts`
-  // tests the game LAUNCHER (invite codec, mock node, sessions) and must not be
-  // clobbered by the marketing page's spec.
-  const specDest = join(ROOT, 'apps', app, 'app', entry.e2eDir, entry.specName ?? 'landing.spec.ts');
+  // ALWAYS `marketing-landing.spec.ts`, never `landing.spec.ts`. Half the fleet
+  // already owned a hand-written `e2e/landing.spec.ts` — covering route guards
+  // and redirects, which this page's spec says nothing about — and generating
+  // over that name silently deleted them.
+  const SPEC_NAME = 'marketing-landing.spec.ts';
+  const specDest = join(ROOT, 'apps', app, 'app', entry.e2eDir, SPEC_NAME);
   const targets = Object.entries(files).map(([n, c]) => [join(outDir, n), c, n]);
-  targets.push([specDest, renderSpec(app, entry, meta), `${entry.e2eDir}/landing.spec.ts`]);
+  targets.push([specDest, renderSpec(app, entry, meta), `${entry.e2eDir}/${SPEC_NAME}`]);
 
   for (const [dest, content, name] of targets) {
     const current = existsSync(dest) ? readFileSync(dest, 'utf8') : null;

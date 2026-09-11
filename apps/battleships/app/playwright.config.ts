@@ -35,7 +35,10 @@ export default defineConfig({
   projects: [
     {
       name: 'landing',
-      testMatch: ['**/landing.spec.ts'],
+      // Both node-free surfaces: this app's own landing spec, and the generated
+      // one for the shared Calimero landing page. A project that names files
+      // one by one silently drops any spec nobody remembered to add.
+      testMatch: ['**/landing.spec.ts', '**/marketing-landing.spec.ts'],
       use: {
         ...devices['Desktop Chrome'],
         storageState: { cookies: [], origins: [] },

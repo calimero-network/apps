@@ -28,6 +28,32 @@ import { CONFIG } from './landing.config';
 import './landing.css';
 
 const THEME_KEY = 'cal-lp-theme';
+/**
+ * Four apps (mero-calendar, mero-meet, mero-sheets, mero-issue-tracker) already
+ * ship their own light/dark switch, each reading `<html data-theme>` and its own
+ * localStorage key. Where the app declares that key, the landing toggle writes
+ * it too — otherwise the front door and the app behind it would be two switches
+ * that disagree, and the choice would be lost the moment you signed in.
+ */
+const HOST_THEME_KEY = CONFIG.themeStorageKey;
+
+function readStoredTheme(): 'light' | 'dark' | null {
+  for (const key of [HOST_THEME_KEY, THEME_KEY]) {
+    if (!key) continue;
+    try {
+      const v = localStorage.getItem(key);
+      if (v === 'light' || v === 'dark') return v;
+    } catch {
+      /* a private window is not a reason to fail */
+    }
+  }
+  // Nothing stored yet, but the app around this page may already have stamped
+  // its own default onto <html> before we mounted. Adopting it stops the
+  // landing rendering light inside a dark app until the first click.
+  const stamped = document.documentElement.getAttribute('data-theme');
+  if (stamped === 'light' || stamped === 'dark') return stamped;
+  return null;
+}
 
 const LINKS = {
   registry: 'https://apps.calimero.network',
@@ -102,6 +128,10 @@ function useReveal<T extends HTMLElement = HTMLDivElement>() {
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
+    // The reveal is an enhancement, so every reason to skip it is a plain
+    // return — including jsdom, which implements no IntersectionObserver at all
+    // and would otherwise throw on mount inside a unit test.
+    if (typeof IntersectionObserver === 'undefined') return;
     if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
     const obs = new IntersectionObserver(
       (entries) => {
@@ -120,15 +150,44 @@ function useReveal<T extends HTMLElement = HTMLDivElement>() {
   return ref;
 }
 
+/**
+ * The width every hero animation is drawn against.
+ *
+ * Open any app's `animation.tsx` and the coordinates are literal pixels —
+ * `left: 20, top: 32 + i * 32`. The stage they sit in is fluid: 896px wide on a
+ * 940px tablet, 328px on a 360px phone, 495px on the desktop layout they were
+ * authored in. So the same mock renders half-empty on a tablet and with its
+ * rows written over each other on a phone, which is what a 360px capture showed.
+ */
+const STAGE_DESIGN_W = 495;
+
+/**
+ * Scales the animation box so it always renders as drawn.
+ *
+ * ResizeObserver is the exact measurement — the stage's width depends on the
+ * hero grid, not on the viewport, so a media query can only approximate it. It
+ * is absent in jsdom for the same reason IntersectionObserver is, so this stays
+ * optional: without it the element keeps the breakpoint fallbacks in the CSS.
+ */
+function useStageScale<T extends HTMLElement = HTMLDivElement>() {
+  const ref = useRef<T>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const apply = () => {
+      const w = el.clientWidth;
+      if (w > 0) el.style.setProperty('--cal-lp-a-s', String(w / STAGE_DESIGN_W));
+    };
+    apply();
+    const obs = new ResizeObserver(apply);
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
+  return ref;
+}
+
 function useTheme() {
-  const [theme, setTheme] = useState<'light' | 'dark' | null>(() => {
-    try {
-      const v = localStorage.getItem(THEME_KEY);
-      return v === 'light' || v === 'dark' ? v : null;
-    } catch {
-      return null;
-    }
-  });
+  const [theme, setTheme] = useState<'light' | 'dark' | null>(readStoredTheme);
 
   // `null` means "follow the OS", which the CSS already does via
   // prefers-color-scheme. Only an explicit choice stamps the attribute.
@@ -138,13 +197,24 @@ function useTheme() {
       ? 'dark'
       : 'light');
 
+  // Mirrored onto <html> as well as the landing root: that attribute is what an
+  // app's own theme CSS keys off, so the choice survives the walk from this page
+  // into the app. An app with no theme of its own simply matches no rule.
+  useEffect(() => {
+    if (theme === null) return;
+    document.documentElement.setAttribute('data-theme', theme);
+  }, [theme]);
+
   function toggle() {
     const next = resolved === 'dark' ? 'light' : 'dark';
     setTheme(next);
-    try {
-      localStorage.setItem(THEME_KEY, next);
-    } catch {
-      /* a private window is not a reason to fail */
+    for (const key of [THEME_KEY, HOST_THEME_KEY]) {
+      if (!key) continue;
+      try {
+        localStorage.setItem(key, next);
+      } catch {
+        /* a private window is not a reason to fail */
+      }
     }
   }
 
@@ -219,6 +289,7 @@ export default function LandingPage({ onConnect }: LandingPageProps = {}) {
   const whyRef = useReveal();
   const bandRef = useReveal();
   const faqRef = useReveal();
+  const stageRef = useStageScale();
 
   const desktopOnly = CONFIG.availability === 'desktop';
   const webOnly = CONFIG.availability === 'web';
@@ -271,7 +342,7 @@ export default function LandingPage({ onConnect }: LandingPageProps = {}) {
       <header className="cal-lp-header">
         <a className="cal-lp-brand" href="/" aria-label={CONFIG.name}>
           <img className="cal-lp-brandicon" src={CONFIG.markSrc} alt="" width={24} height={24} />
-          {CONFIG.name}
+          <span className="cal-lp-brandname">{CONFIG.name}</span>
         </a>
         <nav className="cal-lp-nav">
           <a className="cal-lp-navlink" href="#about">About</a>
@@ -283,6 +354,7 @@ export default function LandingPage({ onConnect }: LandingPageProps = {}) {
         <button
           type="button"
           className="cal-lp-iconbtn"
+          data-testid="theme-toggle"
           onClick={theme.toggle}
           aria-label={theme.resolved === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
           title={theme.resolved === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
@@ -345,7 +417,7 @@ export default function LandingPage({ onConnect }: LandingPageProps = {}) {
               <span className="cal-lp-stagedot" />
               <span className="cal-lp-stagedot" />
             </div>
-            <div className="cal-lp-stagebody">
+            <div className="cal-lp-stagebody" ref={stageRef}>
               <Animation />
             </div>
           </div>

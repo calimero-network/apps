@@ -58,8 +58,6 @@ export const APPS = {
 
   'mero-blocks': {
     e2eDir: 'e2e',
-    // Its own landing.spec.ts tests the game launcher; do not clobber it.
-    specName: 'marketing-landing.spec.ts',
     availability: 'web+desktop',
     playableOffline: true,
     trust: ['No game server', 'Deterministic world', 'Plays offline'],
@@ -78,7 +76,6 @@ export const APPS = {
 
   merraria: {
     e2eDir: 'e2e',
-    specName: 'marketing-landing.spec.ts',
     availability: 'web+desktop',
     playableOffline: true,
     trust: ['No game server', 'Deterministic world', 'Plays offline'],
@@ -97,6 +94,9 @@ export const APPS = {
 
   'mero-calendar': {
     e2eDir: 'e2e',
+    // This app ships its own light/dark switch; the landing toggle writes the
+    // same key so the choice carries through sign-in instead of resetting.
+    themeStorageKey: 'mc-theme',
     availability: 'web+desktop',
     trust: ['Teams are namespaces', 'Private events never sync', 'Light and dark'],
     explainer: [
@@ -133,7 +133,10 @@ export const APPS = {
 
   'mero-drive': {
     markSrc: '/icons/icon.svg',
-    e2eDir: 'e2e',
+    // Nested, because this app's playwright config gives its node-free specs
+    // their own project globbed as `**/landing/**` — a spec written beside that
+    // directory rather than inside it is collected by no project and never runs.
+    e2eDir: 'e2e/landing',
     availability: 'web+desktop',
     trust: ['Folders are contexts', 'Rich-text editing', 'Private by default'],
     explainer: [
@@ -167,6 +170,9 @@ export const APPS = {
 
   'mero-issue-tracker': {
     e2eDir: 'e2e',
+    // This app ships its own light/dark switch; the landing toggle writes the
+    // same key so the choice carries through sign-in instead of resetting.
+    themeStorageKey: 'app:theme',
     availability: 'web+desktop',
     trust: ['Structured issues', 'MCP server included', 'Private to your team'],
     explainer: [
@@ -184,6 +190,9 @@ export const APPS = {
 
   'mero-meet': {
     e2eDir: 'tests',
+    // This app ships its own light/dark switch; the landing toggle writes the
+    // same key so the choice carries through sign-in instead of resetting.
+    themeStorageKey: 'mm-theme',
     availability: 'desktop',
     trust: ['Media stays peer-to-peer', 'No signalling server', 'Rooms are namespaces'],
     explainer: [
@@ -244,6 +253,9 @@ export const APPS = {
   'mero-sheets': {
     displayName: 'Mero Sheets',
     e2eDir: 'e2e',
+    // This app ships its own light/dark switch; the landing toggle writes the
+    // same key so the choice carries through sign-in instead of resetting.
+    themeStorageKey: 'app:theme',
     availability: 'web+desktop',
     trust: ['Live cursors', 'Formulas recompute for all peers', 'Sheet on your node'],
     explainer: [

@@ -10,9 +10,20 @@ import { expect, test } from "@playwright/test";
 // build pointed every user at a machine that was not theirs. The assertion that
 // a real connect affordance renders is what would have caught the replacement
 // going missing.
+//
+// ⚠️ `/` is now the fleet-wide landing template (scripts/landing/template). Its
+// own contract — sections, badge, theme, FAQ — is asserted by the generated
+// tests/landing.spec.ts; what stays here is what is specific to mero-pass.
 test.describe("unauthenticated entry", () => {
   test("the entry route renders and offers a way to connect", async ({ page }) => {
     await page.goto("/");
+    // The landing's CTA is a link to /login, where mero-react's ConnectButton
+    // lives. What matters is that a real destination is offered from `/` and
+    // that the connect affordance is actually there when you arrive.
+    await expect(
+      page.getByRole("link", { name: "Connect to node" }).first(),
+    ).toBeVisible();
+    await page.goto("/login");
     await expect(page.getByRole("button", { name: /connect a node/i })).toBeVisible();
   });
 
@@ -23,8 +34,10 @@ test.describe("unauthenticated entry", () => {
     // product names. `/meropass/i` matches "MeroPass"; `/mero-pass/i` does not.
     await expect(page).toHaveTitle(/meropass/i);
     // The brand in the navbar, not just the tab — a blank shell would still
-    // have the right title.
-    await expect(page.getByText("MeroPass").first()).toBeVisible();
+    // have the right title. The landing page spells the product name with a
+    // space ("Mero Pass"); the package id and the <title> are unchanged, which
+    // is the whole point of the presentation-only displayName override.
+    await expect(page.locator(".cal-lp-brand")).toHaveText(/Mero Pass/);
   });
 
   test("an unknown route does not render a blank page", async ({ page }) => {

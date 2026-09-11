@@ -238,12 +238,22 @@
   display: inline-flex;
   align-items: center;
   gap: 9px;
+  /* Shrinks before the CTA does: on a 360px phone `Mero Issue Tracker` wrapped
+     under its own icon and pushed the sticky header to 120px tall. */
+  min-width: 0;
+  flex: 0 1 auto;
   /* Small and quiet: the mark is the identity, the name is a label. */
   font-weight: 640;
   font-size: 13.5px;
   letter-spacing: 0.005em;
   color: var(--cal-lp-text);
   text-decoration: none;
+}
+.cal-lp-brandname {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 .cal-lp-brandicon {
   width: 24px;
@@ -434,7 +444,7 @@
 /* ── Features ───────────────────────────────────────────────────────────── */
 .cal-lp-features {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr));
   gap: 16px;
   margin-top: 38px;
 }
@@ -483,7 +493,7 @@
 /* ── Steps ──────────────────────────────────────────────────────────────── */
 .cal-lp-steps {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(230px, 100%), 1fr));
   gap: 16px;
   margin-top: 38px;
   counter-reset: cal-lp-step;
@@ -615,7 +625,7 @@
 }
 .cal-lp-footergrid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr));
   gap: 30px;
 }
 .cal-lp-footerhead {
@@ -660,9 +670,22 @@
    Positions and delays come from inline style on the element; the motion lives
    here. Colour is always a token, never a literal, or dark mode breaks. */
 .cal-lp-a {
+  /* A FIXED design box, scaled to whatever the stage happens to be.
+     Every animation.tsx positions its parts in literal pixels against a
+     495px-wide stage, so letting this box stretch means the parts keep their
+     desktop coordinates inside a 328px phone frame and write over each other.
+     `--cal-lp-a-s` is measured exactly by useStageScale(); the breakpoint
+     fallbacks at the bottom of this file cover a browser with no
+     ResizeObserver. Height follows the stage rather than the 4/3 ratio,
+     because the title bar eats a fixed 30px the ratio does not know about. */
   position: absolute;
-  inset: 0;
+  top: 0;
+  left: 0;
+  width: 495px;
+  height: calc(100% / var(--cal-lp-a-s, 1));
   padding: 20px;
+  transform-origin: top left;
+  transform: scale(var(--cal-lp-a-s, 1));
 }
 .cal-lp-a * {
   animation-play-state: var(--cal-lp-anim);
@@ -784,6 +807,15 @@
 .cal-lp-a-drift  { animation: cal-lp-a-drift  var(--t, 4s) ease-in-out var(--d, 0s) infinite; }
 .cal-lp-a-blink  { animation: cal-lp-a-blink  var(--t, 4s) ease-in-out var(--d, 0s) infinite; }
 .cal-lp-a-rise   { animation: cal-lp-a-rise   var(--t, 4s) ease-out    var(--d, 0s) infinite; }
+/* A pair: `peek` shows something briefly, `hide` takes something away for
+   exactly that window. They exist because a mock that reveals a secret was
+   drawing the revealed value ON TOP of the masked dots it was supposed to
+   replace — `in` never actually hides anything. Both carry their resting state
+   as a plain declaration, so a paused animation (which is what
+   prefers-reduced-motion and every headless capture get) still shows the
+   masked state rather than both at once. */
+.cal-lp-a-peek   { opacity: 0; animation: cal-lp-a-peek   var(--t, 4s) ease-in-out var(--d, 0s) infinite; }
+.cal-lp-a-hide   { opacity: 1; animation: cal-lp-a-hide   var(--t, 4s) ease-in-out var(--d, 0s) infinite; }
 
 @keyframes cal-lp-a-in {
   0%, 100%  { opacity: 1; transform: none; }
@@ -813,6 +845,16 @@
   0%, 100%  { opacity: 1; }
   40%       { opacity: 0.3; }
   70%       { opacity: 1; }
+}
+@keyframes cal-lp-a-peek {
+  0%, 100%  { opacity: 0; }
+  6%, 26%   { opacity: 1; }
+  33%       { opacity: 0; }
+}
+@keyframes cal-lp-a-hide {
+  0%, 100%  { opacity: 1; }
+  6%, 26%   { opacity: 0; }
+  33%       { opacity: 1; }
 }
 @keyframes cal-lp-a-rise {
   0%, 100%  { opacity: 1; transform: none; }
@@ -934,12 +976,27 @@
   }
 }
 
-/* ── Responsive: the hero collapses, nothing scrolls sideways ──────────── */
+/* ── Responsive ──────────────────────────────────────────────────────────
+   Four things break on a phone if nothing here runs, and all four were seen in
+   a 360px capture rather than guessed at:
+
+     1. the hero art keeps its desktop coordinates and the rows collide;
+     2. the brand name wraps under its own icon and doubles the header height;
+     3. a full-width primary button and a full-width secondary one sit side by
+        side and each ends up too narrow to read;
+     4. the section rhythm authored for a 1140px page becomes a long scroll
+        through whitespace.
+
+   Verified by `does not scroll sideways on a phone` in every app's generated
+   marketing-landing.spec.ts, at 390px AND at 320px. */
 @media (max-width: 940px) {
   .cal-lp-hero {
     grid-template-columns: 1fr;
     gap: 36px;
     padding-block: 44px 56px;
+    /* A 520px floor is a desktop two-column figure; one column is as tall as
+       its content and nothing else. */
+    min-height: 0;
   }
   .cal-lp-nav {
     display: none;
@@ -947,17 +1004,94 @@
   .cal-lp-section {
     padding-block: 56px;
   }
+  /* One column would otherwise stretch the art to the full page width — 896px
+     on a 940px viewport, nearly twice the size it was drawn at. */
+  .cal-lp-stage {
+    /* `width: 100%` is load-bearing next to the auto margins: an auto margin
+       turns a grid item's default stretch into shrink-to-fit, and the only
+       in-flow content here is the three title-bar dots — so without it the
+       frame collapses to a ~120px thumbnail. */
+    width: 100%;
+    max-width: 520px;
+    margin-inline: auto;
+  }
 }
 
-@media (max-width: 460px) {
+@media (max-width: 640px) {
   .cal-lp-shell {
     padding-inline: 16px;
   }
   .cal-lp-header {
+    gap: 10px;
     padding-inline: 16px;
   }
+  .cal-lp-section {
+    padding-block: 46px;
+  }
+  .cal-lp-h1 {
+    font-size: clamp(30px, 8.4vw, 42px);
+  }
+  .cal-lp-lede {
+    font-size: 16px;
+  }
+  .cal-lp-cta {
+    margin-top: 22px;
+  }
+  /* Stacked and full width: two buttons on one row at this size leaves both
+     unreadable, and the primary one is the whole point of the page. */
   .cal-lp-cta .cal-lp-btn {
     width: 100%;
+  }
+  .cal-lp-band {
+    padding: 22px;
+    gap: 16px;
+  }
+  .cal-lp-band .cal-lp-btn {
+    width: 100%;
+  }
+  .cal-lp-bandtitle {
+    font-size: 18px;
+  }
+  .cal-lp-prose p,
+  .cal-lp-faqa {
+    font-size: 15px;
+  }
+  .cal-lp-footergrid {
+    gap: 24px;
+  }
+}
+
+/* A phone with no ResizeObserver still gets the art roughly right. An inline
+   `--cal-lp-a-s` from useStageScale() wins over these, which is the point:
+   they are the floor, not the mechanism. */
+@media (max-width: 560px) {
+  .cal-lp-stagebody {
+    --cal-lp-a-s: 0.78;
+  }
+}
+@media (max-width: 420px) {
+  .cal-lp-stagebody {
+    --cal-lp-a-s: 0.68;
+  }
+}
+
+@media (max-width: 400px) {
+  /* Below this the name cannot be both complete and legible next to the CTA,
+     and the H1 one scroll-line down says it anyway. */
+  .cal-lp-brandname {
+    display: none;
+  }
+}
+
+/* A finger is not a mouse pointer: the 34px icon button is under the 44px
+   minimum every touch guideline asks for. */
+@media (pointer: coarse) {
+  .cal-lp-iconbtn {
+    width: 40px;
+    height: 40px;
+  }
+  .cal-lp-faqq {
+    padding-block: 20px;
   }
 }
 

@@ -21,6 +21,7 @@ export const CONFIG: LandingConfig = {
   markSrc: "/favicon.svg",
   iconSrc: '/icon-512.png',
   availability: "web+desktop",
+  themeStorageKey: "app:theme",
   trust: ["Structured issues", "MCP server included", "Private to your team"],
   explainer: [
     "A real-time issue board for a small engineering team. Issues are structured around what actually makes a bug actionable — a summary, who it affects, how to reproduce it, and what \"fixed\" has to satisfy — rather than a free-text box and a pile of labels.",

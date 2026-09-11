@@ -20,6 +20,11 @@ import { expect, test } from "@playwright/test";
  * routes redirecting to the connect screen rather than rendering into failure.
  * The composer's validation moved to a unit test (src/components/Composer.test.tsx)
  * — it is pure UI logic and no longer reachable unauthenticated.
+ *
+ * ⚠️ The explainer at `/` is now the fleet-wide landing template
+ * (scripts/landing/template), so its own contract — sections, badge, theme, FAQ
+ * — is asserted by the generated tests/landing.spec.ts. What stays here is what
+ * is specific to mero-forum: the gate, and that `/` still is not the feed.
  */
 test.describe("app shell", () => {
   test("`/` is the explainer, and it does not pretend to be the feed", async ({ page }) => {
@@ -28,12 +33,15 @@ test.describe("app shell", () => {
 
     await page.goto("/");
 
+    await expect(page.getByRole("heading", { level: 1, name: "Mero Forum" })).toBeVisible();
     await expect(
-      page.getByRole("heading", { name: /a forum that lives on your nodes/i }),
+      page.getByRole("heading", { name: "Mero Forum, in plain terms" }),
     ).toBeVisible();
-    await expect(page.getByRole("heading", { name: "What it does" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "How it works" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "FAQ" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "What you can do" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Four steps, no server" })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Questions people actually ask" }),
+    ).toBeVisible();
 
     // The thing the old test asserted must NOT be here: a composer with no node
     // behind it can only throw.
@@ -79,9 +87,7 @@ test.describe("app shell", () => {
   test("an unknown route falls back to the explainer", async ({ page }) => {
     await page.goto("/does-not-exist");
     await expect(page).toHaveURL(/\/$/);
-    await expect(
-      page.getByRole("heading", { name: /a forum that lives on your nodes/i }),
-    ).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: "Mero Forum" })).toBeVisible();
   });
 
   test("the connect screen offers the shared ConnectButton", async ({ page }) => {

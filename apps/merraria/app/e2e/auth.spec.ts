@@ -7,7 +7,7 @@
 // can say no. These are the parts that have broken on real nodes before —
 // a flat `POST /contexts`, a restricted subgroup, a baked application id.
 
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 import {
   APP_ID,
   CapturedBodies,

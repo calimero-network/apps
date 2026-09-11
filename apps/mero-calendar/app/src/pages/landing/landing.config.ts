@@ -21,6 +21,7 @@ export const CONFIG: LandingConfig = {
   markSrc: "/favicon.svg",
   iconSrc: '/icon-512.png',
   availability: "web+desktop",
+  themeStorageKey: "mc-theme",
   trust: ["Teams are namespaces", "Private events never sync", "Light and dark"],
   explainer: [
     "A shared calendar for a team that does not want its schedule sitting in someone else’s cloud. A team is a Calimero namespace, so the people in it are exactly the people you invited, and the calendar lives on their nodes and yours.",

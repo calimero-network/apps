@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 import { CTX_ID, freshState, mockNode, MY_ID, NODE_URL } from "./helpers";
 
 const fullHash =

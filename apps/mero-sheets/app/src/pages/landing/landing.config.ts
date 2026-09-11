@@ -21,6 +21,7 @@ export const CONFIG: LandingConfig = {
   markSrc: "/favicon.svg",
   iconSrc: '/icon-512.png',
   availability: "web+desktop",
+  themeStorageKey: "app:theme",
   trust: ["Live cursors", "Formulas recompute for all peers", "Sheet on your node"],
   explainer: [
     "A collaborative spreadsheet where you can see everyone’s cursor and nobody can see your data except the people you invited. The sheet lives in a Calimero context on your own node.",

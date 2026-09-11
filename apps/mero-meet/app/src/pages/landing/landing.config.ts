@@ -21,6 +21,7 @@ export const CONFIG: LandingConfig = {
   markSrc: "/favicon.svg",
   iconSrc: '/icon-512.png',
   availability: "desktop",
+  themeStorageKey: "mm-theme",
   trust: ["Media stays peer-to-peer", "No signalling server", "Rooms are namespaces"],
   explainer: [
     "Peer-to-peer video calling, split across two planes. A Calimero context is the room and carries the signalling; the audio and video go directly between participants over WebRTC and never touch a server at all.",

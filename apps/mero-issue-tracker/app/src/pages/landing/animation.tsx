@@ -20,20 +20,20 @@ export default function IssueTrackerAnimation() {
     <div className="cal-lp-a" aria-hidden="true">
       {COLS.map(([name, cards], ci) => (
         <span key={name}>
-          <span className="cal-lp-a-txt cal-lp-a-txt--head" style={{ left: 20 + ci * 74, top: 12 }}>{name}</span>
-          <span className="cal-lp-a-pane" style={{ left: 18 + ci * 74, top: 30, width: 68, bottom: 18 }} />
+          <span className="cal-lp-a-txt cal-lp-a-txt--head" style={{ left: 20 + ci * 96, top: 12 }}>{name}</span>
+          <span className="cal-lp-a-pane" style={{ left: 18 + ci * 96, top: 30, width: 88, bottom: 18 }} />
           {cards.map((t, i) => (
             <span key={t}>
-              <span className="cal-lp-a-box" style={{ left: 23 + ci * 74, top: 38 + i * 40, width: 58, height: 34 }} />
-              <span className="cal-lp-a-txt" style={{ left: 28 + ci * 74, top: 46 + i * 40, width: 48, whiteSpace: 'normal', fontSize: 8.5, lineHeight: 1.25 }}>{t}</span>
+              <span className="cal-lp-a-box" style={{ left: 23 + ci * 96, top: 38 + i * 40, width: 78, height: 34 }} />
+              <span className="cal-lp-a-txt" style={{ left: 28 + ci * 96, top: 46 + i * 40, width: 68, whiteSpace: 'normal', fontSize: 8.5, lineHeight: 1.25 }}>{t}</span>
             </span>
           ))}
         </span>
       ))}
       {/* the card in motion */}
-      <span className="cal-lp-a-box cal-lp-a-drift" style={{ left: 23, top: 118, width: 58, height: 34, background: 'var(--cal-lp-accent-soft)', borderColor: 'transparent', ['--dx' as string]: '74px', ['--dy' as string]: '-40px', ['--t' as string]: '6s' }} />
-      <span className="cal-lp-a-txt cal-lp-a-drift" style={{ left: 28, top: 126, width: 48, whiteSpace: 'normal', fontSize: 8.5, lineHeight: 1.25, ['--dx' as string]: '74px', ['--dy' as string]: '-40px', ['--t' as string]: '6s' }}>Key delivery races join</span>
-      <span className="cal-lp-a-cursor cal-lp-a-drift" style={{ left: 78, top: 128, ['--dx' as string]: '74px', ['--dy' as string]: '-36px', ['--t' as string]: '6s' }} />
+      <span className="cal-lp-a-box cal-lp-a-drift" style={{ left: 23, top: 118, width: 78, height: 34, background: 'var(--cal-lp-accent-soft)', borderColor: 'transparent', ['--dx' as string]: '96px', ['--dy' as string]: '-40px', ['--t' as string]: '6s' }} />
+      <span className="cal-lp-a-txt cal-lp-a-drift" style={{ left: 28, top: 126, width: 68, whiteSpace: 'normal', fontSize: 8.5, lineHeight: 1.25, ['--dx' as string]: '96px', ['--dy' as string]: '-40px', ['--t' as string]: '6s' }}>Key delivery races join</span>
+      <span className="cal-lp-a-cursor cal-lp-a-drift" style={{ left: 78, top: 128, ['--dx' as string]: '96px', ['--dy' as string]: '-36px', ['--t' as string]: '6s' }} />
     </div>
   );
 }
