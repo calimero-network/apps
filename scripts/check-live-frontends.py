@@ -25,18 +25,37 @@ against. A stale deployment silently becomes the app, everywhere.
 
 WHAT IT CHECKS
 
-For each app, fetch the `frontend` URL from its Cargo metadata and compare the
-served `<title>` with the one in `apps/<app>/app/index.html`. That is a
-deliberately shallow check and it is the right depth: the title is committed
-next to the app, changes when the app changes, and a mismatch means the origin
-is serving something this repo did not build. It also flags the specific
-fingerprints of the failure that happened — CRA's marker meta tag and a webpack
-runtime — because naming them turns "the title is different" into "this is an
-old create-react-app build".
+For each app, fetch the `frontend` URL from its Cargo metadata and ask one
+question: **is the served `<title>` one this repo has ever built for this app?**
+It compares against every value `apps/<app>/app/index.html` has carried in git
+history, not just the working tree. It also flags the specific fingerprints of
+the failure that happened — CRA's marker meta tag and a webpack runtime —
+because naming them turns "the title is different" into "this is an old
+create-react-app build".
+
+⚠️ IDENTITY, NOT FRESHNESS — and the history is why.
+
+Comparing the live site against the WORKING TREE was wrong, and wrong in a way
+that only showed up the first time somebody renamed an app. Production deploys
+from `main`; a pull request is by definition not deployed yet. So a PR that
+legitimately changes a title asserted that production had already served a build
+that does not exist, and red was the guaranteed answer until merge — then red
+again on `main` until Vercel finished deploying. The check was unpassable for
+the change it was most likely to see.
+
+The origin lagging behind this repo is normal and is not this check's business:
+CI cannot know whether a deploy has finished. A title this repo has NEVER built
+is the real signal, and that is what fails. A served title that is ours but not
+current is reported as a warning, so a deploy that has silently stopped is still
+visible without blocking anyone.
 
 A network failure is NOT a mismatch. Vercel being unreachable, or a DNS blip,
 reports as skipped: a check that reds the build when a third party is down gets
 switched off, and then it catches nothing.
+
+Needs full history — `fetch-depth: 0` on the job's checkout. Without it the
+history lookup yields nothing and the check falls back to the working tree
+alone, saying so rather than pretending it looked.
 
 Stdlib only, so it runs in the always-on metadata job.
 """
@@ -44,6 +63,7 @@ Stdlib only, so it runs in the always-on metadata job.
 import glob
 import os
 import re
+import subprocess
 import sys
 import urllib.error
 import urllib.request
@@ -78,11 +98,51 @@ failures: list[str] = []
 skipped: list[str] = []
 stale_as_expected: list[str] = []
 unexpectedly_fine: list[str] = []
+behind: list[str] = []
+no_history = False
 
 
 def title_of(html: str) -> str | None:
     m = re.search(r"<title>(.*?)</title>", html, re.S | re.I)
     return m.group(1).strip() if m else None
+
+
+def historical_titles(app: str) -> set[str]:
+    """Every `<title>` this app's index.html has carried, across git history.
+
+    `--follow` matters: all fourteen of these apps were migrated in from their
+    own repositories, so the file's history crosses a rename for every one of
+    them. A shallow clone simply yields fewer commits — it is not an error, and
+    `no_history` records it so the summary can say the lookup was blind rather
+    than claiming it found nothing.
+    """
+    global no_history
+    rel = f"apps/{app}/app/index.html"
+    try:
+        revs = subprocess.run(
+            ["git", "log", "--follow", "--format=%H", "--", rel],
+            cwd=REPO, capture_output=True, text=True, timeout=60, check=True,
+        ).stdout.split()
+    except (subprocess.SubprocessError, OSError):
+        no_history = True
+        return set()
+    if not revs:
+        no_history = True
+        return set()
+
+    titles: set[str] = set()
+    for sha in revs[:200]:
+        try:
+            blob = subprocess.run(
+                ["git", "show", f"{sha}:{rel}"],
+                cwd=REPO, capture_output=True, text=True, timeout=30, check=True,
+            ).stdout
+        except (subprocess.SubprocessError, OSError):
+            continue  # the path did not exist at that commit (pre-rename side)
+        t = title_of(blob)
+        if t:
+            titles.add(t)
+    return titles
 
 
 def frontend_url(app: str) -> str | None:
@@ -128,6 +188,9 @@ def main() -> int:
             continue
 
         got = title_of(html)
+        ours = {want} | historical_titles(app)
+
+        # Ours AND current.
         if got == want:
             if app in EXPECTED_STALE:
                 unexpectedly_fine.append(app)
@@ -138,6 +201,19 @@ def main() -> int:
                 )
             else:
                 print(f"  ok  {app}  ({want})")
+            continue
+
+        # Ours, but not the build this repo currently produces. The origin is
+        # behind — which on a pull request is the ONLY possible answer, since
+        # nothing has deployed yet. Reported, never fatal.
+        if got in ours:
+            behind.append(app)
+            print(
+                f"::warning::{app}: {url} serves <title>{got}</title>, which this repo "
+                f"has built before but no longer does (<title>{want}</title>). Expected "
+                f"on a pull request and until the deploy lands; if it persists on main, "
+                f"the Vercel project has stopped deploying."
+            )
             continue
 
         stale = [m for m in CRA_MARKERS if m.lower() in html.lower()]
@@ -158,8 +234,10 @@ def main() -> int:
 
         failures.append(app)
         print(
-            f"::error::{app}: {url} serves <title>{got}</title> but this repo builds "
-            f"<title>{want}</title>{detail}. The Vercel project is not deploying from "
+            f"::error::{app}: {url} serves <title>{got}</title>, which this repo has "
+            f"NEVER built for this app (it builds <title>{want}</title>){detail}. This is "
+            f"not a deploy lag — no commit in this history produced that title. "
+            f"The Vercel project is not deploying from "
             f"apps/{app}/app — check its Root Directory (see docs/VERCEL.md). This URL is "
             f"what the registry publishes as links.frontend, so the desktop launcher, "
             f"every invite link and the login callback all resolve to it."
@@ -169,6 +247,18 @@ def main() -> int:
         print("\nskipped (unreachable):")
         for s in skipped:
             print(f"  {s}")
+
+    if behind:
+        print("\nbehind this repo (ours, but not the current build):")
+        for app in behind:
+            print(f"  {app}")
+
+    if no_history:
+        print(
+            "\nnote: git history for at least one index.html was unavailable "
+            "(shallow clone?), so only the working tree could be compared for it. "
+            "Set fetch-depth: 0 on this job's checkout."
+        )
 
     if stale_as_expected:
         print("\nknown-stale (fix is outside this repo):")

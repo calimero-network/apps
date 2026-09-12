@@ -5,8 +5,7 @@
   "type": "module",
   "dependencies": {
     "@calimero-network/calimero-client": "^1.25.0-beta.1",
-    "bs58": "catalog:",
-    "@calimero-network/mero-icons": "^0.0.6",
+    "@calimero-network/mero-icons": "catalog:",
     "@calimero-network/mero-ui": "catalog:",
     "@radix-ui/react-slot": "^1.2.3",
     "@tailwindcss/vite": "^4.1.11",
@@ -16,6 +15,7 @@
     "@types/react-dom": "catalog:",
     "@types/signature_pad": "^4.0.0",
     "axios": "catalog:",
+    "bs58": "catalog:",
     "buffer": "^6.0.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "catalog:",

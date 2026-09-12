@@ -1,6 +1,6 @@
 {
-  "name": "MeroDesign",
-  "short_name": "MeroDesign",
+  "name": "Mero Design",
+  "short_name": "Mero Design",
   "description": "Collaborative design tool on the Calimero p2p network. Figma-style canvas, your data on your nodes.",
   "start_url": "/",
   "display": "standalone",

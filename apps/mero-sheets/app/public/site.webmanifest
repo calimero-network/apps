@@ -1,6 +1,6 @@
 {
   "name": "Mero Sheets",
-  "short_name": "MeroSheets",
+  "short_name": "Mero Sheets",
   "description": "A peer-to-peer spreadsheet on Calimero — collaborative cells, formulas and cursors with no central server.",
   "start_url": "/",
   "display": "standalone",

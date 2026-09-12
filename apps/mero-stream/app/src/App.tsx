@@ -3,7 +3,7 @@ import { Routes, Route, Navigate } from "react-router-dom";
 import { useMero } from "@calimero-network/mero-react";
 import { getContextId, clearActiveRoom } from "./lib/session";
 import InvitationPrompt from "./components/InvitationPrompt";
-import LandingPage from "./pages/LandingPage";
+import LandingPage from "./pages/landing/LandingPage";
 import StreamsPage from "./pages/StreamsPage";
 import RoomsPage from "./pages/RoomsPage";
 import StreamPage from "./pages/StreamPage";
@@ -135,6 +135,14 @@ export default function App() {
             </RequireAuth>
           }
         />
+        {/* ⚠️ These two must be routed even though `/` is not the landing here.
+                    This app renders the landing from a guard rather than a route, so
+                    without them the catch-all below matches `/docs`, redirects to `/`,
+                    and a shared docs link silently shows the overview. Measured — it
+                    is how this was found. */}
+        {['/docs', '/preview'].map((landingPath) => (
+          <Route key={landingPath} path={landingPath} element={<LandingPage />} />
+        ))}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </>

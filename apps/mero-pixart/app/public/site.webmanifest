@@ -1,6 +1,6 @@
 {
-  "name": "MeroPixArt",
-  "short_name": "MeroPixArt",
+  "name": "Mero PixArt",
+  "short_name": "Mero PixArt",
   "description": "Collaborative p2p image editor on the Calimero network. Photoshop-style layers, masks, and adjustments — your pixels on your nodes.",
   "start_url": "/",
   "display": "standalone",

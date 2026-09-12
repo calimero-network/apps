@@ -10,18 +10,25 @@ import { expect, test } from "@playwright/test";
 // failure they exist to catch is the one this app already shipped once: every
 // unauthenticated state answered with a page that told the user to install the
 // app they had just opened it from, offering nothing to click.
+//
+// ⚠️ That page is now the shared Calimero landing template, whose own contract
+// is asserted by the generated `marketing-landing.spec.ts` beside this file.
+// These three keep asserting what is specific to mero-meet: the desktop block
+// still renders a real page, on `/` and on a deep link alike.
 test.describe("plain-web entry", () => {
   test("/ renders the desktop-required landing page", async ({ page }) => {
     await page.goto("/");
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
-    await expect(page.getByText(/desktop app required/i)).toBeVisible();
+    await expect(
+      page.getByText("Mero Meet runs in the Calimero desktop app"),
+    ).toBeVisible();
   });
 
   test("the landing page offers a real way forward, not just a wall", async ({ page }) => {
     await page.goto("/");
     // The download CTA is the assertion that matters: it is the difference
     // between a block and a dead end.
-    const cta = page.getByRole("link", { name: /get calimero desktop/i });
+    const cta = page.getByRole("link", { name: /download for desktop/i }).first();
     await expect(cta).toBeVisible();
     await expect(cta).toHaveAttribute("href", /calimero\.network\/download/);
   });
@@ -32,6 +39,8 @@ test.describe("plain-web entry", () => {
     // is a white screen on a shared deep link, which looks like an outage.
     await page.goto("/lobby");
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
-    await expect(page.getByText(/desktop app required/i)).toBeVisible();
+    await expect(
+      page.getByText("Mero Meet runs in the Calimero desktop app"),
+    ).toBeVisible();
   });
 });

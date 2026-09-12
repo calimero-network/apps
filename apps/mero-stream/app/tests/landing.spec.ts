@@ -11,6 +11,11 @@ import { expect, test } from "@playwright/test";
 // EVERY unauthenticated state with the web-only page). Both are invisible to a
 // unit test and to any e2e that starts from an authenticated session, which is
 // what the bespoke e2e/*.mjs drivers all do.
+//
+// ⚠️ The landing page itself is now the shared Calimero template, whose own
+// contract is asserted by the generated `marketing-landing.spec.ts` beside this
+// file. These three keep asserting what is specific to mero-stream: the entry
+// redirects, and that the web really is a way in.
 test.describe("unauthenticated web entry", () => {
   test("/ redirects to the picker route rather than dead-ending", async ({ page }) => {
     await page.goto("/");
@@ -24,7 +29,11 @@ test.describe("unauthenticated web entry", () => {
     // RequireAuth renders LandingPage when unauthenticated. The ConnectButton is
     // the assertion that matters: it is what makes the web a real entry point
     // instead of a dead end, and it is exactly what the old short-circuit removed.
-    await expect(page.getByRole("button", { name: /connect a node/i })).toBeVisible();
+    await expect(
+      // A button, not a link: the CTA opens the connection popup in place
+      // rather than navigating to a /login page that no longer exists.
+      page.getByRole("button", { name: "Connect to node" }).first(),
+    ).toBeVisible();
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
   });
 

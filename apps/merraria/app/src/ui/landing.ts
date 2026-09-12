@@ -141,6 +141,11 @@ const css = `
   gap: 6px; font-size: 12px; }
 .mtl-social a:hover { color: #fff; }
 .mtl-social svg { width: 15px; height: 15px; fill: currentColor; }
+
+/* Chromeless: the unified landing page (src/pages/landing) has already shown the
+   logo, the name and the pitch, so when it hands off here the launcher must not
+   repeat them — it goes straight to the world picker. See main.ts. */
+#mt-landing.is-chromeless .mtl-nav, #mt-landing.is-chromeless .mtl-center > h1, #mt-landing.is-chromeless .mtl-center > .lead, #mt-landing.is-chromeless .mtl-footer { display: none !important; }
 `;
 
 export const LOGO_SVG = `
@@ -209,8 +214,17 @@ export class Landing {
     parent.appendChild(this.root);
   }
 
-  show(defaults: { name: string; seed: number }): Promise<LaunchChoice> {
+  /**
+   * `chromeless` skips this screen's own logo/title/pitch and goes straight to
+   * the world picker. Passed when the unified landing page has just shown all
+   * of that — repeating it would be two landing pages in a row.
+   */
+  show(
+    defaults: { name: string; seed: number },
+    opts: { chromeless?: boolean } = {},
+  ): Promise<LaunchChoice> {
     return new Promise((resolve) => {
+      if (opts.chromeless) this.root.classList.add("is-chromeless");
       this.render(defaults, (choice) => {
         this.anim?.stop();
         this.root.remove();

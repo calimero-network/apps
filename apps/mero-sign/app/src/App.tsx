@@ -48,10 +48,17 @@ function AppContent() {
   if (!isAuthenticated) {
     return (
       <Routes>
-        <Route
-          path="/"
-          element={<LandingPage onConnect={() => setSidebarOpen(true)} />}
-        />
+        {/* The landing page is three pages: `/`, `/docs` and `/preview`. They
+            are real URLs so they can be shared and opened cold, which needs a
+            route here — the catch-all below renders this app's connection
+            screen, and would otherwise swallow a shared docs link. */}
+        {['/', '/docs', '/preview'].map((landingPath) => (
+          <Route
+            key={landingPath}
+            path={landingPath}
+            element={<LandingPage onConnect={() => setSidebarOpen(true)} />}
+          />
+        ))}
         <Route
           path="*"
           element={

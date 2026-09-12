@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 import { decodeInvite, encodeInvite } from "../src/net/inviteCodec";
 import {
   CTX_ID,

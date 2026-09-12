@@ -10,21 +10,33 @@ import { expect, test } from "@playwright/test";
 // build pointed every user at a machine that was not theirs. The assertion that
 // a real connect affordance renders is what would have caught the replacement
 // going missing.
+//
+// ⚠️ `/` is now the fleet-wide landing template (scripts/landing/template). Its
+// own contract — sections, badge, theme, FAQ — is asserted by the generated
+// tests/landing.spec.ts; what stays here is what is specific to mero-pass.
 test.describe("unauthenticated entry", () => {
   test("the entry route renders and offers a way to connect", async ({ page }) => {
     await page.goto("/");
-    await expect(page.getByRole("button", { name: /connect a node/i })).toBeVisible();
+    // A BUTTON, not a link, and there is no second page behind it. The CTA
+    // used to navigate to /login, where mero-react's ConnectButton lived; it
+    // now opens the connection popup over this page. What matters is unchanged
+    // — that a real way in is offered from `/`.
+    await expect(
+      page.getByRole("button", { name: "Connect to node" }).first(),
+    ).toBeVisible();
   });
 
-  test("the page identifies itself as MeroPass", async ({ page }) => {
+  test("the page identifies itself as Mero Pass", async ({ page }) => {
     await page.goto("/");
-    // The package is `com.calimero.mero-pass`, but the <title> is the DISPLAY
-    // name and stays "MeroPass" — the mero- rename moved identifiers, not
-    // product names. `/meropass/i` matches "MeroPass"; `/mero-pass/i` does not.
-    await expect(page).toHaveTitle(/meropass/i);
+    // The package id is `com.calimero.mero-pass` and the registry still lists
+    // this bundle as `MeroPass` — neither is touched. The DISPLAY name is
+    // spelled with a space everywhere a person reads it, and the <title> is
+    // one of those places, so `/meropass/i` would no longer match.
+    await expect(page).toHaveTitle(/Mero Pass/);
     // The brand in the navbar, not just the tab — a blank shell would still
-    // have the right title.
-    await expect(page.getByText("MeroPass").first()).toBeVisible();
+    // have the right title. Same spelling in both, which is the point: the
+    // landing page and the app shell no longer disagree about the name.
+    await expect(page.locator(".cal-lp-brand")).toHaveText(/Mero Pass/);
   });
 
   test("an unknown route does not render a blank page", async ({ page }) => {
