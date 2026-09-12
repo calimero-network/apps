@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "packageManager": "pnpm@9.15.9",
-  "description": "MeroDesign \u2014 collaborative design tool on Calimero",
+  "description": "Mero Design \u2014 collaborative design tool on Calimero",
   "type": "module",
   "scripts": {
     "dev": "vite",

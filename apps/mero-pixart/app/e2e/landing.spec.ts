@@ -11,8 +11,8 @@ test.describe("Landing page", () => {
     await page.goto("/");
   });
 
-  test("has the MeroPixArt title", async ({ page }) => {
-    await expect(page).toHaveTitle(/MeroPixArt/);
+  test("has the Mero PixArt title", async ({ page }) => {
+    await expect(page).toHaveTitle(/Mero PixArt/);
   });
 
   // ⚠️ This used to assert the CTA navigated to `/login`. There is no /login

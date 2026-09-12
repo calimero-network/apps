@@ -66,7 +66,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
               className="text-lg font-semibold"
               style={{ color: 'var(--current-text)' }}
             >
-              MeroSign
+              Mero Sign
             </div>
           </div>
           <button

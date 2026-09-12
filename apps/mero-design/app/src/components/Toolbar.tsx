@@ -217,7 +217,7 @@ export default function Toolbar({
   return (
     <div className={styles.bar}>
       <button className={styles.backBtn} onClick={onBack} title="Back to projects">←</button>
-      <span className={styles.logo}><Logo size={20} /> MeroDesign</span>
+      <span className={styles.logo}><Logo size={20} /> Mero Design</span>
 
       <div className={styles.divider} />
 

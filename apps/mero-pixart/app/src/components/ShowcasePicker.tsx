@@ -31,7 +31,7 @@ export default function ShowcasePicker({ hasContent, onPick, onClose, busy }: Pr
       >
         <h2>Showcase projects</h2>
         <p className="sub">
-          Complete documents built entirely in MeroPixArt — open one to see what the
+          Complete documents built entirely in Mero PixArt — open one to see what the
           editor can do, then take it apart.
         </p>
 

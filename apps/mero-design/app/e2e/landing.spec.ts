@@ -12,7 +12,7 @@ test.describe("Landing page", () => {
   });
 
   test("has correct page title", async ({ page }) => {
-    await expect(page).toHaveTitle(/MeroDesign/);
+    await expect(page).toHaveTitle(/Mero Design/);
   });
 
   // ⚠️ This used to assert the CTA navigated to `/login`. There is no /login

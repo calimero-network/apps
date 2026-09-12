@@ -2,7 +2,7 @@
   "name": "mero-pass",
   "private": true,
   "version": "1.0.0",
-  "description": "MeroPass \u2014 a peer-to-peer secret manager on Calimero",
+  "description": "Mero Pass \u2014 a peer-to-peer secret manager on Calimero",
   "keywords": [
     "calimero",
     "secrets",

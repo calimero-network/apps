@@ -149,7 +149,7 @@ export default function ProjectsPage() {
       // hash" before rc.27; it is hex now, but an empty id is rejected either way).
       const appId = await ensureAppId();
       if (!appId) {
-        showToast("Select or install the MeroDesign application first.");
+        showToast("Select or install the Mero Design application first.");
         return;
       }
 
@@ -252,7 +252,7 @@ export default function ProjectsPage() {
     <div className={styles.root}>
       <header className={styles.header}>
         <button className={styles.back} onClick={() => navigate("/teams")}>← Teams</button>
-        <span className={styles.logo}><Logo size={22} /> MeroDesign</span>
+        <span className={styles.logo}><Logo size={22} /> Mero Design</span>
         <div className={styles.headerRight}>
           <button className={styles.logoutBtn} onClick={handleLogout}>Logout</button>
         </div>

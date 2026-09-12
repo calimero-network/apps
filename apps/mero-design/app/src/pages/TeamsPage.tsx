@@ -202,7 +202,7 @@ export default function TeamsPage() {
   return (
     <div className={styles.root}>
       <header className={styles.header}>
-        <span className={styles.logo}><Logo size={24} /> MeroDesign</span>
+        <span className={styles.logo}><Logo size={24} /> Mero Design</span>
         <div className={styles.headerRight}>
           <button className={styles.logoutBtn} onClick={handleLogout}>Logout</button>
         </div>

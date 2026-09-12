@@ -12,7 +12,7 @@ const HomePage: React.FC = () => {
   return (
     <>
       <MeroNavbar variant="elevated" size="md">
-        <NavbarBrand text="MeroPass" />
+        <NavbarBrand text="Mero Pass" />
         <NavbarMenu align="right">
           <NavbarItem>
             {/* No hard-coded node URL. This said
@@ -28,7 +28,7 @@ const HomePage: React.FC = () => {
         <div className="container mx-auto px-4 py-8">
           <div className="max-w-6xl mx-auto">
             <div className="mb-8">
-              <h1 className="text-3xl font-bold text-gray-900">MeroPass</h1>
+              <h1 className="text-3xl font-bold text-gray-900">Mero Pass</h1>
               <p className="text-gray-600">
                 Secure secret management for teams
               </p>

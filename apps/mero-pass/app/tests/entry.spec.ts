@@ -26,16 +26,16 @@ test.describe("unauthenticated entry", () => {
     ).toBeVisible();
   });
 
-  test("the page identifies itself as MeroPass", async ({ page }) => {
+  test("the page identifies itself as Mero Pass", async ({ page }) => {
     await page.goto("/");
-    // The package is `com.calimero.mero-pass`, but the <title> is the DISPLAY
-    // name and stays "MeroPass" — the mero- rename moved identifiers, not
-    // product names. `/meropass/i` matches "MeroPass"; `/mero-pass/i` does not.
-    await expect(page).toHaveTitle(/meropass/i);
+    // The package id is `com.calimero.mero-pass` and the registry still lists
+    // this bundle as `MeroPass` — neither is touched. The DISPLAY name is
+    // spelled with a space everywhere a person reads it, and the <title> is
+    // one of those places, so `/meropass/i` would no longer match.
+    await expect(page).toHaveTitle(/Mero Pass/);
     // The brand in the navbar, not just the tab — a blank shell would still
-    // have the right title. The landing page spells the product name with a
-    // space ("Mero Pass"); the package id and the <title> are unchanged, which
-    // is the whole point of the presentation-only displayName override.
+    // have the right title. Same spelling in both, which is the point: the
+    // landing page and the app shell no longer disagree about the name.
     await expect(page.locator(".cal-lp-brand")).toHaveText(/Mero Pass/);
   });
 

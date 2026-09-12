@@ -78,6 +78,6 @@ test.describe("unauthenticated shell", () => {
     await expect(
       page.getByRole("heading", { name: /calimero connection required/i }),
     ).toBeVisible();
-    await expect(page.getByText(/to access MeroSign/i)).toBeVisible();
+    await expect(page.getByText(/to access Mero Sign/i)).toBeVisible();
   });
 });

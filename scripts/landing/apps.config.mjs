@@ -12,11 +12,20 @@
  *
  * `displayName` is the one deliberate exception. Five apps spell their name
  * closed-up or off-pattern in the registry (`MeroDesign`, `MeroPass`,
- * `MeroPixArt`, `P2P Sheets`, `MeroSign`) and the landing pages should read
- * consistently — but that is a PRESENTATION choice, so it lives here and the
- * Cargo metadata is left exactly as published. Nothing in the bundle, the
- * registry listing or an installed copy changes; only the heading on the web
- * page does. Omit it and the page uses the metadata name verbatim.
+ * `MeroPixArt`, `P2P Sheets`, `MeroSign`) and every app should read the same
+ * way, so the spaced spelling is used wherever a PERSON sees the name — this
+ * landing page, and the app's own `<title>`, PWA manifest, navbar brand and
+ * copy, which were standardised to match.
+ *
+ * ⚠️ It is a PRESENTATION choice and it stops at the frontend. The Cargo
+ * `[package.metadata.calimero]` tables are left EXACTLY as published — the
+ * registry still lists `MeroDesign`, `MeroPass`, `MeroPixArt`, `P2P Sheets`
+ * and `MeroSign`, and the package ids, slugs and bundles are untouched. Nothing
+ * in a published `.mpk`, an installed copy or an invite link moves. Generated
+ * client classes (`MeroPassClient`) and log prefixes keep their old spelling
+ * too: they are identifiers, not the product name.
+ *
+ * Omit it and the page uses the metadata name verbatim.
  *
  * `icon` values are named exports of `@calimero-network/mero-icons`. No emoji:
  * an emoji is a fixed-colour bitmap that cannot follow the dark palette.
