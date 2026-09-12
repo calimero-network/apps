@@ -251,7 +251,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      # Full history: check-live-frontends.py asks whether a live origin serves
+      # a title this repo has EVER built for that app, which it answers from
+      # `git log --follow` over each index.html. A depth-1 checkout makes that
+      # lookup blind, and the check then falls back to comparing production
+      # against an undeployed working tree — the exact false positive it was
+      # changed to stop.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - run: bash scripts/check-app-metadata.sh
 
       # Two dependency PRs merged back to back red EVERY app: git line-merges
