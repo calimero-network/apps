@@ -95,8 +95,14 @@ createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <MeroProvider
       mode={MeroAppMode.MultiContext}
+      // ⚠️ `?.trim() ||`, never `??`. Vercel inlines a defined-but-EMPTY env
+      // var as `""`, which `??` happily keeps — and an empty packageName makes
+      // `buildAuthLoginUrl` drop the `package-name` param entirely. Without it
+      // auth-frontend cannot look the app up in the registry to authorize the
+      // callback origin, so a hosted login dies on "Login callback destination
+      // is not allowed". That is exactly what shipped on mero-design.
       packageName={
-        import.meta.env.VITE_APPLICATION_PACKAGE ?? "com.calimero.mero-design"
+        import.meta.env.VITE_APPLICATION_PACKAGE?.trim() || "com.calimero.mero-design"
       }
       registryUrl="https://apps.calimero.network"
       allowedNodeUrls={trustedNodeUrl ? [trustedNodeUrl] : undefined}
