@@ -33,6 +33,7 @@ slug = "com.calimero.mero-pixart"
 # manifest because it is deterministic and works offline. Regenerate with
 # `node app/scripts/gen-icons.mjs`.
 icon = "../app/public/icon-512.png"
+category = "art-design"
 tags = ["image-editing", "collaboration", "layers"]
 github = "https://github.com/calimero-network/mero-pixart"
 # The release this contract is BUILT for, not a floor inherited from an older

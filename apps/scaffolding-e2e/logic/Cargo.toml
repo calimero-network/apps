@@ -41,6 +41,7 @@ slug = "com.calimero.scaffolding-e2e"
 # 32x32 favicon.png is too small), embedded into the manifest as a data: URI.
 # Regenerate with `logic/gen-icon.sh`.
 icon = "res/icon-512.png"
+category = "developer-tools"
 tags = ["scaffold", "example", "crdt", "testing"]
 github = "https://github.com/calimero-network/apps"
 # Keep this equal to the calimero-sdk tag below. It is NOT decoration: this

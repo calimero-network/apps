@@ -27,6 +27,7 @@ author = "Calimero"
 # to the package id the app's invite links carry.
 slug = "com.calimero.merraria"
 icon = "../app/public/icon-512.png"
+category = "games"
 tags = ["game", "sandbox", "multiplayer"]
 github = "https://github.com/calimero-network/merraria"
 # Kept equal to the SDK tag above, the way mero-ar/pixart/stream/scaffolding do

@@ -41,8 +41,14 @@ root.render(
       // INSTALL, so a baked one is wrong on every node but the machine it was
       // copied from, and core answers a request naming an unknown application
       // with an opaque 500 rather than a 404.
+      // ⚠️ `?.trim() ||`, never `??`. Vercel inlines a defined-but-EMPTY env
+      // var as `""`, which `??` happily keeps — and an empty packageName makes
+      // `buildAuthLoginUrl` drop the `package-name` param entirely. Without it
+      // auth-frontend cannot look the app up in the registry to authorize the
+      // callback origin, so a hosted login dies on "Login callback destination
+      // is not allowed". That is exactly what shipped on mero-design.
       packageName={
-        import.meta.env.VITE_APPLICATION_PACKAGE ?? "com.calimero.mero-pass"
+        import.meta.env.VITE_APPLICATION_PACKAGE?.trim() || "com.calimero.mero-pass"
       }
       registryUrl="https://apps.calimero.network"
       allowedNodeUrls={hashNodeUrl ? [hashNodeUrl] : undefined}

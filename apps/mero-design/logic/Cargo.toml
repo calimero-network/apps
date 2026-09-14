@@ -32,6 +32,7 @@ slug = "com.calimero.mero-design"
 # manifest because it is deterministic and works offline. Regenerate with
 # `node app/scripts/gen-icons.mjs`.
 icon = "../app/public/icon-512.png"
+category = "art-design"
 tags = ["design", "collaboration", "canvas"]
 github = "https://github.com/calimero-network/mero-design"
 # Kept equal to the SDK tag above. "0.1.0" sat here for months — cargo-mero's
