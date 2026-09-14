@@ -111,7 +111,14 @@ async function installBundle(adminUrl: string, token: string): Promise<string> {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${token}`,
     },
-    body: JSON.stringify({ path: MPK_PATH, metadata: [] }),
+    // ⚠️ `path` ONLY. `install-dev-application` denies unknown fields, and
+    // core dropped `metadata` from it — a body carrying one is refused
+    // outright:
+    //   metadata: unknown field `metadata`, expected `path`
+    // This field set has oscillated across releases, so check
+    // `InstallDevApplicationRequest` in core at the pinned tag before
+    // adding anything back.
+    body: JSON.stringify({ path: MPK_PATH }),
   });
   if (!resp.ok) throw new Error(`Install failed: ${await resp.text()}`);
   const data = await resp.json();

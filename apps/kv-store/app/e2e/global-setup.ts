@@ -211,7 +211,9 @@ export default async function globalSetup() {
     `${NODE_URL}/admin-api/install-dev-application`,
     tokens.accessToken,
     "POST",
-    { path: MPK, metadata: [] },
+    // ⚠️ `path` ONLY — see the note in the other apps' global-setup: core
+    // dropped `metadata` and the route denies unknown fields.
+    { path: MPK },
   );
 
   const { namespaceId } = await api<{ namespaceId: string }>(
