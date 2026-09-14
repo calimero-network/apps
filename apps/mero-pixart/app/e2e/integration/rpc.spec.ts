@@ -83,8 +83,15 @@ test.beforeEach(() => {
 
 /** Call a contract method via the node's `execute` JSON-RPC. */
 async function rpc<T>(method: string, args: Record<string, unknown> = {}): Promise<T> {
+  // Exactly these three. `ExecutionRequest` is `deny_unknown_fields`, so a
+  // fourth key fails the call with
+  //   unknown field `executorPublicKey`, expected one of `contextId`,
+  //   `method`, `argsJson`
+  // Core stopped reading `executorPublicKey` in #2116 — the node derives the
+  // executor from the bearer token. This spec is skipped unless
+  // INTEGRATION_NODE_URL is set, so it never ran against a node that would
+  // have said so.
   const params: Record<string, unknown> = { contextId: ctxId, method, argsJson: args };
-  if (executorKey) params.executorPublicKey = executorKey;
   const res = await api.post("/jsonrpc", {
     data: { jsonrpc: "2.0", id: 1, method: "execute", params },
   });
