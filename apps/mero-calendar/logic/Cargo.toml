@@ -46,6 +46,7 @@ slug        = "com.calimero.mero-calendar"
 # same form kv-store uses. The bundled icon is preferred over fetching the
 # frontend's PWA manifest because it is deterministic and works offline.
 icon        = "../app/public/icon-512.png"
+category = "planning"
 tags        = ["calendar", "scheduling", "collaboration"]
 github      = "https://github.com/calimero-network/apps"
 # Kept equal to the workspace SDK tag — that is what this is built and tested

@@ -27,6 +27,7 @@ author = "Calimero"
 # to the package id the app's invite links carry.
 slug = "com.calimero.mero-blocks"
 icon = "../app/public/icon-512.png"
+category = "games"
 tags = ["game", "sandbox", "multiplayer"]
 github = "https://github.com/calimero-network/mero-blocks"
 # A claim about what this bundle was built and tested against, so it tracks the

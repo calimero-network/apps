@@ -29,6 +29,7 @@ slug        = "com.calimero.mero-pass"
 # pulls the manifest's largest PNG through sips/iconutil — in the macOS Dock.
 # Regenerate with `node app/scripts/gen-icons.mjs`.
 icon        = "../app/public/icon-512.png"
+category = "security"
 tags        = ["secrets", "passwords", "security"]
 github      = "https://github.com/calimero-network/apps"
 min-runtime-version = "0.11.0-rc.34"

@@ -24,6 +24,7 @@ description = "Namespace-based document workspace - registry + docs multi-servic
 author      = "Calimero"
 slug        = "com.calimero.mero-drive-docs"
 license     = "MIT"
+category = "productivity"
 tags        = ["productivity", "documents", "collaboration"]
 github      = "https://github.com/calimero-network/apps"
 docs        = "https://docs.calimero.network"

@@ -27,6 +27,7 @@ description = "Collaborative peer-to-peer spreadsheet with live cursors, multipl
 author      = "Calimero"
 slug        = "com.calimero.mero-sheets"
 icon        = "../app/public/icon-512.png"
+category = "productivity"
 tags        = ["productivity", "spreadsheet", "collaboration"]
 github      = "https://github.com/calimero-network/apps"
 # ⚠️ The contract was pinned to core 0.11.0-rc.8 — EIGHTEEN releases back. This
