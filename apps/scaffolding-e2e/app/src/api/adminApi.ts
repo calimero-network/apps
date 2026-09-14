@@ -121,28 +121,15 @@ export async function getAllContextIdentities(contextId: string): Promise<string
   return body?.data?.identities ?? [];
 }
 
-export async function createContextInvitation(contextId: string): Promise<string> {
-  const body = await adminFetch(`/admin-api/contexts/${contextId}/invitations`, {
-    method: "POST",
-  }) as { data?: { invitePayload?: string } | string };
-
-  if (typeof body === "object" && body !== null && "data" in body) {
-    const data = (body as { data?: { invitePayload?: string } | string }).data;
-    if (typeof data === "string") return data;
-    if (typeof data === "object" && data !== null && "invitePayload" in data) {
-      return (data as { invitePayload: string }).invitePayload;
-    }
-  }
-  throw new Error(`createContextInvitation: unexpected response: ${JSON.stringify(body)}`);
-}
-
-export async function joinContext(invitePayload: string): Promise<void> {
-  await adminFetch("/admin-api/contexts/join", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ invitePayload }),
-  });
-}
+// `createContextInvitation` (POST /admin-api/contexts/{id}/invitations) and
+// `joinContext` (POST /admin-api/contexts/join) used to live here. Neither
+// route exists on the node this app targets — rc.34 serves exactly
+// `POST /admin-api/contexts/{context_id}/join` for a context and mints
+// invitations at the NAMESPACE (`POST /admin-api/namespaces/{id}/invite`), so
+// both were a 404 rather than a join. Nothing in the app called either one,
+// which is why no scenario ever went red; they were removed rather than
+// repointed, because `joinContextById` below is the route that works and is
+// what SetupWizard already uses.
 
 // Join a context directly by ID (after already being a namespace member).
 // Node B calls this after joinNamespace() to become a context member.

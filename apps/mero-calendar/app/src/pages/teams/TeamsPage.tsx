@@ -139,13 +139,16 @@ export default function TeamsPage() {
         groupId?: string;
         id?: string;
       }>("/namespaces", {
+        // Body is EXACTLY `applicationId` + `name` (+ optional `appKey`).
+        // `CreateNamespaceApiRequest` is `deny_unknown_fields`, so an extra key
+        // is a 400 for the whole create:
+        //   unknown field `alias`, expected one of `applicationId`, `name`,
+        //   `appKey`, `bytecodeId`
+        // `alias` was the pre-core#2338 spelling of the group label; `name` is
+        // the only one a node has read since.
+        // (No `upgradePolicy` either: core removed the concept in rc.21.)
         applicationId: await ensureAppId(),
-        alias: name,
         name,
-        // No `upgradePolicy`: core removed the concept in rc.21 and mero-js
-        // dropped it from CreateNamespaceRequest in 9.0.0. An rc.24 node accepts
-        // the field and ignores it, so this was silently doing nothing while
-        // reading as though a policy were being chosen.
       });
       const id = data.namespaceId ?? data.groupId ?? data.id ?? "";
       if (id) setStoredTeamName(id, name);

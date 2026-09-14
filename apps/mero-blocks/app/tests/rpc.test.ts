@@ -66,6 +66,30 @@ describe("rpcExecute wire shape", () => {
     expect(typeof body.params.argsJson).toBe("object"); // NOT a JSON string
   });
 
+  // The regression this file did not have. `executorPublicKey` used to be
+  // spread into `params` whenever the session carried one — so a target
+  // WITHOUT an identity (every other case here, and every route-mocked e2e)
+  // sent the correct three keys and passed, while a real logged-in session
+  // sent four and got
+  //   rpc world_meta: unknown field `executorPublicKey`,
+  //   expected one of `contextId`, `method`, `argsJson`
+  // from core's `deny_unknown_fields`. Asserting the keys that SHOULD be there
+  // cannot catch that; only asserting that nothing else is can, and only with
+  // an identity on the target.
+  it("sends exactly contextId/method/argsJson even when the session has an identity", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(okResponse({ output: null }));
+    await rpcExecute(
+      { ...target, executorPublicKey: "a".repeat(64) },
+      "world_meta",
+      {},
+    );
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1]!.body as string);
+    expect(Object.keys(body.params).sort()).toEqual(["argsJson", "contextId", "method"]);
+  });
+
   it("decodes byte-array outputs from the node", async () => {
     const bytes = Array.from(new TextEncoder().encode(JSON.stringify([{ k: "0,1,0", b: 3 }])));
     vi.spyOn(globalThis, "fetch").mockResolvedValue(okResponse({ output: bytes }));

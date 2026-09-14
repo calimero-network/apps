@@ -1,9 +1,24 @@
-// JSON-RPC contract calls. Wire shape (locked by mero-design's rpc tests):
+// JSON-RPC contract calls. Wire shape (locked by the tests beside this file):
 //   POST {node}/jsonrpc  { jsonrpc, id, method: "execute",
 //                          params: { contextId, method, argsJson } }
 // - envelope params are camelCase (contextId, argsJson)
 // - argsJson is a raw object, NOT a JSON string
 // - output may be a JSON string, a parsed value, or a legacy u8[] byte array
+//
+// `params` is EXACTLY those three keys. Core's `ExecutionRequest` carries
+// `deny_unknown_fields`, so a fourth key is a 400 for the whole call, not a
+// field the node ignores:
+//
+//   rpc world_meta: unknown field `executorPublicKey`,
+//   expected one of `contextId`, `method`, `argsJson`
+//
+// `executorPublicKey` was that fourth key. Core stopped reading it in #2116 —
+// the node derives the executor from the bearer token — and it stayed here for
+// releases because it was spread in CONDITIONALLY: a session without an
+// identity sent three keys and worked, which is the only shape the unit test
+// and the route-mocked Playwright suite ever built. The field is still on
+// `RpcTarget` (session state reads it, `identities-owned` fills it), it just
+// never reaches the wire.
 
 export interface RpcTarget {
   nodeUrl: string;
@@ -64,7 +79,6 @@ export async function rpcExecute<T = unknown>(
         contextId: target.contextId,
         method,
         argsJson: args,
-        ...(target.executorPublicKey ? { executorPublicKey: target.executorPublicKey } : {}),
       },
     }),
   });
