@@ -18,7 +18,7 @@
 //                 WorkspaceLayout)
 //   *          → redirect to /
 
-import React from 'react';
+import React, { type ReactNode } from 'react';
 import {
   BrowserRouter,
   Navigate,
@@ -27,7 +27,7 @@ import {
   useLocation,
   useNavigate,
 } from 'react-router-dom';
-import { AppMode, MeroProvider } from '@calimero-network/mero-react';
+import { AppMode, MeroProvider, useMero } from '@calimero-network/mero-react';
 import { ToastProvider } from '@calimero-network/mero-ui';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { ConfirmProvider } from '@/components/ui/confirm-dialog';
