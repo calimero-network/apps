@@ -146,9 +146,15 @@ green "Authenticated as '${ADMIN_USER}'"
 # ── Install app ───────────────────────────────────────────────────────────────
 
 step "Installing Mero Meet app"
+# ⚠️ `path` ONLY. This route denies unknown fields, and core reduced it to a
+# single `path` — a body carrying metadata/package/version is refused with
+#   metadata: unknown field `metadata`, expected `path`
+# and `curl -sf` turns that into a SILENT empty APP_ID below. The field set
+# has oscillated across releases; check `InstallDevApplicationRequest` in
+# core at the pinned tag before adding anything back.
 APP_RES=$(curl -sf -X POST "${NODE_URL}/admin-api/install-dev-application" \
   -H "Authorization: Bearer ${ACCESS_TOKEN}" -H "Content-Type: application/json" \
-  -d "$(jq -n --arg p "$WASM_PATH" '{path: $p, metadata: [], package: null, version: null}')" \
+  -d "$(jq -n --arg p "$WASM_PATH" '{path: $p}')" \
   2>/dev/null) || APP_RES="{}"
 APP_ID=$(echo "$APP_RES" | jq -r '.data.applicationId // empty')
 if [ -z "$APP_ID" ]; then

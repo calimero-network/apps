@@ -127,7 +127,7 @@ else
   # cosmetic: the node reads it to plan an upgrade, so a wasm built the old way is
   # not the artifact CI and the registry publish produce.
   # Install it with:  cargo install --git https://github.com/calimero-network/core \
-  #                     --tag 0.11.0-rc.32 cargo-mero --locked
+  #                     --tag 0.11.0-rc.34 cargo-mero --locked
   command -v cargo-mero >/dev/null 2>&1 \
     || { red "cargo-mero not found — install it (see comment above)"; exit 1; }
   (cd "$REPO_ROOT/logic" && cargo mero build)
@@ -208,10 +208,16 @@ fi
 # ── Install app ───────────────────────────────────────────────────────────────
 
 step "Installing Mero Calendar app"
+# ⚠️ `path` ONLY. This route denies unknown fields, and core reduced it to a
+# single `path` — a body carrying metadata/package/version is refused with
+#   metadata: unknown field `metadata`, expected `path`
+# and `curl -sf` turns that into a SILENT empty APP_ID below. The field set
+# has oscillated across releases; check `InstallDevApplicationRequest` in
+# core at the pinned tag before adding anything back.
 APP_RES=$(curl -sf -X POST "${NODE_URL}/admin-api/install-dev-application" \
   -H "Authorization: Bearer ${ACCESS_TOKEN}" \
   -H "Content-Type: application/json" \
-  -d "$(jq -n --arg p "$WASM_PATH" '{path: $p, metadata: [], package: null, version: null}')" \
+  -d "$(jq -n --arg p "$WASM_PATH" '{path: $p}')" \
   2>/dev/null) || APP_RES="{}"
 APP_ID=$(echo "$APP_RES" | jq -r '.data.applicationId // empty' 2>/dev/null || true)
 
