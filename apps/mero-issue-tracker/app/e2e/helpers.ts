@@ -124,9 +124,13 @@ async function adminApi(
 // Provision the base workspace (namespace + context) on node 0.
 async function provisionBase(): Promise<IsoWorkspace> {
   const node0 = getNode(0);
+  // ⚠️ NO `upgradePolicy`. core deleted the upgrade-policy concept and the
+  // endpoint denies unknown fields, so sending it is a hard 400:
+  //   upgradePolicy: unknown field `upgradePolicy`, expected one of
+  //   `applicationId`, `name`, `appKey`, `bytecodeId`
+  // which failed in provisioning, before any test ran — 29 failed, 24 passed.
   const ns = await adminApi(node0, 'POST', '/admin-api/namespaces', {
     applicationId: node0.appId,
-    upgradePolicy: 'Automatic',
   });
   await adminApi(
     node0,

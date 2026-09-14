@@ -267,8 +267,12 @@ export async function createRoom(
   onStatus: StatusFn = noop,
 ): Promise<{ roomId: string; contextId: string; memberPublicKey: string }> {
   onStatus("Creating the room…");
+  // ⚠️ `groupName`, not `name`. mero-js renamed the field; the request denies
+  // unknown ones, so the old spelling is a 400 rather than a silently ignored
+  // key. (The value still does not persist — see the note below — but the
+  // request has to be well-formed either way.)
   const sg = await admin.createGroupInNamespace(opts.namespaceId, {
-    name: opts.name,
+    groupName: opts.name,
   });
 
   // `createGroupInNamespace`'s `name` does NOT persist on rc.19: the subgroup
