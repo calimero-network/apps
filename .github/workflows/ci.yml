@@ -251,7 +251,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      # Full history: check-live-frontends.py asks whether a live origin serves
+      # a title this repo has EVER built for that app, which it answers from
+      # `git log --follow` over each index.html. A depth-1 checkout makes that
+      # lookup blind, and the check then falls back to comparing production
+      # against an undeployed working tree — the exact false positive it was
+      # changed to stop.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - run: bash scripts/check-app-metadata.sh
 
       # Two dependency PRs merged back to back red EVERY app: git line-merges
@@ -725,6 +733,28 @@ jobs:
           for attempt in 1 2 3; do
             if timeout 300 npx playwright install --with-deps chromium; then exit 0; fi
             echo "::warning::playwright install attempt $attempt hung or failed; retrying"
+            # ⚠️ `timeout` kills the npx wrapper, NOT the apt-get it started
+            # under sudo — and that orphan keeps /var/lib/dpkg/lock-frontend.
+            # So a timed-out attempt POISONS every retry after it:
+            #
+            #     E: Could not get lock /var/lib/dpkg/lock-frontend.
+            #        It is held by process 2746 (apt-get)
+            #
+            # which is exactly how `Browser E2E (mero-sheets)` died on
+            # 2026-09-11 — attempt 1 hung for the full 4 minutes fetching
+            # fonts, then attempts 2 and 3 failed in under a second each. The
+            # loop looked like three chances and was really one.
+            #
+            # So clear the ground before retrying: kill the orphan, wait for
+            # the lock to actually drop (SIGTERM is not instant), and finish
+            # any half-configured packages it left behind.
+            sudo pkill -x apt-get 2>/dev/null || true
+            sudo pkill -x dpkg 2>/dev/null || true
+            for _ in $(seq 1 60); do
+              sudo fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || break
+              sleep 2
+            done
+            sudo dpkg --configure -a >/dev/null 2>&1 || true
             sleep 15
           done
           echo "::error::playwright install failed three times — an apt stall or a broken index, not the app"
@@ -751,6 +781,28 @@ jobs:
           for attempt in 1 2 3; do
             if timeout 240 npx playwright install-deps chromium; then exit 0; fi
             echo "::warning::playwright install-deps attempt $attempt hung or failed; retrying"
+            # ⚠️ `timeout` kills the npx wrapper, NOT the apt-get it started
+            # under sudo — and that orphan keeps /var/lib/dpkg/lock-frontend.
+            # So a timed-out attempt POISONS every retry after it:
+            #
+            #     E: Could not get lock /var/lib/dpkg/lock-frontend.
+            #        It is held by process 2746 (apt-get)
+            #
+            # which is exactly how `Browser E2E (mero-sheets)` died on
+            # 2026-09-11 — attempt 1 hung for the full 4 minutes fetching
+            # fonts, then attempts 2 and 3 failed in under a second each. The
+            # loop looked like three chances and was really one.
+            #
+            # So clear the ground before retrying: kill the orphan, wait for
+            # the lock to actually drop (SIGTERM is not instant), and finish
+            # any half-configured packages it left behind.
+            sudo pkill -x apt-get 2>/dev/null || true
+            sudo pkill -x dpkg 2>/dev/null || true
+            for _ in $(seq 1 60); do
+              sudo fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || break
+              sleep 2
+            done
+            sudo dpkg --configure -a >/dev/null 2>&1 || true
             sleep 15
           done
           echo "::error::playwright install-deps failed three times — an apt stall or a broken index, not the app"

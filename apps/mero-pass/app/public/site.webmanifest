@@ -1,6 +1,6 @@
 {
-  "name": "MeroPass",
-  "short_name": "MeroPass",
+  "name": "Mero Pass",
+  "short_name": "Mero Pass",
   "description": "A peer-to-peer secret manager: keep credentials in a vault on your own nodes and share them with namespace members.",
   "icons": [
     { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },

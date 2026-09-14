@@ -70,7 +70,7 @@ const Header: FC<IHeaderProps> = ({
 
   const handleLogout = () => {
     logout();
-    navigate("/login");
+    navigate("/");
   };
 
   return (

@@ -1,5 +1,7 @@
 {
   "compilerOptions": {
+    // The marketing landing page is React; the game itself is not.
+    "jsx": "react-jsx",
     "target": "ES2022",
     "useDefineForClassFields": true,
     "module": "ESNext",

@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 import { CTX_ID, enterOnline, freshState, mockNode, seedSession } from "./helpers";
 
 // The game is online-only: every spec seeds a connected session against the

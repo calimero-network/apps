@@ -108,11 +108,15 @@ test.describe("Web login page", () => {
     await expect(page.locator("body")).toBeVisible();
   });
 
-  test("renders the Connect button and no admin credential fields", async ({ page }) => {
+  // The /login page this used to open is gone; the front door is `/`. The
+  // assertion worth keeping is the second half — that signing in never asks
+  // for a username and password, because there is no account to have one.
+  test("the front door offers a node connection, not credentials", async ({ page }) => {
     await page.route("**/admin-api/contexts", (route) => route.fulfill({ status: 401, body: "{}" }));
-    await page.goto("/login");
-    await expect(page.getByText("Connect to node")).toBeVisible();
-    await expect(page.locator(".mero-connect-button")).toBeVisible();
+    await page.goto("/");
+    await expect(
+      page.locator("button").filter({ hasText: /^Connect to node$/ }).first(),
+    ).toBeVisible();
     await expect(page.getByLabel("Username")).toHaveCount(0);
     await expect(page.getByLabel("Password")).toHaveCount(0);
   });

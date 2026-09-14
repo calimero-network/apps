@@ -1,5 +1,6 @@
 {
   "compilerOptions": {
+    "jsx": "react-jsx",
     "target": "ESNext",
     "allowJs": true,
     "skipLibCheck": true,
@@ -14,7 +15,6 @@
     "isolatedModules": true,
     "noEmit": true,
     "outDir": "dist",
-    "jsx": "react",
     "baseUrl": ".",
     "paths": {
       "@/*": ["src/*"]

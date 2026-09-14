@@ -99,7 +99,7 @@ export default function ProjectsPage() {
 
   function handleLogout() {
     logout();
-    navigate("/login");
+    navigate("/");
   }
 
   useEffect(() => {
@@ -214,7 +214,7 @@ export default function ProjectsPage() {
       // it ("applicationId: invalid length 0, expected a base58 encoded hash").
       const appId = await ensureAppId();
       if (!appId) {
-        showToast("Select or install the MeroPixArt application first.");
+        showToast("Select or install the Mero PixArt application first.");
         return;
       }
 
@@ -356,7 +356,7 @@ export default function ProjectsPage() {
     <div className={styles.root}>
       <header className={styles.header}>
         <button className={styles.back} onClick={() => navigate("/teams")}>← Teams</button>
-        <span className={styles.logo}><Logo size={22} /> MeroPixArt</span>
+        <span className={styles.logo}><Logo size={22} /> Mero PixArt</span>
         <div className={styles.headerRight}>
           <button className="mp-btn mp-btn--ghost" onClick={handleLogout}>Logout</button>
         </div>

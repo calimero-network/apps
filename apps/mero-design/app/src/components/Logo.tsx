@@ -11,7 +11,7 @@ export default function Logo({ size = 28, color = "#111" }: Props) {
       viewBox="0 0 32 32"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
-      aria-label="MeroDesign"
+      aria-label="Mero Design"
     >
       {/* Two overlapping offset squares — design/layers motif */}
       <rect x="3" y="9" width="16" height="16" rx="2.5" fill={color} opacity="0.18" />

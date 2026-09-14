@@ -126,7 +126,7 @@ export default function CanvasPage() {
   }, [refreshIdentity]);
 
   function handleBack() { navigate(`/teams/${teamId}/projects`); }
-  function handleLogout() { logout(); navigate("/login"); }
+  function handleLogout() { logout(); navigate("/"); }
 
   /**
    * Escape, and the group shortcuts.

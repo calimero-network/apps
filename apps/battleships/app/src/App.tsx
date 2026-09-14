@@ -5,9 +5,12 @@ import { ToastProvider } from '@calimero-network/mero-ui';
 
 import MatchPage from './pages/match';
 import HomePage from './pages/home';
-import Authenticate from './pages/login/Authenticate';
 import LandingPage from './pages/landing/LandingPage';
 import PlayPage from './pages/play';
+
+/** Every path the shared landing page serves. See src/pages/landing. */
+const LANDING_PATHS = ['/', '/docs', '/preview'];
+
 
 // ── Desktop auth-skip ─────────────────────────────────────────────────────────
 //
@@ -68,8 +71,18 @@ export default function App() {
                 ConnectButton and its returnTo handling, on /login. Both
                 redirect an authenticated visitor onward, so the desktop
                 hand-off still lands in the lobby. */}
-            <Route path="/" element={<LandingPage />} />
-            <Route path="/login" element={<Authenticate />} />
+            {/* The landing page is three pages: `/`, `/docs` and `/preview`. They are
+                real URLs so they can be shared and opened cold, which needs a route
+                here — otherwise this app's catch-all swallows the deep link before
+                the page ever renders. */}
+            {LANDING_PATHS.map((landingPath) => (
+              <Route key={landingPath} path={landingPath} element={<LandingPage />} />
+            ))}
+            {/* The /login PAGE is gone — every app had one, every one looked
+                different, and its whole content was a button the visitor had
+                already pressed to get there. The path stays as a redirect so a
+                bookmark lands on the front door instead of a blank route. */}
+            <Route path="/login" element={<Navigate to="/" replace />} />
             <Route path="/lobby" element={<MatchPage />} />
             <Route path="/match" element={<MatchPage />} />
             <Route path="/home" element={<HomePage />} />

@@ -153,7 +153,7 @@ const VaultDashboard: React.FC = () => {
     return (
       <>
         <MeroNavbar variant="elevated" size="md">
-          <NavbarBrand text="MeroPass" />
+          <NavbarBrand text="Mero Pass" />
           <NavbarMenu align="right">
             <NavbarItem>
               <ConnectButton label="Connect a node" />
@@ -171,7 +171,7 @@ const VaultDashboard: React.FC = () => {
     return (
       <>
         <MeroNavbar variant="elevated" size="md">
-          <NavbarBrand text="MeroPass" />
+          <NavbarBrand text="Mero Pass" />
           <NavbarMenu align="right">
             <NavbarItem>
               <ConnectButton label="Connect a node" />
@@ -187,7 +187,7 @@ const VaultDashboard: React.FC = () => {
     return (
       <>
         <MeroNavbar variant="elevated" size="md">
-          <NavbarBrand text="MeroPass" />
+          <NavbarBrand text="Mero Pass" />
           <NavbarMenu align="right">
             <NavbarItem>
               <ConnectButton label="Connect a node" />
@@ -202,7 +202,7 @@ const VaultDashboard: React.FC = () => {
   return (
     <>
       <MeroNavbar variant="elevated" size="md">
-        <NavbarBrand text="MeroPass" />
+        <NavbarBrand text="Mero Pass" />
         <NavbarMenu align="right">
           <NavbarItem>
             <ConnectButton label="Connect a node" />

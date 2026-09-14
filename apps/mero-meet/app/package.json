@@ -2,7 +2,7 @@
   "name": "mero-meet",
   "private": true,
   "version": "0.4.0",
-  "description": "Calimero Mero Meet — decentralized video calling (desktop)",
+  "description": "Calimero Mero Meet \u2014 decentralized video calling (desktop)",
   "keywords": [
     "calimero",
     "video",
@@ -28,6 +28,7 @@
     "prettier:write": "prettier --write 'src/**/*.{js,jsx,ts,tsx,json}'"
   },
   "dependencies": {
+    "@calimero-network/mero-icons": "catalog:",
     "@calimero-network/mero-js": "catalog:",
     "@calimero-network/mero-platform": "catalog:",
     "@calimero-network/mero-react": "catalog:",

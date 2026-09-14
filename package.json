@@ -11,7 +11,9 @@
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck",
     "codegen": "pnpm -r codegen",
-    "check:metadata": "bash scripts/check-app-metadata.sh"
+    "check:metadata": "bash scripts/check-app-metadata.sh",
+    "landing:generate": "node scripts/landing/generate.mjs",
+    "landing:check": "node scripts/landing/generate.mjs --check"
   },
   "devDependencies": {
     "typescript": "catalog:"

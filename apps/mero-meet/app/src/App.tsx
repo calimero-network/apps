@@ -4,7 +4,7 @@ import { useMero } from "@calimero-network/mero-react";
 import { APP_ENABLED } from "./lib/tauri";
 import { resolveBootScreen } from "./lib/boot";
 import { getContextId, clearActiveRoom } from "./lib/session";
-import LandingPage from "./pages/LandingPage";
+import LandingPage from "./pages/landing/LandingPage";
 import DesktopSignInPage from "./pages/DesktopSignInPage";
 import RoomsPage from "./pages/RoomsPage";
 import LobbyPage from "./pages/LobbyPage";
@@ -87,6 +87,14 @@ export default function App() {
         <Route path="/rooms" element={<RequireAuth><RoomsPage /></RequireAuth>} />
         <Route path="/lobby" element={<RequireAuth><RequireRoom><LobbyPage /></RequireRoom></RequireAuth>} />
         <Route path="/call" element={<RequireAuth><RequireRoom><CallView /></RequireRoom></RequireAuth>} />
+        {/* ⚠️ These two must be routed even though `/` is not the landing here.
+                    This app renders the landing from a guard rather than a route, so
+                    without them the catch-all below matches `/docs`, redirects to `/`,
+                    and a shared docs link silently shows the overview. Measured — it
+                    is how this was found. */}
+        {['/docs', '/preview'].map((landingPath) => (
+          <Route key={landingPath} path={landingPath} element={<LandingPage />} />
+        ))}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </CallProvider>

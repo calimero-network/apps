@@ -16,7 +16,7 @@ export default function Logo({ size = 28, color = "var(--text)" }: Props) {
       viewBox="0 0 32 32"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
-      aria-label="MeroPixArt"
+      aria-label="Mero PixArt"
     >
       {/* base tile */}
       <rect x="4" y="4" width="14" height="14" rx="2.5" fill={color} opacity="0.16" />

@@ -24,8 +24,12 @@ vi.mock("./lib/boot", async (importOriginal) => ({
 }));
 
 const NODE = "http://localhost:2528";
-const LANDING_COPY = "Desktop app required";
-const LANDING_CTA = "Get Calimero Desktop";
+// Two phrases the shared landing template renders and nothing else in the app
+// does. The bespoke "Desktop app required" screen these used to name was
+// replaced by that template; the assertions below are unchanged in meaning —
+// the landing shows on the plain web and never behind a working desktop boot.
+const LANDING_COPY = "Mero Meet runs in the Calimero desktop app";
+const LANDING_CTA = "Download for desktop";
 
 /** A decodable JWT — mero-react reads `iat`/`exp` to decide token staleness. */
 function jwt({ iat, exp }: { iat: number; exp: number }): string {

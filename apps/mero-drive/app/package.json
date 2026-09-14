@@ -7,6 +7,7 @@
     "@blocknote/core": "^0.51.4",
     "@blocknote/mantine": "^0.51.4",
     "@blocknote/react": "^0.51.4",
+    "@calimero-network/mero-icons": "catalog:",
     "@calimero-network/mero-js": "^7.3.2",
     "@calimero-network/mero-react": "^4.6.1",
     "@calimero-network/mero-ui": "^0.3.6",

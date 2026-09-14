@@ -32,7 +32,7 @@ axios.interceptors.response.use(
     const isIdentitiesOwned = url.includes("/identities-owned");
     if (is401 && !isAuthEndpoint && !isIdentitiesOwned) {
       clearAllStorage();
-      window.location.href = "/login";
+      window.location.href = "/";
     }
     return Promise.reject(err);
   },

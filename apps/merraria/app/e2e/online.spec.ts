@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 import { enterOnline, freshState, mockNode, remotePlayer, seedSession } from "./helpers";
 
 test.describe("online mode (mocked node)", () => {

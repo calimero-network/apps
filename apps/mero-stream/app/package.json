@@ -26,6 +26,7 @@
     "test:e2e:ui": "playwright test --ui"
   },
   "dependencies": {
+    "@calimero-network/mero-icons": "catalog:",
     "@calimero-network/mero-js": "catalog:",
     "@calimero-network/mero-platform": "catalog:",
     "@calimero-network/mero-react": "catalog:",

@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./fixtures";
 import { decodeInvite, encodeInvite } from "../src/net/inviteCodec";
 import {
   CTX_ID,
@@ -18,23 +18,74 @@ test.describe("landing page", () => {
     await expect(page.getByTestId("panorama")).toBeVisible();
     await expect(page.getByTestId("controls")).toContainText("WASD");
     await expect(page.getByTestId("connect-open-btn")).toBeVisible();
+    await expect(page.getByTestId("back-to-landing")).toBeVisible();
     // online-only: no offline entry anywhere
     await expect(page.getByTestId("offline-btn")).toHaveCount(0);
   });
 
-  test("footer links out to the Calimero site, docs, and socials", async ({ page }) => {
+  test("the play card offers a way back to the marketing landing page", async ({ page }) => {
+    // The launcher is where a visitor lands after pressing Connect on the
+    // marketing page, and it used to be a one-way door: the landing page shows
+    // once per session, so there was no way back to the pitch, the docs or the
+    // preview without clearing storage.
     await page.goto("/");
-    const social = page.getByTestId("social-links");
+    await expect(page.getByTestId("connect-open-btn")).toBeVisible();
+
+    await page.getByTestId("back-to-landing").click();
+    await expect(page.locator(".cal-lp-root")).toBeVisible();
+    await expect(page.locator(".cal-lp-root h1")).toContainText("Mero Blocks");
+
+    // Leaving it again uncovers the launcher as it was — the landing renders
+    // OVER the launcher rather than replacing it, so there is nothing to
+    // restore and no second trip through the panorama.
+    await page.locator(".cal-lp-root").getByRole("button", { name: "Connect to node" }).first().click();
+    await expect(page.locator(".cal-lp-root")).toHaveCount(0);
+    await expect(page.getByTestId("connect-open-btn")).toBeVisible();
+  });
+
+  test("the way back is there once a node is connected too", async ({ page }) => {
+    // The button lives on the CARD, not inside the card's contents, so it
+    // survives every re-render of the play card — anonymous, world picker and
+    // ready all render through #mbl-play beneath it. Asserted because putting
+    // it inside would have given the connected user no way back at all.
+    await mockNode(page);
+    await mockAdmin(page, freshState());
+    await seedSession(page);
+    await page.goto("/");
+    await expect(page.getByTestId("world-list")).toBeVisible();
+    await expect(page.getByTestId("back-to-landing")).toBeVisible();
+  });
+
+  test("coming back from the docs leaves the launcher on / , not on /docs", async ({ page }) => {
+    // ⚠️ The landing nav pushes real history entries. Dismissing it from /docs
+    // used to leave the address bar there, so a reload — or the desktop app
+    // reopening the window — asked the dev server for a route the game does
+    // not serve.
+    await page.goto("/");
+    await page.getByTestId("back-to-landing").click();
+    await page.getByRole("navigation").getByRole("link", { name: "Docs" }).click();
+    await expect(page).toHaveURL(/\/docs$/);
+    await page.locator(".cal-lp-root").getByRole("button", { name: "Connect to node" }).first().click();
+    await expect(page).toHaveURL(/\/$/);
+  });
+
+  test("the launcher carries no social or marketing links", async ({ page }) => {
+    // This screen is the way INTO a world — a name, a node, a world list. The
+    // row of calimero.network / Docs / GitHub / X / Discord / LinkedIn links
+    // that used to sit under it was marketing, it belongs on the marketing
+    // page, and it sent people away from the one thing they came here to do.
+    await page.goto("/");
+    await expect(page.getByTestId("landing")).toBeVisible();
+    await expect(page.getByTestId("social-links")).toHaveCount(0);
     for (const href of [
       "https://www.calimero.network/",
       "https://docs.calimero.network",
       "https://github.com/calimero-network/apps",
-      "https://github.com/calimero-network/apps/tree/main/apps/mero-blocks",
       "https://x.com/CalimeroNetwork",
       "https://discord.gg/wZRC73DVpU",
       "https://www.linkedin.com/company/calimero-network/",
     ]) {
-      await expect(social.locator(`a[href="${href}"]`)).toBeVisible();
+      await expect(page.locator(`#mb-landing a[href="${href}"]`)).toHaveCount(0);
     }
   });
 

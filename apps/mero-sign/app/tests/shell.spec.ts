@@ -14,21 +14,33 @@ import { expect, test } from "@playwright/test";
 // mid-session — but it is no longer the front door: `/` is now an explainer,
 // because a gate that says what to click and never what MeroSign is left a
 // first visitor with nothing to read.
+//
+// ⚠️ That explainer was then replaced again, by the fleet-wide landing template
+// (scripts/landing/template). Its own contract — sections, badge, theme, FAQ —
+// is asserted by the generated tests/landing.spec.ts; what stays here is the
+// part that is specific to THIS app: the page mounts clean, names itself, and
+// the way in is a button, because MeroSign has no /login route to link to.
 test.describe("unauthenticated shell", () => {
   test("`/` explains the app before asking for a node", async ({ page }) => {
     const errors: string[] = [];
     page.on("pageerror", (e) => errors.push(e.message));
 
     await page.goto("/");
-    await expect(
-      page.getByRole("heading", { name: /sign agreements without/i }),
-    ).toBeVisible();
-    await expect(page.getByRole("heading", { name: "What it does" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "How it works" })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: "Mero Sign" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "What you can do" })).toBeVisible();
+
+    // ⚠️ The explainer, the four steps and the FAQ now live on `/docs`. The
+    // landing is three pages: `/` sells it, `/docs` explains it, `/preview`
+    // shows it. Asserting them all on `/` was asserting the old shape.
+    await page.goto("/docs");
+    await expect(page.getByRole("heading", { name: "What this is" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "How Calimero works" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "FAQ" })).toBeVisible();
-    // A way in, twice over: the header and the hero.
-    await expect(page.getByRole("button", { name: /connect a node/i })).toBeVisible();
-    await expect(page.getByRole("button", { name: /get started/i })).toBeVisible();
+
+    await page.goto("/");
+    // A way in, twice over: the header and the hero. Buttons rather than links
+    // because this app signs in through mero-react's modal, with no /login route.
+    await expect(page.getByRole("button", { name: "Connect to node" })).toHaveCount(2);
 
     expect(errors, "an unhandled error escaped to the page").toEqual([]);
   });
@@ -66,6 +78,6 @@ test.describe("unauthenticated shell", () => {
     await expect(
       page.getByRole("heading", { name: /calimero connection required/i }),
     ).toBeVisible();
-    await expect(page.getByText(/to access MeroSign/i)).toBeVisible();
+    await expect(page.getByText(/to access Mero Sign/i)).toBeVisible();
   });
 });
