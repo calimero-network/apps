@@ -811,9 +811,23 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
       setCreateError(null);
       try {
         // Step 1 — create the namespace (root group).
+        // ⚠️ NO `upgradePolicy`. core deleted the concept and this endpoint
+        // denies unknown fields, so it answers 400 with
+        //   upgradePolicy: unknown field `upgradePolicy`, expected one of
+        //   `applicationId`, `name`, `appKey`, `bytecodeId`
+        // Every other app here already dropped it; this one was missed, and
+        // nothing caught it because mero-drive's e2e only covers the landing
+        // page.
+        //
+        // ⚠️ REMOVING IT HERE IS NOT ENOUGH ON ITS OWN. mero-js 13.x injects
+        // the field itself — `post(url, { upgradePolicy: "LazyOnAccess",
+        // ...request })` — so the key is on the wire whatever the caller
+        // passes. Only mero-js 18.3.0 drops the injection, and the latest
+        // mero-react (8.0.0) still depends on `^15.0.0`, which does not. So
+        // this line is correct and the call still fails until the SDK moves;
+        // see the PR for the escalation.
         const ns = await mero.admin.createNamespace({
           applicationId,
-          upgradePolicy: 'Automatic',
           name: trimmed,
         });
         if (!ns?.namespaceId) {
