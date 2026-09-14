@@ -1076,6 +1076,14 @@
   color: var(--cal-lp-text);
   background: var(--cal-lp-bg-3);
 }
+/* The section being read, marked in the list. Deliberately the same shape as
+   the hover state — one affordance, not two — with the accent doing the work
+   of saying which one is current when the pointer is somewhere else. */
+.cal-lp-toclink[data-cal-lp-active] {
+  color: var(--cal-lp-accent-ink);
+  background: var(--cal-lp-accent-soft);
+  font-weight: 650;
+}
 .cal-lp-docsbody {
   /* `minmax(0, 1fr)` above plus this: a grid item's default `min-width: auto`
      is its CONTENT width, so one long unbreakable token in a doc would widen

@@ -94,6 +94,22 @@ test.describe('Mero Meet landing page', () => {
     await expect(page.locator('.cal-lp-root')).toHaveAttribute('data-cal-lp-view', 'docs');
   });
 
+  test('the docs sidebar marks the section being read, and scrolls to it', async ({ page }) => {
+    await page.goto('/docs');
+    const toc = page.locator('.cal-lp-toc');
+    // Exactly one entry is current, and before any scrolling it is the first.
+    await expect(toc.locator('[data-cal-lp-active]')).toHaveCount(1);
+    await expect(toc.locator('[data-cal-lp-active]')).toHaveText('What this is');
+
+    // Clicking an entry brings its section into view and moves the marker.
+    // ⚠️ The scroll is smooth, so both of these are retried assertions rather
+    // than a single read — a synchronous check here passes only by accident,
+    // on whichever frame it happens to land.
+    await toc.getByRole('link', { name: "The words, and what they mean here" }).click();
+    await expect(page.locator('#' + "concepts")).toBeInViewport();
+    await expect(toc.locator('[data-cal-lp-active]')).toHaveText("The words, and what they mean here");
+  });
+
   test('/docs opens cold, as a shared link would', async ({ page }) => {
     // ⚠️ A COLD load, not a click. Clicking is client-side routing and proves
     // nothing about whether the app routes the path — an app whose catch-all

@@ -753,6 +753,86 @@ function OverviewView({
   );
 }
 
+/**
+ * The element that actually scrolls this page.
+ *
+ * ⚠️ IT IS NOT ALWAYS THE WINDOW. The two canvas games mount this whole page
+ * into a fixed, inset-0, `overflow-y: auto` host (see their
+ * `pages/landing/mount.tsx`), so nothing ever reaches a window scroll listener
+ * there and anything keyed off one silently does nothing.
+ */
+function scrollParentOf(el: HTMLElement): HTMLElement | Window {
+  for (let n = el.parentElement; n; n = n.parentElement) {
+    const oy = getComputedStyle(n).overflowY;
+    if ((oy === 'auto' || oy === 'scroll') && n.scrollHeight > n.clientHeight) return n;
+  }
+  return window;
+}
+
+/** True when the reader has asked for less movement, checked at click time. */
+const stillPreferred = () =>
+  typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/**
+ * Which doc section the reader is currently in, for marking it in the sidebar.
+ *
+ * A scroll listener rather than an IntersectionObserver, for two reasons: the
+ * question here is "which heading did I last pass", which is a comparison
+ * against one line and not an intersection; and an observer has no answer at
+ * all for the LAST section when it is too short to reach that line, so the
+ * final entry could never light up. The end-of-scroll branch below is the fix
+ * for exactly that.
+ *
+ * The line is read off the section's own `scroll-margin-top` instead of being
+ * repeated here, so the place the sidebar says you are and the place a click
+ * scrolls you to cannot drift apart.
+ */
+function useActiveDocSection(ids: string[]): string {
+  const key = ids.join('|');
+  const [active, setActive] = useState(ids[0] ?? '');
+
+  useEffect(() => {
+    const sections = key
+      .split('|')
+      .map((id) => document.getElementById(id))
+      .filter((el): el is HTMLElement => el !== null);
+    if (sections.length === 0) return undefined;
+
+    const scroller = scrollParentOf(sections[0]);
+    let frame = 0;
+
+    const measure = () => {
+      frame = 0;
+      const line = Number.parseFloat(getComputedStyle(sections[0]).scrollMarginTop) || 0;
+      let current = sections[0].id;
+      for (const s of sections) if (s.getBoundingClientRect().top - line <= 1) current = s.id;
+
+      const atEnd =
+        scroller === window
+          ? window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 2
+          : (scroller as HTMLElement).scrollTop + (scroller as HTMLElement).clientHeight >=
+            (scroller as HTMLElement).scrollHeight - 2;
+      if (atEnd) current = sections[sections.length - 1].id;
+
+      setActive(current);
+    };
+    const onScroll = () => {
+      if (!frame) frame = requestAnimationFrame(measure);
+    };
+
+    measure();
+    scroller.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', onScroll);
+    return () => {
+      if (frame) cancelAnimationFrame(frame);
+      scroller.removeEventListener('scroll', onScroll);
+      window.removeEventListener('resize', onScroll);
+    };
+  }, [key]);
+
+  return active;
+}
+
 /** `/docs` — the real documentation for this app, not a link to somebody else's. */
 function DocsView({ faq, ConnectCta, desktopOnly }: ViewShared & { faq: { q: string; a: string }[] }) {
   const toc = [
@@ -761,6 +841,7 @@ function DocsView({ faq, ConnectCta, desktopOnly }: ViewShared & { faq: { q: str
     { id: 'how', heading: 'How Calimero works' },
     { id: 'faq', heading: 'FAQ' },
   ];
+  const activeId = useActiveDocSection(toc.map((t) => t.id));
 
   return (
     <div className="cal-lp-shell">
@@ -775,7 +856,27 @@ function DocsView({ faq, ConnectCta, desktopOnly }: ViewShared & { faq: { q: str
         <nav className="cal-lp-toc" aria-label="On this page">
           <h4 className="cal-lp-footerhead">On this page</h4>
           {toc.map((t) => (
-            <a key={t.id} className="cal-lp-toclink" href={`#${t.id}`}>
+            <a
+              key={t.id}
+              className="cal-lp-toclink"
+              href={`#${t.id}`}
+              aria-current={activeId === t.id ? 'location' : undefined}
+              data-cal-lp-active={activeId === t.id ? '' : undefined}
+              onClick={(e) => {
+                // A modified click is the browser's: new tab, new window, save.
+                if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+                const el = document.getElementById(t.id);
+                if (!el) return; // no target: let the native jump try anyway
+                e.preventDefault();
+                // ⚠️ Deliberately NOT writing `#id` to the address bar. The
+                // fragment is the slot a brokered desktop login arrives in
+                // (see VIEW_PATH's note above), and the two games carry
+                // whatever is in it back out to their launcher. The anchor's
+                // href still gives the right URL to copy, and arriving at
+                // /docs#id from outside still jumps natively.
+                el.scrollIntoView({ behavior: stillPreferred() ? 'auto' : 'smooth', block: 'start' });
+              }}
+            >
               {t.heading}
             </a>
           ))}

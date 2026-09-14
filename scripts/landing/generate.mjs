@@ -145,6 +145,10 @@ function renderSpec(app, entry, meta) {
   const desktopOnly = entry.availability === 'desktop';
   const badge = desktopOnly ? 'Desktop only' : entry.availability === 'web' ? 'Web only' : 'Web + Desktop';
   const docIds = entry.docs.map((d) => d.id);
+  // The first real doc section — the entry below "What this is" — is what the
+  // sidebar test clicks.
+  const firstDocId = entry.docs[0].id;
+  const firstDocHeading = entry.docs[0].heading;
   // Only the apps that HAD a `/login` route redirect one. The two canvas games
   // and `mero-sign` never had a login page to remove.
   const hadLoginPage = HAD_LOGIN_PAGE.has(app);
@@ -246,6 +250,22 @@ test.describe('${meta.name} landing page', () => {
     await page.goBack();
     await expect(page).toHaveURL(/\\/docs$/);
     await expect(page.locator('.cal-lp-root')).toHaveAttribute('data-cal-lp-view', 'docs');
+  });
+
+  test('the docs sidebar marks the section being read, and scrolls to it', async ({ page }) => {
+    await page.goto('/docs');
+    const toc = page.locator('.cal-lp-toc');
+    // Exactly one entry is current, and before any scrolling it is the first.
+    await expect(toc.locator('[data-cal-lp-active]')).toHaveCount(1);
+    await expect(toc.locator('[data-cal-lp-active]')).toHaveText('What this is');
+
+    // Clicking an entry brings its section into view and moves the marker.
+    // ⚠️ The scroll is smooth, so both of these are retried assertions rather
+    // than a single read — a synchronous check here passes only by accident,
+    // on whichever frame it happens to land.
+    await toc.getByRole('link', { name: ${q(firstDocHeading)} }).click();
+    await expect(page.locator('#' + ${q(firstDocId)})).toBeInViewport();
+    await expect(toc.locator('[data-cal-lp-active]')).toHaveText(${q(firstDocHeading)});
   });
 
   test('/docs opens cold, as a shared link would', async ({ page }) => {
