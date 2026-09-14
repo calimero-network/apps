@@ -26,6 +26,13 @@ written:
     Browsers pick an icon BY the declared size, so a lie here is chosen for the
     wrong slot and rescaled.
 
+  • An SVG mark that is not well-formed XML. mero-calendar's favicon.svg had a
+    double hyphen inside an XML comment, which XML forbids. It served 200 with
+    the right content-type and looked fine in an editor, but an SVG loaded
+    through `<img>` is parsed STRICTLY — the browser dropped the entire file
+    and drew a broken-image placeholder where the landing page navbar's logo
+    should be. Nothing failed, nothing logged, and it shipped.
+
 Stdlib only: this runs in the always-on `metadata` job, which has no npm
 install and no pip install.
 """
@@ -37,6 +44,7 @@ import re
 import struct
 import sys
 import zlib
+from xml.etree import ElementTree
 
 REPO = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 
@@ -284,6 +292,24 @@ def check_web_manifest(app: str) -> None:
              f"{json_theme} in the web manifest")
 
 
+def check_svg_marks(app: str) -> None:
+    """Every SVG under app/public/ must parse as XML.
+
+    `<img src="...svg">` — which is how the landing page navbar draws the mark
+    — goes through the XML parser, not the forgiving HTML one. A file that is
+    merely SVG-shaped renders as a broken image with no error anywhere.
+    """
+    pub = os.path.join(REPO, "apps", app, "app/public")
+    for path in sorted(glob.glob(os.path.join(pub, "**/*.svg"), recursive=True)):
+        rel = os.path.relpath(path, pub)
+        try:
+            ElementTree.parse(path)
+        except ElementTree.ParseError as exc:
+            fail(f"{app}: app/public/{rel} is not well-formed XML ({exc}). An SVG "
+                 f"loaded through <img> is parsed strictly and will render as a "
+                 f"broken image")
+
+
 def main() -> int:
     apps = sorted(
         p.split(os.sep)[-3] for p in glob.glob(os.path.join(REPO, "apps/*/logic/Cargo.toml"))
@@ -291,12 +317,13 @@ def main() -> int:
     for app in apps:
         check_registry_icon(app, os.path.join(REPO, "apps", app, "logic/Cargo.toml"))
         check_web_manifest(app)
+        check_svg_marks(app)
         print(f"  --  {app}")
 
     if failures:
         print(f"\napp icon check FAILED ({len(failures)} problem(s))")
         return 1
-    print(f"\nall {len(apps)} apps' icons are real, square, and safe to mask")
+    print(f"\nall {len(apps)} apps' icons are real, square, parseable, and safe to mask")
     return 0
 
 

@@ -10,7 +10,10 @@
   <rect x="9" y="15" width="46" height="39" rx="5" fill="#ffffff"/>
   <rect x="9" y="15" width="46" height="13" rx="5" fill="#6c8cff"/>
   <rect x="9" y="23" width="46" height="5" fill="#6c8cff"/>
-  <!-- day dots; today picked out in --ok -->
+  <!-- day dots; today picked out in the ok green. Keep XML comments free of
+       two consecutive hyphens: an SVG loaded through <img> is parsed as
+       strict XML, and one here made the browser drop the whole file and
+       draw a broken image where the navbar logo should be. -->
   <circle cx="19" cy="36" r="2.6" fill="#97a0b0"/>
   <circle cx="32" cy="36" r="2.6" fill="#97a0b0"/>
   <circle cx="45" cy="36" r="2.6" fill="#97a0b0"/>
