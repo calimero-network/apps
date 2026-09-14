@@ -30,6 +30,7 @@ import { onInvite } from "../net/invitationIntents";
 import { beginWebLogin } from "../net/auth";
 import { inviteLink } from "../net/inviteLink";
 import { clearSession, getSession, hasConnection, isAuthenticated, updateSession } from "../net/session";
+import { showLandingAgain } from "../pages/landing/mount";
 import { deleteWorld } from "../state/persistence";
 import { Panorama } from "./panorama";
 
@@ -57,6 +58,20 @@ const css = `
   border-radius: 10px; padding: 18px 20px 20px; backdrop-filter: blur(3px);
   box-shadow: 0 12px 44px rgba(0,0,0,0.55); }
 .mbl-card h3 { margin: 0 0 10px; font-size: 15px; text-align: center; }
+/* The way back out to the marketing page.
+   ⚠️ Its own row ABOVE the card, and a bordered button rather than a link.
+   The first version was an 11px grey link tucked inside the card next to the
+   "player name" label, and it read as a caption — on a dark card over a
+   panorama there was nothing to say it was pressable. This sits outside the
+   card, on the same left edge, and looks like the control it is. */
+.mbl-backrow { width: min(380px, 94vw); box-sizing: border-box; margin-top: 10px; }
+.mbl-back { display: inline-flex; align-items: center; gap: 7px;
+  padding: 7px 13px 7px 11px; border-radius: 6px; cursor: pointer; font-family: inherit;
+  font-size: 12px; font-weight: 600; color: #dfe7ee;
+  background: rgba(8,10,14,0.72); border: 1px solid rgba(255,255,255,0.22);
+  backdrop-filter: blur(3px); box-shadow: 0 4px 16px rgba(0,0,0,0.45); }
+.mbl-back:hover { color: #fff; background: rgba(30,38,50,0.85); border-color: rgba(255,255,255,0.4); }
+.mbl-back span { font-size: 14px; line-height: 1; }
 .mbl-card label, .mbl-modal label { display: block; text-align: left; font-size: 11px;
   color: #9fb0c3; margin: 10px 0 4px; }
 .mbl-card input, .mbl-modal input { width: 100%; box-sizing: border-box; padding: 9px 11px;
@@ -136,18 +151,12 @@ const css = `
   text-shadow: 0 1px 3px rgba(0,0,0,0.8); }
 .mbl-controls kbd { background: rgba(0,0,0,0.55); border: 1px solid rgba(255,255,255,0.25);
   border-radius: 4px; padding: 1px 7px; font-size: 11px; font-family: monospace; }
-.mbl-social { display: flex; gap: 18px; justify-content: center; align-items: center;
-  flex-wrap: wrap; margin-top: 12px; }
-.mbl-social a { color: #b9c6d4; text-decoration: none; display: inline-flex; align-items: center;
-  gap: 6px; font-size: 11px; text-shadow: 0 1px 3px rgba(0,0,0,0.8); }
-.mbl-social a:hover { color: #fff; }
-.mbl-social svg { width: 14px; height: 14px; fill: currentColor; }
 .mbl-foot { margin-top: 6px; color: #93a2b3; font-size: 10px; text-shadow: 0 1px 3px rgba(0,0,0,0.8); }
 
 /* Chromeless: the unified landing page (src/pages/landing) has already shown the
    logo, the name and the pitch, so when it hands off here the launcher must not
    repeat them — it goes straight to the world picker. See main.ts. */
-#mb-landing.is-chromeless .mbl-logo, #mb-landing.is-chromeless .mbl-title, #mb-landing.is-chromeless .mbl-tag, #mb-landing.is-chromeless .mbl-social, #mb-landing.is-chromeless .mbl-foot { display: none !important; }
+#mb-landing.is-chromeless .mbl-logo, #mb-landing.is-chromeless .mbl-title, #mb-landing.is-chromeless .mbl-tag, #mb-landing.is-chromeless .mbl-foot { display: none !important; }
 `;
 
 export const LOGO_SVG = `
@@ -158,43 +167,6 @@ export const LOGO_SVG = `
   <polygon points="58,19 32,34 32,64 58,49" fill="#6e4527"/>
 </svg>`;
 
-const SOCIALS: { label: string; href: string; icon: string }[] = [
-  {
-    label: "calimero.network",
-    href: "https://www.calimero.network/",
-    icon: `<svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm7.93 9h-3.45a15.7 15.7 0 0 0-1.4-6.13A8.02 8.02 0 0 1 19.93 11ZM12 4.06c.9 1.2 2.05 3.6 2.37 6.94H9.63c.32-3.34 1.47-5.74 2.37-6.94ZM4.07 13h3.45a15.7 15.7 0 0 0 1.4 6.13A8.02 8.02 0 0 1 4.07 13Zm3.45-2H4.07a8.02 8.02 0 0 1 4.85-6.13A15.7 15.7 0 0 0 7.52 11ZM12 19.94c-.9-1.2-2.05-3.6-2.37-6.94h4.74c-.32 3.34-1.47 5.74-2.37 6.94Zm3.08-.81a15.7 15.7 0 0 0 1.4-6.13h3.45a8.02 8.02 0 0 1-4.85 6.13Z"/></svg>`,
-  },
-  {
-    label: "Docs",
-    href: "https://docs.calimero.network",
-    icon: `<svg viewBox="0 0 24 24"><path d="M6 2h9a3 3 0 0 1 3 3v14.5a.5.5 0 0 1-.5.5H7a1 1 0 0 0 0 2h10.5a.5.5 0 0 1 0 1H7a3 3 0 0 1-3-3V5a3 3 0 0 1 2-2.83V2Zm2 4h6a1 1 0 1 1 0 2H8a1 1 0 0 1 0-2Z"/></svg>`,
-  },
-  {
-    label: "GitHub",
-    href: "https://github.com/calimero-network/apps",
-    icon: `<svg viewBox="0 0 24 24"><path d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.1.79-.25.79-.55v-2.15c-3.2.7-3.87-1.36-3.87-1.36-.52-1.33-1.28-1.68-1.28-1.68-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.19 1.76 1.19 1.03 1.76 2.7 1.25 3.35.95.1-.74.4-1.25.72-1.53-2.55-.29-5.23-1.28-5.23-5.69 0-1.25.45-2.28 1.19-3.09-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.78 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.09 0 4.42-2.69 5.4-5.25 5.68.41.36.77 1.05.77 2.13v3.15c0 .3.21.66.8.55A11.5 11.5 0 0 0 23.5 12C23.5 5.65 18.35.5 12 .5Z"/></svg>`,
-  },
-  {
-    label: "Source",
-    href: "https://github.com/calimero-network/apps/tree/main/apps/mero-blocks",
-    icon: `<svg viewBox="0 0 24 24"><path d="M8.7 6.3a1 1 0 0 1 0 1.4L4.42 12l4.3 4.3a1 1 0 1 1-1.42 1.4l-5-5a1 1 0 0 1 0-1.4l5-5a1 1 0 0 1 1.42 0Zm6.6 0a1 1 0 0 1 1.4 0l5 5a1 1 0 0 1 0 1.4l-5 5a1 1 0 1 1-1.4-1.4l4.28-4.3-4.29-4.3a1 1 0 0 1 0-1.4Z"/></svg>`,
-  },
-  {
-    label: "X",
-    href: "https://x.com/CalimeroNetwork",
-    icon: `<svg viewBox="0 0 24 24"><path d="M18.9 1.15h3.68l-8.04 9.19L24 22.85h-7.41l-5.8-7.58-6.64 7.58H.47l8.6-9.83L0 1.15h7.59l5.24 6.93 6.07-6.93Zm-1.29 19.5h2.04L6.49 3.24H4.3l13.31 17.4Z"/></svg>`,
-  },
-  {
-    label: "Discord",
-    href: "https://discord.gg/wZRC73DVpU",
-    icon: `<svg viewBox="0 0 24 24"><path d="M20.32 4.37A19.8 19.8 0 0 0 15.36 2.8a13.6 13.6 0 0 0-.63 1.29 18.3 18.3 0 0 0-5.48 0A13.6 13.6 0 0 0 8.62 2.8 19.8 19.8 0 0 0 3.66 4.37C.53 9.05-.32 13.6.1 18.08a19.9 19.9 0 0 0 6.08 3.11c.49-.67.93-1.38 1.3-2.13a12.9 12.9 0 0 1-2.05-.99c.17-.13.34-.26.5-.39a14.2 14.2 0 0 0 12.12 0c.17.13.33.26.5.39-.65.39-1.34.72-2.05.99.38.75.81 1.46 1.3 2.13a19.8 19.8 0 0 0 6.08-3.11c.5-5.18-.84-9.68-3.56-13.71ZM8.02 15.33c-1.18 0-2.16-1.09-2.16-2.42s.95-2.43 2.16-2.43c1.21 0 2.18 1.1 2.16 2.43 0 1.33-.95 2.42-2.16 2.42Zm7.97 0c-1.18 0-2.15-1.09-2.15-2.42s.95-2.43 2.15-2.43c1.22 0 2.18 1.1 2.16 2.43 0 1.33-.94 2.42-2.16 2.42Z"/></svg>`,
-  },
-  {
-    label: "LinkedIn",
-    href: "https://www.linkedin.com/company/calimero-network/",
-    icon: `<svg viewBox="0 0 24 24"><path d="M20.45 20.45h-3.55v-5.57c0-1.33-.03-3.04-1.85-3.04-1.86 0-2.14 1.45-2.14 2.94v5.67H9.36V9h3.41v1.56h.05a3.74 3.74 0 0 1 3.37-1.85c3.6 0 4.27 2.37 4.27 5.46v6.28ZM5.34 7.43a2.06 2.06 0 1 1 0-4.12 2.06 2.06 0 0 1 0 4.12ZM7.12 20.45H3.55V9h3.57v11.45ZM22.22 0H1.77C.79 0 0 .77 0 1.72v20.55C0 23.23.79 24 1.77 24h20.45c.98 0 1.78-.77 1.78-1.73V1.72C24 .77 23.2 0 22.22 0Z"/></svg>`,
-  },
-];
 
 export class Landing {
   private root: HTMLElement;
@@ -245,20 +217,29 @@ export class Landing {
       <div class="mbl-logo">${LOGO_SVG}</div>
       <h1 class="mbl-title">Mero <em>Blocks</em></h1>
       <p class="mbl-tag">P2P worlds on Calimero — no game server</p>
+      <div class="mbl-backrow">
+        <button type="button" class="mbl-back" data-testid="back-to-landing">
+          <span aria-hidden="true">&larr;</span> Back to landing page
+        </button>
+      </div>
       <div class="mbl-card" data-testid="play-card"><div id="mbl-play"></div></div>
       <div class="mbl-controls" data-testid="controls">
         <kbd>WASD</kbd> move &nbsp; <kbd>Space</kbd> jump &nbsp; <kbd>←↑↓→</kbd> look
         &nbsp; <kbd>LMB</kbd>/<kbd>Q</kbd> break &nbsp; <kbd>RMB</kbd>/<kbd>E</kbd> place
         &nbsp; <kbd>M</kbd> map &nbsp; <kbd>O</kbd> options
       </div>
-      <div class="mbl-social" data-testid="social-links">
-        ${SOCIALS.map(
-          (s) => `<a href="${s.href}" target="_blank" rel="noopener noreferrer">${s.icon}${s.label}</a>`,
-        ).join("")}
-      </div>
       <div class="mbl-foot">a Calimero network showcase · world = f(seed) + overrides</div>
     `;
     this.root.appendChild(wrap);
+
+    // Renders the marketing page ON TOP of this launcher (z-index 50 over 20)
+    // rather than tearing the launcher down, so the panorama keeps running, the
+    // world list keeps whatever it had loaded, and dismissing the page again
+    // simply uncovers the card the visitor left. Nothing to restore.
+    wrap.querySelector("[data-testid=back-to-landing]")!.addEventListener("click", () => {
+      void showLandingAgain();
+    });
+
     this.renderPlayCard(defaults, done);
   }
 
