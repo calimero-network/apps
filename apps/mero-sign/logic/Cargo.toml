@@ -37,7 +37,7 @@ icon        = "../app/public/icon-512.png"
 category = "security"
 tags        = ["documents", "signing", "pdf"]
 github      = "https://github.com/calimero-network/apps"
-min-runtime-version = "0.11.0-rc.36"
+min-runtime-version = "0.11.0-rc.37"
 frontend    = "https://mero-sign.vercel.app"
 
 [dependencies]

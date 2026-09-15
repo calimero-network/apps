@@ -154,7 +154,7 @@ checksum = "fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04"
 [[package]]
 name = "calimero-account"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core.git?tag=0.11.0-rc.36#10b8006a1f0ebc14f1abe7b1a5f2512aa97d226f"
+source = "git+https://github.com/calimero-network/core.git?tag=0.11.0-rc.37#65527a07b6eea97f14ed4e9816be2e8b0a994718"
 dependencies = [
  "borsh",
  "calimero-primitives",
@@ -165,7 +165,7 @@ dependencies = [
 [[package]]
 name = "calimero-prelude"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core.git?tag=0.11.0-rc.36#10b8006a1f0ebc14f1abe7b1a5f2512aa97d226f"
+source = "git+https://github.com/calimero-network/core.git?tag=0.11.0-rc.37#65527a07b6eea97f14ed4e9816be2e8b0a994718"
 dependencies = [
  "borsh",
  "calimero-primitives",
@@ -176,7 +176,7 @@ dependencies = [
 [[package]]
 name = "calimero-primitives"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core.git?tag=0.11.0-rc.36#10b8006a1f0ebc14f1abe7b1a5f2512aa97d226f"
+source = "git+https://github.com/calimero-network/core.git?tag=0.11.0-rc.37#65527a07b6eea97f14ed4e9816be2e8b0a994718"
 dependencies = [
  "borsh",
  "calimero-wasm-abi",
@@ -195,7 +195,7 @@ dependencies = [
 [[package]]
 name = "calimero-sdk"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core.git?tag=0.11.0-rc.36#10b8006a1f0ebc14f1abe7b1a5f2512aa97d226f"
+source = "git+https://github.com/calimero-network/core.git?tag=0.11.0-rc.37#65527a07b6eea97f14ed4e9816be2e8b0a994718"
 dependencies = [
  "borsh",
  "calimero-account",
@@ -214,7 +214,7 @@ dependencies = [
 [[package]]
 name = "calimero-sdk-macros"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core.git?tag=0.11.0-rc.36#10b8006a1f0ebc14f1abe7b1a5f2512aa97d226f"
+source = "git+https://github.com/calimero-network/core.git?tag=0.11.0-rc.37#65527a07b6eea97f14ed4e9816be2e8b0a994718"
 dependencies = [
  "prettyplease",
  "proc-macro2",
@@ -227,7 +227,7 @@ dependencies = [
 [[package]]
 name = "calimero-storage"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core.git?tag=0.11.0-rc.36#10b8006a1f0ebc14f1abe7b1a5f2512aa97d226f"
+source = "git+https://github.com/calimero-network/core.git?tag=0.11.0-rc.37#65527a07b6eea97f14ed4e9816be2e8b0a994718"
 dependencies = [
  "borsh",
  "calimero-account",
@@ -251,7 +251,7 @@ dependencies = [
 [[package]]
 name = "calimero-storage-macros"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core.git?tag=0.11.0-rc.36#10b8006a1f0ebc14f1abe7b1a5f2512aa97d226f"
+source = "git+https://github.com/calimero-network/core.git?tag=0.11.0-rc.37#65527a07b6eea97f14ed4e9816be2e8b0a994718"
 dependencies = [
  "quote",
  "syn 3.0.5",
@@ -260,7 +260,7 @@ dependencies = [
 [[package]]
 name = "calimero-sys"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core.git?tag=0.11.0-rc.36#10b8006a1f0ebc14f1abe7b1a5f2512aa97d226f"
+source = "git+https://github.com/calimero-network/core.git?tag=0.11.0-rc.37#65527a07b6eea97f14ed4e9816be2e8b0a994718"
 dependencies = [
  "cfg-if",
 ]
@@ -268,7 +268,7 @@ dependencies = [
 [[package]]
 name = "calimero-wasm-abi"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core.git?tag=0.11.0-rc.36#10b8006a1f0ebc14f1abe7b1a5f2512aa97d226f"
+source = "git+https://github.com/calimero-network/core.git?tag=0.11.0-rc.37#65527a07b6eea97f14ed4e9816be2e8b0a994718"
 dependencies = [
  "indexmap",
  "serde",
