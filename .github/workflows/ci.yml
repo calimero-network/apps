@@ -285,6 +285,20 @@ jobs:
       - name: Assert every app can adopt a desktop hand-off
         run: python3 scripts/check-desktop-sso.py
 
+      # Every core request struct is `deny_unknown_fields`, so an extra body key
+      # is a 400 that kills the whole call — not a field the node ignores. Two
+      # of them were live against rc.34: `alias` on namespace/context create
+      # (core replaced the group alias with a metadata record in #2338) and
+      # `executorPublicKey` on the JSON-RPC envelope (dropped in #2116). Nothing
+      # here could catch either — the vitest wire tests assert the keys that
+      # should be present and never that nothing else is, the Playwright suites
+      # `page.route` the node so no deserializer ever sees the body, and the
+      # merobox legs drive merod with their own client rather than the app's.
+      # This reads the bodies out of the source and compares them to core's
+      # schema, which is the only check in this file that does.
+      - name: Assert no app sends a body key the node refuses
+        run: python3 scripts/check-admin-wire.py
+
       # `battleships.vercel.app` served a create-react-app build for an unknown
       # length of time after the app moved to Vite in this repo. The repo was
       # fine and every existing check passed; the Vercel project simply never

@@ -220,10 +220,17 @@ test.describe("world picker (web auth, no context yet)", () => {
     await page.getByTestId("create-world-btn").click();
     await page.waitForFunction(() => "__mt" in window);
 
-    // the world gets its OWN namespace, named after it — the name doubles as
-    // the alias that travels inside invites (curb pattern)
+    // the world gets its OWN namespace, named after it — the name is what
+    // travels inside invites
     expect(captured.namespace?.name).toBe("e2e world");
-    expect(captured.namespace?.alias).toBe("e2e world");
+    // The KEY SET, not just the key we want. `CreateNamespaceApiRequest` is
+    // `deny_unknown_fields`, so an extra key is a 400 for the whole create.
+    // This used to assert `alias` was ALSO sent, which is how the app shipped
+    // a world-create that no node could accept.
+    expect(Object.keys(captured.namespace ?? {}).sort()).toEqual([
+      "applicationId",
+      "name",
+    ]);
     // the subgroup is born open, so invitees can self-join via inheritance
     expect(captured.group).toEqual({ groupName: "e2e world", visibility: "open" });
     const body = captured.context as {

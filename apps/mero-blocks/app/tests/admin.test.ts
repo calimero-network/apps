@@ -191,12 +191,17 @@ describe("createWorld (own namespace → open subgroup → context)", () => {
     ]);
     const nsBody = calls[0].body as Record<string, unknown>;
     expect(nsBody.applicationId).toBe("app-1");
-    // Asserted ABSENT: core dropped the upgrade-policy concept in rc.21 and
-    // mero-js removed it from CreateNamespaceRequest in 9.0.0. An rc.24 node
-    // accepts the field and ignores it, so sending it only misled the reader.
-    expect(nsBody.upgradePolicy).toBeUndefined();
     expect(nsBody.name).toBe("myworld"); // one namespace per world, named after it
-    expect(nsBody.alias).toBe("myworld"); // curb compat: older nodes read `alias`
+    // The KEY SET, not just the keys we want. `CreateNamespaceApiRequest` is
+    // `deny_unknown_fields`, so anything extra is a 400 for the whole create —
+    // there is no such thing as a field an older node reads and this one
+    // ignores. This line used to assert `alias` was PRESENT ("curb compat"),
+    // which is how the fleet shipped a namespace-create that could not succeed
+    // against any node since core#2338:
+    //   unknown field `alias`, expected one of `applicationId`, `name`,
+    //   `appKey`, `bytecodeId`
+    // `upgradePolicy` (deleted in rc.21) is excluded by the same assertion.
+    expect(Object.keys(nsBody).sort()).toEqual(["applicationId", "name"]);
     const groupBody = calls[1].body as Record<string, unknown>;
     expect(groupBody.groupName).toBe("myworld"); // the node's field is groupName, not name
     expect(groupBody.visibility).toBe("open"); // invitees self-join via inheritance

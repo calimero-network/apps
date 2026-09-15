@@ -1,0 +1,288 @@
+#!/usr/bin/env python3
+"""Assert no app sends the node a request body key the node refuses.
+
+WHY THIS EXISTS
+
+Every body core deserializes is a CLOSED set. `crates/server/primitives/src/
+admin/mod.rs` puts `deny_unknown_fields` on every admin request struct and
+`jsonrpc.rs` puts it on `ExecutionRequest`; core even has a test
+(`crates/server/primitives/tests/deny_unknown_fields.rs`) asserting a new
+request type joins that list. So an extra key is never a field the node
+shrugs off — it is a 400 that fails the whole call:
+
+    Invalid JSON data: Failed to deserialize the JSON body into the target
+    type: alias: unknown field `alias`, expected one of `applicationId`,
+    `name`, `appKey`, `bytecodeId`
+
+    rpc world_meta: unknown field `executorPublicKey`, expected one of
+    `contextId`, `method`, `argsJson`
+
+Both of those were live in the fleet against an rc.34 node. Neither was a
+regression anyone introduced late: core dropped `executorPublicKey` from
+JSON-RPC in #2116 and replaced the group `alias` with the generic metadata
+record in #2338, and the call sites simply kept sending the old keys.
+
+WHY NOTHING CAUGHT THEM
+
+Nothing in CI ever compared an app's outgoing body to core's schema:
+
+  * The vitest wire tests assert the keys that SHOULD be there
+    (`expect(body.params.argsJson).toEqual(...)`) and never that nothing else
+    is. A body with a fourth key passes every one of them.
+  * The Playwright suites `page.route` the node and answer from a fixture. A
+    mock cannot reject an unknown field — only a real `deny_unknown_fields`
+    deserializer can — so a route-mocked suite is green by construction.
+  * The merobox legs DO run a real merod, but merobox drives the node with its
+    own Python client. The app's TypeScript request body is never on the wire
+    in those runs.
+  * `executorPublicKey` was spread in CONDITIONALLY
+    (`...(target.executorPublicKey ? { executorPublicKey } : {})`), so a
+    session without an identity — which is every unit test and every mocked
+    e2e — sent the correct three keys and passed.
+
+So this check reads the request bodies straight out of the source and compares
+their keys to the table below. It is the only thing in CI that looks at the
+shape an app actually POSTs.
+
+REFRESHING THE TABLE
+
+ROUTES is transcribed from core's request structs at the rc the fleet pins
+(0.11.0-rc.34). When the SDK pin moves, re-read the `deny_unknown_fields`
+structs in `crates/server/primitives/src/admin/mod.rs` and the `ExecutionRequest`
+in `crates/server/primitives/src/jsonrpc.rs`, and update the sets here. A key
+core ACCEPTS but no app sends is harmless to list; a key core REFUSES must not
+be listed, or this check goes quiet on exactly the failure it exists for.
+
+Stdlib only: this runs in the always-on `metadata` job.
+"""
+
+import os
+import re
+import sys
+
+REPO = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
+APPS = os.path.join(REPO, "apps")
+
+# route (as written in the source, minus any `/admin-api` prefix) -> accepted
+# top-level body keys, from core 0.11.0-rc.34.
+ROUTES = {
+    # CreateNamespaceApiRequest. `bytecodeId` is a serde alias of `appKey`.
+    "/namespaces": {"applicationId", "name", "appKey", "bytecodeId"},
+    # CreateContextRequest.
+    "/contexts": {
+        "applicationId",
+        "serviceName",
+        "contextSeed",
+        "initializationParams",
+        "groupId",
+        "identitySecret",
+        "name",
+    },
+    # CreateGroupApiRequest (subgroup create at the top-level groups route).
+    "/groups": {
+        "groupId",
+        "appKey",
+        "bytecodeId",
+        "applicationId",
+        "name",
+        "parentGroupId",
+    },
+}
+
+# The JSON-RPC `execute` envelope: ExecutionRequest, jsonrpc.rs.
+RPC_PARAMS = {"contextId", "method", "argsJson"}
+
+# Keys whose values are objects/arrays we must not descend into when reading a
+# body's top-level keys.
+OPAQUE = {"argsJson", "initializationParams", "data", "members", "invitation"}
+
+
+def strip_noise(src):
+    """Blank out comments and string bodies so they cannot look like keys."""
+    out = []
+    i, n = 0, len(src)
+    while i < n:
+        c = src[i]
+        if c == "/" and i + 1 < n and src[i + 1] == "/":
+            j = src.find("\n", i)
+            j = n if j < 0 else j
+            out.append(" " * (j - i))
+            i = j
+        elif c == "/" and i + 1 < n and src[i + 1] == "*":
+            j = src.find("*/", i + 2)
+            j = n if j < 0 else j + 2
+            out.append("".join(ch if ch == "\n" else " " for ch in src[i:j]))
+            i = j
+        elif c in "\"'`":
+            j = i + 1
+            while j < n and src[j] != c:
+                j += 2 if src[j] == "\\" else 1
+            j = min(j + 1, n)
+            # keep the quotes, blank the body: `"/namespaces"` still matches a
+            # route regex run against the ORIGINAL source, not this one.
+            out.append(c + "".join(ch if ch == "\n" else " " for ch in src[i + 1 : j - 1]) + c)
+            i = j
+        else:
+            out.append(c)
+            i += 1
+    return "".join(out)
+
+
+def block_at(src, start):
+    """Balanced {...} beginning at the first `{` at or after `start`."""
+    i = src.find("{", start)
+    if i < 0:
+        return None, -1
+    depth, j = 0, i
+    while j < len(src):
+        if src[j] == "{":
+            depth += 1
+        elif src[j] == "}":
+            depth -= 1
+            if depth == 0:
+                return src[i : j + 1], j
+        j += 1
+    return None, -1
+
+
+# `name: value`, `"name": value`, and the ES6 shorthand `name` (`{ method, }`),
+# which is how `method` reaches the JSON-RPC envelope — miss it and the
+# envelope never looks like an `execute` call at all.
+KEY = re.compile(
+    r'(?:^|[{,])\s*(?:"([A-Za-z_$][\w$]*)"|([A-Za-z_$][\w$]*))\s*(?::|(?=\s*[,}]))'
+)
+
+
+def body_keys(block):
+    """Top-level keys of an object literal, plus keys inside any `...` spread.
+
+    The spread matters: the `executorPublicKey` bug hid inside
+    `...(cond ? { executorPublicKey } : {})`, which is a nested literal that
+    still contributes a top-level key to the JSON that goes out.
+    """
+    keys, depth, i, n = set(), 0, 0, len(block)
+    spread_depths = []
+    while i < n:
+        c = block[i]
+        if c == "{":
+            depth += 1
+        elif c == "}":
+            if spread_depths and depth == spread_depths[-1]:
+                spread_depths.pop()
+            depth -= 1
+        elif block.startswith("...", i):
+            spread_depths.append(depth)
+        elif c in "([":
+            pass
+        if depth >= 1:
+            m = KEY.match(block, max(0, i - 1))
+            if m:
+                key = m.group(1) or m.group(2)
+                # depth 1 is the body itself; deeper only counts inside a spread
+                if depth == 1 or spread_depths:
+                    if key not in OPAQUE or depth == 1:
+                        keys.add(key)
+        i += 1
+    return keys
+
+
+FETCH_INIT = {"method", "headers", "body", "signal", "credentials", "mode", "cache"}
+
+
+def unwrap_init(clean, block):
+    """Resolve a `fetch`-style init to the object literal it actually sends.
+
+    `adminPost(route, {...})` hands the body directly, but
+    `adminFetch(route, { method, headers, body: JSON.stringify({...}) })`
+    wraps it. Checking the init's own keys would report `method`/`headers` as
+    fields the node refuses, which is noise — the body is what goes on the
+    wire. Returns None when the init carries no inline literal body (a
+    pre-built variable), because there is nothing here to read.
+    """
+    keys = body_keys(block)
+    if not keys or not keys <= FETCH_INIT:
+        return block
+    m = re.search(r"\bbody\s*:\s*JSON\.stringify\s*\(", block)
+    if m is None:
+        return None
+    inner, _ = block_at(block, m.end())
+    return inner
+
+
+def scan(path, src):
+    problems = []
+    clean = strip_noise(src)
+
+    for route, allowed in ROUTES.items():
+        # `adminPost("/namespaces", {...})`, `adminFetch("/admin-api/contexts", {...})`,
+        # `adminPost<T>(\n  "/namespaces",\n  {...})` — the literal route, then
+        # the next object literal. A templated route (`/groups/${id}/join`) has
+        # more path after the id and never matches these exact strings.
+        for m in re.finditer(r'"(?:/admin-api)?' + re.escape(route) + r'"\s*,', src):
+            block, _ = block_at(clean, m.end())
+            if block is None:
+                continue
+            block = unwrap_init(clean, block)
+            if block is None:
+                continue
+            extra = body_keys(block) - allowed
+            if extra:
+                line = src.count("\n", 0, m.start()) + 1
+                problems.append(
+                    (line, route, sorted(extra), sorted(allowed)),
+                )
+
+    for m in re.finditer(r"\bparams\s*:\s*", clean):
+        block, _ = block_at(clean, m.end())
+        if block is None:
+            continue
+        keys = body_keys(block)
+        # only an `execute` envelope — other JSON-RPC methods have other params
+        if "contextId" not in keys or "method" not in keys:
+            continue
+        extra = keys - RPC_PARAMS
+        if extra:
+            line = src.count("\n", 0, m.start()) + 1
+            problems.append((line, "POST /jsonrpc params", sorted(extra), sorted(RPC_PARAMS)))
+
+    return problems
+
+
+def main():
+    failures = []
+    for app in sorted(os.listdir(APPS)):
+        src_root = os.path.join(APPS, app, "app", "src")
+        if not os.path.isdir(src_root):
+            continue
+        for dirpath, dirnames, filenames in os.walk(src_root):
+            dirnames[:] = [d for d in dirnames if d not in ("node_modules", "dist", "generated")]
+            for fn in filenames:
+                if not fn.endswith((".ts", ".tsx")) or ".test." in fn:
+                    continue
+                p = os.path.join(dirpath, fn)
+                with open(p, encoding="utf-8") as fh:
+                    src = fh.read()
+                for line, route, extra, allowed in scan(p, src):
+                    failures.append(
+                        f"{os.path.relpath(p, REPO)}:{line}: {route} — the node refuses "
+                        f"{', '.join('`' + k + '`' for k in extra)}; it accepts only "
+                        f"{', '.join('`' + k + '`' for k in allowed)}"
+                    )
+
+    if failures:
+        print("Request bodies the node will reject with a 400:\n")
+        for f in failures:
+            print("  " + f)
+        print(
+            "\nEvery core request struct is `deny_unknown_fields` — an extra key fails the\n"
+            "whole call. Drop the key, or if core has since added it, update ROUTES in\n"
+            "scripts/check-admin-wire.py from the structs named in its docstring."
+        )
+        return 1
+
+    print("admin/JSON-RPC request bodies: every key is one core 0.11.0-rc.34 accepts")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

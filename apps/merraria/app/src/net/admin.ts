@@ -255,13 +255,21 @@ export async function createWorld(
       JSON.stringify({ name, seed, now: Math.floor(Date.now() / 1000) }),
     ),
   );
-  // `name` is what current nodes expect; `alias` keeps older nodes working —
-  // the exact pair curb sends. This is the human name that later travels
-  // inside every invite for this world.
+  // Body is EXACTLY `applicationId` + `name` (+ optional `appKey`). Core's
+  // `CreateNamespaceApiRequest` carries `deny_unknown_fields`, so an extra key
+  // fails the whole create:
+  //   Invalid JSON data: unknown field `alias`,
+  //   expected one of `applicationId`, `name`, `appKey`, `bytecodeId`
+  // `alias` was the group label before core#2338 replaced it with the generic
+  // metadata record; `name` has been the only spelling since. Sending both was
+  // never "compatible with older nodes" — it is a 400 on every node that has
+  // the closed body, which is all of them.
+  //
+  // This is the human name that later travels inside every invite for this
+  // world.
   const created = await adminPost<Record<string, unknown>>("/admin-api/namespaces", {
     applicationId,
     name,
-    alias: name,
   });
   const namespaceId = pick(created, "namespaceId", "namespace_id", "id");
   if (!namespaceId) throw new Error("node did not return a namespace id");

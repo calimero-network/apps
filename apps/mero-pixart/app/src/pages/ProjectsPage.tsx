@@ -244,10 +244,12 @@ export default function ProjectsPage() {
       const ctxData = await adminPost<{ contextId?: string; id?: string }>(
         "/contexts",
         {
+          // `CreateContextRequest` is `deny_unknown_fields` and accepts only
+          // applicationId / serviceName / contextSeed / initializationParams /
+          // groupId / identitySecret / name. `protocol` went with the external
+          // chain config and `alias` with core#2338; either one is a 400.
           applicationId: appId,
-          protocol: "near",
           groupId: subgroupId || teamId,
-          alias: newName.trim(),
           name: newName.trim(),
           initializationParams: initBytes,
         },

@@ -91,7 +91,14 @@ export default function TeamsPage() {
     try {
       const data = await adminPost<{ namespaceId?: string; groupId?: string; id?: string }>(
         "/namespaces",
-        { applicationId: await ensureAppId(), alias: name, name },
+        // Body is EXACTLY `applicationId` + `name` (+ optional `appKey`).
+        // `CreateNamespaceApiRequest` is `deny_unknown_fields`, so an extra key
+        // is a 400 for the whole create:
+        //   unknown field `alias`, expected one of `applicationId`, `name`,
+        //   `appKey`, `bytecodeId`
+        // `alias` was the pre-core#2338 spelling of the group label; `name` is
+        // the only one a node has read since.
+        { applicationId: await ensureAppId(), name },
       );
       const id = data.namespaceId ?? data.groupId ?? data.id ?? "";
       // Cache the name so it survives even if the server later returns no alias,
