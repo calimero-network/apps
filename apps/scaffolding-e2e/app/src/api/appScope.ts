@@ -27,7 +27,17 @@
  */
 import { getApplicationId } from "@calimero-network/mero-react";
 
+import { listApplications } from "./adminApi";
 import type { ContextRecord, NamespaceRecord } from "./adminApi";
+
+/**
+ * The package this app is published under. Kept in sync with main.tsx's
+ * DEFAULT_PACKAGE and with `logic/Cargo.toml`'s registry metadata; an override
+ * exists for the same reason main.tsx has one.
+ */
+const PACKAGE =
+  (import.meta.env.VITE_APPLICATION_PACKAGE as string | undefined)?.trim() ||
+  "com.calimero.scaffolding-e2e";
 
 /**
  * This app's application id, or `undefined` if the session has none yet.
@@ -61,4 +71,28 @@ export function namespacesForThisApp(all: NamespaceRecord[]): NamespaceRecord[] 
   const appId = currentApplicationId();
   if (!appId) return [];
   return all.filter((n) => n.targetApplicationId === appId);
+}
+
+/**
+ * This app's id, asking the NODE when the session cannot say.
+ *
+ * `currentApplicationId()` answers from the build pin or the session, and
+ * returns undefined when neither has it — which is correct, and was also the
+ * whole of the Setup wizard's problem. With no id, the "Create Namespace"
+ * button is disabled (`!isHexId(appId)`) and the namespace list filters to
+ * empty, so the page reads as "this app will not let me create anything" with
+ * nothing on screen explaining why.
+ *
+ * The node knows. It lists what is installed, and this app knows its own
+ * package name, so the id is one request away. Resolution order is unchanged
+ * where it already worked — pin, then session — with the node as a last resort
+ * rather than a positional guess: matching on PACKAGE is exact, and no match
+ * still returns undefined rather than `apps[0]`, which is the fallback that
+ * once pointed this app at a kv-store context.
+ */
+export async function resolveApplicationId(): Promise<string | undefined> {
+  const known = currentApplicationId();
+  if (known) return known;
+  const installed = await listApplications().catch(() => []);
+  return installed.find((a) => a.package === PACKAGE)?.id;
 }
