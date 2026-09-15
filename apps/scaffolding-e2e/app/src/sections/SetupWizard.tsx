@@ -23,7 +23,7 @@ import {
   type NamespaceRecord,
   type GroupRecord,
 } from "../api/adminApi";
-import { currentApplicationId, namespacesForThisApp } from "../api/appScope";
+import { currentApplicationId, namespacesForThisApp, resolveApplicationId } from "../api/appScope";
 import { wsInit, wsGetInfo, type WorkspaceInfo } from "../api/kvStore";
 import { FieldHelp } from "../components/FieldHelp";
 import { isHexId } from "../api/ids";
@@ -383,6 +383,22 @@ function OwnerStep1Namespace({
   const [deleting, setDeleting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
+  // The wizard's dead end: with no application id, "Create Namespace" is
+  // disabled (`!isHexId(appId)`) and the namespace list filters to empty, so
+  // the page reads as "this app will not let me create anything" and says
+  // nothing about why. The session legitimately has no id before the first
+  // login, but the NODE knows which app this is — ask it.
+  useEffect(() => {
+    if (appId) return;
+    let cancelled = false;
+    void resolveApplicationId().then((id) => {
+      if (!cancelled && id) setAppId(id);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [appId]);
+
   useEffect(() => {
     listNamespaces()
       .then((all) => {
@@ -510,8 +526,27 @@ function OwnerStep1Namespace({
             placeholder="Application ID (64 hex characters)"
           />
           <FieldHelp text="Your app's application ID, as 64 hex characters (core rc.27 removed base58) — get it from: meroctl app ls, or set VITE_APP_ID in .env. It was output when you ran meroctl app install. ⚠️ Not the shortened value shown in the tables above: those are truncated for width and end in an ellipsis, and the node rejects a shortened id with a message that only names a JSON column." />
-          <button className="btn-calimero" onClick={create} disabled={creating || !isHexId(appId)}>{creating ? "Creating…" : "Create Namespace"}</button>
+          <button
+            className="btn-calimero"
+            onClick={create}
+            disabled={creating || !isHexId(appId)}
+            title={
+              isHexId(appId)
+                ? undefined
+                : "Needs this app's application ID — 64 hex characters"
+            }
+          >
+            {creating ? "Creating…" : "Create Namespace"}
+          </button>
         </div>
+        {!appId.trim() && (
+          <div style={{ marginTop: 8, fontSize: 12, color: C.muted }}>
+            No application ID yet — this node has not reported one for{" "}
+            <code>com.calimero.scaffolding-e2e</code>. Install the app
+            (<code>meroctl app install</code>), or paste the ID above. Creating a
+            namespace needs it: a namespace is bound to exactly one application.
+          </div>
+        )}
       </div>
       {err && <Err>{err}</Err>}
       {selectedNs && (

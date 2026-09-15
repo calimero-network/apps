@@ -193,6 +193,40 @@ export async function deleteGroup(groupId: string): Promise<void> {
   });
 }
 
+// ─── Applications ─────────────────────────────────────────────────────────────
+
+/** One installed application, as much of it as any node version reports. */
+export interface ApplicationRecord {
+  id: string;
+  package?: string;
+}
+
+/**
+ * Applications installed on this node.
+ *
+ * The wrapper key has moved between node versions (`apps`, `applications`,
+ * `items`, or a bare array) and the package name has lived under three
+ * spellings, so both are read tolerantly: an unrecognised shape yields an empty
+ * list rather than an exception, because this is used to ANSWER "which app am
+ * I" and failing to answer must not take the page down with it.
+ */
+export async function listApplications(): Promise<ApplicationRecord[]> {
+  const body = await adminFetch("/admin-api/applications") as unknown;
+  const data = (body as { data?: unknown })?.data ?? body;
+  const obj = (data ?? {}) as Record<string, unknown>;
+  const arr = Array.isArray(data)
+    ? data
+    : ((obj.apps ?? obj.applications ?? obj.items ?? []) as unknown[]);
+  if (!Array.isArray(arr)) return [];
+  return arr.flatMap((raw) => {
+    const a = (raw ?? {}) as Record<string, unknown>;
+    const id = a.id ?? a.applicationId ?? a.application_id;
+    if (typeof id !== "string" || !id) return [];
+    const pkg = a.package ?? a.packageName ?? a.package_name;
+    return [{ id, package: typeof pkg === "string" ? pkg : undefined }];
+  });
+}
+
 // ─── Namespaces ───────────────────────────────────────────────────────────────
 
 export async function listNamespaces(): Promise<NamespaceRecord[]> {
