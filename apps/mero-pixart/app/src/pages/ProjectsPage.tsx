@@ -220,7 +220,13 @@ export default function ProjectsPage() {
 
       const sgData = await adminPost<{ groupId?: string; group_id?: string; id?: string }>(
         `/namespaces/${teamId}/groups`,
-        { groupAlias: newName.trim(), groupName: newName.trim() },
+        // `CreateGroupInNamespaceBody` accepts `groupName` and `visibility`, nothing
+        // else, and is `deny_unknown_fields` — so an extra key is a 400 for the
+        // whole create:
+        //   unknown field `groupAlias`, expected `groupName` or `visibility`
+        // Note this body is NOT `CreateGroupApiRequest`: the namespace-scoped
+        // subgroup route is a different, much smaller shape than `POST /groups`.
+        { groupName: newName.trim() },
       );
       const subgroupId = sgData.groupId ?? sgData.group_id ?? sgData.id ?? "";
 

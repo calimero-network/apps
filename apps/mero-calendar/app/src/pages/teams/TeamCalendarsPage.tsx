@@ -173,7 +173,12 @@ export default function TeamCalendarsPage() {
         group_id?: string;
         id?: string;
       }>(`/namespaces/${teamId}/groups`, {
-        groupAlias: name,
+        // `CreateGroupInNamespaceBody` accepts `groupName` and `visibility`, nothing
+        // else, and is `deny_unknown_fields` — so an extra key is a 400 for the
+        // whole create:
+        //   unknown field `groupAlias`, expected `groupName` or `visibility`
+        // Note this body is NOT `CreateGroupApiRequest`: the namespace-scoped
+        // subgroup route is a different, much smaller shape than `POST /groups`.
         groupName: name,
       });
       const subgroupId = sgData.groupId ?? sgData.group_id ?? sgData.id ?? "";

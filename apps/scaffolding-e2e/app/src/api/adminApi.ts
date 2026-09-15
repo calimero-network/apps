@@ -166,14 +166,19 @@ export async function listGroups(namespaceId: string): Promise<GroupRecord[]> {
   return (body?.data as { groups?: GroupRecord[] })?.groups ?? [];
 }
 
+// The body is `groupName` and/or `visibility` — `CreateGroupInNamespaceBody`,
+// which is `deny_unknown_fields`. It is NOT `CreateGroupApiRequest`: the
+// namespace-scoped subgroup route is a different, much smaller shape than
+// `POST /groups`. This used to send `{ alias }`, which the node refuses with
+//   unknown field `alias`, expected `groupName` or `visibility`
 export async function createGroup(
   namespaceId: string,
-  alias?: string,
+  groupName?: string,
 ): Promise<{ groupId: string }> {
   const body = await adminFetch(`/admin-api/namespaces/${namespaceId}/groups`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(alias ? { alias } : {}),
+    body: JSON.stringify(groupName ? { groupName } : {}),
   }) as { data?: { groupId?: string } };
   const groupId = body?.data?.groupId;
   if (!groupId) throw new Error(`createGroup: no groupId in response: ${JSON.stringify(body)}`);

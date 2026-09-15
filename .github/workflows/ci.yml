@@ -299,6 +299,14 @@ jobs:
       - name: Assert no app sends a body key the node refuses
         run: python3 scripts/check-admin-wire.py
 
+      # The checker's own tests. Its first version matched routes as LITERAL
+      # strings, so every `` `/namespaces/${id}/groups` `` call site was
+      # invisible to it and four apps sent `groupAlias` there under a green
+      # check. A guard that silently stops covering a shape is worse than no
+      # guard, because it also carries the claim that the shape is covered.
+      - name: Assert the wire checker still catches what it claims to
+        run: python3 scripts/tests/admin-wire-test.py
+
       # `battleships.vercel.app` served a create-react-app build for an unknown
       # length of time after the app moved to Vite in this repo. The repo was
       # fine and every existing check passed; the Vercel project simply never
