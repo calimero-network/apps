@@ -7,11 +7,17 @@ import { dayFactor } from "./engine/sim";
 import { generateWorld, spawnPoint } from "./engine/terrain";
 import { AIR, HOTBAR, STARTING_INVENTORY } from "./engine/tiles";
 import { TileStore } from "./engine/world";
-import { createWorldInvite } from "./net/admin";
+import { createWorldInvite, ownedContextIdentity } from "./net/admin";
 import { inviteLink } from "./net/inviteLink";
 import { primeInviteCapture } from "./net/invitationIntents";
 import { GameClient } from "./net/client";
-import { captureSessionFromHash, ensureFreshToken, getSession, hasConnection } from "./net/session";
+import {
+  captureSessionFromHash,
+  clearWorld,
+  ensureFreshToken,
+  getSession,
+  hasConnection,
+} from "./net/session";
 import { RemotePlayer, SyncEngine, Transform } from "./net/sync";
 import { GameRenderer, RemoteDraw } from "./renderer";
 import { loadWorld, playerInBounds, saveWorld } from "./state/persistence";
@@ -52,6 +58,18 @@ async function boot(): Promise<void> {
   const hud = new Hud(app);
 
   const defaults = { name: localStorage.getItem("mt-name") ?? "Player", seed: 1337 };
+
+  // A stored world is a CLAIM, not a fact. `contextId` survives in
+  // localStorage across a node reset, a reinstall, or a login on another
+  // device — and in every one of those cases this node holds no identity for
+  // it. Entering anyway is what produced
+  //   Could not reach the shared world (rpc world_meta: No owned identity
+  //   found for this context)
+  // as a dead end on open. Ask the node first; if it owns nothing there, drop
+  // the world (keeping the login) and fall through to the picker, which is
+  // already the right screen for "you are not in a world yet".
+  await dropWorldIfNotOurs();
+
   // Desktop SSO auto-enter: a full hash (tokens + context) means the desktop
   // already authenticated us — zero clicks, straight into the shared world.
   let choice: LaunchChoice;
@@ -89,6 +107,11 @@ async function boot(): Promise<void> {
     createdAt = meta.createdAt || createdAt;
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
+    // Forget the world before offering the way out. "Back to title" reloads,
+    // and a reload with this contextId still stored walks straight back into
+    // the same failure — the loop that made this unrecoverable without
+    // clearing site data by hand.
+    clearWorld();
     showFatal(app, `Could not reach the shared world (${reason}).`);
     return;
   }
@@ -408,6 +431,26 @@ async function boot(): Promise<void> {
 }
 
 /** Online-only dead end: the world is unreachable — say why, offer the title screen. */
+/**
+ * Drop the stored world unless the node owns an identity for its context.
+ *
+ * A node that cannot answer (offline, mid-restart) is NOT evidence the world
+ * is stale, so that case keeps the session: the connection check downstream
+ * reports it, and a player on a flaky network does not silently lose their
+ * world.
+ */
+async function dropWorldIfNotOurs(): Promise<void> {
+  const { contextId, nodeUrl } = getSession();
+  if (!contextId || !nodeUrl) return;
+  let owned: string;
+  try {
+    owned = await ownedContextIdentity(contextId);
+  } catch {
+    return; // node unreachable — not the same thing as not a member
+  }
+  if (!owned) clearWorld();
+}
+
 function showFatal(app: HTMLElement, message: string): void {
   const el = document.createElement("div");
   el.dataset.testid = "fatal-error";

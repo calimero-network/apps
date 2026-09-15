@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   captureSessionFromHash,
   clearSession,
+  clearWorld,
   ensureFreshToken,
   getAccessToken,
   getSession,
@@ -291,5 +292,40 @@ describe("ensureFreshToken (desktop hands over stale tokens — mero-chat lesson
     seedTokens(""); // desktop sent no expires_at — assume valid
     await ensureFreshToken(fetchFn);
     expect(fetchFn).not.toHaveBeenCalled();
+  });
+});
+
+describe("clearWorld (stale-world recovery)", () => {
+  it("drops the world coordinates but keeps the login", () => {
+    window.location.hash = FULL_HASH;
+    captureSessionFromHash();
+    updateSession({ namespaceId: "ns-1", groupId: "grp-1", worldName: "Overworld" });
+    expect(hasConnection()).toBe(true);
+
+    clearWorld();
+
+    const s = getSession();
+    // Gone: everything that names a world this node may not be a member of.
+    expect(s.contextId).toBeNull();
+    expect(s.executorPublicKey).toBeNull();
+    expect(s.namespaceId).toBeNull();
+    expect(s.groupId).toBeNull();
+    expect(s.worldName).toBeNull();
+    // Kept: the login. The player picks another world, they do not log in again.
+    expect(s.nodeUrl).toBe("http://localhost:2660");
+    expect(getAccessToken()).toBe("at-1");
+    expect(isAuthenticated()).toBe(true);
+    // ...and `hasConnection()` is false, which is what routes boot() to the picker.
+    expect(hasConnection()).toBe(false);
+  });
+
+  it("survives a reload — the cleared world is not still in storage", () => {
+    window.location.hash = FULL_HASH;
+    captureSessionFromHash();
+    clearWorld();
+    resetSession();
+    window.location.hash = "";
+    captureSessionFromHash(); // restores from localStorage
+    expect(getSession().contextId).toBeNull();
   });
 });
