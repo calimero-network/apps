@@ -34,7 +34,32 @@ function shortId(id: string) {
 }
 
 export function ContextPicker({ applicationId }: { applicationId: string | null }) {
-  const { contexts, loading, error, refetch } = useApplicationContexts(applicationId);
+  const {
+    contexts: reportedContexts,
+    loading,
+    error,
+    refetch,
+  } = useApplicationContexts(applicationId);
+
+  // ⚠️ `useApplicationContexts` does NOT stay application-scoped when the id is
+  // missing. It delegates to `useContexts`, which branches:
+  //
+  //   applicationId ? getContextsForApplication(applicationId) : getContexts()
+  //
+  // and `getContexts()` is every context on the node. So before the session
+  // resolves an application id, this table silently listed other apps'
+  // contexts under the heading "No contexts for this application" — and
+  // opening one points KV Store at a contract that answers none of its
+  // methods.
+  //
+  // Note the asymmetry with `useNamespacesForApplication` right below, which
+  // fetches NOTHING without an id. Two hooks, opposite answers to the same
+  // missing input; this one guesses. Filtering here rather than trusting the
+  // hook: "I cannot tell which are mine" and "all of them are mine" are
+  // different answers, and only the first one is safe.
+  const contexts = applicationId
+    ? reportedContexts.filter((c) => c.applicationId === applicationId)
+    : [];
   const {
     namespaces,
     loading: nsLoading,
@@ -137,7 +162,15 @@ export function ContextPicker({ applicationId }: { applicationId: string | null 
         {loading && <p className="empty">Loading contexts…</p>}
         {error && <pre className="err">{error.message}</pre>}
 
-        {!loading && contexts.length === 0 && (
+        {!loading && !applicationId && (
+          <p className="empty">
+            Waiting for this session to report which application it is bound to —
+            until it does, there is no way to tell this app&apos;s contexts from
+            any other app&apos;s on this node.
+          </p>
+        )}
+
+        {!loading && applicationId && contexts.length === 0 && (
           <p className="empty">No contexts for this application on this node yet.</p>
         )}
 
