@@ -63,12 +63,37 @@ import sys
 REPO = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 APPS = os.path.join(REPO, "apps")
 
-# route (as written in the source, minus any `/admin-api` prefix) -> accepted
-# top-level body keys, from core 0.11.0-rc.34.
+# Route pattern -> the body keys core accepts, at 0.11.0-rc.34.
+#
+# `*` matches one path segment, so a template literal like
+# `/namespaces/${teamId}/groups` normalises to `/namespaces/*/groups` and is
+# checked the same as a literal string. The first version of this file matched
+# LITERAL route strings only, which is why it passed a fleet that was sending
+# `groupAlias` to the subgroup route in three apps: every call site spells that
+# route as a template.
+#
+# Transcribed from the `deny_unknown_fields` structs in
+# `crates/server/primitives/src/admin/mod.rs`, plus `CreateGroupInNamespaceBody`
+# which lives in its handler
+# (`crates/server/src/admin/handlers/namespaces/create_group_in_namespace.rs`).
+# Regenerate on an SDK pin bump — see the docstring.
+#
+# A route is listed ONLY when its accepted set has been read from core. An
+# unlisted route is NOT checked: a guessed entry would either miss the bug it
+# exists for or red-flag correct code, and both are worse than silence.
 ROUTES = {
-    # CreateNamespaceApiRequest. `bytecodeId` is a serde alias of `appKey`.
     "/namespaces": {"applicationId", "name", "appKey", "bytecodeId"},
-    # CreateContextRequest.
+    # NOT CreateGroupApiRequest — the namespace-scoped subgroup route has its
+    # own, much smaller body. `groupAlias` is not in it and never was.
+    "/namespaces/*/groups": {"groupName", "visibility"},
+    "/namespaces/*/invite": {
+        "expirationTimestamp",
+        "recursive",
+        "admitters",
+        "admitterAddrs",
+    },
+    "/namespaces/*/join": {"invitation", "groupName"},
+    "/namespaces/*/admit": {"invitation", "signedOp"},
     "/contexts": {
         "applicationId",
         "serviceName",
@@ -78,7 +103,8 @@ ROUTES = {
         "identitySecret",
         "name",
     },
-    # CreateGroupApiRequest (subgroup create at the top-level groups route).
+    "/contexts/*/resync": {"force"},
+    "/contexts/*/application": {"applicationId", "executorPublicKey"},
     "/groups": {
         "groupId",
         "appKey",
@@ -87,6 +113,34 @@ ROUTES = {
         "name",
         "parentGroupId",
     },
+    "/groups/join": {"invitation", "groupName"},
+    "/groups/*/members": {"members"},
+    "/groups/*/members/remove": {"members"},
+    "/groups/*/members/*/role": {"role"},
+    "/groups/*/members/*/capabilities": {"capabilities"},
+    "/groups/*/members/*/auto-follow": {"autoFollowContexts", "autoFollowSubgroups"},
+    "/groups/*/members/*/metadata": {"name", "data"},
+    "/groups/*/metadata": {"name", "data"},
+    "/groups/*/settings/default-capabilities": {"defaultCapabilities"},
+    "/groups/*/settings/subgroup-visibility": {"subgroupVisibility"},
+    "/groups/*/reparent": {"newParentId"},
+    "/groups/*/upgrade": {"cascade", "forceCodeOnly", "targetApplicationId"},
+    "/groups/*/issue-ownership-proof": {
+        "audience",
+        "contextId",
+        "expiresAtMs",
+        "nonce",
+        "subject",
+    },
+    "/groups/*/issue-namespace-ownership-proof": {
+        "audience",
+        "expiresAtMs",
+        "nonce",
+        "subject",
+    },
+    "/groups/*/accounts/*/seal": {"plaintext"},
+    "/install-dev-application": {"path"},
+    "/install-application": {"package", "version"},
 }
 
 # The JSON-RPC `execute` envelope: ExecutionRequest, jsonrpc.rs.
@@ -186,6 +240,30 @@ def body_keys(block):
     return keys
 
 
+def normalise_route(raw):
+    """`/admin-api/namespaces/${teamId}/groups` -> `/namespaces/*/groups`.
+
+    Interpolations become a single `*` so a template literal and a literal
+    string for the same endpoint compare equal. Trailing slashes are dropped;
+    a query string is not part of the route.
+    """
+    r = re.sub(r"\$\{[^}]*\}", "*", raw)
+    r = r.split("?", 1)[0]
+    # A call may build the URL with a base: `${base}/admin-api/groups/${id}/...`
+    # or `new URL('/admin-api/blobs', nodeUrl)`. Anchor on the API prefix
+    # wherever it appears and drop whatever came before it — mero-drive's
+    # reparent call is spelled that way and was invisible while this only
+    # handled a leading slash.
+    i = r.find("/admin-api")
+    if i >= 0:
+        r = r[i + len("/admin-api") :]
+    elif not r.startswith("/"):
+        return ""
+    if len(r) > 1 and r.endswith("/"):
+        r = r[:-1]
+    return r
+
+
 FETCH_INIT = {"method", "headers", "body", "signal", "credentials", "mode", "cache"}
 
 
@@ -213,24 +291,32 @@ def scan(path, src):
     problems = []
     clean = strip_noise(src)
 
-    for route, allowed in ROUTES.items():
-        # `adminPost("/namespaces", {...})`, `adminFetch("/admin-api/contexts", {...})`,
-        # `adminPost<T>(\n  "/namespaces",\n  {...})` — the literal route, then
-        # the next object literal. A templated route (`/groups/${id}/join`) has
-        # more path after the id and never matches these exact strings.
-        for m in re.finditer(r'"(?:/admin-api)?' + re.escape(route) + r'"\s*,', src):
-            block, _ = block_at(clean, m.end())
-            if block is None:
-                continue
-            block = unwrap_init(clean, block)
-            if block is None:
-                continue
-            extra = body_keys(block) - allowed
-            if extra:
-                line = src.count("\n", 0, m.start()) + 1
-                problems.append(
-                    (line, route, sorted(extra), sorted(allowed)),
-                )
+    # Every route argument written as a string OR a template literal, followed
+    # by a comma (i.e. a call that also passes a body).
+    for m in re.finditer(r'(["`])((?:\$\{[^}]*\})?(?:/admin-api)?/[^"`\n]*)\1\s*,', src):
+        route = normalise_route(m.group(2))
+        allowed = ROUTES.get(route)
+        if allowed is None:
+            continue
+        # The body must be an object literal starting RIGHT HERE. When the
+        # call passes a variable (`post(url, request)`) there is nothing to
+        # read statically, and walking forward to the next `{` finds something
+        # unrelated — a `{ timeoutMs }` options argument, or the function's
+        # return literal. That produced four false positives against mero-js,
+        # and a check that cries wolf is a check people learn to ignore.
+        rest = clean[m.end() :]
+        if rest.lstrip()[:1] != "{":
+            continue
+        block, _ = block_at(clean, m.end())
+        if block is None:
+            continue
+        block = unwrap_init(clean, block)
+        if block is None:
+            continue
+        extra = body_keys(block) - allowed
+        if extra:
+            line = src.count("\n", 0, m.start()) + 1
+            problems.append((line, route, sorted(extra), sorted(allowed)))
 
     for m in re.finditer(r"\bparams\s*:\s*", clean):
         block, _ = block_at(clean, m.end())
