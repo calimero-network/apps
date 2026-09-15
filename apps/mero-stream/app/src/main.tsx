@@ -7,7 +7,8 @@ import {
 } from "@calimero-network/mero-react";
 import "@calimero-network/mero-ui/styles.css";
 import App from "./App";
-import { APP_ENABLED } from "./lib/tauri";
+import { APP_ENABLED, IS_TAURI } from "./lib/tauri";
+import WebOnlyNotice from "./components/WebOnlyNotice";
 import { captureSessionFromHash } from "./lib/session";
 import "./index.css";
 
@@ -38,6 +39,27 @@ const hashNodeUrl = APP_ENABLED
   ? new URLSearchParams(window.location.hash.slice(1)).get("node_url")
   : null;
 
+// ── Desktop window: stop here ────────────────────────────────────────────────
+//
+// Mero Stream rendered fine inside the Calimero desktop shell, which is exactly
+// why it needed blocking: the UI worked, a stream could be created, and only
+// the media never arrived. Live video is the whole app, so a window that cannot
+// carry it is not a degraded Mero Stream but a convincing imitation of one.
+//
+// `navigator.mediaDevices` is absent in wry's WKWebView — the same wall
+// mero-meet hits — and that is not ours to fix from in here. Say so on open and
+// hand over the link, rather than letting it be discovered three screens later.
+//
+// Deliberately mounted WITHOUT MeroProvider: there is nothing to authenticate
+// for, and a login attempt from a window that cannot use the result is just
+// another dead end.
+if (IS_TAURI) {
+  createRoot(document.getElementById("root")!).render(
+    <StrictMode>
+      <WebOnlyNotice />
+    </StrictMode>,
+  );
+} else {
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <MeroProvider
@@ -60,3 +82,4 @@ createRoot(document.getElementById("root")!).render(
     </MeroProvider>
   </StrictMode>,
 );
+}
