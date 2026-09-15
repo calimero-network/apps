@@ -73,6 +73,22 @@ check(
     expect_key="applicationId",
 )
 
+# A call that builds the URL from a base variable. mero-drive's reparent is
+# spelled this way, and it was invisible while the matcher required the string
+# to START with a slash — the same blind spot as the literal-route bug, one
+# spelling over.
+check(
+    "base-prefixed URL, bad key",
+    'fetch(`${base}/admin-api/groups/${id}/reparent`, { method: "POST", body: JSON.stringify({ newParentId: p, parentId: p }) });',
+    expect_flagged=True,
+    expect_key="parentId",
+)
+check(
+    "base-prefixed URL, clean",
+    'fetch(`${base}/admin-api/groups/${id}/reparent`, { method: "POST", body: JSON.stringify({ newParentId: p }) });',
+    expect_flagged=False,
+)
+
 # ── literal routes (what the first version covered) ──────────────────────────
 check(
     "literal namespace create, dead `alias`",

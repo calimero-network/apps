@@ -249,8 +249,16 @@ def normalise_route(raw):
     """
     r = re.sub(r"\$\{[^}]*\}", "*", raw)
     r = r.split("?", 1)[0]
-    if r.startswith("/admin-api"):
-        r = r[len("/admin-api") :]
+    # A call may build the URL with a base: `${base}/admin-api/groups/${id}/...`
+    # or `new URL('/admin-api/blobs', nodeUrl)`. Anchor on the API prefix
+    # wherever it appears and drop whatever came before it — mero-drive's
+    # reparent call is spelled that way and was invisible while this only
+    # handled a leading slash.
+    i = r.find("/admin-api")
+    if i >= 0:
+        r = r[i + len("/admin-api") :]
+    elif not r.startswith("/"):
+        return ""
     if len(r) > 1 and r.endswith("/"):
         r = r[:-1]
     return r
@@ -285,7 +293,7 @@ def scan(path, src):
 
     # Every route argument written as a string OR a template literal, followed
     # by a comma (i.e. a call that also passes a body).
-    for m in re.finditer(r'(["`])((?:/admin-api)?/[^"`\n]*)\1\s*,', src):
+    for m in re.finditer(r'(["`])((?:\$\{[^}]*\})?(?:/admin-api)?/[^"`\n]*)\1\s*,', src):
         route = normalise_route(m.group(2))
         allowed = ROUTES.get(route)
         if allowed is None:
