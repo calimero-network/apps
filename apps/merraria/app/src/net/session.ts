@@ -288,6 +288,32 @@ export function clearSession(): void {
   }
 }
 
+/**
+ * Forget which world we were in, WITHOUT logging out.
+ *
+ * A stored `contextId` outlives the node that issued it — a node reset, a
+ * reinstall, or opening the same account on a second device all leave a
+ * context this node holds no identity for. Booting straight into it is how the
+ * game ends up showing
+ *
+ *   Could not reach the shared world (rpc world_meta: No owned identity found
+ *   for this context)
+ *
+ * with no way out but clearing site data. Dropping these five fields returns
+ * the player to the world picker with their login intact.
+ */
+export function clearWorld(): void {
+  session = {
+    ...session,
+    contextId: null,
+    executorPublicKey: null,
+    namespaceId: null,
+    groupId: null,
+    worldName: null,
+  };
+  persist();
+}
+
 /** for tests */
 export function resetSession(): void {
   session = {

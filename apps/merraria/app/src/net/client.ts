@@ -7,6 +7,7 @@ import {
   type SseEventData,
 } from "@calimero-network/mero-js";
 import { getAccessToken, getSession } from "./session";
+import { ownedContextIdentity } from "./admin";
 import { rpcExecute, RpcTarget } from "./rpc";
 import { decodeSseEvents, GameEvent } from "./events";
 
@@ -33,27 +34,22 @@ export class GameClient {
   exec = <T = unknown>(method: string, args: Record<string, unknown>): Promise<T> =>
     rpcExecute<T>(this.target, method, args);
 
-  /** my per-context identity: hash > node identities-owned > cached fallback */
+  /**
+   * My per-context identity: the hash, else what the NODE reports owning.
+   *
+   * There is deliberately no cached fallback. This used to end in
+   * `localStorage.getItem(cacheKey)`, which meant a node that owns no identity
+   * for the context still produced one — so the app rendered as if it had
+   * joined and every contract call then failed with "No owned identity found
+   * for this context". A cache that answers when the node cannot is not a
+   * fallback, it is a lie about membership; `null` is the honest answer and
+   * boot() acts on it.
+   */
   async resolveIdentity(): Promise<string | null> {
     const s = getSession();
     if (s.executorPublicKey) return s.executorPublicKey;
-    const cacheKey = `mt-identity-${this.target.contextId}`;
-    try {
-      const res = await fetch(
-        `${this.target.nodeUrl}/admin-api/contexts/${this.target.contextId}/identities-owned`,
-        { headers: { Authorization: `Bearer ${getAccessToken() ?? ""}` } },
-      );
-      const body = await res.json();
-      const data = body?.data;
-      const arr = Array.isArray(data) ? data : (data?.identities ?? data?.items ?? []);
-      if (Array.isArray(arr) && arr.length > 0) {
-        localStorage.setItem(cacheKey, String(arr[0]));
-        return String(arr[0]);
-      }
-    } catch {
-      /* node unreachable or context not joined here — fall through to cache */
-    }
-    return localStorage.getItem(cacheKey);
+    const owned = await ownedContextIdentity(this.target.contextId).catch(() => "");
+    return owned || null;
   }
 
   async fetchWorldMeta(): Promise<WorldMeta> {
