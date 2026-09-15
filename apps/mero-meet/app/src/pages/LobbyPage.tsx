@@ -6,6 +6,8 @@ import { useRoomInvite } from "../hooks/useRoomInvite";
 import { useCall } from "../call/CallContext";
 import { getExecutorPublicKey, setRoomName, getUsername, setUsername } from "../lib/session";
 import ThemeToggle from "../components/ThemeToggle";
+import MediaUnavailableNotice from "../components/MediaUnavailableNotice";
+import { localMediaUnavailableReason } from "../lib/media";
 import type { LobbyView, Presence } from "../types";
 import styles from "./LobbyPage.module.css";
 
@@ -122,7 +124,16 @@ export default function LobbyPage() {
   // says "0 online" while you're sitting in the room.
   const onlineCount = members.filter((m) => m.memberId === selfId || online.has(m.memberId)).length;
   // Calls require a display name (already joined counts — the name is known).
-  const canCall = joined || username.trim().length > 0;
+  // Probed once per mount: whether this window exposes the Media Capture API
+  // is a property of the embedder and the page's origin, neither of which
+  // changes while the lobby is open.
+  const [mediaReason] = useState(localMediaUnavailableReason);
+
+  // A call without media is not a call, so "can enter" now includes "this
+  // window can actually open a camera". Previously both buttons were live here
+  // and the failure surfaced inside WebRtcMesh.start(), after the user had
+  // named themselves and joined the room.
+  const canCall = (joined || username.trim().length > 0) && !mediaReason;
 
   return (
     <div className={styles.page}>
@@ -146,7 +157,7 @@ export default function LobbyPage() {
             className={styles.callBtn}
             onClick={enterCall}
             disabled={!canCall}
-            title={canCall ? undefined : "Enter your name below first"}
+            title={mediaReason ?? (canCall ? undefined : "Enter your name below first")}
           >
             {callActive ? "Join call" : "Start call"}
           </button>
@@ -204,12 +215,14 @@ export default function LobbyPage() {
             className={styles.bannerJoin}
             onClick={enterCall}
             disabled={!canCall}
-            title={canCall ? undefined : "Enter your name first"}
+            title={mediaReason ?? (canCall ? undefined : "Enter your name first")}
           >
             Join
           </button>
         </section>
       )}
+
+      {mediaReason && <MediaUnavailableNotice reason={mediaReason} />}
 
       <section className={styles.list}>
         <h2 className={styles.listTitle}>People</h2>
