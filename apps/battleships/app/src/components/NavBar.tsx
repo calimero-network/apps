@@ -2,7 +2,6 @@ import React from 'react';
 import {
   Navbar as MeroNavbar,
   NavbarMenu,
-  NavbarItem,
 } from '@calimero-network/mero-ui';
 
 interface NavBarProps {
@@ -51,14 +50,15 @@ export default function NavBar({
         {extra}
       </NavbarMenu>
       <NavbarMenu align="right">
-        <NavbarItem>
-          {/* Text, not a button. Logging out is not the thing you came here
-              to do, and a bordered pill in the corner competed with the
-              actions that are. */}
-          <button type="button" className="nav-logout" onClick={onLogout}>
-            Logout
-          </button>
-        </NavbarItem>
+        {/* ⚠️ NOT wrapped in mero-ui's `NavbarItem`. That component paints a
+            dark slate hover by ASSIGNING `e.currentTarget.style.backgroundColor`
+            in an `onMouseEnter` handler — a runtime inline style, which no
+            stylesheet can override short of `!important`, and which is a colour
+            from the library's dark theme. The button is its own control; it
+            needs no wrapper. */}
+        <button type="button" className="nav-logout" onClick={onLogout}>
+          Logout
+        </button>
       </NavbarMenu>
     </MeroNavbar>
   );
