@@ -33,7 +33,12 @@
   --accent-fill: #a5ff11; /* brand lime — filled controls only */
   --accent-fill-dim: #8fdd0e; /* brand lime, hover */
   --accent-soft: rgba(115, 179, 12, 0.16);
-  --accent-text: #1a1a1a; /* on --accent-fill */
+  /* ⚠️ brand-900, NOT a near-black. #1a1a1a on the lime was 14:1 and read as
+     a flat black slab stamped on the button — technically correct, visually
+     harsh. #2D381B is Calimero's own darkest brand step: still 9.99:1 (and
+     7.39:1 on the hover), but it belongs to the same family as the fill, so
+     the label sits in the button rather than on top of it. */
+  --accent-text: #2d381b; /* on --accent-fill */
 
   --danger: #ff5d6c;
   /* Tint for an invalid field, mirroring --accent-soft. Alpha rather than a
@@ -101,7 +106,7 @@
   --accent-fill: #a5ff11;
   --accent-fill-dim: #8fdd0e;
   --accent-soft: rgba(165, 255, 17, 0.16);
-  --accent-text: #0a0e13;
+  --accent-text: #2d381b;
   --danger-soft: rgba(255, 93, 108, 0.22);
 
   --shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
@@ -192,7 +197,9 @@ body {
   background: var(--accent-fill);
   color: var(--accent-text);
   border-color: var(--accent-fill);
-  font-weight: 600;
+  /* 500, not 600. On a fill this bright, semi-bold reads as shouting; the
+     contrast is doing the emphasis already. */
+  font-weight: 500;
 }
 .mc-btn--primary:hover {
   background: var(--accent-fill-dim);

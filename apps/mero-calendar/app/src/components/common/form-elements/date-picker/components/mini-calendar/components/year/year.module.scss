@@ -17,10 +17,10 @@
   }
   
   &_today {
-    // Was `white`. `--primary` is aliased to `--accent`, which is #8aa6ff in
-    // dark mode — white on that is 2.3:1 and the selected date was the
-    // hardest thing in the picker to read. `--accent-text` is the token meant
-    // for text ON an accent fill: #ffffff in light, #0a0e13 in dark — 8.3:1.
+    // Was `white`. `--primary` used to alias `--accent`, and white on that was
+    // 2.3:1 — the selected date was the hardest thing in the picker to read.
+    // `--primary` is now the brand fill (#A5FF11) and `--accent-text` the
+    // token meant for text ON a fill (brand-900 #2D381B) — 9.99:1.
     color: var(--accent-text);
     background-color: var(--primary);
 
