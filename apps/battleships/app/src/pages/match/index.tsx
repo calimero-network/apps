@@ -21,6 +21,7 @@ import CopyButton from '../../components/CopyButton';
 import { generateInvitationUrl, parseInvitationInput } from '../../utils/invitation';
 import { friendlyContractMessage, isMatchFinishedError, isPlayerKeyShaped, isShipsNotPlacedError } from '../../utils/contractError';
 import { EMBEDDED_NAME_KEY, getStoredLobbyName, setStoredLobbyName } from '../../utils/lobbyName';
+import { INVITER_KEY } from '../../utils/knownPlayers';
 import LobbyView from '../../components/LobbyView';
 import GameBoard from '../../components/GameBoard';
 import ShotGrid from '../../components/ShotGrid';
@@ -274,6 +275,11 @@ export default function MatchPage() {
     const id = setInterval(() => {
       void lobby.refetchMembers();
       void lobby.refetchPlayerKeys();
+      // ⚠️ The map has to be on the SAME poll as the roster. It is what turns a
+      // member row into a challengeable player, and it changes when someone
+      // ELSE opens the lobby — an event this node has no subscription for.
+      // Left off, a new player stays "hasn't opened the lobby yet" until reload.
+      void lobby.refetchPlayerMap();
     }, 10_000);
     return () => clearInterval(id);
   }, [view, lobby.namespaceId, lobby.refetchMembers, lobby]);
@@ -819,8 +825,18 @@ export default function MatchPage() {
     // has something to render before the namespace metadata syncs. A sibling
     // key — inside the invitation it would invalidate the signature.
     const lobbyName = lobby.namespaceId ? getStoredLobbyName(lobby.namespaceId) : '';
-    const payload = lobbyName && result && typeof result === 'object'
-      ? { ...(result as Record<string, unknown>), [EMBEDDED_NAME_KEY]: lobbyName }
+    // Both ride BESIDE the signed invitation, never inside it.
+    // ⚠️ `__inviterKey` is the only way the joiner learns an opponent: a node
+    // that JOINS a context lists only its own identity, and never learns the
+    // creator's — measured, and it does not resolve with time. Without this the
+    // invited player opens the lobby, sees nobody to challenge, and concludes
+    // that starting a game is admin-only.
+    const payload = result && typeof result === 'object'
+      ? {
+          ...(result as Record<string, unknown>),
+          ...(lobbyName ? { [EMBEDDED_NAME_KEY]: lobbyName } : {}),
+          ...(lobby.executorPublicKey ? { [INVITER_KEY]: lobby.executorPublicKey } : {}),
+        }
       : result;
     // Share a LINK, not the raw JSON. The payload is passed through opaquely —
     // the invitation is signed over its own body, so re-modelling it would
@@ -932,7 +948,9 @@ export default function MatchPage() {
             <LobbyView
               lobbyAlias={lobby.selectedLobby?.alias}
               isAdmin={lobby.isAdmin}
+              membersLoading={lobby.membersLoading}
               playerKeys={lobby.playerKeys}
+              playerByAccount={lobby.playerByAccount}
               onChallengePlayer={setPlayer2}
               members={lobby.members}
               selfIdentity={lobby.selfIdentity}

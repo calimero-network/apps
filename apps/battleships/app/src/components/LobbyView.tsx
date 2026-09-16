@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { Input } from '@calimero-network/mero-ui';
 import CopyButton from './CopyButton';
 import type { MatchSummary, MatchRecord, PlayerStatsView } from '../generated/lobby/LobbyClient';
@@ -14,8 +14,11 @@ interface LobbyViewProps {
   lobbyAlias?: string | null;
   isAdmin: boolean;
   members: GroupMember[];
+  membersLoading: boolean;
   /** Player keys in this lobby — what `create_match` accepts. */
   playerKeys: string[];
+  /** account id -> player key, as recorded in the lobby contract. */
+  playerByAccount: Record<string, string>;
   /** Fill the challenge field from a player row. */
   onChallengePlayer: (key: string) => void;
   selfIdentity: string | null;
@@ -54,7 +57,8 @@ const formatTs = (ms: number) => new Date(ms).toLocaleString(undefined, {
 });
 
 export default function LobbyView({
-  lobbyAlias, isAdmin, members, playerKeys, onChallengePlayer, selfIdentity, executorPublicKey,
+  lobbyAlias, isAdmin, members, membersLoading, playerKeys, playerByAccount,
+  onChallengePlayer, selfIdentity, executorPublicKey,
   inviteLoading, invitationJson, onCreateInvitation, onDismissInvitation,
   player2, creatingMatch, onPlayer2Change, onCreateMatch,
   matches, onOpenGame,
@@ -73,6 +77,37 @@ export default function LobbyView({
    *
    * De-duplicated, because once the lookup does answer, your key is in it too.
    */
+  /**
+   * The player key for a member row.
+   *
+   * The contract map is the answer: each member records its own account ->
+   * player key pairing with `register_player`, and contract state reaches every
+   * node. Nothing else does — group membership is keyed by ACCOUNT and syncs,
+   * context identities ARE the player keys and do not (a joining node lists
+   * only its own, and never catches up), and no node-side API relates the two.
+   *
+   * ⚠️ THE FALLBACK BELOW IS A TWO-PLAYER SPECIAL CASE, AND IT USED TO BE THE
+   * WHOLE IMPLEMENTATION. It only fires when there is exactly one other member
+   * and exactly one other known key, so at three members it resolved NOBODY and
+   * every row read "hasn't opened the lobby yet" — on the creator's node too,
+   * which held all three keys but could not say whose they were. It is kept
+   * only so a lobby whose context still runs a build without `register_player`
+   * behaves as it did before, and it is now unreachable whenever the map has
+   * the row.
+   */
+  const playerKeyForMember = useCallback(
+    (identity: string): string | null => {
+      const recorded = playerByAccount[identity];
+      if (recorded) return recorded;
+      if (identity === selfIdentity) return executorPublicKey ?? null;
+      const others = members.filter((m) => m.identity !== selfIdentity);
+      const otherKeys = playerKeys.filter((k) => k !== executorPublicKey);
+      if (others.length === 1 && otherKeys.length === 1) return otherKeys[0] ?? null;
+      return null;
+    },
+    [executorPublicKey, members, playerByAccount, playerKeys, selfIdentity],
+  );
+
   const shownPlayers = useMemo(() => {
     const seen = new Set<string>();
     const out: string[] = [];
@@ -111,57 +146,53 @@ export default function LobbyView({
               {members.length} member{members.length !== 1 ? 's' : ''} online
             </span>
 
-            {/* ⚠️ PLAYER keys, from the lobby CONTEXT — not the group's member
-                rows, which are keyed by ACCOUNT id and which `create_match`
-                rejects as "not a player". Since rc.27 both render as 64 hex, so
-                listing the accounts here would offer a copy button for the one
-                id that cannot start a game.
-                ⚠️ AND IT ALWAYS RENDERS. Gating the whole block on
-                `playerKeys.length` meant that when the context identity lookup
-                came back empty — which it does until this node has joined the
-                lobby context — the section vanished and took the player's OWN
-                key with it: "2 members online" and nothing else on screen. */}
+            {/* ⚠️ DRIVEN BY THE GROUP MEMBER LIST, NOT BY CONTEXT IDENTITIES.
+                `/admin-api/groups/{id}/members` returns every member with their
+                role on BOTH nodes — it is the same data the admin dashboard
+                shows. Context identities do not: a node that joined a context
+                lists only its own, so a list built from those showed one row on
+                the member's node and looked broken. The roster comes from the
+                group; the challengeable key is attached where it is known. */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-              <span className="info-label">Players in this lobby</span>
-                <span className="console-hint">
-                  Copy yours to invite someone to challenge you; challenge anyone
-                  else with one click.
-                </span>
-                {shownPlayers.length === 0 && (
-                  <span className="console-hint">
-                    Resolving your player key…
-                  </span>
-                )}
-                {shownPlayers.length === 1 && members.length > 1 && (
-                  <span className="console-hint">
-                    {members.length - 1} other member
-                    {members.length > 2 ? 's have' : ' has'} joined this lobby but
-                    not opened it yet. They appear here, ready to challenge, once
-                    they do.
-                  </span>
-                )}
-                {shownPlayers.map((key) => {
-                  const isSelf = key === executorPublicKey;
-                  return (
-                    <div key={key} className="member-row">
-                      <span className="mono-sm" style={{ fontSize: '0.75rem' }}>
-                        {key.slice(0, 12)}…{key.slice(-8)}
+              <span className="info-label">Members</span>
+              {membersLoading && members.length === 0 && (
+                <span className="console-hint">Loading members…</span>
+              )}
+              {members.map((m) => {
+                const isSelf = m.identity === selfIdentity;
+                const key = playerKeyForMember(m.identity);
+                return (
+                  <div key={m.identity} className="member-row">
+                    <span className={`member-role ${m.role === 'Admin' ? 'role-admin' : 'role-member'}`}>
+                      {m.role}
+                    </span>
+                    {isSelf && (
+                      <span style={{ fontSize: '0.7rem', color: 'var(--text-accent)' }}>you</span>
+                    )}
+                    {key ? (
+                      <>
+                        <span className="mono-sm" style={{ fontSize: '0.72rem' }}>
+                          {key.slice(0, 10)}…{key.slice(-6)}
+                        </span>
+                        <CopyButton text={key} label="Copy" copiedLabel="Copied" className="btn-icon" />
+                        {!isSelf && (
+                          <button
+                            type="button"
+                            className="btn-icon"
+                            onClick={() => onChallengePlayer(key)}
+                          >
+                            Challenge
+                          </button>
+                        )}
+                      </>
+                    ) : (
+                      <span className="console-hint" style={{ margin: 0 }}>
+                        hasn&rsquo;t opened the lobby yet
                       </span>
-                      <CopyButton text={key} label="Copy" copiedLabel="Copied" className="btn-icon" />
-                      {isSelf ? (
-                        <span style={{ fontSize: '0.7rem', color: 'var(--text-accent)' }}>you</span>
-                      ) : (
-                        <button
-                          type="button"
-                          className="btn-icon"
-                          onClick={() => onChallengePlayer(key)}
-                        >
-                          Challenge
-                        </button>
-                      )}
-                    </div>
-                  );
-                })}
+                    )}
+                  </div>
+                );
+              })}
             </div>
 
             <div style={{ display: 'flex', gap: '0.5rem' }}>

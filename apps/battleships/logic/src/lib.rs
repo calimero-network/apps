@@ -163,6 +163,31 @@ pub struct MatchRecord {
     pub finished_ms: u64,
 }
 
+/// One member's account paired with the player key they play as.
+///
+/// ⚠️ THESE ARE TWO DIFFERENT ID SPACES AND NOTHING ELSE JOINS THEM. Group
+/// membership — what `/admin-api/groups/{id}/members` returns and what the
+/// lobby lists as a row — is keyed by ACCOUNT. A player is a CONTEXT MEMBER,
+/// identified by the device/context key that `create_match` takes and that
+/// `from_executor_id` reads. Both are 64 hex since rc.27, so mixing them up is
+/// silent.
+///
+/// The node cannot supply the mapping: a node that JOINS a context only ever
+/// lists its OWN context identity and never learns the ones already there
+/// (measured across three local nodes — the creator saw all three keys, each
+/// joiner saw exactly one, and that does not change with time). So the pairing
+/// has to be recorded by the one party who knows both halves — the caller,
+/// about itself — and replicated as ordinary contract state.
+#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct PlayerEntry {
+    /// The member's ACCOUNT id, as group membership keys it.
+    pub account: String,
+    /// The key that member plays as — what `create_match` expects.
+    pub player: String,
+}
+
 // MatchRecord is append-once / immutable per match — it's stored as
 // `FrozenValue<MatchRecord>` inside `history`, which supplies a no-op
 // `Mergeable` impl for free. No hand-rolled merge to own.
@@ -196,6 +221,19 @@ fn from_executor_id() -> Result<PublicKey, GameError> {
     Ok(PublicKey(arr))
 }
 
+/// The caller's ACCOUNT, hex — the id group membership is keyed by.
+///
+/// Deliberately NOT `from_executor_id`. That one answers "which player is
+/// calling", this one answers "which member row is that". Recording both is the
+/// entire point of `register_player`.
+fn caller_account_hex() -> String {
+    let bytes = calimero_sdk::env::account_id();
+    bytes.iter().fold(String::with_capacity(64), |mut acc, b| {
+        acc.push_str(&format!("{:02x}", b));
+        acc
+    })
+}
+
 // ---------------------------------------------------------------------------
 // Lobby state
 // ---------------------------------------------------------------------------
@@ -206,6 +244,13 @@ pub struct LobbyState {
     matches: UnorderedMap<String, MatchSummary>,
     player_stats: UnorderedMap<String, PlayerStats>,
     history: Vector<FrozenValue<MatchRecord>>,
+    /// account hex -> player key hex, written by each member about itself.
+    ///
+    /// `LwwRegister` rather than a bare `String` so a member who rejoins with a
+    /// fresh context identity converges on the newer key instead of two
+    /// replicas each keeping their own. A set-once value would pin the stale
+    /// one forever and never error.
+    players: UnorderedMap<String, LwwRegister<String>>,
 }
 
 #[app::logic]
@@ -217,6 +262,7 @@ impl LobbyState {
             matches: UnorderedMap::new_with_field_name("lobby:matches"),
             player_stats: UnorderedMap::new_with_field_name("lobby:player_stats"),
             history: Vector::new_with_field_name("lobby:history"),
+            players: UnorderedMap::new_with_field_name("lobby:players"),
         }
     }
 
@@ -323,6 +369,68 @@ impl LobbyState {
             .insert(match_id.to_string(), summary)
             .map_err(|e| GameError::Invalid(format!("matches.insert failed: {e}")))?;
         Ok(())
+    }
+
+    /// Record that this caller's account plays as this caller's player key.
+    ///
+    /// Called when a member opens the lobby. Idempotent: re-registering the
+    /// same pair is a no-op write, and it is cheap enough to call on every
+    /// open, which is what makes it self-healing for members who joined before
+    /// this method existed.
+    ///
+    /// This is the ONLY way the other nodes ever learn the pairing — see
+    /// `PlayerEntry`. Without it a three-player lobby shows every row as
+    /// "hasn't opened the lobby yet" on every node, including the creator's,
+    /// which holds all the keys but cannot say whose they are.
+    pub fn register_player(&mut self) -> app::Result<String> {
+        let player = from_executor_id().map_err(|e| AppError::msg(e.to_string()))?;
+        let account = caller_account_hex();
+        let (player_hex, changed) = self
+            .register_player_with(&account, &player.to_hex())
+            .map_err(|e| AppError::msg(e.to_string()))?;
+        if changed {
+            app::emit!(Event::PlayersUpdated {});
+        }
+        Ok(player_hex)
+    }
+
+    /// Testable inner: the ids explicitly, no host calls and no event emits.
+    ///
+    /// Returns the key recorded and whether this call changed anything, so the
+    /// caller only emits when a write actually happened.
+    pub(crate) fn register_player_with(
+        &mut self,
+        account: &str,
+        player_hex: &str,
+    ) -> Result<(String, bool), GameError> {
+        let existing = self
+            .players
+            .get(account)
+            .map_err(|e| GameError::Invalid(format!("players.get: {e}")))?;
+        if existing.as_ref().map(|r| r.get().as_str()) == Some(player_hex) {
+            return Ok((player_hex.to_string(), false));
+        }
+        self.players
+            .insert(
+                account.to_string(),
+                LwwRegister::new(player_hex.to_string()),
+            )
+            .map_err(|e| GameError::Invalid(format!("players.insert: {e}")))?;
+        Ok((player_hex.to_string(), true))
+    }
+
+    /// Every member who has opened the lobby, as account -> player key.
+    pub fn get_players(&self) -> app::Result<Vec<PlayerEntry>> {
+        let entries = self
+            .players
+            .entries()
+            .map_err(|e| AppError::msg(format!("players.entries: {e}")))?;
+        Ok(entries
+            .map(|(account, key)| PlayerEntry {
+                account,
+                player: key.get().clone(),
+            })
+            .collect())
     }
 
     pub fn get_matches(&self) -> app::Result<Vec<MatchSummary>> {
@@ -489,6 +597,98 @@ mod tests {
         assert_eq!(stats.losses.value_unsigned().unwrap(), 2);
         // games_played is derived as wins + losses in the view.
         assert_eq!(stats.to_view().unwrap().games_played, 3);
+    }
+
+    #[test]
+    fn register_player_records_account_to_player_key() {
+        let mut state = LobbyState::init();
+        let account = hex::encode([9u8; 32]);
+        let player = hex::encode([1u8; 32]);
+
+        let (recorded, changed) = state.register_player_with(&account, &player).unwrap();
+        assert_eq!(recorded, player);
+        assert!(changed, "first registration is a write");
+
+        let players = state.get_players().unwrap();
+        assert_eq!(players.len(), 1);
+        assert_eq!(players[0].account, account);
+        assert_eq!(players[0].player, player);
+    }
+
+    #[test]
+    fn register_player_is_idempotent_and_reports_no_change() {
+        // Called on every lobby open, so the repeat has to be free AND has to
+        // report that nothing changed — otherwise every open emits an event and
+        // every peer refetches for nothing.
+        let mut state = LobbyState::init();
+        let account = hex::encode([9u8; 32]);
+        let player = hex::encode([1u8; 32]);
+
+        assert!(state.register_player_with(&account, &player).unwrap().1);
+        assert!(
+            !state.register_player_with(&account, &player).unwrap().1,
+            "re-registering the same pair must not write"
+        );
+        assert_eq!(state.get_players().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn register_player_replaces_a_rotated_key_for_the_same_account() {
+        // A member who rejoins gets a FRESH context identity. The account is
+        // stable, so the map must follow the new key rather than pin the stale
+        // one — which a set-once value would have done, silently.
+        let mut state = LobbyState::init();
+        let account = hex::encode([9u8; 32]);
+        let old_key = hex::encode([1u8; 32]);
+        let new_key = hex::encode([2u8; 32]);
+
+        state.register_player_with(&account, &old_key).unwrap();
+        let (_, changed) = state.register_player_with(&account, &new_key).unwrap();
+        assert!(changed);
+
+        let players = state.get_players().unwrap();
+        assert_eq!(
+            players.len(),
+            1,
+            "same account must not create a second row"
+        );
+        assert_eq!(players[0].player, new_key);
+    }
+
+    #[test]
+    fn register_player_keeps_one_row_per_account_for_three_members() {
+        // The case that was broken: three members, each registering itself.
+        // Every node must end up able to name all three player keys.
+        let mut state = LobbyState::init();
+        let accounts = [
+            hex::encode([7u8; 32]),
+            hex::encode([8u8; 32]),
+            hex::encode([9u8; 32]),
+        ];
+        let keys = [
+            hex::encode([1u8; 32]),
+            hex::encode([2u8; 32]),
+            hex::encode([3u8; 32]),
+        ];
+        for (a, k) in accounts.iter().zip(keys.iter()) {
+            state.register_player_with(a, k).unwrap();
+        }
+
+        let players = state.get_players().unwrap();
+        assert_eq!(players.len(), 3);
+        for (a, k) in accounts.iter().zip(keys.iter()) {
+            let found = players
+                .iter()
+                .find(|p| &p.account == a)
+                .expect("account recorded");
+            assert_eq!(&found.player, k);
+        }
+    }
+
+    #[test]
+    fn get_players_is_empty_before_anyone_opens_the_lobby() {
+        let state = LobbyState::init();
+        assert!(state.get_players().unwrap().is_empty());
     }
 
     #[test]

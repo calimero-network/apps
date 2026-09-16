@@ -8,4 +8,6 @@ pub enum Event<'a> {
     MatchListUpdated {},
     /// Lobby player stats were updated after a match finished.
     PlayerStatsUpdated {},
+    /// A member registered the player key they play as.
+    PlayersUpdated {},
 }

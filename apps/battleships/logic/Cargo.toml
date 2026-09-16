@@ -8,7 +8,7 @@
 # SERVICE names are unchanged (`lobby`, `game`) — the frontend passes them at
 # createContext and every scenario asserts on them.
 name        = "battleships"
-version     = "0.3.2"
+version     = "0.3.3"
 edition.workspace    = true
 authors.workspace    = true
 license.workspace    = true

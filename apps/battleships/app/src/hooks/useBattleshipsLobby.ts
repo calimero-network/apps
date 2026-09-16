@@ -11,6 +11,8 @@ import {
 import type { GroupMember } from '@calimero-network/mero-react';
 import { useNamespaceBootstrap } from './useNamespaceBootstrap';
 import { embeddedLobbyName, lobbyLabel, setStoredLobbyName } from '../utils/lobbyName';
+import { addKnownPlayer, embeddedInviterKey, getKnownPlayers } from '../utils/knownPlayers';
+import { LobbyClient } from '../generated/lobby/LobbyClient';
 
 const SELECTED_NS_KEY = 'battleships:selectedNamespaceId';
 
@@ -43,6 +45,8 @@ export interface UseBattleshipsLobbyReturn {
   refetchMembers: () => Promise<void>;
   /** Re-read the lobby's player keys. */
   refetchPlayerKeys: () => Promise<void>;
+  /** Re-read the contract's account -> player key map. */
+  refetchPlayerMap: () => Promise<void>;
   selfIdentity: string | null;
   membersLoading: boolean;
   isAdmin: boolean;
@@ -60,6 +64,18 @@ export interface UseBattleshipsLobbyReturn {
    * "not a player".
    */
   playerKeys: string[];
+  /**
+   * account id -> the player key that account plays as.
+   *
+   * Recorded in the CONTRACT by each member about itself (`register_player`),
+   * because it is the only thing that reaches every node: group membership is
+   * keyed by account and syncs, context identities are the player keys and do
+   * NOT — a joining node lists only its own, forever. Nothing on the node
+   * relates the two ids, so without this map a lobby with three members shows
+   * every row as "hasn't opened the lobby yet" on EVERY node, the creator's
+   * included, even though the creator holds all the keys.
+   */
+  playerByAccount: Record<string, string>;
 
   invitePlayer: (validForSeconds?: number) => Promise<unknown>;
   inviteLoading: boolean;
@@ -130,10 +146,55 @@ export function useBattleshipsLobby(): UseBattleshipsLobbyReturn {
 
   const groupLoading = namespacesLoading || contextsLoading;
 
-  // The lobby context is the first context in the namespace root group
-  const lobbyContextId = namespaceContexts.length > 0
-    ? namespaceContexts[0].contextId
-    : null;
+  /**
+   * The lobby context, identified by its SERVICE — not by being first.
+   *
+   * ⚠️ THIS WAS `namespaceContexts[0]`, AND THAT IS WHY THE LOBBY BROKE ON
+   * REFRESH. Match contexts are created in the SAME namespace root group
+   * (`createContext({ groupId: namespaceId, serviceName: 'game' })`), so the
+   * moment you start a game the group holds two or more contexts and
+   * `listGroupContexts` has no defined order. Whenever the game context sorted
+   * first, every lobby call went to it and answered `method "get_matches" not
+   * found` — along with `get_history` and `get_player_stats` — and the members
+   * and match list vanished. Nothing was actually lost; the app was talking to
+   * the wrong context.
+   *
+   * `GroupContextEntry` carries only `{ contextId, alias }`, so the service is
+   * not in the listing and has to be read per context. `Context.serviceName` is
+   * what distinguishes them.
+   */
+  const [lobbyContextId, setLobbyContextId] = useState<string | null>(null);
+  const contextIdsKey = namespaceContexts.map((c) => c.contextId).join(',');
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!mero || namespaceContexts.length === 0) {
+        if (!cancelled) setLobbyContextId(null);
+        return;
+      }
+      for (const entry of namespaceContexts) {
+        try {
+          const ctx = await mero.admin.getContext(entry.contextId);
+          if (cancelled) return;
+          if (ctx?.serviceName === 'lobby') {
+            setLobbyContextId(entry.contextId);
+            return;
+          }
+        } catch {
+          // A context this node cannot read yet is simply not a candidate.
+        }
+      }
+      if (cancelled) return;
+      // No context claimed the lobby service. Older bundles predate
+      // `serviceName`, so fall back to the previous behaviour rather than
+      // leaving the app with no lobby at all — but say so, because on a bundle
+      // that DOES set it this means the lobby context is missing.
+      console.warn('[lobby] no context reported serviceName "lobby"; falling back to the first');
+      setLobbyContextId(namespaceContexts[0]?.contextId ?? null);
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mero, contextIdsKey]);
 
   // Patch the lobbyContextId into the selected lobby record
   if (selectedLobby && lobbyContextId) {
@@ -308,6 +369,11 @@ export function useBattleshipsLobby(): UseBattleshipsLobbyReturn {
       const embedded = embeddedLobbyName(parsed) || groupAlias || '';
       if (embedded) setStoredLobbyName(nsId, embedded);
 
+      // The inviter's own player key, so this node has someone to challenge
+      // the moment it opens the lobby. The node will not tell it.
+      const inviter = embeddedInviterKey(parsed);
+      if (inviter) addKnownPlayer(nsId, inviter);
+
       const result = await joinNamespace(nsId, { invitation, groupName: groupAlias });
 
       if (result) {
@@ -334,15 +400,69 @@ export function useBattleshipsLobby(): UseBattleshipsLobbyReturn {
     if (!mero || !lobbyContextId) { setPlayerKeys([]); return; }
     try {
       const res = await mero.admin.getContextIdentities(lobbyContextId);
-      setPlayerKeys(Array.isArray(res?.identities) ? res.identities : []);
+      const fromNode = Array.isArray(res?.identities) ? res.identities : [];
+      // Union with the keys learned from invitations: the node reports only
+      // what IT knows, which on a joining node is just itself.
+      const remembered = namespaceId ? getKnownPlayers(namespaceId) : [];
+      setPlayerKeys([...new Set([...fromNode, ...remembered])]);
     } catch {
       // A context this node has not bootstrapped yet answers 404. Not an error
       // worth surfacing — the list simply is not known yet.
       setPlayerKeys([]);
     }
-  }, [mero, lobbyContextId]);
+  }, [mero, lobbyContextId, namespaceId]);
 
   useEffect(() => { void refetchPlayerKeys(); }, [refetchPlayerKeys]);
+
+  /**
+   * The account -> player key mapping, read from the lobby contract.
+   *
+   * Folded into the same refetch as the keys so one poll refreshes both.
+   * A context still running an older build has no `get_players`; that answers
+   * "method not found" and is left as an empty map rather than surfaced — the
+   * view falls back to the old heuristic in that case.
+   */
+  const [playerByAccount, setPlayerByAccount] = useState<Record<string, string>>({});
+  const refetchPlayerMap = useCallback(async () => {
+    if (!mero || !lobbyContextId || !executorPublicKey) { setPlayerByAccount({}); return; }
+    try {
+      const client = new LobbyClient(mero, lobbyContextId, executorPublicKey);
+      const entries = await client.getPlayers();
+      const next: Record<string, string> = {};
+      for (const e of entries ?? []) {
+        if (e?.account && e?.player) next[e.account] = e.player;
+      }
+      setPlayerByAccount(next);
+    } catch {
+      setPlayerByAccount({});
+    }
+  }, [mero, lobbyContextId, executorPublicKey]);
+
+  useEffect(() => { void refetchPlayerMap(); }, [refetchPlayerMap]);
+
+  /**
+   * Publish this node's own account -> player key pairing.
+   *
+   * Runs on every lobby open rather than only on join, which is what makes it
+   * self-healing: a member who joined before this existed registers the first
+   * time they open the lobby, with no migration. `register_player` is a no-op
+   * write when the pair is already recorded, so the repeat costs nothing.
+   */
+  useEffect(() => {
+    if (!mero || !lobbyContextId || !executorPublicKey) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const client = new LobbyClient(mero, lobbyContextId, executorPublicKey);
+        await client.registerPlayer();
+        if (!cancelled) await refetchPlayerMap();
+      } catch {
+        // An older contract has no such method. Nothing to do; the view falls
+        // back to the heuristic.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [mero, lobbyContextId, executorPublicKey, refetchPlayerMap]);
 
   const refetchContexts = useCallback(async () => {
     await refetchNamespaces();
@@ -369,7 +489,9 @@ export function useBattleshipsLobby(): UseBattleshipsLobbyReturn {
     members,
     refetchMembers,
     playerKeys,
+    playerByAccount,
     refetchPlayerKeys,
+    refetchPlayerMap,
     selfIdentity,
     membersLoading,
     isAdmin,
