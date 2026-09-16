@@ -215,6 +215,90 @@ export async function listGroupContexts(
   ));
 }
 
+// ── Replicated names (group metadata) ────────────────────────────────────────
+//
+// ⚠️ Why this exists at all: a calendar's name used to live ONLY in the
+// creator's `localStorage` (see utils/teamName). Every other member of the team
+// therefore saw the raw context id — a team called "gas" listing a calendar
+// named "c1" showed "c1" on the node that made it and "Calendar 3f9a2b" on
+// every node that joined it.
+//
+// Core's metadata ops are the right home: `ContextMetadataSet` is group-scoped
+// and replicates to exactly the members of that group, and the name comes back
+// on `GET /groups/{id}/contexts` for everyone. Setting it needs either group
+// admin or the `CAN_MANAGE_METADATA` capability (1 << 8) — which is why the
+// Admin role below grants that bit as well as the right to create calendars.
+//
+// Server-enforced limit: `name` is at most 64 bytes. Longer names are refused
+// by core rather than truncated, so the UI caps the input instead.
+
+/** Publish a calendar's name to every member of the team. */
+export async function setContextName(
+  groupId: string,
+  contextId: string,
+  name: string,
+): Promise<void> {
+  await adminPut(`/groups/${groupId}/contexts/${contextId}/metadata`, {
+    name,
+  });
+}
+
+/** Publish a team's own name to its members. */
+export async function setGroupName(
+  groupId: string,
+  name: string,
+): Promise<void> {
+  await adminPut(`/groups/${groupId}/metadata`, { name });
+}
+
+// ── Members and capabilities ─────────────────────────────────────────────────
+
+/** One row of `GET /groups/{id}/members`. `identity` is an ACCOUNT, 64 hex. */
+export interface GroupMemberRow {
+  identity: string;
+  role?: string;
+  name?: string;
+}
+
+export async function listGroupMembers(
+  groupId: string,
+): Promise<GroupMemberRow[]> {
+  const raw = await adminGet<
+    { members?: GroupMemberRow[]; data?: GroupMemberRow[] } | GroupMemberRow[]
+  >(`/groups/${groupId}/members`);
+  if (Array.isArray(raw)) return raw;
+  return raw?.members ?? raw?.data ?? [];
+}
+
+/**
+ * A member's capability bitmask.
+ *
+ * ⚠️ `identity` is the member's ACCOUNT, as `listGroupMembers` returns — NOT a
+ * signing key. Both are 64 hex characters and the server accepts either
+ * without complaint, so passing a key here names a principal that does not
+ * exist and reads back as 0 capabilities.
+ */
+export async function getMemberCapabilities(
+  groupId: string,
+  identity: string,
+): Promise<number> {
+  const raw = await adminGet<{ capabilities?: number } | number>(
+    `/groups/${groupId}/members/${identity}/capabilities`,
+  );
+  if (typeof raw === "number") return raw;
+  return raw?.capabilities ?? 0;
+}
+
+export async function setMemberCapabilities(
+  groupId: string,
+  identity: string,
+  capabilities: number,
+): Promise<void> {
+  await adminPut(`/groups/${groupId}/members/${identity}/capabilities`, {
+    capabilities,
+  });
+}
+
 /**
  * Delete a context and its local state.
  *

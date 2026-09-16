@@ -43,6 +43,17 @@ export interface ContextRecord {
   application_id?: string;
   groupId?: string;
   group_id?: string;
+  /**
+   * The context's REPLICATED name, from core's group metadata.
+   *
+   * ⚠️ This field was previously dropped on the floor, which is the whole
+   * reason a calendar showed its name on the node that made it and a raw id
+   * everywhere else: `POST /contexts` was already being sent a `name`, and
+   * `GET /groups/{id}/contexts` was already returning it, but the client read
+   * the label out of its own `localStorage` instead — which only the creator's
+   * browser has. See utils/teamName.
+   */
+  name?: string;
 }
 
 /** The application a namespace targets, "" when the record doesn't say. */
@@ -62,6 +73,11 @@ export function contextAppId(ctx: ContextRecord): string {
 
 export function namespaceId(ns: NamespaceRecord): string {
   return (ns.namespaceId ?? ns.groupId ?? ns.id ?? "").trim();
+}
+
+/** The context's replicated name, "" when core has none for it. */
+export function contextName(ctx: ContextRecord): string {
+  return (ctx.name ?? "").trim();
 }
 
 export function contextId(ctx: ContextRecord): string {

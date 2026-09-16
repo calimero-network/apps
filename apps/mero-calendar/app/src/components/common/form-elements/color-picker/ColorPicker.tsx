@@ -5,6 +5,7 @@ import cn from "classnames";
 
 import styles from './color-picker.module.scss';
 import { useClickOutside } from "../../../../hooks/useClickOutside";
+import { ChevronDownIcon } from "../../icons/Icons";
 
 interface IColorPickerProps {
   selectedColor: string;
@@ -33,7 +34,7 @@ const ColorPicker: FC<IColorPickerProps> = ({
           className={styles.color__picker__selected__color}
           style={{ background: selectedColor }}
         />
-        <i className={cn("fas fa-chevron-down", styles.color__picker__icon__down)}></i>
+        <ChevronDownIcon className={styles.color__picker__icon__down} />
       </div>
       {isOpen && (
         <ul className={styles.color__picker__list}>

@@ -1,6 +1,7 @@
 import { FC } from "react";
 
-import { useMero, getContextIdentity } from "@calimero-network/mero-react";
+import { useMero } from "@calimero-network/mero-react";
+import { accountId as accountIdOf } from "../../../api/identity";
 import cn from "classnames";
 import { ToastContainer, toast } from "react-toastify";
 
@@ -13,6 +14,7 @@ import ThemeToggle from "../theme-toggle/ThemeToggle";
 
 import styles from "./header.module.scss";
 import { useNavigate } from "react-router-dom";
+import { ChevronLeftIcon, ChevronRightIcon } from "../icons/Icons";
 
 interface IHeaderProps {
   onClickArrow: (direction: IDirections) => void;
@@ -41,8 +43,9 @@ const Header: FC<IHeaderProps> = ({
     isOpenModalEditEvent,
     openModalCreate,
   } = useModal();
-  // rc.8: the executor public key is the context identity set on calendar mount.
-  const accountId = getContextIdentity() ?? "";
+  // The account this node writes as — the same value the contract stamps on
+  // an event's `owner`, so what is shown here is what ownership is judged on.
+  const accountId = accountIdOf();
 
   const isBtnCreateEventDisable =
     isOpenModalCreateEvent || isOpenModalDayInfoEvents || isOpenModalEditEvent;
@@ -101,13 +104,13 @@ const Header: FC<IHeaderProps> = ({
               className={cn("icon-button", styles.navigation__icon)}
               onClick={changeToPrev}
             >
-              <i className="fas fa-chevron-left"></i>
+              <ChevronLeftIcon />
             </button>
             <button
               className={cn("icon-button", styles.navigation__icon)}
               onClick={changeToNext}
             >
-              <i className="fas fa-chevron-right"></i>
+              <ChevronRightIcon />
             </button>
           </div>
           <span className={styles.navigation__date}>{displayedDate}</span>

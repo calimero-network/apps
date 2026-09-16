@@ -7,6 +7,7 @@ import {
 } from "@calimero-network/mero-react";
 
 import { adminGet } from "../../api/rpc";
+import { loadAccountId } from "../../api/identity";
 import { ClientApiDataSource } from "../../api/dataSource/ClientApiDataSource";
 import Calendar from "../../components/calendar/Calendar";
 import UsernameModal from "../../components/common/modals/username-modal/UsernameModal";
@@ -43,6 +44,13 @@ export default function CalendarPage() {
 
     (async () => {
       setContextId(contextId);
+
+      // Who we are, for the OWNERSHIP checks (Edit / Delete / view-only). This
+      // is the ACCOUNT and is a different value from the context signing key
+      // resolved just below — see api/identity for why conflating them silently
+      // hid Edit and Delete from every event's owner. Resolved before the
+      // calendar is revealed so the first render already knows what it owns.
+      await loadAccountId();
 
       // Resolve the public key this node owns in the context and make it the
       // executor identity. identities-owned shape is { identities: [pk] } (or a

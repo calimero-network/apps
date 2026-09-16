@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   contextAppId,
   contextId,
+  contextName,
   contextsForThisApp,
   namespaceAppId,
   namespaceId,
@@ -146,5 +147,26 @@ describe("scoping contexts to this application", () => {
   it("handles an empty list without inventing entries", () => {
     expect(contextsForThisApp([], CALENDAR)).toEqual([]);
     expect(namespacesForThisApp([], CALENDAR)).toEqual([]);
+  });
+});
+
+describe("contextName", () => {
+  it("reads the replicated name core puts on a group's context listing", () => {
+    // ⚠️ This field used to be absent from ContextRecord entirely, so it was
+    // dropped on arrival. That is why a calendar named "c1" showed as "c1" on
+    // the node that created it — which had the name cached in its own
+    // localStorage — and as "Calendar 3f9a2b…" on every node that joined it.
+    expect(contextName({ contextId: "ctx-1", name: "c1" })).toBe("c1");
+  });
+
+  it("is empty when core has no name for the context", () => {
+    expect(contextName({ contextId: "ctx-1" })).toBe("");
+  });
+
+  it("trims, so a whitespace-only name does not beat the local fallback", () => {
+    expect(contextName({ contextId: "ctx-1", name: "  planning  " })).toBe(
+      "planning",
+    );
+    expect(contextName({ contextId: "ctx-1", name: "   " })).toBe("");
   });
 });

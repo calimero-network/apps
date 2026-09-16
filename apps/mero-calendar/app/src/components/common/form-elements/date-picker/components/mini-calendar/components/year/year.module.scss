@@ -9,10 +9,10 @@
 
   &_selected {
     color: var(--secondary);
-    background-color: #aecbfa;
+    background-color: var(--accent-soft);
     
     &:hover {
-      background-color: #aecbfa;
+      background-color: var(--accent-soft);
     }
   }
   
