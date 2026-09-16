@@ -59,12 +59,15 @@ const css = `
   box-shadow: 0 12px 44px rgba(0,0,0,0.55); }
 .mbl-card h3 { margin: 0 0 10px; font-size: 15px; text-align: center; }
 /* The way back out to the marketing page.
-   ⚠️ Its own row ABOVE the card, and a bordered button rather than a link.
-   The first version was an 11px grey link tucked inside the card next to the
-   "player name" label, and it read as a caption — on a dark card over a
+   ⚠️ Its own row BELOW the card, centred, and a bordered button rather than
+   a link. The first version was an 11px grey link tucked inside the card next
+   to the "player name" label, and it read as a caption — on a dark card over a
    panorama there was nothing to say it was pressable. This sits outside the
-   card, on the same left edge, and looks like the control it is. */
-.mbl-backrow { width: min(380px, 94vw); box-sizing: border-box; margin-top: 10px; }
+   card and looks like the control it is; centring it under the card puts it
+   directly beneath the "connect a node" note, which is the line a visitor with
+   no node reads just before they give up and go back. */
+.mbl-backrow { width: min(380px, 94vw); box-sizing: border-box; margin-top: 0;
+  text-align: center; }
 .mbl-back { display: inline-flex; align-items: center; gap: 7px;
   padding: 7px 13px 7px 11px; border-radius: 6px; cursor: pointer; font-family: inherit;
   font-size: 12px; font-weight: 600; color: #dfe7ee;
@@ -217,12 +220,12 @@ export class Landing {
       <div class="mbl-logo">${LOGO_SVG}</div>
       <h1 class="mbl-title">Mero <em>Blocks</em></h1>
       <p class="mbl-tag">P2P worlds on Calimero — no game server</p>
+      <div class="mbl-card" data-testid="play-card"><div id="mbl-play"></div></div>
       <div class="mbl-backrow">
         <button type="button" class="mbl-back" data-testid="back-to-landing">
           <span aria-hidden="true">&larr;</span> Back to landing page
         </button>
       </div>
-      <div class="mbl-card" data-testid="play-card"><div id="mbl-play"></div></div>
       <div class="mbl-controls" data-testid="controls">
         <kbd>WASD</kbd> move &nbsp; <kbd>Space</kbd> jump &nbsp; <kbd>←↑↓→</kbd> look
         &nbsp; <kbd>LMB</kbd>/<kbd>Q</kbd> break &nbsp; <kbd>RMB</kbd>/<kbd>E</kbd> place
