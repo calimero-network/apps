@@ -14,6 +14,10 @@ interface LobbyViewProps {
   lobbyAlias?: string | null;
   isAdmin: boolean;
   members: GroupMember[];
+  /** Player keys in this lobby — what `create_match` accepts. */
+  playerKeys: string[];
+  /** Fill the challenge field from a player row. */
+  onChallengePlayer: (key: string) => void;
   selfIdentity: string | null;
   executorPublicKey: string | null;
 
@@ -50,7 +54,7 @@ const formatTs = (ms: number) => new Date(ms).toLocaleString(undefined, {
 });
 
 export default function LobbyView({
-  lobbyAlias, isAdmin, members, selfIdentity, executorPublicKey,
+  lobbyAlias, isAdmin, members, playerKeys, onChallengePlayer, selfIdentity, executorPublicKey,
   inviteLoading, invitationJson, onCreateInvitation, onDismissInvitation,
   player2, creatingMatch, onPlayer2Change, onCreateMatch,
   matches, onOpenGame,
@@ -86,54 +90,43 @@ export default function LobbyView({
               {members.length} member{members.length !== 1 ? 's' : ''} online
             </span>
 
-            {members.length > 0 && (
-              <details>
-                <summary style={{ cursor: 'pointer', color: 'var(--text-muted)', fontSize: '0.8rem', fontFamily: 'var(--font-mono)' }}>
-                  Members
-                </summary>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', marginTop: '0.5rem' }}>
-                  {/* ⚠️ NO IDENTIFIER ON THESE ROWS, deliberately.
-                      A member row is keyed by ACCOUNT id; the key you share to
-                      start a match is an EXECUTOR key. Since rc.27 dropped
-                      base58 both are 64 hex, so showing them together put two
-                      indistinguishable-looking values on one screen where only
-                      ONE of them can be acted on — and copying the wrong one
-                      fails much later, as "that member hasn't opened this yet".
-                      The account is not actionable here, so it is not shown. */}
-                  {members.map((m) => (
-                    <div key={m.identity} className="member-row">
-                      <span className={`member-role ${m.role === 'Admin' ? 'role-admin' : 'role-member'}`}>
-                        {m.role}
+            {/* ⚠️ PLAYER keys, from the lobby CONTEXT — not the group's member
+                rows, which are keyed by ACCOUNT id and which `create_match`
+                rejects as "not a player". Since rc.27 both render as 64 hex, so
+                listing the accounts here would offer a copy button for the one
+                id that cannot start a game. */}
+            {playerKeys.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                <span className="info-label">Players in this lobby</span>
+                <span className="console-hint">
+                  Copy yours to invite someone to challenge you; challenge anyone
+                  else with one click.
+                </span>
+                {playerKeys.map((key) => {
+                  const isSelf = key === executorPublicKey;
+                  return (
+                    <div key={key} className="member-row">
+                      <span className="mono-sm" style={{ fontSize: '0.75rem' }}>
+                        {key.slice(0, 12)}…{key.slice(-8)}
                       </span>
-                      {m.identity === selfIdentity && (
+                      <CopyButton text={key} label="Copy" copiedLabel="Copied" className="btn-icon" />
+                      {isSelf ? (
                         <span style={{ fontSize: '0.7rem', color: 'var(--text-accent)' }}>you</span>
+                      ) : (
+                        <button
+                          type="button"
+                          className="btn-icon"
+                          onClick={() => onChallengePlayer(key)}
+                        >
+                          Challenge
+                        </button>
                       )}
                     </div>
-                  ))}
-                </div>
-              </details>
-            )}
-
-            {executorPublicKey && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-                <div className="info-pair">
-                  <span className="info-label">Your player key</span>
-                  <span className="mono-sm" style={{ fontSize: '0.72rem' }}>
-                    {executorPublicKey.slice(0, 12)}...{executorPublicKey.slice(-8)}
-                  </span>
-                  <CopyButton
-                    text={executorPublicKey}
-                    label="Copy"
-                    copiedLabel="Copied"
-                    className="btn-icon"
-                  />
-                </div>
-                <span className="console-hint">
-                  The only key you need to share. Send it to an opponent and they
-                  can challenge you.
-                </span>
+                  );
+                })}
               </div>
             )}
+
 
             <div style={{ display: 'flex', gap: '0.5rem' }}>
               <button

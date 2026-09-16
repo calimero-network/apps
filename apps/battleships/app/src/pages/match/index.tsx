@@ -271,7 +271,10 @@ export default function MatchPage() {
   useEffect(() => {
     if (view !== 'lobby-select' && view !== 'lobby') return undefined;
     if (!lobby.namespaceId) return undefined;
-    const id = setInterval(() => { void lobby.refetchMembers(); }, 10_000);
+    const id = setInterval(() => {
+      void lobby.refetchMembers();
+      void lobby.refetchPlayerKeys();
+    }, 10_000);
     return () => clearInterval(id);
   }, [view, lobby.namespaceId, lobby.refetchMembers, lobby]);
 
@@ -906,6 +909,8 @@ export default function MatchPage() {
             <LobbyView
               lobbyAlias={lobby.selectedLobby?.alias}
               isAdmin={lobby.isAdmin}
+              playerKeys={lobby.playerKeys}
+              onChallengePlayer={setPlayer2}
               members={lobby.members}
               selfIdentity={lobby.selfIdentity}
               executorPublicKey={lobby.executorPublicKey}
