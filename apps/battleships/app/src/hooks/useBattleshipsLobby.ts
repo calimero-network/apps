@@ -130,10 +130,55 @@ export function useBattleshipsLobby(): UseBattleshipsLobbyReturn {
 
   const groupLoading = namespacesLoading || contextsLoading;
 
-  // The lobby context is the first context in the namespace root group
-  const lobbyContextId = namespaceContexts.length > 0
-    ? namespaceContexts[0].contextId
-    : null;
+  /**
+   * The lobby context, identified by its SERVICE — not by being first.
+   *
+   * ⚠️ THIS WAS `namespaceContexts[0]`, AND THAT IS WHY THE LOBBY BROKE ON
+   * REFRESH. Match contexts are created in the SAME namespace root group
+   * (`createContext({ groupId: namespaceId, serviceName: 'game' })`), so the
+   * moment you start a game the group holds two or more contexts and
+   * `listGroupContexts` has no defined order. Whenever the game context sorted
+   * first, every lobby call went to it and answered `method "get_matches" not
+   * found` — along with `get_history` and `get_player_stats` — and the members
+   * and match list vanished. Nothing was actually lost; the app was talking to
+   * the wrong context.
+   *
+   * `GroupContextEntry` carries only `{ contextId, alias }`, so the service is
+   * not in the listing and has to be read per context. `Context.serviceName` is
+   * what distinguishes them.
+   */
+  const [lobbyContextId, setLobbyContextId] = useState<string | null>(null);
+  const contextIdsKey = namespaceContexts.map((c) => c.contextId).join(',');
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!mero || namespaceContexts.length === 0) {
+        if (!cancelled) setLobbyContextId(null);
+        return;
+      }
+      for (const entry of namespaceContexts) {
+        try {
+          const ctx = await mero.admin.getContext(entry.contextId);
+          if (cancelled) return;
+          if (ctx?.serviceName === 'lobby') {
+            setLobbyContextId(entry.contextId);
+            return;
+          }
+        } catch {
+          // A context this node cannot read yet is simply not a candidate.
+        }
+      }
+      if (cancelled) return;
+      // No context claimed the lobby service. Older bundles predate
+      // `serviceName`, so fall back to the previous behaviour rather than
+      // leaving the app with no lobby at all — but say so, because on a bundle
+      // that DOES set it this means the lobby context is missing.
+      console.warn('[lobby] no context reported serviceName "lobby"; falling back to the first');
+      setLobbyContextId(namespaceContexts[0]?.contextId ?? null);
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mero, contextIdsKey]);
 
   // Patch the lobbyContextId into the selected lobby record
   if (selectedLobby && lobbyContextId) {
