@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { Input } from '@calimero-network/mero-ui';
 import CopyButton from './CopyButton';
 import type { MatchSummary, MatchRecord, PlayerStatsView } from '../generated/lobby/LobbyClient';
@@ -73,6 +73,33 @@ export default function LobbyView({
    *
    * De-duplicated, because once the lookup does answer, your key is in it too.
    */
+  /**
+   * The role to badge a player row with.
+   *
+   * ⚠️ THERE IS NO GENERAL MAPPING FROM A PLAYER KEY TO A ROLE. Roles live on
+   * GROUP members, keyed by account; a player key is a CONTEXT identity, and
+   * nothing relates the two — that is the same split that makes `create_match`
+   * reject an account. So this resolves only the two cases it can prove:
+   *
+   *   - your own row, from `isAdmin`
+   *   - the other row, when there is exactly one other member and exactly one
+   *     other key, which is the two-player lobby and leaves no ambiguity
+   *
+   * Anything else returns null and the row simply carries no badge. A guessed
+   * role is worse than none: it would show "Admin" against someone who cannot
+   * promote anybody.
+   */
+  const roleForKey = useCallback(
+    (key: string): string | null => {
+      if (key === executorPublicKey) return isAdmin ? 'Admin' : 'Member';
+      const others = members.filter((m) => m.identity !== selfIdentity);
+      const otherKeys = playerKeys.filter((k) => k !== executorPublicKey);
+      if (others.length === 1 && otherKeys.length === 1) return others[0]?.role ?? null;
+      return null;
+    },
+    [executorPublicKey, isAdmin, members, playerKeys, selfIdentity],
+  );
+
   const shownPlayers = useMemo(() => {
     const seen = new Set<string>();
     const out: string[] = [];
@@ -147,6 +174,14 @@ export default function LobbyView({
                       <span className="mono-sm" style={{ fontSize: '0.75rem' }}>
                         {key.slice(0, 12)}…{key.slice(-8)}
                       </span>
+                      {(() => {
+                        const role = roleForKey(key);
+                        return role ? (
+                          <span className={`member-role ${role === 'Admin' ? 'role-admin' : 'role-member'}`}>
+                            {role}
+                          </span>
+                        ) : null;
+                      })()}
                       <CopyButton text={key} label="Copy" copiedLabel="Copied" className="btn-icon" />
                       {isSelf ? (
                         <span style={{ fontSize: '0.7rem', color: 'var(--text-accent)' }}>you</span>
