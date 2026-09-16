@@ -30,6 +30,7 @@ import { beginWebLogin } from "../net/auth";
 import { deleteWorld } from "../state/persistence";
 import { WorldAnim } from "./worldAnim";
 import { clearSession, getSession, hasConnection, isAuthenticated, updateSession } from "../net/session";
+import { showLandingAgain } from "../pages/landing/mount";
 
 export interface LaunchChoice {
   name: string;
@@ -44,18 +45,24 @@ const css = `
     rgba(6,8,14,0.15) 65%, rgba(6,8,14,0.7) 100%); }
 .mtl-wrap { position: relative; max-width: 520px; margin: 0 auto; padding: 20px 24px 18px;
   min-height: 100vh; box-sizing: border-box; display: flex; flex-direction: column; }
-.mtl-nav { display: flex; align-items: center; gap: 10px; }
-.mtl-logo { width: 34px; height: 34px; border-radius: 8px; display: grid; place-items: center; }
-.mtl-nav b { font-size: 18px; letter-spacing: 1px; text-shadow: 0 1px 6px rgba(0,0,0,0.8); }
-.mtl-nav span { color: #cdd9e5; font-size: 12px; margin-left: auto;
-  text-shadow: 0 1px 4px rgba(0,0,0,0.8); }
+/* The hero: the logo and the game's NAME, at the size a title screen wants.
+   This replaces a 34px logo in a top-left nav bar plus a sentence-case h1 that
+   was the pitch rather than the title — the launcher never actually said what
+   the game is called. Mirrors the Mero Blocks title screen. */
+.mtl-hero { display: flex; flex-direction: column; align-items: center; gap: 6px;
+  padding-top: 8px; }
+.mtl-logo { width: 78px; height: 78px; display: grid; place-items: center;
+  filter: drop-shadow(0 6px 12px rgba(0,0,0,0.5)); }
+.mtl-logo svg { width: 78px; height: 78px; border-radius: 12px; display: block; }
+.mtl-title { margin: 0; font-size: clamp(38px, 11vw, 60px); font-weight: 900;
+  letter-spacing: 4px; text-transform: uppercase; line-height: 1; text-align: center;
+  color: #fff; text-shadow: 0 4px 0 rgba(0,0,0,0.45), 0 0 28px rgba(0,0,0,0.5); }
+.mtl-title em { font-style: normal; color: #58c56b; }
+.mtl-tag { margin: 0; font-size: 13px; color: #cfe3d6; letter-spacing: 1px;
+  text-align: center; text-shadow: 0 1px 3px rgba(0,0,0,0.8); }
+.mtl-tag em { font-style: normal; color: #58c56b; }
 .mtl-center { flex: 1; display: flex; flex-direction: column; justify-content: center;
   padding: 14px 0; }
-.mtl-center h1 { font-size: 28px; margin: 0 0 6px; line-height: 1.15; text-align: center;
-  text-shadow: 0 2px 12px rgba(0,0,0,0.85); }
-.mtl-center h1 em { font-style: normal; color: #58c56b; }
-.mtl-center p.lead { color: #dbe5ee; font-size: 14px; line-height: 1.5; margin: 0 0 14px;
-  text-align: center; text-shadow: 0 1px 8px rgba(0,0,0,0.85); }
 .mtl-card { background: rgba(11,14,20,0.82); backdrop-filter: blur(6px);
   border: 1px solid rgba(255,255,255,0.14); border-radius: 16px; padding: 18px 24px 20px;
   box-shadow: 0 8px 40px rgba(0,0,0,0.45); }
@@ -111,6 +118,35 @@ const css = `
 .mtl-world button { padding: 6px 14px; border-radius: 6px; border: none; background: #4f8cff;
   color: #fff; font-weight: 600; cursor: pointer; }
 .mtl-note { font-size: 12px; color: #8fa3ba; margin-top: 10px; line-height: 1.5; }
+/* The way back out to the marketing page.
+   ⚠️ Its own row BELOW the card, centred, so it lands directly under the
+   "Merraria runs on your Calimero node — connect one to play …" note: the line
+   a visitor with no node reads immediately before they give up and go back.
+   Outside the card, and a bordered button rather than a link — an 11px grey
+   link on a dark card over the world animation reads as a caption, with
+   nothing to say it is pressable. */
+.mtl-backrow { text-align: center; margin-top: 14px; }
+.mtl-back { display: inline-flex; align-items: center; gap: 7px;
+  padding: 7px 13px 7px 11px; border-radius: 8px; cursor: pointer; font-family: inherit;
+  font-size: 12px; font-weight: 600; color: #dfe7ee;
+  background: rgba(11,14,20,0.82); border: 1px solid rgba(255,255,255,0.22);
+  backdrop-filter: blur(6px); box-shadow: 0 4px 16px rgba(0,0,0,0.45); }
+.mtl-back:hover { color: #fff; background: rgba(30,38,50,0.9); border-color: rgba(255,255,255,0.4); }
+.mtl-back span { font-size: 14px; line-height: 1; }
+/* What the keys do, on the screen you read BEFORE the world loads — in game
+   the same list is behind Esc/O, which is no help to a first-time player who
+   does not know that yet. */
+/* The negative side margins let the row use the wrap's own 24px gutter: the
+   six bindings need a hair more than the 520px column, and without it "O menu"
+   drops to a second line on its own. */
+.mtl-controls { margin: 14px -14px 0; color: #cfd9e4; font-size: 12px;
+  display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 12px;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.85); }
+/* each binding is ONE unit — a plain inline run wrapped between a key and the
+   verb it belongs to, which read as a different control entirely */
+.mtl-controls span { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.mtl-controls kbd { background: rgba(0,0,0,0.55); border: 1px solid rgba(255,255,255,0.25);
+  border-radius: 4px; padding: 2px 6px; font-family: ui-monospace, monospace; font-size: 11px; }
 .mtl-error { color: #ff8686; font-size: 12px; margin-top: 10px; min-height: 14px; }
 .mtl-footer { color: #b7c4d2; font-size: 12px; text-align: center;
   text-shadow: 0 1px 4px rgba(0,0,0,0.8); }
@@ -134,7 +170,6 @@ const css = `
 .mtl-modal-close:hover { color: #fff; }
 .mtl-scan { font-size: 12px; color: #8fa3ba; animation: mtlpulse 1.2s ease-in-out infinite; }
 @keyframes mtlpulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
-.mtl-logo svg { width: 34px; height: 34px; display: block; }
 .mtl-social { display: flex; gap: 20px; justify-content: center; align-items: center;
   flex-wrap: wrap; margin-top: 8px; }
 .mtl-social a { color: #8fa3ba; text-decoration: none; display: inline-flex; align-items: center;
@@ -145,7 +180,7 @@ const css = `
 /* Chromeless: the unified landing page (src/pages/landing) has already shown the
    logo, the name and the pitch, so when it hands off here the launcher must not
    repeat them — it goes straight to the world picker. See main.ts. */
-#mt-landing.is-chromeless .mtl-nav, #mt-landing.is-chromeless .mtl-center > h1, #mt-landing.is-chromeless .mtl-center > .lead, #mt-landing.is-chromeless .mtl-footer { display: none !important; }
+#mt-landing.is-chromeless .mtl-hero, #mt-landing.is-chromeless .mtl-footer { display: none !important; }
 `;
 
 export const LOGO_SVG = `
@@ -238,15 +273,26 @@ export class Landing {
       <canvas class="mtl-bg" data-testid="world-anim"></canvas>
       <div class="mtl-scrim"></div>
       <div class="mtl-wrap">
-        <div class="mtl-nav">
-          <div class="mtl-logo">${LOGO_SVG}</div><b>merraria</b>
-          <span>on Calimero · P2P</span>
+        <div class="mtl-hero">
+          <div class="mtl-logo">${LOGO_SVG}</div>
+          <h1 class="mtl-title">Mer<em>raria</em></h1>
+          <p class="mtl-tag">A Terraria-style world that lives on <em>your</em> nodes</p>
         </div>
         <div class="mtl-center">
-          <h1>A Terraria-style world that lives on <em>your</em> nodes.</h1>
-          <p class="lead">Mine and build together in real time — no game server,
-          just peer-to-peer Calimero nodes.</p>
           <div class="mtl-card" data-testid="play-card"><div id="mtl-play"></div></div>
+          <div class="mtl-backrow">
+            <button type="button" class="mtl-back" data-testid="back-to-landing">
+              <span aria-hidden="true">&larr;</span> Back to landing page
+            </button>
+          </div>
+          <div class="mtl-controls" data-testid="controls">
+            <span><kbd>A</kbd>&thinsp;<kbd>D</kbd> move</span>
+            <span><kbd>Space</kbd> jump</span>
+            <span><kbd>LMB</kbd> dig</span>
+            <span><kbd>RMB</kbd> place</span>
+            <span><kbd>1–9</kbd> tile</span>
+            <span><kbd>O</kbd> menu</span>
+          </div>
         </div>
         <div class="mtl-footer">
           merraria · a Calimero network showcase
@@ -263,6 +309,15 @@ export class Landing {
     this.anim?.stop();
     this.anim = new WorldAnim(this.root.querySelector<HTMLCanvasElement>(".mtl-bg")!);
     this.anim.start();
+
+    // Renders the marketing page ON TOP of this launcher (z-index 50 over 20)
+    // rather than tearing the launcher down, so the world animation keeps
+    // running, the world list keeps whatever it had loaded, and dismissing the
+    // page again simply uncovers the card the visitor left. Nothing to restore.
+    this.root.querySelector("[data-testid=back-to-landing]")!.addEventListener("click", () => {
+      void showLandingAgain();
+    });
+
     this.renderPlayCard(defaults, done);
   }
 
