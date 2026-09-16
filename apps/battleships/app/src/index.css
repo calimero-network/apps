@@ -200,7 +200,7 @@ html, body {
 
 .badge-live {
   background: rgba(0, 163, 90, 0.1);
-  color: var(--sonar-green);
+  color: var(--text-accent);
   border: 1px solid rgba(0, 163, 90, 0.15);
   animation: pulse-badge 2s ease-in-out infinite;
 }
@@ -428,7 +428,7 @@ html, body {
 .ship-btn-active {
   background: rgba(0, 163, 90, 0.1);
   border-color: var(--sonar-green);
-  color: var(--sonar-green);
+  color: var(--text-accent);
   box-shadow: var(--shadow-glow-green);
 }
 
@@ -485,7 +485,7 @@ html, body {
 
 .orient-btn-active {
   background: rgba(0, 163, 90, 0.1);
-  color: var(--sonar-green);
+  color: var(--text-accent);
 }
 
 /* ============================================================
@@ -505,7 +505,7 @@ html, body {
 
 .turn-yours {
   background: rgba(0, 163, 90, 0.1);
-  color: var(--sonar-green);
+  color: var(--text-accent);
   border: 1px solid rgba(0, 163, 90, 0.2);
 }
 
@@ -545,7 +545,7 @@ html, body {
 
 .status-active {
   background: rgba(0, 163, 90, 0.1);
-  color: var(--sonar-green);
+  color: var(--text-accent);
   border: 1px solid rgba(0, 163, 90, 0.15);
 }
 
@@ -1099,7 +1099,7 @@ html, body {
 }
 
 .view-toggle-btn-active {
-  color: var(--sonar-green);
+  color: var(--text-accent);
   background: rgba(0, 163, 90, 0.08);
   box-shadow: inset 0 0 0 1px rgba(0, 163, 90, 0.15);
 }
@@ -1156,7 +1156,7 @@ html, body {
 
 .info-icon:hover,
 .info-icon:focus-visible {
-  color: var(--sonar-green);
+  color: var(--text-accent);
   border-color: rgba(0, 163, 90, 0.4);
   background: rgba(0, 163, 90, 0.05);
   outline: none;
@@ -1443,7 +1443,7 @@ html, body {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.12em;
-  color: var(--sonar-green);
+  color: var(--text-accent);
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
@@ -1564,7 +1564,7 @@ html, body {
 
 .console-hint::before {
   content: '›';
-  color: var(--sonar-green);
+  color: var(--text-accent);
   font-weight: 700;
 }
 
@@ -1699,7 +1699,7 @@ html, body {
 }
 
 .nav-brand:hover .nav-brand-text {
-  color: var(--sonar-green);
+  color: var(--text-accent);
 }
 
 /* ============================================================
@@ -1757,7 +1757,7 @@ html, body {
 }
 
 .app-footer-link:hover {
-  color: var(--sonar-green);
+  color: var(--text-accent);
 }
 
 .app-footer-ext {
@@ -1858,4 +1858,22 @@ html, body {
 
 .page-back:hover {
   color: var(--text-primary);
+}
+
+/* A count beside a tab label, so "Matches" and "History" say how much is
+   behind them without opening each one. */
+.tab-count {
+  margin-left: 0.4rem;
+  padding: 0 0.35rem;
+  border-radius: 999px;
+  background: var(--bg-card-hover);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1.6;
+}
+
+.tab-btn-active .tab-count {
+  background: var(--sonar-green-glow);
+  color: var(--text-accent);
 }

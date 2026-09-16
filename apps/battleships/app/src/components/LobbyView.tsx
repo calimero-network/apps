@@ -56,6 +56,7 @@ export default function LobbyView({
   playerStats, history, currentUser,
 }: LobbyViewProps) {
   const [historyFilter, setHistoryFilter] = useState<HistoryFilter>('all');
+  const [matchTab, setMatchTab] = useState<'matches' | 'record' | 'history'>('matches');
 
   // Newest first, then optionally restricted to matches involving the
   // current user. Memoized so a re-render from sibling state changes
@@ -100,7 +101,7 @@ export default function LobbyView({
                         {m.role}
                       </span>
                       {m.identity === selfIdentity && (
-                        <span style={{ fontSize: '0.65rem', color: 'var(--sonar-green)' }}>(you)</span>
+                        <span style={{ fontSize: '0.65rem', color: 'var(--text-accent)' }}>(you)</span>
                       )}
                     </div>
                   ))}
@@ -124,7 +125,17 @@ export default function LobbyView({
             )}
 
             <div style={{ display: 'flex', gap: '0.5rem' }}>
-              <Button variant="secondary" onClick={onCreateInvitation} disabled={inviteLoading}>
+              <Button
+                variant="secondary"
+                onClick={onCreateInvitation}
+                disabled={inviteLoading}
+                style={{
+                  background: 'var(--sonar-green)',
+                  color: 'var(--accent-ink)',
+                  border: '1px solid transparent',
+                  boxShadow: 'none',
+                }}
+              >
                 {inviteLoading ? 'Creating...' : 'Invite Player'}
               </Button>
             </div>
@@ -137,7 +148,18 @@ export default function LobbyView({
                 <pre className="invite-code invite-link">{invitationJson}</pre>
                 <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem', alignItems: 'center' }}>
                   <CopyToClipboard text={invitationJson} variant="button" size="small" successMessage="Link copied!" />
-                  <Button variant="secondary" onClick={onDismissInvitation}>Dismiss</Button>
+                  <Button
+                    variant="secondary"
+                    onClick={onDismissInvitation}
+                    style={{
+                      background: 'var(--bg-surface)',
+                      color: 'var(--text-primary)',
+                      border: '1px solid var(--border-subtle)',
+                      boxShadow: 'none',
+                    }}
+                  >
+                    Dismiss
+                  </Button>
                 </div>
                 <span style={{ display: 'block', marginTop: '0.4rem', fontSize: '0.65rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
                   Send this link. Opening it joins the lobby.
@@ -177,141 +199,174 @@ export default function LobbyView({
         </div>
       </div>
 
-      {/* Match list */}
+      {/* ============================================================
+          Matches, record and history — ONE card, three tabs
+          ============================================================
+          These were three stacked cards saying related things about the same
+          matches, so the lobby was mostly chrome: three headers, three borders
+          and a lot of scrolling to compare "what is running" with "what
+          happened". One card, and the tab rail is the same control the lobby
+          picker uses, so the two screens behave alike. */}
       <div className="naval-card fade-in fade-in-delay-2">
-        <div className="naval-card-header">
-          <div className="naval-card-title">Matches</div>
-        </div>
         <div className="naval-card-body">
-          {matches.length === 0 ? (
-            <span className="mono-sm">No matches yet. Challenge an opponent above.</span>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              {matches.map((m) => {
-                const canOpen = m.status === 'Active' && !!m.context_id;
-                return (
-                  <div key={m.match_id} className="match-item">
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                      <span className="match-id">{m.match_id}</span>
-                      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                        <span className={`status-pill ${
-                          m.status === 'Active' ? 'status-active' :
-                          m.status === 'Finished' ? 'status-finished' :
-                          'status-pending'
-                        }`}>
-                          {m.status}
-                        </span>
-                        {m.winner && (
-                          <span className="mono-sm" style={{ fontSize: '0.7rem' }}>
-                            Winner: {m.winner.slice(0, 8)}...
+          <div className="tab-rail" role="tablist" aria-label="Matches, record and history">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={matchTab === 'matches'}
+              className={`tab-btn ${matchTab === 'matches' ? 'tab-btn-active' : ''}`}
+              onClick={() => setMatchTab('matches')}
+            >
+              Matches
+              {matches.length > 0 && <span className="tab-count">{matches.length}</span>}
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={matchTab === 'record'}
+              className={`tab-btn ${matchTab === 'record' ? 'tab-btn-active' : ''}`}
+              onClick={() => setMatchTab('record')}
+            >
+              Your record
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={matchTab === 'history'}
+              className={`tab-btn ${matchTab === 'history' ? 'tab-btn-active' : ''}`}
+              onClick={() => setMatchTab('history')}
+            >
+              History
+              {history.length > 0 && <span className="tab-count">{history.length}</span>}
+            </button>
+          </div>
+
+          {matchTab === 'matches' && (
+            <div className="tab-content" key="matches" role="tabpanel">
+              {matches.length === 0 ? (
+                <span className="console-hint">No matches yet. Challenge an opponent above.</span>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  {matches.map((m) => {
+                    const canOpen = m.status === 'Active' && !!m.context_id;
+                    return (
+                      <div key={m.match_id} className="match-item">
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                          <span className="match-id">{m.match_id}</span>
+                          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                            <span className={`status-pill ${
+                              m.status === 'Active' ? 'status-active' :
+                              m.status === 'Finished' ? 'status-finished' :
+                              'status-pending'
+                            }`}>
+                              {m.status}
+                            </span>
+                            {m.winner && (
+                              <span className="mono-sm" style={{ fontSize: '0.7rem' }}>
+                                Winner: {m.winner.slice(0, 8)}...
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          className="lobby-row-cta"
+                          disabled={!canOpen}
+                          onClick={() => canOpen && onOpenGame(m.match_id, m.context_id!)}
+                        >
+                          {canOpen ? 'Open' : m.status === 'Pending' ? 'Pending' : 'Ended'}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {matchTab === 'record' && (
+            <div className="tab-content" key="record" role="tabpanel">
+              {playerStats ? (
+                <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
+                  <div className="info-pair">
+                    <span className="info-label">Wins</span>
+                    <span className="info-value">{playerStats.wins}</span>
+                  </div>
+                  <div className="info-pair">
+                    <span className="info-label">Losses</span>
+                    <span className="info-value">{playerStats.losses}</span>
+                  </div>
+                  <div className="info-pair">
+                    <span className="info-label">Games</span>
+                    <span className="info-value">{playerStats.games_played}</span>
+                  </div>
+                </div>
+              ) : (
+                <span className="console-hint">No matches finished yet.</span>
+              )}
+            </div>
+          )}
+
+          {matchTab === 'history' && (
+            <div className="tab-content" key="history" role="tabpanel">
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.25rem', marginBottom: '0.75rem' }}>
+                <button
+                  type="button"
+                  className={`status-pill ${historyFilter === 'all' ? 'status-active' : 'status-pending'}`}
+                  style={{ cursor: 'pointer', border: 'none' }}
+                  onClick={() => setHistoryFilter('all')}
+                >
+                  All
+                </button>
+                <button
+                  type="button"
+                  className={`status-pill ${historyFilter === 'mine' ? 'status-active' : 'status-pending'}`}
+                  style={{ cursor: 'pointer', border: 'none' }}
+                  onClick={() => setHistoryFilter('mine')}
+                  disabled={!currentUser}
+                  title={!currentUser ? 'Connect to filter by your matches' : undefined}
+                >
+                  Mine
+                </button>
+              </div>
+              {filteredHistory.length === 0 ? (
+                <span className="console-hint">
+                  {historyFilter === 'mine'
+                    ? "You haven't completed any matches in this lobby yet."
+                    : 'No completed matches in this lobby yet.'}
+                </span>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  {filteredHistory.map((r) => {
+                    const youWon = currentUser && r.winner === currentUser;
+                    const youLost = currentUser && r.loser === currentUser;
+                    const involvedYou = youWon || youLost;
+                    return (
+                      <div key={r.match_id} className="match-item">
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                          <span className="match-id">{r.match_id}</span>
+                          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                            <span className="status-pill status-finished">
+                              {youWon ? 'You won' : youLost ? 'You lost' : 'Finished'}
+                            </span>
+                            <span className="mono-sm" style={{ fontSize: '0.7rem' }}>
+                              {formatKey(r.winner)} beat {formatKey(r.loser)}
+                            </span>
+                            <span className="mono-sm" style={{ fontSize: '0.7rem', opacity: 0.75 }}>
+                              {formatTs(r.finished_ms)}
+                            </span>
+                          </div>
+                        </div>
+                        {involvedYou && (
+                          <span className="mono-sm" style={{ fontSize: '0.65rem', color: 'var(--text-accent)' }}>
+                            (you)
                           </span>
                         )}
                       </div>
-                    </div>
-                    <Button
-                      variant="primary"
-                      disabled={!canOpen}
-                      onClick={() => canOpen && onOpenGame(m.match_id, m.context_id!)}
-                    >
-                      {canOpen ? 'Open' : m.status === 'Pending' ? 'Pending' : 'Ended'}
-                    </Button>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Your Record */}
-      <div className="naval-card fade-in fade-in-delay-2">
-        <div className="naval-card-header">
-          <div className="naval-card-title">Your Record</div>
-        </div>
-        <div className="naval-card-body">
-          {playerStats ? (
-            <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
-              <div className="info-pair">
-                <span className="info-label">Wins</span>
-                <span className="info-value">{playerStats.wins}</span>
-              </div>
-              <div className="info-pair">
-                <span className="info-label">Losses</span>
-                <span className="info-value">{playerStats.losses}</span>
-              </div>
-              <div className="info-pair">
-                <span className="info-label">Games</span>
-                <span className="info-value">{playerStats.games_played}</span>
-              </div>
-            </div>
-          ) : (
-            <span className="mono-sm">No matches finished yet.</span>
-          )}
-        </div>
-      </div>
-
-      {/* Match history — lobby-wide, with All / Mine filter */}
-      <div className="naval-card fade-in fade-in-delay-2">
-        <div className="naval-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div className="naval-card-title">Match History</div>
-          <div style={{ display: 'flex', gap: '0.25rem' }}>
-            <button
-              type="button"
-              className={`status-pill ${historyFilter === 'all' ? 'status-active' : 'status-pending'}`}
-              style={{ cursor: 'pointer', border: 'none' }}
-              onClick={() => setHistoryFilter('all')}
-            >
-              All
-            </button>
-            <button
-              type="button"
-              className={`status-pill ${historyFilter === 'mine' ? 'status-active' : 'status-pending'}`}
-              style={{ cursor: 'pointer', border: 'none' }}
-              onClick={() => setHistoryFilter('mine')}
-              disabled={!currentUser}
-              title={!currentUser ? 'Connect to filter by your matches' : undefined}
-            >
-              Mine
-            </button>
-          </div>
-        </div>
-        <div className="naval-card-body">
-          {filteredHistory.length === 0 ? (
-            <span className="mono-sm">
-              {historyFilter === 'mine'
-                ? "You haven't completed any matches in this lobby yet."
-                : 'No completed matches in this lobby yet.'}
-            </span>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              {filteredHistory.map((r) => {
-                const youWon = currentUser && r.winner === currentUser;
-                const youLost = currentUser && r.loser === currentUser;
-                const involvedYou = youWon || youLost;
-                return (
-                  <div key={r.match_id} className="match-item">
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                      <span className="match-id">{r.match_id}</span>
-                      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
-                        <span className="status-pill status-finished">
-                          {youWon ? 'You won' : youLost ? 'You lost' : 'Finished'}
-                        </span>
-                        <span className="mono-sm" style={{ fontSize: '0.7rem' }}>
-                          {formatKey(r.winner)} beat {formatKey(r.loser)}
-                        </span>
-                        <span className="mono-sm" style={{ fontSize: '0.7rem', opacity: 0.75 }}>
-                          {formatTs(r.finished_ms)}
-                        </span>
-                      </div>
-                    </div>
-                    {involvedYou && (
-                      <span className="mono-sm" style={{ fontSize: '0.65rem', color: 'var(--sonar-green)' }}>
-                        (you)
-                      </span>
-                    )}
-                  </div>
-                );
-              })}
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
         </div>
