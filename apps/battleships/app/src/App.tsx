@@ -1,5 +1,5 @@
 import React, { type ReactNode } from 'react';
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { AppMode, MeroProvider, useMero } from '@calimero-network/mero-react';
 import { ToastProvider } from '@calimero-network/mero-ui';
 
@@ -62,8 +62,20 @@ const hashNodeUrl =
  */
 function RedirectIfAuthed({ children }: { children: ReactNode }) {
   const { isAuthenticated, isLoading } = useMero();
+  const location = useLocation();
+  // Asking for the landing page ON PURPOSE — the in-app logo link — is not the
+  // case this guard exists for, so it is let through.
+  //
+  // ⚠️ ROUTER STATE, deliberately, not a query parameter. State lives in the
+  // history entry and never survives a fresh document load, so the SSO callback
+  // — which arrives as a cold navigation to `/` — cannot carry it even if the
+  // URL it returns to was captured from a page that had it. A `?from=app`
+  // marker WOULD ride along in that URL and would reintroduce exactly the bug
+  // the comment above describes: login succeeding and landing you back on the
+  // marketing page.
+  const deliberate = (location.state as { fromApp?: boolean } | null)?.fromApp === true;
   if (isLoading) return null; // the auth probe is still in flight
-  if (isAuthenticated) return <Navigate to="/home" replace />;
+  if (isAuthenticated && !deliberate) return <Navigate to="/home" replace />;
   return <>{children}</>;
 }
 

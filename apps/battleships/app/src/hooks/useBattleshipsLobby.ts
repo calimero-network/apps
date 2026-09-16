@@ -38,6 +38,8 @@ export interface UseBattleshipsLobbyReturn {
   groupLoading: boolean;
 
   members: GroupMember[];
+  /** Re-read the member list. Someone joining emits no event we can rely on. */
+  refetchMembers: () => Promise<void>;
   selfIdentity: string | null;
   membersLoading: boolean;
   isAdmin: boolean;
@@ -127,6 +129,7 @@ export function useBattleshipsLobby(): UseBattleshipsLobbyReturn {
   const {
     members,
     loading: membersLoading,
+    refetch: refetchMembers,
   } = useGroupMembers(namespaceId);
 
   // ⚠️ `useGroupMembers` used to return `selfIdentity`; mero-react 6 removed it,
@@ -322,6 +325,7 @@ export function useBattleshipsLobby(): UseBattleshipsLobbyReturn {
     groupLoading,
 
     members,
+    refetchMembers,
     selfIdentity,
     membersLoading,
     isAdmin,

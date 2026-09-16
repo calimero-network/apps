@@ -131,11 +131,17 @@ export default function LobbyView({
 
             {invitationJson && (
               <div>
-                <pre className="invite-code">{invitationJson}</pre>
-                <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
-                  <CopyToClipboard text={invitationJson} variant="button" size="small" successMessage="Copied!" />
+                {/* A link, not a JSON blob: it survives being pasted into a
+                    chat, and opening it on a machine with the desktop app
+                    hands the invitation straight to it. */}
+                <pre className="invite-code invite-link">{invitationJson}</pre>
+                <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem', alignItems: 'center' }}>
+                  <CopyToClipboard text={invitationJson} variant="button" size="small" successMessage="Link copied!" />
                   <Button variant="secondary" onClick={onDismissInvitation}>Dismiss</Button>
                 </div>
+                <span style={{ display: 'block', marginTop: '0.4rem', fontSize: '0.65rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+                  Send this link. Opening it joins the lobby.
+                </span>
               </div>
             )}
           </div>

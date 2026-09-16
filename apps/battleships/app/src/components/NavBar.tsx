@@ -1,7 +1,7 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 import {
   Navbar as MeroNavbar,
-  NavbarBrand,
   NavbarMenu,
   NavbarItem,
   Button,
@@ -54,7 +54,19 @@ export default function NavBar({
           </button>
         </NavbarItem>
       ) : null}
-      <NavbarBrand text="Battleships" />
+      {/* The mark is the way back to the landing page.
+          `state.fromApp` is what gets a signed-in visitor PAST the guard on
+          `/` — see RedirectIfAuthed in App.tsx. Router state, not a query
+          parameter, so an SSO callback can never carry it. */}
+      <Link
+        to="/"
+        state={{ fromApp: true }}
+        className="nav-brand"
+        aria-label="Battleships — back to the landing page"
+      >
+        <img src="/favicon.svg" alt="" width={26} height={26} className="nav-brand-mark" />
+        <span className="nav-brand-text">Battleships</span>
+      </Link>
       <NavbarMenu align="center">
         {namespaceId && (
           <div className="info-row">

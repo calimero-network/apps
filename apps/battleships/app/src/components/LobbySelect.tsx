@@ -151,7 +151,7 @@ export default function LobbySelect({
                 style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}
               >
                 <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
-                  <div style={{ flex: 1, minWidth: '220px' }}>
+                  <div style={{ flex: 1, minWidth: '160px' }}>
                     <Input
                       type="text"
                       placeholder="Lobby name"
@@ -182,16 +182,15 @@ export default function LobbySelect({
                 }}
                 style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}
               >
-                <Input
-                  type="text"
-                  placeholder="Paste invitation JSON"
-                  value={joinInvitationInput}
-                  onChange={(e) => onJoinInputChange(e.target.value)}
-                />
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
-                  <span className="console-hint">
-                    Ask a lobby owner to share an invitation, then paste the full JSON above.
-                  </span>
+                <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <div style={{ flex: 1, minWidth: '160px' }}>
+                    <Input
+                      type="text"
+                      placeholder="Paste invitation link"
+                      value={joinInvitationInput}
+                      onChange={(e) => onJoinInputChange(e.target.value)}
+                    />
+                  </div>
                   <button
                     type="submit"
                     className="btn-deploy"
@@ -200,6 +199,9 @@ export default function LobbySelect({
                     {joinLoading ? 'Joining…' : 'Join'}
                   </button>
                 </div>
+                <span className="console-hint">
+                  Ask a lobby owner for an invitation link and paste the whole thing.
+                </span>
               </form>
             </div>
           )}
@@ -290,7 +292,7 @@ export default function LobbySelect({
               <div className="lobby-empty-headline">No fleets in port</div>
               <div className="lobby-empty-sub">
                 Create a lobby above to set up a private game group, or paste an
-                invitation JSON to join one a friend already runs.
+                invitation link to join one a friend already runs.
               </div>
               <div className="lobby-empty-arrow">↑ Add a lobby above</div>
             </div>
