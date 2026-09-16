@@ -12,6 +12,7 @@ import type { GroupMember } from '@calimero-network/mero-react';
 import { useNamespaceBootstrap } from './useNamespaceBootstrap';
 import { embeddedLobbyName, lobbyLabel, setStoredLobbyName } from '../utils/lobbyName';
 import { addKnownPlayer, embeddedInviterKey, getKnownPlayers } from '../utils/knownPlayers';
+import { LobbyClient } from '../generated/lobby/LobbyClient';
 
 const SELECTED_NS_KEY = 'battleships:selectedNamespaceId';
 
@@ -44,6 +45,8 @@ export interface UseBattleshipsLobbyReturn {
   refetchMembers: () => Promise<void>;
   /** Re-read the lobby's player keys. */
   refetchPlayerKeys: () => Promise<void>;
+  /** Re-read the contract's account -> player key map. */
+  refetchPlayerMap: () => Promise<void>;
   selfIdentity: string | null;
   membersLoading: boolean;
   isAdmin: boolean;
@@ -61,6 +64,18 @@ export interface UseBattleshipsLobbyReturn {
    * "not a player".
    */
   playerKeys: string[];
+  /**
+   * account id -> the player key that account plays as.
+   *
+   * Recorded in the CONTRACT by each member about itself (`register_player`),
+   * because it is the only thing that reaches every node: group membership is
+   * keyed by account and syncs, context identities are the player keys and do
+   * NOT — a joining node lists only its own, forever. Nothing on the node
+   * relates the two ids, so without this map a lobby with three members shows
+   * every row as "hasn't opened the lobby yet" on EVERY node, the creator's
+   * included, even though the creator holds all the keys.
+   */
+  playerByAccount: Record<string, string>;
 
   invitePlayer: (validForSeconds?: number) => Promise<unknown>;
   inviteLoading: boolean;
@@ -399,6 +414,56 @@ export function useBattleshipsLobby(): UseBattleshipsLobbyReturn {
 
   useEffect(() => { void refetchPlayerKeys(); }, [refetchPlayerKeys]);
 
+  /**
+   * The account -> player key mapping, read from the lobby contract.
+   *
+   * Folded into the same refetch as the keys so one poll refreshes both.
+   * A context still running an older build has no `get_players`; that answers
+   * "method not found" and is left as an empty map rather than surfaced — the
+   * view falls back to the old heuristic in that case.
+   */
+  const [playerByAccount, setPlayerByAccount] = useState<Record<string, string>>({});
+  const refetchPlayerMap = useCallback(async () => {
+    if (!mero || !lobbyContextId || !executorPublicKey) { setPlayerByAccount({}); return; }
+    try {
+      const client = new LobbyClient(mero, lobbyContextId, executorPublicKey);
+      const entries = await client.getPlayers();
+      const next: Record<string, string> = {};
+      for (const e of entries ?? []) {
+        if (e?.account && e?.player) next[e.account] = e.player;
+      }
+      setPlayerByAccount(next);
+    } catch {
+      setPlayerByAccount({});
+    }
+  }, [mero, lobbyContextId, executorPublicKey]);
+
+  useEffect(() => { void refetchPlayerMap(); }, [refetchPlayerMap]);
+
+  /**
+   * Publish this node's own account -> player key pairing.
+   *
+   * Runs on every lobby open rather than only on join, which is what makes it
+   * self-healing: a member who joined before this existed registers the first
+   * time they open the lobby, with no migration. `register_player` is a no-op
+   * write when the pair is already recorded, so the repeat costs nothing.
+   */
+  useEffect(() => {
+    if (!mero || !lobbyContextId || !executorPublicKey) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const client = new LobbyClient(mero, lobbyContextId, executorPublicKey);
+        await client.registerPlayer();
+        if (!cancelled) await refetchPlayerMap();
+      } catch {
+        // An older contract has no such method. Nothing to do; the view falls
+        // back to the heuristic.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [mero, lobbyContextId, executorPublicKey, refetchPlayerMap]);
+
   const refetchContexts = useCallback(async () => {
     await refetchNamespaces();
     await refetchGroupContexts();
@@ -424,7 +489,9 @@ export function useBattleshipsLobby(): UseBattleshipsLobbyReturn {
     members,
     refetchMembers,
     playerKeys,
+    playerByAccount,
     refetchPlayerKeys,
+    refetchPlayerMap,
     selfIdentity,
     membersLoading,
     isAdmin,

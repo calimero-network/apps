@@ -17,6 +17,8 @@ interface LobbyViewProps {
   membersLoading: boolean;
   /** Player keys in this lobby — what `create_match` accepts. */
   playerKeys: string[];
+  /** account id -> player key, as recorded in the lobby contract. */
+  playerByAccount: Record<string, string>;
   /** Fill the challenge field from a player row. */
   onChallengePlayer: (key: string) => void;
   selfIdentity: string | null;
@@ -55,7 +57,8 @@ const formatTs = (ms: number) => new Date(ms).toLocaleString(undefined, {
 });
 
 export default function LobbyView({
-  lobbyAlias, isAdmin, members, membersLoading, playerKeys, onChallengePlayer, selfIdentity, executorPublicKey,
+  lobbyAlias, isAdmin, members, membersLoading, playerKeys, playerByAccount,
+  onChallengePlayer, selfIdentity, executorPublicKey,
   inviteLoading, invitationJson, onCreateInvitation, onDismissInvitation,
   player2, creatingMatch, onPlayer2Change, onCreateMatch,
   matches, onOpenGame,
@@ -75,30 +78,34 @@ export default function LobbyView({
    * De-duplicated, because once the lookup does answer, your key is in it too.
    */
   /**
-   * The player key for a member row, when it can be established.
+   * The player key for a member row.
    *
-   * ⚠️ THERE IS NO MAPPING BETWEEN THE TWO IDS. A member is keyed by ACCOUNT,
-   * a player key is a CONTEXT identity, and nothing relates them — the same
-   * split that makes `create_match` reject an account. So this resolves only
-   * what it can prove:
+   * The contract map is the answer: each member records its own account ->
+   * player key pairing with `register_player`, and contract state reaches every
+   * node. Nothing else does — group membership is keyed by ACCOUNT and syncs,
+   * context identities ARE the player keys and do not (a joining node lists
+   * only its own, and never catches up), and no node-side API relates the two.
    *
-   *   - your own row, from the executor key this node already holds
-   *   - the other row, when there is exactly one other member and exactly one
-   *     other known key, which is the two-player lobby and is unambiguous
-   *
-   * Otherwise the row says the member has not opened the lobby yet, which is
-   * both true and the reason there is no key: a context identity is minted
-   * when someone opens it, not when they accept the invitation.
+   * ⚠️ THE FALLBACK BELOW IS A TWO-PLAYER SPECIAL CASE, AND IT USED TO BE THE
+   * WHOLE IMPLEMENTATION. It only fires when there is exactly one other member
+   * and exactly one other known key, so at three members it resolved NOBODY and
+   * every row read "hasn't opened the lobby yet" — on the creator's node too,
+   * which held all three keys but could not say whose they were. It is kept
+   * only so a lobby whose context still runs a build without `register_player`
+   * behaves as it did before, and it is now unreachable whenever the map has
+   * the row.
    */
   const playerKeyForMember = useCallback(
     (identity: string): string | null => {
+      const recorded = playerByAccount[identity];
+      if (recorded) return recorded;
       if (identity === selfIdentity) return executorPublicKey ?? null;
       const others = members.filter((m) => m.identity !== selfIdentity);
       const otherKeys = playerKeys.filter((k) => k !== executorPublicKey);
       if (others.length === 1 && otherKeys.length === 1) return otherKeys[0] ?? null;
       return null;
     },
-    [executorPublicKey, members, playerKeys, selfIdentity],
+    [executorPublicKey, members, playerByAccount, playerKeys, selfIdentity],
   );
 
   const shownPlayers = useMemo(() => {

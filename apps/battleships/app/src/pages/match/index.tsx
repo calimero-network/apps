@@ -275,6 +275,11 @@ export default function MatchPage() {
     const id = setInterval(() => {
       void lobby.refetchMembers();
       void lobby.refetchPlayerKeys();
+      // ⚠️ The map has to be on the SAME poll as the roster. It is what turns a
+      // member row into a challengeable player, and it changes when someone
+      // ELSE opens the lobby — an event this node has no subscription for.
+      // Left off, a new player stays "hasn't opened the lobby yet" until reload.
+      void lobby.refetchPlayerMap();
     }, 10_000);
     return () => clearInterval(id);
   }, [view, lobby.namespaceId, lobby.refetchMembers, lobby]);
@@ -945,6 +950,7 @@ export default function MatchPage() {
               isAdmin={lobby.isAdmin}
               membersLoading={lobby.membersLoading}
               playerKeys={lobby.playerKeys}
+              playerByAccount={lobby.playerByAccount}
               onChallengePlayer={setPlayer2}
               members={lobby.members}
               selfIdentity={lobby.selfIdentity}

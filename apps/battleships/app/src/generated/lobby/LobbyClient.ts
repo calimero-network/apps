@@ -19,6 +19,7 @@ export interface LobbyState {
   matches: Record<string, MatchSummary>;
   player_stats: Record<string, PlayerStats>;
   history: MatchRecord[];
+  players: Record<string, string>;
 }
 
 export interface MatchRecord {
@@ -40,6 +41,11 @@ export interface MatchSummary {
   created_ms: number;
 }
 
+export interface PlayerEntry {
+  account: string;
+  player: string;
+}
+
 export interface PlayerStats {
   wins: {  };
   losses: {  };
@@ -55,11 +61,13 @@ export interface PlayerStatsView {
 
 
 
+
 export type AbiEvent =
   | { name: "MatchCreated"; payload: Event_MatchCreated }
   | { name: "MatchIdCollision"; payload: Event_MatchIdCollision }
   | { name: "MatchListUpdated" }
   | { name: "PlayerStatsUpdated" }
+  | { name: "PlayersUpdated" }
 ;
 
 
@@ -107,6 +115,14 @@ export class LobbyClient {
   }
 
   /**
+   * get_players
+   */
+  public async getPlayers(): Promise<PlayerEntry[]> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_players', argsJson: {}, executorPublicKey: this._executorPublicKey });
+    return response as PlayerEntry[];
+  }
+
+  /**
    * init
    */
   public async init(): Promise<void> {
@@ -120,6 +136,14 @@ export class LobbyClient {
   public async onMatchFinished(params: { match_id: string; winner: string; loser: string }): Promise<void> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'on_match_finished', argsJson: params, executorPublicKey: this._executorPublicKey });
     return response as void;
+  }
+
+  /**
+   * register_player
+   */
+  public async registerPlayer(): Promise<string> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'register_player', argsJson: {}, executorPublicKey: this._executorPublicKey });
+    return response as string;
   }
 
   /**

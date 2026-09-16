@@ -72,6 +72,24 @@
             },
             "crdt_type": "vector"
           }
+        },
+        {
+          "name": "players",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "record",
+              "fields": [],
+              "crdt_type": "lww_register",
+              "inner_type": {
+                "kind": "string"
+              }
+            },
+            "crdt_type": "unordered_map"
+          }
         }
       ]
     },
@@ -163,6 +181,23 @@
           "name": "created_ms",
           "type": {
             "kind": "u64"
+          }
+        }
+      ]
+    },
+    "PlayerEntry": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "account",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "player",
+          "type": {
+            "kind": "string"
           }
         }
       ]
@@ -262,6 +297,16 @@
       }
     },
     {
+      "name": "get_players",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "PlayerEntry"
+        }
+      }
+    },
+    {
       "name": "init",
       "params": [],
       "returns": {
@@ -295,6 +340,13 @@
       },
       "xcall_callable": true,
       "xcall_callers": "same_app"
+    },
+    {
+      "name": "register_player",
+      "params": [],
+      "returns": {
+        "kind": "string"
+      }
     },
     {
       "name": "set_match_context_id",
@@ -335,6 +387,9 @@
     },
     {
       "name": "PlayerStatsUpdated"
+    },
+    {
+      "name": "PlayersUpdated"
     }
   ],
   "state_root": "LobbyState",
