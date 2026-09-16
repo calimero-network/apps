@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   contractErrorMessage,
+  friendlyContractMessage,
+  isPlayerKeyShaped,
   isMatchFinishedError,
   isShipsNotPlacedError,
   parseContractError,
@@ -167,5 +169,43 @@ describe('structural parsing', () => {
     const loop: Record<string, unknown> = {};
     loop.cause = loop;
     expect(parseContractError(loop)).toBeNull();
+  });
+});
+
+describe('isPlayerKeyShaped', () => {
+  it('accepts a 64-hex key, either case, with whitespace around it', () => {
+    expect(isPlayerKeyShaped('ab'.repeat(32))).toBe(true);
+    expect(isPlayerKeyShaped(`  ${'AB'.repeat(32)}  `)).toBe(true);
+  });
+
+  it('rejects the things people actually paste', () => {
+    expect(isPlayerKeyShaped('')).toBe(false);
+    expect(isPlayerKeyShaped('ab'.repeat(31))).toBe(false); // truncated
+    expect(isPlayerKeyShaped(`${'ab'.repeat(32)}cd`)).toBe(false); // doubled
+    expect(isPlayerKeyShaped(`0x${'ab'.repeat(32)}`)).toBe(false); // 0x-prefixed
+    expect(isPlayerKeyShaped('zz'.repeat(32))).toBe(false); // not hex
+  });
+});
+
+describe('friendlyContractMessage', () => {
+  it('rewrites the messages that name a parameter or leak Rust', () => {
+    const err = new Error('{"data":"player2 is not a valid hex key: Invalid character \'x\' at 3","kind":"Invalid"}');
+    expect(friendlyContractMessage(err, 'Failed')).toBe(
+      'That opponent key is not valid — it should be 64 hex characters.',
+    );
+  });
+
+  it('rewrites the self-challenge refusal', () => {
+    const err = new Error('{"data":"cannot create match against self","kind":"Invalid"}');
+    expect(friendlyContractMessage(err, 'Failed')).toMatch(/cannot challenge yourself/i);
+  });
+
+  it('leaves a sentence already written for a player alone', () => {
+    const err = new Error('{"data":"both players must place ships first","kind":"Invalid"}');
+    expect(friendlyContractMessage(err, 'Failed')).toBe('both players must place ships first');
+  });
+
+  it('still refuses to show a byte array', () => {
+    expect(friendlyContractMessage(new Error('boom [1, 2, 3, 4]'), 'Failed')).toBe('Failed');
   });
 });

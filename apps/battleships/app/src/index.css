@@ -38,6 +38,10 @@
   --miss-blue-dim: #c8c8c8;
   --pending-yellow: #a16207;
   --pending-yellow-glow: rgba(161, 98, 7, 0.14);
+  /* Cyan survives for ONE job: the crosshair on the board. It has to read as
+     neither a ship (green) nor a hit (red), so a third hue is carrying meaning
+     there rather than decorating. Everywhere else — tabs, pills, spinners —
+     the selection accent is Calimero green. */
   --select-cyan: #0e7490;
   --select-cyan-glow: rgba(14, 116, 144, 0.14);
 
@@ -877,7 +881,7 @@ html, body {
 }
 
 .landing-title span {
-  background: linear-gradient(135deg, var(--sonar-green) 0%, var(--select-cyan) 100%);
+  background: linear-gradient(135deg, var(--sonar-green) 0%, var(--text-accent) 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -1047,8 +1051,8 @@ html, body {
 }
 
 .tab-btn-active {
-  color: var(--select-cyan);
-  background: rgba(14, 116, 144, 0.06);
+  color: var(--text-accent);
+  background: var(--sonar-green-glow);
 }
 
 .tab-btn-active::after {
@@ -1058,8 +1062,8 @@ html, body {
   right: 14%;
   bottom: -5px;
   height: 1px;
-  background: linear-gradient(90deg, transparent, var(--select-cyan), transparent);
-  box-shadow: 0 0 8px rgba(14, 116, 144, 0.7);
+  background: var(--sonar-green);
+  box-shadow: none;
 }
 
 .tab-glyph {
@@ -1322,7 +1326,7 @@ html, body {
   font-size: 0.65rem;
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  color: var(--select-cyan);
+  color: var(--text-accent);
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
@@ -1334,7 +1338,7 @@ html, body {
   height: 8px;
   border-radius: 50%;
   border: 1.5px solid rgba(14, 116, 144, 0.3);
-  border-top-color: var(--select-cyan);
+  border-top-color: var(--text-accent);
   animation: spin 0.7s linear infinite;
 }
 
@@ -1461,7 +1465,7 @@ html, body {
 .lobby-card-pending .lobby-card-enter {
   opacity: 1;
   transform: translateX(0);
-  color: var(--select-cyan);
+  color: var(--text-accent);
 }
 
 /* Empty state */
@@ -1698,10 +1702,6 @@ html, body {
   font-size: 0.95rem;
 }
 
-.nav-brand:hover .nav-brand-text {
-  color: var(--text-accent);
-}
-
 /* ============================================================
    Invitation link
    ============================================================ */
@@ -1924,4 +1924,179 @@ html, body {
 .btn-icon:hover {
   color: var(--text-primary);
   border-color: var(--border-subtle);
+}
+
+/* ============================================================
+   Logout — a text control, not a pill
+   ============================================================ */
+
+.nav-logout {
+  background: none;
+  border: none;
+  padding: 6px 4px;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.nav-logout:hover {
+  color: var(--text-primary);
+}
+
+/* ============================================================
+   Toasts
+   ============================================================
+   A white card with a coloured dot, not white-on-saturated-red. The variant is
+   carried by the dot and a thin left edge, so the MESSAGE always sits at full
+   contrast on the same ground as the rest of the page. */
+
+.toast-viewport {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 10050;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: calc(100vw - 32px);
+}
+
+.toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 260px;
+  max-width: 380px;
+  padding: 12px 12px 12px 14px;
+  border-radius: var(--radius);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-left: 3px solid var(--text-muted);
+  box-shadow: var(--shadow-card-hover);
+  color: var(--text-primary);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.toast-dot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  margin-top: 6px;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+
+.toast-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+
+.toast-close {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  padding: 0 2px;
+  color: var(--text-muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.toast-close:hover { color: var(--text-primary); }
+
+.toast-error { border-left-color: var(--fire-red); }
+.toast-error .toast-dot { background: var(--fire-red); }
+.toast-success { border-left-color: var(--text-accent); }
+.toast-success .toast-dot { background: var(--text-accent); }
+.toast-warning { border-left-color: var(--pending-yellow); }
+.toast-warning .toast-dot { background: var(--pending-yellow); }
+.toast-info { border-left-color: var(--miss-blue); }
+.toast-info .toast-dot { background: var(--miss-blue); }
+
+/* ============================================================
+   Narrow screens
+   ============================================================
+   The layout was built for a desktop window: fixed paddings, rows that assume
+   room for a label and a control side by side, and a board sized in absolute
+   cells. Below 720px it has to stack instead. */
+
+@media (max-width: 720px) {
+  .page-shell {
+    padding: 1rem 0.75rem 2rem;
+  }
+
+  .naval-card-body,
+  .naval-card-header {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+
+  /* Input-and-button rows: the button drops under a full-width field rather
+     than squeezing both into a strip too narrow to read either. Covers the
+     form ITSELF as well as rows inside it — "New Match" puts the flex on the
+     `<form>`, so a rule aimed only at its children left that one squeezed. */
+  .naval-card-body form,
+  .naval-card-body form > div,
+  .naval-card-body > div[style*='display: flex'] {
+    flex-wrap: wrap;
+  }
+
+  /* mero-ui's Input renders its own wrapper; without this the field keeps its
+     intrinsic width and the row cannot actually wrap. */
+  .naval-card-body form > *:not(button),
+  .naval-card-body form > div > *:not(button) {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+
+  .btn-deploy,
+  .btn-fire,
+  .btn-ghost {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+
+  /* The tab rail scrolls instead of wrapping — a wrapped rail reads as two
+     rows of unrelated buttons. */
+  .tab-rail {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .tab-btn {
+    white-space: nowrap;
+  }
+
+  .app-footer-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .match-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.6rem;
+  }
+
+  .toast-viewport {
+    right: 8px;
+    left: 8px;
+    bottom: 8px;
+  }
+
+  .toast { max-width: none; }
+
+  /* The board is the one thing that cannot stack: it scrolls, in its own
+     container, so the page itself never scrolls sideways. */
+  .grid-wrap,
+  .board-wrap {
+    overflow-x: auto;
+  }
+
+  :root { --cell-size: 30px; }
+}
+
+@media (max-width: 420px) {
+  .app-footer-grid { grid-template-columns: 1fr; }
+  :root { --cell-size: 26px; }
+  .nav-brand-text { display: none; }
 }

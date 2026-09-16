@@ -1,10 +1,8 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
 import {
   Navbar as MeroNavbar,
   NavbarMenu,
   NavbarItem,
-  Button,
 } from '@calimero-network/mero-ui';
 
 interface NavBarProps {
@@ -35,19 +33,13 @@ export default function NavBar({
         color: 'var(--text-primary)',
       }}
     >
-      {/* The mark is the way back to the landing page.
-          `state.fromApp` is what gets a signed-in visitor PAST the guard on
-          `/` — see RedirectIfAuthed in App.tsx. Router state, not a query
-          parameter, so an SSO callback can never carry it. */}
-      <Link
-        to="/"
-        state={{ fromApp: true }}
-        className="nav-brand"
-        aria-label="Battleships — back to the landing page"
-      >
+      {/* Not a link. It was one, back to the landing page, which meant the
+          one fixed point in the bar moved you off the app when clicked. The
+          mark is identity; the footer carries the way to the landing page. */}
+      <div className="nav-brand">
         <img src="/favicon.svg" alt="" width={26} height={26} className="nav-brand-mark" />
         <span className="nav-brand-text">Battleships</span>
-      </Link>
+      </div>
       {/* The context id and the node key used to sit here as truncated hex with
           copy buttons. They are debugging values, not navigation: nobody reads
           `19de26…63b75d` at a glance, and they crowded out the one thing the
@@ -60,20 +52,12 @@ export default function NavBar({
       </NavbarMenu>
       <NavbarMenu align="right">
         <NavbarItem>
-          {/* Same reason as the bar: mero-ui's own colours are tuned for a
-              dark surface, and `style` is spread last. */}
-          <Button
-            variant="secondary"
-            onClick={onLogout}
-            style={{
-              background: 'var(--bg-surface)',
-              color: 'var(--text-secondary)',
-              border: '1px solid var(--border-medium)',
-              boxShadow: 'none',
-            }}
-          >
+          {/* Text, not a button. Logging out is not the thing you came here
+              to do, and a bordered pill in the corner competed with the
+              actions that are. */}
+          <button type="button" className="nav-logout" onClick={onLogout}>
             Logout
-          </Button>
+          </button>
         </NavbarItem>
       </NavbarMenu>
     </MeroNavbar>

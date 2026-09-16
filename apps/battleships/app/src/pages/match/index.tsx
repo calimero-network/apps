@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
-  useToast,
 } from '@calimero-network/mero-ui';
 import {
   useMero,
@@ -17,9 +16,10 @@ import { resolveEffectiveMatchId, SHIP_TARGETS, validateFleetPayload } from './c
 import NavBar from '../../components/NavBar';
 import LobbySelect from '../../components/LobbySelect';
 import AppFooter from '../../components/AppFooter';
+import { useToast } from '../../contexts/ToastContext';
 import CopyButton from '../../components/CopyButton';
 import { generateInvitationUrl, parseInvitationInput } from '../../utils/invitation';
-import { contractErrorMessage, isMatchFinishedError, isShipsNotPlacedError } from '../../utils/contractError';
+import { friendlyContractMessage, isMatchFinishedError, isPlayerKeyShaped, isShipsNotPlacedError } from '../../utils/contractError';
 import { EMBEDDED_NAME_KEY, getStoredLobbyName, setStoredLobbyName } from '../../utils/lobbyName';
 import LobbyView from '../../components/LobbyView';
 import GameBoard from '../../components/GameBoard';
@@ -542,9 +542,23 @@ export default function MatchPage() {
       show({ title: 'Lobby not ready yet — please wait a moment', variant: 'warning' });
       return;
     }
+    // Caught here rather than at the node: a typo or a half-pasted key comes
+    // back otherwise as `player2 is not a valid hex key: Invalid character…`,
+    // which names a parameter the player has never heard of.
+    if (!isPlayerKeyShaped(player2)) {
+      show({
+        title: 'That opponent key is not valid — it should be 64 hex characters',
+        variant: 'error',
+      });
+      return;
+    }
+    if (player2.trim().toLowerCase() === (currentUser ?? '').toLowerCase()) {
+      show({ title: 'You cannot challenge yourself', variant: 'error' });
+      return;
+    }
     setCreatingMatch(true);
     try {
-      const id = await lobbyApi.createMatch({ player2 });
+      const id = await lobbyApi.createMatch({ player2: player2.trim() });
       show({ title: `Match allocated: ${id}`, variant: 'success' });
 
       // ⚠️ The game context is attached to the NAMESPACE ROOT group, the same
@@ -586,7 +600,7 @@ export default function MatchPage() {
       show({ title: 'Match created', variant: 'success' });
     } catch (e) {
       console.error('createMatch', e);
-      show({ title: contractErrorMessage(e, 'Failed to create match'), variant: 'error' });
+      show({ title: friendlyContractMessage(e, 'Failed to create match'), variant: 'error' });
     } finally {
       setCreatingMatch(false);
     }
@@ -698,7 +712,7 @@ export default function MatchPage() {
       await loadTurnInfo();
     } catch (e) {
       console.error('placeShips', e);
-      show({ title: contractErrorMessage(e, 'Failed to place ships'), variant: 'error' });
+      show({ title: friendlyContractMessage(e, 'Failed to place ships'), variant: 'error' });
     } finally {
       loadingRef.current = false;
     }
@@ -750,7 +764,7 @@ export default function MatchPage() {
         setOpponentNotReady(true);
         show({ title: 'Your opponent has not deployed their fleet yet', variant: 'warning' });
       } else {
-        show({ title: contractErrorMessage(e, 'Failed to fire shot'), variant: 'error' });
+        show({ title: friendlyContractMessage(e, 'Failed to fire shot'), variant: 'error' });
       }
     } finally {
       loadingRef.current = false;
@@ -796,7 +810,7 @@ export default function MatchPage() {
     try {
       const success = await lobby.joinLobby(payloadJson);
       if (success) { show({ title: 'Joined namespace', variant: 'success' }); setJoinInvitationInput(''); }
-    } catch (e) { show({ title: contractErrorMessage(e, 'Failed to join'), variant: 'error' }); }
+    } catch (e) { show({ title: friendlyContractMessage(e, 'Failed to join'), variant: 'error' }); }
   }, [joinInvitationInput, lobby, show]);
 
   const handleEnterLobby = useCallback(() => {
