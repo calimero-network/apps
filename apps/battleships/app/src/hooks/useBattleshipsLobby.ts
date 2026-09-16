@@ -11,6 +11,7 @@ import {
 import type { GroupMember } from '@calimero-network/mero-react';
 import { useNamespaceBootstrap } from './useNamespaceBootstrap';
 import { embeddedLobbyName, lobbyLabel, setStoredLobbyName } from '../utils/lobbyName';
+import { addKnownPlayer, embeddedInviterKey, getKnownPlayers } from '../utils/knownPlayers';
 
 const SELECTED_NS_KEY = 'battleships:selectedNamespaceId';
 
@@ -353,6 +354,11 @@ export function useBattleshipsLobby(): UseBattleshipsLobbyReturn {
       const embedded = embeddedLobbyName(parsed) || groupAlias || '';
       if (embedded) setStoredLobbyName(nsId, embedded);
 
+      // The inviter's own player key, so this node has someone to challenge
+      // the moment it opens the lobby. The node will not tell it.
+      const inviter = embeddedInviterKey(parsed);
+      if (inviter) addKnownPlayer(nsId, inviter);
+
       const result = await joinNamespace(nsId, { invitation, groupName: groupAlias });
 
       if (result) {
@@ -379,13 +385,17 @@ export function useBattleshipsLobby(): UseBattleshipsLobbyReturn {
     if (!mero || !lobbyContextId) { setPlayerKeys([]); return; }
     try {
       const res = await mero.admin.getContextIdentities(lobbyContextId);
-      setPlayerKeys(Array.isArray(res?.identities) ? res.identities : []);
+      const fromNode = Array.isArray(res?.identities) ? res.identities : [];
+      // Union with the keys learned from invitations: the node reports only
+      // what IT knows, which on a joining node is just itself.
+      const remembered = namespaceId ? getKnownPlayers(namespaceId) : [];
+      setPlayerKeys([...new Set([...fromNode, ...remembered])]);
     } catch {
       // A context this node has not bootstrapped yet answers 404. Not an error
       // worth surfacing — the list simply is not known yet.
       setPlayerKeys([]);
     }
-  }, [mero, lobbyContextId]);
+  }, [mero, lobbyContextId, namespaceId]);
 
   useEffect(() => { void refetchPlayerKeys(); }, [refetchPlayerKeys]);
 
