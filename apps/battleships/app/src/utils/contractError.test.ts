@@ -90,3 +90,82 @@ describe('predicates', () => {
     expect(isMatchFinishedError(new Error(NODE1_BYTES))).toBe(false);
   });
 });
+
+// ── The shapes this actually arrives in ──────────────────────────────────────
+
+/** The full JSON-RPC envelope, exactly as merod returns it. */
+const ENVELOPE = {
+  jsonrpc: '2.0',
+  id: 1,
+  error: { type: 'FunctionCallError', data: NODE1_BYTES },
+};
+
+describe('structural parsing', () => {
+  it('takes the whole JSON-RPC envelope as an OBJECT', () => {
+    // A caller holding the parsed response should not have to stringify it.
+    expect(parseContractError(ENVELOPE)).toEqual({
+      data: 'both players must place ships first',
+      kind: 'Invalid',
+    });
+  });
+
+  it('takes the envelope as a JSON STRING too', () => {
+    expect(parseContractError(JSON.stringify(ENVELOPE))).toEqual({
+      data: 'both players must place ships first',
+      kind: 'Invalid',
+    });
+  });
+
+  it('takes a raw byte ARRAY, not just a stringified one', () => {
+    const bytes = Array.from(
+      new TextEncoder().encode('{"data":"not your turn","kind":"Forbidden"}'),
+    );
+    expect(parseContractError(bytes)).toEqual({ data: 'not your turn', kind: 'Forbidden' });
+  });
+
+  it('unwraps an axios-shaped error', () => {
+    expect(parseContractError({ response: { data: ENVELOPE } })).toEqual({
+      data: 'both players must place ships first',
+      kind: 'Invalid',
+    });
+  });
+
+  it('picks the CONTRACT array, not the first bracketed run in the message', () => {
+    // The old regex took whichever `[...]` came first. Here that is a board
+    // coordinate, and "decoding" it would have produced mojibake presented as
+    // if the contract had said it.
+    const msg = `shot at [3, 4] rejected: ${NODE1_BYTES}`;
+    expect(parseContractError(new Error(msg))).toEqual({
+      data: 'both players must place ships first',
+      kind: 'Invalid',
+    });
+  });
+
+  it('does not mistake a non-text number list for a payload', () => {
+    // Valid bytes, but not valid UTF-8 — must fail rather than half-decode.
+    expect(parseContractError(new Error('sizes [200, 201, 202, 203]'))).toBeNull();
+    // And a version triple is not a payload either.
+    expect(parseContractError(new Error('version [1, 4, 1]'))).toBeNull();
+  });
+
+  it('rejects a bracketed run that is not bytes at all', () => {
+    expect(parseContractError(new Error('coords [3.5, 4.5]'))).toBeNull();
+    expect(parseContractError(new Error('range [-1, 300]'))).toBeNull();
+  });
+
+  it('survives two objects in one message rather than spanning both', () => {
+    // `indexOf('{')` + `lastIndexOf('}')` used to slice across the pair and
+    // fail to parse; balanced scanning reads them as two runs.
+    const msg = '{"note":"first"} then {"data":"not a player","kind":"Forbidden"}';
+    expect(parseContractError(new Error(msg))).toEqual({
+      data: 'not a player',
+      kind: 'Forbidden',
+    });
+  });
+
+  it('terminates on a self-referencing object', () => {
+    const loop: Record<string, unknown> = {};
+    loop.cause = loop;
+    expect(parseContractError(loop)).toBeNull();
+  });
+});

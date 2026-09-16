@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
-import { Button, Input, CopyToClipboard } from '@calimero-network/mero-ui';
+import { Input } from '@calimero-network/mero-ui';
+import CopyButton from './CopyButton';
 import type { MatchSummary, MatchRecord, PlayerStatsView } from '../generated/lobby/LobbyClient';
 
 interface GroupMember {
@@ -96,7 +97,7 @@ export default function LobbyView({
                       <span className="mono-sm" style={{ fontSize: '0.75rem' }}>
                         {m.identity.slice(0, 12)}...{m.identity.slice(-8)}
                       </span>
-                      <CopyToClipboard text={m.identity} variant="icon" size="small" successMessage="Copied!" />
+                      <CopyButton text={m.identity} label="Copy" copiedLabel="Copied" className="btn-icon" />
                       <span className={`member-role ${m.role === 'Admin' ? 'role-admin' : 'role-member'}`}>
                         {m.role}
                       </span>
@@ -116,7 +117,7 @@ export default function LobbyView({
                   <span className="mono-sm" style={{ fontSize: '0.72rem' }}>
                     {executorPublicKey.slice(0, 12)}...{executorPublicKey.slice(-8)}
                   </span>
-                  <CopyToClipboard text={executorPublicKey} variant="icon" size="small" successMessage="Key copied!" />
+                  <CopyButton text={executorPublicKey} label="Copy" copiedLabel="Copied" className="btn-icon" />
                 </div>
                 <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
                   Share this key with opponents for match creation
@@ -125,19 +126,14 @@ export default function LobbyView({
             )}
 
             <div style={{ display: 'flex', gap: '0.5rem' }}>
-              <Button
-                variant="secondary"
+              <button
+                type="button"
+                className="btn-deploy"
                 onClick={onCreateInvitation}
                 disabled={inviteLoading}
-                style={{
-                  background: 'var(--sonar-green)',
-                  color: 'var(--accent-ink)',
-                  border: '1px solid transparent',
-                  boxShadow: 'none',
-                }}
               >
-                {inviteLoading ? 'Creating...' : 'Invite Player'}
-              </Button>
+                {inviteLoading ? 'Creating…' : 'Invite player'}
+              </button>
             </div>
 
             {invitationJson && (
@@ -147,19 +143,10 @@ export default function LobbyView({
                     hands the invitation straight to it. */}
                 <pre className="invite-code invite-link">{invitationJson}</pre>
                 <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem', alignItems: 'center' }}>
-                  <CopyToClipboard text={invitationJson} variant="button" size="small" successMessage="Link copied!" />
-                  <Button
-                    variant="secondary"
-                    onClick={onDismissInvitation}
-                    style={{
-                      background: 'var(--bg-surface)',
-                      color: 'var(--text-primary)',
-                      border: '1px solid var(--border-subtle)',
-                      boxShadow: 'none',
-                    }}
-                  >
+                  <CopyButton text={invitationJson} label="Copy link" copiedLabel="Link copied" className="btn-ghost" />
+                  <button type="button" className="btn-ghost" onClick={onDismissInvitation}>
                     Dismiss
-                  </Button>
+                  </button>
                 </div>
                 <span style={{ display: 'block', marginTop: '0.4rem', fontSize: '0.65rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
                   Send this link. Opening it joins the lobby.

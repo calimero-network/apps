@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
-  CopyToClipboard,
   useToast,
 } from '@calimero-network/mero-ui';
 import {
@@ -18,6 +17,7 @@ import { resolveEffectiveMatchId, SHIP_TARGETS, validateFleetPayload } from './c
 import NavBar from '../../components/NavBar';
 import LobbySelect from '../../components/LobbySelect';
 import AppFooter from '../../components/AppFooter';
+import CopyButton from '../../components/CopyButton';
 import { generateInvitationUrl, parseInvitationInput } from '../../utils/invitation';
 import { contractErrorMessage, isMatchFinishedError, isShipsNotPlacedError } from '../../utils/contractError';
 import { EMBEDDED_NAME_KEY, getStoredLobbyName, setStoredLobbyName } from '../../utils/lobbyName';
@@ -945,7 +945,7 @@ export default function MatchPage() {
                     <span className="info-value">
                       {matchContextId.slice(0, 6)}...{matchContextId.slice(-6)}
                     </span>
-                    <CopyToClipboard text={matchContextId} variant="icon" size="small" successMessage="Copied!" />
+                    <CopyButton text={matchContextId} label="Copy" copiedLabel="Copied" className="btn-icon" />
                   </div>
                 )}
                 <span className={`badge ${isEventSubscribed ? 'badge-live' : 'badge-offline'}`}>
