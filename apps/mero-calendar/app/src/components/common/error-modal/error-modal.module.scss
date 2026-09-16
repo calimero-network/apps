@@ -56,14 +56,14 @@
   margin: 16px auto;
   display: block;
   border: none;
-  color: #fff;
-  background-color: var(--accent);
+  color: var(--accent-text);
+  background-color: var(--accent-fill);
   padding: 8px 16px;
   border-radius: 8px;
   cursor: pointer;
   
   &:disabled {
-    background-color: var(--accent-dim);
+    background-color: var(--accent-fill-dim);
     cursor: not-allowed;
   }
 }

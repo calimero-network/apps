@@ -26,7 +26,10 @@ export default function CalendarLogo({ size = 28, color = "var(--mc-text)" }: Pr
       <rect x="10" y="3.5" width="2.4" height="5" rx="1.2" fill={color} />
       <rect x="19.6" y="3.5" width="2.4" height="5" rx="1.2" fill={color} />
       {/* marked day */}
-      <rect x="18.5" y="17.5" width="5" height="5" rx="1.2" fill="var(--mc-accent, #6c8cff)" />
+      {/* ⚠️ `--mc-accent` is declared NOWHERE, so this always fell through to the
+          hardcoded indigo — the one blue left on the mark after the palette
+          moved to the Calimero green. `--accent` is the token that exists. */}
+      <rect x="18.5" y="17.5" width="5" height="5" rx="1.2" fill="var(--accent)" />
       {/* day dots */}
       <circle cx="11" cy="17" r="1.1" fill={color} opacity="0.55" />
       <circle cx="16" cy="17" r="1.1" fill={color} opacity="0.55" />

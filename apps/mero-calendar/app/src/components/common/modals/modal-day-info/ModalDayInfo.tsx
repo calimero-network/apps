@@ -10,6 +10,7 @@ import ShortEvent from "../../../../components/common/short-event/ShortEvent";
 
 import styles from "./modal-day-info.module.scss";
 import { createDate } from "../../../../utils/date";
+import { CloseIcon } from "../../icons/Icons";
 
 interface IModalDayInfoProps {
   selectedDate: Date;
@@ -51,7 +52,7 @@ const ModalDayInfo: FC<IModalDayInfoProps> = ({
           className={styles.modal__close}
           onClick={handleCloseModal}
         >
-          <i className="fas fa-times"></i>
+          <CloseIcon />
         </button>
         <div className={styles.modal__label}>
           <div className={styles.modal__label__name}>{selectedDay.dayShort}</div>

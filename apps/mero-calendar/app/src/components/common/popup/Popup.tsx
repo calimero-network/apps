@@ -9,7 +9,8 @@ import {
 } from '../../../hooks/index';
 
 import styles from './popup.module.scss';
-import { getContextIdentity } from '@calimero-network/mero-react';
+import { accountId } from '../../../api/identity';
+import { EditIcon, EyeIcon, TrashIcon } from '../icons/Icons';
 
 interface IPopupProps {
   x: number;
@@ -18,7 +19,12 @@ interface IPopupProps {
 }
 
 const Popup: FC<IPopupProps> = ({ x, y, eventId }) => {
-  const accountId = getContextIdentity();
+  // ⚠️ The ACCOUNT, not the context signing key. `getContextIdentity()` used to
+  // be read here, and it never once matched `event.owner` — the contract writes
+  // `env::account_id()` there, and since core rc.27 both are 64 hex characters,
+  // so the comparison was silently false for every event including your own.
+  // Nobody ever saw Delete, and Edit always rendered as "View". See api/identity.
+  const me = accountId();
   const popupRef = useRef<HTMLDivElement>(null);
   const { events } = useTypedSelector(({ events }) => events);
   const { deleteEvent } = useActions();
@@ -72,28 +78,33 @@ const Popup: FC<IPopupProps> = ({ x, y, eventId }) => {
 
   useEffect(() => {
     const eventData = events.find((event) => event.id === eventId);
-    if (accountId === eventData?.owner) {
-      setIsOwner(true);
-    }
-  }, [accountId, eventId]);
+    // `me` is "" when the identity route could not be read, and an owner is
+    // never "", so an unknown account degrades to owning NOTHING rather than
+    // everything. The contract refuses a non-owner either way.
+    setIsOwner(Boolean(me) && me === eventData?.owner);
+  }, [me, eventId, events]);
 
   return (
     <div className={styles.popup} ref={popupRef} style={getPopupStyle()}>
       {isOwner && (
-        <button className={styles.btn__action} onClick={onDelete}>
-          <span className="delete-event-btn__icon">
-            <i className="fas fa-trash"></i>
+        <button
+          className={styles.btn__action}
+          onClick={onDelete}
+          data-testid="popup-delete"
+        >
+          <span className={styles.btn__action__icon}>
+            <TrashIcon />
           </span>
           <span className={styles.btn__action__text}>Delete</span>
         </button>
       )}
-      <button className={styles.btn__action} onClick={handleOpenEditEventModal}>
-        <span className="delete-event-btn__icon">
-          {isOwner ? (
-            <i className="fas fa-edit"></i>
-          ) : (
-            <i className="fas fa-eye"></i>
-          )}
+      <button
+        className={styles.btn__action}
+        onClick={handleOpenEditEventModal}
+        data-testid={isOwner ? 'popup-edit' : 'popup-view'}
+      >
+        <span className={styles.btn__action__icon}>
+          {isOwner ? <EditIcon /> : <EyeIcon />}
         </span>
         <span className={styles.btn__action__text}>
           {isOwner ? 'Edit' : 'View'}

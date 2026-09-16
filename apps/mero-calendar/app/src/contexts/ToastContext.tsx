@@ -57,7 +57,7 @@ const base: CSSProperties = {
 const kindStyle: Record<ToastKind, CSSProperties> = {
   error: { background: "#ff5d6c", color: "#fff" },
   success: { background: "#43d17a", color: "#06250f" },
-  info: { background: "#6c8cff", color: "#fff" },
+  info: { background: "var(--accent-fill)", color: "var(--accent-text)" },
 };
 
 export function ToastProvider({ children }: { children: ReactNode }) {

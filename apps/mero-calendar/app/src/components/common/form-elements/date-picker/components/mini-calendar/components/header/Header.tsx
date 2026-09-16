@@ -2,6 +2,7 @@ import React, { FC } from "react";
 import { IDirections, IModes, IMonth, TMonth } from "../../../../../../../../types/date";
 
 import styles from './header.module.scss';
+import { ChevronLeftIcon, ChevronRightIcon } from "../../../../../../icons/Icons";
 
 interface HeaderProps {
   monthesNames: IMonth[];
@@ -33,7 +34,7 @@ const Header: FC<HeaderProps> = ({
         className={styles.header__arrow__icon}
         onClick={changeToPrev}
       >
-        <i className="fas fa-chevron-left"></i>
+        <ChevronLeftIcon />
       </div>
 
       {mode === 'month' && (
@@ -59,7 +60,7 @@ const Header: FC<HeaderProps> = ({
         className={styles.header__arrow__icon}
         onClick={changeToNext}
       >  
-        <i className="fas fa-chevron-right"></i>
+        <ChevronRightIcon />
       </div>
     </div>
   );

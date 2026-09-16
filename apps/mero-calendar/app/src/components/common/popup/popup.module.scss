@@ -35,3 +35,15 @@
   flex-direction: column;
   align-items: flex-start;
 }
+/* The icon slot. The old markup used a GLOBAL class name ("delete-event-btn__icon")
+   that no stylesheet in this app ever declared, so the icon had no box of its own
+   and sat on the text baseline. */
+.btn__action__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  flex: none;
+  color: var(--mc-text-dim);
+}

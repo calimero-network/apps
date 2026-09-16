@@ -10,8 +10,13 @@ import {
   leaveContext,
   listContextsForApplication,
   listGroupContexts,
+  setContextName,
 } from "../../api/rpc";
-import { contextId as readContextId } from "../../api/appScope";
+import {
+  contextId as readContextId,
+  contextName as readContextName,
+} from "../../api/appScope";
+import TeamMembersPanel from "./TeamMembersPanel";
 import { resolveApplicationId } from "../../api/appId";
 import CalendarLogo from "../../components/common/logo/CalendarLogo";
 import ThemeToggle from "../../components/common/theme-toggle/ThemeToggle";
@@ -20,6 +25,7 @@ import { extractErrorMessage, humanizeError } from "../../utils/errorMessage";
 import {
   calendarLabel,
   clearStoredCalendarName,
+  getStoredCalendarName,
   setStoredCalendarName,
   teamLabel,
 } from "../../utils/teamName";
@@ -48,6 +54,15 @@ export default function TeamCalendarsPage() {
   const { applicationId, logout } = useMero();
 
   const [calendars, setCalendars] = useState<string[]>([]);
+  /**
+   * contextId → the name core replicated to us.
+   *
+   * Kept separate from `calendars` so the list order is untouched, and read
+   * through `nameOf` below rather than directly, because a calendar created
+   * before names were replicated has no entry here at all.
+   */
+  const [names, setNames] = useState<Record<string, string>>({});
+  const [membersOpen, setMembersOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [newName, setNewName] = useState("");
   const [creating, setCreating] = useState(false);
@@ -123,20 +138,56 @@ export default function TeamCalendarsPage() {
 
     const groupIds = await teamGroupIds();
     const inTeam = new Set<string>();
+    const found: Record<string, string> = {};
+    // Which group each calendar hangs off — a metadata write is addressed to
+    // the group that owns the context, not to the team root, so the backfill
+    // below has to remember where each one was seen.
+    const ownerGroup: Record<string, string> = {};
     for (const gid of groupIds) {
       try {
         for (const ctx of await listGroupContexts(gid)) {
           const id = readContextId(ctx);
-          if (id) inTeam.add(id);
+          if (!id) continue;
+          inTeam.add(id);
+          ownerGroup[id] = gid;
+          const name = readContextName(ctx);
+          if (name) found[id] = name;
         }
       } catch {
         /* a group we can't read contributes nothing */
       }
     }
 
-    setCalendars([...inTeam].filter((id) => calendarIds.has(id)));
+    const visible = [...inTeam].filter((id) => calendarIds.has(id));
+    setCalendars(visible);
+    setNames(found);
     setLoading(false);
-  }, [ensureAppId, teamGroupIds]);
+
+    // ── Backfill ───────────────────────────────────────────────────────────
+    // Calendars created before names were replicated have one only in the
+    // creator's localStorage. Whoever still holds that cached name publishes it
+    // so every other member stops seeing a raw id. Silent and best-effort: a
+    // member without `CAN_MANAGE_METADATA` is refused, which is correct and not
+    // worth a toast — somebody who can will heal it on their next visit.
+    for (const id of visible) {
+      if (found[id]) continue;
+      const cached = getStoredCalendarName(id);
+      if (!cached) continue;
+      const gid = ownerGroup[id] ?? teamId;
+      try {
+        await setContextName(gid, id, cached.slice(0, 64));
+        setNames((prev) => ({ ...prev, [id]: cached }));
+      } catch {
+        /* not permitted, or the node is older — the label still falls back */
+      }
+    }
+  }, [ensureAppId, teamGroupIds, teamId]);
+
+  /** Best label for a calendar: replicated name → cached name → id stub. */
+  const nameOf = useCallback(
+    (cid: string) => calendarLabel(cid, names[cid]),
+    [names],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -206,6 +257,11 @@ export default function TeamCalendarsPage() {
       if (!contextId) throw new Error("The node created no calendar.");
 
       setStoredCalendarName(contextId, name);
+      // `POST /contexts` already carries `name`, but only for the group it was
+      // created in; setting it explicitly also covers the node that created the
+      // subgroup a moment ago and makes the failure visible in one place.
+      await setContextName(subgroupId || teamId, contextId, name.slice(0, 64))
+        .catch(() => {});
       setNewName("");
       await joinContext(contextId).catch(() => {});
       navigate(`/teams/${teamId}/calendar/${contextId}`);
@@ -297,7 +353,16 @@ export default function TeamCalendarsPage() {
           ← All teams
         </button>
 
-        <h1 className={styles.title}>{teamLabel(teamId, "")}</h1>
+        <div className={styles.titleRow}>
+          <h1 className={styles.title}>{teamLabel(teamId, "")}</h1>
+          <button
+            className="mc-btn"
+            onClick={() => setMembersOpen(true)}
+            data-testid="open-members"
+          >
+            Members
+          </button>
+        </div>
         <p className={styles.subtitle}>
           Pick a calendar to open, or start another one in this team.
         </p>
@@ -340,7 +405,7 @@ export default function TeamCalendarsPage() {
                   <span className={styles.cardIcon}>
                     <CalendarLogo size={18} color="var(--accent)" />
                   </span>
-                  <span className={styles.cardName}>{calendarLabel(cid)}</span>
+                  <span className={styles.cardName}>{nameOf(cid)}</span>
                   <span className={styles.cardSub}>{cid.slice(0, 12)}…</span>
                 </button>
 
@@ -377,7 +442,7 @@ export default function TeamCalendarsPage() {
                 {confirmId === cid && (
                   <div className={styles.confirmBox} data-testid="confirm-delete">
                     <p className={styles.confirmText}>
-                      Delete <strong>{calendarLabel(cid)}</strong> from this
+                      Delete <strong>{nameOf(cid)}</strong> from this
                       node? Its events are removed here. Peers who joined keep
                       their own copy.
                     </p>
@@ -403,6 +468,10 @@ export default function TeamCalendarsPage() {
           </div>
         )}
       </main>
+
+      {membersOpen && (
+        <TeamMembersPanel teamId={teamId} onClose={() => setMembersOpen(false)} />
+      )}
     </div>
   );
 }

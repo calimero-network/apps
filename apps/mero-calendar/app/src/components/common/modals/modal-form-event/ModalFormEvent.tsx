@@ -1,5 +1,5 @@
 import { ChangeEvent, FC, useEffect, useMemo, useRef, useState } from "react";
-import { getContextIdentity } from "@calimero-network/mero-react";
+import { accountId } from "../../../../api/identity";
 import { useClickOutside, useForm, useMembers } from "../../../../hooks/index";
 import {
   checkDateIsEqual,
@@ -21,6 +21,7 @@ import {
 import cn from "classnames";
 
 import styles from "./modal-form-event.module.scss";
+import { CloseIcon } from "../../icons/Icons";
 
 interface IModalFormEventProps {
   textSendButton: string;
@@ -38,7 +39,9 @@ const ModalFormEvent: FC<IModalFormEventProps> = ({
   handlerSubmit,
 }) => {
   // rc.8: the caller identity is the active context identity.
-  const accountId = getContextIdentity();
+  // The ACCOUNT — see api/identity. The signing key read here before never
+  // equalled `owner`, so every event opened view-only, even your own.
+  const me = accountId();
   // FEATURE (missing names): members power the peer autocomplete (show username,
   // store pubkey).
   const { members, displayName } = useMembers();
@@ -162,9 +165,9 @@ const ModalFormEvent: FC<IModalFormEventProps> = ({
   useEffect(() => {
     if (textSendButton === "Edit") {
       // Only the owner can edit; everyone else opens in view-only mode.
-      setViewOnly(accountId !== defaultEventValues.owner);
+      setViewOnly(!me || me !== defaultEventValues.owner);
     }
-  }, [accountId, defaultEventValues.owner, textSendButton]);
+  }, [me, defaultEventValues.owner, textSendButton]);
 
   // ── Peer multi-select autocomplete ──────────────────────────────────────────
   // BUGFIX (brittle peer entry): replace the `@`/comma string parsing with a
@@ -180,7 +183,11 @@ const ModalFormEvent: FC<IModalFormEventProps> = ({
   const candidates = useMemo(() => {
     const q = peerQuery.trim().toLowerCase();
     return members
-      .filter((m) => m.id !== accountId) // can't invite yourself
+      // Member rows are keyed by ACCOUNT — the contract says so in as many
+      // words ("deliberately NOT the context key the frontend reads from
+      // /identities-owned"). Compared against the device key, this filter
+      // matched nobody and you could invite yourself to your own event.
+      .filter((m) => m.id !== me) // can't invite yourself
       .filter((m) => !selectedPeers.includes(m.id)) // not already added
       .filter(
         (m) =>
@@ -188,7 +195,7 @@ const ModalFormEvent: FC<IModalFormEventProps> = ({
           m.username?.toLowerCase().includes(q) ||
           m.id.toLowerCase().includes(q),
       );
-  }, [members, peerQuery, selectedPeers, accountId]);
+  }, [members, peerQuery, selectedPeers, me]);
 
   const addPeer = (pk: string) => {
     if (!selectedPeers.includes(pk)) setValue("peers", [...selectedPeers, pk]);
@@ -209,7 +216,7 @@ const ModalFormEvent: FC<IModalFormEventProps> = ({
       <div className={styles.modal} ref={modalRef}>
         <div className={styles.modal__content}>
           <button className={styles.modal__content__close} onClick={closeModal}>
-            <i className="fas fa-times"></i>
+            <CloseIcon />
           </button>
           <form className={styles.modal__form} onSubmit={handleSubmit(onSubmit)}>
             <TextField

@@ -4,6 +4,7 @@ import SelectOption from "./components/select-option/SelectOption";
 import cn from "classnames";
 
 import styles from './select.module.scss';
+import { ChevronDownIcon } from "../icons/Icons";
 
 interface SelectProps {
   options: string[];
@@ -35,7 +36,7 @@ const Select: FC<SelectProps> = ({
         onClick={toggling}
       >
         <div className={styles.select__header__title}>{selectedOption}</div>
-        <i className={cn(styles.select__icon__down, "fas fa-chevron-down")}></i>
+        <ChevronDownIcon className={styles.select__icon__down} />
       </div>
       {isOpen && (
         <div className={styles.select__list__container}>

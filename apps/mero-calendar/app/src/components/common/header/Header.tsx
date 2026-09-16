@@ -1,18 +1,17 @@
 import { FC } from "react";
 
-import { useMero, getContextIdentity } from "@calimero-network/mero-react";
+import { useMero } from "@calimero-network/mero-react";
 import cn from "classnames";
-import { ToastContainer, toast } from "react-toastify";
 
 import { IDirections, IModes, TDate } from "../../../types/date";
 import { useModal } from "../../../hooks/useModal";
 import { createDate, getNextStartMinutes, shmoment } from "../../../utils/date";
-import copyIcon from "../../../assets/copy-icon.svg";
 import Select from "../select/Select";
 import ThemeToggle from "../theme-toggle/ThemeToggle";
 
 import styles from "./header.module.scss";
 import { useNavigate } from "react-router-dom";
+import { ChevronLeftIcon, ChevronRightIcon } from "../icons/Icons";
 
 interface IHeaderProps {
   onClickArrow: (direction: IDirections) => void;
@@ -41,9 +40,6 @@ const Header: FC<IHeaderProps> = ({
     isOpenModalEditEvent,
     openModalCreate,
   } = useModal();
-  // rc.8: the executor public key is the context identity set on calendar mount.
-  const accountId = getContextIdentity() ?? "";
-
   const isBtnCreateEventDisable =
     isOpenModalCreateEvent || isOpenModalDayInfoEvents || isOpenModalEditEvent;
 
@@ -61,11 +57,6 @@ const Header: FC<IHeaderProps> = ({
       .result();
 
     openModalCreate({ selectedDate });
-  };
-
-  const handleCopy = () => {
-    navigator.clipboard.writeText(accountId);
-    toast("Public key copied!");
   };
 
   const handleLogout = () => {
@@ -101,13 +92,13 @@ const Header: FC<IHeaderProps> = ({
               className={cn("icon-button", styles.navigation__icon)}
               onClick={changeToPrev}
             >
-              <i className="fas fa-chevron-left"></i>
+              <ChevronLeftIcon />
             </button>
             <button
               className={cn("icon-button", styles.navigation__icon)}
               onClick={changeToNext}
             >
-              <i className="fas fa-chevron-right"></i>
+              <ChevronRightIcon />
             </button>
           </div>
           <span className={styles.navigation__date}>{displayedDate}</span>
@@ -121,24 +112,18 @@ const Header: FC<IHeaderProps> = ({
       />
       <div className={styles.headerRight}>
         <ThemeToggle />
-        {accountId && (
-          <div className={styles.accountWrapper}>
-            <img
-              src={copyIcon as unknown as string}
-              alt="copy"
-              className={styles.accountWrapper__copy}
-              onClick={handleCopy}
-            />
-            <ToastContainer />
-            <span
-              className={styles.accountWrapper__accountId}
-              onClick={handleLogout}
-              title="Click to log out"
-            >
-              {accountId.substring(0, 4)}…{accountId.substring(accountId.length - 4)}
-            </span>
-          </div>
-        )}
+        {/* ⚠️ Was a copy icon next to a truncated account id ("b627…f78a"),
+            and clicking the ID logged you out — announced only by a `title`
+            tooltip nobody hovers. A control has to say what it does. The
+            teams pages already end their header with exactly this button, so
+            logging out is now the same gesture everywhere. */}
+        <button
+          className="mc-btn mc-btn--ghost"
+          onClick={handleLogout}
+          data-testid="logout-btn"
+        >
+          Logout
+        </button>
       </div>
     </header>
   );

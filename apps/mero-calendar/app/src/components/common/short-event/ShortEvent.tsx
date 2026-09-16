@@ -5,6 +5,7 @@ import styles from './short-event.module.scss';
 import { usePopup } from "../../../hooks/usePopup";
 import { formatDate } from "../../../utils/date";
 import { IEvent } from "../../../types/event";
+import { LockIcon } from "../icons/Icons";
 
 interface IShortEventProps {
   event: IEvent;
@@ -46,7 +47,9 @@ const ShortEvent: FC<IShortEventProps> = ({
         style={eventCircleStyle}
       />
       {/* FEATURE: private events get a lock marker */}
-      {event.private && <span className={styles.event__lock} title="Private event">🔒</span>}
+      {event.private && (
+        <LockIcon className={styles.event__lock} title="Private event" size={11} />
+      )}
       <div className={styles.event__time}>{timeStart}</div>
       <div className={styles.event__title}>{event.title}</div>
     </div>

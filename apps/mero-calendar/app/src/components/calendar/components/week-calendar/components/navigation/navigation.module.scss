@@ -45,8 +45,8 @@
     }
     
     &_today {
-      background-color: var(--accent);
-      color: #fff;
+      background-color: var(--accent-fill);
+      color: var(--accent-text);
     }
   }
 }

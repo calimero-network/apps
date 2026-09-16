@@ -17,11 +17,28 @@
   --radius-lg: 12px;
   --font: Roboto, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
 
-  /* signature accent — a calm calendar blue/indigo */
-  --accent: #6c8cff;
-  --accent-dim: #5575e8;
-  --accent-soft: rgba(108, 140, 255, 0.16);
-  --accent-text: #ffffff;
+  /* ── Calimero brand accent ──────────────────────────────────────────────
+     Brand values from @calimero-network/mero-ui: brand-600 #A5FF11 (the
+     signature lime), brand-700 #73B30C, brand-900 #2D381B.
+
+     ⚠️ Split into a FILL and an INK on purpose. #A5FF11 scores 1.24:1 against
+     white — as button *fill* under near-black text it is 14:1 and unmistakably
+     Calimero, but the same value as text or as a 1px outline on a light surface
+     is invisible. Every text/border/icon use therefore takes --accent (a
+     darkened brand green, 5.40:1 on white), and only a filled control takes
+     --accent-fill. The previous indigo was a single token doing both jobs,
+     which is exactly the trap this split avoids. */
+  --accent: #4a7607; /* ink: text, icons, outlines, focus rings */
+  --accent-dim: #3f6606; /* ink, pressed/hover */
+  --accent-fill: #a5ff11; /* brand lime — filled controls only */
+  --accent-fill-dim: #8fdd0e; /* brand lime, hover */
+  --accent-soft: rgba(115, 179, 12, 0.16);
+  /* ⚠️ brand-900, NOT a near-black. #1a1a1a on the lime was 14:1 and read as
+     a flat black slab stamped on the button — technically correct, visually
+     harsh. #2D381B is Calimero's own darkest brand step: still 9.99:1 (and
+     7.39:1 on the hover), but it belongs to the same family as the fill, so
+     the label sits in the button rather than on top of it. */
+  --accent-text: #2d381b; /* on --accent-fill */
 
   --danger: #ff5d6c;
   /* Tint for an invalid field, mirroring --accent-soft. Alpha rather than a
@@ -37,31 +54,34 @@
 /* ── Light theme (default) ───────────────────────────────────────────── */
 :root,
 [data-theme="light"] {
-  --bg-0: #f6f8fc; /* app background */
+  --bg-0: #f5f8f2; /* app background */
   --bg-1: #ffffff; /* primary surface — cards, panels */
   --bg-2: #ffffff; /* raised surface — header */
-  --bg-3: #eef1f6; /* hover / inset */
-  --bg-4: #e4e9f1; /* active / selected */
-  --border: #e2e6ee;
-  --border-strong: #cdd4e0;
+  --bg-3: #eef2e9; /* hover / inset */
+  --bg-4: #e5ebdd; /* active / selected */
+  --border: #e3e8dc;
+  --border-strong: #ccd5c0;
 
-  --text: #1d2433;
-  --text-dim: #5b6577;
-  --text-faint: #97a0b0;
+  --text: #1b2114;
+  --text-dim: #5a6350;
+  /* 3.45:1 on white. The indigo palette's #97a0b0 was 2.71:1 — under the 3:1
+     floor for incidental text, which is why timestamps and id stubs read as
+     smudges on a bright screen. */
+  --text-faint: #858d78;
 
   /* calendar tokens */
   --mc-bg: #ffffff;
   --mc-surface: #ffffff;
-  --mc-surface-alt: #f6f8fc;
-  --mc-text: #3c4043;
-  --mc-text-dim: #5b6577;
-  --mc-border: #e2e6ee;
-  --mc-border-soft: #eef1f6;
+  --mc-surface-alt: #f5f8f2;
+  --mc-text: #2c3327;
+  --mc-text-dim: #5a6350;
+  --mc-border: #e3e8dc;
+  --mc-border-soft: #eef2e9;
   --mc-header-bg: #ffffff;
-  --mc-today-bg: #eef3ff;
+  --mc-today-bg: #ebffcb;
   --mc-today-text: var(--accent);
-  --mc-hover: #f1f4fa;
-  --mc-grid-line: #e8ebf1;
+  --mc-hover: #f2f6ec;
+  --mc-grid-line: #e9eee1;
   --mc-shadow: 0 1px 0 rgba(0, 0, 0, 0.11);
 }
 
@@ -79,10 +99,14 @@
   --text-dim: #9aa6b2;
   --text-faint: #5c6772;
 
-  --accent: #8aa6ff;
-  --accent-dim: #6c8cff;
-  --accent-soft: rgba(138, 166, 255, 0.18);
-  --accent-text: #0a0e13;
+  /* On a dark surface the brand lime needs no darkening — #A5FF11 is 14.1:1 on
+     --bg-2 — so ink and fill are the same value here. */
+  --accent: #a5ff11;
+  --accent-dim: #8fdd0e;
+  --accent-fill: #a5ff11;
+  --accent-fill-dim: #8fdd0e;
+  --accent-soft: rgba(165, 255, 17, 0.16);
+  --accent-text: #2d381b;
   --danger-soft: rgba(255, 93, 108, 0.22);
 
   --shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
@@ -97,8 +121,8 @@
   --mc-border: #232b34;
   --mc-border-soft: #1b232c;
   --mc-header-bg: #141a21;
-  --mc-today-bg: #1c2740;
-  --mc-today-text: #8aa6ff;
+  --mc-today-bg: #24310f;
+  --mc-today-text: #a5ff11;
   --mc-hover: #1b232c;
   --mc-grid-line: #232b34;
   --mc-shadow: 0 1px 0 rgba(255, 255, 255, 0.06);
@@ -115,7 +139,11 @@
    everything else. */
 :root {
   --color-text: var(--mc-text);
-  --primary: var(--accent);
+  /* ⚠️ `--primary` is only ever a FILL (the selected day in the mini-calendar,
+     always paired with `color: var(--accent-text)`), so it takes the brand
+     lime. `--secondary` is only ever TEXT, so it takes the ink. Aliasing both
+     to the same token is what made a selected date near-black-on-dark-green. */
+  --primary: var(--accent-fill);
   --secondary: var(--accent);
   --secondary-7: var(--accent-dim);
   --color-placeholder: var(--mc-text-dim);
@@ -164,15 +192,18 @@ body {
   opacity: 0.45;
   cursor: not-allowed;
 }
+/* The brand CTA: lime fill, near-black label. */
 .mc-btn--primary {
-  background: var(--accent);
+  background: var(--accent-fill);
   color: var(--accent-text);
-  border-color: var(--accent);
-  font-weight: 600;
+  border-color: var(--accent-fill);
+  /* 500, not 600. On a fill this bright, semi-bold reads as shouting; the
+     contrast is doing the emphasis already. */
+  font-weight: 500;
 }
 .mc-btn--primary:hover {
-  background: var(--accent-dim);
-  border-color: var(--accent-dim);
+  background: var(--accent-fill-dim);
+  border-color: var(--accent-fill-dim);
 }
 .mc-btn--ghost {
   background: transparent;

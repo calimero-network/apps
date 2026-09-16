@@ -1,6 +1,7 @@
 import React, { FC } from "react";
 
 import styles from './color-option.module.scss';
+import { CheckIcon } from "../../../../icons/Icons";
 
 interface IColorOptionProps {
   color: string;
@@ -28,7 +29,7 @@ const ColorOption: FC<IColorOptionProps> = ({
       style={{ background: color }}
     >
       {selectedColor === color && (
-        <i className="fas fa-check"></i>
+        <CheckIcon />
       )}
     </div>
   );

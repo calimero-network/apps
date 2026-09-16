@@ -5,6 +5,7 @@ import styles from './long-event.module.scss';
 import { IEvent } from "../../../types/event";
 import { formatDate } from "../../../utils/date";
 import { usePopup } from "../../../hooks/usePopup";
+import { LockIcon } from "../icons/Icons";
 
 interface ILongEventProps {
   event: IEvent;
@@ -63,7 +64,7 @@ const LongEvent: FC<ILongEventProps> = ({
         className={styles.event__container}
         style={eventContainerStyle}
       >
-        {event.private && <span title="Private event">🔒 </span>}
+        {event.private && <LockIcon title="Private event" size={11} />}
         {event.title}
         {event.type === 'event' && (
           `, ${formatDate(new Date(event.start), 'hh:mm')}`

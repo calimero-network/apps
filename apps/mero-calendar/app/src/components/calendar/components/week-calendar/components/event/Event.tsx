@@ -2,6 +2,7 @@ import React, { FC, MouseEvent } from 'react';
 
 import styles from './event.module.scss';
 import { usePopup } from '../../../../../../hooks/usePopup';
+import { LockIcon } from "../../../../../common/icons/Icons";
 
 interface IEventProps {
   height: number;
@@ -53,7 +54,7 @@ const Event: FC<IEventProps> = ({
       data-private={isPrivate ? "true" : "false"}
     >
       <div className={styles.event__title}>
-        {isPrivate && <span title="Private event">🔒 </span>}
+        {isPrivate && <LockIcon title="Private event" size={11} />}
         {title}
       </div>
       <div className={styles.event__time}>{time}</div>

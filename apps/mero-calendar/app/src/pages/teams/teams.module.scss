@@ -204,3 +204,145 @@
   margin-bottom: 12px;
 }
 .confirmRow { display: flex; gap: 8px; justify-content: flex-end; }
+
+/* ── Team title row ───────────────────────────────────────────────────────── */
+.titleRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+/* ── Members panel ────────────────────────────────────────────────────────── */
+.membersPanel {
+  width: min(520px, 94vw);
+  max-height: min(80vh, 640px);
+  overflow-y: auto;
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  padding: 20px 22px 22px;
+}
+
+.membersHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.membersTitle {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 650;
+  color: var(--text);
+}
+
+.membersClose {
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.membersClose:hover {
+  background: var(--bg-3);
+  color: var(--text);
+}
+
+.membersHint {
+  margin: 6px 0 16px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+
+.memberList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.memberRow {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-0);
+}
+
+.memberIcon {
+  display: inline-flex;
+  width: 18px;
+  height: 18px;
+  flex: none;
+  color: var(--accent);
+}
+
+.memberInfo {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+}
+
+.memberName {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 550;
+  color: var(--text);
+}
+
+/* "you" marker — a quiet chip, so the row still reads as a name first. */
+.memberYou {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.memberId {
+  font-size: 10.5px;
+  color: var(--text-faint);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.memberRole {
+  flex: none;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-1);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.memberRole:disabled {
+  opacity: 0.5;
+  cursor: progress;
+}
+.memberRole:focus {
+  outline: none;
+  border-color: var(--accent);
+}
