@@ -17,7 +17,7 @@ packages:
 catalog:
   # ── Calimero ───────────────────────────────────────────────────────────────
   "@calimero-network/mero-js": ^18.3.0
-  "@calimero-network/mero-react": ^9.0.0
+  "@calimero-network/mero-react": ^9.1.1
   "@calimero-network/mero-ui": ^1.5.1
   # The landing template's feature-card and theme-toggle icons. Catalogued
   # because twelve apps now import it; before this, the three that already used

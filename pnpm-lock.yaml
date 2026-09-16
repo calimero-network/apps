@@ -22,8 +22,8 @@ catalogs:
       specifier: ^0.1.0
       version: 0.1.0
     '@calimero-network/mero-react':
-      specifier: ^9.0.0
-      version: 9.0.0
+      specifier: ^9.1.1
+      version: 9.1.1
     '@calimero-network/mero-ui':
       specifier: ^1.5.1
       version: 1.5.1
@@ -139,7 +139,7 @@ importers:
         version: 0.1.0(react@19.2.8)
       '@calimero-network/mero-react':
         specifier: 'catalog:'
-        version: 9.0.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: 9.1.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@calimero-network/mero-ui':
         specifier: 'catalog:'
         version: 1.5.1(@floating-ui/dom@1.8.0)(@tiptap/core@3.30.5(@tiptap/pm@3.30.5))(@tiptap/pm@3.30.5)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -263,7 +263,7 @@ importers:
         version: 0.1.0(react@19.2.8)
       '@calimero-network/mero-react':
         specifier: 'catalog:'
-        version: 9.0.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: 9.1.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       bs58:
         specifier: 'catalog:'
         version: 6.0.0
@@ -324,7 +324,7 @@ importers:
         version: 0.1.0
       '@calimero-network/mero-react':
         specifier: 'catalog:'
-        version: 9.0.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: 9.1.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       bs58:
         specifier: 'catalog:'
         version: 6.0.0
@@ -382,7 +382,7 @@ importers:
         version: 0.1.0
       '@calimero-network/mero-react':
         specifier: 'catalog:'
-        version: 9.0.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: 9.1.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@calimero-network/mero-ui':
         specifier: 'catalog:'
         version: 1.5.1(@floating-ui/dom@1.8.0)(@tiptap/core@3.30.5(@tiptap/pm@3.30.5))(@tiptap/pm@3.30.5)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -473,7 +473,7 @@ importers:
         version: 0.1.0
       '@calimero-network/mero-react':
         specifier: 'catalog:'
-        version: 9.0.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: 9.1.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@calimero-network/mero-ui':
         specifier: 'catalog:'
         version: 1.5.1(@floating-ui/dom@1.8.0)(@tiptap/core@3.30.5(@tiptap/pm@3.30.5))(@tiptap/pm@3.30.5)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -579,7 +579,7 @@ importers:
         version: 18.3.0
       '@calimero-network/mero-react':
         specifier: 'catalog:'
-        version: 9.0.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: 9.1.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@calimero-network/mero-ui':
         specifier: ^0.3.6
         version: 0.3.7(@floating-ui/dom@1.8.0)(@tiptap/core@3.30.5(@tiptap/pm@3.30.5))(@tiptap/pm@3.30.5)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -745,7 +745,7 @@ importers:
         version: 18.3.0
       '@calimero-network/mero-react':
         specifier: 'catalog:'
-        version: 9.0.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: 9.1.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       react:
         specifier: 'catalog:'
         version: 19.2.8
@@ -827,7 +827,7 @@ importers:
         version: 0.1.0
       '@calimero-network/mero-react':
         specifier: 'catalog:'
-        version: 9.0.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: 9.1.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@calimero-network/mero-ui':
         specifier: 'catalog:'
         version: 1.5.1(@floating-ui/dom@1.8.0)(@tiptap/core@3.30.5(@tiptap/pm@3.30.5))(@tiptap/pm@3.30.5)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -903,7 +903,7 @@ importers:
         version: 0.1.0
       '@calimero-network/mero-react':
         specifier: 'catalog:'
-        version: 9.0.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: 9.1.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@calimero-network/mero-ui':
         specifier: 'catalog:'
         version: 1.5.1(@floating-ui/dom@1.8.0)(@tiptap/core@3.30.5(@tiptap/pm@3.30.5))(@tiptap/pm@3.30.5)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -988,7 +988,7 @@ importers:
         version: 18.3.0
       '@calimero-network/mero-react':
         specifier: 'catalog:'
-        version: 9.0.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: 9.1.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@calimero-network/mero-ui':
         specifier: 'catalog:'
         version: 1.5.1(@floating-ui/dom@1.8.0)(@tiptap/core@3.30.5(@tiptap/pm@3.30.5))(@tiptap/pm@3.30.5)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -1079,7 +1079,7 @@ importers:
         version: 0.1.0
       '@calimero-network/mero-react':
         specifier: 'catalog:'
-        version: 9.0.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: 9.1.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@calimero-network/mero-ui':
         specifier: 'catalog:'
         version: 1.5.1(@floating-ui/dom@1.8.0)(@tiptap/core@3.30.5(@tiptap/pm@3.30.5))(@tiptap/pm@3.30.5)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -1173,7 +1173,7 @@ importers:
         version: 18.3.0
       '@calimero-network/mero-react':
         specifier: 'catalog:'
-        version: 9.0.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: 9.1.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@calimero-network/mero-ui':
         specifier: 'catalog:'
         version: 1.5.1(@floating-ui/dom@1.8.0)(@tiptap/core@3.30.5(@tiptap/pm@3.30.5))(@tiptap/pm@3.30.5)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -1403,7 +1403,7 @@ importers:
         version: 0.1.0
       '@calimero-network/mero-react':
         specifier: 'catalog:'
-        version: 9.0.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: 9.1.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@calimero-network/mero-ui':
         specifier: 'catalog:'
         version: 1.5.1(@floating-ui/dom@1.8.0)(@tiptap/core@3.30.5(@tiptap/pm@3.30.5))(@tiptap/pm@3.30.5)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -1497,7 +1497,7 @@ importers:
         version: 0.1.0
       '@calimero-network/mero-react':
         specifier: 'catalog:'
-        version: 9.0.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: 9.1.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       bs58:
         specifier: 'catalog:'
         version: 6.0.0
@@ -1543,7 +1543,7 @@ importers:
         version: 18.3.0
       '@calimero-network/mero-react':
         specifier: 'catalog:'
-        version: 9.0.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: 9.1.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       bootstrap:
         specifier: ^5.3.7
         version: 5.3.8(@popperjs/core@2.11.8)
@@ -2339,6 +2339,10 @@ packages:
     resolution: {integrity: sha512-lmiXGFt7q4Zhq2FehT66Sx8cT2kqUb109TJZMpQ6JBFAnTkAj6JLM0+RS9MVq29AQ73EA5t2omgUoWXWuxgvUg==}
     engines: {node: '>=18.0.0'}
 
+  '@calimero-network/mero-js@19.5.0':
+    resolution: {integrity: sha512-JJfo5p++wUxEYgoMkbaP0eIIAFFPaUU621vazoLu+dEcxyTBQeGQ3/x8SnHUo2WmpWNr5kdx6QXEUvrJ29+RzA==}
+    engines: {node: '>=18.0.0'}
+
   '@calimero-network/mero-platform-react@0.1.0':
     resolution: {integrity: sha512-W1QlIeaP5Nrri3djQW/OLTTd37iaZdssMNuxvVyLyhUjayxPuVSzUg5hceO5hMRuOFxPRYnKltLXXZwe+iuquA==}
     peerDependencies:
@@ -2347,8 +2351,8 @@ packages:
   '@calimero-network/mero-platform@0.1.0':
     resolution: {integrity: sha512-ocEdeeou3GYdRlXxThuXtf4Klfi18g8Dpvl3urBGUgwHbhchMN/6KrGKr3jUj5XlcRnIPlvUmNEN1PoJ8oYp6w==}
 
-  '@calimero-network/mero-react@9.0.0':
-    resolution: {integrity: sha512-8Q+j9Ghp9cBDOl5PrV1UkQ2mtSKNFMFcUw9/fVuOAIKWvg0jFXCwkL4WakWEPoSxvslC/aH8H2cqnjyCtQeEcw==}
+  '@calimero-network/mero-react@9.1.1':
+    resolution: {integrity: sha512-ZeQWWH3QfRLX4hlHM+hm7jYOrfju98kS/ylq0DgL8a2PsHKANtZo1WtjDOIDU8KFIBQqwJisw1o9wEUG+Kc3Ag==}
     peerDependencies:
       react: ^18.0.0 || ^19.0.0
       react-dom: ^18.0.0 || ^19.0.0
@@ -8964,6 +8968,8 @@ snapshots:
 
   '@calimero-network/mero-js@18.3.0': {}
 
+  '@calimero-network/mero-js@19.5.0': {}
+
   '@calimero-network/mero-platform-react@0.1.0(react@19.2.8)':
     dependencies:
       '@calimero-network/mero-platform': 0.1.0
@@ -8971,9 +8977,9 @@ snapshots:
 
   '@calimero-network/mero-platform@0.1.0': {}
 
-  '@calimero-network/mero-react@9.0.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
+  '@calimero-network/mero-react@9.1.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
     dependencies:
-      '@calimero-network/mero-js': 18.3.0
+      '@calimero-network/mero-js': 19.5.0
       react: 19.2.8
       react-dom: 19.2.8(react@19.2.8)
 
