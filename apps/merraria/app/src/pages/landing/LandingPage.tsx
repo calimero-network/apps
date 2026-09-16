@@ -356,9 +356,34 @@ export interface LandingPageProps {
    * `/login`, and its connect UI lives in a sidebar the page has to open.
    */
   onConnect?: () => void;
+
+  /**
+   * Whether the visitor is already signed in.
+   *
+   * ⚠️ A PROP, not `useMero()` inside this component. Three apps — mero-blocks,
+   * merraria and mero-sign — render this page with no `MeroProvider` above it
+   * (they keep a plain `net/session.ts` instead), and `useMero` throws outside
+   * its provider. A hook here would crash their landing page outright, so the
+   * app tells the page rather than the page asking.
+   *
+   * Omitted, everything behaves exactly as before.
+   */
+  isAuthenticated?: boolean;
+
+  /**
+   * Where "Open application" goes. Only consulted when `isAuthenticated`.
+   *
+   * The app owns this because only the app knows its own entry route — the
+   * fourteen do not agree on one, and this template deliberately has no router.
+   */
+  onOpenApp?: () => void;
 }
 
-export default function LandingPage({ onConnect }: LandingPageProps = {}) {
+export default function LandingPage({
+  onConnect,
+  isAuthenticated = false,
+  onOpenApp,
+}: LandingPageProps = {}) {
   const theme = useTheme();
   const { view, go } = useLandingView();
   const [loginOpen, setLoginOpen] = useState(false);
@@ -390,8 +415,28 @@ export default function LandingPage({ onConnect }: LandingPageProps = {}) {
    */
   const connect = onConnect ?? (LoginPopup ? () => setLoginOpen(true) : undefined);
 
+  /**
+   * Someone already signed in does not need to sign in again.
+   *
+   * Arriving here from inside the app — the footer link on every in-app screen
+   * points at this page — the primary button used to say "Connect to node" and
+   * start the whole sign-in over. It now offers the way back in.
+   *
+   * Both conditions matter: `isAuthenticated` without `onOpenApp` is an app
+   * that has not wired a destination, and sending it nowhere would be worse
+   * than offering to connect.
+   */
+  const signedIn = isAuthenticated && !!onOpenApp;
+
   function ConnectCta({ ghost = false }: { ghost?: boolean }) {
     const cls = `cal-lp-btn ${ghost ? 'cal-lp-btn--ghost' : 'cal-lp-btn--primary'}`;
+    if (signedIn) {
+      return (
+        <button type="button" className={cls} onClick={onOpenApp}>
+          Open application
+        </button>
+      );
+    }
     return (
       <button type="button" className={cls} onClick={connect} disabled={!connect}>
         Connect to node
