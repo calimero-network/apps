@@ -10,6 +10,7 @@ import {
 } from '@calimero-network/mero-react';
 import type { GroupMember } from '@calimero-network/mero-react';
 import { useNamespaceBootstrap } from './useNamespaceBootstrap';
+import { embeddedLobbyName, lobbyLabel, setStoredLobbyName } from '../utils/lobbyName';
 
 const SELECTED_NS_KEY = 'battleships:selectedNamespaceId';
 
@@ -38,6 +39,10 @@ export interface UseBattleshipsLobbyReturn {
   groupLoading: boolean;
 
   members: GroupMember[];
+  /** Re-read the member list. Someone joining emits no event we can rely on. */
+  refetchMembers: () => Promise<void>;
+  /** Re-read the lobby's player keys. */
+  refetchPlayerKeys: () => Promise<void>;
   selfIdentity: string | null;
   membersLoading: boolean;
   isAdmin: boolean;
@@ -45,6 +50,16 @@ export interface UseBattleshipsLobbyReturn {
   lobbyJoined: boolean;
   executorPublicKey: string | null;
   lobbyContextId: string | null;
+  /**
+   * Every player key in the lobby context — the ids you challenge with.
+   *
+   * ⚠️ NOT `members`. That list comes from the GROUP and is keyed by ACCOUNT
+   * id, which `create_match` does not accept: a player is a CONTEXT member, so
+   * the id it wants is the context identity. Since rc.27 both render as 64 hex,
+   * so the wrong one is accepted by every shape check and fails later as
+   * "not a player".
+   */
+  playerKeys: string[];
 
   invitePlayer: (validForSeconds?: number) => Promise<unknown>;
   inviteLoading: boolean;
@@ -93,7 +108,9 @@ export function useBattleshipsLobby(): UseBattleshipsLobbyReturn {
     namespaceId: ns.namespaceId,
     lobbyContextId: null, // resolved below for the selected namespace
     applicationId: ns.targetApplicationId,
-    alias: ns.name,
+    // `lobbyLabel`, not `ns.name`: the JOINING node has no server-side name
+    // until the namespace metadata syncs, and would otherwise show a raw id.
+    alias: lobbyLabel(ns.namespaceId, ns.name),
   }));
 
   // --- Namespace selection ---
@@ -127,6 +144,7 @@ export function useBattleshipsLobby(): UseBattleshipsLobbyReturn {
   const {
     members,
     loading: membersLoading,
+    refetch: refetchMembers,
   } = useGroupMembers(namespaceId);
 
   // ⚠️ `useGroupMembers` used to return `selfIdentity`; mero-react 6 removed it,
@@ -285,6 +303,11 @@ export function useBattleshipsLobby(): UseBattleshipsLobbyReturn {
         throw new Error('Invalid invitation: cannot determine namespace ID');
       }
 
+      // The inviter embeds the lobby's human name beside the signed invitation,
+      // so the joiner has something to render before the metadata syncs.
+      const embedded = embeddedLobbyName(parsed) || groupAlias || '';
+      if (embedded) setStoredLobbyName(nsId, embedded);
+
       const result = await joinNamespace(nsId, { invitation, groupName: groupAlias });
 
       if (result) {
@@ -298,6 +321,28 @@ export function useBattleshipsLobby(): UseBattleshipsLobbyReturn {
       throw err;
     }
   }, [mero, joinNamespace, refetchNamespaces]);
+
+  /**
+   * The lobby context's identities, which is what "who can I play?" means here.
+   *
+   * Re-read whenever the context changes, and on the same poll as the member
+   * list — someone joining the namespace gets a context identity at the moment
+   * they open the lobby, not when they accept the invitation.
+   */
+  const [playerKeys, setPlayerKeys] = useState<string[]>([]);
+  const refetchPlayerKeys = useCallback(async () => {
+    if (!mero || !lobbyContextId) { setPlayerKeys([]); return; }
+    try {
+      const res = await mero.admin.getContextIdentities(lobbyContextId);
+      setPlayerKeys(Array.isArray(res?.identities) ? res.identities : []);
+    } catch {
+      // A context this node has not bootstrapped yet answers 404. Not an error
+      // worth surfacing — the list simply is not known yet.
+      setPlayerKeys([]);
+    }
+  }, [mero, lobbyContextId]);
+
+  useEffect(() => { void refetchPlayerKeys(); }, [refetchPlayerKeys]);
 
   const refetchContexts = useCallback(async () => {
     await refetchNamespaces();
@@ -322,6 +367,9 @@ export function useBattleshipsLobby(): UseBattleshipsLobbyReturn {
     groupLoading,
 
     members,
+    refetchMembers,
+    playerKeys,
+    refetchPlayerKeys,
     selfIdentity,
     membersLoading,
     isAdmin,

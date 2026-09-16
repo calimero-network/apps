@@ -5,56 +5,83 @@
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Outfit:wght@300;400;500;600;700;800&display=swap');
 
 :root {
-  /* Core palette */
-  --bg-deep: #060d1a;
-  --bg-surface: #0a1628;
-  --bg-card: #0e1e36;
-  --bg-card-hover: #122748;
-  --bg-elevated: #142a4a;
+  /* ============================================================
+     Same palette as this app's landing page.
+     ============================================================
+     The values below are `pages/landing/landing.css`'s `--cal-lp-*` tokens,
+     restated under this file's names so the app and its front door are one
+     product rather than two. That file is GENERATED (`pnpm landing:generate`),
+     so it cannot be imported from here — but it can be matched.
+
+     ⚠️ THE ACCENT IS LIME WITH DARK INK ON IT, not white. `#a5ff11` is a
+     near-yellow: white text on it measures about 1.5:1 and is unreadable. The
+     landing page pairs it with `#131215`, and `--sonar-green` below keeps that
+     pairing. `--text-accent` is the separate, darker green for accent TEXT on
+     a white ground, because the lime itself cannot be read there either. */
+
+  /* Core palette — landing's bg-0/1/2/3 */
+  --bg-deep: #fcfcfc;
+  --bg-surface: #ffffff;
+  --bg-card: #ffffff;
+  --bg-card-hover: #f2f2f3;
+  --bg-elevated: #f2f2f3;
 
   /* Accent colors */
-  --sonar-green: #00ff88;
-  --sonar-green-dim: #00cc6a;
-  --sonar-green-glow: rgba(0, 255, 136, 0.15);
-  --fire-amber: #ff6b35;
-  --fire-red: #ff3b3b;
-  --fire-red-glow: rgba(255, 59, 59, 0.2);
-  --miss-blue: #4a90d9;
-  --miss-blue-dim: #2a5a8a;
-  --pending-yellow: #fbbf24;
-  --pending-yellow-glow: rgba(251, 191, 36, 0.2);
-  --select-cyan: #22d3ee;
-  --select-cyan-glow: rgba(34, 211, 238, 0.2);
+  --sonar-green: #a5ff11;
+  --sonar-green-dim: #b6ff3d;
+  --sonar-green-glow: rgba(165, 255, 17, 0.18);
+  --accent-ink: #131215;
+  --fire-amber: #c2410c;
+  --fire-red: #c81e1e;
+  --fire-red-glow: rgba(200, 30, 30, 0.14);
+  --miss-blue: #2563a8;
+  --miss-blue-dim: #c8c8c8;
+  --pending-yellow: #a16207;
+  --pending-yellow-glow: rgba(161, 98, 7, 0.14);
+  /* Cyan survives for ONE job: the crosshair on the board. It has to read as
+     neither a ship (green) nor a hit (red), so a third hue is carrying meaning
+     there rather than decorating. Everywhere else — tabs, pills, spinners —
+     the selection accent is Calimero green. */
+  --select-cyan: #0e7490;
+  --select-cyan-glow: rgba(14, 116, 144, 0.14);
 
-  /* Text */
-  --text-primary: #e8f0fe;
-  --text-secondary: #8ba4c4;
-  --text-muted: #4a6a8a;
-  --text-accent: var(--sonar-green);
+  /* Text — landing's text / text-dim / text-faint */
+  --text-primary: #131215;
+  --text-secondary: #404040;
+  --text-muted: #8e8e8e;
+  --text-accent: #5f9400;
 
   /* Grid */
-  --grid-line: #1a3a5c;
-  --grid-bg: #0c1a2e;
-  --grid-cell: #101f38;
-  --grid-cell-hover: #1a3358;
+  --grid-line: #e4e4e6;
+  --grid-bg: #f2f2f3;
+  --grid-cell: #ffffff;
+  --grid-cell-hover: #eaeaec;
   --cell-size: 36px;
   --cell-gap: 3px;
   --cell-radius: 3px;
 
-  /* Borders */
-  --border-subtle: rgba(138, 164, 196, 0.1);
-  --border-medium: rgba(138, 164, 196, 0.2);
-  --border-accent: rgba(0, 255, 136, 0.3);
+  /* Borders — landing's border / border-strong */
+  --border-subtle: #e4e4e6;
+  --border-medium: #e4e4e6;
+  --border-strong: #c8c8c8;
+  --border-accent: rgba(165, 255, 17, 0.45);
 
   /* Shadows */
-  --shadow-card: 0 4px 24px rgba(0, 0, 0, 0.4), 0 0 1px rgba(0, 255, 136, 0.05);
-  --shadow-card-hover: 0 8px 32px rgba(0, 0, 0, 0.5), 0 0 2px rgba(0, 255, 136, 0.1);
-  --shadow-glow-green: 0 0 20px rgba(0, 255, 136, 0.15);
-  --shadow-glow-red: 0 0 20px rgba(255, 59, 59, 0.2);
+  --shadow-card: 0 2px 10px rgba(19, 18, 21, 0.07);
+  --shadow-card-hover: 0 10px 34px rgba(19, 18, 21, 0.10);
+  --shadow-glow-green: 0 0 0 1px rgba(165, 255, 17, 0.45);
+  --shadow-glow-red: 0 0 0 1px rgba(200, 30, 30, 0.22);
 
-  /* Typography */
-  --font-display: 'Outfit', sans-serif;
-  --font-mono: 'JetBrains Mono', monospace;
+  /* Radii — landing's radius scale */
+  --radius: 10px;
+  --radius-sm: 7px;
+  --radius-lg: 16px;
+
+  /* Typography — the landing page's system stack, not Outfit.
+     `--font-mono` survives for IDs and board coordinates, where a fixed
+     advance is the point; it is no longer the voice of the whole app. */
+  --font-display: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
 
   /* Timing */
   --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
@@ -62,9 +89,10 @@
 
   line-height: 1.5;
   font-weight: 400;
-  color-scheme: dark;
+  color-scheme: light;
   color: var(--text-primary);
   background-color: var(--bg-deep);
+  font-family: var(--font-display);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -91,8 +119,8 @@ html, body {
 .app-bg {
   min-height: 100vh;
   background:
-    radial-gradient(ellipse 80% 60% at 50% 0%, rgba(0, 255, 136, 0.03) 0%, transparent 60%),
-    radial-gradient(ellipse 60% 40% at 80% 100%, rgba(74, 144, 217, 0.03) 0%, transparent 50%),
+    radial-gradient(ellipse 80% 60% at 50% 0%, rgba(0, 163, 90, 0.03) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 40% at 80% 100%, rgba(37, 99, 168, 0.03) 0%, transparent 50%),
     var(--bg-deep);
 }
 
@@ -106,8 +134,8 @@ html, body {
     0deg,
     transparent,
     transparent 2px,
-    rgba(0, 255, 136, 0.008) 2px,
-    rgba(0, 255, 136, 0.008) 4px
+    rgba(0, 163, 90, 0.008) 2px,
+    rgba(0, 163, 90, 0.008) 4px
   );
   z-index: 0;
 }
@@ -165,26 +193,26 @@ html, body {
   letter-spacing: 0.08em;
   padding: 0.2rem 0.5rem;
   border-radius: 4px;
-  font-family: var(--font-mono);
+  font-family: var(--font-display);
 }
 
 .badge-admin {
-  background: rgba(251, 191, 36, 0.15);
+  background: rgba(161, 98, 7, 0.15);
   color: var(--pending-yellow);
-  border: 1px solid rgba(251, 191, 36, 0.2);
+  border: 1px solid rgba(161, 98, 7, 0.2);
 }
 
 .badge-live {
-  background: rgba(0, 255, 136, 0.1);
-  color: var(--sonar-green);
-  border: 1px solid rgba(0, 255, 136, 0.15);
+  background: rgba(0, 163, 90, 0.1);
+  color: var(--text-accent);
+  border: 1px solid rgba(0, 163, 90, 0.15);
   animation: pulse-badge 2s ease-in-out infinite;
 }
 
 .badge-offline {
-  background: rgba(255, 107, 53, 0.1);
+  background: rgba(194, 65, 12, 0.1);
   color: var(--fire-amber);
-  border: 1px solid rgba(255, 107, 53, 0.15);
+  border: 1px solid rgba(194, 65, 12, 0.15);
 }
 
 .naval-card-body {
@@ -290,14 +318,14 @@ html, body {
 }
 
 .cell-ship {
-  background: linear-gradient(135deg, #1a6b4a 0%, #0d4a32 100%);
-  border: 1px solid rgba(0, 255, 136, 0.25);
-  box-shadow: inset 0 1px 2px rgba(0, 255, 136, 0.1);
+  background: linear-gradient(135deg, #bfe6d2 0%, #d8f0e4 100%);
+  border: 1px solid rgba(0, 163, 90, 0.25);
+  box-shadow: inset 0 1px 2px rgba(0, 163, 90, 0.1);
 }
 
 .cell-hit {
-  background: linear-gradient(135deg, #8b1a1a 0%, #5c0e0e 100%);
-  border: 1px solid rgba(255, 59, 59, 0.4);
+  background: linear-gradient(135deg, #f3c7c7 0%, #e8a5a5 100%);
+  border: 1px solid rgba(200, 30, 30, 0.4);
   box-shadow: var(--shadow-glow-red);
   animation: hit-pulse 0.6s var(--ease-spring);
 }
@@ -307,12 +335,12 @@ html, body {
   font-size: 1.1rem;
   font-weight: 700;
   color: var(--fire-red);
-  text-shadow: 0 0 8px rgba(255, 59, 59, 0.5);
+  text-shadow: 0 0 8px rgba(200, 30, 30, 0.5);
 }
 
 .cell-miss {
   background: var(--miss-blue-dim);
-  border: 1px solid rgba(74, 144, 217, 0.3);
+  border: 1px solid rgba(37, 99, 168, 0.3);
   opacity: 0.7;
 }
 
@@ -323,8 +351,8 @@ html, body {
 }
 
 .cell-pending {
-  background: rgba(251, 191, 36, 0.2);
-  border: 1px solid rgba(251, 191, 36, 0.4);
+  background: rgba(161, 98, 7, 0.2);
+  border: 1px solid rgba(161, 98, 7, 0.4);
   animation: pending-pulse 1.5s ease-in-out infinite;
 }
 
@@ -337,9 +365,9 @@ html, body {
 }
 
 .cell-selected {
-  background: rgba(34, 211, 238, 0.2);
+  background: rgba(14, 116, 144, 0.2);
   border: 2px solid var(--select-cyan);
-  box-shadow: var(--select-cyan-glow), 0 0 12px rgba(34, 211, 238, 0.15);
+  box-shadow: var(--select-cyan-glow), 0 0 12px rgba(14, 116, 144, 0.15);
 }
 
 .cell-selected::after {
@@ -356,7 +384,7 @@ html, body {
 
 .cell-clickable:hover {
   background: var(--grid-cell-hover);
-  border-color: rgba(34, 211, 238, 0.3);
+  border-color: rgba(14, 116, 144, 0.3);
   transform: scale(1.05);
 }
 
@@ -366,7 +394,7 @@ html, body {
 
 .cell-editable:hover {
   background: var(--grid-cell-hover);
-  border-color: rgba(0, 255, 136, 0.3);
+  border-color: rgba(0, 163, 90, 0.3);
 }
 
 /* ============================================================
@@ -402,9 +430,9 @@ html, body {
 }
 
 .ship-btn-active {
-  background: rgba(0, 255, 136, 0.1);
+  background: rgba(0, 163, 90, 0.1);
   border-color: var(--sonar-green);
-  color: var(--sonar-green);
+  color: var(--text-accent);
   box-shadow: var(--shadow-glow-green);
 }
 
@@ -414,14 +442,14 @@ html, body {
 }
 
 .ship-btn-remove {
-  border-color: rgba(255, 107, 53, 0.3);
+  border-color: rgba(194, 65, 12, 0.3);
   color: var(--fire-amber);
 }
 
 .ship-btn-remove.ship-btn-active {
-  background: rgba(255, 107, 53, 0.1);
+  background: rgba(194, 65, 12, 0.1);
   border-color: var(--fire-amber);
-  box-shadow: 0 0 12px rgba(255, 107, 53, 0.15);
+  box-shadow: 0 0 12px rgba(194, 65, 12, 0.15);
 }
 
 .ship-dots {
@@ -460,8 +488,8 @@ html, body {
 }
 
 .orient-btn-active {
-  background: rgba(0, 255, 136, 0.1);
-  color: var(--sonar-green);
+  background: rgba(0, 163, 90, 0.1);
+  color: var(--text-accent);
 }
 
 /* ============================================================
@@ -480,13 +508,13 @@ html, body {
 }
 
 .turn-yours {
-  background: rgba(0, 255, 136, 0.1);
-  color: var(--sonar-green);
-  border: 1px solid rgba(0, 255, 136, 0.2);
+  background: rgba(0, 163, 90, 0.1);
+  color: var(--text-accent);
+  border: 1px solid rgba(0, 163, 90, 0.2);
 }
 
 .turn-theirs {
-  background: rgba(138, 164, 196, 0.08);
+  background: rgba(17, 32, 26, 0.08);
   color: var(--text-secondary);
   border: 1px solid var(--border-subtle);
 }
@@ -510,7 +538,7 @@ html, body {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  font-family: var(--font-mono);
+  font-family: var(--font-display);
   font-size: 0.65rem;
   font-weight: 600;
   text-transform: uppercase;
@@ -520,19 +548,19 @@ html, body {
 }
 
 .status-active {
-  background: rgba(0, 255, 136, 0.1);
-  color: var(--sonar-green);
-  border: 1px solid rgba(0, 255, 136, 0.15);
+  background: rgba(0, 163, 90, 0.1);
+  color: var(--text-accent);
+  border: 1px solid rgba(0, 163, 90, 0.15);
 }
 
 .status-pending {
-  background: rgba(251, 191, 36, 0.1);
+  background: rgba(161, 98, 7, 0.1);
   color: var(--pending-yellow);
-  border: 1px solid rgba(251, 191, 36, 0.15);
+  border: 1px solid rgba(161, 98, 7, 0.15);
 }
 
 .status-finished {
-  background: rgba(138, 164, 196, 0.08);
+  background: rgba(17, 32, 26, 0.08);
   color: var(--text-muted);
   border: 1px solid var(--border-subtle);
 }
@@ -586,12 +614,12 @@ html, body {
 }
 
 .ns-item-selected {
-  background: rgba(0, 255, 136, 0.04);
-  border-color: rgba(0, 255, 136, 0.2);
+  background: rgba(0, 163, 90, 0.04);
+  border-color: rgba(0, 163, 90, 0.2);
 }
 
 .ns-item-selected:hover {
-  background: rgba(0, 255, 136, 0.06);
+  background: rgba(0, 163, 90, 0.06);
 }
 
 /* ============================================================
@@ -599,23 +627,24 @@ html, body {
    ============================================================ */
 
 .btn-fire {
-  background: linear-gradient(135deg, var(--fire-amber) 0%, #e05520 100%);
-  color: white;
-  font-family: var(--font-mono);
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  padding: 0.6rem 1.5rem;
-  border: none;
-  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 11px 19px;
+  border-radius: var(--radius);
+  border: 1px solid transparent;
+  background: var(--fire-red);
+  color: #ffffff;
+  font: inherit;
+  font-size: 14.5px;
+  font-weight: 650;
   cursor: pointer;
-  transition: all 0.2s ease;
-  box-shadow: 0 2px 12px rgba(255, 107, 53, 0.3);
+  white-space: nowrap;
 }
 
 .btn-fire:hover:not(:disabled) {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 20px rgba(255, 107, 53, 0.4);
+  background: #a81a1a;
 }
 
 .btn-fire:disabled {
@@ -625,27 +654,37 @@ html, body {
 }
 
 .btn-deploy {
-  background: linear-gradient(135deg, var(--sonar-green-dim) 0%, #009955 100%);
-  color: var(--bg-deep);
-  font-family: var(--font-mono);
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  padding: 0.6rem 1.5rem;
-  border: none;
-  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 11px 19px;
+  border-radius: var(--radius);
+  border: 1px solid transparent;
+  background: var(--sonar-green);
+  color: var(--accent-ink);
+  font: inherit;
+  font-size: 14.5px;
+  font-weight: 650;
   cursor: pointer;
-  transition: all 0.2s ease;
-  box-shadow: 0 2px 12px rgba(0, 255, 136, 0.2);
+  white-space: nowrap;
 }
 
 .btn-deploy:hover:not(:disabled) {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 20px rgba(0, 255, 136, 0.3);
+  background: var(--sonar-green-dim);
 }
 
+/* Disabled is a COLOUR change, not a faded green. At opacity 0.4 the button
+   still read as "green, therefore go" — it looked pressable and simply wasn't,
+   which is the state people click anyway. Inert grey says nothing is armed yet;
+   filling the field in turns it green. */
+/* Disabled is a COLOUR change, not a faded lime. At `opacity: 0.4` the button
+   still read as "green, therefore go" — it looked pressable and simply was
+   not, which is the state people click anyway. */
 .btn-deploy:disabled {
-  opacity: 0.4;
+  background: var(--bg-card-hover);
+  color: var(--text-muted);
+  border-color: var(--border-subtle);
   cursor: not-allowed;
 }
 
@@ -720,7 +759,7 @@ html, body {
   display: flex;
   align-items: center;
   gap: 0.35rem;
-  font-family: var(--font-mono);
+  font-family: var(--font-display);
   font-size: 0.65rem;
   color: var(--text-muted);
   text-transform: uppercase;
@@ -746,7 +785,7 @@ html, body {
 }
 
 .member-role {
-  font-family: var(--font-mono);
+  font-family: var(--font-display);
   font-size: 0.6rem;
   font-weight: 600;
   text-transform: uppercase;
@@ -756,13 +795,13 @@ html, body {
 }
 
 .role-admin {
-  background: rgba(251, 191, 36, 0.12);
+  background: rgba(161, 98, 7, 0.12);
   color: var(--pending-yellow);
-  border: 1px solid rgba(251, 191, 36, 0.15);
+  border: 1px solid rgba(161, 98, 7, 0.15);
 }
 
 .role-member {
-  background: rgba(138, 164, 196, 0.08);
+  background: rgba(17, 32, 26, 0.08);
   color: var(--text-muted);
   border: 1px solid var(--border-subtle);
 }
@@ -842,7 +881,7 @@ html, body {
 }
 
 .landing-title span {
-  background: linear-gradient(135deg, var(--sonar-green) 0%, var(--select-cyan) 100%);
+  background: linear-gradient(135deg, var(--sonar-green) 0%, var(--text-accent) 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -870,8 +909,8 @@ html, body {
   align-items: flex-start;
   gap: 0.6rem;
   padding: 0.65rem 0.85rem;
-  background: rgba(0, 255, 136, 0.03);
-  border: 1px solid rgba(0, 255, 136, 0.08);
+  background: rgba(0, 163, 90, 0.03);
+  border: 1px solid rgba(0, 163, 90, 0.08);
   border-radius: 8px;
   font-size: 0.8rem;
   color: var(--text-secondary);
@@ -886,7 +925,7 @@ html, body {
   background: var(--sonar-green);
   flex-shrink: 0;
   margin-top: 0.45rem;
-  box-shadow: 0 0 6px rgba(0, 255, 136, 0.4);
+  box-shadow: 0 0 6px rgba(0, 163, 90, 0.4);
 }
 
 .landing-actions {
@@ -942,7 +981,7 @@ html, body {
 
 /* Subheading under card titles — "DEPLOYMENT TERMINAL · STANDBY" */
 .naval-card-subtitle {
-  font-family: var(--font-mono);
+  font-family: var(--font-display);
   font-size: 0.65rem;
   font-weight: 500;
   text-transform: uppercase;
@@ -960,7 +999,7 @@ html, body {
   height: 5px;
   border-radius: 50%;
   background: var(--sonar-green);
-  box-shadow: 0 0 6px rgba(0, 255, 136, 0.5);
+  box-shadow: 0 0 6px rgba(0, 163, 90, 0.5);
   animation: pulse-dot 2s ease-in-out infinite;
 }
 
@@ -985,15 +1024,13 @@ html, body {
   inset: 0;
   border-radius: 8px;
   pointer-events: none;
-  box-shadow: inset 0 1px 0 rgba(0, 0, 0, 0.3);
+  box-shadow: inset 0 1px 0 rgba(17, 32, 26, 0.06);
 }
 
 .tab-btn {
-  font-family: var(--font-mono);
+  font-family: var(--font-display);
   font-size: 0.72rem;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
   padding: 0.55rem 0.85rem;
   border: none;
   background: transparent;
@@ -1014,8 +1051,8 @@ html, body {
 }
 
 .tab-btn-active {
-  color: var(--select-cyan);
-  background: rgba(34, 211, 238, 0.06);
+  color: var(--text-accent);
+  background: var(--sonar-green-glow);
 }
 
 .tab-btn-active::after {
@@ -1025,8 +1062,8 @@ html, body {
   right: 14%;
   bottom: -5px;
   height: 1px;
-  background: linear-gradient(90deg, transparent, var(--select-cyan), transparent);
-  box-shadow: 0 0 8px rgba(34, 211, 238, 0.7);
+  background: var(--sonar-green);
+  box-shadow: none;
 }
 
 .tab-glyph {
@@ -1046,11 +1083,9 @@ html, body {
 }
 
 .view-toggle-btn {
-  font-family: var(--font-mono);
+  font-family: var(--font-display);
   font-size: 0.65rem;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
   padding: 0.4rem 0.65rem;
   border: none;
   background: transparent;
@@ -1064,13 +1099,13 @@ html, body {
 
 .view-toggle-btn:hover:not(:disabled) {
   color: var(--text-secondary);
-  background: rgba(138, 164, 196, 0.04);
+  background: rgba(17, 32, 26, 0.04);
 }
 
 .view-toggle-btn-active {
-  color: var(--sonar-green);
-  background: rgba(0, 255, 136, 0.08);
-  box-shadow: inset 0 0 0 1px rgba(0, 255, 136, 0.15);
+  color: var(--text-accent);
+  background: rgba(0, 163, 90, 0.08);
+  box-shadow: inset 0 0 0 1px rgba(0, 163, 90, 0.15);
 }
 
 .view-toggle-icon {
@@ -1125,9 +1160,9 @@ html, body {
 
 .info-icon:hover,
 .info-icon:focus-visible {
-  color: var(--sonar-green);
-  border-color: rgba(0, 255, 136, 0.4);
-  background: rgba(0, 255, 136, 0.05);
+  color: var(--text-accent);
+  border-color: rgba(0, 163, 90, 0.4);
+  background: rgba(0, 163, 90, 0.05);
   outline: none;
 }
 
@@ -1209,14 +1244,13 @@ html, body {
 
 .lobby-row:hover {
   background: var(--bg-card);
-  border-color: rgba(0, 255, 136, 0.2);
-  transform: translateY(-1px);
+  border-color: rgba(0, 163, 90, 0.2);
 }
 
 .lobby-row-pending {
-  border-color: rgba(34, 211, 238, 0.35);
-  background: rgba(34, 211, 238, 0.04);
-  box-shadow: inset 0 0 0 1px rgba(34, 211, 238, 0.1);
+  border-color: rgba(14, 116, 144, 0.35);
+  background: rgba(14, 116, 144, 0.04);
+  box-shadow: inset 0 0 0 1px rgba(14, 116, 144, 0.1);
 }
 
 .lobby-row-info {
@@ -1243,7 +1277,7 @@ html, body {
   height: 6px;
   border-radius: 50%;
   background: var(--sonar-green);
-  box-shadow: 0 0 6px rgba(0, 255, 136, 0.5);
+  box-shadow: 0 0 6px rgba(0, 163, 90, 0.5);
   flex-shrink: 0;
 }
 
@@ -1255,29 +1289,23 @@ html, body {
 }
 
 .lobby-row-cta {
-  font-family: var(--font-mono);
-  font-size: 0.72rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  padding: 0.55rem 1rem;
-  border: 1px solid rgba(0, 255, 136, 0.3);
-  background: rgba(0, 255, 136, 0.05);
-  color: var(--sonar-green);
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 0.2s ease;
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
-  flex-shrink: 0;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 650;
+  cursor: pointer;
+  white-space: nowrap;
 }
 
 .lobby-row-cta:hover:not(:disabled) {
-  background: var(--sonar-green);
-  color: var(--bg-deep);
-  border-color: var(--sonar-green);
-  box-shadow: 0 0 18px rgba(0, 255, 136, 0.35);
+  border-color: var(--border-strong);
 }
 
 .lobby-row-cta:disabled {
@@ -1294,11 +1322,11 @@ html, body {
 }
 
 .lobby-row-status {
-  font-family: var(--font-mono);
+  font-family: var(--font-display);
   font-size: 0.65rem;
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  color: var(--select-cyan);
+  color: var(--text-accent);
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
@@ -1309,8 +1337,8 @@ html, body {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  border: 1.5px solid rgba(34, 211, 238, 0.3);
-  border-top-color: var(--select-cyan);
+  border: 1.5px solid rgba(14, 116, 144, 0.3);
+  border-top-color: var(--text-accent);
   animation: spin 0.7s linear infinite;
 }
 
@@ -1345,7 +1373,7 @@ html, body {
   left: 1rem;
   right: 1rem;
   height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(0, 255, 136, 0.4), transparent);
+  background: linear-gradient(90deg, transparent, rgba(0, 163, 90, 0.4), transparent);
   opacity: 0;
   transition: opacity 0.25s ease;
 }
@@ -1354,7 +1382,7 @@ html, body {
   content: '';
   position: absolute;
   inset: 0;
-  background: radial-gradient(circle at 100% 0%, rgba(0, 255, 136, 0.06) 0%, transparent 60%);
+  background: radial-gradient(circle at 100% 0%, rgba(0, 163, 90, 0.06) 0%, transparent 60%);
   opacity: 0;
   transition: opacity 0.25s ease;
   pointer-events: none;
@@ -1362,9 +1390,9 @@ html, body {
 
 .lobby-card-tile:hover {
   background: var(--bg-card);
-  border-color: rgba(0, 255, 136, 0.3);
+  border-color: rgba(0, 163, 90, 0.3);
   transform: translateY(-3px);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45), 0 0 24px rgba(0, 255, 136, 0.08);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45), 0 0 24px rgba(0, 163, 90, 0.08);
 }
 
 .lobby-card-tile:hover::before,
@@ -1375,12 +1403,12 @@ html, body {
 .lobby-card-tile:focus-visible {
   outline: none;
   border-color: var(--sonar-green);
-  box-shadow: 0 0 0 2px rgba(0, 255, 136, 0.2), 0 8px 24px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 0 0 2px rgba(0, 163, 90, 0.2), 0 8px 24px rgba(0, 0, 0, 0.45);
 }
 
 .lobby-card-pending {
-  border-color: rgba(34, 211, 238, 0.4);
-  background: rgba(34, 211, 238, 0.04);
+  border-color: rgba(14, 116, 144, 0.4);
+  background: rgba(14, 116, 144, 0.04);
 }
 
 .lobby-card-coord {
@@ -1419,7 +1447,7 @@ html, body {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.12em;
-  color: var(--sonar-green);
+  color: var(--text-accent);
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
@@ -1437,7 +1465,7 @@ html, body {
 .lobby-card-pending .lobby-card-enter {
   opacity: 1;
   transform: translateX(0);
-  color: var(--select-cyan);
+  color: var(--text-accent);
 }
 
 /* Empty state */
@@ -1455,7 +1483,7 @@ html, body {
   width: 56px;
   height: 56px;
   border-radius: 50%;
-  border: 1px solid rgba(0, 255, 136, 0.2);
+  border: 1px solid rgba(0, 163, 90, 0.2);
   position: relative;
   display: flex;
   align-items: center;
@@ -1467,7 +1495,7 @@ html, body {
   position: absolute;
   inset: 8px;
   border-radius: 50%;
-  border: 1px solid rgba(0, 255, 136, 0.12);
+  border: 1px solid rgba(0, 163, 90, 0.12);
 }
 
 .lobby-empty-radar::after {
@@ -1480,7 +1508,7 @@ html, body {
   background: linear-gradient(90deg, var(--sonar-green), transparent);
   transform-origin: 0 50%;
   animation: radar-sweep 3s linear infinite;
-  box-shadow: 0 0 6px rgba(0, 255, 136, 0.4);
+  box-shadow: 0 0 6px rgba(0, 163, 90, 0.4);
 }
 
 .lobby-empty-radar-dot {
@@ -1488,7 +1516,7 @@ html, body {
   height: 5px;
   border-radius: 50%;
   background: var(--sonar-green);
-  box-shadow: 0 0 8px rgba(0, 255, 136, 0.6);
+  box-shadow: 0 0 8px rgba(0, 163, 90, 0.6);
   animation: pulse-dot 2s ease-in-out infinite;
 }
 
@@ -1529,7 +1557,7 @@ html, body {
 
 /* "Bridge console" hint chips inside the form bodies */
 .console-hint {
-  font-family: var(--font-mono);
+  font-family: var(--font-display);
   font-size: 0.68rem;
   color: var(--text-muted);
   letter-spacing: 0.04em;
@@ -1540,7 +1568,7 @@ html, body {
 
 .console-hint::before {
   content: '›';
-  color: var(--sonar-green);
+  color: var(--text-accent);
   font-weight: 700;
 }
 
@@ -1550,8 +1578,8 @@ html, body {
   gap: 0.65rem;
   padding: 0.65rem 0.85rem;
   margin-bottom: 0.85rem;
-  background: rgba(255, 107, 53, 0.08);
-  border: 1px solid rgba(255, 107, 53, 0.25);
+  background: rgba(194, 65, 12, 0.08);
+  border: 1px solid rgba(194, 65, 12, 0.25);
   border-radius: 8px;
   font-family: var(--font-mono);
   font-size: 0.75rem;
@@ -1564,7 +1592,7 @@ html, body {
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  background: rgba(255, 107, 53, 0.2);
+  background: rgba(194, 65, 12, 0.2);
   color: var(--fire-amber);
   font-weight: 700;
   font-style: italic;
@@ -1591,7 +1619,7 @@ html, body {
 
 .lobby-banner-dismiss:hover {
   color: var(--text-primary);
-  background: rgba(138, 164, 196, 0.08);
+  background: rgba(17, 32, 26, 0.08);
 }
 
 @keyframes radar-sweep {
@@ -1646,4 +1674,429 @@ html, body {
     align-items: flex-start;
     gap: 0.5rem;
   }
+}
+
+/* ============================================================
+   Navbar brand — the mark is the way back to the landing page
+   ============================================================ */
+
+.nav-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  text-decoration: none;
+  color: var(--text-primary);
+  padding: 0.2rem 0.35rem;
+  border-radius: 6px;
+}
+
+.nav-brand-mark {
+  display: block;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+
+.nav-brand-text {
+  font-family: var(--font-mono);
+  font-weight: 650;
+  font-size: 0.95rem;
+}
+
+/* ============================================================
+   Invitation link
+   ============================================================ */
+
+/* A URL is one long unbroken token, so without an explicit break it either
+   overflows the card or forces a horizontal scrollbar across the page. */
+.invite-link {
+  white-space: pre-wrap;
+  word-break: break-all;
+  overflow-wrap: anywhere;
+}
+
+/* ============================================================
+   In-app resource footer
+   ============================================================ */
+
+.app-footer {
+  margin-top: 2.5rem;
+  padding: 1.75rem 0 1.25rem;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.app-footer-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 1.5rem 2rem;
+}
+
+.app-footer-col {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.app-footer-head {
+  margin: 0 0 0.15rem;
+  font-family: var(--font-display);
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-muted);
+}
+
+.app-footer-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  text-decoration: none;
+}
+
+.app-footer-link:hover {
+  color: var(--text-accent);
+}
+
+.app-footer-ext {
+  font-size: 0.7rem;
+  opacity: 0.6;
+}
+
+.app-footer-base {
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border-subtle);
+  font-family: var(--font-display);
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+/* ============================================================
+   mero-ui overrides — the component library ships dark
+   ============================================================
+   `Navbar`, `Input` and friends carry their own palette, tuned for a dark
+   product surface. On this light page that lands as a black bar with an
+   invisible wordmark, and white text typed into white fields. These override
+   the library's own custom properties where it exposes them and its elements
+   where it does not.
+
+   ⚠️ Scoped to this app's shell, not written as bare element selectors, so a
+   third-party widget mounted elsewhere is not restyled by accident. */
+
+/* The Navbar itself is recoloured through its `style` prop in NavBar.tsx —
+   mero-ui spreads `style` after its own base styles, so no override is needed
+   here. Its CHILDREN still inherit the library's light-on-dark ink. */
+.app-bg nav a,
+.app-bg nav span,
+.app-bg nav button {
+  color: var(--text-primary);
+}
+
+.nav-lobby-name {
+  font-family: var(--font-display);
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 320px;
+}
+
+/* Text typed into a field has to be readable. The library defaults to a light
+   ink for a dark ground, which on white is invisible — the single most
+   reported symptom of this retheme. */
+.app-bg input,
+.app-bg textarea,
+.app-bg select,
+.app-bg [class*='input'] input,
+.app-bg [class*='Input'] input {
+  color: var(--text-primary) !important;
+  background: var(--bg-surface) !important;
+  border-color: var(--border-medium) !important;
+  caret-color: var(--sonar-green);
+}
+
+.app-bg input::placeholder,
+.app-bg textarea::placeholder {
+  color: var(--text-muted) !important;
+  opacity: 1; /* Firefox dims placeholders again on top of the colour */
+}
+
+.app-bg input:focus,
+.app-bg textarea:focus {
+  outline: none;
+  border-color: var(--sonar-green) !important;
+  box-shadow: 0 0 0 3px var(--sonar-green-glow) !important;
+}
+
+/* ============================================================
+   Back — in the page, not the bar
+   ============================================================
+   It used to live in the navbar, where it appeared and disappeared between
+   screens and shifted the brand around under the cursor. It belongs with the
+   content it backs out of. No lift on hover: the colour carries it. */
+
+.page-back {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 6px 10px 6px 4px;
+  margin-bottom: -0.5rem;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.page-back:hover {
+  color: var(--text-primary);
+}
+
+/* A count beside a tab label, so "Matches" and "History" say how much is
+   behind them without opening each one. */
+.tab-count {
+  margin-left: 0.4rem;
+  padding: 0 0.35rem;
+  border-radius: 999px;
+  background: var(--bg-card-hover);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1.6;
+}
+
+.tab-btn-active .tab-count {
+  background: var(--sonar-green-glow);
+  color: var(--text-accent);
+}
+
+/* The landing page's ghost button — a bordered white control for anything
+   secondary. Named so it reads as a button rather than a row-specific CTA. */
+.btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 11px 19px;
+  border-radius: var(--radius);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 14.5px;
+  font-weight: 650;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.btn-ghost:hover:not(:disabled) {
+  border-color: var(--border-strong);
+}
+
+.btn-ghost:disabled {
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
+/* Small, square-ish icon button — used for inline copy affordances. */
+.btn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px 7px;
+  border-radius: var(--radius-sm);
+  background: none;
+  border: 1px solid transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.btn-icon:hover {
+  color: var(--text-primary);
+  border-color: var(--border-subtle);
+}
+
+/* ============================================================
+   Logout — a text control, not a pill
+   ============================================================ */
+
+.nav-logout {
+  background: none;
+  border: none;
+  padding: 6px 4px;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.nav-logout:hover {
+  color: var(--text-primary);
+}
+
+/* ============================================================
+   Toasts
+   ============================================================
+   A white card with a coloured dot, not white-on-saturated-red. The variant is
+   carried by the dot and a thin left edge, so the MESSAGE always sits at full
+   contrast on the same ground as the rest of the page. */
+
+.toast-viewport {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 10050;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: calc(100vw - 32px);
+}
+
+.toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 260px;
+  max-width: 380px;
+  padding: 12px 12px 12px 14px;
+  border-radius: var(--radius);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-left: 3px solid var(--text-muted);
+  box-shadow: var(--shadow-card-hover);
+  color: var(--text-primary);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.toast-dot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  margin-top: 6px;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+
+.toast-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+
+.toast-close {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  padding: 0 2px;
+  color: var(--text-muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.toast-close:hover { color: var(--text-primary); }
+
+.toast-error { border-left-color: var(--fire-red); }
+.toast-error .toast-dot { background: var(--fire-red); }
+.toast-success { border-left-color: var(--text-accent); }
+.toast-success .toast-dot { background: var(--text-accent); }
+.toast-warning { border-left-color: var(--pending-yellow); }
+.toast-warning .toast-dot { background: var(--pending-yellow); }
+.toast-info { border-left-color: var(--miss-blue); }
+.toast-info .toast-dot { background: var(--miss-blue); }
+
+/* ============================================================
+   Narrow screens
+   ============================================================
+   The layout was built for a desktop window: fixed paddings, rows that assume
+   room for a label and a control side by side, and a board sized in absolute
+   cells. Below 720px it has to stack instead. */
+
+@media (max-width: 720px) {
+  .page-shell {
+    padding: 1rem 0.75rem 2rem;
+  }
+
+  .naval-card-body,
+  .naval-card-header {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+
+  /* Input-and-button rows: the button drops under a full-width field rather
+     than squeezing both into a strip too narrow to read either. Covers the
+     form ITSELF as well as rows inside it — "New Match" puts the flex on the
+     `<form>`, so a rule aimed only at its children left that one squeezed. */
+  .naval-card-body form,
+  .naval-card-body form > div,
+  .naval-card-body > div[style*='display: flex'] {
+    flex-wrap: wrap;
+  }
+
+  /* mero-ui's Input renders its own wrapper; without this the field keeps its
+     intrinsic width and the row cannot actually wrap. */
+  .naval-card-body form > *:not(button),
+  .naval-card-body form > div > *:not(button) {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+
+  .btn-deploy,
+  .btn-fire,
+  .btn-ghost {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+
+  /* The tab rail scrolls instead of wrapping — a wrapped rail reads as two
+     rows of unrelated buttons. */
+  .tab-rail {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .tab-btn {
+    white-space: nowrap;
+  }
+
+  .app-footer-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .match-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.6rem;
+  }
+
+  .toast-viewport {
+    right: 8px;
+    left: 8px;
+    bottom: 8px;
+  }
+
+  .toast { max-width: none; }
+
+  /* The board is the one thing that cannot stack: it scrolls, in its own
+     container, so the page itself never scrolls sideways. */
+  .grid-wrap,
+  .board-wrap {
+    overflow-x: auto;
+  }
+
+  :root { --cell-size: 30px; }
+}
+
+@media (max-width: 420px) {
+  .app-footer-grid { grid-template-columns: 1fr; }
+  :root { --cell-size: 26px; }
+  .nav-brand-text { display: none; }
 }

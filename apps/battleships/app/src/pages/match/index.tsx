@@ -1,8 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
-  CopyToClipboard,
-  useToast,
 } from '@calimero-network/mero-ui';
 import {
   useMero,
@@ -17,6 +15,12 @@ import { resolveEffectiveMatchId, SHIP_TARGETS, validateFleetPayload } from './c
 
 import NavBar from '../../components/NavBar';
 import LobbySelect from '../../components/LobbySelect';
+import AppFooter from '../../components/AppFooter';
+import { useToast } from '../../contexts/ToastContext';
+import CopyButton from '../../components/CopyButton';
+import { generateInvitationUrl, parseInvitationInput } from '../../utils/invitation';
+import { friendlyContractMessage, isMatchFinishedError, isPlayerKeyShaped, isShipsNotPlacedError } from '../../utils/contractError';
+import { EMBEDDED_NAME_KEY, getStoredLobbyName, setStoredLobbyName } from '../../utils/lobbyName';
 import LobbyView from '../../components/LobbyView';
 import GameBoard from '../../components/GameBoard';
 import ShotGrid from '../../components/ShotGrid';
@@ -97,6 +101,16 @@ export default function MatchPage() {
   const [ownBoard, setOwnBoard] = useState<number[]>([]);
   const [shotsBoard, setShotsBoard] = useState<number[]>([]);
   const [placed, setPlaced] = useState<boolean>(false);
+  /**
+   * The opponent has not deployed yet.
+   *
+   * ⚠️ LEARNED FROM A REFUSAL, not queried. The contract keeps `placed_p1` /
+   * `placed_p2` but exposes no getter for them, and the opponent's board is
+   * `#[app::private]` by design — so this is the only thing the client can
+   * actually know. Set when a shot is refused for that reason, cleared as soon
+   * as one lands. Without it you can fire into the same refusal all day.
+   */
+  const [opponentNotReady, setOpponentNotReady] = useState<boolean>(false);
   const [currentTurn, setCurrentTurn] = useState<string | null>(null);
   const [isMyTurn, setIsMyTurn] = useState<boolean>(false);
   const [currentUser, setCurrentUser] = useState<string | null>(null);
@@ -242,8 +256,47 @@ export default function MatchPage() {
     }
   }, [currentTurn, currentUser]);
 
-  const handleBoardUpdate = useCallback(() => { loadBoards(); loadTurnInfo(); }, [loadBoards, loadTurnInfo]);
-  const handleTurnUpdate = useCallback(() => { loadTurnInfo(); }, [loadTurnInfo]);
+  /**
+   * Keep the member list fresh while the lobby is on screen.
+   *
+   * ⚠️ POLLED, not evented. A member joining a namespace produces no execution
+   * event on this context — the join happens in the group layer, not the app's
+   * WASM — so there is nothing for `useGameSubscriptions` to deliver and the
+   * roster simply sat there until a manual reload. Ten seconds is slow enough
+   * to be invisible on the node and fast enough that someone accepting an
+   * invitation appears while you are still looking at the screen.
+   *
+   * Scoped to the two views that show members, so nothing polls during a match.
+   */
+  useEffect(() => {
+    if (view !== 'lobby-select' && view !== 'lobby') return undefined;
+    if (!lobby.namespaceId) return undefined;
+    const id = setInterval(() => {
+      void lobby.refetchMembers();
+      void lobby.refetchPlayerKeys();
+    }, 10_000);
+    return () => clearInterval(id);
+  }, [view, lobby.namespaceId, lobby.refetchMembers, lobby]);
+
+  /**
+   * Any state change from the other side clears the "opponent not deployed"
+   * latch.
+   *
+   * ⚠️ WITHOUT THIS THE LATCH IS A DEAD END. It disables Fire, and the only
+   * other thing that cleared it was a successful shot — which you cannot make
+   * while it is set. So the moment the opponent actually deploys, the UI would
+   * stay stuck refusing to fire, with no way out but a reload. An event from
+   * the match is exactly the signal that the standing refusal may be stale.
+   */
+  const handleBoardUpdate = useCallback(() => {
+    setOpponentNotReady(false);
+    loadBoards();
+    loadTurnInfo();
+  }, [loadBoards, loadTurnInfo]);
+  const handleTurnUpdate = useCallback(() => {
+    setOpponentNotReady(false);
+    loadTurnInfo();
+  }, [loadTurnInfo]);
 
   const refreshMatchList = useCallback(async () => {
     if (!lobbyApi) return;
@@ -349,6 +402,29 @@ export default function MatchPage() {
             // context identity lookup failed
           }
         }
+
+        /**
+         * Join the lobby context if this node is not in it yet.
+         *
+         * ⚠️ NOBODY WAS DOING THIS. `joinContext` was called for MATCH contexts
+         * only. Joining a namespace does not put you in a context that already
+         * exists — auto-follow covers contexts created AFTER you are a member,
+         * and the lobby context is created when the lobby is, before anyone is
+         * invited. So an invited player had a namespace membership, no lobby
+         * identity, and therefore no player key: the lobby listed one player on
+         * every node, each seeing only itself, and a match could not be started
+         * without someone pasting a key from another machine.
+         */
+        if (!executorKey) {
+          try {
+            await mero.admin.joinContext(lobbyContextId);
+            const { identities } = await mero.admin.getContextIdentitiesOwned(lobbyContextId);
+            if (identities.length > 0) executorKey = identities[0];
+          } catch (e) {
+            console.warn('[lobby] joinContext failed', e);
+          }
+        }
+
         if (!executorKey) executorKey = contextIdentity;
         if (!executorKey || cancelled) return;
 
@@ -492,9 +568,23 @@ export default function MatchPage() {
       show({ title: 'Lobby not ready yet — please wait a moment', variant: 'warning' });
       return;
     }
+    // Caught here rather than at the node: a typo or a half-pasted key comes
+    // back otherwise as `player2 is not a valid hex key: Invalid character…`,
+    // which names a parameter the player has never heard of.
+    if (!isPlayerKeyShaped(player2)) {
+      show({
+        title: 'That is not a valid player key — it should be 64 hex characters',
+        variant: 'error',
+      });
+      return;
+    }
+    if (player2.trim().toLowerCase() === (currentUser ?? '').toLowerCase()) {
+      show({ title: 'You cannot challenge yourself', variant: 'error' });
+      return;
+    }
     setCreatingMatch(true);
     try {
-      const id = await lobbyApi.createMatch({ player2 });
+      const id = await lobbyApi.createMatch({ player2: player2.trim() });
       show({ title: `Match allocated: ${id}`, variant: 'success' });
 
       // ⚠️ The game context is attached to the NAMESPACE ROOT group, the same
@@ -536,7 +626,7 @@ export default function MatchPage() {
       show({ title: 'Match created', variant: 'success' });
     } catch (e) {
       console.error('createMatch', e);
-      show({ title: e instanceof Error ? e.message : 'Failed to create match', variant: 'error' });
+      show({ title: friendlyContractMessage(e, 'Failed to create match'), variant: 'error' });
     } finally {
       setCreatingMatch(false);
     }
@@ -648,7 +738,7 @@ export default function MatchPage() {
       await loadTurnInfo();
     } catch (e) {
       console.error('placeShips', e);
-      show({ title: e instanceof Error ? e.message : 'Failed to place ships', variant: 'error' });
+      show({ title: friendlyContractMessage(e, 'Failed to place ships'), variant: 'error' });
     } finally {
       loadingRef.current = false;
     }
@@ -675,6 +765,7 @@ export default function MatchPage() {
       const finalY = shotY !== undefined ? shotY : 0;
       await ensureMatchContextReady(matchApi);
       await matchApi.proposeShot({ match_id: effectiveMatchId, x: finalX, y: finalY });
+      setOpponentNotReady(false);
       show({ title: `Shot fired at (${finalX}, ${finalY})`, variant: 'success' });
       await loadBoards();
       await loadTurnInfo();
@@ -684,15 +775,22 @@ export default function MatchPage() {
     } catch (e) {
       console.error('proposeShot', e);
       // Match-over errors arrive as a JSON payload from the game WASM, e.g.
-      // `{"kind":"Finished"}`. Translate into a refresh instead of the raw
-      // error toast so the UI transitions cleanly even if the winner event
-      // was lost to core #2139.
-      const message = e instanceof Error ? e.message : '';
-      if (message.includes('Finished') || message.includes('"kind":"Finished"')) {
+      // `{"kind":"Finished"}`. Translate into a refresh instead of an error
+      // toast so the UI transitions cleanly even if the winner event was lost
+      // to core #2139.
+      //
+      // ⚠️ This branch was DEAD. The node returns the error body as the UTF-8
+      // BYTES of that JSON — `[123, 34, ...]` — so a substring test for
+      // "Finished" never matched, and the player got a wall of numbers instead
+      // of either outcome. `isMatchFinishedError` decodes first.
+      if (isMatchFinishedError(e)) {
         refreshMatchList();
         show({ title: 'Match already finished', variant: 'info' });
+      } else if (isShipsNotPlacedError(e)) {
+        setOpponentNotReady(true);
+        show({ title: 'Your opponent has not deployed their fleet yet', variant: 'warning' });
       } else {
-        show({ title: message || 'Failed to fire shot', variant: 'error' });
+        show({ title: friendlyContractMessage(e, 'Failed to fire shot'), variant: 'error' });
       }
     } finally {
       loadingRef.current = false;
@@ -706,22 +804,39 @@ export default function MatchPage() {
   const doLogout = useCallback(() => { logout(); navigate('/'); }, [logout, navigate]);
 
   const handleCreateLobby = useCallback(async () => {
-    const id = await lobby.createLobby(newLobbyName || undefined);
+    const name = newLobbyName.trim();
+    const id = await lobby.createLobby(name || undefined);
+    // Cache it here too: the creator typed the name, and the server may stop
+    // returning it. This is also what `invitePlayer` embeds for the joiner.
+    if (id && name) setStoredLobbyName(id, name);
     if (id) { setNewLobbyName(''); show({ title: 'Namespace created', variant: 'success' }); }
     else if (lobby.createLobbyError) { show({ title: lobby.createLobbyError.message, variant: 'error' }); }
   }, [lobby, newLobbyName, show]);
 
   const handleCreateInvitation = useCallback(async () => {
     const result = await lobby.invitePlayer();
-    if (result) { setInvitationJson(JSON.stringify(result, null, 2)); show({ title: 'Invitation created', variant: 'success' }); }
+    // Embed the lobby's human name BESIDE the signed invitation, so the joiner
+    // has something to render before the namespace metadata syncs. A sibling
+    // key — inside the invitation it would invalidate the signature.
+    const lobbyName = lobby.namespaceId ? getStoredLobbyName(lobby.namespaceId) : '';
+    const payload = lobbyName && result && typeof result === 'object'
+      ? { ...(result as Record<string, unknown>), [EMBEDDED_NAME_KEY]: lobbyName }
+      : result;
+    // Share a LINK, not the raw JSON. The payload is passed through opaquely —
+    // the invitation is signed over its own body, so re-modelling it would
+    // drop unknown fields and invalidate the signature with them.
+    if (result) { setInvitationJson(generateInvitationUrl(JSON.stringify(payload))); show({ title: 'Invitation link created', variant: 'success' }); }
   }, [lobby, show]);
 
   const handleJoinLobby = useCallback(async () => {
-    if (!joinInvitationInput.trim()) { show({ title: 'Paste an invitation JSON', variant: 'error' }); return; }
+    if (!joinInvitationInput.trim()) { show({ title: 'Paste an invitation link', variant: 'error' }); return; }
+    // A link, a bare code, or the raw JSON older invitations were issued as.
+    const payloadJson = parseInvitationInput(joinInvitationInput);
+    if (!payloadJson) { show({ title: 'That does not look like an invitation link', variant: 'error' }); return; }
     try {
-      const success = await lobby.joinLobby(joinInvitationInput);
+      const success = await lobby.joinLobby(payloadJson);
       if (success) { show({ title: 'Joined namespace', variant: 'success' }); setJoinInvitationInput(''); }
-    } catch (e) { show({ title: e instanceof Error ? e.message : 'Failed to join', variant: 'error' }); }
+    } catch (e) { show({ title: friendlyContractMessage(e, 'Failed to join'), variant: 'error' }); }
   }, [joinInvitationInput, lobby, show]);
 
   const handleEnterLobby = useCallback(() => {
@@ -787,6 +902,10 @@ export default function MatchPage() {
               onJoinLobby={handleJoinLobby}
               onEnter={handleEnterLobby}
             />
+            {/* Inside `.page-content`, NOT beside it: `.page-shell` is a flex
+                ROW, so a footer placed as its sibling becomes a second column
+                squeezed next to the page instead of a band under it. */}
+            <AppFooter />
           </div>
         </div>
       </div>
@@ -797,12 +916,24 @@ export default function MatchPage() {
   if (view === 'lobby') {
     return (
       <div className="app-bg">
-        <NavBar {...navProps} onBack={() => { manualLobbySelect.current = true; setView('lobby-select'); navigate('/lobby', { replace: true }); }} />
+        <NavBar {...navProps} />
         <div className="page-shell">
           <div className="page-content">
+            {/* Back belongs with the content it backs out of, not in the bar:
+                the bar is the same on every screen, and a control that appears
+                and disappears there shifts the brand around under the cursor. */}
+            <button
+              type="button"
+              className="page-back"
+              onClick={() => { manualLobbySelect.current = true; setView('lobby-select'); navigate('/lobby', { replace: true }); }}
+            >
+              <span aria-hidden>&larr;</span> All lobbies
+            </button>
             <LobbyView
               lobbyAlias={lobby.selectedLobby?.alias}
               isAdmin={lobby.isAdmin}
+              playerKeys={lobby.playerKeys}
+              onChallengePlayer={setPlayer2}
               members={lobby.members}
               selfIdentity={lobby.selfIdentity}
               executorPublicKey={lobby.executorPublicKey}
@@ -829,9 +960,12 @@ export default function MatchPage() {
   // --- Game ---
   return (
     <div className="app-bg">
-      <NavBar {...navProps} onBack={resetToLobby} />
+      <NavBar {...navProps} />
       <div className="page-shell">
         <div className="page-content page-content-wide">
+          <button type="button" className="page-back" onClick={resetToLobby}>
+            <span aria-hidden>&larr;</span> Back to lobby
+          </button>
           {/* Match header */}
           <div className="naval-card fade-in">
             <div className="naval-card-header">
@@ -853,7 +987,7 @@ export default function MatchPage() {
                     <span className="info-value">
                       {matchContextId.slice(0, 6)}...{matchContextId.slice(-6)}
                     </span>
-                    <CopyToClipboard text={matchContextId} variant="icon" size="small" successMessage="Copied!" />
+                    <CopyButton text={matchContextId} label="Copy" copiedLabel="Copied" className="btn-icon" />
                   </div>
                 )}
                 <span className={`badge ${isEventSubscribed ? 'badge-live' : 'badge-offline'}`}>
@@ -996,7 +1130,8 @@ export default function MatchPage() {
                       </div>
                       <button
                         className="btn-fire"
-                        disabled={!matchApiReady || !isMyTurn}
+                        disabled={!matchApiReady || !isMyTurn || opponentNotReady}
+                        title={opponentNotReady ? 'Your opponent has not deployed their fleet yet' : undefined}
                         onClick={() => proposeShot(selectedShotX, selectedShotY)}
                       >
                         Fire
@@ -1004,7 +1139,11 @@ export default function MatchPage() {
                     </div>
                   )}
 
-                  {!matchFinished && !isMyTurn && placed && (
+                  {!matchFinished && opponentNotReady && (
+                    <span className="mono-sm">Waiting for your opponent to deploy their fleet…</span>
+                  )}
+
+                  {!matchFinished && !isMyTurn && placed && !opponentNotReady && (
                     <span className="mono-sm">Waiting for opponent...</span>
                   )}
                 </div>

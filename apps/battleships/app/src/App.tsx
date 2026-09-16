@@ -1,7 +1,7 @@
 import React, { type ReactNode } from 'react';
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { AppMode, MeroProvider, useMero } from '@calimero-network/mero-react';
-import { ToastProvider } from '@calimero-network/mero-ui';
+import { ToastProvider } from './contexts/ToastContext';
 
 import MatchPage from './pages/match';
 import HomePage from './pages/home';
@@ -60,10 +60,44 @@ const hashNodeUrl =
  * `/login` route. Deleting that page took the redirect with it; the landing
  * routes need the same guard, because they are now where login begins and ends.
  */
+/**
+ * The landing page, told who is looking at it.
+ *
+ * ⚠️ `useMero()` lives HERE, not in `LandingPage`. That component is generated
+ * from a template shared by fourteen apps, three of which render it with no
+ * `MeroProvider` above them — the hook would throw for those. So the app, which
+ * knows it has a provider, reads the session and hands the answer down.
+ *
+ * `/home` rather than `/lobby`: it is the same entry the post-login guard uses,
+ * so "Open application" and signing in land in exactly the same place.
+ */
+function AppLandingPage() {
+  const { isAuthenticated } = useMero();
+  const navigate = useNavigate();
+  return (
+    <LandingPage
+      isAuthenticated={isAuthenticated}
+      onOpenApp={() => navigate('/home')}
+    />
+  );
+}
+
 function RedirectIfAuthed({ children }: { children: ReactNode }) {
   const { isAuthenticated, isLoading } = useMero();
+  const location = useLocation();
+  // Asking for the landing page ON PURPOSE — the in-app logo link — is not the
+  // case this guard exists for, so it is let through.
+  //
+  // ⚠️ ROUTER STATE, deliberately, not a query parameter. State lives in the
+  // history entry and never survives a fresh document load, so the SSO callback
+  // — which arrives as a cold navigation to `/` — cannot carry it even if the
+  // URL it returns to was captured from a page that had it. A `?from=app`
+  // marker WOULD ride along in that URL and would reintroduce exactly the bug
+  // the comment above describes: login succeeding and landing you back on the
+  // marketing page.
+  const deliberate = (location.state as { fromApp?: boolean } | null)?.fromApp === true;
   if (isLoading) return null; // the auth probe is still in flight
-  if (isAuthenticated) return <Navigate to="/home" replace />;
+  if (isAuthenticated && !deliberate) return <Navigate to="/home" replace />;
   return <>{children}</>;
 }
 
@@ -88,10 +122,9 @@ export default function App() {
       <ToastProvider>
         <BrowserRouter basename="/">
           <Routes>
-            {/* The explainer is the front door; Authenticate keeps the
-                ConnectButton and its returnTo handling, on /login. Both
-                redirect an authenticated visitor onward, so the desktop
-                hand-off still lands in the lobby. */}
+            {/* The explainer is the front door. A signed-in visitor who comes
+                back here from inside the app — the in-app footer links to it —
+                is offered "Open application" rather than a second sign-in. */}
             {/* The landing page is three pages: `/`, `/docs` and `/preview`. They are
                 real URLs so they can be shared and opened cold, which needs a route
                 here — otherwise this app's catch-all swallows the deep link before
@@ -106,10 +139,10 @@ export default function App() {
                 element={
                   landingPath === '/' ? (
                     <RedirectIfAuthed>
-                      <LandingPage />
+                      <AppLandingPage />
                     </RedirectIfAuthed>
                   ) : (
-                    <LandingPage />
+                    <AppLandingPage />
                   )
                 }
               />

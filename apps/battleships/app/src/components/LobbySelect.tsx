@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Button, Input } from '@calimero-network/mero-ui';
+import { Input } from '@calimero-network/mero-ui';
 
 interface LobbyRecord {
   namespaceId: string;
@@ -143,14 +143,18 @@ export default function LobbySelect({
           {addTab === 'create' ? (
             <div className="tab-content" key="create" role="tabpanel">
               <form
-                onSubmit={(e) => { e.preventDefault(); onCreateLobby(); }}
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (!newLobbyName.trim()) return;
+                  onCreateLobby();
+                }}
                 style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}
               >
                 <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
-                  <div style={{ flex: 1, minWidth: '220px' }}>
+                  <div style={{ flex: 1, minWidth: '160px' }}>
                     <Input
                       type="text"
-                      placeholder="Lobby name (optional)"
+                      placeholder="Lobby name"
                       value={newLobbyName}
                       onChange={(e) => onNewLobbyNameChange(e.target.value)}
                     />
@@ -158,7 +162,7 @@ export default function LobbySelect({
                   <button
                     type="submit"
                     className="btn-deploy"
-                    disabled={createLobbyLoading}
+                    disabled={createLobbyLoading || !newLobbyName.trim()}
                   >
                     {createLobbyLoading ? 'Creating…' : 'Create'}
                   </button>
@@ -171,23 +175,33 @@ export default function LobbySelect({
           ) : (
             <div className="tab-content" key="join" role="tabpanel">
               <form
-                onSubmit={(e) => { e.preventDefault(); onJoinLobby(); }}
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (!joinInvitationInput.trim()) return;
+                  onJoinLobby();
+                }}
                 style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}
               >
-                <Input
-                  type="text"
-                  placeholder="Paste invitation JSON"
-                  value={joinInvitationInput}
-                  onChange={(e) => onJoinInputChange(e.target.value)}
-                />
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
-                  <span className="console-hint">
-                    Ask a lobby owner to share an invitation, then paste the full JSON above.
-                  </span>
-                  <Button type="submit" variant="primary" disabled={joinLoading}>
+                <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <div style={{ flex: 1, minWidth: '160px' }}>
+                    <Input
+                      type="text"
+                      placeholder="Paste invitation link"
+                      value={joinInvitationInput}
+                      onChange={(e) => onJoinInputChange(e.target.value)}
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    className="btn-deploy"
+                    disabled={joinLoading || !joinInvitationInput.trim()}
+                  >
                     {joinLoading ? 'Joining…' : 'Join'}
-                  </Button>
+                  </button>
                 </div>
+                <span className="console-hint">
+                  Ask a lobby owner for an invitation link and paste the whole thing.
+                </span>
               </form>
             </div>
           )}
@@ -278,7 +292,7 @@ export default function LobbySelect({
               <div className="lobby-empty-headline">No fleets in port</div>
               <div className="lobby-empty-sub">
                 Create a lobby above to set up a private game group, or paste an
-                invitation JSON to join one a friend already runs.
+                invitation link to join one a friend already runs.
               </div>
               <div className="lobby-empty-arrow">↑ Add a lobby above</div>
             </div>
