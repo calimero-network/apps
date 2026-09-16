@@ -402,6 +402,29 @@ export default function MatchPage() {
             // context identity lookup failed
           }
         }
+
+        /**
+         * Join the lobby context if this node is not in it yet.
+         *
+         * ⚠️ NOBODY WAS DOING THIS. `joinContext` was called for MATCH contexts
+         * only. Joining a namespace does not put you in a context that already
+         * exists — auto-follow covers contexts created AFTER you are a member,
+         * and the lobby context is created when the lobby is, before anyone is
+         * invited. So an invited player had a namespace membership, no lobby
+         * identity, and therefore no player key: the lobby listed one player on
+         * every node, each seeing only itself, and a match could not be started
+         * without someone pasting a key from another machine.
+         */
+        if (!executorKey) {
+          try {
+            await mero.admin.joinContext(lobbyContextId);
+            const { identities } = await mero.admin.getContextIdentitiesOwned(lobbyContextId);
+            if (identities.length > 0) executorKey = identities[0];
+          } catch (e) {
+            console.warn('[lobby] joinContext failed', e);
+          }
+        }
+
         if (!executorKey) executorKey = contextIdentity;
         if (!executorKey || cancelled) return;
 
