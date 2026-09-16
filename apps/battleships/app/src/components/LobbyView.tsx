@@ -14,6 +14,7 @@ interface LobbyViewProps {
   lobbyAlias?: string | null;
   isAdmin: boolean;
   members: GroupMember[];
+  membersLoading: boolean;
   /** Player keys in this lobby — what `create_match` accepts. */
   playerKeys: string[];
   /** Fill the challenge field from a player row. */
@@ -54,7 +55,7 @@ const formatTs = (ms: number) => new Date(ms).toLocaleString(undefined, {
 });
 
 export default function LobbyView({
-  lobbyAlias, isAdmin, members, playerKeys, onChallengePlayer, selfIdentity, executorPublicKey,
+  lobbyAlias, isAdmin, members, membersLoading, playerKeys, onChallengePlayer, selfIdentity, executorPublicKey,
   inviteLoading, invitationJson, onCreateInvitation, onDismissInvitation,
   player2, creatingMatch, onPlayer2Change, onCreateMatch,
   matches, onOpenGame,
@@ -74,30 +75,30 @@ export default function LobbyView({
    * De-duplicated, because once the lookup does answer, your key is in it too.
    */
   /**
-   * The role to badge a player row with.
+   * The player key for a member row, when it can be established.
    *
-   * ⚠️ THERE IS NO GENERAL MAPPING FROM A PLAYER KEY TO A ROLE. Roles live on
-   * GROUP members, keyed by account; a player key is a CONTEXT identity, and
-   * nothing relates the two — that is the same split that makes `create_match`
-   * reject an account. So this resolves only the two cases it can prove:
+   * ⚠️ THERE IS NO MAPPING BETWEEN THE TWO IDS. A member is keyed by ACCOUNT,
+   * a player key is a CONTEXT identity, and nothing relates them — the same
+   * split that makes `create_match` reject an account. So this resolves only
+   * what it can prove:
    *
-   *   - your own row, from `isAdmin`
+   *   - your own row, from the executor key this node already holds
    *   - the other row, when there is exactly one other member and exactly one
-   *     other key, which is the two-player lobby and leaves no ambiguity
+   *     other known key, which is the two-player lobby and is unambiguous
    *
-   * Anything else returns null and the row simply carries no badge. A guessed
-   * role is worse than none: it would show "Admin" against someone who cannot
-   * promote anybody.
+   * Otherwise the row says the member has not opened the lobby yet, which is
+   * both true and the reason there is no key: a context identity is minted
+   * when someone opens it, not when they accept the invitation.
    */
-  const roleForKey = useCallback(
-    (key: string): string | null => {
-      if (key === executorPublicKey) return isAdmin ? 'Admin' : 'Member';
+  const playerKeyForMember = useCallback(
+    (identity: string): string | null => {
+      if (identity === selfIdentity) return executorPublicKey ?? null;
       const others = members.filter((m) => m.identity !== selfIdentity);
       const otherKeys = playerKeys.filter((k) => k !== executorPublicKey);
-      if (others.length === 1 && otherKeys.length === 1) return others[0]?.role ?? null;
+      if (others.length === 1 && otherKeys.length === 1) return otherKeys[0] ?? null;
       return null;
     },
-    [executorPublicKey, isAdmin, members, playerKeys, selfIdentity],
+    [executorPublicKey, members, playerKeys, selfIdentity],
   );
 
   const shownPlayers = useMemo(() => {
@@ -138,65 +139,53 @@ export default function LobbyView({
               {members.length} member{members.length !== 1 ? 's' : ''} online
             </span>
 
-            {/* ⚠️ PLAYER keys, from the lobby CONTEXT — not the group's member
-                rows, which are keyed by ACCOUNT id and which `create_match`
-                rejects as "not a player". Since rc.27 both render as 64 hex, so
-                listing the accounts here would offer a copy button for the one
-                id that cannot start a game.
-                ⚠️ AND IT ALWAYS RENDERS. Gating the whole block on
-                `playerKeys.length` meant that when the context identity lookup
-                came back empty — which it does until this node has joined the
-                lobby context — the section vanished and took the player's OWN
-                key with it: "2 members online" and nothing else on screen. */}
+            {/* ⚠️ DRIVEN BY THE GROUP MEMBER LIST, NOT BY CONTEXT IDENTITIES.
+                `/admin-api/groups/{id}/members` returns every member with their
+                role on BOTH nodes — it is the same data the admin dashboard
+                shows. Context identities do not: a node that joined a context
+                lists only its own, so a list built from those showed one row on
+                the member's node and looked broken. The roster comes from the
+                group; the challengeable key is attached where it is known. */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-              <span className="info-label">Players in this lobby</span>
-                <span className="console-hint">
-                  Copy yours to invite someone to challenge you; challenge anyone
-                  else with one click.
-                </span>
-                {shownPlayers.length === 0 && (
-                  <span className="console-hint">
-                    Resolving your player key…
-                  </span>
-                )}
-                {shownPlayers.length === 1 && members.length > 1 && (
-                  <span className="console-hint">
-                    {members.length - 1} other member
-                    {members.length > 2 ? 's have' : ' has'} joined this lobby but
-                    not opened it yet. They appear here, ready to challenge, once
-                    they do.
-                  </span>
-                )}
-                {shownPlayers.map((key) => {
-                  const isSelf = key === executorPublicKey;
-                  return (
-                    <div key={key} className="member-row">
-                      <span className="mono-sm" style={{ fontSize: '0.75rem' }}>
-                        {key.slice(0, 12)}…{key.slice(-8)}
+              <span className="info-label">Members</span>
+              {membersLoading && members.length === 0 && (
+                <span className="console-hint">Loading members…</span>
+              )}
+              {members.map((m) => {
+                const isSelf = m.identity === selfIdentity;
+                const key = playerKeyForMember(m.identity);
+                return (
+                  <div key={m.identity} className="member-row">
+                    <span className={`member-role ${m.role === 'Admin' ? 'role-admin' : 'role-member'}`}>
+                      {m.role}
+                    </span>
+                    {isSelf && (
+                      <span style={{ fontSize: '0.7rem', color: 'var(--text-accent)' }}>you</span>
+                    )}
+                    {key ? (
+                      <>
+                        <span className="mono-sm" style={{ fontSize: '0.72rem' }}>
+                          {key.slice(0, 10)}…{key.slice(-6)}
+                        </span>
+                        <CopyButton text={key} label="Copy" copiedLabel="Copied" className="btn-icon" />
+                        {!isSelf && (
+                          <button
+                            type="button"
+                            className="btn-icon"
+                            onClick={() => onChallengePlayer(key)}
+                          >
+                            Challenge
+                          </button>
+                        )}
+                      </>
+                    ) : (
+                      <span className="console-hint" style={{ margin: 0 }}>
+                        hasn&rsquo;t opened the lobby yet
                       </span>
-                      {(() => {
-                        const role = roleForKey(key);
-                        return role ? (
-                          <span className={`member-role ${role === 'Admin' ? 'role-admin' : 'role-member'}`}>
-                            {role}
-                          </span>
-                        ) : null;
-                      })()}
-                      <CopyButton text={key} label="Copy" copiedLabel="Copied" className="btn-icon" />
-                      {isSelf ? (
-                        <span style={{ fontSize: '0.7rem', color: 'var(--text-accent)' }}>you</span>
-                      ) : (
-                        <button
-                          type="button"
-                          className="btn-icon"
-                          onClick={() => onChallengePlayer(key)}
-                        >
-                          Challenge
-                        </button>
-                      )}
-                    </div>
-                  );
-                })}
+                    )}
+                  </div>
+                );
+              })}
             </div>
 
             <div style={{ display: 'flex', gap: '0.5rem' }}>

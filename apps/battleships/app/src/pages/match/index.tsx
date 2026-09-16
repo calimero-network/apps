@@ -943,6 +943,7 @@ export default function MatchPage() {
             <LobbyView
               lobbyAlias={lobby.selectedLobby?.alias}
               isAdmin={lobby.isAdmin}
+              membersLoading={lobby.membersLoading}
               playerKeys={lobby.playerKeys}
               onChallengePlayer={setPlayer2}
               members={lobby.members}
