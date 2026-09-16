@@ -14,9 +14,15 @@ test.describe("landing page", () => {
   test("shows the animated world, hero, play card and Calimero links", async ({ page }) => {
     await page.goto("/");
     await expect(page.getByTestId("landing")).toBeVisible();
-    await expect(page.locator("h1")).toContainText("Terraria-style");
+    // the title screen names the GAME. It used to carry the pitch as its h1
+    // ("A Terraria-style world…") with the name only in a 34px nav bar, so the
+    // launcher never actually said what you were about to play.
+    await expect(page.locator("h1")).toContainText("Merraria");
     await expect(page.getByTestId("world-anim")).toBeVisible();
     await expect(page.getByTestId("connect-open-btn")).toBeVisible();
+    // and what the keys do — in game that list is behind Esc/O, which a
+    // first-time player has no way to know about
+    await expect(page.getByTestId("controls")).toContainText("dig");
     // online-only: no offline entry anywhere
     await expect(page.getByTestId("offline-btn")).toHaveCount(0);
     const links = page.getByTestId("social-links").locator("a");
@@ -31,6 +37,52 @@ test.describe("landing page", () => {
         return d.some((v) => v > 0);
       });
     expect(painted).toBe(true);
+  });
+
+  test("the play card offers a way back to the marketing landing page", async ({ page }) => {
+    // The launcher is where a visitor lands after pressing Connect on the
+    // marketing page, and it used to be a one-way door: the landing page shows
+    // once per session, so there was no way back to the pitch, the docs or the
+    // preview without clearing storage.
+    await page.goto("/");
+    await expect(page.getByTestId("connect-open-btn")).toBeVisible();
+    await expect(page.getByTestId("back-to-landing")).toBeVisible();
+
+    await page.getByTestId("back-to-landing").click();
+    await expect(page.locator(".cal-lp-root")).toBeVisible();
+
+    // Leaving it again uncovers the launcher as it was — the landing renders
+    // OVER the launcher rather than replacing it, so there is nothing to
+    // restore and no second trip through the world animation.
+    await page.locator(".cal-lp-root").getByRole("button", { name: "Connect to node" }).first().click();
+    await expect(page.locator(".cal-lp-root")).toHaveCount(0);
+    await expect(page.getByTestId("connect-open-btn")).toBeVisible();
+  });
+
+  test("the way back is there once a node is connected too", async ({ page }) => {
+    // The button lives on the CENTRE COLUMN, not inside the card's contents, so
+    // it survives every re-render of the play card — anonymous, world picker and
+    // ready all render through #mtl-play beside it. Asserted because putting it
+    // inside would have given the connected user no way back at all.
+    await mockNode(page);
+    await mockAdmin(page, freshState());
+    await seedSession(page);
+    await page.goto("/");
+    await expect(page.getByTestId("world-list")).toBeVisible();
+    await expect(page.getByTestId("back-to-landing")).toBeVisible();
+  });
+
+  test("coming back from the docs leaves the launcher on / , not on /docs", async ({ page }) => {
+    // ⚠️ The landing nav pushes real history entries. Dismissing it from /docs
+    // used to leave the address bar there, so a reload — or the desktop app
+    // reopening the window — asked the dev server for a route the game does
+    // not serve.
+    await page.goto("/");
+    await page.getByTestId("back-to-landing").click();
+    await page.getByRole("navigation").getByRole("link", { name: "Docs" }).click();
+    await expect(page).toHaveURL(/\/docs$/);
+    await page.locator(".cal-lp-root").getByRole("button", { name: "Connect to node" }).first().click();
+    await expect(page).toHaveURL(/\/$/);
   });
 
   test("anonymous visitors get the connect button; nothing is probed on load", async ({ page }) => {
