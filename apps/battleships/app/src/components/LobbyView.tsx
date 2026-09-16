@@ -63,6 +63,27 @@ export default function LobbyView({
   const [historyFilter, setHistoryFilter] = useState<HistoryFilter>('all');
   const [matchTab, setMatchTab] = useState<'matches' | 'record' | 'history'>('matches');
 
+  /**
+   * Who to list as a player.
+   *
+   * ⚠️ YOUR OWN KEY IS INCLUDED WITHOUT WAITING FOR THE LOOKUP. This node knows
+   * its own executor key from the client it built, so gating the row on a round
+   * trip is what made the whole section — your key included — disappear behind
+   * "2 members online" when the context identities came back empty.
+   *
+   * De-duplicated, because once the lookup does answer, your key is in it too.
+   */
+  const shownPlayers = useMemo(() => {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const key of [executorPublicKey, ...playerKeys]) {
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      out.push(key);
+    }
+    return out;
+  }, [executorPublicKey, playerKeys]);
+
   // Newest first, then optionally restricted to matches involving the
   // current user. Memoized so a re-render from sibling state changes
   // (e.g. invite toast) doesn't re-sort the array.
@@ -94,15 +115,32 @@ export default function LobbyView({
                 rows, which are keyed by ACCOUNT id and which `create_match`
                 rejects as "not a player". Since rc.27 both render as 64 hex, so
                 listing the accounts here would offer a copy button for the one
-                id that cannot start a game. */}
-            {playerKeys.length > 0 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-                <span className="info-label">Players in this lobby</span>
+                id that cannot start a game.
+                ⚠️ AND IT ALWAYS RENDERS. Gating the whole block on
+                `playerKeys.length` meant that when the context identity lookup
+                came back empty — which it does until this node has joined the
+                lobby context — the section vanished and took the player's OWN
+                key with it: "2 members online" and nothing else on screen. */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+              <span className="info-label">Players in this lobby</span>
                 <span className="console-hint">
                   Copy yours to invite someone to challenge you; challenge anyone
                   else with one click.
                 </span>
-                {playerKeys.map((key) => {
+                {shownPlayers.length === 0 && (
+                  <span className="console-hint">
+                    Resolving your player key…
+                  </span>
+                )}
+                {shownPlayers.length === 1 && members.length > 1 && (
+                  <span className="console-hint">
+                    {members.length - 1} other member
+                    {members.length > 2 ? 's have' : ' has'} joined this lobby but
+                    not opened it yet. They appear here, ready to challenge, once
+                    they do.
+                  </span>
+                )}
+                {shownPlayers.map((key) => {
                   const isSelf = key === executorPublicKey;
                   return (
                     <div key={key} className="member-row">
@@ -124,9 +162,7 @@ export default function LobbyView({
                     </div>
                   );
                 })}
-              </div>
-            )}
-
+            </div>
 
             <div style={{ display: 'flex', gap: '0.5rem' }}>
               <button
