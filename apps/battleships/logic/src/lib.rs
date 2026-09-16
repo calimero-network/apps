@@ -411,7 +411,10 @@ impl LobbyState {
             return Ok((player_hex.to_string(), false));
         }
         self.players
-            .insert(account.to_string(), LwwRegister::new(player_hex.to_string()))
+            .insert(
+                account.to_string(),
+                LwwRegister::new(player_hex.to_string()),
+            )
             .map_err(|e| GameError::Invalid(format!("players.insert: {e}")))?;
         Ok((player_hex.to_string(), true))
     }
@@ -644,7 +647,11 @@ mod tests {
         assert!(changed);
 
         let players = state.get_players().unwrap();
-        assert_eq!(players.len(), 1, "same account must not create a second row");
+        assert_eq!(
+            players.len(),
+            1,
+            "same account must not create a second row"
+        );
         assert_eq!(players[0].player, new_key);
     }
 
@@ -653,8 +660,16 @@ mod tests {
         // The case that was broken: three members, each registering itself.
         // Every node must end up able to name all three player keys.
         let mut state = LobbyState::init();
-        let accounts = [hex::encode([7u8; 32]), hex::encode([8u8; 32]), hex::encode([9u8; 32])];
-        let keys = [hex::encode([1u8; 32]), hex::encode([2u8; 32]), hex::encode([3u8; 32])];
+        let accounts = [
+            hex::encode([7u8; 32]),
+            hex::encode([8u8; 32]),
+            hex::encode([9u8; 32]),
+        ];
+        let keys = [
+            hex::encode([1u8; 32]),
+            hex::encode([2u8; 32]),
+            hex::encode([3u8; 32]),
+        ];
         for (a, k) in accounts.iter().zip(keys.iter()) {
             state.register_player_with(a, k).unwrap();
         }
@@ -662,7 +677,10 @@ mod tests {
         let players = state.get_players().unwrap();
         assert_eq!(players.len(), 3);
         for (a, k) in accounts.iter().zip(keys.iter()) {
-            let found = players.iter().find(|p| &p.account == a).expect("account recorded");
+            let found = players
+                .iter()
+                .find(|p| &p.account == a)
+                .expect("account recorded");
             assert_eq!(&found.player, k);
         }
     }
