@@ -26,6 +26,8 @@ ci-rust:
 ci-wasm:
 	@echo "==> [wasm] logic/build.sh"
 	cd logic && ./build.sh
+	@echo "==> [wasm] bundle freshness"
+	./logic/check-bundle-fresh.sh
 
 # ── Server (sync-test-server/) — mirrors server-tests-lint.yml ───────────────
 
@@ -39,22 +41,22 @@ ci-server:
 	@echo "==> [server] npm test"
 	cd sync-test-server && npm test
 
-# ── Frontend (frontend/) — mirrors frontend-playwright.yml ───────────────────
+# ── Frontend (app/) — mirrors frontend-playwright.yml ───────────────────
 # Depends on ci-wasm so public/app.wasm exists before Playwright runs.
 
 ci-frontend: ci-wasm
 	@echo "==> [frontend] pnpm install"
-	cd frontend && pnpm install --frozen-lockfile
+	cd app && pnpm install --frozen-lockfile
 	@echo "==> [frontend] tsc --noEmit"
-	cd frontend && pnpm exec tsc -b --noEmit
+	cd app && pnpm exec tsc -b --noEmit
 	@echo "==> [frontend] sync-wasm"
-	cd frontend && pnpm sync-wasm
+	cd app && pnpm sync-wasm
 	@echo "==> [frontend] write .env if missing"
-	cd frontend && [ -f .env ] || (echo "VITE_NODE_URL=http://localhost:2528" > .env && echo "VITE_APPLICATION_PACKAGE=com.calimero.scaffolding-e2e" >> .env)
+	cd app && [ -f .env ] || (echo "VITE_NODE_URL=http://localhost:2528" > .env && echo "VITE_APPLICATION_PACKAGE=com.calimero.scaffolding-e2e" >> .env)
 	@echo "==> [frontend] playwright install (chromium)"
-	cd frontend && pnpm exec playwright install chromium
+	cd app && pnpm exec playwright install chromium
 	@echo "==> [frontend] playwright (mocked)"
-	cd frontend && pnpm exec playwright test --config=playwright.mocked.config.ts
+	cd app && pnpm exec playwright test --config=playwright.mocked.config.ts
 
 # ── Merobox E2E (logic/workflows/) — mirrors e2e-merobox.yml ─────────────────
 # Runs every workflow YAML against a 3-node Docker mesh. Requires Docker.
