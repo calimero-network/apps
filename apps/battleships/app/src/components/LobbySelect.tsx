@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Button, Input } from '@calimero-network/mero-ui';
+import { Input } from '@calimero-network/mero-ui';
 
 interface LobbyRecord {
   namespaceId: string;
@@ -143,14 +143,18 @@ export default function LobbySelect({
           {addTab === 'create' ? (
             <div className="tab-content" key="create" role="tabpanel">
               <form
-                onSubmit={(e) => { e.preventDefault(); onCreateLobby(); }}
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (!newLobbyName.trim()) return;
+                  onCreateLobby();
+                }}
                 style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}
               >
                 <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
                   <div style={{ flex: 1, minWidth: '220px' }}>
                     <Input
                       type="text"
-                      placeholder="Lobby name (optional)"
+                      placeholder="Lobby name"
                       value={newLobbyName}
                       onChange={(e) => onNewLobbyNameChange(e.target.value)}
                     />
@@ -158,7 +162,7 @@ export default function LobbySelect({
                   <button
                     type="submit"
                     className="btn-deploy"
-                    disabled={createLobbyLoading}
+                    disabled={createLobbyLoading || !newLobbyName.trim()}
                   >
                     {createLobbyLoading ? 'Creating…' : 'Create'}
                   </button>
@@ -171,7 +175,11 @@ export default function LobbySelect({
           ) : (
             <div className="tab-content" key="join" role="tabpanel">
               <form
-                onSubmit={(e) => { e.preventDefault(); onJoinLobby(); }}
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (!joinInvitationInput.trim()) return;
+                  onJoinLobby();
+                }}
                 style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}
               >
                 <Input
@@ -184,9 +192,13 @@ export default function LobbySelect({
                   <span className="console-hint">
                     Ask a lobby owner to share an invitation, then paste the full JSON above.
                   </span>
-                  <Button type="submit" variant="primary" disabled={joinLoading}>
+                  <button
+                    type="submit"
+                    className="btn-deploy"
+                    disabled={joinLoading || !joinInvitationInput.trim()}
+                  >
                     {joinLoading ? 'Joining…' : 'Join'}
-                  </Button>
+                  </button>
                 </div>
               </form>
             </div>

@@ -7,7 +7,6 @@ import {
   Button,
   CopyToClipboard,
 } from '@calimero-network/mero-ui';
-import { ConnectButton } from '@calimero-network/mero-react';
 
 interface NavBarProps {
   namespaceName?: string | null;
@@ -94,9 +93,6 @@ export default function NavBar({
         {extra}
       </NavbarMenu>
       <NavbarMenu align="right">
-        <NavbarItem>
-          <ConnectButton />
-        </NavbarItem>
         <NavbarItem>
           <Button variant="secondary" onClick={onLogout}>
             Logout

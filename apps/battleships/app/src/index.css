@@ -644,8 +644,14 @@ html, body {
   box-shadow: 0 4px 20px rgba(0, 255, 136, 0.3);
 }
 
+/* Disabled is a COLOUR change, not a faded green. At opacity 0.4 the button
+   still read as "green, therefore go" — it looked pressable and simply wasn't,
+   which is the state people click anyway. Inert grey says nothing is armed yet;
+   filling the field in turns it green. */
 .btn-deploy:disabled {
-  opacity: 0.4;
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  box-shadow: none;
   cursor: not-allowed;
 }
 
