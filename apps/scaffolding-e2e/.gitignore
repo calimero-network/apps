@@ -37,3 +37,4 @@ frontend/.env.local
 .vscode/
 .idea/
 *.swp
+logic/Cargo.lock
