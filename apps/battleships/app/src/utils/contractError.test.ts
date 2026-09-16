@@ -191,7 +191,7 @@ describe('friendlyContractMessage', () => {
   it('rewrites the messages that name a parameter or leak Rust', () => {
     const err = new Error('{"data":"player2 is not a valid hex key: Invalid character \'x\' at 3","kind":"Invalid"}');
     expect(friendlyContractMessage(err, 'Failed')).toBe(
-      'That opponent key is not valid — it should be 64 hex characters.',
+      'That is not a valid player key — it should be 64 hex characters.',
     );
   });
 

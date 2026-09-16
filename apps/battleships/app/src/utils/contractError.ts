@@ -236,7 +236,7 @@ export function isPlayerKeyShaped(value: string): boolean {
  * player has no idea what `player2` is.
  */
 const HUMANISED: Array<[RegExp, string]> = [
-  [/player2 is not a valid hex key/i, "That opponent key is not valid — it should be 64 hex characters."],
+  [/player2 is not a valid hex key/i, "That is not a valid player key — it should be 64 hex characters."],
   [/cannot create match against self/i, 'You cannot challenge yourself — paste your opponent’s key, not your own.'],
   [/unknown match_id/i, 'That match no longer exists in this lobby.'],
   [/match not in Pending state/i, 'That match has already started.'],

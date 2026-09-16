@@ -92,17 +92,21 @@ export default function LobbyView({
                   Members
                 </summary>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', marginTop: '0.5rem' }}>
+                  {/* ⚠️ NO IDENTIFIER ON THESE ROWS, deliberately.
+                      A member row is keyed by ACCOUNT id; the key you share to
+                      start a match is an EXECUTOR key. Since rc.27 dropped
+                      base58 both are 64 hex, so showing them together put two
+                      indistinguishable-looking values on one screen where only
+                      ONE of them can be acted on — and copying the wrong one
+                      fails much later, as "that member hasn't opened this yet".
+                      The account is not actionable here, so it is not shown. */}
                   {members.map((m) => (
                     <div key={m.identity} className="member-row">
-                      <span className="mono-sm" style={{ fontSize: '0.75rem' }}>
-                        {m.identity.slice(0, 12)}...{m.identity.slice(-8)}
-                      </span>
-                      <CopyButton text={m.identity} label="Copy" copiedLabel="Copied" className="btn-icon" />
                       <span className={`member-role ${m.role === 'Admin' ? 'role-admin' : 'role-member'}`}>
                         {m.role}
                       </span>
                       {m.identity === selfIdentity && (
-                        <span style={{ fontSize: '0.65rem', color: 'var(--text-accent)' }}>(you)</span>
+                        <span style={{ fontSize: '0.7rem', color: 'var(--text-accent)' }}>you</span>
                       )}
                     </div>
                   ))}
@@ -113,14 +117,20 @@ export default function LobbyView({
             {executorPublicKey && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
                 <div className="info-pair">
-                  <span className="info-label">Your Key</span>
+                  <span className="info-label">Your player key</span>
                   <span className="mono-sm" style={{ fontSize: '0.72rem' }}>
                     {executorPublicKey.slice(0, 12)}...{executorPublicKey.slice(-8)}
                   </span>
-                  <CopyButton text={executorPublicKey} label="Copy" copiedLabel="Copied" className="btn-icon" />
+                  <CopyButton
+                    text={executorPublicKey}
+                    label="Copy"
+                    copiedLabel="Copied"
+                    className="btn-icon"
+                  />
                 </div>
-                <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
-                  Share this key with opponents for match creation
+                <span className="console-hint">
+                  The only key you need to share. Send it to an opponent and they
+                  can challenge you.
                 </span>
               </div>
             )}
@@ -169,7 +179,7 @@ export default function LobbyView({
           >
             <Input
               type="text"
-              placeholder="Opponent's executor public key"
+              placeholder="Opponent's player key"
               value={player2}
               onChange={(e) => onPlayer2Change(e.target.value)}
             />

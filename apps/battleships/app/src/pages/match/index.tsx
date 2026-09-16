@@ -547,7 +547,7 @@ export default function MatchPage() {
     // which names a parameter the player has never heard of.
     if (!isPlayerKeyShaped(player2)) {
       show({
-        title: 'That opponent key is not valid — it should be 64 hex characters',
+        title: 'That is not a valid player key — it should be 64 hex characters',
         variant: 'error',
       });
       return;
