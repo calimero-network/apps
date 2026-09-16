@@ -104,6 +104,52 @@ test.describe("Calimero palette", () => {
     });
   }
 
+  /**
+   * ⚠️ The regression that shipped in the first cut of this palette.
+   *
+   * The split gives `--accent` to text and `--accent-fill` to fills, but every
+   * filled control that was NOT `.mc-btn--primary` kept `background: var(--accent)`
+   * while already carrying `color: var(--accent-text)`. That pairs near-black on
+   * dark green — 3.22:1 — so the Create/Edit submit button, the selected day, the
+   * "today" pill and the default event chip all went dark and hard to read at
+   * once. The two legacy aliases are the same trap in miniature: `--primary` is
+   * only ever a FILL, `--secondary` only ever TEXT, and aliasing both to one
+   * token is what made a selected date unreadable.
+   */
+  test("the ink and the fill never get swapped", async ({ page }) => {
+    for (const theme of ["light", "dark"] as const) {
+      await page.goto("/");
+      await page.evaluate((t) => {
+        document.documentElement.setAttribute("data-theme", t);
+      }, theme);
+
+      const [accent, fill, onFill, primary, secondary] = await Promise.all(
+        [
+          "--accent",
+          "--accent-fill",
+          "--accent-text",
+          "--primary",
+          "--secondary",
+        ].map((n) => page.evaluate(token(n)) as Promise<string>),
+      );
+
+      // `--primary` is a fill; `--secondary` is text. They must resolve to
+      // DIFFERENT tokens in light mode, where ink and fill genuinely differ.
+      expect(primary, `${theme}: --primary must be the fill`).toBe(fill);
+      expect(secondary, `${theme}: --secondary must be the ink`).toBe(accent);
+
+      // A label on the FILL reads.
+      expect(ratio(parse(onFill), parse(fill))).toBeGreaterThanOrEqual(4.5);
+
+      // And the pairing that caused the bug is only acceptable where ink and
+      // fill are the same value anyway (dark mode). In light mode it must not
+      // be relied on by anything — asserted here so the number is on record.
+      if (accent !== fill) {
+        expect(ratio(parse(onFill), parse(accent))).toBeLessThan(4.5);
+      }
+    }
+  });
+
   test("primary buttons are filled with the brand lime", async ({ page }) => {
     await page.goto("/");
     const swatch = await page.evaluate(() => {

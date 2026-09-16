@@ -134,7 +134,11 @@
    everything else. */
 :root {
   --color-text: var(--mc-text);
-  --primary: var(--accent);
+  /* ⚠️ `--primary` is only ever a FILL (the selected day in the mini-calendar,
+     always paired with `color: var(--accent-text)`), so it takes the brand
+     lime. `--secondary` is only ever TEXT, so it takes the ink. Aliasing both
+     to the same token is what made a selected date near-black-on-dark-green. */
+  --primary: var(--accent-fill);
   --secondary: var(--accent);
   --secondary-7: var(--accent-dim);
   --color-placeholder: var(--mc-text-dim);

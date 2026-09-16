@@ -132,32 +132,3 @@
   }
 }
 
-.accountWrapper {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-
-  &__copy {
-    cursor: pointer;
-    font-size: 12px;
-    transition: opacity 0.3s ease;
-    height: 20px;
-    width: 20px;
-    opacity: 0.7;
-  }
-
-  &__copy:hover {
-    opacity: 1;
-  }
-
-  &__accountId {
-    font-size: 16px;
-    color: var(--mc-text);
-    transition: color 0.3s ease;
-    cursor: pointer;
-  }
-
-  &__accountId:hover {
-    color: var(--accent);
-  }
-}

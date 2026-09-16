@@ -35,11 +35,11 @@
     }
 
     &_active {
-      color: #fff;
-      background-color: var(--accent);
+      color: var(--accent-text);
+      background-color: var(--accent-fill);
 
       &:hover {
-        background-color: var(--accent-dim);
+        background-color: var(--accent-fill-dim);
       }
     }
   }

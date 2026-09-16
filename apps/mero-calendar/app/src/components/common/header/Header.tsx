@@ -1,14 +1,11 @@
 import { FC } from "react";
 
 import { useMero } from "@calimero-network/mero-react";
-import { accountId as accountIdOf } from "../../../api/identity";
 import cn from "classnames";
-import { ToastContainer, toast } from "react-toastify";
 
 import { IDirections, IModes, TDate } from "../../../types/date";
 import { useModal } from "../../../hooks/useModal";
 import { createDate, getNextStartMinutes, shmoment } from "../../../utils/date";
-import copyIcon from "../../../assets/copy-icon.svg";
 import Select from "../select/Select";
 import ThemeToggle from "../theme-toggle/ThemeToggle";
 
@@ -43,10 +40,6 @@ const Header: FC<IHeaderProps> = ({
     isOpenModalEditEvent,
     openModalCreate,
   } = useModal();
-  // The account this node writes as — the same value the contract stamps on
-  // an event's `owner`, so what is shown here is what ownership is judged on.
-  const accountId = accountIdOf();
-
   const isBtnCreateEventDisable =
     isOpenModalCreateEvent || isOpenModalDayInfoEvents || isOpenModalEditEvent;
 
@@ -64,11 +57,6 @@ const Header: FC<IHeaderProps> = ({
       .result();
 
     openModalCreate({ selectedDate });
-  };
-
-  const handleCopy = () => {
-    navigator.clipboard.writeText(accountId);
-    toast("Public key copied!");
   };
 
   const handleLogout = () => {
@@ -124,24 +112,18 @@ const Header: FC<IHeaderProps> = ({
       />
       <div className={styles.headerRight}>
         <ThemeToggle />
-        {accountId && (
-          <div className={styles.accountWrapper}>
-            <img
-              src={copyIcon as unknown as string}
-              alt="copy"
-              className={styles.accountWrapper__copy}
-              onClick={handleCopy}
-            />
-            <ToastContainer />
-            <span
-              className={styles.accountWrapper__accountId}
-              onClick={handleLogout}
-              title="Click to log out"
-            >
-              {accountId.substring(0, 4)}…{accountId.substring(accountId.length - 4)}
-            </span>
-          </div>
-        )}
+        {/* ⚠️ Was a copy icon next to a truncated account id ("b627…f78a"),
+            and clicking the ID logged you out — announced only by a `title`
+            tooltip nobody hovers. A control has to say what it does. The
+            teams pages already end their header with exactly this button, so
+            logging out is now the same gesture everywhere. */}
+        <button
+          className="mc-btn mc-btn--ghost"
+          onClick={handleLogout}
+          data-testid="logout-btn"
+        >
+          Logout
+        </button>
       </div>
     </header>
   );

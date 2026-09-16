@@ -99,15 +99,15 @@
 .headerActions { margin-left: auto; display: flex; align-items: center; gap: 12px; }
 .connectBtn {
   padding: 8px 20px;
-  border: 1px solid var(--accent);
+  border: 1px solid var(--accent-fill);
   border-radius: var(--radius-sm);
-  background: var(--accent);
+  background: var(--accent-fill);
   color: var(--accent-text);
   font-size: 13px; font-weight: 600;
   cursor: pointer;
   transition: background 0.15s, transform 0.1s;
 }
-.connectBtn:hover { background: var(--accent-dim); transform: translateY(-1px); }
+.connectBtn:hover { background: var(--accent-fill-dim); transform: translateY(-1px); }
 
 .hero {
   display: flex; flex-direction: column; align-items: center; text-align: center;
@@ -141,7 +141,7 @@
 }
 .ctaPrimary {
   padding: 14px 30px;
-  background: var(--accent);
+  background: var(--accent-fill);
   color: var(--accent-text);
   border: none;
   border-radius: var(--radius);
@@ -325,7 +325,7 @@
 .mobileMenuItem:hover { color: var(--text); }
 .mobileMenuCta {
   margin-top: 14px; padding: 12px;
-  background: var(--accent); color: var(--accent-text);
+  background: var(--accent-fill); color: var(--accent-text);
   border: none; border-radius: var(--radius); font-size: 14px; font-weight: 600; cursor: pointer;
 }
 
