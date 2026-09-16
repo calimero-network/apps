@@ -36,13 +36,18 @@ export function getStoredLobbyName(namespaceId: string): string {
   }
 }
 
-/** Best display name: server name → cached name → a short id. */
+/**
+ * Best display name: server name → cached name → nothing.
+ *
+ * ⚠️ RETURNS EMPTY RATHER THAN INVENTING ONE. An earlier version fell back to
+ * `Lobby ${id.slice(0, 6)}`, which put "Lobby 364535" on screen — a label that
+ * looks like a name, is not one, and that nobody chose. A lobby with no name
+ * should render as having no name; the caller decides what to show instead.
+ */
 export function lobbyLabel(namespaceId: string, serverName?: string | null): string {
   const s = serverName?.trim();
   if (s) return s;
-  const cached = getStoredLobbyName(namespaceId);
-  if (cached) return cached;
-  return `Lobby ${namespaceId.slice(0, 6)}`;
+  return getStoredLobbyName(namespaceId);
 }
 
 /**

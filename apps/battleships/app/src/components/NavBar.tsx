@@ -15,12 +15,11 @@ interface NavBarProps {
   /** Accepted but no longer rendered — see the note in the centre menu. */
   currentUser?: string | null;
   onLogout: () => void;
-  onBack?: () => void;
   extra?: React.ReactNode;
 }
 
 export default function NavBar({
-  namespaceName, namespaceId, onLogout, onBack, extra,
+  namespaceName, namespaceId, onLogout, extra,
 }: NavBarProps) {
   return (
     <MeroNavbar
@@ -36,32 +35,6 @@ export default function NavBar({
         color: 'var(--text-primary)',
       }}
     >
-      {onBack ? (
-        <NavbarItem>
-          <button
-            onClick={onBack}
-            style={{
-              background: 'none',
-              border: 'none',
-              color: 'var(--text-secondary)',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.5rem',
-              fontFamily: 'var(--font-mono)',
-              fontSize: '0.8rem',
-              padding: '0.35rem 0.5rem',
-              borderRadius: '6px',
-              transition: 'color 0.15s ease',
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text-primary)')}
-            onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-secondary)')}
-          >
-            <span style={{ fontSize: '1rem' }}>&larr;</span>
-            Back
-          </button>
-        </NavbarItem>
-      ) : null}
       {/* The mark is the way back to the landing page.
           `state.fromApp` is what gets a signed-in visitor PAST the guard on
           `/` — see RedirectIfAuthed in App.tsx. Router state, not a query

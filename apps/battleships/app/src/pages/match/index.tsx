@@ -876,9 +876,19 @@ export default function MatchPage() {
   if (view === 'lobby') {
     return (
       <div className="app-bg">
-        <NavBar {...navProps} onBack={() => { manualLobbySelect.current = true; setView('lobby-select'); navigate('/lobby', { replace: true }); }} />
+        <NavBar {...navProps} />
         <div className="page-shell">
           <div className="page-content">
+            {/* Back belongs with the content it backs out of, not in the bar:
+                the bar is the same on every screen, and a control that appears
+                and disappears there shifts the brand around under the cursor. */}
+            <button
+              type="button"
+              className="page-back"
+              onClick={() => { manualLobbySelect.current = true; setView('lobby-select'); navigate('/lobby', { replace: true }); }}
+            >
+              <span aria-hidden>&larr;</span> All lobbies
+            </button>
             <LobbyView
               lobbyAlias={lobby.selectedLobby?.alias}
               isAdmin={lobby.isAdmin}
@@ -908,9 +918,12 @@ export default function MatchPage() {
   // --- Game ---
   return (
     <div className="app-bg">
-      <NavBar {...navProps} onBack={resetToLobby} />
+      <NavBar {...navProps} />
       <div className="page-shell">
         <div className="page-content page-content-wide">
+          <button type="button" className="page-back" onClick={resetToLobby}>
+            <span aria-hidden>&larr;</span> Back to lobby
+          </button>
           {/* Match header */}
           <div className="naval-card fade-in">
             <div className="naval-card-header">

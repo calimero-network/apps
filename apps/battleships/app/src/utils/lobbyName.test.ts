@@ -46,8 +46,9 @@ describe('lobbyLabel', () => {
     expect(lobbyLabel(NS, '   ')).toBe('Friday game');
   });
 
-  it('falls back to a short id when nothing is known', () => {
-    expect(lobbyLabel(NS)).toBe(`Lobby ${NS.slice(0, 6)}`);
+  it('returns EMPTY when nothing is known — it does not invent a name', () => {
+    // `Lobby 364535` looked like a name, was not one, and nobody chose it.
+    expect(lobbyLabel(NS)).toBe('');
   });
 });
 

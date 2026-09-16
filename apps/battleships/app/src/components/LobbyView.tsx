@@ -164,8 +164,14 @@ export default function LobbyView({
               value={player2}
               onChange={(e) => onPlayer2Change(e.target.value)}
             />
-            <button type="submit" className="btn-deploy" disabled={creatingMatch}>
-              {creatingMatch ? 'Creating...' : 'Challenge'}
+            {/* Same control, same colour story as Create and Join: inert
+                until there is an opponent key to challenge. */}
+            <button
+              type="submit"
+              className="btn-deploy"
+              disabled={creatingMatch || !player2.trim()}
+            >
+              {creatingMatch ? 'Creating…' : 'Challenge'}
             </button>
           </form>
         </div>

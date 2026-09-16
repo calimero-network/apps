@@ -6,68 +6,78 @@
 
 :root {
   /* ============================================================
-     Calimero light palette — greens, greys, whites.
+     Same palette as this app's landing page.
      ============================================================
-     This app shipped as dark navy with neon. It now follows the same
-     surfaces the rest of Calimero uses: white cards on an off-white page,
-     grey type, and the brand green used as an accent rather than a glow.
+     The values below are `pages/landing/landing.css`'s `--cal-lp-*` tokens,
+     restated under this file's names so the app and its front door are one
+     product rather than two. That file is GENERATED (`pnpm landing:generate`),
+     so it cannot be imported from here — but it can be matched.
 
-     ⚠️ THE GREEN IS DARKENED ON PURPOSE. The brand `#00ff88` is a display
-     colour on a dark ground; on white it measures ~1.3:1 and is unreadable as
-     text or a border. The values below keep the hue and move the lightness to
-     where the contrast actually works — which is the whole reason this is a
-     token swap and not a find-and-replace. */
+     ⚠️ THE ACCENT IS LIME WITH DARK INK ON IT, not white. `#a5ff11` is a
+     near-yellow: white text on it measures about 1.5:1 and is unreadable. The
+     landing page pairs it with `#131215`, and `--sonar-green` below keeps that
+     pairing. `--text-accent` is the separate, darker green for accent TEXT on
+     a white ground, because the lime itself cannot be read there either. */
 
-  /* Core palette — page, then rising surfaces */
-  --bg-deep: #f7f9f8;
+  /* Core palette — landing's bg-0/1/2/3 */
+  --bg-deep: #fcfcfc;
   --bg-surface: #ffffff;
   --bg-card: #ffffff;
-  --bg-card-hover: #f2f6f4;
-  --bg-elevated: #eaefec;
+  --bg-card-hover: #f2f2f3;
+  --bg-elevated: #f2f2f3;
 
   /* Accent colors */
-  --sonar-green: #00a35a;
-  --sonar-green-dim: #00814a;
-  --sonar-green-glow: rgba(0, 163, 90, 0.14);
+  --sonar-green: #a5ff11;
+  --sonar-green-dim: #b6ff3d;
+  --sonar-green-glow: rgba(165, 255, 17, 0.18);
+  --accent-ink: #131215;
   --fire-amber: #c2410c;
   --fire-red: #c81e1e;
   --fire-red-glow: rgba(200, 30, 30, 0.14);
   --miss-blue: #2563a8;
-  --miss-blue-dim: #96b2cc;
+  --miss-blue-dim: #c8c8c8;
   --pending-yellow: #a16207;
   --pending-yellow-glow: rgba(161, 98, 7, 0.14);
   --select-cyan: #0e7490;
   --select-cyan-glow: rgba(14, 116, 144, 0.14);
 
-  /* Text */
-  --text-primary: #11201a;
-  --text-secondary: #55655d;
-  --text-muted: #8b9a92;
-  --text-accent: #00693c;
+  /* Text — landing's text / text-dim / text-faint */
+  --text-primary: #131215;
+  --text-secondary: #404040;
+  --text-muted: #8e8e8e;
+  --text-accent: #5f9400;
 
   /* Grid */
-  --grid-line: #d7e0db;
-  --grid-bg: #f2f6f4;
+  --grid-line: #e4e4e6;
+  --grid-bg: #f2f2f3;
   --grid-cell: #ffffff;
-  --grid-cell-hover: #e4ece8;
+  --grid-cell-hover: #eaeaec;
   --cell-size: 36px;
   --cell-gap: 3px;
   --cell-radius: 3px;
 
-  /* Borders */
-  --border-subtle: rgba(17, 32, 26, 0.09);
-  --border-medium: rgba(17, 32, 26, 0.16);
-  --border-accent: rgba(0, 163, 90, 0.35);
+  /* Borders — landing's border / border-strong */
+  --border-subtle: #e4e4e6;
+  --border-medium: #e4e4e6;
+  --border-strong: #c8c8c8;
+  --border-accent: rgba(165, 255, 17, 0.45);
 
-  /* Shadows — soft and grey. A dark-theme drop shadow reads as dirt on white. */
-  --shadow-card: 0 1px 2px rgba(17, 32, 26, 0.05), 0 2px 10px rgba(17, 32, 26, 0.05);
-  --shadow-card-hover: 0 2px 6px rgba(17, 32, 26, 0.07), 0 6px 20px rgba(17, 32, 26, 0.08);
-  --shadow-glow-green: 0 0 0 1px rgba(0, 163, 90, 0.18);
+  /* Shadows */
+  --shadow-card: 0 2px 10px rgba(19, 18, 21, 0.07);
+  --shadow-card-hover: 0 10px 34px rgba(19, 18, 21, 0.10);
+  --shadow-glow-green: 0 0 0 1px rgba(165, 255, 17, 0.45);
   --shadow-glow-red: 0 0 0 1px rgba(200, 30, 30, 0.22);
 
-  /* Typography */
-  --font-display: 'Outfit', sans-serif;
-  --font-mono: 'JetBrains Mono', monospace;
+  /* Radii — landing's radius scale */
+  --radius: 10px;
+  --radius-sm: 7px;
+  --radius-lg: 16px;
+
+  /* Typography — the landing page's system stack, not Outfit.
+     `--font-mono` survives for IDs and board coordinates, where a fixed
+     advance is the point; it is no longer the voice of the whole app. */
+  --font-display: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
 
   /* Timing */
   --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
@@ -78,6 +88,7 @@
   color-scheme: light;
   color: var(--text-primary);
   background-color: var(--bg-deep);
+  font-family: var(--font-display);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -178,7 +189,7 @@ html, body {
   letter-spacing: 0.08em;
   padding: 0.2rem 0.5rem;
   border-radius: 4px;
-  font-family: var(--font-mono);
+  font-family: var(--font-display);
 }
 
 .badge-admin {
@@ -523,7 +534,7 @@ html, body {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  font-family: var(--font-mono);
+  font-family: var(--font-display);
   font-size: 0.65rem;
   font-weight: 600;
   text-transform: uppercase;
@@ -612,22 +623,24 @@ html, body {
    ============================================================ */
 
 .btn-fire {
-  background: linear-gradient(135deg, var(--fire-amber) 0%, #9a3412 100%);
-  color: white;
-  font-family: var(--font-mono);
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  padding: 0.6rem 1.5rem;
-  border: none;
-  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 11px 19px;
+  border-radius: var(--radius);
+  border: 1px solid transparent;
+  background: var(--fire-red);
+  color: #ffffff;
+  font: inherit;
+  font-size: 14.5px;
+  font-weight: 650;
   cursor: pointer;
-  transition: all 0.2s ease;
-  box-shadow: 0 2px 12px rgba(194, 65, 12, 0.3);
+  white-space: nowrap;
 }
 
 .btn-fire:hover:not(:disabled) {
-  filter: brightness(1.12);
+  background: #a81a1a;
 }
 
 .btn-fire:disabled {
@@ -637,32 +650,37 @@ html, body {
 }
 
 .btn-deploy {
-  background: linear-gradient(135deg, var(--sonar-green-dim) 0%, #00814a 100%);
-  color: var(--bg-deep);
-  font-family: var(--font-mono);
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  padding: 0.6rem 1.5rem;
-  border: none;
-  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 11px 19px;
+  border-radius: var(--radius);
+  border: 1px solid transparent;
+  background: var(--sonar-green);
+  color: var(--accent-ink);
+  font: inherit;
+  font-size: 14.5px;
+  font-weight: 650;
   cursor: pointer;
-  transition: all 0.2s ease;
-  box-shadow: 0 2px 12px rgba(0, 163, 90, 0.2);
+  white-space: nowrap;
 }
 
 .btn-deploy:hover:not(:disabled) {
-  filter: brightness(1.12);
+  background: var(--sonar-green-dim);
 }
 
 /* Disabled is a COLOUR change, not a faded green. At opacity 0.4 the button
    still read as "green, therefore go" — it looked pressable and simply wasn't,
    which is the state people click anyway. Inert grey says nothing is armed yet;
    filling the field in turns it green. */
+/* Disabled is a COLOUR change, not a faded lime. At `opacity: 0.4` the button
+   still read as "green, therefore go" — it looked pressable and simply was
+   not, which is the state people click anyway. */
 .btn-deploy:disabled {
-  background: var(--bg-elevated);
+  background: var(--bg-card-hover);
   color: var(--text-muted);
-  box-shadow: none;
+  border-color: var(--border-subtle);
   cursor: not-allowed;
 }
 
@@ -737,7 +755,7 @@ html, body {
   display: flex;
   align-items: center;
   gap: 0.35rem;
-  font-family: var(--font-mono);
+  font-family: var(--font-display);
   font-size: 0.65rem;
   color: var(--text-muted);
   text-transform: uppercase;
@@ -763,7 +781,7 @@ html, body {
 }
 
 .member-role {
-  font-family: var(--font-mono);
+  font-family: var(--font-display);
   font-size: 0.6rem;
   font-weight: 600;
   text-transform: uppercase;
@@ -959,7 +977,7 @@ html, body {
 
 /* Subheading under card titles — "DEPLOYMENT TERMINAL · STANDBY" */
 .naval-card-subtitle {
-  font-family: var(--font-mono);
+  font-family: var(--font-display);
   font-size: 0.65rem;
   font-weight: 500;
   text-transform: uppercase;
@@ -1006,11 +1024,9 @@ html, body {
 }
 
 .tab-btn {
-  font-family: var(--font-mono);
+  font-family: var(--font-display);
   font-size: 0.72rem;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
   padding: 0.55rem 0.85rem;
   border: none;
   background: transparent;
@@ -1063,11 +1079,9 @@ html, body {
 }
 
 .view-toggle-btn {
-  font-family: var(--font-mono);
+  font-family: var(--font-display);
   font-size: 0.65rem;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
   padding: 0.4rem 0.65rem;
   border: none;
   background: transparent;
@@ -1271,28 +1285,23 @@ html, body {
 }
 
 .lobby-row-cta {
-  font-family: var(--font-mono);
-  font-size: 0.72rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  padding: 0.55rem 1rem;
-  border: 1px solid rgba(0, 163, 90, 0.3);
-  background: rgba(0, 163, 90, 0.05);
-  color: var(--sonar-green);
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 0.2s ease;
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
-  flex-shrink: 0;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 650;
+  cursor: pointer;
+  white-space: nowrap;
 }
 
 .lobby-row-cta:hover:not(:disabled) {
-  background: var(--sonar-green);
-  color: var(--bg-deep);
-  border-color: var(--sonar-green);
+  border-color: var(--border-strong);
 }
 
 .lobby-row-cta:disabled {
@@ -1309,7 +1318,7 @@ html, body {
 }
 
 .lobby-row-status {
-  font-family: var(--font-mono);
+  font-family: var(--font-display);
   font-size: 0.65rem;
   text-transform: uppercase;
   letter-spacing: 0.1em;
@@ -1544,7 +1553,7 @@ html, body {
 
 /* "Bridge console" hint chips inside the form bodies */
 .console-hint {
-  font-family: var(--font-mono);
+  font-family: var(--font-display);
   font-size: 0.68rem;
   color: var(--text-muted);
   letter-spacing: 0.04em;
@@ -1685,10 +1694,8 @@ html, body {
 
 .nav-brand-text {
   font-family: var(--font-mono);
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  font-size: 0.9rem;
+  font-weight: 650;
+  font-size: 0.95rem;
 }
 
 .nav-brand:hover .nav-brand-text {
@@ -1732,7 +1739,7 @@ html, body {
 
 .app-footer-head {
   margin: 0 0 0.15rem;
-  font-family: var(--font-mono);
+  font-family: var(--font-display);
   font-size: 0.7rem;
   font-weight: 700;
   text-transform: uppercase;
@@ -1762,7 +1769,7 @@ html, body {
   margin-top: 1.5rem;
   padding-top: 1rem;
   border-top: 1px solid var(--border-subtle);
-  font-family: var(--font-mono);
+  font-family: var(--font-display);
   font-size: 0.7rem;
   color: var(--text-muted);
 }
@@ -1789,7 +1796,7 @@ html, body {
 }
 
 .nav-lobby-name {
-  font-family: var(--font-mono);
+  font-family: var(--font-display);
   font-size: 0.8rem;
   color: var(--text-secondary);
   overflow: hidden;
@@ -1823,4 +1830,32 @@ html, body {
   outline: none;
   border-color: var(--sonar-green) !important;
   box-shadow: 0 0 0 3px var(--sonar-green-glow) !important;
+}
+
+/* ============================================================
+   Back — in the page, not the bar
+   ============================================================
+   It used to live in the navbar, where it appeared and disappeared between
+   screens and shifted the brand around under the cursor. It belongs with the
+   content it backs out of. No lift on hover: the colour carries it. */
+
+.page-back {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 6px 10px 6px 4px;
+  margin-bottom: -0.5rem;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.page-back:hover {
+  color: var(--text-primary);
 }
