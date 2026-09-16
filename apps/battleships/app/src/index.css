@@ -1766,3 +1766,61 @@ html, body {
   font-size: 0.7rem;
   color: var(--text-muted);
 }
+
+/* ============================================================
+   mero-ui overrides — the component library ships dark
+   ============================================================
+   `Navbar`, `Input` and friends carry their own palette, tuned for a dark
+   product surface. On this light page that lands as a black bar with an
+   invisible wordmark, and white text typed into white fields. These override
+   the library's own custom properties where it exposes them and its elements
+   where it does not.
+
+   ⚠️ Scoped to this app's shell, not written as bare element selectors, so a
+   third-party widget mounted elsewhere is not restyled by accident. */
+
+/* The Navbar itself is recoloured through its `style` prop in NavBar.tsx —
+   mero-ui spreads `style` after its own base styles, so no override is needed
+   here. Its CHILDREN still inherit the library's light-on-dark ink. */
+.app-bg nav a,
+.app-bg nav span,
+.app-bg nav button {
+  color: var(--text-primary);
+}
+
+.nav-lobby-name {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 320px;
+}
+
+/* Text typed into a field has to be readable. The library defaults to a light
+   ink for a dark ground, which on white is invisible — the single most
+   reported symptom of this retheme. */
+.app-bg input,
+.app-bg textarea,
+.app-bg select,
+.app-bg [class*='input'] input,
+.app-bg [class*='Input'] input {
+  color: var(--text-primary) !important;
+  background: var(--bg-surface) !important;
+  border-color: var(--border-medium) !important;
+  caret-color: var(--sonar-green);
+}
+
+.app-bg input::placeholder,
+.app-bg textarea::placeholder {
+  color: var(--text-muted) !important;
+  opacity: 1; /* Firefox dims placeholders again on top of the colour */
+}
+
+.app-bg input:focus,
+.app-bg textarea:focus {
+  outline: none;
+  border-color: var(--sonar-green) !important;
+  box-shadow: 0 0 0 3px var(--sonar-green-glow) !important;
+}

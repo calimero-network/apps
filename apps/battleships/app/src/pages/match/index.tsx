@@ -20,6 +20,7 @@ import LobbySelect from '../../components/LobbySelect';
 import AppFooter from '../../components/AppFooter';
 import { generateInvitationUrl, parseInvitationInput } from '../../utils/invitation';
 import { contractErrorMessage, isMatchFinishedError, isShipsNotPlacedError } from '../../utils/contractError';
+import { EMBEDDED_NAME_KEY, getStoredLobbyName, setStoredLobbyName } from '../../utils/lobbyName';
 import LobbyView from '../../components/LobbyView';
 import GameBoard from '../../components/GameBoard';
 import ShotGrid from '../../components/ShotGrid';
@@ -763,17 +764,28 @@ export default function MatchPage() {
   const doLogout = useCallback(() => { logout(); navigate('/'); }, [logout, navigate]);
 
   const handleCreateLobby = useCallback(async () => {
-    const id = await lobby.createLobby(newLobbyName || undefined);
+    const name = newLobbyName.trim();
+    const id = await lobby.createLobby(name || undefined);
+    // Cache it here too: the creator typed the name, and the server may stop
+    // returning it. This is also what `invitePlayer` embeds for the joiner.
+    if (id && name) setStoredLobbyName(id, name);
     if (id) { setNewLobbyName(''); show({ title: 'Namespace created', variant: 'success' }); }
     else if (lobby.createLobbyError) { show({ title: lobby.createLobbyError.message, variant: 'error' }); }
   }, [lobby, newLobbyName, show]);
 
   const handleCreateInvitation = useCallback(async () => {
     const result = await lobby.invitePlayer();
+    // Embed the lobby's human name BESIDE the signed invitation, so the joiner
+    // has something to render before the namespace metadata syncs. A sibling
+    // key — inside the invitation it would invalidate the signature.
+    const lobbyName = lobby.namespaceId ? getStoredLobbyName(lobby.namespaceId) : '';
+    const payload = lobbyName && result && typeof result === 'object'
+      ? { ...(result as Record<string, unknown>), [EMBEDDED_NAME_KEY]: lobbyName }
+      : result;
     // Share a LINK, not the raw JSON. The payload is passed through opaquely —
     // the invitation is signed over its own body, so re-modelling it would
     // drop unknown fields and invalidate the signature with them.
-    if (result) { setInvitationJson(generateInvitationUrl(JSON.stringify(result))); show({ title: 'Invitation link created', variant: 'success' }); }
+    if (result) { setInvitationJson(generateInvitationUrl(JSON.stringify(payload))); show({ title: 'Invitation link created', variant: 'success' }); }
   }, [lobby, show]);
 
   const handleJoinLobby = useCallback(async () => {

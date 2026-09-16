@@ -26,6 +26,7 @@
     "@playwright/test": "catalog:",
     "@types/eslint__js": "^8.42.3",
     "@types/node": "catalog:",
+    "jsdom": "catalog:",
     "@types/react": "catalog:",
     "@types/react-copy-to-clipboard": "^5.0.7",
     "@types/react-dom": "catalog:",

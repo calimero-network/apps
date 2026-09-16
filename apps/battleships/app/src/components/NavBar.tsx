@@ -5,29 +5,37 @@ import {
   NavbarMenu,
   NavbarItem,
   Button,
-  CopyToClipboard,
 } from '@calimero-network/mero-ui';
 
 interface NavBarProps {
   namespaceName?: string | null;
   namespaceId?: string | null;
+  /** Accepted but no longer rendered — see the note in the centre menu. */
   contextId?: string | null;
+  /** Accepted but no longer rendered — see the note in the centre menu. */
   currentUser?: string | null;
   onLogout: () => void;
   onBack?: () => void;
   extra?: React.ReactNode;
 }
 
-function truncate(s: string) {
-  if (s.length <= 16) return s;
-  return `${s.slice(0, 6)}...${s.slice(-6)}`;
-}
-
 export default function NavBar({
-  namespaceName, namespaceId, contextId, currentUser, onLogout, onBack, extra,
+  namespaceName, namespaceId, onLogout, onBack, extra,
 }: NavBarProps) {
   return (
-    <MeroNavbar variant="elevated" size="md">
+    <MeroNavbar
+      variant="elevated"
+      size="md"
+      /* mero-ui hardcodes a dark bar INLINE (`backgroundColor: "#1A1A1A"`),
+         and exposes no CSS variable for it — but it spreads `style` AFTER its
+         own base styles, so this wins without `!important`. */
+      style={{
+        backgroundColor: 'var(--bg-surface)',
+        borderBottom: '1px solid var(--border-subtle)',
+        boxShadow: 'var(--shadow-card)',
+        color: 'var(--text-primary)',
+      }}
+    >
       {onBack ? (
         <NavbarItem>
           <button
@@ -67,46 +75,30 @@ export default function NavBar({
         <img src="/favicon.svg" alt="" width={26} height={26} className="nav-brand-mark" />
         <span className="nav-brand-text">Battleships</span>
       </Link>
+      {/* The context id and the node key used to sit here as truncated hex with
+          copy buttons. They are debugging values, not navigation: nobody reads
+          `19de26…63b75d` at a glance, and they crowded out the one thing the
+          bar should show. The lobby's NAME stays — that one means something. */}
       <NavbarMenu align="center">
-        {namespaceId && (
-          <div className="info-row">
-            {namespaceName && (
-              <div className="info-pair">
-                <span className="info-label">NS</span>
-                <span className="info-value">{namespaceName}</span>
-              </div>
-            )}
-            {contextId && (
-              <div className="info-pair">
-                <span className="info-label">CTX</span>
-                <span className="info-value">{truncate(contextId)}</span>
-                <CopyToClipboard
-                  text={contextId}
-                  variant="icon"
-                  size="small"
-                  successMessage="Copied!"
-                />
-              </div>
-            )}
-            {currentUser && (
-              <div className="info-pair">
-                <span className="info-label">KEY</span>
-                <span className="info-value">{truncate(currentUser)}</span>
-                <CopyToClipboard
-                  text={currentUser}
-                  variant="icon"
-                  size="small"
-                  successMessage="Copied!"
-                />
-              </div>
-            )}
-          </div>
+        {namespaceId && namespaceName && (
+          <span className="nav-lobby-name" title={namespaceName}>{namespaceName}</span>
         )}
         {extra}
       </NavbarMenu>
       <NavbarMenu align="right">
         <NavbarItem>
-          <Button variant="secondary" onClick={onLogout}>
+          {/* Same reason as the bar: mero-ui's own colours are tuned for a
+              dark surface, and `style` is spread last. */}
+          <Button
+            variant="secondary"
+            onClick={onLogout}
+            style={{
+              background: 'var(--bg-surface)',
+              color: 'var(--text-secondary)',
+              border: '1px solid var(--border-medium)',
+              boxShadow: 'none',
+            }}
+          >
             Logout
           </Button>
         </NavbarItem>

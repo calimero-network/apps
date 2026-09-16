@@ -10,6 +10,7 @@ import {
 } from '@calimero-network/mero-react';
 import type { GroupMember } from '@calimero-network/mero-react';
 import { useNamespaceBootstrap } from './useNamespaceBootstrap';
+import { embeddedLobbyName, lobbyLabel, setStoredLobbyName } from '../utils/lobbyName';
 
 const SELECTED_NS_KEY = 'battleships:selectedNamespaceId';
 
@@ -95,7 +96,9 @@ export function useBattleshipsLobby(): UseBattleshipsLobbyReturn {
     namespaceId: ns.namespaceId,
     lobbyContextId: null, // resolved below for the selected namespace
     applicationId: ns.targetApplicationId,
-    alias: ns.name,
+    // `lobbyLabel`, not `ns.name`: the JOINING node has no server-side name
+    // until the namespace metadata syncs, and would otherwise show a raw id.
+    alias: lobbyLabel(ns.namespaceId, ns.name),
   }));
 
   // --- Namespace selection ---
@@ -287,6 +290,11 @@ export function useBattleshipsLobby(): UseBattleshipsLobbyReturn {
       if (!nsId) {
         throw new Error('Invalid invitation: cannot determine namespace ID');
       }
+
+      // The inviter embeds the lobby's human name beside the signed invitation,
+      // so the joiner has something to render before the metadata syncs.
+      const embedded = embeddedLobbyName(parsed) || groupAlias || '';
+      if (embedded) setStoredLobbyName(nsId, embedded);
 
       const result = await joinNamespace(nsId, { invitation, groupName: groupAlias });
 
