@@ -1,13 +1,27 @@
 /**
  * What survives a page reload, and what deliberately does not.
  *
- * ## The root secret is not here, on purpose
+ * ## The root secret IS here, and it is the one compromise on this page
  *
- * The account root is the account. mero-js says in as many words that in a
- * browser it does not belong in `localStorage`, and this demo agrees: it is
- * held in React state for exactly as long as it takes to certify a device, and
- * then it is gone. The 24-word phrase shown once is the backup, which is the
- * point of having a phrase at all.
+ * The account root is the account, and mero-js says in as many words that in a
+ * browser it does not belong in `localStorage`. This demo keeps it anyway,
+ * inside the identity blob, because claiming an account with the cloud is a
+ * *root* signature: without a stored root the button could be pressed exactly
+ * once, before the first reload, and never again without re-entering 24 words.
+ *
+ * The trade is real and worth stating rather than hiding. A stolen device key
+ * is revocable — that is what device certificates are for — and a stolen root
+ * is the account, permanently. A product keeps the root in a desktop app, a
+ * hardware key or an OS keychain and signs the challenge there; mero-js splits
+ * `signAccountLogin` out from `signInWithAccount` precisely so it can. The
+ * 24-word phrase shown once is still the backup.
+ *
+ * ## The claim is here too, because it is the thing that persists
+ *
+ * A routing proof is re-made on every read and nothing survives it. The
+ * ownership claim is the opposite: it is proved once, the cloud records it, and
+ * what this app stores is the receipt — which account was claimed, against
+ * which cloud, and the session that came back. See {@link AccountClaim}.
  *
  * ## The device secret is here, also on purpose
  *
@@ -34,6 +48,7 @@ import type { DeviceIdentity } from './identity.js';
 
 const IDENTITY_KEY = 'calimero.delegated-demo.identity';
 const SETTINGS_KEY = 'calimero.delegated-demo.settings';
+const CLAIM_KEY = 'calimero.delegated-demo.account-claim';
 
 /** Where this tab is pointed, and at what. */
 export interface Settings {
@@ -180,6 +195,10 @@ export function saveSettings(settings: Settings): void {
 export function clearStored(devicePublicKey: string | null): void {
   try {
     localStorage.removeItem(IDENTITY_KEY);
+    // The claim names an account this browser can no longer prove anything
+    // about, and a receipt outliving its key reads as "still connected" on a
+    // page that now holds nothing.
+    localStorage.removeItem(CLAIM_KEY);
     if (devicePublicKey) {
       localStorage.removeItem(nonceStorageKey(devicePublicKey));
       localStorage.removeItem(joinNonceStorageKey(devicePublicKey));
@@ -187,6 +206,52 @@ export function clearStored(devicePublicKey: string | null): void {
   } catch {
     // Nothing was persisted; nothing to forget.
   }
+}
+
+/**
+ * The receipt from claiming this account with a cloud.
+ *
+ * Stored because the claim is durable in a way nothing else on this page is: a
+ * routing proof is namespace-bound and expires in two minutes, a session token
+ * expires in a week, but *"the root of this account proved it owns it"* is a
+ * fact the cloud has written down and will not ask about again. The receipt is
+ * what lets the page say so after a reload instead of offering the button as
+ * though nothing had happened.
+ *
+ * `sessionToken` is empty when the cloud refused a session — which it does for
+ * an account no cloud login has linked. That refusal is not a failed claim: the
+ * proof established WHO, the link establishes what they are entitled to, and
+ * the cloud records the first regardless. {@link AccountClaim.linked} is the
+ * field that separates the two, so the panel can report an unlinked account as
+ * proven rather than as broken.
+ */
+export interface AccountClaim {
+  /** The account the cloud derived from the root key that signed. */
+  accountId: string;
+  /** Which cloud recorded it. A claim is not portable between managers. */
+  cloudUrl: string;
+  /** When this tab made the claim, epoch ms. */
+  provenAt: number;
+  /** Whether a cloud login owns this account, and so whether a session came back. */
+  linked: boolean;
+  /** The MDMA session token, or `''` when the account is not linked. */
+  sessionToken: string;
+  /** The linked login's email, or `''`. */
+  email: string;
+}
+
+export function loadClaim(): AccountClaim | null {
+  const stored = read<AccountClaim>(CLAIM_KEY);
+  if (!stored) return null;
+  // Same shape check as the identity, for the same reason: a half-read receipt
+  // would render a panel claiming a proof that may never have happened.
+  return typeof stored.accountId === 'string' && typeof stored.cloudUrl === 'string'
+    ? stored
+    : null;
+}
+
+export function saveClaim(claim: AccountClaim): void {
+  write(CLAIM_KEY, claim);
 }
 
 /**

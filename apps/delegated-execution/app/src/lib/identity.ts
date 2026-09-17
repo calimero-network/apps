@@ -10,12 +10,28 @@
  *
  * ## Why two keys and not one
  *
- * The **root** is the account. It signs device certificates and nothing else in
- * this app, and losing it loses the account — there is no recovery path that
- * does not go through it or its 24-word phrase. The **device key** is what does
- * the day-to-day signing: login statements and warrants. Separating them is
- * what lets a device be revoked without the account being lost, and it is why
- * the root is kept in memory here while the device secret is persisted.
+ * The **root** is the account. It signs device certificates and one other thing
+ * — the cloud's ownership challenge, which is the statement *"this account is
+ * mine"* and the one statement a device credential can never make. Losing it
+ * loses the account; there is no recovery path that does not go through it or
+ * its 24-word phrase. The **device key** is what does the day-to-day signing:
+ * login statements and warrants. Separating them is what lets a device be
+ * revoked without the account being lost.
+ *
+ * ## The root is persisted here, and that is a demo compromise
+ *
+ * mero-js says in as many words that in a browser an account root does not
+ * belong in `localStorage`, and it is right: a root in origin storage is one
+ * XSS away from being someone else's account forever, where a stolen device key
+ * is revocable. This demo keeps it anyway, so that "connect this account to
+ * your cloud" can be pressed at all after a reload — the proof is a *root*
+ * signature, and a tab that dropped the root would have to re-enter 24 words to
+ * make it.
+ *
+ * A real product does not do this. It keeps the root in a desktop app, a
+ * hardware key or an OS keychain and signs the challenge there, handing back
+ * only the signature — which is exactly why mero-js exposes `signAccountLogin`
+ * and `submitAccountLogin` separately from `signInWithAccount`.
  *
  * ## The KEM key, and why it is generated but never used here
  *
@@ -42,6 +58,16 @@ import {
 export interface DeviceIdentity {
   /** The account these writes will be attributed to, 64 hex. */
   accountId: string;
+  /**
+   * The account root's signing secret, 64 hex — **a demo compromise**, see the
+   * module note.
+   *
+   * Optional because an identity minted before this field existed loads without
+   * one. Such a device still signs, reads and writes; it simply cannot claim
+   * its account to the cloud, because that claim is a root signature. The UI
+   * says so rather than silently offering a button that cannot work.
+   */
+  rootSecret?: string;
   /** The device's replica id, 64 hex. */
   deviceId: string;
   /** The device's ed25519 signing secret, 64 hex. Signs statements and warrants. */
@@ -153,6 +179,7 @@ export async function certifyNewDevice(root: AccountRoot): Promise<DeviceIdentit
 
   return {
     accountId: root.accountId,
+    rootSecret: root.secret,
     deviceId,
     deviceSecret: secret,
     devicePublicKey: publicKey,

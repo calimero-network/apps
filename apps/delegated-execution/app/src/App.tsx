@@ -31,8 +31,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Out, Step, type StepState } from './steps/Step.js';
 import type { ClassifiedNode } from './lib/admission.js';
 import { createIdentity, restoreIdentity, type DeviceIdentity } from './lib/identity.js';
-import type { AccountProofResult } from './lib/flow.js';
+import type { AccountClaimResult, AccountProofResult } from './lib/flow.js';
 import {
+  claimAccountWithCloud,
+  cloudNamespacesForSession,
   describeRelay,
   discoverAdmitter,
   proveAccountToCloud,
@@ -45,10 +47,13 @@ import { errorText, parseJson, pretty, short } from './lib/format.js';
 import {
   EMPTY_SETTINGS,
   clearStored,
+  loadClaim,
   loadIdentity,
   loadSettings,
+  saveClaim,
   saveIdentity,
   saveSettings,
+  type AccountClaim,
   type Settings,
 } from './lib/storage.js';
 import type { DelegatedSession } from '@calimero-network/mero-js';
@@ -90,6 +95,7 @@ export function App() {
   const [restoreFrom, setRestoreFrom] = useState('');
   const [settings, setSettings] = useState<Settings>(EMPTY_SETTINGS);
   const [session, setSession] = useState<DelegatedSession | null>(null);
+  const [claim, setClaim] = useState<AccountClaim | null>(null);
 
   // Loaded in an effect rather than in `useState`'s initialiser because
   // `localStorage` is unavailable during SSR and throws in a private window —
@@ -98,6 +104,7 @@ export function App() {
   useEffect(() => {
     setIdentity(loadIdentity());
     setSettings(loadSettings());
+    setClaim(loadClaim());
   }, []);
 
   const updateSettings = useCallback((patch: Partial<Settings>) => {
@@ -147,12 +154,28 @@ export function App() {
           // device. Keeping it would produce a read that succeeds as somebody
           // else, which is the single most misleading thing this page could do.
           setSession(null);
+          // The claim names the OLD account. Keeping it would leave the page
+          // reporting a connected cloud for an account this tab can no longer
+          // prove anything about.
+          setClaim(null);
         }}
         onForget={() => {
           clearStored(identity?.devicePublicKey ?? null);
           setIdentity(null);
           setPhrase(null);
           setSession(null);
+          setClaim(null);
+        }}
+      />
+
+      <AccountCloudStep
+        identity={identity}
+        settings={settings}
+        onChange={updateSettings}
+        claim={claim}
+        onClaim={(next) => {
+          saveClaim(next);
+          setClaim(next);
         }}
       />
 
@@ -299,6 +322,236 @@ function IdentityStep({
   );
 }
 
+/**
+ * Claim this account with a cloud — the one proof on the page the root makes.
+ *
+ * Kept as its own step rather than folded into the routing panel because it is
+ * a different kind of thing in three ways: it is signed by the ROOT and not the
+ * device, it is done ONCE rather than on every read, and the cloud REMEMBERS
+ * it. The routing proof beside it is re-made on every lookup and leaves nothing
+ * behind. Two panels both saying "prove" would be confusing; one panel doing
+ * both would hide exactly the distinction worth showing.
+ */
+function AccountCloudStep({
+  identity,
+  settings,
+  onChange,
+  claim,
+  onClaim,
+}: {
+  identity: DeviceIdentity | null;
+  settings: Settings;
+  onChange: (patch: Partial<Settings>) => void;
+  claim: AccountClaim | null;
+  onClaim: (claim: AccountClaim) => void;
+}) {
+  const [outcome, setOutcome] = useState<Outcome | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<AccountClaimResult | null>(null);
+  const [namespaces, setNamespaces] = useState<string[] | null>(null);
+
+  // An identity minted before this version of the page never stored a root, so
+  // the claim is offered only when there is actually a key here to sign it.
+  const rootSecret = identity?.rootSecret ?? '';
+  const claimed = claim !== null && claim.accountId === identity?.accountId;
+
+  const connect = useCallback(async () => {
+    setBusy(true);
+    setOutcome(null);
+    setNamespaces(null);
+    try {
+      if (!identity) throw new Error('Mint or restore an account in step 1 first.');
+      if (rootSecret === '') {
+        throw new Error(
+          'This identity was minted before the page kept the account root, so there is no key ' +
+            'here to sign the claim with. Restore from your phrase, or mint a new account.',
+        );
+      }
+      if (settings.cloudUrl.trim() === '') throw new Error('Enter your cloud URL first.');
+
+      const claimResult = await claimAccountWithCloud(settings.cloudUrl, rootSecret);
+      setResult(claimResult);
+      onClaim({
+        accountId: claimResult.accountId,
+        cloudUrl: settings.cloudUrl,
+        provenAt: Date.now(),
+        linked: claimResult.linked,
+        sessionToken: claimResult.sessionToken,
+        email: claimResult.email,
+      });
+      setOutcome({
+        text: claimResult.linked
+          ? `The cloud recorded ${short(claimResult.accountId, 10)} as owned by the key that ` +
+            `signed, and opened a session as ${claimResult.email}. Nothing but the root proved it.`
+          : `Ownership of ${short(claimResult.accountId, 10)} is recorded. No session: this ` +
+            'account is not linked to a cloud login, so there is no plan or namespace list to ' +
+            'open one over. Link it once from a signed-in cloud session and come back — the ' +
+            'proof stands.',
+        error: false,
+      });
+    } catch (error) {
+      setResult(null);
+      setOutcome({ text: errorText(error), error: true });
+    } finally {
+      setBusy(false);
+    }
+  }, [identity, rootSecret, settings.cloudUrl, onClaim]);
+
+  const fetchNamespaces = useCallback(async () => {
+    setBusy(true);
+    setOutcome(null);
+    try {
+      if (!claim || claim.sessionToken === '') {
+        throw new Error('No account session held — claim the account first.');
+      }
+      const rows = await cloudNamespacesForSession(claim.cloudUrl, claim.sessionToken);
+      setNamespaces(rows);
+      setOutcome({
+        text:
+          `The cloud answered a signed-in read with ${rows.length} namespace(s), for a session ` +
+          'this tab obtained by signing a challenge with a key it generated itself.',
+        error: false,
+      });
+    } catch (error) {
+      setOutcome({ text: errorText(error), error: true });
+    } finally {
+      setBusy(false);
+    }
+  }, [claim]);
+
+  return (
+    <Step
+      n={2}
+      title="Connect this account to your cloud"
+      state={claimed ? 'done' : 'idle'}
+      stateLabel={claimed ? (claim.linked ? 'connected' : 'proven, unlinked') : 'not yet'}
+      why={
+        <>
+          Every other proof on this page is signed by the <strong>device</strong> key, and rests
+          on a certificate the root issued. A certificate is <em>public</em> — it travels in the
+          clear inside every device-link op — so the strongest thing any of them can say is
+          &ldquo;a device of this account is asking&rdquo;. Only the <strong>root</strong> can say
+          the account is yours. That is what this sends: one signature over a cloud-issued
+          challenge, which the cloud writes down. Once. After it, the cloud knows the account
+          behind those later device proofs was claimed by whoever holds its root.
+        </>
+      }
+    >
+      <label>
+        Cloud URL
+        <input
+          type="text"
+          value={settings.cloudUrl}
+          placeholder="https://manager.cloud.calimero.network"
+          onChange={(e) => onChange({ cloudUrl: e.target.value.trim() })}
+        />
+      </label>
+
+      <div className="row">
+        <button type="button" onClick={() => void connect()} disabled={busy || !identity}>
+          {busy ? 'Proving…' : claimed ? 'Prove this account again' : 'Prove I own this account'}
+        </button>
+        <button
+          type="button"
+          className="secondary"
+          onClick={() => void fetchNamespaces()}
+          disabled={busy || claim === null || claim.sessionToken === ''}
+        >
+          {busy ? 'Asking the cloud…' : 'Fetch my namespaces with it'}
+        </button>
+      </div>
+
+      {claimed && (
+        <dl className="kv">
+          <dt>account</dt>
+          <dd>{claim.accountId}</dd>
+          <dt>cloud</dt>
+          <dd>{claim.cloudUrl}</dd>
+          <dt>proved</dt>
+          <dd>{new Date(claim.provenAt).toLocaleString()}</dd>
+          <dt>session</dt>
+          <dd>
+            {claim.linked
+              ? `held, as ${claim.email}`
+              : 'none — the claim is recorded, the account is not linked to a cloud login'}
+          </dd>
+        </dl>
+      )}
+
+      {result !== null && (
+        <>
+          <dl className="kv">
+            <dt>challenge</dt>
+            <dd>
+              {short(result.nonce, 12)} — expires{' '}
+              {new Date(result.expiresAtMs).toLocaleTimeString()}
+            </dd>
+            <dt>signed by</dt>
+            <dd>
+              the <strong>account root</strong> {short(result.rootPublicKey, 12)} —{' '}
+              {short(result.signature, 12)}
+            </dd>
+          </dl>
+          <p className="aside">
+            No account id was sent. The account <em>is</em> the hash of the root public key, so
+            the cloud derives it from the key it just verified — there is no field a caller could
+            state that the signature would then contradict.
+          </p>
+        </>
+      )}
+
+      {namespaces !== null && (
+        <ul className="nodes">
+          {namespaces.length === 0 ? (
+            <li>
+              none — an empty list is still a signed-in answer, and a 401 is what an unproven
+              caller gets
+            </li>
+          ) : (
+            namespaces.map((id) => (
+              <li key={id}>
+                <code>{id}</code>
+              </li>
+            ))
+          )}
+        </ul>
+      )}
+
+      {claimed && !claim.linked && (
+        <p className="aside">
+          <strong>Proven, not entitled.</strong> The proof establishes <em>who</em>; the link
+          establishes <em>what you are entitled to</em>. Anyone can mint an account root offline,
+          so a session on the proof alone would authenticate perfectly and authorize nothing — no
+          cloud user, no plan, no namespaces to scope it to. The claim is written down anyway, so
+          linking this account from a signed-in cloud session later needs no second proof. The
+          rest of this page does not need the session: routing reads prove themselves.
+        </p>
+      )}
+
+      <p className="aside">
+        <strong>
+          This demo keeps your account root in <code>localStorage</code>, and a product must not.
+        </strong>{' '}
+        The claim is a root signature, so a tab that dropped the root could make it exactly once
+        and never again without re-entering 24 words. A stolen device key is revocable; a stolen
+        root is the account, permanently. Keep the root in a desktop app, a hardware key or an OS
+        keychain and sign the challenge there — mero-js splits <code>signAccountLogin</code> out
+        from <code>signInWithAccount</code> so the secret never has to reach the browser at all.
+      </p>
+
+      {identity && rootSecret === '' && (
+        <p className="aside">
+          This identity predates the page keeping a root, so there is nothing here to sign the
+          claim with. Everything else still works — the device key signs sessions, joins and
+          warrants. Restore from your phrase to claim the account.
+        </p>
+      )}
+
+      <Out error={outcome?.error}>{outcome?.text ?? ''}</Out>
+    </Step>
+  );
+}
+
 function NodeStep({
   settings,
   onChange,
@@ -310,7 +563,7 @@ function NodeStep({
   ready: boolean;
   /**
    * Needed to *read* routing, not to join with — the cloud asks a caller to
-   * prove which account is asking. So step 2 now depends on step 1, which is
+   * prove which account is asking. So step 3 now depends on step 1, which is
    * the honest ordering: there was never a point in resolving a node before
    * holding the key that will sign the join.
    */
@@ -364,7 +617,7 @@ function NodeStep({
         // fold it, which is why the read is what confirms this worked.
         text: published
           ? 'Signed and published. The admitter carried it; membership lands when peers fold ' +
-            'the op, so step 4 is what confirms it — a 403 straight after is usually a race, ' +
+            'the op, so step 5 is what confirms it — a 403 straight after is usually a race, ' +
             'not a refusal.'
           : 'The admitter accepted the call but reported nothing published. Treat that as not ' +
             'joined and try another admitter.',
@@ -421,7 +674,7 @@ function NodeStep({
 
   return (
     <Step
-      n={2}
+      n={3}
       title="Prove your account to the cloud, and accept an invitation"
       state={ready ? 'done' : 'idle'}
       stateLabel={ready ? 'set' : 'incomplete'}
@@ -438,15 +691,6 @@ function NodeStep({
         </>
       }
     >
-      <label>
-        Cloud URL
-        <input
-          type="text"
-          value={settings.cloudUrl}
-          placeholder="https://manager.cloud.calimero.network"
-          onChange={(e) => onChange({ cloudUrl: e.target.value.trim() })}
-        />
-      </label>
       <label>
         Namespace id — 64 hex
         <input
@@ -593,7 +837,7 @@ function SessionStep({
 
   return (
     <Step
-      n={3}
+      n={4}
       title="Obtain a session — no password"
       state={session ? 'done' : 'idle'}
       stateLabel={session ? 'open' : 'closed'}
@@ -668,7 +912,7 @@ function ReadStep({
 
   return (
     <Step
-      n={4}
+      n={5}
       title="Read the context"
       why={
         <>
@@ -726,14 +970,14 @@ function WriteStep({
   // The relay the cloud resolved, falling back to the admitter. The fallback is
   // for the manual path — settings typed by hand, or restored from a blob
   // written before this field existed — and NOT a default for the discovered
-  // case: step 2 leaves `relayUrl` empty on purpose when no node holds the
+  // case: step 3 leaves `relayUrl` empty on purpose when no node holds the
   // authorship grant, and silently posting to the admitter there is exactly the
   // bug this split fixes. It fails at the relay with a clear refusal instead.
   const writeUrl = settings.relayUrl || settings.nodeUrl;
 
   return (
     <Step
-      n={5}
+      n={6}
       title="Write through the relay"
       why={
         <>
@@ -749,7 +993,7 @@ function WriteStep({
         <dt>relay</dt>
         <dd>
           {writeUrl === '' ? (
-            <em>none resolved — run step 2, or set a node URL by hand</em>
+            <em>none resolved — run step 3, or set a node URL by hand</em>
           ) : (
             <>
               {writeUrl}
