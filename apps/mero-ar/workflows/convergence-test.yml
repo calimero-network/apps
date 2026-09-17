@@ -56,7 +56,7 @@ nodes:
   # Must match `min-runtime-version` in logic/Cargo.toml. It also has to be a
   # release whose HOST can call back into the wasm to merge a custom-stamped
   # collection entry — which is what every assertion below rests on.
-  image: ghcr.io/calimero-network/merod:0.11.0-rc.32
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.38
   count: 2
   prefix: calimero-node
 

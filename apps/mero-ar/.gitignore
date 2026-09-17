@@ -4,6 +4,11 @@ logic/res/
 # `cargo mero bundle` output (signed .mpk)
 logic/dist/
 
+# merobox's per-run node state (rocksdb, blobs, the copied .mpk). Written into
+# workflows/ by `merobox bootstrap run`, so a plain `git add workflows` sweeps
+# a whole node's database into the commit.
+workflows/data/
+
 # Swift / SwiftPM
 .build/
 *.xcodeproj
