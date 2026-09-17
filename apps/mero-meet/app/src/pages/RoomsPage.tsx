@@ -1,271 +1,508 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useCallback, useEffect, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import { useMero } from "@calimero-network/mero-react";
-import { getApplicationId, setActiveRoom, getRoomName, setRoomName } from "../lib/session";
-import { invitationTokenFrom, parseRoomInvitation } from "../lib/invitation";
-import { onInvitation } from "../lib/invitationIntents";
-import ThemeToggle from "../components/ThemeToggle";
-import styles from "./RoomsPage.module.css";
-
-interface RoomEntry {
-  contextId: string;
-  name: string;
-}
+import { useApplicationId } from "../hooks/useApplicationId";
+import { useToast } from "../contexts/ToastContext";
+import { nowSecs, setActiveRoom, setRoomName } from "../lib/session";
+import {
+  createRoom,
+  enterRoomContext,
+  listRooms,
+  mintNamespaceInvite,
+  mintRoomInvite,
+  type RoomRow,
+} from "../lib/groups";
+import { ActionButton, StatusNote, Spinner } from "../components/ui";
+import InviteModal from "../components/InviteModal";
+import SessionMenu from "../components/SessionMenu";
+import { initials } from "../lib/people";
+import {
+  labelMembers,
+  summariseMembers,
+  type RoomMemberLabel,
+} from "../lib/roomMembers";
+import type { LobbyView } from "../types";
+import styles from "./Manage.module.css";
 
 /**
- * Room picker / creator — shown when the desktop opened Mero Meet without a
- * specific room (no `context_id` in the hash). A "room" is a Calimero context,
- * which lives inside a namespace. Creating one mirrors the proven setup
- * sequence (see workflows/e2e.yml): create namespace → set member capabilities
- * → create the context, then enter it.
+ * Rooms inside one team (namespace). A room is a SUBGROUP plus the context bound
+ * to it, and that context is the video call.
  *
- * You can also JOIN a room someone shared: paste their invite code → join the
- * namespace → wait for the room context to sync → join it.
+ * The two things this page exists to make possible, both proven by suite S3/S4:
  *
- * Rooms are shown by their human name (namespace alias, or the name we cached on
- * create/join/enter) — never the raw context id.
+ *   - A namespace can hold MORE THAN ONE call. The old picker created a namespace
+ *     and a single context together, so it could not.
+ *   - A room is joinable by someone who only holds the namespace, because it is
+ *     created OPEN. Restricted is the default, and a restricted room answers
+ *     `join-via-inheritance` with 403 — invited members could see the team and
+ *     never reach the call.
+ *
+ * Two invite scopes are offered, and the difference is DESTINATION, not grant:
+ * both codes join the team (room access is inherited from it, so there is no
+ * narrower grant to hand out — see `mintRoomInvite`), but a room code drops the
+ * joiner straight into that call while a team code leaves them on this list. The
+ * hints say so rather than implying the room code is more restrictive.
  */
 export default function RoomsPage() {
   const navigate = useNavigate();
-  const { mero, applicationId: providerAppId } = useMero();
-  const appId = getApplicationId() ?? providerAppId ?? "";
+  const { namespaceId = "" } = useParams();
+  const { mero } = useMero();
+  const { showToast } = useToast();
+  // Resolved from the NODE by package, not from the session — see lib/appId.
+  const { appId, resolving: resolvingAppId, notInstalled } = useApplicationId();
 
-  const [rooms, setRooms] = useState<RoomEntry[]>([]);
+  const [rooms, setRooms] = useState<RoomRow[]>([]);
+  /** Contract roster per room context, so rows can show WHO is in a call. */
+  const [rosters, setRosters] = useState<Record<string, RoomMemberLabel[]>>({});
   const [listing, setListing] = useState(true);
+  const [nsName, setNsName] = useState("");
   const [name, setName] = useState("");
-  const [joinCode, setJoinCode] = useState("");
-  const [busy, setBusy] = useState(false);
+
+  const [pending, setPending] = useState<string | null>(null);
+  const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [invite, setInvite] = useState<{
+    key: string;
+    code: string;
+    scope: string;
+    hint: React.ReactNode;
+  } | null>(null);
 
-  // Build the room list: every context for this app, named by its namespace
-  // alias (or our locally-cached name), falling back to a short id.
-  const loadRooms = useCallback(async () => {
-    if (!mero || !appId) {
-      setListing(false);
-      return;
-    }
-    try {
-      const [ctxResp, namespaces] = await Promise.all([
-        mero.admin.getContextsForApplication(appId),
-        mero.admin.listNamespacesForApplication(appId).catch(() => []),
-      ]);
-      const nsName = new Map<string, string>();
-      for (const n of namespaces) {
-        const nm = (n.name ?? (n as { alias?: string }).alias ?? "").trim();
-        if (nm) nsName.set(n.namespaceId, nm);
-      }
-      const list = (ctxResp.contexts ?? []).map((c) => {
-        const cached = getRoomName(c.id);
-        const ns = nsName.get(c.groupId ?? "") ?? "";
-        return { contextId: c.id, name: cached || ns || `Room ${c.id.slice(0, 6)}` };
-      });
-      setRooms(list);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not load rooms.");
-    } finally {
-      setListing(false);
-    }
-  }, [mero, appId]);
-
-  useEffect(() => {
-    void loadRooms();
-  }, [loadRooms]);
-
-  const enterRoom = useCallback(
-    async (contextId: string) => {
-      if (!mero) return;
-      setBusy(true);
+  const run = useCallback(
+    async (
+      key: string,
+      fn: (onStatus: (m: string) => void) => Promise<void>,
+    ) => {
+      setPending(key);
       setError(null);
+      setStatus(null);
       try {
-        const owned = await mero.admin.getContextIdentitiesOwned(contextId);
-        const identity = owned.identities?.[0];
-        if (!identity) {
-          throw new Error("You have no member identity in this room yet.");
-        }
-        setActiveRoom(contextId, identity);
-        navigate("/lobby");
+        await fn(setStatus);
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Could not open the room.");
+        setError(e instanceof Error ? e.message : String(e));
       } finally {
-        setBusy(false);
+        setPending(null);
+        setStatus(null);
       }
     },
-    [mero, navigate],
+    [],
   );
 
-  const createRoom = useCallback(async () => {
+  const load = useCallback(
+    async (showSpinner = true) => {
+      if (!mero || !namespaceId) return;
+      if (showSpinner) setListing(true);
+      try {
+        // The namespace's own name for the header, so the page says which team
+        // you are in rather than a truncated id.
+        const info = await mero.admin
+          .getNamespace(namespaceId)
+          .catch(() => null);
+        setNsName(
+          (info?.name ?? "").trim() || `Team ${namespaceId.slice(0, 6)}`,
+        );
+        setRooms(await listRooms(mero.admin, namespaceId));
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Could not load rooms.");
+      } finally {
+        setListing(false);
+      }
+    },
+    [mero, namespaceId],
+  );
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  /**
+   * Read each joined room's contract roster, so a row can say WHO is in the
+   * call rather than only how many.
+   *
+   * Only rooms this node has joined: `execute` against a context we hold no
+   * identity in is refused, and firing those would put one guaranteed error per
+   * un-joined room into the console on every load.
+   *
+   * Failures are dropped silently and per room — a roster is an enrichment, and
+   * one unreachable context should not cost the other rooms their names or turn
+   * the page into an error state.
+   */
+  useEffect(() => {
+    if (!mero) return;
+    const joined = rooms.filter((r) => r.joined && r.contextId);
+    if (joined.length === 0) return;
+    let cancelled = false;
+    void Promise.all(
+      joined.map(async (room) => {
+        try {
+          // `get_lobby`, not `get_members` — this contract exposes the roster
+          // as part of the lobby view, and it needs `now` because presence
+          // carries an online TTL the contract evaluates against it.
+          const lobby = await mero.rpc.execute<LobbyView>({
+            contextId: room.contextId!,
+            method: "get_lobby",
+            argsJson: { now: nowSecs() },
+          });
+          return [
+            room.contextId!,
+            labelMembers(lobby?.members ?? [], room.identity ?? ""),
+          ] as const;
+        } catch {
+          return null;
+        }
+      }),
+    ).then((entries) => {
+      if (cancelled) return;
+      const next: Record<string, RoomMemberLabel[]> = {};
+      for (const entry of entries) if (entry) next[entry[0]] = entry[1];
+      setRosters(next);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [mero, rooms]);
+
+  const create = useCallback(() => {
     const roomName = name.trim();
     if (!roomName || !mero) return;
     if (!appId) {
-      setError("Missing application id — reopen Mero Meet from the desktop app.");
-      return false;
-    }
-    setBusy(true);
-    setError(null);
-    try {
-      // 1. Namespace to hold the room.
-      const ns = await mero.admin.createNamespace({
-        applicationId: appId,
-        name: roomName,
-      });
-      // 2. Let members do everything in this namespace (15 = all base caps).
-      await mero.admin
-        .setDefaultCapabilities(ns.namespaceId, { defaultCapabilities: 15 })
-        .catch(() => {/* non-fatal: creator already has full caps */});
-      // 3. The room context. init(name) → JSON, as bytes (see contract `init`).
-      const initializationParams = Array.from(
-        new TextEncoder().encode(JSON.stringify({ name: roomName })),
+      setError(
+        "Missing application id — reopen Mero Meet from the desktop app.",
       );
-      const ctx = await mero.admin.createContext({
-        applicationId: appId,
-        groupId: ns.namespaceId,
-        initializationParams,
-      });
-      setRoomName(ctx.contextId, roomName);
-      setActiveRoom(ctx.contextId, ctx.memberPublicKey);
+      return;
+    }
+    void run("create", async (onStatus) => {
+      const { contextId, memberPublicKey } = await createRoom(
+        mero.admin,
+        { applicationId: appId, namespaceId, name: roomName },
+        onStatus,
+      );
+      setRoomName(contextId, roomName);
       setName("");
+      setActiveRoom(contextId, memberPublicKey, namespaceId);
+      // Into the room's lobby: the creator is already a member, so there is
+      // nothing to wait for. The lobby is where presence and the call live.
       navigate("/lobby");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not create the room.");
-      void loadRooms();
-    } finally {
-      setBusy(false);
-    }
-  }, [name, mero, appId, navigate, loadRooms]);
-
-  const joinByCode = useCallback(async (codeOverride?: string): Promise<boolean> => {
-    // Accept either a shared invitation link or the bare token inside it.
-    const code = invitationTokenFrom(codeOverride ?? joinCode);
-    if (!code || !mero) return false;
-    if (!appId) {
-      setError("Missing application id — reopen Mero Meet from the desktop app.");
-      return false;
-    }
-    setBusy(true);
-    setError(null);
-    try {
-      const { namespaceId, signed, roomName } = parseRoomInvitation(code);
-      if (!namespaceId) throw new Error("That doesn't look like a valid invite code.");
-
-      // Join the namespace the room lives in. (`signed` is the node's own
-      // invitation struct, decoded from the token — typed loosely here.)
-      await mero.admin.joinNamespace(
-        namespaceId,
-        { invitation: signed } as Parameters<typeof mero.admin.joinNamespace>[1],
-      );
-
-      // The room context syncs in after the namespace join — poll for it.
-      let contextId = "";
-      for (let i = 0; i < 15 && !contextId; i++) {
-        const resp = await mero.admin.getContextsForApplication(appId);
-        const match = (resp.contexts ?? []).find((c) => (c.groupId ?? "") === namespaceId);
-        if (match) contextId = match.id ?? "";
-        if (!contextId) await new Promise((r) => setTimeout(r, 1500));
-      }
-      if (!contextId) {
-        throw new Error("Joined the namespace, but the room hasn't synced yet — try again shortly.");
-      }
-
-      const joined = await mero.admin.joinContext(contextId);
-      if (roomName) setRoomName(contextId, roomName);
-      setActiveRoom(contextId, joined.memberPublicKey);
-      setJoinCode("");
-      navigate("/lobby");
-      return true;
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not join with that code.");
-      return false;
-    } finally {
-      setBusy(false);
-    }
-  }, [joinCode, mero, appId, navigate]);
-
-  // ── An invitation link opened this app ──────────────────────────────────────
-  //
-  // Fill the join box and try it once, so a shared link actually joins the room
-  // instead of landing the recipient here with the token stuck in the address
-  // bar. Waits for `mero` and `appId`, because joining needs both — the intent
-  // is durable, so arriving before the session is ready is fine.
-  //
-  // Acked ONLY on a successful join: a failure stays in the store and is retried
-  // on the next load, which is what should happen when the room context simply
-  // has not synced yet (`joinByCode` polls for it and can legitimately time
-  // out). `attemptedInvites` stops it looping within this session.
-  const attemptedInvites = useRef<Set<string>>(new Set());
-  useEffect(() => {
-    if (!mero || !appId) return;
-    return onInvitation(({ token, resolve }) => {
-      setJoinCode(token);
-      if (attemptedInvites.current.has(token)) return;
-      attemptedInvites.current.add(token);
-      void joinByCode(token).then((joined) => {
-        if (joined) resolve();
-      });
     });
-  }, [mero, appId, joinByCode]);
+  }, [name, mero, appId, namespaceId, run, navigate]);
+
+  /** Enter a room: join it if needed, wait for the identity, then open the call. */
+  const enter = useCallback(
+    (room: RoomRow) => {
+      if (!mero) return;
+      if (!room.contextId) {
+        setError(
+          `“${room.name}” has no call context on this node yet. It may still be replicating — refresh in a moment.`,
+        );
+        return;
+      }
+      const contextId = room.contextId;
+      void run(`enter:${room.roomId}`, async (onStatus) => {
+        const identity = await enterRoomContext(
+          mero.admin,
+          { roomId: room.roomId, contextId },
+          onStatus,
+        );
+        setRoomName(contextId, room.name);
+        setActiveRoom(contextId, identity, namespaceId);
+        navigate("/lobby");
+      });
+    },
+    [mero, run, navigate, namespaceId],
+  );
+
+  const inviteToRoom = useCallback(
+    (room: RoomRow) => {
+      if (!mero) return;
+      void run(`invite:${room.roomId}`, async (onStatus) => {
+        const code = await mintRoomInvite(
+          mero.admin,
+          {
+            namespaceId,
+            roomId: room.roomId,
+            roomName: room.name,
+            namespaceName: nsName,
+            contextId: room.contextId,
+          },
+          onStatus,
+        );
+        setInvite({
+          key: `room:${room.roomId}`,
+          code,
+          scope: `Opens ${room.name}`,
+          hint: (
+            <>
+              One paste puts them straight into <strong>{room.name}</strong>.
+              Note what it grants: joining <strong>{nsName}</strong>, which is
+              what makes any room in it reachable — room access is inherited
+              from the team, so this is <em>not</em> narrower than the team
+              code. It just lands them in this call instead of the room list.
+            </>
+          ),
+        });
+        showToast(`Invite ready for “${room.name}”.`);
+      });
+    },
+    [mero, namespaceId, nsName, run, showToast],
+  );
+
+  const inviteToNamespace = useCallback(() => {
+    if (!mero) return;
+    void run("invite:namespace", async (onStatus) => {
+      const code = await mintNamespaceInvite(
+        mero.admin,
+        { namespaceId, namespaceName: nsName },
+        onStatus,
+      );
+      setInvite({
+        key: "namespace",
+        code,
+        scope: `Whole team · ${nsName}`,
+        hint: (
+          <>
+            This code joins <strong>{nsName}</strong> and every room in it,
+            including rooms made later. It lands them on the room list — to drop
+            someone directly into one call, use <strong>Invite</strong> on that
+            room.
+          </>
+        ),
+      });
+      showToast(`Invite ready for “${nsName}”.`);
+    });
+  }, [mero, namespaceId, nsName, run, showToast]);
+
+  /** This room's labelled roster, or undefined when we do not have one. */
+  const roomRoster = (room: RoomRow): RoomMemberLabel[] | undefined =>
+    room.contextId ? rosters[room.contextId] : undefined;
 
   return (
     <div className={styles.page}>
-      <header className={styles.header}>
-        <div className={styles.headerRow}>
-          <h1 className={styles.title}>
-            Mero Meet <span className={styles.version}>v{__APP_VERSION__}</span>
-          </h1>
-          <ThemeToggle />
+      <header className={styles.topbar}>
+        <div className={styles.brand}>
+          <h1 className={styles.brandName}>Mero Meet</h1>
         </div>
-        <p className={styles.subtitle}>Pick a room, start a new one, or join with an invite.</p>
+        <span className={styles.spacer} />
+        <ActionButton
+          onClick={inviteToNamespace}
+          pending={pending === "invite:namespace"}
+          pendingLabel="Minting…"
+          variant="secondary"
+          size="small"
+          testId="invite-namespace"
+          title="Invite someone to this whole team"
+        >
+          Invite to team
+        </ActionButton>
+        <ActionButton
+          onClick={() => void load()}
+          pending={listing}
+          pendingLabel="Refreshing…"
+          variant="secondary"
+          size="small"
+          testId="refresh-rooms"
+        >
+          Refresh
+        </ActionButton>
+        <SessionMenu />
       </header>
 
-      <section className={styles.createBar}>
-        <input
-          className={styles.input}
-          placeholder="New room name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && createRoom()}
-          maxLength={60}
-          disabled={busy}
-        />
-        <button className={styles.createBtn} onClick={createRoom} disabled={busy || !name.trim()}>
-          {busy ? "Working…" : "Create room"}
-        </button>
-      </section>
-
-      <section className={styles.createBar}>
-        <input
-          className={styles.input}
-          placeholder="Paste an invite code to join"
-          value={joinCode}
-          onChange={(e) => setJoinCode(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && joinByCode()}
-          disabled={busy}
-        />
-        <button className={styles.joinBtn} onClick={() => void joinByCode()} disabled={busy || !joinCode.trim()}>
-          Join
-        </button>
-      </section>
-
-      {error && <p className={styles.error}>{error}</p>}
-
-      <section className={styles.list}>
-        <h2 className={styles.listTitle}>Your rooms</h2>
-        {listing && <p className={styles.muted}>Loading rooms…</p>}
-        {!listing && rooms.length === 0 && (
-          <p className={styles.muted}>No rooms yet. Create one above to get started.</p>
-        )}
-        {rooms.map((r) => (
+      <main className={styles.content}>
+        <nav className={styles.crumbs} aria-label="Breadcrumb">
           <button
-            key={r.contextId}
-            className={styles.row}
-            onClick={() => enterRoom(r.contextId)}
-            disabled={busy}
+            type="button"
+            className={styles.crumbLink}
+            onClick={() => navigate("/teams")}
+            data-testid="back-to-teams"
           >
-            <span className={styles.roomAvatar}>{r.name.slice(0, 2).toUpperCase()}</span>
-            <span className={styles.roomId}>{r.name}</span>
-            <span className={styles.enter}>Enter →</span>
+            All teams
           </button>
-        ))}
-      </section>
+          <span aria-hidden="true">/</span>
+          <span>{nsName || "…"}</span>
+        </nav>
+
+        <div className={styles.heading}>
+          <h2 className={styles.title}>
+            {nsName || <span className={styles.muteInline}>Loading…</span>}
+          </h2>
+          <p className={styles.subtitle}>
+            Each <strong>room</strong> is one meeting — its lobby, its chat and
+            its call. Everyone invited to this team can join any room in it, and
+            a room link drops them straight into that room.
+          </p>
+        </div>
+
+        <div className={styles.toolbar}>
+          <input
+            className={styles.input}
+            placeholder="Name a new room"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && create()}
+            maxLength={60}
+            disabled={pending === "create"}
+            data-testid="room-name-input"
+          />
+          <ActionButton
+            onClick={create}
+            pending={pending === "create"}
+            pendingLabel="Creating…"
+            disabled={!name.trim() || !mero}
+            testId="create-room"
+          >
+            Create room
+          </ActionButton>
+        </div>
+
+        {status && (
+          <StatusNote tone="pending" testId="rooms-status">
+            {status}
+          </StatusNote>
+        )}
+        {error && (
+          <StatusNote tone="error" testId="rooms-error">
+            {error}
+          </StatusNote>
+        )}
+
+        <InviteModal
+          open={!!invite}
+          code={invite?.code ?? ""}
+          scope={invite?.scope ?? ""}
+          hint={invite?.hint}
+          onClose={() => setInvite(null)}
+        />
+
+        <div className={styles.sectionHead}>
+          <h3 className={styles.sectionTitle}>
+            {rooms.length} room{rooms.length === 1 ? "" : "s"}
+          </h3>
+          {(listing || resolvingAppId) && (
+            <span className={styles.sectionNote}>
+              <Spinner label="Loading rooms" /> loading…
+            </span>
+          )}
+        </div>
+
+        {notInstalled && (
+          <div className={styles.empty}>
+            <span className={styles.emptyTitle}>
+              Mero Meet is not installed on this node
+            </span>
+            <span className={styles.emptyHint}>
+              Install it from the marketplace, then reload.
+            </span>
+          </div>
+        )}
+
+        {!listing && !resolvingAppId && !notInstalled && rooms.length === 0 && (
+          <div className={styles.empty}>
+            <span className={styles.emptyTitle}>No rooms in this team</span>
+            <span className={styles.emptyHint}>
+              Create one above to start a call. Everyone already in the team can
+              join it without a new invitation.
+            </span>
+          </div>
+        )}
+
+        {rooms.length > 0 && (
+          <div className={styles.grid}>
+            {rooms.map((room) => (
+              <article
+                key={room.roomId}
+                className={styles.card}
+                data-testid="room-row"
+                data-room={room.roomId}
+                data-joined={room.joined}
+              >
+                <div className={styles.cardTop}>
+                  <span className={styles.avatar} aria-hidden="true">
+                    {initials(room.name)}
+                  </span>
+                  <span className={styles.cardText}>
+                    <span className={styles.cardName} title={room.name}>
+                      {room.name}
+                    </span>
+                    <span className={styles.cardMeta}>
+                      <span className={styles.pill}>
+                        {room.memberCount} member
+                        {room.memberCount === 1 ? "" : "s"}
+                      </span>
+                      {/* Three distinct states, and the third is not a failure:
+                          a room whose context has not replicated to this node
+                          yet cannot be entered, and saying so beats a button
+                          that does nothing. */}
+                      {!room.contextId ? (
+                        <span
+                          className={`${styles.pill} ${styles.pillWaiting}`}
+                        >
+                          syncing
+                        </span>
+                      ) : room.joined ? (
+                        <span className={`${styles.pill} ${styles.pillJoined}`}>
+                          joined
+                        </span>
+                      ) : (
+                        <span className={styles.pill}>not joined</span>
+                      )}
+                    </span>
+                  </span>
+                </div>
+                {/* WHO is in the call, by the name they chose — not the raw
+                    context id, which answers no question anyone has. Falls
+                    back to the id only while the roster is unknown (not
+                    joined, or still loading). */}
+                <span
+                  className={styles.cardId}
+                  title={
+                    roomRoster(room)
+                      ? roomRoster(room)!
+                          .map((m) => (m.isSelf ? `${m.label} (you)` : m.label))
+                          .join(", ")
+                      : (room.contextId ?? "")
+                  }
+                  data-testid="room-roster"
+                >
+                  {roomRoster(room)?.length
+                    ? summariseMembers(roomRoster(room)!)
+                    : (room.contextId ??
+                      "waiting for the context to replicate")}
+                </span>
+                <div className={styles.cardActions}>
+                  <button
+                    type="button"
+                    className={styles.openBtn}
+                    onClick={() => enter(room)}
+                    data-testid="enter-room"
+                    disabled={
+                      pending === `enter:${room.roomId}` || !room.contextId
+                    }
+                  >
+                    {pending === `enter:${room.roomId}` ? (
+                      <>
+                        <Spinner label="Joining" /> joining…
+                      </>
+                    ) : room.joined ? (
+                      "Open call"
+                    ) : (
+                      "Join call"
+                    )}
+                  </button>
+                  <ActionButton
+                    onClick={() => inviteToRoom(room)}
+                    pending={pending === `invite:${room.roomId}`}
+                    pendingLabel="Minting…"
+                    variant="secondary"
+                    testId="invite-room"
+                    title="Invite someone straight into this room"
+                  >
+                    Invite
+                  </ActionButton>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </main>
     </div>
   );
 }

@@ -6,10 +6,13 @@ import { resolveBootScreen } from "./lib/boot";
 import { getContextId, clearActiveRoom } from "./lib/session";
 import LandingPage from "./pages/landing/LandingPage";
 import DesktopSignInPage from "./pages/DesktopSignInPage";
+import TeamsPage from "./pages/TeamsPage";
 import RoomsPage from "./pages/RoomsPage";
 import LobbyPage from "./pages/LobbyPage";
 import CallView from "./call/CallView";
 import { CallProvider } from "./call/CallContext";
+import { ToastProvider } from "./contexts/ToastContext";
+import InvitationPrompt from "./components/InvitationPrompt";
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const { isAuthenticated, isLoading } = useMero();
@@ -17,7 +20,9 @@ function RequireAuth({ children }: { children: ReactNode }) {
   // landing page ("Desktop app required — Get Calimero Desktop") is a dead end:
   // it tells the user to install the app they opened this window from and offers
   // nothing to click. See lib/boot.ts.
-  switch (resolveBootScreen({ appEnabled: APP_ENABLED, isLoading, isAuthenticated })) {
+  switch (
+    resolveBootScreen({ appEnabled: APP_ENABLED, isLoading, isAuthenticated })
+  ) {
     case "loading":
       return null; // wait for the auth probe; avoids a flash
     case "web-landing":
@@ -66,9 +71,9 @@ function RequireRoom({ children }: { children: ReactNode }) {
     };
   }, [ctx, mero]);
 
-  if (!ctx) return <Navigate to="/rooms" replace />;
+  if (!ctx) return <Navigate to="/teams" replace />;
   if (exists === null) return null; // verifying — don't flash a dead lobby
-  if (!exists) return <Navigate to="/rooms" replace />;
+  if (!exists) return <Navigate to="/teams" replace />;
   return <>{children}</>;
 }
 
@@ -82,21 +87,78 @@ export default function App() {
   // (minimize → browse the lobby while the call keeps running as a mini-call).
   return (
     <CallProvider>
-      <Routes>
-        <Route path="/" element={<Navigate to={getContextId() ? "/lobby" : "/rooms"} replace />} />
-        <Route path="/rooms" element={<RequireAuth><RoomsPage /></RequireAuth>} />
-        <Route path="/lobby" element={<RequireAuth><RequireRoom><LobbyPage /></RequireRoom></RequireAuth>} />
-        <Route path="/call" element={<RequireAuth><RequireRoom><CallView /></RequireRoom></RequireAuth>} />
-        {/* ⚠️ These two must be routed even though `/` is not the landing here.
+      {/* Both sit ABOVE the router on purpose. A toast raised by an action that
+          navigates would unmount with its page, and an invitation link can land
+          on any route — putting the prompt on one page means a link opened from
+          a call shows nothing. */}
+      <ToastProvider>
+        <InvitationPrompt />
+        <Routes>
+          <Route
+            path="/"
+            element={
+              <Navigate to={getContextId() ? "/lobby" : "/teams"} replace />
+            }
+          />
+          {/* Teams (namespaces) hold rooms; a room is a subgroup plus the context
+            that IS the meeting. The picker used to list contexts directly and
+            call each one a room, which left nowhere to invite people to: an
+            invitation is a NAMESPACE invitation, so with one namespace per room
+            every invite was to a single meeting. */}
+          <Route
+            path="/teams"
+            element={
+              <RequireAuth>
+                <TeamsPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/teams/:namespaceId"
+            element={
+              <RequireAuth>
+                <RoomsPage />
+              </RequireAuth>
+            }
+          />
+          {/* The old flat path, kept so a bookmark or an open desktop window does
+            not 404 into the catch-all. */}
+          <Route path="/rooms" element={<Navigate to="/teams" replace />} />
+          <Route
+            path="/lobby"
+            element={
+              <RequireAuth>
+                <RequireRoom>
+                  <LobbyPage />
+                </RequireRoom>
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/call"
+            element={
+              <RequireAuth>
+                <RequireRoom>
+                  <CallView />
+                </RequireRoom>
+              </RequireAuth>
+            }
+          />
+          {/* ⚠️ These two must be routed even though `/` is not the landing here.
                     This app renders the landing from a guard rather than a route, so
                     without them the catch-all below matches `/docs`, redirects to `/`,
                     and a shared docs link silently shows the overview. Measured — it
                     is how this was found. */}
-        {['/docs', '/preview'].map((landingPath) => (
-          <Route key={landingPath} path={landingPath} element={<LandingPage />} />
-        ))}
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+          {["/docs", "/preview"].map((landingPath) => (
+            <Route
+              key={landingPath}
+              path={landingPath}
+              element={<LandingPage />}
+            />
+          ))}
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </ToastProvider>
     </CallProvider>
   );
 }

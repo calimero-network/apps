@@ -34,7 +34,10 @@ const LANDING_CTA = "Download for desktop";
 /** A decodable JWT — mero-react reads `iat`/`exp` to decide token staleness. */
 function jwt({ iat, exp }: { iat: number; exp: number }): string {
   const seg = (o: unknown) =>
-    btoa(JSON.stringify(o)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    btoa(JSON.stringify(o))
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=+$/, "");
   return `${seg({ alg: "HS256", typ: "JWT" })}.${seg({ iat, exp })}.sig`;
 }
 
@@ -89,7 +92,8 @@ function stubNode({ validate, health }: NodeStub) {
       if (health === 0) throw new TypeError("Failed to fetch");
       return new Response(JSON.stringify({ data: {} }), { status: health });
     }
-    if (url.includes("/auth/validate")) return new Response(null, { status: validate });
+    if (url.includes("/auth/validate"))
+      return new Response(null, { status: validate });
     return new Response(JSON.stringify({ data: {} }), {
       status: 200,
       headers: { "content-type": "application/json" },
@@ -104,13 +108,16 @@ let host: HTMLDivElement | undefined;
 
 /** Mount the app exactly the way main.tsx does. */
 async function boot(): Promise<HTMLDivElement> {
-  const { MeroProvider, AppMode } = await import("@calimero-network/mero-react");
+  const { MeroProvider, AppMode } =
+    await import("@calimero-network/mero-react");
   const { BrowserRouter } = await import("react-router-dom");
   const { captureSessionFromHash } = await import("./lib/session");
   const App = (await import("./App")).default;
 
   captureSessionFromHash();
-  const hashNodeUrl = new URLSearchParams(window.location.hash.slice(1)).get("node_url");
+  const hashNodeUrl = new URLSearchParams(window.location.hash.slice(1)).get(
+    "node_url",
+  );
 
   host = document.createElement("div");
   document.body.appendChild(host);
@@ -170,8 +177,10 @@ describe("boot inside the Calimero desktop app", () => {
     const el = await boot();
     expect(el.textContent).not.toContain(LANDING_COPY);
     expect(el.textContent).not.toContain(LANDING_CTA);
-    // The rooms picker is the signed-in entry point when no room was deep-linked.
-    expect(el.textContent).toContain("Pick a room");
+    // The TEAM picker is the signed-in entry point when no room was deep-linked:
+    // rooms now live inside a team, so the top of the hierarchy is where a
+    // sign-in with no deep link lands.
+    expect(el.textContent).toContain("Your teams");
   });
 
   it("REGRESSION: a rejected token must not render the web landing page", async () => {
@@ -228,13 +237,14 @@ describe("boot inside the Calimero desktop app", () => {
   });
 
   it("still detects a legacy Tauri v1 shell", async () => {
-    (window as unknown as Record<string, unknown>).__TAURI_INVOKE__ = async () => null;
+    (window as unknown as Record<string, unknown>).__TAURI_INVOKE__ =
+      async () => null;
     window.location.hash = desktopHash();
     stubNode({ validate: 200, health: 200 });
 
     const el = await boot();
     expect(el.textContent).not.toContain(LANDING_COPY);
-    expect(el.textContent).toContain("Pick a room");
+    expect(el.textContent).toContain("Your teams");
   });
 });
 

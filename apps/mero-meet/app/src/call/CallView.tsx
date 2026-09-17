@@ -5,11 +5,21 @@ import { useChat } from "../hooks/useChat";
 import { useRoomInvite } from "../hooks/useRoomInvite";
 import VideoTile from "../components/VideoTile";
 import ChatPanel from "../components/ChatPanel";
+import InviteModal from "../components/InviteModal";
 import ThemeToggle from "../components/ThemeToggle";
 import DevPanel from "../components/DevPanel";
 import {
-  MicIcon, MicOffIcon, VideoIcon, VideoOffIcon, LeaveIcon, PeopleIcon,
-  ChatIcon, InviteIcon, SparkleIcon, MinimizeIcon, ReconnectIcon,
+  MicIcon,
+  MicOffIcon,
+  VideoIcon,
+  VideoOffIcon,
+  LeaveIcon,
+  PeopleIcon,
+  ChatIcon,
+  InviteIcon,
+  SparkleIcon,
+  MinimizeIcon,
+  ReconnectIcon,
 } from "./icons";
 import styles from "./CallView.module.css";
 
@@ -110,29 +120,20 @@ export default function CallView() {
         </div>
       )}
 
-      {showInvite && (
-        <div className={styles.invitePanel}>
-          <div className={styles.inviteTop}>
-            <span className={styles.inviteTitle}>Invite to this room</span>
-            <button className={styles.inviteClose} onClick={() => setShowInvite(false)}>✕</button>
-          </div>
-          {invite.code ? (
-            <>
-              <code className={styles.inviteCode}>{invite.code}</code>
-              <button className={styles.copyBtn} onClick={invite.copy}>
-                {invite.copied ? "Copied ✓" : "Copy code"}
-              </button>
-              <span className={styles.inviteHint}>
-                They open Mero Meet → <strong>Join</strong> and paste it.
-              </span>
-            </>
-          ) : (
-            <button className={styles.copyBtn} onClick={() => void invite.generate()} disabled={invite.inviting}>
-              {invite.inviting ? "Generating…" : "Generate invite code"}
-            </button>
-          )}
-        </div>
-      )}
+      {/* The same dialog the lobby and the rooms page use, rather than a third
+          hand-rolled invite panel with its own copy button and its own idea of
+          what an invitation looks like. Link first, QR and the raw code behind
+          a disclosure — and it never renders a link for an empty code, which is
+          what the panel above did between clicking Invite and the mint landing. */}
+      <InviteModal
+        open={showInvite && !!invite.code}
+        code={invite.code}
+        scope={`Whole team · ${call.roomName || "this room"}`}
+        onClose={() => {
+          setShowInvite(false);
+          invite.reset();
+        }}
+      />
 
       {chatOpen && chat.supported && (
         <ChatPanel
@@ -188,13 +189,19 @@ export default function CallView() {
                 <span className={styles.popTitle}>Background</span>
                 <button
                   className={`${styles.popItem} ${call.effect === "none" ? styles.popSel : ""}`}
-                  onClick={() => { call.setEffect("none"); setShowEffects(false); }}
+                  onClick={() => {
+                    call.setEffect("none");
+                    setShowEffects(false);
+                  }}
                 >
                   None
                 </button>
                 <button
                   className={`${styles.popItem} ${call.effect === "blur" ? styles.popSel : ""}`}
-                  onClick={() => { call.setEffect("blur"); setShowEffects(false); }}
+                  onClick={() => {
+                    call.setEffect("blur");
+                    setShowEffects(false);
+                  }}
                 >
                   Blur {call.effectBusy && call.effect !== "blur" ? "…" : ""}
                 </button>
@@ -211,12 +218,27 @@ export default function CallView() {
               aria-label="Chat"
             >
               <ChatIcon />
-              {chat.unread > 0 && !chatOpen && <span className={styles.badge}>{chat.unread}</span>}
+              {chat.unread > 0 && !chatOpen && (
+                <span className={styles.badge}>{chat.unread}</span>
+              )}
             </button>
           )}
           <button
             className={`${styles.ctrl} ${showInvite ? styles.ctrlActive : ""}`}
-            onClick={() => setShowInvite((v) => !v)}
+            /* Mint on click. The old panel opened first and offered a separate
+               "Generate invite code" button inside it — two clicks to reach the
+               one thing the panel is for. The dialog only opens once there is a
+               code to show, so the mint has to start here. */
+            onClick={() => {
+              if (showInvite) {
+                setShowInvite(false);
+                invite.reset();
+                return;
+              }
+              setShowInvite(true);
+              if (!invite.code) void invite.generate();
+            }}
+            disabled={invite.inviting}
             title="Invite people"
             aria-label="Invite people"
           >
