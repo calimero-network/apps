@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
-import { ConnectButton } from '@calimero-network/mero-react';
-import type {
-  AuditLogEntry,
-  SecretItem,
-} from '../../generated/MeroPassClient';
-import { useVaultClient } from '../../lib/vault';
+import { useMero } from '@calimero-network/mero-react';
+import type { AuditLogEntry, SecretItem } from '../../generated/MeroPassClient';
+import { useVaultClient, useVaultName } from '../../lib/vault';
+import { findVaultByContext, mintVaultInvite } from '../../lib/vaults';
+import { useApplicationId } from '../../hooks/useApplicationId';
+import InviteModal from '../../components/InviteModal';
+import PassNavbar from '../../components/PassNavbar';
 import SecretForm from '../../components/SecretForm';
 import {
   Button,
@@ -21,10 +22,6 @@ import {
   Alert,
   Modal,
   Textarea,
-  Navbar as MeroNavbar,
-  NavbarBrand,
-  NavbarMenu,
-  NavbarItem,
 } from '@calimero-network/mero-ui';
 
 const VaultDashboard: React.FC = () => {
@@ -33,6 +30,19 @@ const VaultDashboard: React.FC = () => {
   // code listed every context and searched it for a match, which meant a page
   // load could not tell "not a member" from "node unreachable".
   const client = useVaultClient(vaultId ?? null);
+  // The vault's name, from replicated contract state — the copy that reads the
+  // same on every member's node. The heading used to be `Vault {id.slice(0,8)}`
+  // for everyone, creator included.
+  const vaultName = useVaultName(vaultId ?? null);
+  const { mero } = useMero();
+  const { appId } = useApplicationId();
+  const [invite, setInvite] = useState<{
+    code: string;
+    scope: string;
+    hint: string;
+  } | null>(null);
+  const [inviteError, setInviteError] = useState<string | null>(null);
+  const [minting, setMinting] = useState(false);
   const [secrets, setSecrets] = useState<SecretItem[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -57,7 +67,9 @@ const VaultDashboard: React.FC = () => {
       setSecrets(secretsData);
       setAuditLogs(auditData);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load vault data');
+      setError(
+        err instanceof Error ? err.message : 'Failed to load vault data',
+      );
     } finally {
       setIsLoading(false);
     }
@@ -66,6 +78,51 @@ const VaultDashboard: React.FC = () => {
   useEffect(() => {
     loadVaultData();
   }, [loadVaultData]);
+
+  /**
+   * Mint an invitation from inside the vault.
+   *
+   * The button was inert before — `<Button variant="secondary">Invite
+   * Member</Button>`, with no handler, on the one screen a user reaches when
+   * they want to share something.
+   *
+   * ⚠️ The grant is the SPACE, not this vault: vault access is inherited, so
+   * there is no narrower invitation to mint. The modal's hint says so in
+   * words — a password manager must not let someone hand out more access than
+   * they think they are handing out.
+   */
+  const inviteMember = useCallback(async () => {
+    if (!mero || !appId || !vaultId) return;
+    setInviteError(null);
+    setMinting(true);
+    try {
+      // A context knows nothing about its parents, so find the space this vault
+      // belongs to before asking the node for an invitation to it.
+      const found = await findVaultByContext(mero.admin, appId, vaultId);
+      if (!found) {
+        setInviteError(
+          'This node cannot tell which space this vault belongs to, so it cannot mint an invitation. Open the space from the home page and invite from there.',
+        );
+        return;
+      }
+      const code = await mintVaultInvite(mero.admin, {
+        namespaceId: found.namespaceId,
+        vaultId: found.vaultId,
+        vaultName: found.vaultName,
+        spaceName: found.spaceName,
+        contextId: vaultId,
+      });
+      setInvite({
+        code,
+        scope: `Opens ${found.vaultName}`,
+        hint: `This link lands the recipient in “${found.vaultName}”, but the access it grants is the whole of ${found.spaceName} — every vault in the space, including ones added later.`,
+      });
+    } catch (e) {
+      setInviteError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setMinting(false);
+    }
+  }, [mero, appId, vaultId]);
 
   // Filter secrets based on search and tag
   const filteredSecrets = secrets.filter((secret) => {
@@ -86,12 +143,6 @@ const VaultDashboard: React.FC = () => {
 
     return matchesSearch && matchesTag;
   });
-
-  // Debug logging
-  console.log('VaultDashboard - secrets:', secrets);
-  console.log('VaultDashboard - filteredSecrets:', filteredSecrets);
-  console.log('VaultDashboard - searchQuery:', searchQuery);
-  console.log('VaultDashboard - selectedTag:', selectedTag);
 
   // Get unique tags for filter
   const allTags = Array.from(new Set(secrets.flatMap((secret) => secret.tags)));
@@ -152,14 +203,7 @@ const VaultDashboard: React.FC = () => {
   if (isLoading) {
     return (
       <>
-        <MeroNavbar variant="elevated" size="md">
-          <NavbarBrand text="Mero Pass" />
-          <NavbarMenu align="right">
-            <NavbarItem>
-              <ConnectButton label="Connect a node" />
-            </NavbarItem>
-          </NavbarMenu>
-        </MeroNavbar>
+        <PassNavbar />
         <div className="flex items-center justify-center h-64">
           <div className="text-lg">Loading vault...</div>
         </div>
@@ -170,14 +214,7 @@ const VaultDashboard: React.FC = () => {
   if (error) {
     return (
       <>
-        <MeroNavbar variant="elevated" size="md">
-          <NavbarBrand text="Mero Pass" />
-          <NavbarMenu align="right">
-            <NavbarItem>
-              <ConnectButton label="Connect a node" />
-            </NavbarItem>
-          </NavbarMenu>
-        </MeroNavbar>
+        <PassNavbar />
         <Alert className="m-4">{error}</Alert>
       </>
     );
@@ -186,14 +223,7 @@ const VaultDashboard: React.FC = () => {
   if (!vaultId) {
     return (
       <>
-        <MeroNavbar variant="elevated" size="md">
-          <NavbarBrand text="Mero Pass" />
-          <NavbarMenu align="right">
-            <NavbarItem>
-              <ConnectButton label="Connect a node" />
-            </NavbarItem>
-          </NavbarMenu>
-        </MeroNavbar>
+        <PassNavbar />
         <Alert className="m-4">Vault ID not provided</Alert>
       </>
     );
@@ -201,21 +231,14 @@ const VaultDashboard: React.FC = () => {
 
   return (
     <>
-      <MeroNavbar variant="elevated" size="md">
-        <NavbarBrand text="Mero Pass" />
-        <NavbarMenu align="right">
-          <NavbarItem>
-            <ConnectButton label="Connect a node" />
-          </NavbarItem>
-        </NavbarMenu>
-      </MeroNavbar>
+      <PassNavbar />
 
       <div className="container mx-auto p-6 space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div className="space-y-1">
             <h1 className="text-2xl font-semibold tracking-tight">
-              Vault {vaultId?.slice(0, 8)}...
+              {vaultName}
             </h1>
             <p className="text-sm text-gray-500">
               Context ID:{' '}
@@ -223,15 +246,18 @@ const VaultDashboard: React.FC = () => {
             </p>
           </div>
           <div className="flex gap-2">
-            {client && (
-              <SecretForm
-                api={client}
-                onSuccess={loadVaultData}
-              />
-            )}
-            <Button variant="secondary">Invite Member</Button>
+            {client && <SecretForm api={client} onSuccess={loadVaultData} />}
+            <Button
+              variant="secondary"
+              onClick={() => void inviteMember()}
+              disabled={minting || !mero || !appId}
+            >
+              {minting ? 'Minting…' : 'Invite member'}
+            </Button>
           </div>
         </div>
+
+        {inviteError && <Alert description={inviteError} />}
 
         {/* Stats */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -502,6 +528,14 @@ const VaultDashboard: React.FC = () => {
           </div>
         )}
       </Modal>
+
+      <InviteModal
+        open={!!invite}
+        code={invite?.code ?? ''}
+        scope={invite?.scope ?? ''}
+        hint={invite?.hint}
+        onClose={() => setInvite(null)}
+      />
     </>
   );
 };

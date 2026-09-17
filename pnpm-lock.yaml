@@ -1029,6 +1029,9 @@ importers:
       '@calimero-network/mero-js':
         specifier: 'catalog:'
         version: 18.3.0
+      '@calimero-network/mero-platform':
+        specifier: 'catalog:'
+        version: 0.1.0
       '@calimero-network/mero-react':
         specifier: 'catalog:'
         version: 9.0.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)

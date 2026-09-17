@@ -30,6 +30,7 @@ export interface Event_SecretUpdated {
 }
 
 export interface MeroPassApp {
+  vault_name: string;
   secrets: Record<string, SecretItem>;
   audit_logs: Record<string, AuditLogEntry>;
 }
@@ -110,8 +111,8 @@ export class MeroPassClient {
   /**
    * init
    */
-  public async init(): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'init', argsJson: {}, executorPublicKey: this._executorPublicKey });
+  public async init(params: { name: string }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'init', argsJson: params, executorPublicKey: this._executorPublicKey });
     return response as void;
   }
 
@@ -121,6 +122,14 @@ export class MeroPassClient {
   public async listSecrets(): Promise<SecretItem[]> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'list_secrets', argsJson: {}, executorPublicKey: this._executorPublicKey });
     return response as SecretItem[];
+  }
+
+  /**
+   * rename_vault
+   */
+  public async renameVault(params: { name: string }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'rename_vault', argsJson: params, executorPublicKey: this._executorPublicKey });
+    return response as void;
   }
 
   /**
@@ -137,6 +146,14 @@ export class MeroPassClient {
   public async updateSecret(params: { secret_id: string; name: string; data: string; tags: string[] }): Promise<void> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'update_secret', argsJson: params, executorPublicKey: this._executorPublicKey });
     return response as void;
+  }
+
+  /**
+   * vault_name
+   */
+  public async vaultName(): Promise<string> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'vault_name', argsJson: {}, executorPublicKey: this._executorPublicKey });
+    return response as string;
   }
 
 }

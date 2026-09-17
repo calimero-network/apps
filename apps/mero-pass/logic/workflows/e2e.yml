@@ -124,13 +124,19 @@ steps:
     type: wait
     seconds: 5
 
-  # ── The vault is a context ──────────────────────────────────────────────────
-  - name: Node 1 creates the vault
+  # ── The vault is a context, and it is created WITH A NAME ───────────────────
+  #
+  # ⚠️ `params` is no longer `'{}'`. `init` takes the vault's name, and this is
+  # the call that puts it into replicated state. It is the whole mechanism
+  # behind "the name the creator typed reaches the other node": a name kept in
+  # the frontend's localStorage, or in a node-local context alias, reaches
+  # nobody. Assertions below prove it on Bob's node, not just Alice's.
+  - name: Node 1 creates the vault, named
     type: create_context
     node: calimero-node-1
     application_id: "{{app_id}}"
     group_id: "{{namespace_id}}"
-    params: '{}'
+    params: '{"name":"Shared credentials"}'
     outputs:
       vault_id: contextId
       alice_key: memberPublicKey
@@ -158,6 +164,63 @@ steps:
     timeout: 60
     check_interval: 2
     trigger_sync: true
+
+  # ── THE NAME CROSSES THE NETWORK ────────────────────────────────────────────
+  #
+  # The assertion this app existed without. Before named vaults every screen
+  # rendered `Vault 3f8a91c2…` from the context id, so the creator and the
+  # invitee saw the same meaningless stub and the name a person typed was worth
+  # nothing. Reading it back on BOB's node is the only proof that matters — on
+  # Alice's node a purely local label would pass just as well.
+  - name: Bob reads the vault's name
+    type: call
+    node: calimero-node-2
+    context_id: "{{vault_id}}"
+    method: vault_name
+    args: {}
+    executor_public_key: "{{bob_key}}"
+    outputs:
+      bob_vault_name: result
+
+  - name: Assert the creator's name reached the invited node
+    type: assert
+    statements:
+      - 'contains({{bob_vault_name}}, "Shared credentials")'
+
+  - name: Bob renames the vault
+    type: call
+    node: calimero-node-2
+    context_id: "{{vault_id}}"
+    method: rename_vault
+    args:
+      name: "Production keys"
+    executor_public_key: "{{bob_key}}"
+
+  - name: Sync the rename
+    type: wait_for_sync
+    context_id: "{{vault_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Alice reads the vault's name back
+    type: call
+    node: calimero-node-1
+    context_id: "{{vault_id}}"
+    method: vault_name
+    args: {}
+    executor_public_key: "{{alice_key}}"
+    outputs:
+      alice_vault_name: result
+
+  - name: Assert the rename converged the other way too
+    type: assert
+    statements:
+      - 'contains({{alice_vault_name}}, "Production keys")'
+      # The superseded name must be GONE, not merged alongside — the register
+      # is last-writer-wins over a single value, not an accumulating set.
+      - 'not_contains({{alice_vault_name}}, "Shared credentials")'
 
   # ── A secret written on node 1 is readable on node 2 ────────────────────────
   - name: Alice adds a secret
@@ -274,6 +337,8 @@ steps:
     statements:
       - 'contains({{alice_audit}}, "secret_added")'
       - 'contains({{alice_audit}}, "secret_updated")'
+      # A rename is a change to shared state, so it is audited like any other.
+      - 'contains({{alice_audit}}, "vault_renamed")'
 
   # ── Deletion converges ──────────────────────────────────────────────────────
   - name: Alice deletes the secret

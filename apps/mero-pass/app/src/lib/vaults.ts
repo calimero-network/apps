@@ -1,0 +1,782 @@
+// ── Spaces, vaults, invitations ──────────────────────────────────────────────
+//
+// The model, with the vocabulary kept straight deliberately: a "group" is a
+// SUBGROUP inside a namespace, never the namespace itself.
+//
+//   Space (namespace)  = a team, a household, a company   ← invite people HERE
+//     └── Vault (subgroup + context)                      ← one set of secrets
+//     └── Vault (subgroup + context)
+//
+// Before this module Mero Pass could do NEITHER half. It listed
+// `admin.getContexts()` — every context on the node, whichever app made it —
+// and told the user that a vault "appears here when you join a namespace that
+// has one; ask whoever runs it for an invitation". There was no way to create
+// the namespace, no way to create the vault, and no way to mint the invitation.
+//
+// Two node behaviours are encoded below and are the reason vaults are reachable
+// by the people invited to a space. Both are inherited from mero-stream's
+// two-node suite rather than rediscovered:
+//
+//   1. JOINING A NAMESPACE DOES NOT PUT YOU IN ITS SUBGROUPS. `VisibilityMode`
+//      defaults to RESTRICTED, and a restricted subgroup is unreachable by the
+//      members you just invited — `join-via-inheritance` returns 403.
+//   2. The wire value is LOWERCASE. Core rejects "Open" with
+//      `Field 'subgroup_visibility' has invalid format: must be 'open' or
+//      'restricted'`. mero-js types it as a bare `string`, so nothing catches
+//      the casing at compile time.
+//
+// ── Where a NAME lives, and why it is written twice ──────────────────────────
+//
+// A name the creator types has to be readable on the node of the person they
+// invited. Three stores exist and they cover different stages of the journey:
+//
+//   * a space's name → `createNamespace({name})`, read back from
+//     `listNamespacesForApplication()[].name`, PLUS the namespace's own metadata
+//     record as a fallback for nodes that answer the listing without a name.
+//   * a vault's name → the subgroup's METADATA record. `createGroupInNamespace`
+//     takes `groupName`, the value does NOT persist, and the listing comes back
+//     as a bare `{groupId}` — so `setGroupMetadata` is what makes the name
+//     readable, and it is readable by any member of the space, including one who
+//     has not entered the vault yet.
+//   * the same vault's name → the CONTRACT, via `init`'s parameters. Contract
+//     state is the authoritative copy for anyone inside the vault, and it is the
+//     one that survives if the metadata record is ever lost or rewritten.
+//
+// What is deliberately NOT used: a `localStorage` map from context id to label.
+// That is the fleet's usual shortcut and it is per-BROWSER — the creator sees
+// "Shared credentials" and every person they invite sees a hex stub forever.
+//
+// ── What is NEVER in an invitation ───────────────────────────────────────────
+//
+// An invitation grants namespace membership. Nothing else travels in it: no
+// secret, no vault contents, no derived key material. See `lib/inviteCodec`.
+
+import type { MeroJs } from '@calimero-network/mero-js';
+import {
+  encodeInvite,
+  groupIdOfInvite,
+  type InviteChainEntry,
+  type PassInvitePayload,
+  type SignedInvitation,
+} from './inviteCodec';
+
+/** The admin client, as `useMero().mero.admin` provides it. */
+export type AdminLike = MeroJs['admin'];
+
+/**
+ * Progress sink. Every flow in here is several round-trips deep, and a single
+ * "Working…" for six seconds of network is the difference between "loading" and
+ * "broken" from the user's side — so each step names itself.
+ */
+export type StatusFn = (message: string) => void;
+const noop: StatusFn = () => {};
+
+/** All base capabilities. A member who cannot write is of no use in a vault. */
+const ALL_BASE_CAPABILITIES = 15;
+
+/** How long to wait for a joined context's identity to land, and how often to look. */
+const IDENTITY_TIMEOUT_MS = 60_000;
+const IDENTITY_POLL_MS = 1_500;
+
+/** How long to keep asking a vault to admit us while the grant projects. */
+const ADMISSION_TIMEOUT_MS = 20_000;
+const ADMISSION_POLL_MS = 1_200;
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Descend an invitation response until we reach the object that actually carries
+ * the signature. The join endpoints want the invitation OBJECT — not a JSON
+ * string of it, and not a wrapper around it.
+ */
+export function unwrapInvitation(payload: unknown): SignedInvitation | null {
+  let node: unknown = payload;
+  for (let i = 0; i < 5; i++) {
+    if (!node || typeof node !== 'object') return null;
+    const o = node as Record<string, unknown>;
+    if ('inviter_signature' in o || 'inviterSignature' in o) {
+      return o as unknown as SignedInvitation;
+    }
+    if ('invitation' in o) node = o.invitation;
+    else return null;
+  }
+  return null;
+}
+
+/**
+ * `init(name)` takes JSON bytes — see the contract's `init`.
+ *
+ * This is the call that puts the vault's name into replicated state, so it is
+ * the one that makes the name readable on a joiner's node.
+ */
+export function initParamsFor(name: string): number[] {
+  return Array.from(new TextEncoder().encode(JSON.stringify({ name })));
+}
+
+/**
+ * A join that is already satisfied is a SUCCESS, not a failure. Re-opening a
+ * link, a retry after a timeout, and walking a chain that overlaps memberships
+ * you already hold all land here — and every one of them should end with the
+ * user in the vault rather than staring at "already a member" styled as an
+ * error.
+ */
+function isAlreadyMember(e: unknown): boolean {
+  const m = (e instanceof Error ? e.message : String(e)).toLowerCase();
+  return (
+    m.includes('already a member') ||
+    m.includes('already member') ||
+    m.includes('already joined') ||
+    m.includes('alreadyjoined') ||
+    m.includes('duplicate member')
+  );
+}
+
+/** A 403 from the admission check, as opposed to a network or shape failure. */
+function isForbidden(e: unknown): boolean {
+  return /403|forbidden|not allowed|not eligible/i.test(
+    e instanceof Error ? e.message : String(e),
+  );
+}
+
+// ── Names ────────────────────────────────────────────────────────────────────
+
+/**
+ * A readable label, given whatever the node was able to tell us.
+ *
+ * Pure, and exported, because the fallback order IS the fix for "the name
+ * brings no value": a real name always beats a hex stub, and a hex stub is only
+ * ever reached when nobody typed a name at all.
+ */
+export function displayName(
+  candidates: readonly (string | null | undefined)[],
+  id: string,
+  fallbackPrefix: string,
+): string {
+  for (const candidate of candidates) {
+    const trimmed = (candidate ?? '').trim();
+    if (trimmed) return trimmed;
+  }
+  return `${fallbackPrefix} ${id.slice(0, 8)}…`;
+}
+
+// ── Spaces (namespaces) ──────────────────────────────────────────────────────
+
+export interface SpaceRow {
+  namespaceId: string;
+  name: string;
+  memberCount: number;
+  vaultCount: number;
+}
+
+/**
+ * Every space this node holds for Mero Pass.
+ *
+ * Scoped by application id — NOT by "every context on the node", which is what
+ * the vault list did before and is why it showed other apps' contexts as
+ * vaults.
+ *
+ * The metadata read is a second request per space and is worth it: it is the
+ * fallback that keeps a space named when the listing answers without one, and
+ * a listing with a name skips nothing because both are in flight together.
+ */
+export async function listSpaces(
+  admin: AdminLike,
+  applicationId: string,
+): Promise<SpaceRow[]> {
+  const namespaces = await admin.listNamespacesForApplication(applicationId);
+  return Promise.all(
+    (namespaces ?? []).map(async (n) => {
+      const meta =
+        (n.name ?? '').trim() === ''
+          ? await admin.getGroupMetadata(n.namespaceId).catch(() => null)
+          : null;
+      return {
+        namespaceId: n.namespaceId,
+        name: displayName([n.name, meta?.name], n.namespaceId, 'Space'),
+        memberCount: n.memberCount ?? 0,
+        // `subgroupCount` is the vault count. Preferred over listing every
+        // space's groups: that would be one request per row just to render a
+        // number.
+        vaultCount: n.subgroupCount ?? 0,
+      };
+    }),
+  );
+}
+
+/**
+ * Create the space that holds vaults.
+ *
+ * No context is created here — that is a vault's job. A space with no vault is
+ * a valid, expected state: you invite people to the space, then make vaults.
+ */
+export async function createSpace(
+  admin: AdminLike,
+  opts: { applicationId: string; name: string },
+  onStatus: StatusFn = noop,
+): Promise<{ namespaceId: string }> {
+  onStatus('Creating the space…');
+  // `name` on the wire, at creation. Passing it here is the difference between
+  // everyone seeing the name and everyone seeing a hex stub; an app that keeps
+  // the name client-side instead has already lost it for every invitee.
+  const ns = await admin.createNamespace({
+    applicationId: opts.applicationId,
+    name: opts.name,
+  });
+
+  onStatus("Recording the space's name…");
+  // Belt and braces, and cheap. The namespace IS a group, so it has a metadata
+  // record, and `listSpaces` falls back to it when the namespace listing comes
+  // back without a name.
+  await admin
+    .setGroupMetadata(ns.namespaceId, { name: opts.name })
+    .catch(() => {});
+
+  onStatus('Granting member capabilities…');
+  // Non-fatal: the creator already holds full caps, so a failure here costs
+  // invitees their permissions rather than breaking the space.
+  await admin
+    .setDefaultCapabilities(ns.namespaceId, {
+      defaultCapabilities: ALL_BASE_CAPABILITIES,
+    })
+    .catch(() => {});
+
+  onStatus('Opening the space to invited members…');
+  await admin
+    .setSubgroupVisibility(ns.namespaceId, { subgroupVisibility: 'open' })
+    .catch(() => {});
+
+  return { namespaceId: ns.namespaceId };
+}
+
+// ── Vaults (subgroup + context) ──────────────────────────────────────────────
+
+export interface VaultRow {
+  vaultId: string;
+  name: string;
+  /** The vault's context. Null while the vault exists but has not replicated here. */
+  contextId: string | null;
+  memberCount: number;
+  /** True when this node already holds an identity in the vault's context. */
+  joined: boolean;
+  /** The identity this node holds in the vault's context, or null. */
+  identity: string | null;
+}
+
+/**
+ * The vaults in a space, each with its context and whether we can enter it.
+ *
+ * Fans out per vault because the subgroup listing returns only
+ * `{groupId, name?}`, and `name` is not populated. A per-vault failure degrades
+ * that row rather than emptying the list — a vault whose context has not
+ * replicated to this node yet is the normal case right after joining, not an
+ * error.
+ */
+export async function listVaults(
+  admin: AdminLike,
+  namespaceId: string,
+): Promise<VaultRow[]> {
+  const subgroups = await admin.listNamespaceGroups(namespaceId);
+  return Promise.all(
+    (subgroups ?? []).map(async (sg) => {
+      const [contexts, members, meta] = await Promise.all([
+        admin.listGroupContexts(sg.groupId).catch(() => []),
+        admin
+          .listGroupMembers(sg.groupId)
+          .then((r) => r.members ?? [])
+          .catch(() => []),
+        // The subgroup listing returns a bare `{groupId}` — `name` is never
+        // populated — so a vault's name comes from its metadata record, which
+        // is where `createVault` writes it.
+        admin.getGroupMetadata(sg.groupId).catch(() => null),
+      ]);
+      const contextId = contexts?.[0]?.contextId ?? null;
+      const identity = contextId ? await ownedIdentity(admin, contextId) : null;
+      return {
+        vaultId: sg.groupId,
+        name: displayName([sg.name, meta?.name], sg.groupId, 'Vault'),
+        contextId,
+        memberCount: members.length,
+        joined: !!identity,
+        identity,
+      };
+    }),
+  );
+}
+
+/**
+ * Create a vault: subgroup → name → OPEN visibility → its own context.
+ *
+ * The visibility step is not optional and not cosmetic. A vault created with
+ * defaults is RESTRICTED, which means the space members you just invited get a
+ * 403 from `join-via-inheritance` and can never reach the secrets.
+ */
+export async function createVault(
+  admin: AdminLike,
+  opts: { applicationId: string; namespaceId: string; name: string },
+  onStatus: StatusFn = noop,
+): Promise<{ vaultId: string; contextId: string; memberPublicKey: string }> {
+  onStatus('Creating the vault…');
+  // ⚠️ `groupName`, not `name`. Every core request body is `deny_unknown_fields`,
+  // so the old spelling is a 400 for the whole call rather than a silently
+  // ignored key. (The value still does not persist — hence the metadata write
+  // below — but the request has to be well-formed either way.)
+  const sg = await admin.createGroupInNamespace(opts.namespaceId, {
+    groupName: opts.name,
+  });
+
+  onStatus('Naming the vault…');
+  // The name, where it is actually readable by another member of the space.
+  // Non-fatal: a nameless vault still holds secrets, and losing the label is
+  // not worth failing a created vault over — the contract copy below is the
+  // authoritative one anyway.
+  await admin.setGroupMetadata(sg.groupId, { name: opts.name }).catch(() => {});
+
+  onStatus('Opening the vault to space members…');
+  // Lowercase — core rejects "Open". NOT swallowed: unlike the namespace-root
+  // call, this one is load-bearing. If it fails the vault is restricted, and a
+  // restricted vault silently cannot be joined by the people invited to the
+  // space. Better to fail here, where the message can say so.
+  await admin.setSubgroupVisibility(sg.groupId, {
+    subgroupVisibility: 'open',
+  });
+
+  onStatus("Creating the vault's context…");
+  const ctx = await admin.createContext({
+    applicationId: opts.applicationId,
+    groupId: sg.groupId, // bound to the SUBGROUP, not the namespace
+    // The third copy of the name, and the authoritative one: this is what the
+    // contract stores and what every member reads back from `vault_name()`.
+    initializationParams: initParamsFor(opts.name),
+  });
+
+  return {
+    vaultId: sg.groupId,
+    contextId: ctx.contextId,
+    memberPublicKey: ctx.memberPublicKey,
+  };
+}
+
+// ── Invitations ──────────────────────────────────────────────────────────────
+
+/**
+ * Mint an OPEN space invitation and encode it as one pasteable code.
+ *
+ * OPEN means the invitation carries no invitee key, so anyone holding the code
+ * can join. Deliberately do NOT pass `inviteePublicKey`: it is silently ignored
+ * and misleads the next reader.
+ */
+export async function mintSpaceInvite(
+  admin: AdminLike,
+  opts: { namespaceId: string; spaceName?: string },
+  onStatus: StatusFn = noop,
+): Promise<string> {
+  onStatus('Minting an invitation…');
+  const res = await admin.createNamespaceInvitation(opts.namespaceId, {});
+  const invitation = unwrapInvitation(res);
+  if (!invitation) {
+    throw new Error('The node returned an invitation with no signature.');
+  }
+  onStatus('Encoding the invite code…');
+  return encodeInvite({
+    invitation,
+    kind: 'namespace',
+    groupAlias: opts.spaceName,
+    groupId: opts.namespaceId,
+  });
+}
+
+/**
+ * Mint a code that lands someone in ONE VAULT.
+ *
+ * The grant is the SPACE invitation, and that is not a shortcut — it is how
+ * vault access works. Vault membership is INHERITED: a joiner must hold the
+ * parent before a subgroup will admit them, and once they do,
+ * `joinSubgroupInheritance` lets them into any OPEN vault in it (which is every
+ * vault this app makes, because a restricted one cannot be joined by invited
+ * members at all).
+ *
+ * So a vault code is "space grant + open this vault", and the UI says exactly
+ * that rather than implying a narrower grant than it gives. ⚠️ THIS MATTERS
+ * MORE HERE THAN IN A CHAT APP: the person accepting is being given access to
+ * every vault in the space, not just the one named, and a password manager must
+ * not misrepresent that.
+ */
+export async function mintVaultInvite(
+  admin: AdminLike,
+  opts: {
+    namespaceId: string;
+    vaultId: string;
+    vaultName?: string;
+    spaceName?: string;
+    contextId?: string | null;
+  },
+  onStatus: StatusFn = noop,
+): Promise<string> {
+  onStatus('Minting an invitation for this vault…');
+  const res = await admin.createNamespaceInvitation(opts.namespaceId, {});
+  const invitation = unwrapInvitation(res);
+  if (!invitation) {
+    throw new Error('The node returned an invitation with no signature.');
+  }
+
+  onStatus('Encoding the invite code…');
+  return encodeInvite({
+    invitation,
+    kind: 'vault',
+    groupId: opts.namespaceId,
+    // Routing hints, outside the signature and unable to grant anything: the
+    // node still decides whether to admit the joiner to this vault.
+    vaultId: opts.vaultId,
+    contextId: opts.contextId ?? undefined,
+    vaultName: opts.vaultName,
+    groupAlias: opts.spaceName,
+  });
+}
+
+// ── Joining ──────────────────────────────────────────────────────────────────
+
+export interface AcceptedInvite {
+  namespaceId: string | null;
+  vaultId: string | null;
+  /** Carried by the code as a hint; may not have replicated to this node yet. */
+  contextId: string | null;
+  vaultName?: string;
+  spaceName?: string;
+}
+
+/** Where a redeemed invitation should land the user. */
+export type Redeemed =
+  | {
+      kind: 'vault';
+      contextId: string;
+      identity: string;
+      vaultName?: string;
+      /** The space the vault belongs to, when the invitation named it. */
+      namespaceId?: string;
+    }
+  | { kind: 'space'; namespaceId: string }
+  | { kind: 'joined' };
+
+/**
+ * Accept a decoded invite: walk its chain, or join the single group it names.
+ *
+ * The id acted on always comes from INSIDE the signed invitation, never from the
+ * wrapper, so a tampered code cannot redirect a join somewhere else.
+ */
+export async function acceptInvite(
+  admin: AdminLike,
+  payload: PassInvitePayload,
+  onStatus: StatusFn = noop,
+): Promise<AcceptedInvite> {
+  const result: AcceptedInvite = {
+    namespaceId: null,
+    // Routing hints from the code. Unsigned, so they steer navigation only —
+    // whether we are actually let into this vault is the node's decision, made
+    // against the membership the signed invitation just established.
+    vaultId: payload.vaultId ?? null,
+    contextId: payload.contextId ?? null,
+    vaultName: payload.vaultName,
+    spaceName: payload.groupAlias,
+  };
+
+  // A vault code's GRANT is the space (see `mintVaultInvite`), so the join step
+  // is a namespace join regardless of where the code points. Only an explicit
+  // chain entry describes a subgroup invitation.
+  const steps: InviteChainEntry[] = payload.chain ?? [
+    {
+      groupId: groupIdOfInvite(payload),
+      invitation: payload.invitation,
+      kind: 'namespace',
+    },
+  ];
+
+  for (const step of steps) {
+    // Trust the signature, not the label: re-read the id from the signed blob.
+    const signedId = groupIdOfInvite(step.invitation) || step.groupId;
+    const label =
+      step.kind === 'namespace'
+        ? `space${payload.groupAlias ? ` “${payload.groupAlias}”` : ''}`
+        : `vault${payload.vaultName ? ` “${payload.vaultName}”` : ''}`;
+    onStatus(`Joining the ${label}…`);
+    try {
+      if (step.kind === 'namespace') {
+        await admin.joinNamespace(signedId, {
+          invitation: step.invitation as never,
+        });
+      } else {
+        await admin.joinGroup({ invitation: step.invitation as never });
+      }
+    } catch (e) {
+      // Walking a chain routinely re-joins something already held.
+      if (!isAlreadyMember(e)) throw e;
+      onStatus(`Already in the ${label} — continuing…`);
+    }
+    if (step.kind === 'namespace') result.namespaceId = signedId;
+    else result.vaultId = signedId;
+  }
+
+  // A vault invite whose chain had no namespace entry still needs one to
+  // navigate to; ask the node which space the vault sits under.
+  if (!result.namespaceId && result.vaultId) {
+    result.namespaceId = await parentNamespaceOf(admin, result.vaultId);
+  }
+  return result;
+}
+
+/**
+ * Accept an invitation and enter whatever it granted.
+ *
+ * Extracted so the link path and any future paste path cannot drift. A vault
+ * invitation needs BOTH joins — the space grant and then the vault's context —
+ * and forgetting the second leaves someone a member of a space staring at a
+ * vault they cannot open.
+ */
+export async function redeemInvite(
+  admin: AdminLike,
+  payload: PassInvitePayload,
+  onStatus: StatusFn = noop,
+): Promise<Redeemed> {
+  const accepted = await acceptInvite(admin, payload, onStatus);
+
+  if (accepted.vaultId && accepted.contextId) {
+    const identity = await enterVaultContext(
+      admin,
+      { vaultId: accepted.vaultId, contextId: accepted.contextId },
+      onStatus,
+    );
+    return {
+      kind: 'vault',
+      contextId: accepted.contextId,
+      identity,
+      vaultName: accepted.vaultName,
+      namespaceId: accepted.namespaceId ?? undefined,
+    };
+  }
+  if (accepted.namespaceId) {
+    return { kind: 'space', namespaceId: accepted.namespaceId };
+  }
+  return { kind: 'joined' };
+}
+
+/**
+ * Which space a vault belongs to, discovered by looking for it among the
+ * namespaces this node knows. There is no "parent of" read in the admin API, and
+ * the invite wrapper's claim is unsigned, so this is the honest way to get it.
+ */
+async function parentNamespaceOf(
+  admin: AdminLike,
+  vaultId: string,
+): Promise<string | null> {
+  const namespaces = await admin.listNamespaces().catch(() => []);
+  for (const ns of namespaces ?? []) {
+    const vaults = await admin
+      .listNamespaceGroups(ns.namespaceId)
+      .catch(() => []);
+    if ((vaults ?? []).some((v) => v.groupId === vaultId))
+      return ns.namespaceId;
+  }
+  return null;
+}
+
+/**
+ * The identity this node holds in a context, or null when it holds none.
+ *
+ * ⚠️ This is the context EXECUTOR identity, not the account id. Both are 64 hex
+ * characters since rc.27, so passing the wrong one type-checks, sends, and is
+ * refused as an unauthorized signer rather than as a bad argument.
+ */
+async function ownedIdentity(
+  admin: AdminLike,
+  contextId: string,
+): Promise<string | null> {
+  const owned = await admin
+    .getContextIdentitiesOwned(contextId)
+    .catch(() => null);
+  return owned?.identities?.[0] ?? null;
+}
+
+/**
+ * Join a vault by inheritance, retrying while the node says "not eligible".
+ *
+ * A 403 here is NOT proof that the vault is restricted. Inheritance is checked
+ * against the space membership as this node has PROJECTED it, and a membership
+ * that exists is not yet a membership that confers anything — on a cold join the
+ * grant arrives over gossip and is projected a moment later. The redeem path
+ * joins the space and enters the vault back to back, so it lands inside exactly
+ * that window.
+ */
+async function joinVaultWithRetry(
+  admin: AdminLike,
+  vaultId: string,
+  onStatus: StatusFn,
+): Promise<void> {
+  const deadline = Date.now() + ADMISSION_TIMEOUT_MS;
+  let lastError: unknown = null;
+  let attempt = 0;
+
+  while (Date.now() < deadline) {
+    attempt += 1;
+    try {
+      await admin.joinSubgroupInheritance(vaultId);
+      return;
+    } catch (e) {
+      // Re-joining something already held is success, not failure.
+      if (isAlreadyMember(e)) return;
+      // Anything that is not an admission refusal is a real error: a bad id, a
+      // shape rejection, an unreachable node. Retrying those just delays the
+      // message by the length of the window.
+      if (!isForbidden(e)) throw e;
+      lastError = e;
+      if (attempt === 1) {
+        onStatus('Waiting for your membership to reach this node…');
+      }
+      // Nudge the space along rather than only sleeping: the thing being waited
+      // for is a projection of state that arrives over gossip.
+      await admin.syncGroup(vaultId).catch(() => {});
+      await sleep(ADMISSION_POLL_MS);
+    }
+  }
+
+  const msg =
+    lastError instanceof Error ? lastError.message : String(lastError);
+  throw new Error(
+    `The vault did not admit you after ${Math.round(ADMISSION_TIMEOUT_MS / 1000)}s ` +
+      `(${msg}). ${await diagnoseAdmission(admin, vaultId)}`,
+  );
+}
+
+/**
+ * Work out WHY a vault refused us, instead of asserting a cause.
+ *
+ * The two candidates look identical from a 403 and want opposite responses — one
+ * is "wait or rejoin the space", the other is "this vault can never admit anyone
+ * invited to the space". Guessing sends people to check a setting that is
+ * usually correct, so ask the node which it is.
+ *
+ * Best-effort by construction: this runs on a path that is already failing, so
+ * every read is allowed to fail and the answer degrades to naming both
+ * possibilities rather than throwing a second error over the first.
+ */
+async function diagnoseAdmission(
+  admin: AdminLike,
+  vaultId: string,
+): Promise<string> {
+  const visibility = await admin
+    .getSubgroupVisibility(vaultId)
+    .then((v) => String(v ?? '').toLowerCase())
+    .catch(() => '');
+
+  if (visibility === 'restricted') {
+    return (
+      'The vault is RESTRICTED, so being in the space does not admit you — ' +
+      'whoever created it has to open it, or invite you to the vault directly.'
+    );
+  }
+
+  const namespaceId = await parentNamespaceOf(admin, vaultId).catch(() => null);
+  if (!namespaceId) {
+    return (
+      'This node cannot see which space the vault belongs to, which means the ' +
+      'space has not replicated here yet — rejoin the space, then try again.'
+    );
+  }
+
+  if (visibility === 'open') {
+    return (
+      'The vault is open, so this is your membership of the space not having ' +
+      'reached this node yet. Try again in a moment; if it persists, rejoin ' +
+      'the space from the invitation.'
+    );
+  }
+
+  return (
+    "Could not read the vault's visibility. Either your membership of the " +
+    'space has not reached this node yet, or the vault was created restricted.'
+  );
+}
+
+/**
+ * Get into a vault's context, and return the member identity to act as.
+ *
+ * Three stages, because each is genuinely needed:
+ *
+ *   1. Already hold an identity? Done — opening a vault you are in must be
+ *      instant.
+ *   2. Self-admit into the OPEN subgroup (`joinSubgroupInheritance`). This is
+ *      the step whose absence makes vaults unreachable: joining a space does
+ *      NOT put you in its vaults.
+ *   3. Then WAIT. ⚠️ Auto-follow only joins you to contexts created AFTER you
+ *      joined the space, so for a vault that already existed it carries nothing
+ *      — poll, then fall back to an explicit `joinContext`.
+ */
+export async function enterVaultContext(
+  admin: AdminLike,
+  opts: { vaultId: string; contextId: string },
+  onStatus: StatusFn = noop,
+): Promise<string> {
+  onStatus('Checking your membership…');
+  const existing = await ownedIdentity(admin, opts.contextId);
+  if (existing) return existing;
+
+  onStatus('Joining the vault…');
+  await joinVaultWithRetry(admin, opts.vaultId, onStatus);
+
+  onStatus('Waiting for your identity in the vault…');
+  const deadline = Date.now() + IDENTITY_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    const again = await ownedIdentity(admin, opts.contextId);
+    if (again) return again;
+    await sleep(IDENTITY_POLL_MS);
+  }
+
+  onStatus("Joining the vault's context directly…");
+  const joined = await admin.joinContext(opts.contextId);
+  const identity = joined?.memberPublicKey;
+  if (!identity) {
+    throw new Error(
+      'Joined the vault but no member identity arrived — the context may not have replicated to this node yet.',
+    );
+  }
+  return identity;
+}
+
+/**
+ * Locate the space and subgroup a context belongs to.
+ *
+ * The vault page is routed by CONTEXT id — that is what a vault is, from the
+ * inside — but minting an invitation needs the NAMESPACE, and a context knows
+ * nothing about its parents: there is no "parent of" read in the admin API. So
+ * walk this app's spaces and their subgroups until the context turns up.
+ *
+ * Bounded by (spaces x vaults) for one node's own data, and only run when the
+ * user asks to invite someone, not on every render.
+ *
+ * Returns null when the context is not one of this app's vaults — a context
+ * from another app, or a space that has not replicated here yet — and the
+ * caller reports that rather than minting an invitation to the wrong group.
+ */
+export async function findVaultByContext(
+  admin: AdminLike,
+  applicationId: string,
+  contextId: string,
+): Promise<{
+  namespaceId: string;
+  vaultId: string;
+  spaceName: string;
+  vaultName: string;
+} | null> {
+  const spaces = await listSpaces(admin, applicationId).catch(() => []);
+  for (const space of spaces) {
+    const vaults = await listVaults(admin, space.namespaceId).catch(() => []);
+    const hit = vaults.find((v) => v.contextId === contextId);
+    if (hit) {
+      return {
+        namespaceId: space.namespaceId,
+        vaultId: hit.vaultId,
+        spaceName: space.name,
+        vaultName: hit.name,
+      };
+    }
+  }
+  return null;
+}

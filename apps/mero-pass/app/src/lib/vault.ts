@@ -1,61 +1,17 @@
-import { useEffect, useMemo, useState } from "react";
-import { useMero } from "@calimero-network/mero-react";
+import { useEffect, useMemo, useState } from 'react';
+import { useMero } from '@calimero-network/mero-react';
 
-import { MeroPassClient } from "../generated/MeroPassClient";
-
-/**
- * The contexts this node holds. A Calimero context IS a vault — there is no
- * separate vault record in the contract.
- *
- * Replaces a hand-rolled `app.fetchContexts()` that then guessed at the
- * response shape three ways over (`data.contexts`, `contexts`, or the value
- * itself) and read an id from either `id` or `contextId`. mero-js answers one
- * shape, so the guessing is gone.
- */
-export function useVaultContexts(): {
-  contextIds: string[];
-  loading: boolean;
-  error: string | null;
-} {
-  const { mero } = useMero();
-  const [contextIds, setContextIds] = useState<string[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!mero) return;
-    let cancelled = false;
-    setLoading(true);
-    mero.admin
-      .getContexts()
-      .then((resp) => {
-        if (cancelled) return;
-        setContextIds((resp.contexts ?? []).map((c) => c.id));
-        setError(null);
-      })
-      .catch((e: unknown) => {
-        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [mero]);
-
-  return { contextIds, loading, error };
-}
+import { MeroPassClient } from '../generated/MeroPassClient';
 
 /**
  * A typed client for one vault, imperatively.
  *
- * The list page needs one client PER context, and a hook cannot be called in a
+ * A list page needs one client PER context, and a hook cannot be called in a
  * loop — so the shared resolution lives here and `useVaultClient` wraps it for
  * the single-vault case.
  */
 export async function clientForContext(
-  mero: NonNullable<ReturnType<typeof useMero>["mero"]>,
+  mero: NonNullable<ReturnType<typeof useMero>['mero']>,
   contextId: string,
 ): Promise<MeroPassClient | null> {
   const { identities } = await mero.admin.getContextIdentitiesOwned(contextId);
@@ -72,7 +28,9 @@ export async function clientForContext(
  * characters since rc.27, so passing the wrong one type-checks, sends, and is
  * rejected as an unauthorized signer rather than as a bad argument.
  */
-export function useVaultClient(contextId: string | null): MeroPassClient | null {
+export function useVaultClient(
+  contextId: string | null,
+): MeroPassClient | null {
   const { mero } = useMero();
   const [executor, setExecutor] = useState<string | null>(null);
 
@@ -104,7 +62,54 @@ export function useVaultClient(contextId: string | null): MeroPassClient | null 
   );
 }
 
-/** A vault's display name. Contexts carry no name in this app. */
+/**
+ * The last-resort label for a vault: its context id, shortened.
+ *
+ * ⚠️ This used to be the ONLY label a vault ever had, which is the bug the
+ * named-vault work fixes. It is reached now only while the contract read is in
+ * flight, or for a context created before `init` took a name. Anything else
+ * should be showing `useVaultName`'s answer.
+ */
 export function vaultLabel(contextId: string): string {
   return `Vault ${contextId.slice(0, 8)}…`;
+}
+
+/**
+ * A vault's name, read from replicated CONTRACT state.
+ *
+ * This is the copy that works on both nodes. `createVault` writes the name
+ * three times over (namespace-scoped metadata, the subgroup's metadata record,
+ * and `init`'s parameters); the metadata record is what a space member sees
+ * before they enter a vault, and this — the contract — is the authoritative
+ * answer once they are in it.
+ *
+ * Falls back to the short id rather than to empty, because a blank heading on
+ * a vault page reads as a failed load.
+ */
+export function useVaultName(contextId: string | null): string {
+  const client = useVaultClient(contextId);
+  const [name, setName] = useState<string>('');
+
+  useEffect(() => {
+    if (!client) {
+      setName('');
+      return;
+    }
+    let cancelled = false;
+    client
+      .vaultName()
+      .then((value) => {
+        if (!cancelled) setName((value ?? '').trim());
+      })
+      .catch(() => {
+        // A context from before named vaults, or a node that has not
+        // replicated the state yet. The short id is still a usable heading.
+        if (!cancelled) setName('');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [client]);
+
+  return name || (contextId ? vaultLabel(contextId) : 'Vault');
 }
