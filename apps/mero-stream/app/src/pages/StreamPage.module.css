@@ -146,6 +146,8 @@
 }
 .stopBtn {
   background: var(--red);
+  /* See CallPage.module.css — --accent-fg is the green's ink, not the red's. */
+  color: var(--red-text);
 }
 .startBtn:disabled,
 .stopBtn:disabled {

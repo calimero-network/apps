@@ -34,26 +34,44 @@
 
   --text: #131215;
   --text-dim: #404040;
-  --text-faint: #8e8e8e;
+  /* Was #8e8e8e, which measures 3.3:1 on white — below AA for the small labels
+     it is used for (STAT captions, room ids, helper lines). See the contrast
+     test in index.contrast.test.ts. */
+  --text-faint: #6e6e6e;
 
   --accent: #a5ff11;
   --accent-hover: #b6ff3d;
   --accent-soft: rgba(165, 255, 17, 0.18);
   /* Text ON the green fill. */
   --accent-text: #131215;
-  /* Accent-coloured TEXT on the page background — deepened to stay legible. */
-  --accent-ink: #5f9400;
+  /* Accent-coloured TEXT on the page background — deepened to stay legible.
+     "Deepened" was not deep ENOUGH: #5f9400 measures 3.7:1 on white, which
+     clears AA for large text only, and every use of it here is small. */
+  --accent-ink: #4e7a00;
   /* Kept as an alias: older rules use --accent-fg for "text on the accent". */
   --accent-fg: #131215;
 
-  --green: #4f9a00;
+  /* #4f9a00 measured 3.2:1 and #b26a00 4.2:1 — both read as a status WORD
+     ("19%", "2/2 broadcasting"), so both are held to the 4.5:1 body rule. */
+  --green: #407d00;
   --red: #c62828;
+  /* Text ON the red fill, the way --accent-text is text on the green.
+     `.stopBtn` was using --accent-fg (near-black, correct on the bright green)
+     on the red too: 3.3:1 here. The right ink FLIPS between themes — white
+     clears on light's deep red and fails on dark's bright one, and near-black
+     does the reverse — so it cannot be one shared constant. */
+  --red-text: #ffffff;
   --red-hover: #a51d1d;
   --danger: #c62828;
-  --amber: #b26a00;
+  --amber: #a05f00;
 
   --stage: #131215;
   --tile: #000000;
+  /* Text that sits ON the stage, and therefore does NOT follow the theme: the
+     stage is dark in light mode too (see the note at the top of this file), so
+     a light-mode ink darkened for white would disappear on it. */
+  --stage-text: #e8e8ea;
+  --stage-text-faint: #8e8e8e;
 
   --radius-sm: 7px;
   --radius: 10px;
@@ -96,12 +114,19 @@
 
   --green: #a5ff11;
   --red: #ef4444;
-  --red-hover: #dc2626;
+  --red-text: #131215;
+  /* LIGHTER than --red, not darker. Every other hover in this theme brightens,
+     and #dc2626 (which this was) dropped the near-black ink on the Stop button
+     to 3.9:1 the moment you pointed at it — a control that is legible until you
+     reach for it. */
+  --red-hover: #f26060;
   --danger: #ef4444;
   --amber: #f59e0b;
 
   --stage: #08090b;
   --tile: #000000;
+  --stage-text: #e8e8ea;
+  --stage-text-faint: #8e8e8e;
 
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
   --shadow: 0 4px 16px rgba(0, 0, 0, 0.45);

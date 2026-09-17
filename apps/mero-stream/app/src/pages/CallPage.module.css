@@ -307,7 +307,9 @@
   inset: 0;
   display: grid;
   place-items: center;
-  color: var(--text-faint);
+  /* On the stage, which is dark in BOTH themes — so this cannot use the
+     theme-following ink. */
+  color: var(--stage-text-faint);
   font-size: 0.8rem;
   text-align: center;
   padding: 16px;
@@ -321,13 +323,15 @@
   place-items: center;
   align-content: center;
   gap: 8px;
-  color: var(--text-faint);
+  color: var(--stage-text-faint);
   text-align: center;
   padding: 32px;
 }
 
 .emptyTitle {
-  color: var(--text-dim);
+  /* --text-dim is #404040 in light mode, and this sits on the near-black stage:
+     it measured 1.5:1 there, which is a heading nobody can read. */
+  color: var(--stage-text);
   font-size: 1rem;
   font-weight: 500;
 }
@@ -348,8 +352,19 @@
   padding: 10px 12px 0;
   background: var(--stage);
 }
+/* Collapse the BOX, never the grid ITEM.
+ *
+ * This was `display: none`, which takes the element out of the grid entirely —
+ * so with no banner to show, every item after it moved up a row. The stage
+ * landed in the `auto` row and shrank to its content, and the control bar landed
+ * in the `1fr` row and absorbed the remaining ~690px, leaving it floating in the
+ * middle of the page above a band of empty background.
+ *
+ * It went unseen for so long because in dark mode `--bg` (#131215) and `--stage`
+ * (#08090b) are nearly the same colour, so the dead band read as more stage.
+ * Light mode paints it white and the break is unmissable. */
 .notices:empty {
-  display: none;
+  padding: 0;
 }
 
 .banner {
@@ -425,6 +440,9 @@
 .stopBtn {
   background: var(--red);
   border-color: var(--red);
+  /* NOT --accent-fg, which the shared rule above sets: that is the ink for the
+     green fill, and on red it measures 3.3:1. */
+  color: var(--red-text);
 }
 .stopBtn:hover:not(:disabled) {
   background: var(--red-hover);

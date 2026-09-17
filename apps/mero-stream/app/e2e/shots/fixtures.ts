@@ -125,11 +125,14 @@ export const SCENARIOS: Scenario[] = [
     members: 7,
   },
   {
-    id: "light",
-    title: "Light theme",
+    // Light is the DEFAULT now, so every other shot in this set is already
+    // light and a "light theme" scenario would document nothing. The one worth
+    // a frame is the theme you have to ask for.
+    id: "dark",
+    title: "Dark theme",
     remotes: ["peer1"],
     running: true,
-    theme: "light",
+    theme: "dark",
     members: 5,
   },
   {
@@ -139,6 +142,17 @@ export const SCENARIOS: Scenario[] = [
     running: true,
     members: 6,
     dialog: "people",
+  },
+  {
+    // The one scenario that deliberately has NO stored nickname (see main.tsx):
+    // CallPage opens the identity dialog once for a first-time participant, and
+    // that nudge is a state worth a frame of its own rather than one that
+    // silently overlays every other call shot.
+    id: "first-run",
+    title: "First time here — pick a name",
+    remotes: ["peer1"],
+    running: false,
+    members: 4,
   },
   {
     id: "streams",
@@ -181,6 +195,10 @@ export function slotsFor(sc: Scenario) {
     others: sc.remotes.map((id, i) => ({
       id,
       startedAtMs: NOW + i,
+      // Seen the moment they claim to have started — the honest case, where the
+      // backdate floor is a no-op and the ranking is exactly the claim order
+      // these scenarios are built around.
+      firstSeenAt: NOW + i,
       lastSeenAt: NOW + 100,
     })),
     me: "me",

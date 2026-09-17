@@ -30,9 +30,9 @@ afterEach(cleanup);
  * called from a `useMemo` that ran on every render including the first. The
  * whole streams page went white on load, before anyone clicked Invite.
  *
- * The inline panel it replaced never hit this, because it was only rendered
- * `{invite && <InviteSheet …/>}` — the guard was in the caller, and moving to
- * an always-mounted dialog silently removed it.
+ * The inline panel it replaced (since deleted) never hit this, because it was
+ * only rendered `{invite && <panel …/>}` — the guard was in the caller, and
+ * moving to an always-mounted dialog silently removed it.
  */
 describe("InviteModal", () => {
   it("renders nothing, and does not throw, with no invitation yet", () => {
