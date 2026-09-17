@@ -46,15 +46,29 @@ case "${1:-}" in
     paths=$(tr '[:space:]' '\n' | sed '/^$/d' | jq -R . | jq -sc .)
     apps=$(apps_json)
 
-    # Warn about a path under apps/ that maps to no crate — a stray file, or a
-    # new app whose Cargo.toml is not committed yet. Skipping it silently would
-    # drop it from CI with nothing to notice.
+    # A path under apps/ that maps to no crate is one of two very different
+    # things, and calling both a warning trained people to ignore it.
+    #
+    #   * No logic/ at all  — a FRONTEND-ONLY app (apps/delegated-execution is
+    #     the first). It has no contract to compile, no .mpk to install and no
+    #     merod to boot, so the wasm/browser/e2e matrices have nothing to run
+    #     for it and skipping it is correct. It is still covered: the `frontend`
+    #     job is workspace-wide (`pnpm -r typecheck/test/build`) and picks it up
+    #     from the pnpm workspace, not from this mapping.
+    #   * A logic/ that maps to nothing — an app whose Cargo.toml is missing,
+    #     unpublished or lacks [package.metadata.calimero]. That one really is
+    #     dropped from CI with nothing to notice, which is what the warning is
+    #     for.
     jq -r --argjson apps "$apps" '
       [ .[] | capture("^apps/(?<dir>[^/]+)/") .dir ] | unique
       | map(select(. as $d | ($apps | map(.dir) | index($d)) == null))
       | .[]
     ' <<<"$paths" | while read -r orphan; do
-      echo "::warning::apps/$orphan changed but is not a cargo package with [package.metadata.calimero] — not covered by this run" >&2
+      if [ -d "apps/$orphan/logic" ]; then
+        echo "::warning::apps/$orphan has a logic/ but is not a cargo package with [package.metadata.calimero] — not covered by this run" >&2
+      else
+        echo "::notice::apps/$orphan is frontend-only (no logic/) — no contract matrix applies; the workspace-wide frontend job covers it" >&2
+      fi
     done
 
     jq -c --argjson apps "$apps" '

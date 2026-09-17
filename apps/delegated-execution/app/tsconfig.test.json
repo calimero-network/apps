@@ -1,0 +1,10 @@
+{
+  "// note": "Unit tests. jsdom + vitest only — these read nothing off disk, so unlike other apps here they carry no node types. `src/lib` is listed because tsc -b will not let a test reference a file the project does not list.",
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist-types/test",
+    "tsBuildInfoFile": "./dist-types/test.tsbuildinfo",
+    "types": ["vite/client"]
+  },
+  "include": ["src/**/*.test.ts", "src/**/*.test.tsx", "src/test", "src/lib"]
+}
