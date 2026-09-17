@@ -22,12 +22,20 @@
  */
 
 import {
+  CloudClient,
   RelayClient,
   createLocalStorageNonceSource,
   login,
   type DelegatedSession,
   type IntentResult,
 } from '@calimero-network/mero-js';
+
+import {
+  chooseAdmitter,
+  classifyNodes,
+  type ClassifiedNode,
+  type RoutableNode,
+} from './admission.js';
 
 import type { DeviceIdentity } from './identity.js';
 import { nonceStorageKey } from './storage.js';
@@ -182,4 +190,51 @@ export async function describeRelay(nodeUrl: string, contextId: string) {
     nonces: { next: () => Promise.resolve(0n) },
   });
   return relay.describe(contextId);
+}
+
+/**
+ * Where to present a signed join, resolved rather than typed.
+ *
+ * The invitation and the cloud each answer half of this and neither answers
+ * both — see `lib/admission.ts` for why the intersection is the answer. This
+ * function is the ordering: parse, ask the cloud, classify, choose.
+ *
+ * It deliberately does not sign or send anything. Discovery being separate from
+ * admission is what lets the UI show the operator *which* node it landed on and
+ * why the others were rejected, before anything irreversible happens — and a
+ * "live but not in your invitation" node is exactly the case worth seeing
+ * rather than hitting as a 403.
+ */
+export async function discoverAdmitter(
+  cloudUrl: string,
+  namespaceId: string,
+  invitationJson: string,
+): Promise<{
+  classified: ClassifiedNode[];
+  chosen: RoutableNode | null;
+  reason: string | null;
+  signedAdmitters: string[];
+}> {
+  let invitation: { invitation?: { admitters?: string[] } };
+  try {
+    invitation = JSON.parse(invitationJson) as typeof invitation;
+  } catch (cause) {
+    throw new Error(
+      `That is not valid JSON. Paste the invitation exactly as the node printed it — ${
+        cause instanceof Error ? cause.message : String(cause)
+      }`,
+    );
+  }
+  // Read the admitters from INSIDE the signed body. The envelope also carries
+  // `admitter_addrs`, which is a hint the relayer chose and the admin did not
+  // sign; trusting that for authorization would let whoever passed the
+  // invitation along nominate the node.
+  const signedAdmitters = invitation.invitation?.admitters ?? [];
+
+  const cloud = new CloudClient({ cloudBaseUrl: normaliseUrl(cloudUrl) });
+  const routing = await cloud.getNamespaceRouting(namespaceId);
+
+  const classified = classifyNodes(routing.nodes, signedAdmitters);
+  const { chosen, reason } = chooseAdmitter(classified);
+  return { classified, chosen, reason, signedAdmitters };
 }

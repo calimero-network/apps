@@ -29,8 +29,15 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { Out, Step, type StepState } from './steps/Step.js';
+import type { ClassifiedNode } from './lib/admission.js';
 import { createIdentity, restoreIdentity, type DeviceIdentity } from './lib/identity.js';
-import { describeRelay, openSession, readContext, writeContext } from './lib/flow.js';
+import {
+  describeRelay,
+  discoverAdmitter,
+  openSession,
+  readContext,
+  writeContext,
+} from './lib/flow.js';
 import { errorText, parseJson, pretty, short } from './lib/format.js';
 import {
   EMPTY_SETTINGS,
@@ -293,38 +300,84 @@ function NodeStep({
   onChange: (patch: Partial<Settings>) => void;
   ready: boolean;
 }) {
+  const [classified, setClassified] = useState<ClassifiedNode[]>([]);
+  const [outcome, setOutcome] = useState<Outcome | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const discover = useCallback(async () => {
+    setBusy(true);
+    setOutcome(null);
+    try {
+      const result = await discoverAdmitter(
+        settings.cloudUrl,
+        settings.namespaceId,
+        settings.invitationJson,
+      );
+      setClassified(result.classified);
+      if (result.chosen === null) {
+        setOutcome({ text: result.reason ?? 'No node can take a join right now.', error: true });
+        return;
+      }
+      onChange({ nodeUrl: result.chosen.relayUrl ?? '' });
+      setOutcome({
+        text:
+          `Using ${result.chosen.peerId} at ${result.chosen.relayUrl}. ` +
+          (result.chosen.canExecute
+            ? 'It can also take delegated writes, so one node serves both legs.'
+            : 'It can admit but not execute — the write leg will need another node.'),
+        error: false,
+      });
+    } catch (error) {
+      setOutcome({ text: error instanceof Error ? error.message : String(error), error: true });
+    } finally {
+      setBusy(false);
+    }
+  }, [settings.cloudUrl, settings.namespaceId, settings.invitationJson, onChange]);
+
   return (
     <Step
       n={2}
-      title="Point at a node"
+      title="Accept an invitation, and let the cloud say where"
       state={ready ? 'done' : 'idle'}
       stateLabel={ready ? 'set' : 'incomplete'}
       why={
         <>
-          The node&rsquo;s signing key has to come from the operator, <em>not</em> from the
-          node. Your device signs a statement addressed to this key, and a value the node
-          chose would let whoever answered decide what you signed about — which is the
-          whole attack the field exists to stop. Read it from the node&rsquo;s <code>/admin-api/identity</code> over a channel
-          you already trust — then paste it here.
+          Two sources, two questions. The invitation&rsquo;s <code>admitters</code> list sits{' '}
+          <em>inside</em> the body the group admin signed, so it says who is <em>allowed</em> to
+          admit you — a node outside it refuses the claim whatever else is true. The cloud says who
+          is <em>reachable</em>: a URL, a fresh heartbeat, and whether the node holds{' '}
+          <code>CAN_AUTHOR_ON_BEHALF</code>. Neither answers both, so the node is the intersection.
+          A node that is live and healthy but absent from your signed list will still answer with
+          403 — the signed list is a snapshot from when the invitation was minted, and says nothing
+          about nodes assigned since.
         </>
       }
     >
       <label>
-        Node URL
+        Cloud URL
         <input
           type="text"
-          value={settings.nodeUrl}
-          placeholder="http://127.0.0.1:2428"
-          onChange={(e) => onChange({ nodeUrl: e.target.value })}
+          value={settings.cloudUrl}
+          placeholder="https://manager.cloud.calimero.network"
+          onChange={(e) => onChange({ cloudUrl: e.target.value.trim() })}
         />
       </label>
       <label>
-        Node signing key — 64 hex, pinned out of band
+        Namespace id — 64 hex
         <input
           type="text"
-          value={settings.nodeKey}
-          placeholder="0123…"
-          onChange={(e) => onChange({ nodeKey: e.target.value.trim() })}
+          value={settings.namespaceId}
+          placeholder="89ab…"
+          onChange={(e) => onChange({ namespaceId: e.target.value.trim() })}
+        />
+      </label>
+      <label>
+        Invitation — paste it exactly as the operator&rsquo;s node issued it
+        <textarea
+          rows={4}
+          value={settings.invitationJson}
+          placeholder={'{"invitation": {"admitters": ["…"]}, "inviter_signature": "…"}'}
+          onChange={(e) => onChange({ invitationJson: e.target.value })}
         />
       </label>
       <label>
@@ -336,6 +389,44 @@ function NodeStep({
           onChange={(e) => onChange({ contextId: e.target.value.trim() })}
         />
       </label>
+      <label>
+        Node signing key — 64 hex, still pinned out of band
+        <input
+          type="text"
+          value={settings.nodeKey}
+          placeholder="0123…"
+          onChange={(e) => onChange({ nodeKey: e.target.value.trim() })}
+        />
+      </label>
+      <p className="aside">
+        The one field discovery cannot supply. Your device signs a login statement naming this key,
+        and that binding is what stops a statement signed for one node being replayed to another —
+        so a node that told you its own key could decide what you signed about. The invitation does
+        not carry it and neither does the cloud, and a cloud serving a node-<em>reported</em> value
+        would move the trust-on-first-use one hop rather than remove it. Removing this field means
+        binding the key into the attestation quote, which is tracked separately.
+      </p>
+
+      <button type="button" onClick={discover} disabled={busy}>
+        {busy ? 'Asking the cloud…' : 'Find a node that can admit me'}
+      </button>
+
+      {classified.length > 0 && (
+        <ul className="nodes">
+          {classified.map(({ node, admissibility }) => (
+            <li key={node.peerId} data-kind={admissibility.kind}>
+              <code>{node.peerId}</code> — {node.relayUrl ?? 'no URL yet'}
+              {admissibility.kind === 'usable' && ' · invited and reachable'}
+              {admissibility.kind === 'invited-unreachable' &&
+                ' · invited, but no fresh heartbeat — wait rather than re-invite'}
+              {admissibility.kind === 'not-invited' &&
+                ' · healthy, but your invitation does not name it — a claim here is refused'}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <Out error={outcome?.error}>{outcome?.text ?? ''}</Out>
     </Step>
   );
 }
