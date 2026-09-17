@@ -1,6 +1,9 @@
 import { defineConfig, devices } from '@playwright/test';
 
-const APP_URL = process.env.VITE_APP_URL ?? 'http://localhost:5173';
+// mero-drive's own dev port — NOT vite's 5173 default, which two other apps in
+// this monorepo already pin. See the note in vite.config.js.
+const APP_PORT = process.env.PW_PORT ?? '5179';
+const APP_URL = process.env.VITE_APP_URL ?? `http://localhost:${APP_PORT}`;
 
 export default defineConfig({
   testDir: './e2e',
@@ -25,7 +28,7 @@ export default defineConfig({
   webServer: process.env.SKIP_WEB_SERVER
     ? undefined
     : {
-        command: 'pnpm dev --host 127.0.0.1 --port 5173',
+        command: `pnpm dev --host 127.0.0.1 --port ${APP_PORT}`,
         url: APP_URL,
         reuseExistingServer: !process.env.CI,
         timeout: 120_000,

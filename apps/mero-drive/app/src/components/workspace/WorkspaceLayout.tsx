@@ -71,6 +71,11 @@ export function WorkspaceLayout() {
   // user staring at a stuck "syncing" state re-fires the sync instead of
   // re-joining. Best-effort: the SSE stream + refetch surface the outcome.
   const onRetrySync = useCallback(() => {
+    // `mero` is null until the provider has a session. The button can only be
+    // pressed from a rendered workspace, so this is defensive — but an
+    // unguarded call here would throw inside an onClick and take the layout
+    // down with it rather than doing nothing.
+    if (!mero) return;
     const ids = [namespaceId, registryContextId].filter(
       (id): id is string => !!id,
     );

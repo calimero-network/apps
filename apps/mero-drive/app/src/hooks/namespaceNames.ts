@@ -1,20 +1,20 @@
-// Persisted namespace display names — captured at join time.
+// A per-browser snapshot of namespace display names, captured at join time.
 //
-// `listNamespacesForApplication` omits a namespace's `name` until the
-// node has synced its root-group metadata. On a *joined* node that
-// metadata can lag indefinitely (small-cluster gossip), so the
-// workspace switcher would show the raw namespace id forever.
+// ⚠️ NOT the mechanism by which a name reaches another node. That is
+// `groupName` on the join request (see useNamespaceInvitation): the joiner
+// hands the invite-carried name to its OWN node, which files it against its
+// governance row, where every tab, every later session and the desktop app —
+// which shares the node, not this localStorage — all read it.
 //
-// But the name IS known at join time: core's `createNamespaceInvitation`
-// resolves it (`groupName`) on the inviter's node, and mero-drive
-// carries it on the invite URL (`&name=`). The join flow records it
-// here so the switcher can show it immediately — no dependency on
-// metadata sync.
+// This file is the gap-filler for the window in between. core's
+// `listNamespacesForApplication` omits a namespace's `name` until the node has
+// synced its root-group metadata, and on a small cluster that can lag; the
+// snapshot lets the workspace switcher show the real name in the meantime.
 //
-// This is a denormalized snapshot: if the namespace is renamed later,
-// the stored value is stale until metadata sync delivers the canonical
-// name. Acceptable for a display label, and the same trade-off the
-// invite's other inviter-populated fields (`source`, `blob_id`) make.
+// It is read ONLY when the node reports no name of its own (see
+// useNamespaceDisplayNames), so it can never shadow a rename, and a browser
+// that never took the snapshot — a second device, a cleared profile — is not
+// worse off than before: the node answers, just later.
 
 const STORAGE_KEY = 'mero-drive:namespace-names';
 

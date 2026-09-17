@@ -2,19 +2,19 @@
 //
 // The previous implementation owned its own localStorage cache + a
 // direct GET /admin-api/namespaces/:id/identity call (to work around
-// a mero-js unwrap bug). Phase 3 moved identity resolution into
+// a mero-js unwrap bug). Identity resolution now lives in
 // useDriveWorkspace, which reads it from mero-react's
-// `useGroupMembers(ns).selfIdentity` — the canonical primitive.
+// `useNodeIdentity().identity.accountId` — the ACCOUNT, which is what
+// `listGroupMembers` rows are keyed by and what every member-addressing
+// call takes.
 //
 // This file stays only so `useMemberCaps` / `useDocs` / tests don't
 // need to be rewritten in the same commit. Phase 5 can inline the
 // identity read at each caller and delete this file.
 //
-// The `namespaceId` argument is ignored — useDriveWorkspace already
-// tracks the active namespace. If a caller ever needs identity for a
-// DIFFERENT namespace than the currently-selected one, they'd need
-// the real per-namespace call. No current caller does (all ask for
-// the active workspace's identity).
+// The `namespaceId` argument is ignored, and now harmlessly so: an
+// account is per-NODE, not per-namespace, so the same value answers for
+// every namespace this node has joined.
 
 import { useDriveWorkspace } from './useDriveWorkspace';
 
@@ -34,10 +34,9 @@ export function useSelfIdentity(_namespaceId: string | null): SelfIdentityState 
   };
 }
 
-/** No-op. Identity cache is owned by useGroupMembers in mero-react now. */
+/** No-op. Identity is owned by useNodeIdentity in mero-react now. */
 export function clearIdentityCache(): void {
   // Intentionally empty. The old per-namespace localStorage cache
-  // (`mero-drive:selfId:*`) was removed in Phase 3. Kept as an
-  // export so App.tsx's logout branch (if it still references it)
-  // doesn't explode before Phase 5 cleans up.
+  // (`mero-drive:selfId:*`) is long gone. Kept as an export so any
+  // remaining logout branch referencing it doesn't explode.
 }

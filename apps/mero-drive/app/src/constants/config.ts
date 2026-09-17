@@ -1,14 +1,17 @@
 // v9 namespace-based mero-drive config.
 //
-// Primary source of the applicationId is `useMero().applicationId` —
-// MeroProvider resolves it at login-time from (VITE_PACKAGE_NAME +
-// VITE_REGISTRY_URL) and exposes it via useMero. Non-component code
-// that can't call useMero() reads the raw `VITE_APPLICATION_ID` env
-// var as a fallback. No URL-param override (use .env.local instead).
+// ⚠️ The applicationId is resolved FROM THE NODE, by package — see
+// `src/lib/appId.ts` and `src/hooks/useApplicationId.ts`. Neither
+// `useMero().applicationId` (whoever logged in last on this origin) nor
+// `VITE_APPLICATION_ID` (an id that is per-INSTALL, so a baked one goes stale
+// the moment the bundle is republished) says which app this is. They survive
+// below only as the fallback for a node whose application list carries no
+// package at all — a raw-`.wasm` dev install — where matching cannot answer.
 
 import { CAPABILITIES } from '@calimero-network/mero-js';
 
-/** Env-configured app id. Fallback for non-component contexts. */
+/** Env-configured app id. Last-resort fallback ONLY for a node that reports no
+ *  package on any installed application; see the file header. */
 export const ENV_APPLICATION_ID: string =
   (import.meta.env.VITE_APPLICATION_ID as string | undefined)?.trim() || '';
 

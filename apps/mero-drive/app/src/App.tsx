@@ -113,9 +113,27 @@ const hashNodeUrl =
  */
 function RedirectIfAuthed({ children }: { children: ReactNode }) {
   const { isAuthenticated, isLoading } = useMero();
+  const location = useLocation();
+  // ⚠️ An invite link beats this redirect. links.calimero.network forwards the
+  // invite query to the frontend ROOT, so a signed-in person who clicks one
+  // lands on `/` holding an `invitation` param, and two effects then fire in
+  // the same commit: InviteRedirect's `navigate('/join?…')` and this
+  // component's `<Navigate to="/app">`. `Navigate` renders deeper in the tree,
+  // so its effect runs LAST and wins — and `to="/app"` carries no query, so
+  // the invitation is gone. The invite simply vanished for exactly the people
+  // most likely to have one: existing users. Standing down here leaves
+  // InviteRedirect's navigation the only one in flight.
+  if (hasInvitePayload(new URLSearchParams(location.search))) return null;
   if (isLoading) return null; // the auth probe is still in flight
   if (isAuthenticated) return <Navigate to="/app" replace />;
   return <>{children}</>;
+}
+
+/** `*` → `/`, keeping the query. See the route comment below. */
+function CatchAllRedirect() {
+  const location = useLocation();
+  const search = location.search;
+  return <Navigate to={search ? `/${search}` : '/'} replace />;
 }
 
 export default function App() {
@@ -178,7 +196,12 @@ export default function App() {
                       </DriveWorkspaceProvider>
                     }
                   />
-                  <Route path="*" element={<Navigate to="/" replace />} />
+                  {/* The catch-all drops the query string, which for an invite
+                      deep link IS the invitation. InviteRedirect has already
+                      run by the time this renders, but its navigation is
+                      applied in an effect — so preserve the search here rather
+                      than racing it. */}
+                  <Route path="*" element={<CatchAllRedirect />} />
                 </Routes>
               </BrowserRouter>
             </ConfirmProvider>

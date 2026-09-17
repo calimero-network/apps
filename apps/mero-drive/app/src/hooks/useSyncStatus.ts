@@ -19,8 +19,9 @@ import { useCallback, useMemo, useState } from 'react';
 import {
   useSubscription,
   type SseEventData,
+  type SubscriptionEventData,
 } from '@calimero-network/mero-react';
-import { normalizeContextIds } from './useContextEvents';
+import { isContextEvent, normalizeContextIds } from './useContextEvents';
 
 export type SyncPhase =
   | 'idle'
@@ -141,7 +142,10 @@ export function useSyncStatus(
   }
 
   const handler = useCallback(
-    (event: SseEventData) => {
+    (event: SubscriptionEventData) => {
+      // Group membership/migration events share this socket and carry no
+      // `contextId`; `parseSyncStatusEvent` needs one.
+      if (!isContextEvent(event)) return;
       const snap = parseSyncStatusEvent(event);
       if (!snap) return;
       // Only track contexts we asked about (the shared socket fans events
