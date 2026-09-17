@@ -279,15 +279,37 @@ pub struct MeroForum {
 
 #[app::event]
 pub enum Event<'a> {
-    PostCreated { id: &'a str },
-    PostEdited { id: &'a str },
-    PostDeleted { id: &'a str },
-    CommentCreated { post_id: &'a str, id: &'a str },
-    CommentEdited { post_id: &'a str, id: &'a str },
-    CommentDeleted { post_id: &'a str, id: &'a str },
-    Voted { post_id: &'a str },
-    CommentVoted { post_id: &'a str, comment_id: &'a str },
-    ProfileSet { account: &'a str },
+    PostCreated {
+        id: &'a str,
+    },
+    PostEdited {
+        id: &'a str,
+    },
+    PostDeleted {
+        id: &'a str,
+    },
+    CommentCreated {
+        post_id: &'a str,
+        id: &'a str,
+    },
+    CommentEdited {
+        post_id: &'a str,
+        id: &'a str,
+    },
+    CommentDeleted {
+        post_id: &'a str,
+        id: &'a str,
+    },
+    Voted {
+        post_id: &'a str,
+    },
+    CommentVoted {
+        post_id: &'a str,
+        comment_id: &'a str,
+    },
+    ProfileSet {
+        account: &'a str,
+    },
 }
 
 // ── Logic ────────────────────────────────────────────────────────────────────
@@ -632,10 +654,7 @@ impl MeroForum {
             });
         }
 
-        Ok(CommentPage {
-            items,
-            next_cursor,
-        })
+        Ok(CommentPage { items, next_cursor })
     }
 
     // ── votes ────────────────────────────────────────────────────────────────
@@ -756,7 +775,6 @@ impl MeroForum {
             .map(|p| p.name.clone())
             .unwrap_or_default()
     }
-
 
     fn page_size(limit: u32) -> usize {
         match limit as usize {
@@ -1084,9 +1102,7 @@ mod tests {
         app.call_as_account(BOB_ACCOUNT, BOB_DEVICE, |s| s.vote_comment(c.clone(), 1))
             .unwrap();
 
-        let page = app
-            .view(|s| s.list_comments(p.clone(), None, 10))
-            .unwrap();
+        let page = app.view(|s| s.list_comments(p.clone(), None, 10)).unwrap();
         assert_eq!(page.items[0].score, 2);
         // The view is rendered for whoever asks, so my_vote is the CALLER's.
         assert_eq!(page.items[0].my_vote, 1);
