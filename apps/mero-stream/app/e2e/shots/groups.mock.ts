@@ -7,6 +7,9 @@ export type { NamespaceRow, RoomRow } from "../../src/lib/groups";
 
 const sc = () => scenarioById(new URLSearchParams(location.search).get("s") ?? "idle");
 
+/** The identity this node holds in the room it has already joined. */
+const MY_IDENTITY = "8Qk2Hs9vLxTnR4mZbA1cWpYeUf3gJd6NqSvXhKrM8tBz";
+
 const NAMESPACES: NamespaceRow[] = [
   {
     namespaceId: "9xKm2QpLvR7nTzB4aW1cYeUf3gJd6NqSvXhKrM8tZoPq",
@@ -35,6 +38,9 @@ const ROOMS: RoomRow[] = [
     contextId: "7Hs2Qk9vLxTnR4mZbA1cWpYeUf3gJd6NqSvXhKrM8tBz",
     memberCount: 7,
     joined: true,
+    // The room's roster is keyed by the identity this node holds, so without it
+    // a member list cannot mark which row is you.
+    identity: MY_IDENTITY,
   },
   {
     roomId: "room-pairing",
@@ -42,6 +48,7 @@ const ROOMS: RoomRow[] = [
     contextId: "2FgW8nQmT3xKp9vLzRbA4aY1cWeUf6gJd5NqSvXhKrM8",
     memberCount: 2,
     joined: false,
+    identity: null,
   },
   {
     // The state the UI used to render as an inert button: a room whose context
@@ -51,6 +58,7 @@ const ROOMS: RoomRow[] = [
     contextId: null,
     memberCount: 4,
     joined: false,
+    identity: null,
   },
 ];
 
@@ -97,5 +105,5 @@ export async function redeemInvite() {
 }
 
 export async function enterRoomContext() {
-  return "identity";
+  return MY_IDENTITY;
 }

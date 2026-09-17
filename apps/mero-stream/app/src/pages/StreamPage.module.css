@@ -84,10 +84,10 @@
 
 .error {
   margin: 0 0 18px;
-  color: #ff8088;
+  color: var(--danger);
   font-size: 0.9rem;
-  background: rgba(255, 83, 101, 0.08);
-  border: 1px solid rgba(255, 83, 101, 0.25);
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent);
   border-radius: var(--radius);
   padding: 10px 14px;
 }
@@ -146,6 +146,8 @@
 }
 .stopBtn {
   background: var(--red);
+  /* See CallPage.module.css — --accent-fg is the green's ink, not the red's. */
+  color: var(--red-text);
 }
 .startBtn:disabled,
 .stopBtn:disabled {
@@ -312,7 +314,9 @@
    and a fixed low-alpha wash reads as "selected" in only one of them. */
 .transportBtn[aria-pressed="true"] {
   background: var(--accent);
-  color: #fff;
+  /* Near-black, never white: the accent is a bright FILL (#a5ff11), and white
+     on it measures ~1.4:1. */
+  color: var(--accent-text);
 }
 .transportBtn:disabled {
   opacity: 0.5;

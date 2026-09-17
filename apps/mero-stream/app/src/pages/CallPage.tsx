@@ -6,7 +6,13 @@ import DataDialog from "../components/DataDialog";
 import { MetricValue } from "../components/MetricValue";
 import PeopleDialog from "../components/PeopleDialog";
 import { buildRoster, initials, shortId } from "../lib/people";
-import { getUsername, setUsername } from "../lib/session";
+import SessionMenu from "../components/SessionMenu";
+import { useNavigate } from "react-router-dom";
+import {
+  getActiveNamespaceId,
+  getUsername,
+  setUsername,
+} from "../lib/session";
 import {
   DEGRADED_DELIVERY_PERCENT,
   DEGRADED_FROM_BROADCASTERS,
@@ -48,6 +54,10 @@ function Stat(props: {
 }
 
 export default function CallPage() {
+  const navigate = useNavigate();
+  // Read once per mount: the active room does not change while this page is up,
+  // and re-reading on every render would make the control flicker mid-call.
+  const [namespaceId] = useState(() => getActiveNamespaceId());
   const stream = useMeroStream();
   const s = useLiveStream(true);
 
@@ -209,6 +219,22 @@ export default function CallPage() {
     <div className={styles.page}>
       <header className={styles.topbar}>
         <div className={styles.brand}>
+          {/* There was no way out of a call except the browser's back button.
+              Routes to the room list when we know which stream this room
+              belongs to, and to the stream picker when we do not — a room
+              stored before the namespace was recorded still gets a way back
+              rather than a dead control. */}
+          <button
+            type="button"
+            className={styles.backBtn}
+            onClick={() =>
+              navigate(namespaceId ? `/streams/${namespaceId}` : "/streams")
+            }
+            data-testid="back-to-rooms"
+            title={namespaceId ? "Back to the room list" : "Back to your streams"}
+          >
+            ← {namespaceId ? "Rooms" : "Streams"}
+          </button>
           <h1 className={styles.title}>Mero Stream</h1>
           <span className={styles.roomId} title={stream.contextId ?? ""}>
             {stream.contextId ? `${stream.contextId.slice(0, 10)}…` : "no room"}
@@ -243,6 +269,7 @@ export default function CallPage() {
               <span className={styles.identityFlag}>set name</span>
             )}
           </button>
+          <SessionMenu />
         </div>
       </header>
 

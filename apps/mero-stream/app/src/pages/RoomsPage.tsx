@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useMero } from "@calimero-network/mero-react";
-import { getApplicationId, setActiveRoom, setRoomName } from "../lib/session";
+import { useApplicationId } from "../hooks/useApplicationId";
+import { useToast } from "../contexts/ToastContext";
+import { setActiveRoom, setRoomName } from "../lib/session";
 import {
   createRoom,
   enterRoomContext,
@@ -11,8 +13,11 @@ import {
   type RoomRow,
 } from "../lib/groups";
 import { ActionButton, StatusNote, Spinner } from "../components/ui";
-import InviteSheet from "../components/InviteSheet";
+import InviteModal from "../components/InviteModal";
+import SessionMenu from "../components/SessionMenu";
 import { initials } from "../lib/people";
+import { labelMembers, summariseMembers, type RoomMemberLabel } from "../lib/roomMembers";
+import type { Member } from "../types";
 import styles from "./Manage.module.css";
 
 /**
@@ -37,10 +42,14 @@ import styles from "./Manage.module.css";
 export default function RoomsPage() {
   const navigate = useNavigate();
   const { namespaceId = "" } = useParams();
-  const { mero, applicationId: providerAppId } = useMero();
-  const appId = getApplicationId() ?? providerAppId ?? "";
+  const { mero } = useMero();
+  const { showToast } = useToast();
+  // Resolved from the NODE by package, not from the session — see lib/appId.
+  const { appId, resolving: resolvingAppId, notInstalled } = useApplicationId();
 
   const [rooms, setRooms] = useState<RoomRow[]>([]);
+  /** Contract roster per room context, so rows can show WHO is in a call. */
+  const [rosters, setRosters] = useState<Record<string, RoomMemberLabel[]>>({});
   const [listing, setListing] = useState(true);
   const [nsName, setNsName] = useState("");
   const [name, setName] = useState("");
@@ -48,7 +57,6 @@ export default function RoomsPage() {
   const [pending, setPending] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [done, setDone] = useState<string | null>(null);
   const [invite, setInvite] = useState<{
     key: string;
     code: string;
@@ -63,7 +71,6 @@ export default function RoomsPage() {
     ) => {
       setPending(key);
       setError(null);
-      setDone(null);
       setStatus(null);
       try {
         await fn(setStatus);
@@ -104,6 +111,50 @@ export default function RoomsPage() {
     void load();
   }, [load]);
 
+  /**
+   * Read each joined room's contract roster, so a row can say WHO is in the
+   * call rather than only how many.
+   *
+   * Only rooms this node has joined: `execute` against a context we hold no
+   * identity in is refused, and firing those would put one guaranteed error per
+   * un-joined room into the console on every load.
+   *
+   * Failures are dropped silently and per room — a roster is an enrichment, and
+   * one unreachable context should not cost the other rooms their names or turn
+   * the page into an error state.
+   */
+  useEffect(() => {
+    if (!mero) return;
+    const joined = rooms.filter((r) => r.joined && r.contextId);
+    if (joined.length === 0) return;
+    let cancelled = false;
+    void Promise.all(
+      joined.map(async (room) => {
+        try {
+          const members = await mero.rpc.execute<Member[]>({
+            contextId: room.contextId!,
+            method: "get_members",
+            argsJson: {},
+          });
+          return [
+            room.contextId!,
+            labelMembers(members ?? [], room.identity ?? ""),
+          ] as const;
+        } catch {
+          return null;
+        }
+      }),
+    ).then((entries) => {
+      if (cancelled) return;
+      const next: Record<string, RoomMemberLabel[]> = {};
+      for (const entry of entries) if (entry) next[entry[0]] = entry[1];
+      setRosters(next);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [mero, rooms]);
+
   const create = useCallback(() => {
     const roomName = name.trim();
     if (!roomName || !mero) return;
@@ -121,7 +172,7 @@ export default function RoomsPage() {
       );
       setRoomName(contextId, roomName);
       setName("");
-      setActiveRoom(contextId, memberPublicKey);
+      setActiveRoom(contextId, memberPublicKey, namespaceId);
       // Into the call: the creator is already a member, so there is nothing to wait
       // for. 480p H.264 (/live), not the 64x48 in-WASM comparison route.
       navigate("/live");
@@ -146,11 +197,11 @@ export default function RoomsPage() {
           onStatus,
         );
         setRoomName(contextId, room.name);
-        setActiveRoom(contextId, identity);
+        setActiveRoom(contextId, identity, namespaceId);
         navigate("/live");
       });
     },
-    [mero, run, navigate],
+    [mero, run, navigate, namespaceId],
   );
 
   const inviteToRoom = useCallback(
@@ -182,10 +233,10 @@ export default function RoomsPage() {
             </>
           ),
         });
-        setDone(`Invite ready for “${room.name}”.`);
+        showToast(`Invite ready for “${room.name}”.`);
       });
     },
-    [mero, namespaceId, nsName, run],
+    [mero, namespaceId, nsName, run, showToast],
   );
 
   const inviteToNamespace = useCallback(() => {
@@ -209,9 +260,13 @@ export default function RoomsPage() {
           </>
         ),
       });
-      setDone(`Invite ready for “${nsName}”.`);
+      showToast(`Invite ready for “${nsName}”.`);
     });
-  }, [mero, namespaceId, nsName, run]);
+  }, [mero, namespaceId, nsName, run, showToast]);
+
+  /** This room's labelled roster, or undefined when we do not have one. */
+  const roomRoster = (room: RoomRow): RoomMemberLabel[] | undefined =>
+    room.contextId ? rosters[room.contextId] : undefined;
 
   return (
     <div className={styles.page}>
@@ -241,6 +296,7 @@ export default function RoomsPage() {
         >
           Refresh
         </ActionButton>
+        <SessionMenu />
       </header>
 
       <main className={styles.content}>
@@ -295,37 +351,43 @@ export default function RoomsPage() {
             {status}
           </StatusNote>
         )}
-        {!status && done && (
-          <StatusNote tone="ok" testId="rooms-done">
-            {done}
-          </StatusNote>
-        )}
         {error && (
           <StatusNote tone="error" testId="rooms-error">
             {error}
           </StatusNote>
         )}
 
-        {invite && (
-          <InviteSheet
-            code={invite.code}
-            scope={invite.scope}
-            hint={invite.hint}
-          />
-        )}
+        <InviteModal
+          open={!!invite}
+          code={invite?.code ?? ""}
+          scope={invite?.scope ?? ""}
+          hint={invite?.hint}
+          onClose={() => setInvite(null)}
+        />
 
         <div className={styles.sectionHead}>
           <h3 className={styles.sectionTitle}>
             {rooms.length} room{rooms.length === 1 ? "" : "s"}
           </h3>
-          {listing && (
+          {(listing || resolvingAppId) && (
             <span className={styles.sectionNote}>
               <Spinner label="Loading rooms" /> loading…
             </span>
           )}
         </div>
 
-        {!listing && rooms.length === 0 && (
+        {notInstalled && (
+          <div className={styles.empty}>
+            <span className={styles.emptyTitle}>
+              Mero Stream is not installed on this node
+            </span>
+            <span className={styles.emptyHint}>
+              Install it from the marketplace, then reload.
+            </span>
+          </div>
+        )}
+
+        {!listing && !resolvingAppId && !notInstalled && rooms.length === 0 && (
           <div className={styles.empty}>
             <span className={styles.emptyTitle}>No rooms in this stream</span>
             <span className={styles.emptyHint}>
@@ -378,8 +440,24 @@ export default function RoomsPage() {
                     </span>
                   </span>
                 </div>
-                <span className={styles.cardId} title={room.contextId ?? ""}>
-                  {room.contextId ?? "waiting for the context to replicate"}
+                {/* WHO is in the call, by the name they chose — not the raw
+                    context id, which answers no question anyone has. Falls
+                    back to the id only while the roster is unknown (not
+                    joined, or still loading). */}
+                <span
+                  className={styles.cardId}
+                  title={
+                    roomRoster(room)
+                      ? roomRoster(room)!
+                          .map((m) => (m.isSelf ? `${m.label} (you)` : m.label))
+                          .join(", ")
+                      : (room.contextId ?? "")
+                  }
+                  data-testid="room-roster"
+                >
+                  {roomRoster(room)?.length
+                    ? summariseMembers(roomRoster(room)!)
+                    : (room.contextId ?? "waiting for the context to replicate")}
                 </span>
                 <div className={styles.cardActions}>
                   <button

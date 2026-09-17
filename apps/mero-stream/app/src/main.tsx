@@ -7,6 +7,7 @@ import {
 } from "@calimero-network/mero-react";
 import "@calimero-network/mero-ui/styles.css";
 import App from "./App";
+import { ToastProvider } from "./contexts/ToastContext";
 import { APP_ENABLED, IS_TAURI } from "./lib/tauri";
 import WebOnlyNotice from "./components/WebOnlyNotice";
 import { captureSessionFromHash } from "./lib/session";
@@ -77,7 +78,9 @@ createRoot(document.getElementById("root")!).render(
       allowedNodeUrls={hashNodeUrl ? [hashNodeUrl] : undefined}
     >
       <BrowserRouter>
-        <App />
+        <ToastProvider>
+          <App />
+        </ToastProvider>
       </BrowserRouter>
     </MeroProvider>
   </StrictMode>,

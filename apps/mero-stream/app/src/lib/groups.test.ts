@@ -50,6 +50,8 @@ function fakeAdmin(overrides: Record<string, (...a: never[]) => unknown> = {}) {
     joinNamespace: rec("joinNamespace"),
     joinGroup: rec("joinGroup"),
     joinSubgroupInheritance: rec("joinSubgroupInheritance"),
+    syncGroup: rec("syncGroup"),
+    getSubgroupVisibility: rec("getSubgroupVisibility", () => undefined),
     joinContext: rec("joinContext", () => ({ memberPublicKey: "pk-joined" })),
     getContextIdentitiesOwned: rec("getContextIdentitiesOwned", () => ({
       identities: [],
@@ -364,15 +366,101 @@ describe("enterRoomContext", () => {
     expect(methodsOf(admin)).toContain("joinContext");
   });
 
-  it("names visibility as the likely cause of a 403", async () => {
-    // The bare 403 gives no hint, and a restricted room is the single most likely
-    // reason a room cannot be entered.
+  it("retries a 403 rather than declaring the room restricted", async () => {
+    // A 403 is NOT proof of restriction. Inheritance is checked against the
+    // namespace membership as this node has PROJECTED it, and on a cold join
+    // that projection lands a moment after the join returns — which is exactly
+    // the window the redeem path runs in. Verified on two live nodes: the same
+    // sequence is admitted once the membership has projected, with the room's
+    // open/restricted setting unchanged throughout.
+    vi.useFakeTimers();
+    let attempts = 0;
+    let admitted = false;
     const admin = fakeAdmin({
-      joinSubgroupInheritance: () => Promise.reject(new Error("403 Forbidden")),
+      joinSubgroupInheritance: () => {
+        attempts += 1;
+        if (attempts < 3) {
+          return Promise.reject(
+            new Error("403 Forbidden: identity not eligible for inheritance-based join"),
+          );
+        }
+        admitted = true;
+        return Promise.resolve(undefined as never);
+      },
+      // Auto-follow lands the context identity once we are actually in.
+      getContextIdentitiesOwned: () =>
+        Promise.resolve({ identities: admitted ? ["pk-admitted"] : [] }),
+    });
+    const p = enterRoomContext(admin, { roomId: "room1", contextId: "ctx1" });
+    await vi.advanceTimersByTimeAsync(10_000);
+    await expect(p).resolves.toBe("pk-admitted");
+    expect(attempts).toBe(3);
+  });
+
+  /** Exhaust the admission window with a permanent 403 and return the message. */
+  async function refusedMessage(
+    over: Record<string, unknown>,
+  ): Promise<string> {
+    vi.useFakeTimers();
+    const admin = fakeAdmin({
+      joinSubgroupInheritance: () =>
+        Promise.reject(new Error("403 Forbidden: identity not eligible")),
+      ...over,
+    });
+    const p = enterRoomContext(admin, { roomId: "room1", contextId: "ctx1" });
+    // Keep the rejection from going unhandled while the fake clock runs.
+    const captured = p.catch((e: unknown) =>
+      e instanceof Error ? e.message : String(e),
+    );
+    await vi.advanceTimersByTimeAsync(30_000);
+    return captured;
+  }
+
+  it("says so plainly when the room really is restricted", async () => {
+    const msg = await refusedMessage({
+      getSubgroupVisibility: () => Promise.resolve("restricted"),
+    });
+    expect(msg).toMatch(/RESTRICTED/);
+    // And does not send the user off to wait for something that will not come.
+    expect(msg).not.toMatch(/try again in a moment/i);
+  });
+
+  it("blames replication, not visibility, when the room is open", async () => {
+    // The old message asserted "probably created as restricted" for every 403,
+    // which sent people to check a setting that was correct.
+    const msg = await refusedMessage({
+      getSubgroupVisibility: () => Promise.resolve("open"),
+      listNamespaces: () => Promise.resolve([{ namespaceId: "ns1" }]),
+      listNamespaceGroups: () => Promise.resolve([{ groupId: "room1" }]),
+    });
+    expect(msg).toMatch(/not having reached this node yet|has not reached/i);
+    expect(msg).not.toMatch(/RESTRICTED/);
+  });
+
+  it("names both causes when it cannot read the visibility", async () => {
+    const msg = await refusedMessage({
+      getSubgroupVisibility: () => Promise.reject(new Error("nope")),
+      listNamespaces: () => Promise.resolve([{ namespaceId: "ns1" }]),
+      listNamespaceGroups: () => Promise.resolve([{ groupId: "room1" }]),
+    });
+    expect(msg).toMatch(/not reached this node yet/i);
+    expect(msg).toMatch(/restricted/i);
+  });
+
+  it("does not retry a failure that is not an admission refusal", async () => {
+    // A bad id or a shape rejection is not going to fix itself; retrying it
+    // only delays the message by the length of the window.
+    let attempts = 0;
+    const admin = fakeAdmin({
+      joinSubgroupInheritance: () => {
+        attempts += 1;
+        return Promise.reject(new Error("400 Bad Request: unknown field"));
+      },
     });
     await expect(
       enterRoomContext(admin, { roomId: "room1", contextId: "ctx1" }),
-    ).rejects.toThrow(/restricted rather than open/);
+    ).rejects.toThrow(/400 Bad Request/);
+    expect(attempts).toBe(1);
   });
 });
 
@@ -404,6 +492,10 @@ describe("listRooms", () => {
         contextId: "ctx1",
         memberCount: 1,
         joined: true,
+        // The identity itself, not just the fact of holding one: the room's
+        // contract keys its roster by this, so it is what marks "you" in a
+        // member list.
+        identity: "pk-mine",
       },
       {
         roomId: "r2",
@@ -411,6 +503,7 @@ describe("listRooms", () => {
         contextId: null,
         memberCount: 1,
         joined: false,
+        identity: null,
       },
     ]);
   });

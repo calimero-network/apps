@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMero } from "@calimero-network/mero-react";
-import { getApplicationId, setActiveRoom, setRoomName } from "../lib/session";
+import { useApplicationId } from "../hooks/useApplicationId";
+import { useToast } from "../contexts/ToastContext";
+import { setActiveRoom, setRoomName } from "../lib/session";
 import { decodeInvite } from "../lib/inviteCodec";
 import {
   createStreamNamespace,
@@ -12,7 +14,8 @@ import {
 } from "../lib/groups";
 import { ActionButton, StatusNote, Spinner } from "../components/ui";
 import { initials } from "../lib/people";
-import InviteSheet from "../components/InviteSheet";
+import InviteModal from "../components/InviteModal";
+import SessionMenu from "../components/SessionMenu";
 import { invitationFromRaw } from "../lib/inviteLink";
 import { useDialogOpen } from "../hooks/useDialogOpen";
 import styles from "./Manage.module.css";
@@ -38,8 +41,10 @@ import styles from "./Manage.module.css";
  */
 export default function StreamsPage() {
   const navigate = useNavigate();
-  const { mero, applicationId: providerAppId } = useMero();
-  const appId = getApplicationId() ?? providerAppId ?? "";
+  const { mero } = useMero();
+  const { showToast } = useToast();
+  // Resolved from the NODE by package, not from the session — see lib/appId.
+  const { appId, resolving: resolvingAppId, notInstalled } = useApplicationId();
 
   const [namespaces, setNamespaces] = useState<NamespaceRow[]>([]);
   const [listing, setListing] = useState(true);
@@ -55,7 +60,6 @@ export default function StreamsPage() {
   const [pending, setPending] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [done, setDone] = useState<string | null>(null);
   const [invite, setInvite] = useState<{ id: string; code: string } | null>(
     null,
   );
@@ -72,7 +76,6 @@ export default function StreamsPage() {
     ) => {
       setPending(key);
       setError(null);
-      setDone(null);
       setStatus(null);
       try {
         await fn(setStatus);
@@ -142,10 +145,10 @@ export default function StreamsPage() {
           onStatus,
         );
         setInvite({ id: ns.namespaceId, code });
-        setDone(`Invite ready for “${ns.name}”.`);
+        showToast(`Invite ready for “${ns.name}”.`);
       });
     },
-    [mero, run],
+    [mero, run, showToast],
   );
 
   /**
@@ -180,7 +183,7 @@ export default function StreamsPage() {
 
         if (landed.kind === "room") {
           if (landed.roomName) setRoomName(landed.contextId, landed.roomName);
-          setActiveRoom(landed.contextId, landed.identity);
+          setActiveRoom(landed.contextId, landed.identity, landed.namespaceId);
           navigate("/live");
           return;
         }
@@ -188,10 +191,10 @@ export default function StreamsPage() {
           navigate(`/streams/${landed.namespaceId}`);
           return;
         }
-        setDone("Joined. Your streams are listed below.");
+        showToast("Joined. Your streams are listed below.");
       });
     },
-    [mero, run, load, navigate],
+    [mero, run, load, navigate, showToast],
   );
 
   const join = useCallback(() => {
@@ -217,6 +220,7 @@ export default function StreamsPage() {
         >
           Join with a link or code
         </button>
+        <SessionMenu />
       </header>
 
       <main className={styles.content}>
@@ -259,53 +263,63 @@ export default function StreamsPage() {
             {status}
           </StatusNote>
         )}
-        {!status && done && (
-          <StatusNote tone="ok" testId="streams-done">
-            {done}
-          </StatusNote>
-        )}
         {error && (
           <StatusNote tone="error" testId="streams-error">
             {error}
           </StatusNote>
         )}
 
-        {/* Page level, not inside the card. An invite sheet is a full-width
-            object — QR beside a link beside an explanation — and in a ~440px
-            grid cell its right-hand column collapsed to about 180px: the link
-            input vanished, the scope pill overflowed and the hint wrapped one
-            word per line. */}
-        {invite && (
-          <InviteSheet
-            code={invite.code}
-            scope={`Whole stream · ${
-              namespaces.find((n) => n.namespaceId === invite.id)?.name ??
-              "stream"
-            }`}
-            hint={
-              <>
-                Anyone with this link can join that stream and every room in it.
-                Opening it shows them what they have been invited to and a Join
-                button — in the web app, the installed app, or the desktop
-                launcher. To invite someone into one specific call, open the
-                stream and use <strong>Invite</strong> on that room.
-              </>
-            }
-          />
-        )}
+        {/* A modal, not an inline panel. Expanding in place pushed the list
+            down, so the row you just clicked moved out from under the pointer,
+            and it stayed open until something replaced it — a stale invitation
+            for one stream reading as current while you looked at another. */}
+        <InviteModal
+          open={!!invite}
+          code={invite?.code ?? ""}
+          scope={`Whole stream · ${
+            namespaces.find((n) => n.namespaceId === invite?.id)?.name ??
+            "stream"
+          }`}
+          onClose={() => setInvite(null)}
+          hint={
+            <>
+              Anyone with this link can join that stream and every room in it.
+              Opening it shows them what they have been invited to and a Join
+              button — in the web app, the installed app, or the desktop
+              launcher. To invite someone into one specific call, open the
+              stream and use <strong>Invite</strong> on that room.
+            </>
+          }
+        />
 
         <div className={styles.sectionHead}>
           <h3 className={styles.sectionTitle}>
             {namespaces.length} stream{namespaces.length === 1 ? "" : "s"}
           </h3>
-          {listing && (
+          {(listing || resolvingAppId) && (
             <span className={styles.sectionNote}>
               <Spinner label="Loading streams" /> loading…
             </span>
           )}
         </div>
 
-        {!listing && namespaces.length === 0 && (
+        {/* "Not installed" is its own state, distinct from "no streams". The
+            list is scoped to this app's id, so without one there is nothing to
+            scope BY — showing "No streams yet" there invites you to create one,
+            and the create would fail for a reason the empty state never named. */}
+        {notInstalled && (
+          <div className={styles.empty}>
+            <span className={styles.emptyTitle}>
+              Mero Stream is not installed on this node
+            </span>
+            <span className={styles.emptyHint}>
+              Install it from the marketplace, then reload. Streams are listed per
+              application, so there is nothing to show until the node has this one.
+            </span>
+          </div>
+        )}
+
+        {!listing && !resolvingAppId && !notInstalled && namespaces.length === 0 && (
           <div className={styles.empty}>
             <span className={styles.emptyTitle}>No streams yet</span>
             <span className={styles.emptyHint}>

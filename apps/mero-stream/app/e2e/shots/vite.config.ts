@@ -37,7 +37,7 @@ export default defineConfig({
         replacement: here("./useMeroStream.mock.ts"),
       },
       // The list pages talk to the node through these two. Aliasing them keeps
-      // StreamsPage / RoomsPage / InviteSheet as production code while the data
+      // StreamsPage / RoomsPage / InviteModal as production code while the data
       // is fixtures.
       {
         find: /.*\/lib\/groups$/,

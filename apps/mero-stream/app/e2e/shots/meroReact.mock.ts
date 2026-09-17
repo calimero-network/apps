@@ -1,5 +1,10 @@
 // Aliased over @calimero-network/mero-react by vite.config.ts. The pages need a
 // session-shaped object to render; nothing here reaches a node.
+import { APP_PACKAGE } from "../../src/lib/appId";
+
+/** The id `pickApplicationId` should settle on for the fixture node. */
+const APP_ID = "3xKm9QpLvR7nTzB4aW1cYeUf3gJd6NqSvXhKrM8tZoPq";
+
 export function useMero() {
   return {
     mero: {
@@ -13,10 +18,27 @@ export function useMero() {
         getContexts: async () => ({ contexts: [] }),
         listNamespacesForApplication: async () => [],
         listNamespaceGroups: async () => [],
+        // `useApplicationId` asks the NODE which installed app is this one and
+        // matches on the package — see src/lib/appId. Without this the resolve
+        // fails closed to "", every page renders its "not installed" empty
+        // state, and the harness photographs that instead of the app. Carrying
+        // a second, wrong-package install here is the point: it proves the
+        // filter in the shot, rather than a one-app list that would pass even
+        // if the matching were dropped.
+        listApplications: async () => ({
+          apps: [
+            { id: "designs-own-id", package: "com.calimero.mero-design", version: "1.4.0" },
+            { id: APP_ID, package: APP_PACKAGE, version: "1.2.0" },
+          ],
+        }),
       },
       ephemeral: { set: async () => {}, subscribe: () => () => {} },
     },
-    applicationId: "3xKm9QpLvR7nTzB4aW1cYeUf3gJd6NqSvXhKrM8tZoPq",
+    // SessionMenu shows the node it is talking to and offers a way out. Both
+    // come off `useMero()`, so both have to exist here or the menu throws.
+    nodeUrl: "http://localhost:2528",
+    logout: () => {},
+    applicationId: APP_ID,
     isAuthenticated: true,
     isLoading: false,
   };

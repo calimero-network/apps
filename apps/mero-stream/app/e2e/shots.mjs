@@ -59,7 +59,7 @@ const SCENARIOS = [
   ["streams", "Your streams", '[data-testid="stream-row"]'],
   ["streams-empty", "No streams yet", '[data-testid="open-join"]'],
   ["rooms", "Rooms inside one stream", '[data-testid="room-row"]'],
-  ["invite", "An invitation", '[data-testid="invite-box"]'],
+  ["invite", "An invitation", '[data-testid="invite-modal"]'],
   ["idle", "Joined, nobody broadcasting yet"],
   ["solo", "One broadcaster (you)"],
   ["two", "Two broadcasters"],
@@ -67,8 +67,13 @@ const SCENARIOS = [
   ["spectator", "Slots full — you are a spectator"],
   ["yielded", "You lost the race for the last slot"],
   ["people", "Your nickname, and who is here", '[data-testid="people-dialog"]'],
+  [
+    "first-run",
+    "First time here — pick a name",
+    '[data-testid="people-dialog"]',
+  ],
   ["dialog", "See more data", '[data-testid="data-dialog"]'],
-  ["light", "Light theme"],
+  ["dark", "Dark theme"],
 ];
 
 const MIME = {
@@ -153,6 +158,40 @@ async function main() {
       // Two rAFs' worth: the canvas patterns are painted on rAF, and the first
       // frame lands after mount.
       await page.waitForTimeout(600);
+
+      // The call screens are a four-row grid pinned to the viewport: topbar,
+      // banners, stage (`1fr`), controls. The stage is meant to take every
+      // pixel the other three do not.
+      //
+      // Assert on the SIZES, not on where the control bar's bottom edge lands.
+      // The first version of this check compared that edge to the viewport
+      // bottom and passed happily with the bug still in place — the oversized
+      // controls row still ends at the bottom of the screen; it is the bar's
+      // content that floats at the TOP of it, with dead background beneath. A
+      // guard that cannot fail on the bug it guards is worse than no guard.
+      const layout = await page.evaluate(() => {
+        const bar = document.querySelector('[class*="controls"]');
+        if (!bar) return null; // list pages have no control bar
+        const stage = document.querySelector('[class*="stage"]');
+        return {
+          vh: window.innerHeight,
+          bar: Math.round(bar.getBoundingClientRect().height),
+          stage: stage ? Math.round(stage.getBoundingClientRect().height) : 0,
+        };
+      });
+      if (layout) {
+        // One row of buttons. 688px of it means it took the flexible row.
+        const barTooTall = layout.bar > 200;
+        // The stage is the only `1fr` row, so it holds the slack.
+        const stageStarved = layout.stage < layout.vh * 0.45;
+        if (barTooTall || stageStarved) {
+          const why = `stage ${layout.stage}px / controls ${layout.bar}px in ${layout.vh}px`;
+          failures.push(`${id}: stage did not take the flexible row (${why})`);
+          console.log(`  ✗ ${id.padEnd(11)} ${why}`);
+          await page.close();
+          continue;
+        }
+      }
 
       const shot = join(OUT, `${id}.png`);
       await page.screenshot({ path: shot });

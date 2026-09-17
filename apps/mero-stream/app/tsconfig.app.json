@@ -18,7 +18,13 @@
     "noUncheckedSideEffectImports": true
   },
   // `e2e/lib` is included so src/lib/frameParity.test.ts can type-check its
-  // import of the shared framing module. The rest of e2e/ stays out: those are
-  // node scripts, not part of the app's type graph.
-  "include": ["src", "e2e/lib"]
+  // import of the shared framing module.
+  //
+  // `e2e/shots` is included because it is NOT a node script: it is TSX that
+  // stands in for production modules, and when the app moved on without it the
+  // build still succeeded and the harness quietly photographed an empty state
+  // instead of the app. A mock that no longer matches the thing it replaces is
+  // a type error, so let the typecheck say so. The rest of e2e/ stays out:
+  // those are node scripts, not part of the app's type graph.
+  "include": ["src", "e2e/lib", "e2e/shots"]
 }
