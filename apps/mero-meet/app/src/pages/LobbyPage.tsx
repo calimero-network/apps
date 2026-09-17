@@ -4,8 +4,16 @@ import { useSubscription } from "@calimero-network/mero-react";
 import { useMeroMeet } from "../hooks/useMeroMeet";
 import { useRoomInvite } from "../hooks/useRoomInvite";
 import { useCall } from "../call/CallContext";
-import { getExecutorPublicKey, setRoomName, getUsername, setUsername } from "../lib/session";
+import {
+  getActiveNamespaceId,
+  getExecutorPublicKey,
+  setRoomName,
+  getUsername,
+  setUsername,
+} from "../lib/session";
 import ThemeToggle from "../components/ThemeToggle";
+import SessionMenu from "../components/SessionMenu";
+import InviteModal from "../components/InviteModal";
 import MediaUnavailableNotice from "../components/MediaUnavailableNotice";
 import { localMediaUnavailableReason } from "../lib/media";
 import type { LobbyView, Presence } from "../types";
@@ -38,7 +46,8 @@ export default function LobbyPage() {
     if (view) {
       setLobby(view);
       // Cache the room's name so the Rooms picker shows it (not a raw id).
-      if (meet.contextId && view.room.name) setRoomName(meet.contextId, view.room.name);
+      if (meet.contextId && view.room.name)
+        setRoomName(meet.contextId, view.room.name);
     }
   }, [meet]);
 
@@ -122,7 +131,9 @@ export default function LobbyPage() {
   const callActive = inCall.length > 0;
   // Count online with the same self-override the rows use, so the header never
   // says "0 online" while you're sitting in the room.
-  const onlineCount = members.filter((m) => m.memberId === selfId || online.has(m.memberId)).length;
+  const onlineCount = members.filter(
+    (m) => m.memberId === selfId || online.has(m.memberId),
+  ).length;
   // Calls require a display name (already joined counts — the name is known).
   // Probed once per mount: whether this window exposes the Media Capture API
   // is a property of the embedder and the page's origin, neither of which
@@ -139,45 +150,62 @@ export default function LobbyPage() {
     <div className={styles.page}>
       <header className={styles.header}>
         <div>
-          <button className={styles.switchBtn} onClick={() => navigate("/rooms")}>
+          {/* Back to the room's own team. A room stored before teams existed
+              has no namespace recorded, and then the only honest destination is
+              the team picker rather than a URL built from nothing. */}
+          <button
+            className={styles.switchBtn}
+            onClick={() => {
+              const ns = getActiveNamespaceId();
+              navigate(ns ? `/teams/${ns}` : "/teams");
+            }}
+          >
             ← All rooms
           </button>
           <h1 className={styles.roomName}>{lobby?.room.name || "Room"}</h1>
           <p className={styles.roomMeta}>
-            {onlineCount} online · {Math.max(lobby?.room.memberCount ?? 0, members.length)} members
-            {callActive && <span className={styles.liveDot}> · call in progress</span>}
+            {onlineCount} online ·{" "}
+            {Math.max(lobby?.room.memberCount ?? 0, members.length)} members
+            {callActive && (
+              <span className={styles.liveDot}> · call in progress</span>
+            )}
           </p>
         </div>
         <div className={styles.headerActions}>
+          <SessionMenu />
           <ThemeToggle />
-          <button className={styles.inviteBtn} onClick={() => void invite.generate()} disabled={invite.inviting}>
+          <button
+            className={styles.inviteBtn}
+            onClick={() => void invite.generate()}
+            disabled={invite.inviting}
+            title={invite.error ?? "Invite someone to this team"}
+          >
             {invite.inviting ? "Inviting…" : "Invite"}
           </button>
           <button
             className={styles.callBtn}
             onClick={enterCall}
             disabled={!canCall}
-            title={mediaReason ?? (canCall ? undefined : "Enter your name below first")}
+            title={
+              mediaReason ??
+              (canCall ? undefined : "Enter your name below first")
+            }
           >
             {callActive ? "Join call" : "Start call"}
           </button>
         </div>
       </header>
 
-      {invite.code && (
-        <div className={styles.invitePanel}>
-          <div className={styles.inviteTop}>
-            <span className={styles.inviteTitle}>Invite to this room</span>
-            <button className={styles.copyBtn} onClick={invite.copy}>
-              {invite.copied ? "Copied ✓" : "Copy"}
-            </button>
-          </div>
-          <code className={styles.inviteCode}>{invite.code}</code>
-          <span className={styles.inviteHint}>
-            Share this code. They open Mero Meet → <strong>Join</strong> and paste it.
-          </span>
-        </div>
-      )}
+      {/* A dialog, not an in-place panel. The panel pushed everything below it
+          down — the row you clicked moved out from under the pointer — and it
+          stayed open until something replaced it, so a stale invitation read as
+          current while you looked at something else. */}
+      <InviteModal
+        open={!!invite.code}
+        code={invite.code}
+        scope={`Whole team · ${lobby?.room.name || "this room"}`}
+        onClose={invite.reset}
+      />
 
       {!joined && (
         <div className={styles.joinBar}>
@@ -192,13 +220,18 @@ export default function LobbyPage() {
             onKeyDown={(e) => e.key === "Enter" && handleJoin()}
             maxLength={40}
             aria-invalid={nameError}
-            style={nameError ? { borderColor: "var(--danger, #e5484d)" } : undefined}
+            style={
+              nameError ? { borderColor: "var(--danger, #e5484d)" } : undefined
+            }
           />
           <button className={styles.joinBtn} onClick={handleJoin}>
             Enter room
           </button>
           {nameError && (
-            <span role="alert" style={{ color: "var(--danger, #e5484d)", fontSize: 13 }}>
+            <span
+              role="alert"
+              style={{ color: "var(--danger, #e5484d)", fontSize: 13 }}
+            >
               Please enter your name first
             </span>
           )}
@@ -209,13 +242,16 @@ export default function LobbyPage() {
         <section className={styles.callBanner}>
           <span className={styles.pulse} />
           <span>
-            {inCall.length} {inCall.length === 1 ? "person is" : "people are"} in a call
+            {inCall.length} {inCall.length === 1 ? "person is" : "people are"}{" "}
+            in a call
           </span>
           <button
             className={styles.bannerJoin}
             onClick={enterCall}
             disabled={!canCall}
-            title={mediaReason ?? (canCall ? undefined : "Enter your name first")}
+            title={
+              mediaReason ?? (canCall ? undefined : "Enter your name first")
+            }
           >
             Join
           </button>
@@ -226,7 +262,9 @@ export default function LobbyPage() {
 
       <section className={styles.list}>
         <h2 className={styles.listTitle}>People</h2>
-        {members.length === 0 && <p className={styles.empty}>No one here yet. Be the first.</p>}
+        {members.length === 0 && (
+          <p className={styles.empty}>No one here yet. Be the first.</p>
+        )}
         {members.map((m) => {
           const isSelf = m.memberId === selfId;
           // You're looking at the app right now, so always show yourself online —
@@ -234,8 +272,12 @@ export default function LobbyPage() {
           const isOnline = isSelf || online.has(m.memberId);
           return (
             <div key={m.memberId} className={styles.row}>
-              <span className={`${styles.status} ${isOnline ? styles.on : styles.off}`} />
-              <span className={styles.avatar}>{m.username.slice(0, 2).toUpperCase()}</span>
+              <span
+                className={`${styles.status} ${isOnline ? styles.on : styles.off}`}
+              />
+              <span className={styles.avatar}>
+                {m.username.slice(0, 2).toUpperCase()}
+              </span>
               <div className={styles.who}>
                 <span className={styles.name}>
                   {m.username}

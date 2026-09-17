@@ -1,0 +1,47 @@
+.root {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.node {
+  font-size: 0.75rem;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-elev);
+  white-space: nowrap;
+}
+
+.logout {
+  font: inherit;
+  font-size: 0.8125rem;
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 8px);
+  padding: 6px 12px;
+  cursor: pointer;
+  transition: color 120ms ease, border-color 120ms ease, background 120ms ease;
+}
+
+.logout:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
+  background: var(--surface-hover);
+}
+
+.logout:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* The node pill is context, not an action — drop it before the button when
+   there is no room, rather than letting the header wrap onto two lines. */
+@media (max-width: 560px) {
+  .node {
+    display: none;
+  }
+}

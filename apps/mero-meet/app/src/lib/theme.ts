@@ -11,13 +11,18 @@ export type Theme = "light" | "dark";
 
 const STORAGE_KEY = "mm-theme";
 
-function systemTheme(): Theme {
-  try {
-    return window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
-  } catch {
-    return "dark";
-  }
-}
+/**
+ * The theme a first-time visitor gets.
+ *
+ * Light, not the OS preference. The app now wears the Calimero palette that
+ * mero-stream and this app's own landing page wear, and that palette is a light
+ * one — someone whose OS is dark used to meet the marketing page in Calimero
+ * green and the app in something else one click later.
+ *
+ * This is only the STARTING point: the toggle and the persisted choice are
+ * untouched, so a dark-preferring user is one click from dark and stays there.
+ */
+const FIRST_RUN_THEME: Theme = "light";
 
 function stored(): Theme | null {
   try {
@@ -28,7 +33,7 @@ function stored(): Theme | null {
   }
 }
 
-let current: Theme = "dark";
+let current: Theme = FIRST_RUN_THEME;
 const listeners = new Set<() => void>();
 
 function apply(theme: Theme): void {
@@ -39,7 +44,7 @@ function apply(theme: Theme): void {
 
 /** Resolve + apply the initial theme. Call once, before React renders. */
 export function initTheme(): void {
-  apply(stored() ?? systemTheme());
+  apply(stored() ?? FIRST_RUN_THEME);
 }
 
 export function getTheme(): Theme {

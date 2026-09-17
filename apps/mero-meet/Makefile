@@ -92,3 +92,10 @@ workflows: logic-build
 clean:
 	cd logic && rm -rf res target
 	cd app && rm -rf dist node_modules/.vite
+
+# Screenshots of the teams/rooms UI in every state, with NO node: the harness in
+# app/e2e/shots/ aliases the modules that need one and renders the production
+# pages, CSS and toast layer. Output lands in data/shots/.
+.PHONY: shots
+shots:
+	@cd app && pnpm exec node e2e/shots.mjs

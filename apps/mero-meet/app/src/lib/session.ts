@@ -33,7 +33,13 @@ function persistSession(): void {
   try {
     localStorage.setItem(
       SESSION_KEY,
-      JSON.stringify({ applicationId, contextId, executorPublicKey, nodeUrl, devMode }),
+      JSON.stringify({
+        applicationId,
+        contextId,
+        executorPublicKey,
+        nodeUrl,
+        devMode,
+      }),
     );
   } catch {
     /* ignore blocked storage */
@@ -59,6 +65,20 @@ function roomStorageKey(): string {
   return `mm-room:${applicationId ?? "default"}`;
 }
 
+/**
+ * The team (namespace) holding the active room.
+ *
+ * A context knows nothing about the namespace that holds it, and the admin API
+ * has no "parent of" read — so the only cheap place to keep the link is here, at
+ * the moment we entered the room and already knew it. Without it the call and
+ * the lobby have no way back to their room list.
+ */
+let activeNamespaceId: string | null = null;
+
+export function getActiveNamespaceId(): string | null {
+  return activeNamespaceId;
+}
+
 export function captureSessionFromHash(): void {
   // Restore any persisted session first, so a refresh (no hash) keeps the app
   // id / room / identity the desktop only forwards on the first open. Hash
@@ -70,14 +90,20 @@ export function captureSessionFromHash(): void {
     const p = new URLSearchParams(hash);
     contextId = p.get("context_id") ?? p.get("contextId") ?? contextId;
     executorPublicKey =
-      p.get("executor_public_key") ?? p.get("executorPublicKey") ?? executorPublicKey;
+      p.get("executor_public_key") ??
+      p.get("executorPublicKey") ??
+      executorPublicKey;
     applicationId =
-      p.get("app-id") ?? p.get("application_id") ?? p.get("applicationId") ?? applicationId;
+      p.get("app-id") ??
+      p.get("application_id") ??
+      p.get("applicationId") ??
+      applicationId;
     // Keep the node the desktop pointed us at. MeroProvider stores it too, but
     // it drops the value whenever it rejects a callback or the user logs out —
     // exactly the states where the sign-in screen still needs to name and probe
     // the node. Trailing slash stripped so it concatenates predictably.
-    nodeUrl = (p.get("node_url") ?? p.get("nodeUrl"))?.replace(/\/+$/, "") ?? nodeUrl;
+    nodeUrl =
+      (p.get("node_url") ?? p.get("nodeUrl"))?.replace(/\/+$/, "") ?? nodeUrl;
     // The desktop app forwards its developer-mode setting here.
     if (p.has("dev_mode")) devMode = p.get("dev_mode") === "1";
   }
@@ -87,10 +113,13 @@ export function captureSessionFromHash(): void {
     try {
       const saved = localStorage.getItem(roomStorageKey());
       if (saved) {
-        const { ctx, executor } = JSON.parse(saved);
+        const { ctx, executor, ns } = JSON.parse(saved);
         if (ctx && executor) {
           contextId = ctx;
           executorPublicKey = executor;
+          // Absent on a room stored before rooms had teams; callers treat a
+          // null namespace as "fall back to the team picker".
+          if (typeof ns === "string" && ns) activeNamespaceId = ns;
         }
       }
     } catch {
@@ -133,11 +162,22 @@ export function getBootNodeUrl(): string | null {
  * a reload (or the next open of this app) returns here. Used after the user
  * creates or joins a room in the lobby/rooms UI.
  */
-export function setActiveRoom(ctx: string, executor: string): void {
+export function setActiveRoom(
+  ctx: string,
+  executor: string,
+  namespaceId?: string,
+): void {
   contextId = ctx;
   executorPublicKey = executor;
+  // Optional: a room stored before this argument existed has no namespace, and
+  // the callers that offer a way back fall back to the team picker rather than
+  // routing nowhere.
+  if (namespaceId) activeNamespaceId = namespaceId;
   try {
-    localStorage.setItem(roomStorageKey(), JSON.stringify({ ctx, executor }));
+    localStorage.setItem(
+      roomStorageKey(),
+      JSON.stringify({ ctx, executor, ns: activeNamespaceId }),
+    );
   } catch {
     /* ignore blocked storage */
   }
@@ -156,6 +196,7 @@ export function setActiveRoom(ctx: string, executor: string): void {
 export function clearActiveRoom(): void {
   contextId = null;
   executorPublicKey = null;
+  activeNamespaceId = null;
   try {
     localStorage.removeItem(roomStorageKey());
   } catch {
