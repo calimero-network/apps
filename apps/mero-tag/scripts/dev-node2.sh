@@ -22,7 +22,7 @@ NODE1_P2P_PORT="${MEROTAG_DEV_P2P_PORT:-2540}"
 
 ADMIN_USER="${E2E_ADMIN_USER:-admin}"
 ADMIN_PASS="${E2E_ADMIN_PASS:-calimero1234}"
-WASM_PATH="$REPO_ROOT/logic/res/mero_tag.wasm"
+BUNDLE_PATH="$REPO_ROOT/logic/dist/mero-tag-dev.mpk"
 
 green()  { printf '\033[32m  ✓  %s\033[0m\n' "$*"; }
 yellow() { printf '\033[33m  !  %s\033[0m\n' "$*"; }
@@ -58,13 +58,19 @@ if $STOP; then
 fi
 
 for cmd in merod jq curl python3; do command -v "$cmd" &>/dev/null || { red "'$cmd' not found"; exit 1; }; done
-[ -f "$WASM_PATH" ] || { red "mero_tag.wasm not found — run 'make node' first"; exit 1; }
+[ -f "$BUNDLE_PATH" ] || { red "mero-tag-dev.mpk not found — run 'make node' first"; exit 1; }
 
 step "Clean slate (node2)"; nuke_node; rm -rf "$NODE_HOME"; green "Ready"
 
 step "Initialising node2 at $NODE_HOME"
-merod --node "$NODE_NAME" --home "$NODE_HOME" init \
-  --server-host 127.0.0.1 --server-port "$NODE_PORT" --swarm-port "$NODE_P2P_PORT" --auth-mode embedded
+# The admin account is created HERE, not on first login: since core rc.20
+# `--auth-mode embedded` refuses to initialise without credentials (it wants the
+# admin to exist before the node ever listens), so a plain `init` fails with
+# "requires admin credentials". Passing the password on stdin keeps it out of the
+# process list.
+printf '%s' "$ADMIN_PASS" | merod --node "$NODE_NAME" --home "$NODE_HOME" init \
+  --server-host 127.0.0.1 --server-port "$NODE_PORT" --swarm-port "$NODE_P2P_PORT" \
+  --auth-mode embedded --admin-user "$ADMIN_USER" --admin-password-stdin
 green "Node2 initialised"
 
 # Inject node1's loopback multiaddr so the two nodes peer reliably (mDNS races
@@ -128,7 +134,7 @@ fi
 step "Installing Mero Tag app on node2"
 APP_RES=$(curl -sf -X POST "${NODE_URL}/admin-api/install-dev-application" \
   -H "Authorization: Bearer ${ACCESS_TOKEN}" -H "Content-Type: application/json" \
-  -d "$(jq -n --arg p "$WASM_PATH" '{path:$p, metadata:[], package:null, version:null}')" ) || APP_RES="{}"
+  -d "$(jq -n --arg p "$BUNDLE_PATH" '{path:$p}')" ) || APP_RES="{}"
 APP_ID=$(echo "$APP_RES" | jq -r '.data.applicationId // empty' 2>/dev/null || true)
 [ -n "$APP_ID" ] && green "App installed on node2 (id: $APP_ID)" || yellow "App install uncertain"
 

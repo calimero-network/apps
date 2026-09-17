@@ -1,4 +1,4 @@
-.PHONY: help setup logic-build logic-test logic-e2e workflows kit-verify kit-test \
+.PHONY: help setup logic-build logic-bundle logic-test logic-e2e workflows kit-verify kit-test \
         node node2 invite stop dev \
         app-gen app-build app-run app-test test clean
 
@@ -23,7 +23,8 @@ help:
 	@echo "    stop         Stop all dev nodes and free ports"
 	@echo ""
 	@echo "  Contract (Rust)"
-	@echo "    logic-build  Compile logic/src → logic/res/mero_tag.wasm"
+	@echo "    logic-build  Compile logic/src → logic/res/mero_tag.wasm (+ embed the ABI)"
+	@echo "    logic-bundle Package the signed .mpk a node will actually accept"
 	@echo "    logic-test   cargo test (pure helpers)"
 	@echo "    workflows    merobox WASM logic tests (real merod in Docker)"
 	@echo "    logic-e2e    curl-based node integration test"
@@ -49,7 +50,15 @@ setup:
 
 # ── Contract ───────────────────────────────────────────────────────────────────
 logic-build:
-	cd logic && bash build.sh
+	cd logic && cargo mero build
+
+# What a node installs. Raw wasm is out of the protocol since core#3652
+# (0.11.0-rc.31), so this — not logic-build — is what `node`, `node2` and the
+# merobox workflows hand it. `--dev` signs with the well-known development key,
+# which the registry refuses by design; `--app-version` is a placeholder,
+# because the registry owns the published number.
+logic-bundle:
+	cd logic && cargo mero bundle --dev --no-icon --app-version 0.0.1 --output dist/mero-tag-dev.mpk
 
 logic-test:
 	cd logic && cargo test

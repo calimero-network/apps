@@ -26,9 +26,11 @@ rustup target list --installed | grep -q wasm32-unknown-unknown \
   && ok "wasm32-unknown-unknown installed" \
   || { rustup target add wasm32-unknown-unknown && ok "wasm32-unknown-unknown added"; }
 
-step "Building WASM contract…"
-(cd "$REPO_ROOT/logic" && bash build.sh)
-ok "logic/res/mero_tag.wasm built"
+step "Building the WASM contract + signed dev bundle…"
+command -v cargo-mero >/dev/null 2>&1 \
+  || err "cargo-mero not found — install it from the core tag pinned in logic/Cargo.toml"
+(cd "$REPO_ROOT/logic" && cargo mero bundle --dev --no-icon --app-version 0.0.1 --output dist/mero-tag-dev.mpk)
+ok "logic/dist/mero-tag-dev.mpk built"
 
 step "Optional tooling…"
 command -v xcodegen >/dev/null 2>&1 && ok "xcodegen found" || warn "xcodegen not found — 'brew install xcodegen' (needed for the iOS app project)"

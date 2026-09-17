@@ -27,7 +27,12 @@ NODE_URL="http://localhost:${NODE_PORT}"
 ADMIN_USER="${E2E_ADMIN_USER:-admin}"
 ADMIN_PASS="${E2E_ADMIN_PASS:-calimero1234}"
 
-WASM_PATH="$REPO_ROOT/logic/res/mero_tag.wasm"
+# A signed .mpk bundle, not the raw .wasm. core#3652 (0.11.0-rc.31) made
+# application distribution registry-only and took raw wasm out of the protocol,
+# so `install-dev-application` refuses a bare .wasm with
+# "not a signed application bundle". Same artifact and same path the merobox
+# scenarios and CI use, so local and CI install the identical bytes.
+BUNDLE_PATH="$REPO_ROOT/logic/dist/mero-tag-dev.mpk"
 
 green()  { printf '\033[32m  ✓  %s\033[0m\n' "$*"; }
 yellow() { printf '\033[33m  !  %s\033[0m\n' "$*"; }
@@ -80,20 +85,29 @@ rm -rf "$NODE_HOME"
 green "Ready"
 
 if $SKIP_BUILD; then
-  [ -f "$WASM_PATH" ] || { red "WASM not found at $WASM_PATH — run without --skip-build first"; exit 1; }
-  yellow "Skipping WASM build"
+  [ -f "$BUNDLE_PATH" ] || { red "bundle not found at $BUNDLE_PATH — run without --skip-build first"; exit 1; }
+  yellow "Skipping bundle build"
 else
-  step "Building WASM"
-  (cd "$REPO_ROOT/logic" && bash build.sh)
-  green "mero_tag.wasm built"
+  step "Building the .mpk bundle"
+  command -v cargo-mero >/dev/null 2>&1 || { red "cargo-mero not found — see README (cargo install from the pinned core tag)"; exit 1; }
+  (cd "$REPO_ROOT/logic" && cargo mero bundle --dev --no-icon --app-version 0.0.1 --output dist/mero-tag-dev.mpk) \
+    || { red "cargo mero bundle failed"; exit 1; }
+  green "mero-tag-dev.mpk built"
 fi
 
 step "Initialising node at $NODE_HOME"
-merod --node "$NODE_NAME" --home "$NODE_HOME" init \
+# The admin account is created HERE, not on first login: since core rc.20
+# `--auth-mode embedded` refuses to initialise without credentials (it wants the
+# admin to exist before the node ever listens), so a plain `init` fails with
+# "requires admin credentials". Passing the password on stdin keeps it out of the
+# process list.
+printf '%s' "$ADMIN_PASS" | merod --node "$NODE_NAME" --home "$NODE_HOME" init \
   --server-host 127.0.0.1 \
   --server-port "$NODE_PORT" \
   --swarm-port  "$NODE_P2P_PORT" \
-  --auth-mode embedded
+  --auth-mode embedded \
+  --admin-user "$ADMIN_USER" \
+  --admin-password-stdin
 green "Node initialised"
 
 CONFIG_FILE="$NODE_HOME/${NODE_NAME}/config.toml"
@@ -133,23 +147,44 @@ if command -v meroctl &>/dev/null; then
     2>/dev/null && green "Registered with meroctl" || yellow "meroctl registration skipped"
 fi
 
+# ⚠️ Every admin-api request body is `deny_unknown_fields`. One stale key is a
+# 400 for the WHOLE call, naming only the first offender — so these bodies carry
+# exactly the fields the node declares and nothing else. Bodies drift on core
+# releases; re-read the structs in
+# crates/server/primitives/src/admin/mod.rs before adding a field here.
+#
+# `api` exists so a rejected body says so. The previous `|| RES="{}"` swallowed
+# the status AND the message, and the script went on to print a "ready" banner
+# with an empty context id — which is how four separate bodies went stale
+# without anyone noticing.
+api() {  # api <METHOD> <path> <json-body>  → prints the response body
+  local method="$1" path="$2" body="$3" out code
+  out=$(mktemp)
+  code=$(curl -sS -X "$method" "${NODE_URL}${path}" \
+    -H "Authorization: Bearer ${ACCESS_TOKEN}" -H "Content-Type: application/json" \
+    -d "$body" -o "$out" -w '%{http_code}' 2>/dev/null || echo 000)
+  if [ "$code" != "200" ]; then
+    red "${method} ${path} → HTTP ${code}"
+    printf '  request:  %s\n' "$body" >&2
+    printf '  response: %s\n' "$(cat "$out")" >&2
+    rm -f "$out"; exit 1
+  fi
+  cat "$out"; rm -f "$out"
+}
+
 step "Installing Mero Tag app"
-APP_RES=$(curl -sf -X POST "${NODE_URL}/admin-api/install-dev-application" \
-  -H "Authorization: Bearer ${ACCESS_TOKEN}" -H "Content-Type: application/json" \
-  -d "$(jq -n --arg p "$WASM_PATH" '{path: $p, metadata: [], package: null, version: null}')" ) || APP_RES="{}"
+# `path` ONLY. rc.38 rejects `metadata`/`package`/`version` outright.
+APP_RES=$(api POST /admin-api/install-dev-application "$(jq -n --arg p "$BUNDLE_PATH" '{path:$p}')")
 APP_ID=$(echo "$APP_RES" | jq -r '.data.applicationId // empty' 2>/dev/null || true)
-if [ -z "$APP_ID" ]; then
-  APP_ID=$(curl -sf "${NODE_URL}/admin-api/applications" -H "Authorization: Bearer ${ACCESS_TOKEN}" 2>/dev/null \
-    | jq -r '.data.apps[0].id // .data.applications[0].id // empty' 2>/dev/null || true)
-fi
-[ -n "$APP_ID" ] || { red "Could not get APP_ID"; exit 1; }
+[ -n "$APP_ID" ] || { red "install-dev-application returned no applicationId: $APP_RES"; exit 1; }
 green "App installed (id: $APP_ID)"
 
 step "Creating workspace + tracking space"
-NS_RES=$(curl -sf -X POST "${NODE_URL}/admin-api/namespaces" \
-  -H "Authorization: Bearer ${ACCESS_TOKEN}" -H "Content-Type: application/json" \
-  -d "$(jq -n --arg a "$APP_ID" '{applicationId:$a, upgradePolicy:"LazyOnAccess", alias:"Dev Workspace", name:"Dev Workspace"}')" ) || NS_RES="{}"
+# `applicationId` + `name`. `upgradePolicy` and `alias` are gone — the node
+# takes only applicationId / name / appKey / bytecodeId.
+NS_RES=$(api POST /admin-api/namespaces "$(jq -n --arg a "$APP_ID" '{applicationId:$a, name:"Dev Workspace"}')")
 NAMESPACE_ID=$(echo "$NS_RES" | jq -r '.data.namespaceId // .data.groupId // .data.id // empty' 2>/dev/null || true)
+[ -n "$NAMESPACE_ID" ] || { red "namespace create returned no id: $NS_RES"; exit 1; }
 
 CONTEXT_ID=""; MEMBER_KEY=""; BOARD_GROUP_ID=""
 if [ -n "$NAMESPACE_ID" ]; then
@@ -161,10 +196,11 @@ if [ -n "$NAMESPACE_ID" ]; then
     -H "Authorization: Bearer ${ACCESS_TOKEN}" -H "Content-Type: application/json" \
     -d '{"subgroupVisibility":"open"}' &>/dev/null || true
 
-  SG_RES=$(curl -sf -X POST "${NODE_URL}/admin-api/namespaces/${NAMESPACE_ID}/groups" \
-    -H "Authorization: Bearer ${ACCESS_TOKEN}" -H "Content-Type: application/json" \
-    -d '{"groupAlias":"tracking-space","groupName":"tracking-space"}' 2>/dev/null) || SG_RES="{}"
+  # `groupName` (+ optional `visibility`). `groupAlias` is not a field — sending
+  # it is a 422 before the subgroup is ever created.
+  SG_RES=$(api POST "/admin-api/namespaces/${NAMESPACE_ID}/groups" '{"groupName":"tracking-space"}')
   BOARD_GROUP_ID=$(echo "$SG_RES" | jq -r '.data.groupId // empty' 2>/dev/null || true)
+  [ -n "$BOARD_GROUP_ID" ] || { red "subgroup create returned no groupId: $SG_RES"; exit 1; }
 
   if [ -n "$BOARD_GROUP_ID" ]; then
     green "Subgroup: $BOARD_GROUP_ID"
@@ -177,13 +213,15 @@ if [ -n "$NAMESPACE_ID" ]; then
     INIT_BYTES=$(printf '%s' "$INIT_JSON" | python3 -c \
       "import sys; d=sys.stdin.buffer.read(); print('['+','.join(str(b) for b in d)+']')")
 
-    CTX_RES=$(curl -sf -X POST "${NODE_URL}/admin-api/contexts" \
-      -H "Authorization: Bearer ${ACCESS_TOKEN}" -H "Content-Type: application/json" \
-      -d "$(jq -n --arg appId "$APP_ID" --arg groupId "$BOARD_GROUP_ID" --argjson initParams "$INIT_BYTES" \
-            '{applicationId:$appId, protocol:"near", groupId:$groupId, alias:"Tracking space", name:"Tracking space", initializationParams:$initParams}')" ) || CTX_RES="{}"
+    # No `protocol`, no `alias`: the node takes applicationId / serviceName /
+    # contextSeed / initializationParams / groupId / identitySecret / name.
+    CTX_RES=$(api POST /admin-api/contexts \
+      "$(jq -n --arg appId "$APP_ID" --arg groupId "$BOARD_GROUP_ID" --argjson initParams "$INIT_BYTES" \
+            '{applicationId:$appId, groupId:$groupId, name:"Tracking space", initializationParams:$initParams}')")
     CONTEXT_ID=$(echo "$CTX_RES" | jq -r '.data.contextId // .data.id // empty' 2>/dev/null || true)
     MEMBER_KEY=$(echo "$CTX_RES" | jq -r '.data.memberPublicKey // .data.member_public_key // empty' 2>/dev/null || true)
-    [ -n "$CONTEXT_ID" ] && green "Context: $CONTEXT_ID" || yellow "Could not create context"
+    [ -n "$CONTEXT_ID" ] || { red "context create returned no contextId: $CTX_RES"; exit 1; }
+    green "Context: $CONTEXT_ID"
   fi
 fi
 
