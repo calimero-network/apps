@@ -11,7 +11,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@calimero-network/mero-js": "^19.7.1",
+    "@calimero-network/mero-js": "^19.8.0",
     "react": "catalog:",
     "react-dom": "catalog:"
   },
