@@ -1,123 +1,135 @@
 /**
- * useWorkspace — manages the Calimero workspaces (contexts) this app can open.
+ * useWorkspace — the Calimero workspace and the spreadsheets inside it.
  *
- * Workspace model:
- *  - The app installs as a Calimero application → a namespace. Each **workspace**
- *    is one context inside that namespace (a separate shared spreadsheet).
- *  - `useGroupContexts` lists every context in the namespace → the workspace list.
- *  - `contextId` is the *active* workspace (null = show the list). Opening a
- *    workspace resolves the executor identity we own in it; creating one makes a
- *    new context (and the namespace on first run) and opens it.
+ * Model:
+ *  - The app installs as a Calimero application. One NAMESPACE per node holds
+ *    this app's spreadsheets; each SPREADSHEET is one context bound to the
+ *    namespace root. There are no subgroups, so one membership covers
+ *    everything — which is what an invitation grants and what the UI says.
+ *  - `contextId` is the open spreadsheet (null = show the picker).
  *  - When launched from the desktop app (SSO), `useMero()` carries a `contextId`
- *    + `contextIdentity` from the auth callback — we open that directly.
- *  - Peers join a workspace via a namespace invitation (Invite/Join modals).
+ *    and `contextIdentity` from the auth callback — open that directly.
  *
- * Workspace display names are stored locally (keyed by contextId), since the
- * context list from the node carries ids, not the project name.
+ * ── What changed here, and why ──────────────────────────────────────────────
+ *
+ * 1. The application id is resolved FROM THE NODE by package, not taken from
+ *    the session or a baked env var. See `lib/appId` — both of the old sources
+ *    describe how you arrived, not which app you are.
+ * 2. Spreadsheet names come from the node, not from a `localStorage` map keyed
+ *    by context id. That map was per-browser: the creator saw "Q3 Budget" and
+ *    every person they invited saw "Workspace 1", because the name had never
+ *    been sent anywhere.
+ * 3. Opening a spreadsheet JOINS its context when this node holds no identity
+ *    in it. Waiting for auto-follow — which only carries identities into
+ *    contexts created after you joined — is why an invited collaborator could
+ *    sit on "Opening workspace…" indefinitely with nothing logged.
+ * 4. Invitations are minted and redeemed through `lib/workspaces` + the shared
+ *    link/codec modules, so the paste path and the link path cannot drift.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   useMero,
   useNamespacesForApplication,
-  useCreateNamespaceInvitation,
-  useJoinNamespace,
   useGroupContexts,
 } from '@calimero-network/mero-react';
-import { PRIMARY_SERVICE } from '../config';
-import { decodeInvitation } from '../utils/invitation';
-
-const ENV_APPLICATION_ID = import.meta.env.VITE_APPLICATION_ID?.trim() || null;
-
-// Members can create per-namespace contexts + invite others. Mirrors core's
-// MemberCapabilities bits (CAN_CREATE_CONTEXT | CAN_INVITE_MEMBERS).
-const DEFAULT_CAPABILITIES = 1 | 2; // = 3
-
-// ── Local name store ──────────────────────────────────────────────────────────
-// The node returns context ids, not project names. We remember the name the
-// creator typed (per contextId) so the workspace list is human-readable.
-const NAME_KEY = 'mero-sheets:workspace-names';
-
-function loadNames(): Record<string, string> {
-  try {
-    return JSON.parse(localStorage.getItem(NAME_KEY) || '{}');
-  } catch {
-    return {};
-  }
-}
-function saveName(contextId: string, name: string) {
-  try {
-    const all = loadNames();
-    all[contextId] = name;
-    localStorage.setItem(NAME_KEY, JSON.stringify(all));
-  } catch {
-    /* ignore quota / disabled storage */
-  }
-}
+import { APP_DISPLAY_NAME, PRIMARY_SERVICE } from '../config';
+import { useApplicationId } from './useApplicationId';
+import { decodeInvite } from '../lib/inviteCodec';
+import {
+  acceptInvite,
+  createSpreadsheet,
+  enterSpreadsheet,
+  ensureNamespace,
+  listSpreadsheets,
+  mintInvite,
+  namespaceLabel,
+  spreadsheetFallbackLabel,
+  type SpreadsheetRow,
+} from '../lib/workspaces';
 
 export interface Workspace {
   contextId: string;
   name: string;
+  /** True when `name` is a placeholder rather than something someone typed. */
+  unnamed: boolean;
 }
 
 export interface UseWorkspaceReturn {
-  /** Every workspace (context) in the namespace — the list to pick from. */
+  /** Every spreadsheet in the workspace — the list to pick from. */
   workspaces: Workspace[];
-  /** The active workspace's context id — null when showing the list. */
+  /** The namespace holding them, or null before one exists on this node. */
+  namespaceId: string | null;
+  /** Its human name. Never a bare id — see `namespaceLabel`. */
+  namespaceName: string;
+  /** The open spreadsheet's context id — null when showing the picker. */
   contextId: string | null;
-  /** Executor public key for the active context (the signer for RPC calls). */
+  /** Executor public key for the open context (the signer for RPC calls). */
   executorPublicKey: string | null;
-  /** True once the active context is resolved and we hold its executor identity. */
+  /** The open spreadsheet's name, as the picker knows it. */
+  activeName: string;
+  /** True once the open context is resolved and we hold its executor identity. */
   ready: boolean;
   loading: boolean;
+  /** What a multi-step operation is currently doing, for the UI to echo. */
+  status: string | null;
   error: Error | null;
-  /** Open an existing workspace by context id. */
+  /** True when the node has answered and this app is not installed on it. */
+  notInstalled: boolean;
   openWorkspace: (contextId: string) => void;
-  /** Create a new workspace (namespace on first run) and open it. The caller
-   *  runs `initProject(name)` once it becomes ready. */
   createWorkspace: (name: string) => Promise<void>;
-  /** The name a freshly-created workspace should be initialised with, or null. */
+  /** The name a freshly-created spreadsheet should be initialised with. */
   pendingInitName: string | null;
-  /** Clear the pending init flag once the project has been initialised. */
   clearPendingInit: () => void;
-  /** Return to the workspace list (close the active workspace). */
   leaveWorkspace: () => void;
-  /** Mint a shareable invitation code for the current namespace. */
-  invite: () => Promise<unknown>;
+  /** Mint a shareable invite code for this workspace. */
+  invite: (opts?: { contextId?: string | null; projectName?: string }) => Promise<string>;
   inviteLoading: boolean;
-  /** Join an existing workspace from a share code (base64 or raw JSON). */
-  join: (code: string) => Promise<void>;
+  /** Redeem an invitation link or code. */
+  join: (codeOrLink: string) => Promise<void>;
   joinLoading: boolean;
+  /** Re-read namespaces and contexts from the node. */
+  refresh: () => Promise<void>;
 }
 
 export function useWorkspace(): UseWorkspaceReturn {
   const {
     mero,
-    applicationId: authApplicationId,
     contextId: callbackContextId,
     contextIdentity: callbackContextIdentity,
   } = useMero();
-  const applicationId = authApplicationId || ENV_APPLICATION_ID;
+  const { appId: applicationId, resolving: appIdResolving, notInstalled } =
+    useApplicationId();
 
-  const { namespaces, loading: nsLoading, refetch: refetchNamespaces } =
-    useNamespacesForApplication(applicationId);
-  const { createNamespaceInvitation, loading: inviteLoading } = useCreateNamespaceInvitation();
-  const { joinNamespace, loading: joinLoading } = useJoinNamespace();
+  const {
+    namespaces,
+    loading: nsLoading,
+    refetch: refetchNamespaces,
+  } = useNamespacesForApplication(applicationId || null);
 
   // The app's namespace (first one bound to this application). null on first run.
-  const namespaceId = namespaces[0]?.namespaceId ?? null;
+  const namespace = namespaces[0] ?? null;
+  const namespaceId = namespace?.namespaceId ?? null;
+  const namespaceName = namespace
+    ? namespaceLabel(namespace, APP_DISPLAY_NAME)
+    : APP_DISPLAY_NAME;
 
-  // Contexts inside that namespace — one per workspace.
-  const { contexts: nsContexts, loading: ctxLoading, refetch: refetchContexts } =
-    useGroupContexts(namespaceId);
+  const {
+    contexts: nsContexts,
+    loading: ctxLoading,
+    refetch: refetchContexts,
+  } = useGroupContexts(namespaceId);
 
+  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [contextId, setContextId] = useState<string | null>(callbackContextId);
   const [executorPublicKey, setExecutorPublicKey] = useState<string | null>(
     callbackContextIdentity,
   );
-  const [bootstrapping, setBootstrapping] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<Error | null>(null);
   const [pendingInitName, setPendingInitName] = useState<string | null>(null);
-  const [nameVersion, setNameVersion] = useState(0); // bump to re-read local names
+  const [inviteLoading, setInviteLoading] = useState(false);
+  const [joinLoading, setJoinLoading] = useState(false);
 
   // Desktop SSO: the auth callback pins a specific context — open it directly.
   useEffect(() => {
@@ -127,31 +139,58 @@ export function useWorkspace(): UseWorkspaceReturn {
     }
   }, [callbackContextId, callbackContextIdentity]);
 
-  // Resolve the executor identity we own in the active context. Runs whenever
-  // the active context changes (executorPublicKey is reset to null on switch).
+  // Resolve the spreadsheet names from the node whenever the context list moves.
+  //
+  // A separate effect rather than a `useMemo` because it is asynchronous: the
+  // names live in replicated metadata records, one read per context. Keyed on
+  // the context ids so it does not re-run on every unrelated render.
+  const contextKey = nsContexts.map((c) => c.contextId).join(',');
+  useEffect(() => {
+    if (!mero || !namespaceId) {
+      setWorkspaces([]);
+      return;
+    }
+    let cancelled = false;
+    void listSpreadsheets(mero.admin, namespaceId, nsContexts).then(
+      (rows: SpreadsheetRow[]) => {
+        if (!cancelled) setWorkspaces(rows);
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mero, namespaceId, contextKey]);
+
+  // Get an executor identity in the open context — joining it when this node
+  // holds none, which is ALWAYS the case for a spreadsheet you were invited to.
   useEffect(() => {
     if (!mero || !contextId || executorPublicKey) return;
     let cancelled = false;
-    (async () => {
+    void (async () => {
       try {
-        const { identities } = await mero.admin.getContextIdentitiesOwned(contextId);
-        if (!cancelled && identities.length > 0) setExecutorPublicKey(identities[0]);
-      } catch {
-        /* leave null — the workspace stays not-ready until an identity resolves */
+        const identity = await enterSpreadsheet(mero.admin, contextId, (s) => {
+          if (!cancelled) setStatus(s);
+        });
+        if (!cancelled) {
+          setExecutorPublicKey(identity);
+          setStatus(null);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err : new Error(String(err)));
+          setStatus(null);
+        }
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [mero, contextId, executorPublicKey]);
 
-  const workspaces: Workspace[] = useMemo(() => {
-    const names = loadNames();
-    // nameVersion is a dependency so the list re-derives after a create/rename.
-    void nameVersion;
-    return nsContexts.map((c, i) => ({
-      contextId: c.contextId,
-      name: names[c.contextId] || `Workspace ${i + 1}`,
-    }));
-  }, [nsContexts, nameVersion]);
+  const refresh = useCallback(async () => {
+    await Promise.all([refetchNamespaces(), refetchContexts()]);
+  }, [refetchNamespaces, refetchContexts]);
 
   const openWorkspace = useCallback((id: string) => {
     setError(null);
@@ -163,6 +202,8 @@ export function useWorkspace(): UseWorkspaceReturn {
     setContextId(null);
     setExecutorPublicKey(null);
     setPendingInitName(null);
+    setStatus(null);
+    setError(null);
   }, []);
 
   const clearPendingInit = useCallback(() => setPendingInitName(null), []);
@@ -172,87 +213,126 @@ export function useWorkspace(): UseWorkspaceReturn {
     async (name: string) => {
       if (!mero || !applicationId || creatingRef.current) return;
       creatingRef.current = true;
-      setBootstrapping(true);
+      setBusy(true);
       setError(null);
       try {
-        // Reuse the app's namespace, or create it on first run.
-        let nsId = namespaceId;
-        if (!nsId) {
-          // No upgradePolicy: mero-js 13 dropped it from CreateNamespaceRequest
-          // (the node applies its default). Matches the fleet's createNamespace.
-          const ns = await mero.admin.createNamespace({ applicationId });
-          await mero.admin.setDefaultCapabilities(ns.namespaceId, {
-            defaultCapabilities: DEFAULT_CAPABILITIES,
-          });
-          nsId = ns.namespaceId;
-        }
-        const ctx = await mero.admin.createContext({
-          applicationId,
-          groupId: nsId,
-          serviceName: PRIMARY_SERVICE.name,
-          initializationParams: [],
-        });
-        saveName(ctx.contextId, name);
-        setNameVersion((v) => v + 1);
+        const nsId = await ensureNamespace(
+          mero.admin,
+          {
+            applicationId,
+            existingNamespaceId: namespaceId,
+            // The namespace is what an invitation names, so it gets a readable
+            // name too — `createNamespace` has always taken one and this app
+            // never passed it, which is why every invite described itself with
+            // a 64-hex group id.
+            name: APP_DISPLAY_NAME,
+          },
+          setStatus,
+        );
+        const ctx = await createSpreadsheet(
+          mero.admin,
+          {
+            applicationId,
+            namespaceId: nsId,
+            name,
+            serviceName: PRIMARY_SERVICE.name,
+          },
+          setStatus,
+        );
         setExecutorPublicKey(ctx.memberPublicKey);
         setContextId(ctx.contextId);
-        setPendingInitName(name); // AppPage runs initProject once ready
-        await Promise.all([refetchNamespaces(), refetchContexts()]);
+        setPendingInitName(name); // AppPage runs init_project once ready
+        await refresh();
       } catch (err) {
         setError(err instanceof Error ? err : new Error(String(err)));
       } finally {
         creatingRef.current = false;
-        setBootstrapping(false);
+        setBusy(false);
+        setStatus(null);
       }
     },
-    [mero, applicationId, namespaceId, refetchNamespaces, refetchContexts],
+    [mero, applicationId, namespaceId, refresh],
   );
 
-  const invite = useCallback(async () => {
-    if (!namespaceId) throw new Error('No workspace yet — create one first.');
-    return createNamespaceInvitation(namespaceId, { recursive: true });
-  }, [namespaceId, createNamespaceInvitation]);
+  const activeName = useMemo(() => {
+    if (!contextId) return APP_DISPLAY_NAME;
+    const row = workspaces.find((w) => w.contextId === contextId);
+    return row?.name ?? spreadsheetFallbackLabel(contextId);
+  }, [contextId, workspaces]);
 
-  const join = useCallback(async (code: string) => {
-    const parsed = decodeInvitation(code) as any;
+  const invite = useCallback(
+    async (opts?: { contextId?: string | null; projectName?: string }) => {
+      if (!mero) throw new Error('Not connected to a node.');
+      if (!namespaceId) {
+        throw new Error('No workspace yet — create a spreadsheet first.');
+      }
+      setInviteLoading(true);
+      try {
+        return await mintInvite(
+          mero.admin,
+          {
+            namespaceId,
+            namespaceName,
+            contextId: opts?.contextId ?? null,
+            projectName: opts?.projectName,
+          },
+          setStatus,
+        );
+      } finally {
+        setInviteLoading(false);
+        setStatus(null);
+      }
+    },
+    [mero, namespaceId, namespaceName],
+  );
 
-    // Share codes wrap the raw namespace invitation; unwrap to {nsId, invitation}.
-    let nsId: string | null = null;
-    let invitation = parsed;
-    let groupName: string | undefined;
-    if (Array.isArray(parsed?.invitations) && parsed.invitations.length > 0) {
-      const first = parsed.invitations[0];
-      nsId = first.groupId;
-      invitation = first.invitation;
-      groupName = first.groupAlias || undefined;
-    } else if (parsed?.invitation?.groupId) {
-      const gid = parsed.invitation.groupId;
-      nsId = Array.isArray(gid)
-        ? gid.map((b: number) => b.toString(16).padStart(2, '0')).join('')
-        : String(gid);
-      groupName = parsed.groupAlias || undefined;
-    }
-    if (!nsId) throw new Error('Invalid invitation: cannot determine namespace.');
-
-    await joinNamespace(nsId, { invitation, groupName });
-    await Promise.all([refetchNamespaces(), refetchContexts()]);
-  }, [joinNamespace, refetchNamespaces, refetchContexts]);
+  const join = useCallback(
+    async (codeOrLink: string) => {
+      if (!mero) throw new Error('Not connected to a node.');
+      const payload = decodeInvite(codeOrLink);
+      if (!payload) {
+        throw new Error(
+          'That invitation could not be read. Paste the whole link you were sent.',
+        );
+      }
+      setJoinLoading(true);
+      setError(null);
+      try {
+        const landed = await acceptInvite(mero.admin, payload, setStatus);
+        await refresh();
+        // The code can name a spreadsheet to open. It is an unsigned hint, so
+        // the node still decides whether to admit us — `openWorkspace` goes
+        // through `enterSpreadsheet`, which asks.
+        if (landed.contextId) openWorkspace(landed.contextId);
+      } finally {
+        setJoinLoading(false);
+        setStatus(null);
+      }
+    },
+    [mero, refresh, openWorkspace],
+  );
 
   return {
     workspaces,
+    namespaceId,
+    namespaceName,
     contextId,
     executorPublicKey,
+    activeName,
     ready: contextId !== null && executorPublicKey !== null,
-    loading: nsLoading || ctxLoading || bootstrapping,
+    loading: appIdResolving || nsLoading || ctxLoading || busy,
+    status,
     error,
+    notInstalled,
     openWorkspace,
     createWorkspace,
     pendingInitName,
     clearPendingInit,
     leaveWorkspace,
     invite,
-    join,
     inviteLoading,
+    join,
     joinLoading,
+    refresh,
   };
 }

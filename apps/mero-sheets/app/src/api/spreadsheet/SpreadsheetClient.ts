@@ -98,6 +98,16 @@ export interface Event_CursorRemoved {
   author: string;
 }
 
+export interface Event_MemberJoined {
+  id: string;
+  nickname: string;
+}
+
+export interface Event_MemberRenamed {
+  id: string;
+  nickname: string;
+}
+
 export interface Event_ProjectInitialized {
   id: string;
   name: string;
@@ -124,6 +134,25 @@ export interface FunctionDef {
   example: string;
 }
 
+export interface Member {
+  id: string;
+  nickname: string;
+  joined_at: number;
+  updated_at: number;
+}
+
+export interface MemberData {
+  nickname: string;
+  joined_at: number;
+  updated_at: number;
+}
+
+export interface Project {
+  id: string;
+  name: string;
+  created_at: number;
+}
+
 export interface Sheet {
   id: string;
   name: string;
@@ -146,7 +175,10 @@ export interface Spreadsheet {
   sheets: Record<string, SheetData>;
   cells: Record<string, CellData>;
   cursors: Record<string, CursorData>;
+  members: Record<string, MemberData>;
 }
+
+
 
 
 
@@ -163,6 +195,8 @@ export type AbiEvent =
   | { name: "CellsChanged"; payload: Event_CellsChanged }
   | { name: "CursorMoved"; payload: Event_CursorMoved }
   | { name: "CursorRemoved"; payload: Event_CursorRemoved }
+  | { name: "MemberJoined"; payload: Event_MemberJoined }
+  | { name: "MemberRenamed"; payload: Event_MemberRenamed }
   | { name: "ProjectInitialized"; payload: Event_ProjectInitialized }
   | { name: "SheetCreated"; payload: Event_SheetCreated }
   | { name: "SheetDeleted"; payload: Event_SheetDeleted }
@@ -254,6 +288,22 @@ export class SpreadsheetClient {
   }
 
   /**
+   * get_members
+   */
+  public async getMembers(): Promise<Member[]> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_members', argsJson: {}, executorPublicKey: this._executorPublicKey });
+    return response as Member[];
+  }
+
+  /**
+   * get_project
+   */
+  public async getProject(): Promise<Project> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_project', argsJson: {}, executorPublicKey: this._executorPublicKey });
+    return response as Project;
+  }
+
+  /**
    * init
    */
   public async init(): Promise<void> {
@@ -267,6 +317,14 @@ export class SpreadsheetClient {
   public async initProject(params: { name: string }): Promise<string> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'init_project', argsJson: params, executorPublicKey: this._executorPublicKey });
     return response as string;
+  }
+
+  /**
+   * join
+   */
+  public async join(params: { nickname: string }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'join', argsJson: params, executorPublicKey: this._executorPublicKey });
+    return response as void;
   }
 
   /**
@@ -331,6 +389,14 @@ export class SpreadsheetClient {
   public async updateCursor(params: { sheet_id: string; row: number; col: number }): Promise<void> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'update_cursor', argsJson: params, executorPublicKey: this._executorPublicKey });
     return response as void;
+  }
+
+  /**
+   * whoami
+   */
+  public async whoami(): Promise<string> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'whoami', argsJson: {}, executorPublicKey: this._executorPublicKey });
+    return response as string;
   }
 
 }

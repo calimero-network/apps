@@ -354,6 +354,40 @@
         }
       ]
     },
+    "Event_MemberJoined": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "nickname",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_MemberRenamed": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "nickname",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
     "Event_ProjectInitialized": {
       "kind": "record",
       "fields": [
@@ -441,6 +475,81 @@
           "name": "example",
           "type": {
             "kind": "string"
+          }
+        }
+      ]
+    },
+    "Member": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "nickname",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "joined_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "MemberData": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "nickname",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "joined_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "Project": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
           }
         }
       ]
@@ -583,6 +692,19 @@
             },
             "crdt_type": "authored_map"
           }
+        },
+        {
+          "name": "members",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "MemberData"
+            },
+            "crdt_type": "unordered_map"
+          }
         }
       ]
     }
@@ -723,6 +845,23 @@
       }
     },
     {
+      "name": "get_members",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "Member"
+        }
+      }
+    },
+    {
+      "name": "get_project",
+      "params": [],
+      "returns": {
+        "$ref": "Project"
+      }
+    },
+    {
       "name": "init",
       "params": [],
       "returns": {
@@ -741,6 +880,20 @@
       ],
       "returns": {
         "kind": "string"
+      }
+    },
+    {
+      "name": "join",
+      "params": [
+        {
+          "name": "nickname",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
       }
     },
     {
@@ -918,6 +1071,13 @@
       "returns": {
         "kind": "unit"
       }
+    },
+    {
+      "name": "whoami",
+      "params": [],
+      "returns": {
+        "kind": "string"
+      }
     }
   ],
   "events": [
@@ -949,6 +1109,18 @@
       "name": "CursorRemoved",
       "payload": {
         "$ref": "Event_CursorRemoved"
+      }
+    },
+    {
+      "name": "MemberJoined",
+      "payload": {
+        "$ref": "Event_MemberJoined"
+      }
+    },
+    {
+      "name": "MemberRenamed",
+      "payload": {
+        "$ref": "Event_MemberRenamed"
       }
     },
     {

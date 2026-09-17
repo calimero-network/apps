@@ -74,3 +74,41 @@ fn sheet_renames_converge() {
     })
     .assert_all_replicas_equal();
 }
+
+/// The nickname roster is the one piece of state added for this feature, and it
+/// is written concurrently by definition — everybody names themselves at once
+/// when an invitation link is opened by several people.
+///
+/// This is the realistic shape of that: `converge_app` gives each replica a
+/// DISTINCT device id (genesis is `ee..ee`, the replicas are `01..`, `02..`,
+/// `03..`), and `members` is keyed by device, so three concurrent `join`s must
+/// produce three NEW rows beside the seeded one rather than three replicas
+/// fighting over a single key. Asserting "one member" here would have been
+/// asserting the bug — a roster that keeps only the last person to name
+/// themselves.
+#[test]
+#[serial]
+fn member_nicknames_converge() {
+    converge_app(|| {
+        let mut s = Spreadsheet::init();
+        let _ = s.init_project("Test Project".into());
+        let _ = s.join("Anonymous".into());
+        s
+    })
+    .replicas(3)
+    .ops(|s| {
+        let _ = s.join("Ada".into());
+    })
+    .invariant(
+        "every concurrent join survives, one row per device, none anonymous",
+        |s| {
+            let members = s.get_members().unwrap_or_default();
+            // 1 seeded (genesis) + 1 per replica. No row is dropped and no two
+            // devices collapse onto one key.
+            members.len() == 4
+                && members.iter().filter(|m| m.nickname == "Ada").count() == 3
+                && members.iter().all(|m| !m.nickname.is_empty())
+        },
+    )
+    .assert_all_replicas_equal();
+}

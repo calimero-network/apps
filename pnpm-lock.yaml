@@ -1208,12 +1208,21 @@ importers:
       '@calimero-network/mero-js':
         specifier: 'catalog:'
         version: 18.3.0
+      '@calimero-network/mero-platform':
+        specifier: 'catalog:'
+        version: 0.1.0
       '@calimero-network/mero-react':
         specifier: 'catalog:'
         version: 9.0.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@calimero-network/mero-ui':
         specifier: 'catalog:'
         version: 1.5.1(@floating-ui/dom@1.8.0)(@tiptap/core@3.30.5(@tiptap/pm@3.30.5))(@tiptap/pm@3.30.5)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      bs58:
+        specifier: 'catalog:'
+        version: 6.0.0
+      fflate:
+        specifier: 'catalog:'
+        version: 0.8.3
       react:
         specifier: 'catalog:'
         version: 19.2.8
@@ -1226,10 +1235,16 @@ importers:
       styled-components:
         specifier: ^6.1.11
         version: 6.5.3(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      uqr:
+        specifier: ^0.1.2
+        version: 0.1.3
     devDependencies:
       '@calimero-network/abi-codegen':
         specifier: 'catalog:'
         version: 1.2.2
+      '@eslint/js':
+        specifier: 'catalog:'
+        version: 9.39.5
       '@playwright/test':
         specifier: ^1.59.1
         version: 1.62.1
@@ -1248,6 +1263,15 @@ importers:
       '@vitejs/plugin-react':
         specifier: 'catalog:'
         version: 4.7.0(vite@6.4.3(@types/node@25.9.5)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.103.1)(tsx@4.23.13))
+      eslint:
+        specifier: 'catalog:'
+        version: 9.39.5(jiti@2.7.0)
+      eslint-plugin-react-hooks:
+        specifier: 'catalog:'
+        version: 5.2.0(eslint@9.39.5(jiti@2.7.0))
+      globals:
+        specifier: 'catalog:'
+        version: 16.5.0
       tweetnacl:
         specifier: ^1.0.3
         version: 1.0.3
@@ -1257,6 +1281,9 @@ importers:
       typescript:
         specifier: 'catalog:'
         version: 5.8.3
+      typescript-eslint:
+        specifier: 'catalog:'
+        version: 8.68.0(eslint@9.39.5(jiti@2.7.0))(typescript@5.8.3)
       vite:
         specifier: 'catalog:'
         version: 6.4.3(@types/node@25.9.5)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.103.1)(tsx@4.23.13)
@@ -7596,6 +7623,9 @@ packages:
     hasBin: true
     peerDependencies:
       browserslist: '>= 4.21.0'
+
+  uqr@0.1.3:
+    resolution: {integrity: sha512-0rjE8iEJe4YmT9TOhwsZtqCMRLc5DXZUI2UEYUUg63ikBkqqE5EYWaI0etFe/5KUcmcYwLih2RND1kq+hrUJXA==}
 
   uri-js@4.4.1:
     resolution: {integrity: sha512-7rKUyy33Q1yc98pQ1DAmLtwX109F7TIfWlW1Ydo8Wl1ii1SeHieeh0HHfPeL2fMXK6z0s8ecKs9frCuLJvndBg==}
@@ -15007,6 +15037,8 @@ snapshots:
       browserslist: 4.28.8
       escalade: 3.2.0
       picocolors: 1.1.1
+
+  uqr@0.1.3: {}
 
   uri-js@4.4.1:
     dependencies:

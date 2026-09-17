@@ -83,6 +83,29 @@
         }
       ]
     },
+    "MemberData": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "nickname",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "joined_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
     "SheetData": {
       "kind": "record",
       "fields": [
@@ -191,6 +214,19 @@
               "$ref": "CursorData"
             },
             "crdt_type": "authored_map"
+          }
+        },
+        {
+          "name": "members",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "MemberData"
+            },
+            "crdt_type": "unordered_map"
           }
         }
       ]

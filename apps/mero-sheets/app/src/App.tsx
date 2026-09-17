@@ -1,10 +1,17 @@
-import React, { type ReactNode } from 'react';
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import React, { type ReactNode, useCallback } from 'react';
+import {
+  BrowserRouter,
+  Navigate,
+  Route,
+  Routes,
+  useNavigate,
+} from 'react-router-dom';
 import { AppMode, MeroProvider, useMero } from '@calimero-network/mero-react';
 import { ToastProvider } from '@calimero-network/mero-ui';
 
 import LandingPage from './pages/landing/LandingPage';
 import AppPage from './pages/app/AppPage';
+import InvitationPrompt from './components/InvitationPrompt';
 import { APP_PACKAGE, APP_ROUTE } from './config';
 
 /** Every path the shared landing page serves. See src/pages/landing. */
@@ -35,6 +42,30 @@ function RedirectIfAuthed({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
+/**
+ * The invitation prompt, mounted ABOVE the routes.
+ *
+ * An invitation link can land on any URL — and in this app it reliably lands on
+ * one that immediately redirects: an authenticated visitor is bounced from `/`
+ * to the app route, and an unauthenticated one goes through the whole login
+ * round-trip first. A handler living on a page would miss the invitation in both
+ * of the two cases that actually happen, so it lives here, where it is always
+ * mounted, and the platform store buffers the intent until it asks.
+ *
+ * Accepting navigates to the app route; `useWorkspace` there re-reads the
+ * namespaces and finds the one that was just joined.
+ */
+function AppInvitations() {
+  const navigate = useNavigate();
+  const onJoined = useCallback(() => navigate(APP_ROUTE), [navigate]);
+  const { isAuthenticated, isLoading } = useMero();
+  // Nothing to join into without a node session, and prompting before login
+  // would ask a question the user cannot answer yet. The intent is durable, so
+  // it is still here after they sign in.
+  if (isLoading || !isAuthenticated) return null;
+  return <InvitationPrompt onJoined={onJoined} />;
+}
+
 export default function App() {
   const registryUrl =
     import.meta.env.VITE_REGISTRY_URL?.trim() || 'https://apps.calimero.network';
@@ -54,6 +85,7 @@ export default function App() {
     >
       <ToastProvider>
         <BrowserRouter basename="/">
+          <AppInvitations />
           <Routes>
             {/* Landing is the front door; authenticated users (incl. desktop
                 SSO skip) are redirected straight into the app. */}
