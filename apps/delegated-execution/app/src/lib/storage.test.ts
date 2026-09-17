@@ -69,14 +69,20 @@ describe('settings', () => {
       JSON.stringify({ nodeUrl: 'http://127.0.0.1:2428' }),
     );
     expect(loadSettings()).toEqual({
+      ...EMPTY_SETTINGS,
       nodeUrl: 'http://127.0.0.1:2428',
-      nodeKey: '',
-      contextId: '',
     });
   });
 
   it('round-trips', () => {
-    const settings = { nodeUrl: 'http://n', nodeKey: 'f'.repeat(64), contextId: '1'.repeat(64) };
+    const settings = {
+      cloudUrl: 'https://manager.example',
+      namespaceId: 'a'.repeat(64),
+      invitationJson: '{"invitation":{}}',
+      nodeKey: 'f'.repeat(64),
+      contextId: '1'.repeat(64),
+      nodeUrl: 'http://n',
+    };
     saveSettings(settings);
     expect(loadSettings()).toEqual(settings);
   });

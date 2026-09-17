@@ -230,3 +230,33 @@ footer {
 a {
   color: var(--accent);
 }
+
+/* Discovery results: one line per node, with why it can or cannot be used. The
+   three states are visually distinct because "healthy but not in your
+   invitation" is the one a reader will otherwise mistake for a broken node. */
+.nodes {
+  list-style: none;
+  padding: 0;
+  margin: 0.75rem 0 0;
+  font-size: 0.85rem;
+}
+.nodes li {
+  padding: 0.35rem 0.5rem;
+  border-left: 3px solid var(--muted, #888);
+  margin-bottom: 0.25rem;
+}
+.nodes li[data-kind='usable'] {
+  border-left-color: #2e9e5b;
+}
+.nodes li[data-kind='invited-unreachable'] {
+  border-left-color: #c08a2e;
+}
+.nodes li[data-kind='not-invited'] {
+  border-left-color: #b4433a;
+}
+
+.aside {
+  font-size: 0.8rem;
+  opacity: 0.8;
+  margin: 0.5rem 0 0;
+}

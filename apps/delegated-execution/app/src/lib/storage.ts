@@ -37,22 +37,49 @@ const SETTINGS_KEY = 'calimero.delegated-demo.settings';
 
 /** Where this tab is pointed, and at what. */
 export interface Settings {
-  /** The node's base URL, e.g. `http://127.0.0.1:2428`. */
-  nodeUrl: string;
   /**
-   * The node's device signing key, 64 hex — **as pinned out of band**.
+   * The cloud manager's base URL.
    *
-   * Typed in by the operator rather than read from the node, because a value
-   * the node chose would let whoever answered decide what this device signs
-   * about. That is the entire reason the field exists, so the demo keeps the
-   * awkwardness instead of smoothing it away with a lookup.
+   * Routing comes from here rather than from a typed-in node address: the cloud
+   * knows which nodes serve a namespace, whether their heartbeats are fresh, and
+   * whether each holds `CAN_AUTHOR_ON_BEHALF` — none of which a pasted URL can
+   * say, and all of which decide whether a write will be taken.
+   */
+  cloudUrl: string;
+  /** The namespace the invitation is for, 64 hex. */
+  namespaceId: string;
+  /**
+   * The invitation as the operator's node issued it, verbatim JSON.
+   *
+   * The signed body carries the `admitters` list, which is authorization: a node
+   * outside it refuses the claim. Everything beside the signature is a hint.
+   */
+  invitationJson: string;
+  /**
+   * The node's device signing key, 64 hex — **still pinned out of band**.
+   *
+   * The one field discovery cannot supply. It is the `node` binding inside the
+   * login statement, and a node that told you its own key could decide what you
+   * signed about. Neither the invitation nor the cloud carries it, and the cloud
+   * serving a node-*reported* value would move the trust-on-first-use one hop
+   * rather than remove it — closing this needs the key inside the attestation
+   * quote's binding, which is tracked separately.
    */
   nodeKey: string;
   /** The context to read and write, 64 hex. */
   contextId: string;
+  /** Resolved by discovery, not typed: the chosen admitter's base URL. */
+  nodeUrl: string;
 }
 
-export const EMPTY_SETTINGS: Settings = { nodeUrl: '', nodeKey: '', contextId: '' };
+export const EMPTY_SETTINGS: Settings = {
+  cloudUrl: '',
+  namespaceId: '',
+  invitationJson: '',
+  nodeKey: '',
+  contextId: '',
+  nodeUrl: '',
+};
 
 /** Read JSON from `localStorage`, treating any failure as absence. */
 function read<T>(key: string): T | null {
@@ -99,11 +126,17 @@ export function saveIdentity(identity: DeviceIdentity): void {
 
 export function loadSettings(): Settings {
   const stored = read<Partial<Settings>>(SETTINGS_KEY);
-  return {
-    nodeUrl: stored?.nodeUrl ?? EMPTY_SETTINGS.nodeUrl,
-    nodeKey: stored?.nodeKey ?? EMPTY_SETTINGS.nodeKey,
-    contextId: stored?.contextId ?? EMPTY_SETTINGS.contextId,
-  };
+  // Spread the defaults rather than naming each field: a blob written before a
+  // field existed must load it as `''` and not `undefined`, or React renders an
+  // uncontrolled input and warns on the first keystroke. Listing the fields by
+  // hand meant every new setting needed a matching line here, and forgetting one
+  // showed up only as that warning.
+  const merged: Settings = { ...EMPTY_SETTINGS };
+  for (const key of Object.keys(EMPTY_SETTINGS) as (keyof Settings)[]) {
+    const value = stored?.[key];
+    if (typeof value === 'string') merged[key] = value;
+  }
+  return merged;
 }
 
 export function saveSettings(settings: Settings): void {
