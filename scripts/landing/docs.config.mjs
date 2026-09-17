@@ -29,6 +29,68 @@ const OFFLINE = {
 };
 
 export const DOCS = {
+  'mero-chess': {
+    docs: [
+      {
+        id: 'concepts',
+        heading: 'The words, and what they mean here',
+        paragraphs: [
+          'A game of chess is a Calimero context. There is no server keeping the board: each player\u2019s own node runs the contract, holds the move list, and replicates it to the other. The rules — legal moves, check, mate, the draws — are inside that contract, so the node you are talking to is the referee, and so is theirs.',
+        ],
+        concepts: [
+          { term: 'Namespace', def: 'A club. You create one, invite the people you play with, and every table inside it is open to them without another invitation.' },
+          { term: 'Context', def: 'A table. It holds the seats, the move list and the record of every game played at it — one board, as many games as you like.' },
+          { term: 'Seat', def: 'White or black. The first person to claim a chair holds it; the colours swap on every rematch, the way they do across a real board.' },
+          { term: 'The move list', def: 'The whole of the game state. Nothing stores a board: every reader replays the moves from the starting array, which is why two nodes cannot disagree about the position.' },
+        ],
+      },
+      {
+        id: 'start',
+        heading: 'Getting started',
+        steps: [
+          { title: 'Connect a node', body: 'Press Connect to node. The Calimero desktop app bundles one; if you run your own, enter its URL in the same popup.' },
+          { title: 'Open a table', body: 'A new table is a context in a namespace you own. Joining someone else\u2019s means opening their invite link.' },
+          { title: 'Take a seat', body: 'Claim white or black and give yourself a name. The game begins when both chairs are taken.' },
+          { title: 'Play', body: 'Click a piece and then a square. The squares offered are the legal moves the contract handed your client, so the board never shows a move the node would refuse.' },
+        ],
+      },
+      {
+        id: 'sharing',
+        heading: 'Playing with someone else',
+        paragraphs: [
+          'Invitations are links. There is no account, no email address and no sign-up: opening the link and connecting a node is the whole of joining, and whoever opens it can take the free seat or watch.',
+          'The invitation admits someone to the namespace the table lives in, so one link is enough for every table in that namespace — a club rather than a single game.',
+        ],
+      },
+      {
+        id: 'storage',
+        heading: 'What is stored, and where',
+        bullets: [
+          'The move list, keyed by game and ply. Each entry holds the move in UCI, its notation, who played it and when.',
+          'The two seats, each recording who claimed it and at what moment. First claim wins, and every node resolves that the same way.',
+          'Endings that a PERSON caused: a resignation, an agreed draw, a claimed one. Checkmate, stalemate, a dead position and the repetition rules are derived from the moves instead, so nothing writes them down and nothing can disagree with the board.',
+          'Nothing is private here. Chess is a game of complete information, so everything in the state is meant to be seen by both players.',
+        ],
+      },
+      OFFLINE,
+      {
+        id: 'trouble',
+        heading: 'When something looks wrong',
+        concepts: [
+          { term: 'Your move is refused', def: 'The contract refuses a move that is not legal, is out of turn, or arrives in a finished game — and it says which. If the board offered the square, your client is reading a position the node has already moved past; it re-reads after every call.' },
+          { term: 'The other player looks offline', def: 'Presence expires after thirty seconds without a call from their node. It means "not heard from", not "gone": their moves still arrive when their node reconnects.' },
+          { term: 'You both moved at once', def: 'Only one of the two can take the ply, and every node picks the same one. The move that lost is simply not in the game — play it again if it is still legal.' },
+          { term: 'The invite link does nothing', def: 'An invitation is tied to the namespace that minted it. Ask for a fresh one rather than reusing an old link.' },
+        ],
+      },
+    ],
+    previewSteps: [
+      { title: 'A board that is a context', body: 'Two seats and a move list, replicated between the two players\u2019 own nodes. Nothing in the middle, and nothing to host.' },
+      { title: 'The contract knows the rules', body: 'Your client asks for the legal moves rather than working them out, so the squares it offers are the squares the node will accept.' },
+      { title: 'A move replicates', body: 'Moves are keyed by ply. Two players moving in the same instant resolve to one move, the same one on both nodes.' },
+      { title: 'The result is derived', body: 'Nobody writes down "checkmate": both nodes replay the same moves and reach the same verdict, which is what makes it trustworthy without a referee.' },
+    ],
+  },
   battleships: {
     docs: [
       {

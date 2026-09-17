@@ -1,0 +1,282 @@
+{
+  "schema_version": "wasm-abi/1",
+  "types": {
+    "DrawOffer": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "open",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "ply",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "Ending": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "result",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "reason",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "by",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "GameRecord": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "index",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "started_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "started_by",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "MeroChess": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "title",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "u64"
+            }
+          }
+        },
+        {
+          "name": "players",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Player"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "seats",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Seat"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "games",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "GameRecord"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "moves",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "MoveRecord"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "endings",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Ending"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "draw_offers",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "DrawOffer"
+            },
+            "crdt_type": "unordered_map"
+          }
+        }
+      ]
+    },
+    "MoveRecord": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "game",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "ply",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "uci",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "san",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "by",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "Player": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "joined_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "Seat": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "member",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "claimed_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    }
+  },
+  "methods": [],
+  "events": [],
+  "state_root": "MeroChess",
+  "state_version": 1
+}
