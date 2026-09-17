@@ -55,20 +55,14 @@ owns the context — which the "Check first" button answers without signing anyt
 ## It pins mero-js instead of using `catalog:`
 
 ```json
-"@calimero-network/mero-js": "^19.7.1"
+"@calimero-network/mero-js": "^19.9.0"
 ```
 
 The workspace catalog is on `^18.3.0`, which predates `login()`, `RelayClient` and
 `generateAccountRoot` — the three things this demo is built out of. Moving the catalog pin
 would re-resolve and re-test all sixteen apps for the benefit of this one, so the pin is
 local and this paragraph is the reason. **Fold it back into the catalog** the next time the
-catalog moves past 19.7.1.
-
-> **This pin is one release behind what step 2 needs.** The routing proof below uses
-> `CloudClient`'s `routingCredential`, which lands in the mero-js release after 19.7.1.
-> Bump this pin to it and the app typechecks; until then `pnpm -r typecheck` reports
-> `'routingCredential' does not exist in type 'CloudClientConfig'`, which is that missing
-> bump and nothing else.
+catalog moves past this version.
 
 ## What you need running
 
@@ -149,7 +143,7 @@ id the first panel shows:
 meroctl --node demo namespace invite <namespace-id>              # → invitation blob
 ```
 
-The joining side **is** in the demo now: step 2's second button signs the membership op
+The joining side **is** in the demo now: step 3's second button signs the membership op
 with the device key and posts it to the admitter the cloud resolved. You do not admit the
 account from a node you control — that is the whole point, and it is what makes the
 account a member of a namespace it has no node in.
@@ -164,7 +158,7 @@ not one.
 
 `published: true` means the op reached the namespace topic, not that you are a member.
 Membership lands when peers fold it, which the admitter neither performs nor waits for —
-so step 4 is the confirmation, and a 403 immediately after sending is usually that race
+so step 5 is the confirmation, and a 403 immediately after sending is usually that race
 rather than a refusal.
 
 ## Running it
@@ -183,14 +177,50 @@ are two different audiences.
 | Step | What happens | What it demonstrates |
 | --- | --- | --- |
 | 1. Mint | An account root and a device key are generated in the tab; the root certifies the device | Two keys, one certificate. Neither secret is ever sent; what travels carries no secret |
-| 2. Accept | The signed `admitters` list is intersected with the cloud's live routing, the routing read names your account, and the device signs the membership op the admitter carries | Two sources, two questions: who is *allowed* to admit you, and who is *reachable*. The node signing key is still **pinned out of band** — otherwise whoever answers picks what you sign about |
-| 3. Session | Challenge → statement signed by the device key → token | A session with no password in the path. The token authorises reads only |
-| 4. Read | `POST /admin-api/contexts/<id>/query` with the token | Membership is re-checked per call, not per session; only `&self` methods are reachable |
-| 5. Write | A warrant signed by the device, spent by the **cloud-resolved relay** | The session plays **no part**. The delta is attributed to *your* account, not the node's — and the relay need not be the node that admitted you |
+| 2. Connect to your cloud | The **account root** signs a cloud challenge, once; the cloud records the ownership and opens a session over it | The only proof on the page a device credential cannot make. Certificates are public, so device proofs say *a device of X is asking*; only the root says *X is mine* |
+| 3. Prove & accept | The device key signs a cloud challenge so the routing read names your account; the signed `admitters` list is intersected with the cloud's live routing; the device signs the membership op the admitter carries | Two sources, two questions: who is *allowed* to admit you, and who is *reachable*. The node signing key is still **pinned out of band** — otherwise whoever answers picks what you sign about |
+| 4. Session | Challenge → statement signed by the device key → token | A session with no password in the path. The token authorises reads only |
+| 5. Read | `POST /admin-api/contexts/<id>/query` with the token | Membership is re-checked per call, not per session; only `&self` methods are reachable |
+| 6. Write | A warrant signed by the device, spent by the **cloud-resolved relay** | The session plays **no part**. The delta is attributed to *your* account, not the node's — and the relay need not be the node that admitted you |
+
+## Connecting the account to your cloud is the root's one job
+
+Everything else this page signs is signed by the **device** key: the routing proof, the
+login statement, the warrant. All three rest on a certificate the root issued — and a
+certificate is *public*. It travels in the clear inside every device-link op, so the
+strongest statement any device proof can make is *"a device of account X is asking"*.
+
+It can never say *"X is mine"*. Only the root can, and step 2 is where it does: the cloud
+mints a challenge, the account root signs
+`calimero.mdma.account-login.v1\0 ‖ nonce`, and `POST /api/auth/account` verifies it and
+**writes the ownership down**. Once. From then on the cloud knows the account behind those
+later device proofs was claimed by whoever holds its root. A separate signing domain from
+the account-*link* proof, deliberately: both are a root signature over a cloud-issued
+nonce, so without the separation a signature gathered while linking — an operation you
+perform while signed in and trusting the page — would be replayable as a login.
+
+What comes back is the ordinary MDMA session token, the same one `signInWithGoogle`
+returns, which every cloud route already accepts. That is the "talk to the cloud just by
+holding the key" half, and the panel's second button spends it on
+`/api/cloud/me/namespaces` so you can see it is a real session rather than a claim about
+one.
+
+**Proven and entitled are two different things.** The cloud issues a session only where a
+`CloudAccountLink` exists — the proof establishes *who you are*, the link establishes *what
+you are entitled to*. Anyone can mint an account root offline, so a session on the proof
+alone would authenticate perfectly and authorize nothing: no cloud user, no plan, no
+namespaces to scope it to. An unlinked account therefore gets a 403 for the session **and
+its claim is recorded anyway**, so a keyholder who links later does not have to come back
+and prove again. The panel reports that state as *proven, unlinked* rather than as a
+failure, because it is one.
+
+Nothing else on the page needs the session. Routing reads prove themselves, the node
+session comes from the device key, and the write is authorised by a warrant — which is why
+step 2 is optional and the four steps after it work without it.
 
 ## The routing read proves an account, and only that
 
-Step 2 asks the cloud where to send a signed join. That read used to be anonymous, which
+Step 3 asks the cloud where to send a signed join. That read used to be anonymous, which
 meant anyone who learned a 32-byte namespace id could map which nodes serve it, their URLs
 and their liveness.
 
@@ -212,14 +242,22 @@ which account that is. **What it does not:** that the account was invited, or th
 member. The cloud cannot check either — membership is governance state on the nodes — and
 anyone can mint a root offline, so this is not a wall. It buys attribution and it ends
 anonymous bulk discovery. Authorization stays where it always was: at the node, on the
-signed op, which is why step 2 still refuses a node outside the invitation's signed list.
+signed op, which is why step 3 still refuses a node outside the invitation's signed list.
 
 The cloud does not yet *require* the proof. This demo sends it anyway, so a client that
 gets it wrong finds out now rather than on the day the flag flips.
 
+**"Prove my account to the cloud" makes it visible.** The proof rides every routing read
+whether or not you press it, so the button adds no capability — it exists because a demo
+that performs its central claim invisibly has not demonstrated anything. Pressing it shows
+the sealed challenge, the device signature, and the account the cloud then served the read
+as. There is deliberately nothing to stay connected to afterwards: no session is issued and
+nothing is stored, because a challenge is namespace-bound and expires in about two minutes,
+and every read proves itself again.
+
 ## The admitter and the relay are two different nodes
 
-Step 2 resolves both from one cloud read, and they are separate answers because
+Step 3 resolves both from one cloud read, and they are separate answers because
 they are separate permissions:
 
 - **Admission** is authorised by the invitation's signed `admitters` list. A node
@@ -228,9 +266,9 @@ they are separate permissions:
   governance op an admin signed. The cloud reports it as `canExecute` and has no
   say in granting it.
 
-One node often holds both, and step 2 prefers such a node so the demo lands on
+One node often holds both, and step 3 prefers such a node so the demo lands on
 one. But it only *prefers*: admission is the leg that cannot proceed without a
-node, so when no invited node can execute, step 2 still picks an admit-only one.
+node, so when no invited node can execute, step 3 still picks an admit-only one.
 Before the two were split, the write leg then reused that node — the panel said
 "it can admit but not execute" and the button posted there anyway.
 
@@ -243,7 +281,7 @@ for a reason that applies only to joins.
 Nothing forces the two legs onto one node. The intent carries a **warrant**, not
 the session token, so the relay never needs the session the admitter issued.
 
-When no node holds the grant, step 2 says so and leaves the relay unset rather
+When no node holds the grant, step 3 says so and leaves the relay unset rather
 than falling back — a healthy fleet with no authorship grant is a real state, and
 the remedy is a governance op, not a retry. The write panel shows which node it
 will use, and says when that differs from the admitter.
@@ -254,9 +292,14 @@ will use, and says when that differs from the admitter.
   is `Principal`'s job and it is real, but it is not observable from the HTTP responses —
   the author rides on the delta, not on the reply. Read it back from a *second* node, or
   see `delegated-authorship.yml`'s DAG assertions in core.
-- **It does not keep your account root.** It is held in memory long enough to certify a
-  device and then dropped; the 24-word phrase shown once is the only way back. The device
-  secret *is* persisted, because that is what a device holding a key means — and
-  "Forget this device" clears it together with its warrant nonce counter, which must go
-  with it or the next device replays numbers the network has already seen.
+- **It keeps your account root in `localStorage`, and a product must not.** Step 2's
+  claim is a *root* signature, so a tab that dropped the root could make it exactly once
+  and never again without re-entering 24 words — so this demo stores it. The trade is
+  real: a stolen device key is revocable, which is what device certificates are for, and a
+  stolen root is the account, permanently. A product keeps the root in a desktop app, a
+  hardware key or an OS keychain and signs the challenge there, which is why mero-js
+  splits `signAccountLogin` out from `signInWithAccount`. The device secret is persisted
+  for its own reason — that is what a device holding a key means — and "Forget this
+  device" clears both, plus the warrant nonce counter, which must go with them or the next
+  device replays numbers the network has already seen.
 - **It does not refresh the session.** Tokens expire; open a new one.

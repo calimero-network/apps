@@ -1,6 +1,16 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { EMPTY_SETTINGS, clearStored, loadIdentity, loadSettings, nonceStorageKey, saveIdentity, saveSettings } from './storage.js';
+import {
+  EMPTY_SETTINGS,
+  clearStored,
+  loadClaim,
+  loadIdentity,
+  loadSettings,
+  nonceStorageKey,
+  saveClaim,
+  saveIdentity,
+  saveSettings,
+} from './storage.js';
 import type { DeviceIdentity } from './identity.js';
 
 const IDENTITY: DeviceIdentity = {
@@ -38,6 +48,36 @@ describe('identity persistence', () => {
   });
 });
 
+const CLAIM = {
+  accountId: IDENTITY.accountId,
+  cloudUrl: 'https://manager.example',
+  provenAt: 1_700_000_000_000,
+  linked: false,
+  sessionToken: '',
+  email: '',
+};
+
+describe('the ownership claim', () => {
+  it('round-trips, because the claim is the one thing here that is durable', () => {
+    // A routing proof expires in two minutes and a session in a week; "the root
+    // of this account proved it owns it" is a fact the cloud has written down.
+    // The receipt is what lets the page say so after a reload.
+    saveClaim(CLAIM);
+    expect(loadClaim()).toEqual(CLAIM);
+  });
+
+  it('records an unlinked account as proven, not as failed', () => {
+    saveClaim({ ...CLAIM, linked: false });
+    expect(loadClaim()?.linked).toBe(false);
+    expect(loadClaim()?.accountId).toBe(IDENTITY.accountId);
+  });
+
+  it('treats a half-written receipt as absence', () => {
+    localStorage.setItem('calimero.delegated-demo.account-claim', JSON.stringify({ linked: true }));
+    expect(loadClaim()).toBeNull();
+  });
+});
+
 describe('clearStored', () => {
   it('takes the nonce counter with the identity', () => {
     saveIdentity(IDENTITY);
@@ -49,6 +89,17 @@ describe('clearStored', () => {
     // The combination that produces replayed warrants: a counter that outlives
     // the device it counted for.
     expect(localStorage.getItem(nonceStorageKey(IDENTITY.devicePublicKey))).toBeNull();
+  });
+
+  it('takes the cloud claim too', () => {
+    // A receipt outliving its key reads as "still connected" on a page that now
+    // holds nothing to prove it with.
+    saveIdentity(IDENTITY);
+    saveClaim(CLAIM);
+
+    clearStored(IDENTITY.devicePublicKey);
+
+    expect(loadClaim()).toBeNull();
   });
 
   it('is a no-op when there was no identity', () => {

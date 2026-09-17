@@ -23,9 +23,13 @@
 
 import {
   CloudClient,
+  HTTPError,
   RelayClient,
+  accountRootFromSecret,
   createLocalStorageNonceSource,
   login,
+  routingProofHeaders,
+  signAccountLogin,
   signMemberJoinOp,
   type DelegatedSession,
   type IntentResult,
@@ -377,4 +381,206 @@ function explainAdmitFailure(status: number, body: string): string {
     default:
       return `the join was not published (HTTP ${status})${detail}`;
   }
+}
+
+
+/** What proving an account to the cloud actually produced, so it can be shown. */
+export interface AccountProofResult {
+  /** The account the proof names — re-derived by the cloud from the root key. */
+  accountId: string;
+  /** The sealed challenge, as the cloud minted it. */
+  nonce: string;
+  /** When that challenge stops being accepted. */
+  expiresAtMs: number;
+  /** The signature sent, base64. */
+  signature: string;
+  /** Whether the cloud then served the routing read to this account. */
+  accepted: boolean;
+  /** How many nodes it answered with — evidence the read really happened. */
+  nodeCount: number;
+}
+
+/**
+ * Prove this account to the cloud, visibly and on its own.
+ *
+ * {@link discoverAdmitter} already does this as part of the routing read, but
+ * silently — which is the wrong shape for a demo whose entire job is to make
+ * the flow inspectable. This performs the same three steps and returns what
+ * each one produced, so the panel can show a challenge, a signature and the
+ * account the cloud read it as.
+ *
+ * There is deliberately no "connection" to hold onto afterwards. The cloud
+ * issues no session here and the client stores nothing: a challenge is sealed,
+ * namespace-bound and expires in about two minutes, and every routing read
+ * proves itself afresh. A button labelled "connect" would suggest a durable
+ * thing that does not exist — so this one demonstrates rather than connects.
+ */
+export async function proveAccountToCloud(
+  cloudUrl: string,
+  namespaceId: string,
+  identity: DeviceIdentity,
+): Promise<AccountProofResult> {
+  const base = normaliseUrl(cloudUrl);
+  const credential = {
+    credential: identity.credential,
+    deviceSecret: identity.deviceSecret,
+  };
+
+  // 1. Ask for a challenge. Public and unauthenticated on purpose: the nonce is
+  //    sealed and bound to one namespace, so it is not a capability — it is the
+  //    thing a capability gets demonstrated against.
+  const challenge = await new CloudClient({ cloudBaseUrl: base }).getRoutingChallenge(namespaceId);
+  if (challenge.nonce === '') {
+    throw new Error(
+      'The cloud returned no challenge. That endpoint is public, so this is usually the wrong ' +
+        'cloud URL or a manager too old to have it.',
+    );
+  }
+
+  // 2. Sign it with the DEVICE key — not the root, which this tab no longer
+  //    holds. The certificate alone would prove nothing: it travels in the clear
+  //    in every device-link op, so only this signature binds us to the device.
+  const headers = await routingProofHeaders(challenge, credential);
+
+  // 3. Spend it on the read it exists for, and report what came back. Doing the
+  //    real read rather than stopping at the signature is the point: it is the
+  //    difference between "we produced a proof" and "the cloud accepted it".
+  const routing = await new CloudClient({
+    cloudBaseUrl: base,
+    routingCredential: credential,
+  }).getNamespaceRouting(namespaceId);
+
+  return {
+    accountId: identity.accountId,
+    nonce: challenge.nonce,
+    expiresAtMs: challenge.expiresAtMs,
+    signature: headers['X-Calimero-Signature'],
+    accepted: true,
+    nodeCount: routing.nodes.length,
+  };
+}
+
+
+/** What claiming an account with a cloud produced, so the panel can show it. */
+export interface AccountClaimResult {
+  /**
+   * The account this claim names, derived from the root key.
+   *
+   * Derived on both sides and sent by neither: the account IS the hash of the
+   * root public key, so there is no field a caller could state that the
+   * signature would then contradict.
+   */
+  accountId: string;
+  /** The root public key that signed, 64 hex. */
+  rootPublicKey: string;
+  /** The sealed challenge, as the cloud minted it. */
+  nonce: string;
+  /** When that challenge stops being accepted. */
+  expiresAtMs: number;
+  /** The root signature, base64. */
+  signature: string;
+  /**
+   * Whether a cloud login owns this account, and so whether a session came back.
+   *
+   * `false` is a success, not a failure: the claim is recorded either way. See
+   * {@link claimAccountWithCloud}.
+   */
+  linked: boolean;
+  /** The MDMA session token, or `''` when the account is not linked. */
+  sessionToken: string;
+  /** The linked login's email, or `''`. */
+  email: string;
+  /** The cloud's own words for why no session was issued, when there was none. */
+  detail: string;
+}
+
+/**
+ * Claim this account with a cloud, once, by signing its challenge with the ROOT.
+ *
+ * This is the one thing on the page a device credential cannot do. Every other
+ * proof here is device-signed: the routing read, the login statement, the
+ * warrant. All of them rest on a certificate the root issued — and a
+ * certificate is *public*, travelling in the clear inside every device-link op,
+ * so the strongest thing any of them can say is "a device of account X is
+ * asking". Only the root can say "X is mine", and that is what this sends.
+ *
+ * It is worth doing exactly once. The cloud writes the claim down, and from
+ * then on it knows the account behind those later device proofs was claimed by
+ * whoever holds its root. Nothing re-proves on every read the way the routing
+ * proof does.
+ *
+ * Two outcomes, both of which are the claim succeeding:
+ *
+ * - **Linked** — a cloud login owns this account, so a session comes back: the
+ *   ordinary MDMA session token, which every cloud route accepts. That is the
+ *   "talk to the cloud just by holding the key" half.
+ * - **Not linked** — the claim is recorded and the session is refused. The
+ *   proof establishes *who*; the link establishes *what you are entitled to*.
+ *   Anyone can mint a root offline, so a session on the proof alone would
+ *   authenticate perfectly and authorize nothing — no plan, no namespaces to
+ *   scope it to. Reported rather than thrown, because a keyholder who links
+ *   later does not have to come back and prove again.
+ *
+ * A bad signature or a spent challenge is also a 403, and *is* thrown: nothing
+ * was recorded, and the remedy is different.
+ */
+export async function claimAccountWithCloud(
+  cloudUrl: string,
+  rootSecret: string,
+): Promise<AccountClaimResult> {
+  const cloud = new CloudClient({ cloudBaseUrl: normaliseUrl(cloudUrl) });
+
+  // The split halves rather than `signInWithAccount`, for the same reason the
+  // routing panel spells its three steps out: the demo exists to show the
+  // challenge, the signature and what each produced. A product with the root
+  // outside the browser uses these two for a better reason — the secret never
+  // reaches this process at all.
+  const challenge = await cloud.getAccountLoginChallenge();
+  const { publicKey, accountId } = await accountRootFromSecret(rootSecret);
+  const signature = await signAccountLogin({ rootSecret, nonce: challenge.nonce });
+
+  const proof = { rootPublicKey: publicKey, nonce: challenge.nonce, signature };
+  const base = {
+    accountId,
+    rootPublicKey: publicKey,
+    nonce: challenge.nonce,
+    expiresAtMs: challenge.expiresAtMs,
+    signature,
+  };
+
+  try {
+    const session = await cloud.submitAccountLogin(proof);
+    return {
+      ...base,
+      linked: true,
+      sessionToken: session.sessionToken,
+      email: session.user.email,
+      detail: '',
+    };
+  } catch (error) {
+    // Distinguishing the two 403s by the cloud's own wording rather than by a
+    // second request. The alternative is asking the cloud whether the claim
+    // landed, which needs a session — the thing we were just refused.
+    const detail = error instanceof Error ? error.message : String(error);
+    if (error instanceof HTTPError && error.status === 403 && /not linked to a cloud login/i.test(detail)) {
+      return { ...base, linked: false, sessionToken: '', email: '', detail };
+    }
+    throw error;
+  }
+}
+
+/**
+ * Spend an account session on a cloud read, to show it is a real session.
+ *
+ * `/api/cloud/me/namespaces` is the plainest thing a signed-in caller can ask
+ * for, and it is scoped to the linked login — so a non-empty answer is the
+ * claim this page makes, demonstrated: the tab is talking to the cloud as the
+ * account, holding nothing but a key it proved.
+ */
+export async function cloudNamespacesForSession(
+  cloudUrl: string,
+  sessionToken: string,
+): Promise<string[]> {
+  const cloud = new CloudClient({ cloudBaseUrl: normaliseUrl(cloudUrl), sessionToken });
+  return (await cloud.getMyNamespaces()).map((ns) => ns.namespaceId);
 }
