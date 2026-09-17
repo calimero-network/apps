@@ -132,7 +132,7 @@ fi
 step "Installing Mero AR app on node2"
 APP_RES=$(curl -sf -X POST "${NODE_URL}/admin-api/install-dev-application" \
   -H "Authorization: Bearer ${ACCESS_TOKEN}" -H "Content-Type: application/json" \
-  -d "$(jq -n --arg p "$BUNDLE_PATH" '{path:$p, metadata:[], package:null, version:null}')" ) || APP_RES="{}"
+  -d "$(jq -n --arg p "$BUNDLE_PATH" '{path:$p}')" ) || APP_RES="{}"
 APP_ID=$(echo "$APP_RES" | jq -r '.data.applicationId // empty' 2>/dev/null || true)
 [ -n "$APP_ID" ] && green "App installed on node2 (id: $APP_ID)" || yellow "App install uncertain"
 

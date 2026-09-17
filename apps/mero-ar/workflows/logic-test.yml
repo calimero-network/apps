@@ -357,6 +357,33 @@ steps:
     args:
       id: "o1"
 
+  # ⚠️ Assert the lock is actually GONE, not merely that the holder can still
+  # move it — the holder could move it while it was still locked, so the move
+  # below passes either way. That gap hid a real bug: `unlock_object` wrote
+  # `locked_by = None` without advancing the object's clock, and `SceneObject`'s
+  # merge breaks an exact clock tie on canonical borsh bytes, where `None`
+  # (0x00) always loses to `Some` (0x01). Every unlock was silently discarded
+  # and this scenario stayed green.
+  - name: Get Object After Unlock
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_object
+    args:
+      id: "o1"
+    outputs:
+      after_unlock: result
+
+  - name: Assert Lock Released
+    type: assert
+    statements:
+      # `regex`, not `contains`: the rendered value is a Python repr, so the
+      # needle would have to carry a quote character. `.` stands in for it.
+      # (An assert arg must also not contain a comma — merobox splits args on
+      # one before it ever parses them.)
+      - "regex({{after_unlock}}, 'lockedBy.: None')"
+
   - name: Move To 333 After Unlock
     type: call
     node: calimero-node-1
