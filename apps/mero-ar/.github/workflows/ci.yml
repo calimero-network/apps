@@ -115,6 +115,30 @@ jobs:
           fi
           echo "scenarios=$(printf '%s\n' "$list" | jq -R -s -c 'split("\n")|map(select(length>0))')" >> "$GITHUB_OUTPUT"
           echo "will run:"; printf '  %s\n' $list
+      # ⚠️ The scenario image and the SDK tag are a PAIR. `fleet-bump` rewrites
+      # logic/Cargo.toml on a core release and knows nothing about these files,
+      # so a bump lands an .mpk whose `minRuntimeVersion` floor is ABOVE the node
+      # the scenarios boot. The node then refuses the install with HTTP 500 and
+      # every merobox leg dies four minutes in, at a step that has nothing to do
+      # with the change. That is exactly how rc.38 arrived. Catch it in three
+      # seconds here instead.
+      - name: Scenario node image must match the SDK tag
+        run: |
+          set -euo pipefail
+          sdk=$(sed -n 's/^calimero-sdk = .*tag = "\([^"]*\)".*/\1/p' logic/Cargo.toml | head -n1)
+          test -n "$sdk" || { echo "::error::no calimero-sdk tag in logic/Cargo.toml"; exit 1; }
+          rc=0
+          for f in workflows/*.yml; do
+            img=$(sed -n 's|^ *image: *ghcr.io/calimero-network/merod:\(.*\)$|\1|p' "$f" | head -n1)
+            if [ -z "$img" ]; then
+              echo "::error file=$f::no merod image pin — this scenario would boot whatever :latest is"
+              rc=1
+            elif [ "$img" != "$sdk" ]; then
+              echo "::error file=$f::merod image is $img but logic/Cargo.toml pins the SDK to $sdk — bump them together"
+              rc=1
+            fi
+          done
+          exit $rc
 
   logic-workflows:
     name: merobox (${{ matrix.scenario }})
