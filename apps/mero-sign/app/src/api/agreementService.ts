@@ -1,8 +1,15 @@
-import { type ApiResponse } from '@calimero-network/calimero-client';
+import {
+  type ApiResponse,
+  getContextId,
+  getExecutorPublicKey,
+  setContextId,
+  setExecutorPublicKey,
+} from '@calimero-network/calimero-client';
 import { ContextApiDataSource } from './dataSource/nodeApiDataSource';
 import { ClientApiDataSource } from './dataSource/ClientApiDataSource';
 import { Agreement } from './clientApi';
 import { CreateContextProps, CreateContextResponse } from './nodeApi';
+import { resolveAgreementName } from '../lib/agreementName';
 import bs58 from 'bs58';
 
 /**
@@ -144,9 +151,10 @@ export class AgreementService {
         if (context.contextId || context.context_id) {
           return {
             id: contextId,
-            name:
-              context.context_name ||
-              `Agreement ${contextId.slice(0, 8)}...`,
+            name: resolveAgreementName({
+              stored: context.context_name,
+              contextId,
+            }),
             contextId: contextId,
             memberPublicKey: context.executorId || toBase58String(context.shared_identity),
             role: context.role || ' ',
@@ -163,7 +171,10 @@ export class AgreementService {
 
         return {
           id: contextId,
-          name: context.context_name,
+          name: resolveAgreementName({
+            stored: context.context_name,
+            contextId,
+          }),
           contextId: contextId,
           memberPublicKey: sharedIdentity,
           role: context.role,
@@ -192,6 +203,69 @@ export class AgreementService {
           message: errorMessage,
         },
       };
+    }
+  }
+
+  // ── The name every node agrees on ─────────────────────────────────────────
+  //
+  // `listAgreements` reads each agreement's name out of THIS node's private
+  // context, where it was written once at join time. That snapshot is fast (one
+  // call, no per-agreement round trips) and it is what the dashboard paints
+  // first — but it is a snapshot, and it is the thing that used to be wrong: a
+  // joiner recorded whatever they had typed, or the literal word 'Agreement'.
+  //
+  // The agreement's OWN context holds `context_name` in contract state, which
+  // replicates. That is the only value that can be the same on the creator's
+  // node and on everybody else's, so it is the one the list should show. This
+  // asks each agreement for it and hands back the rows with the shared name
+  // merged in, leaving the stored name in place wherever the shared context has
+  // not synced or cannot be read yet.
+  //
+  // Deliberately a SECOND pass rather than part of `listAgreements`: it costs one
+  // contract call per agreement, and blocking the dashboard on that would make
+  // an empty screen the first thing a user sees.
+  //
+  // ⚠️ `getContextDetails` sets the client's global executor key as a side
+  // effect, which is how the whole data-source layer is built. Iterating over
+  // agreements therefore leaves it pointing at the last one, so the previous
+  // values are captured and restored.
+  async resolveSharedNames(agreements: Agreement[]): Promise<Agreement[]> {
+    if (agreements.length === 0) return agreements;
+
+    const previousContextId = getContextId();
+    const previousExecutor = getExecutorPublicKey();
+
+    try {
+      const resolved: Agreement[] = [];
+      for (const agreement of agreements) {
+        let fromContract: string | undefined;
+        try {
+          const details = await this.clientApi.getContextDetails(
+            agreement.contextId,
+            agreement.contextId,
+            agreement.sharedIdentity,
+          );
+          fromContract = details.data?.context_name;
+        } catch (error) {
+          console.warn(
+            `Could not read the shared name for ${agreement.contextId}:`,
+            error,
+          );
+        }
+
+        resolved.push({
+          ...agreement,
+          name: resolveAgreementName({
+            fromContract,
+            stored: agreement.name,
+            contextId: agreement.contextId,
+          }),
+        });
+      }
+      return resolved;
+    } finally {
+      if (previousContextId) setContextId(previousContextId);
+      if (previousExecutor) setExecutorPublicKey(previousExecutor);
     }
   }
 

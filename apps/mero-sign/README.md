@@ -23,9 +23,13 @@ all without centralized servers or intermediaries.
 
 ### Creating or Joining Agreements
 
-- **Create Agreement**: A user creates a new shared context and becomes the Admin.
-- **Invite Collaborators**: The Admin generates an **invite payload** using other participants’ Calimero identity and assigns permissions (view/sign).
-- **Join Agreement**: A user on a different node enters the invite payload and names the agreement on their node.
+- **Create Agreement**: A user creates a new shared context, names it, and becomes the Admin. The name is written into the agreement's own contract state, so it replicates — it is not a label in one browser.
+- **Invite Collaborators**: two ways, both from the agreement screen.
+  - **Shareable link** — an open invitation, valid 24 hours, anybody holding the link may redeem it:
+    `https://links.calimero.network/com.calimero.mero-sign/join?invitation=<code>`.
+    It opens the desktop app on a device that has it and the web app otherwise. A `calimero://` deep link and the bare code are offered alongside it for the desktop and for pasting into another mero app.
+  - **Invite one person** — a targeted invitation minted for a named Calimero identity, with a permission assigned up front.
+- **Join Agreement**: open the link, or paste the link/code into *Join Agreement*. The joiner is **not** asked to name the agreement: the name comes from the agreement's replicated contract state, so every node shows what the creator typed.
 
 ### Shared Context Workflow
 
@@ -94,8 +98,8 @@ _Note: This feature is currently under development and will be available in a fu
 | -------------------------- | ---------------------------------------------------------------------------------- |
 | Private Context            | Local workspace per user for signature library and agreement list.                 |
 | Agreement Creation         | Create a shared context; you become its administrator.                             |
-| Invitation System          | Generate secure invite payloads tied to Calimero identities with permissions.      |
-| Join Agreement             | Input invite payload to create shared context on your node.                        |
+| Invitation System          | Shareable Calimero invite links, plus targeted payloads tied to an identity.       |
+| Join Agreement             | Open the link, or paste it; the agreement keeps the name its creator gave it.      |
 | Collaborative PDF Workflow | Users upload, view, and sign PDFs based on assigned roles in context.              |
 | Document Storage           | All documents stored securely and encrypted within Calimero contexts.              |
 | Signature Library          | Personal signature library stored in user's private default context.               |
@@ -170,7 +174,8 @@ Replace `<APP_ID>`, `nodeX`, and other parameters as needed for your deployment.
 **Calimero-Based Contexts**
 
 - User-specific default context stores local signatures and membership.
-- Shared contexts are created or joined via invite payloads.
+- Shared contexts are created or joined via invitation links (open invitations) or targeted invite payloads.
+- An agreement's name lives in its contract state (`context_name`), which is why it is the same on every node.
 - All interactions (invite, upload, sign) use Calimero RPC and encryption.
 - Documents are stored encrypted within Calimero contexts, ensuring complete privacy.
 

@@ -18,7 +18,8 @@ import {
 } from '@calimero-network/calimero-client';
 import type { ResponseData } from '@calimero-network/calimero-client';
 import type { ContextInviteByOpenInvitationResponse } from '@calimero-network/calimero-client/lib/api/nodeApi';
-import { generateInvitationUrl } from '../../utils/invitation';
+import { encodeInvite } from '../../lib/inviteCodec';
+import { shareableInvitation } from '../../lib/inviteLink';
 import {
   ArrowLeft,
   Plus,
@@ -223,7 +224,14 @@ const AgreementPage: React.FC = () => {
   const [inviteMode, setInviteMode] = useState<'url' | 'payload'>('url');
   const [inviteId, setInviteId] = useState('');
   const [invitePermission] = useState<PermissionLevel>(PermissionLevel.Sign);
-  const [invitationUrl, setInvitationUrl] = useState<string | null>(null);
+  // The minted invitation, in the three forms it is offered in: an HTTPS link
+  // to share, a `calimero://` link for a device with the desktop app, and the
+  // bare code for pasting into another mero app's join box.
+  const [invite, setInvite] = useState<{
+    link: string;
+    deepLink: string;
+    code: string;
+  } | null>(null);
   const [generatedPayload, setGeneratedPayload] = useState('');
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [generatingInvite, setGeneratingInvite] = useState(false);
@@ -676,11 +684,31 @@ const AgreementPage: React.FC = () => {
     [showNotification, app],
   );
 
+  // ── Minting a shareable invitation ────────────────────────────────────────
+  //
+  // Two things here were broken, and together they meant a shared invitation
+  // link had never once been redeemable:
+  //
+  //   1. The node answers `invite_by_open_invitation` with `{"data": {…}}`, and
+  //      this handler used to `JSON.stringify(response.data)` — the whole
+  //      envelope. The joining end parsed that straight back and posted it as
+  //      the `invitation` field, so the node received
+  //      `{"invitation": {"data": {…}}}`. Every core request body is
+  //      `deny_unknown_fields`, so that is a 400 for the whole call, reported to
+  //      the joiner as a generic "failed to join context".
+  //   2. The link was `window.location.origin + '/?invitation=' + <that JSON>`.
+  //      Origin-derived, so inside the desktop shell it began `tauri://`; and
+  //      around 1,200 percent-escaped characters, which chat and mail clients
+  //      wrap or truncate.
+  //
+  // Now: unwrap the envelope, carry the agreement's name alongside the signed
+  // invitation as a display hint, compress the pair into a short code, and build
+  // the link with the platform SDK. See `lib/inviteCodec.ts` and
+  // `lib/inviteLink.ts`.
   const handleGenerateOpenInvitation = useCallback(async () => {
     const agreementContextUserID = localStorage.getItem(
       'agreementContextUserID',
     );
-
     const agreementContextID = localStorage.getItem('agreementContextID');
 
     if (!agreementContextUserID || !agreementContextID) {
@@ -702,13 +730,11 @@ const AgreementPage: React.FC = () => {
     try {
       setGeneratingInvite(true);
 
-      // Ensure context ID and executor public key are set in Calimero client state
-      // This is required for the API to work properly
+      // The open-invitation route reads the context and inviter from the client
+      // state, so both have to be set before the call.
       setContextId(agreementContextID);
       setExecutorPublicKey(agreementContextUserID);
 
-      // Verify the context is set (like the reference app does)
-      // The reference app uses getContextId() and getExecutorPublicKey() to verify
       const currentContextId = getContextId();
       const currentExecutorPublicKey = getExecutorPublicKey();
 
@@ -720,35 +746,51 @@ const AgreementPage: React.FC = () => {
         return;
       }
 
-      // Generate open invitation using the new API
-      // Use the values from the client state (like reference app)
       const response: ResponseData<ContextInviteByOpenInvitationResponse> =
         await apiClient.node().contextInviteByOpenInvitation(
           currentContextId,
           currentExecutorPublicKey,
-          86400, // 24 hours TTL
+          // `validForBlocks`, not seconds. Core clamps an open invitation to
+          // 24 hours whatever is asked for (it has done since rc.29), so this
+          // is "as long as the node will allow" rather than a precise figure.
+          86400,
         );
 
-      if (response.error) {
+      if (response.error || !response.data) {
         showNotification(
-          response.error.message || 'Failed to generate invitation',
+          response.error?.message || 'Failed to generate invitation',
           'error',
         );
         return;
       }
 
-      if (!response.data) {
-        showNotification('Failed to generate invitation', 'error');
+      // `response.data` is the node's raw body. Core wraps it; older nodes did
+      // not. Accept either rather than depending on which one answered.
+      const envelope = response.data as unknown as Record<string, unknown>;
+      const signed = (envelope.data ?? envelope) as Parameters<
+        typeof encodeInvite
+      >[0]['invitation'];
+
+      if (!signed || typeof signed !== 'object' || !signed.invitation) {
+        showNotification(
+          'The node returned an invitation this app cannot read.',
+          'error',
+        );
         return;
       }
 
-      // Generate invitation URL
-      const invitationPayload = JSON.stringify(response.data);
-      const url = generateInvitationUrl(invitationPayload);
-      setInvitationUrl(url);
+      const code = encodeInvite({
+        invitation: signed,
+        contextId: currentContextId,
+        // A display hint so the recipient's prompt can name the agreement before
+        // they commit to joining. Outside the signature, and superseded by the
+        // contract's own `context_name` the moment the join lands.
+        contextName: contextDetails?.context_name,
+      });
 
+      setInvite(shareableInvitation(code));
       showNotification(
-        'Invitation URL created! Share it with participants.',
+        'Invitation link created — share it with participants.',
         'success',
       );
     } catch (error) {
@@ -760,14 +802,15 @@ const AgreementPage: React.FC = () => {
     } finally {
       setGeneratingInvite(false);
     }
-  }, [showNotification, app]);
+  }, [showNotification, app, contextDetails]);
 
-  const handleCopyInvitationUrl = useCallback(() => {
-    if (invitationUrl) {
-      navigator.clipboard.writeText(invitationUrl);
-      showNotification('Invitation URL copied to clipboard!', 'success');
-    }
-  }, [invitationUrl, showNotification]);
+  const copyToClipboard = useCallback(
+    (value: string, what: string) => {
+      navigator.clipboard.writeText(value);
+      showNotification(`${what} copied to clipboard!`, 'success');
+    },
+    [showNotification],
+  );
 
   const handleGeneratePayload = useCallback(async () => {
     if (!inviteId.trim()) {
@@ -1560,7 +1603,7 @@ const AgreementPage: React.FC = () => {
           open={showInviteModal}
           onClose={() => {
             setShowInviteModal(false);
-            setInvitationUrl(null);
+            setInvite(null);
             setGeneratedPayload('');
             setInviteId('');
             setInviteMode('url');
@@ -1574,29 +1617,30 @@ const AgreementPage: React.FC = () => {
                 variant={inviteMode === 'url' ? 'primary' : 'secondary'}
                 onClick={() => {
                   setInviteMode('url');
-                  setInvitationUrl(null);
+                  setInvite(null);
                   setGeneratedPayload('');
                 }}
                 style={{ flex: 1 }}
               >
-                Invitation URL
+                Shareable link
               </Button>
               <Button
                 variant={inviteMode === 'payload' ? 'primary' : 'secondary'}
                 onClick={() => {
                   setInviteMode('payload');
-                  setInvitationUrl(null);
+                  setInvite(null);
                   setGeneratedPayload('');
                 }}
                 style={{ flex: 1 }}
               >
-                Invitation Payload
+                Invite one person
               </Button>
             </Flex>
 
             {inviteMode === 'url' ? (
-              // URL Mode
-              invitationUrl ? (
+              // Shareable-link mode: an OPEN invitation anybody holding the
+              // link may redeem, for the 24 hours it is valid.
+              invite ? (
                 <>
                   <Card
                     style={{
@@ -1623,12 +1667,15 @@ const AgreementPage: React.FC = () => {
                         marginBottom: spacing[3].value,
                       }}
                     >
-                      Share this URL with participants to invite them to this
-                      agreement:
+                      Send this link to the people you want on this agreement.
+                      It opens MeroSign — the desktop app if they have it
+                      installed, the web app otherwise — and joins them. It
+                      expires within a day, and it grants membership of this
+                      agreement and nothing else.
                     </Text>
                     <Input
                       type="text"
-                      value={invitationUrl}
+                      value={invite.link}
                       disabled={true}
                       style={{
                         marginBottom: spacing[3].value,
@@ -1637,18 +1684,46 @@ const AgreementPage: React.FC = () => {
                       }}
                     />
                     <Button
-                      onClick={handleCopyInvitationUrl}
+                      onClick={() =>
+                        copyToClipboard(invite.link, 'Invitation link')
+                      }
                       variant="primary"
                       style={{ width: '100%' }}
                     >
-                      Copy Invitation URL
+                      Copy invitation link
                     </Button>
+                    <Flex gap="sm" style={{ marginTop: spacing[3].value }}>
+                      {/*
+                        Secondary affordances. `calimero://` is a device-local
+                        transport — it does not survive being pasted into a chat
+                        window — and the bare code is for someone joining from
+                        another mero app's paste box.
+                      */}
+                      <Button
+                        variant="secondary"
+                        onClick={() =>
+                          copyToClipboard(invite.deepLink, 'Desktop link')
+                        }
+                        style={{ flex: 1 }}
+                      >
+                        Copy desktop link
+                      </Button>
+                      <Button
+                        variant="secondary"
+                        onClick={() =>
+                          copyToClipboard(invite.code, 'Invitation code')
+                        }
+                        style={{ flex: 1 }}
+                      >
+                        Copy code
+                      </Button>
+                    </Flex>
                   </Card>
                   <Button
                     variant="secondary"
                     onClick={() => {
                       setShowInviteModal(false);
-                      setInvitationUrl(null);
+                      setInvite(null);
                       setInviteMode('url');
                     }}
                     style={{ width: '100%' }}
@@ -1665,9 +1740,9 @@ const AgreementPage: React.FC = () => {
                       marginBottom: spacing[4].value,
                     }}
                   >
-                    Generate an invitation URL that participants can use to join
-                    this agreement. They will be able to join by clicking the
-                    link.
+                    Create a link anybody can use to join this agreement. Good
+                    for sending to several people at once; it expires within a
+                    day.
                   </Text>
                   <Button
                     onClick={handleGenerateOpenInvitation}
@@ -1681,7 +1756,7 @@ const AgreementPage: React.FC = () => {
                         <Text>Creating Invitation...</Text>
                       </Flex>
                     ) : (
-                      'Create Invitation URL'
+                      'Create invitation link'
                     )}
                   </Button>
                 </>

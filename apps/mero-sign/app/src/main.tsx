@@ -4,6 +4,7 @@ import './index.css';
 import App from './App';
 import { AppMode, CalimeroProvider } from '@calimero-network/calimero-client';
 import { PACKAGE_NAME, REGISTRY_URL } from './constants/config';
+import { startInvitationCapture } from './lib/invitationIntents';
 
 // Disable StrictMode in production to avoid double-rendering
 // which can cause 429 errors from CalimeroProvider's auth checks
@@ -32,6 +33,16 @@ if (hashNodeUrl) {
     // Connect button still works.
   }
 }
+
+// ── Invitations, captured before anything renders ─────────────────────────────
+//
+// An invitation link is a capability sitting in the URL, and the URL does not
+// survive the login redirect. Capturing here — at module scope, before React and
+// before `<CalimeroProvider>` decides to send a signed-out visitor to the auth
+// frontend — puts the intent in the platform's durable store first, so it is
+// still there when they come back logged in. `App.tsx` subscribes and shows the
+// prompt; see `lib/invitationIntents.ts`.
+startInvitationCapture();
 
 createRoot(document.getElementById('root')!).render(
   <AppWrapper>

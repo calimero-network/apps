@@ -6,6 +6,7 @@
   "dependencies": {
     "@calimero-network/calimero-client": "^1.25.0-beta.1",
     "@calimero-network/mero-icons": "catalog:",
+    "@calimero-network/mero-platform": "catalog:",
     "@calimero-network/mero-ui": "catalog:",
     "@radix-ui/react-slot": "^1.2.3",
     "@tailwindcss/vite": "^4.1.11",
@@ -19,6 +20,7 @@
     "buffer": "^6.0.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "catalog:",
+    "fflate": "catalog:",
     "framer-motion": "^12.23.3",
     "jspdf": "^4.0.0",
     "lucide-react": "^0.525.0",
@@ -59,11 +61,14 @@
     "typescript-eslint": "catalog:",
     "vite": "catalog:",
     "vite-plugin-node-polyfills": "^0.21.0",
+    "vitest": "catalog:",
     "@playwright/test": "catalog:"
   },
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "typecheck": "tsc -b",
+    "test": "vitest run",
     "lint": "concurrently \"pnpm:lint:*(!fix)\"",
     "lint:src": "eslint . --ext .ts,.tsx src --report-unused-disable-directives --max-warnings 0",
     "lint:fix": "concurrently \"pnpm:lint:*:fix\"",
