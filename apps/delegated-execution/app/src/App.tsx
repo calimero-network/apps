@@ -153,7 +153,12 @@ export function App() {
         }}
       />
 
-      <NodeStep settings={settings} onChange={updateSettings} ready={ready.node} />
+      <NodeStep
+        settings={settings}
+        onChange={updateSettings}
+        ready={ready.node}
+        identity={identity}
+      />
 
       <SessionStep
         identity={identity}
@@ -295,10 +300,18 @@ function NodeStep({
   settings,
   onChange,
   ready,
+  identity,
 }: {
   settings: Settings;
   onChange: (patch: Partial<Settings>) => void;
   ready: boolean;
+  /**
+   * Needed to *read* routing, not to join with — the cloud asks a caller to
+   * prove which account is asking. So step 2 now depends on step 1, which is
+   * the honest ordering: there was never a point in resolving a node before
+   * holding the key that will sign the join.
+   */
+  identity: DeviceIdentity | null;
 }) {
   const [classified, setClassified] = useState<ClassifiedNode[]>([]);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
@@ -308,10 +321,12 @@ function NodeStep({
     setBusy(true);
     setOutcome(null);
     try {
+      if (!identity) throw new Error('Mint or restore an account in step 1 first.');
       const result = await discoverAdmitter(
         settings.cloudUrl,
         settings.namespaceId,
         settings.invitationJson,
+        identity,
       );
       setClassified(result.classified);
       if (result.chosen === null) {
@@ -332,7 +347,7 @@ function NodeStep({
     } finally {
       setBusy(false);
     }
-  }, [settings.cloudUrl, settings.namespaceId, settings.invitationJson, onChange]);
+  }, [settings.cloudUrl, settings.namespaceId, settings.invitationJson, identity, onChange]);
 
   return (
     <Step
@@ -407,9 +422,18 @@ function NodeStep({
         binding the key into the attestation quote, which is tracked separately.
       </p>
 
-      <button type="button" onClick={discover} disabled={busy}>
+      <button type="button" onClick={discover} disabled={busy || !identity}>
         {busy ? 'Asking the cloud…' : 'Find a node that can admit me'}
       </button>
+      {!identity && (
+        <p className="aside">
+          Disabled until step 1 holds a key. The cloud asks this read to name an account, and
+          the proof is a challenge signed by your certified device key — so there is nothing to
+          sign with yet. It proves you hold <em>an</em> account, not that you were invited to this
+          namespace: the cloud cannot know that, because membership lives on the nodes. What it
+          buys is that a routing read is attributable rather than anonymous.
+        </p>
+      )}
 
       {classified.length > 0 && (
         <ul className="nodes">

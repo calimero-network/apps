@@ -204,11 +204,26 @@ export async function describeRelay(nodeUrl: string, contextId: string) {
  * why the others were rejected, before anything irreversible happens — and a
  * "live but not in your invitation" node is exactly the case worth seeing
  * rather than hitting as a 403.
+ *
+ * ## Why this needs the identity
+ *
+ * The routing read is the one cloud call on this path, and the cloud will not
+ * answer it anonymously for much longer. It cannot ask for a cloud login — a
+ * joiner is not the namespace owner and holding no cloud account is the point —
+ * so it asks for a challenge signed by the certified device key instead. That
+ * is `routingCredential`, and it is the same credential and secret every other
+ * leg of this demo already uses: nothing new is minted, stored or typed.
+ *
+ * The cloud does not yet *require* it. Sending it anyway is deliberate: a proof
+ * that is wrong fails here, now, while the flag is off and the read still
+ * succeeds — rather than on the day the flag flips and every client breaks at
+ * once.
  */
 export async function discoverAdmitter(
   cloudUrl: string,
   namespaceId: string,
   invitationJson: string,
+  identity: DeviceIdentity,
 ): Promise<{
   classified: ClassifiedNode[];
   chosen: RoutableNode | null;
@@ -231,7 +246,13 @@ export async function discoverAdmitter(
   // invitation along nominate the node.
   const signedAdmitters = invitation.invitation?.admitters ?? [];
 
-  const cloud = new CloudClient({ cloudBaseUrl: normaliseUrl(cloudUrl) });
+  const cloud = new CloudClient({
+    cloudBaseUrl: normaliseUrl(cloudUrl),
+    routingCredential: {
+      credential: identity.credential,
+      deviceSecret: identity.deviceSecret,
+    },
+  });
   const routing = await cloud.getNamespaceRouting(namespaceId);
 
   const classified = classifyNodes(routing.nodes, signedAdmitters);
