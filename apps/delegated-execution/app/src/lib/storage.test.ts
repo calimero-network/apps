@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import {
-  EMPTY_SETTINGS,
+  DEFAULT_SETTINGS,
   clearStored,
   loadClaim,
   loadIdentity,
@@ -108,11 +108,34 @@ describe('clearStored', () => {
 });
 
 describe('settings', () => {
-  it('starts empty rather than guessing a node', () => {
-    expect(loadSettings()).toEqual(EMPTY_SETTINGS);
+  it('starts at the defaults rather than guessing a node', () => {
+    expect(loadSettings()).toEqual(DEFAULT_SETTINGS);
   });
 
-  it('fills missing fields from the empty defaults', () => {
+  it('points at the hosted cloud out of the box', () => {
+    // The two cloud hosts are the same for everyone, unlike an invitation or a
+    // node key, so making someone paste them is a step that can only be got
+    // wrong. Everything operator-specific stays blank.
+    const fresh = loadSettings();
+    expect(fresh.cloudUrl).toBe('https://manager.cloud.calimero.network');
+    expect(fresh.portalUrl).toBe('https://cloud.calimero.network');
+    expect(fresh.namespaceId).toBe('');
+    expect(fresh.nodeKey).toBe('');
+  });
+
+  it('lets a stored URL win over the default, including an empty one', () => {
+    // A default that reasserted itself would make clearing a field impossible
+    // and silently send a local-cloud user's traffic to production.
+    localStorage.setItem(
+      'calimero.delegated-demo.settings',
+      JSON.stringify({ cloudUrl: 'http://127.0.0.1:8080', portalUrl: '' }),
+    );
+    const stored = loadSettings();
+    expect(stored.cloudUrl).toBe('http://127.0.0.1:8080');
+    expect(stored.portalUrl).toBe('');
+  });
+
+  it('fills missing fields from the defaults', () => {
     // A settings blob written before a field existed must not load as
     // `undefined` and render an uncontrolled input.
     localStorage.setItem(
@@ -120,7 +143,7 @@ describe('settings', () => {
       JSON.stringify({ nodeUrl: 'http://127.0.0.1:2428' }),
     );
     expect(loadSettings()).toEqual({
-      ...EMPTY_SETTINGS,
+      ...DEFAULT_SETTINGS,
       nodeUrl: 'http://127.0.0.1:2428',
     });
   });
@@ -128,6 +151,7 @@ describe('settings', () => {
   it('round-trips', () => {
     const settings = {
       cloudUrl: 'https://manager.example',
+      portalUrl: 'https://cloud.example',
       namespaceId: 'a'.repeat(64),
       invitationJson: '{"invitation":{}}',
       nodeKey: 'f'.repeat(64),

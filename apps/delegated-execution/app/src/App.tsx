@@ -35,6 +35,8 @@ import type { AccountClaimResult, AccountProofResult } from './lib/flow.js';
 import {
   claimAccountWithCloud,
   cloudNamespacesForSession,
+  finishCloudLink,
+  startCloudLink,
   describeRelay,
   discoverAdmitter,
   proveAccountToCloud,
@@ -44,10 +46,16 @@ import {
   writeContext,
 } from './lib/flow.js';
 import { errorText, parseJson, pretty, short } from './lib/format.js';
+import { CloudClient } from '@calimero-network/mero-js';
 import {
-  EMPTY_SETTINGS,
+  DEFAULT_CLOUD_URL,
+  DEFAULT_PORTAL_URL,
+  DEFAULT_SETTINGS,
+  clearPendingLink,
   clearStored,
   loadClaim,
+  loadPendingLink,
+  savePendingLink,
   loadIdentity,
   loadSettings,
   saveClaim,
@@ -93,7 +101,7 @@ export function App() {
   const [identity, setIdentity] = useState<DeviceIdentity | null>(null);
   const [phrase, setPhrase] = useState<string | null>(null);
   const [restoreFrom, setRestoreFrom] = useState('');
-  const [settings, setSettings] = useState<Settings>(EMPTY_SETTINGS);
+  const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [session, setSession] = useState<DelegatedSession | null>(null);
   const [claim, setClaim] = useState<AccountClaim | null>(null);
 
@@ -349,11 +357,79 @@ function AccountCloudStep({
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<AccountClaimResult | null>(null);
   const [namespaces, setNamespaces] = useState<string[] | null>(null);
+  const [linked, setLinked] = useState(false);
 
   // An identity minted before this version of the page never stored a root, so
   // the claim is offered only when there is actually a key here to sign it.
   const rootSecret = identity?.rootSecret ?? '';
   const claimed = claim !== null && claim.accountId === identity?.accountId;
+
+  // The cloud's answer arrives as a fresh page load, so this runs once on mount
+  // and is the only thing that knows a round trip was in progress. Both halves
+  // clear the pending record: leaving one behind would make the next ordinary
+  // reload look like a callback.
+  useEffect(() => {
+    const callback = CloudClient.readAccountLinkCallback();
+    if (!callback.grant && !callback.error) return;
+    // Strip the fragment first, so a reload after this does not replay it.
+    window.history.replaceState(null, '', window.location.pathname + window.location.search);
+    const pending = loadPendingLink();
+    clearPendingLink();
+
+    if (callback.error) {
+      setOutcome({
+        text:
+          callback.error === 'denied'
+            ? 'You cancelled at the cloud, so nothing was linked. The account is unchanged.'
+            : `The cloud sent back an error: ${callback.error}`,
+        error: callback.error !== 'denied',
+      });
+      return;
+    }
+    if (!pending || !identity) {
+      setOutcome({
+        text:
+          'A grant came back but this tab no longer knows what it was for. Start the connection again.',
+        error: true,
+      });
+      return;
+    }
+
+    setBusy(true);
+    finishCloudLink(pending, callback.grant as string, identity)
+      .then((link) => {
+        setLinked(true);
+        setOutcome({
+          text: link.alreadyLinked
+            ? `That account was already linked to this cloud login. Prove it now and you will get a session.`
+            : `Linked ${short(link.accountId, 10)} to your cloud login. Prove it now to open a session as it.`,
+          error: false,
+        });
+      })
+      .catch((error) => setOutcome({ text: errorText(error), error: true }))
+      .finally(() => setBusy(false));
+    // Mount only: a callback is answered once, and `identity` arrives in the
+    // same first render pass from `loadIdentity`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const connectCloud = useCallback(() => {
+    setOutcome(null);
+    try {
+      if (!identity) throw new Error('Mint or restore an account in step 1 first.');
+      if (settings.portalUrl.trim() === '') throw new Error('Enter the cloud portal URL first.');
+      if (settings.cloudUrl.trim() === '') throw new Error('Enter your cloud API URL first.');
+      savePendingLink(startCloudLink(settings.cloudUrl, settings.portalUrl, identity));
+      setOutcome({
+        text:
+          'Opened the cloud in a new tab. Sign in there, check the account it names, and press ' +
+          'Connect — you will be sent back here with a grant this tab then signs.',
+        error: false,
+      });
+    } catch (error) {
+      setOutcome({ text: errorText(error), error: true });
+    }
+  }, [identity, settings.cloudUrl, settings.portalUrl]);
 
   const connect = useCallback(async () => {
     setBusy(true);
@@ -427,27 +503,47 @@ function AccountCloudStep({
       stateLabel={claimed ? (claim.linked ? 'connected' : 'proven, unlinked') : 'not yet'}
       why={
         <>
-          Every other proof on this page is signed by the <strong>device</strong> key, and rests
-          on a certificate the root issued. A certificate is <em>public</em> — it travels in the
-          clear inside every device-link op — so the strongest thing any of them can say is
-          &ldquo;a device of this account is asking&rdquo;. Only the <strong>root</strong> can say
-          the account is yours. That is what this sends: one signature over a cloud-issued
-          challenge, which the cloud writes down. Once. After it, the cloud knows the account
-          behind those later device proofs was claimed by whoever holds its root.
+          Two steps, and they answer different questions.{' '}
+          <strong>Connect</strong> sends you to the cloud to sign in and agree to link this account
+          — the half that needs you to <em>be</em> the cloud customer, which a tab holding only a
+          key can never be. You come back with a <em>grant</em>: consent to link this one account,
+          worthless to anyone who cannot sign with its root.{' '}
+          <strong>Prove</strong> is the other half. Every other proof on this page is signed by the{' '}
+          <strong>device</strong> key and rests on a certificate the root issued — and a certificate
+          is <em>public</em>, so the strongest thing any of them can say is &ldquo;a device of this
+          account is asking&rdquo;. Only the <strong>root</strong> can say the account is yours.
         </>
       }
     >
       <label>
-        Cloud URL
+        Cloud API URL
         <input
           type="text"
           value={settings.cloudUrl}
-          placeholder="https://manager.cloud.calimero.network"
+          placeholder={DEFAULT_CLOUD_URL}
           onChange={(e) => onChange({ cloudUrl: e.target.value.trim() })}
         />
       </label>
+      <label>
+        Cloud portal URL — where you sign in
+        <input
+          type="text"
+          value={settings.portalUrl}
+          placeholder={DEFAULT_PORTAL_URL}
+          onChange={(e) => onChange({ portalUrl: e.target.value.trim() })}
+        />
+      </label>
+      <p className="aside">
+        Both are prefilled with the hosted cloud and both are editable — point them at a local or
+        staging cloud and the rest of the page follows. Two fields because they are two hosts: the
+        portal serves the sign-in page and does not proxy <code>/api/*</code>, and the API host has
+        no sign-in page.
+      </p>
 
       <div className="row">
+        <button type="button" onClick={connectCloud} disabled={busy || !identity}>
+          {busy ? 'Working…' : linked ? 'Connect a different login' : 'Connect to my cloud'}
+        </button>
         <button type="button" onClick={() => void connect()} disabled={busy || !identity}>
           {busy ? 'Proving…' : claimed ? 'Prove this account again' : 'Prove I own this account'}
         </button>
@@ -460,6 +556,14 @@ function AccountCloudStep({
           {busy ? 'Asking the cloud…' : 'Fetch my namespaces with it'}
         </button>
       </div>
+
+      <p className="aside">
+        The round trip exists because only Google issues a <em>first</em> cloud session, and
+        linking lives behind one. So the consent is collected where you are signed in, and what
+        crosses back is a grant rather than a session token — it authorises exactly one link, on
+        one named account, and a grant someone intercepts links nothing without your root
+        signature. It arrives in the URL fragment, which browsers never send to servers.
+      </p>
 
       {claimed && (
         <dl className="kv">
