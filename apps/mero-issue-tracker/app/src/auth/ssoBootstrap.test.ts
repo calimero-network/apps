@@ -35,7 +35,16 @@ vi.mock('@calimero-network/mero-react', () => ({
 
 const store = new Map<string, string>();
 
-const location = { pathname: '/', search: '', hash: '' };
+const location = {
+  pathname: '/',
+  search: '',
+  hash: '',
+  // The deep-link controller reads `href`; the bootstrap's own hash handling
+  // reads the three parts. Derive one from the others so both stay consistent.
+  get href() {
+    return `https://tracker.example${this.pathname}${this.search}${this.hash}`;
+  },
+};
 
 /** Split a URL into the three parts the bootstrap reads, and apply them. */
 function apply(url: string): void {
@@ -50,31 +59,37 @@ function locate(rest: string): void {
   apply(`/${rest}`);
 }
 
+const localStorage = {
+  getItem: (k: string) => store.get(k) ?? null,
+  setItem: (k: string, v: string) => void store.set(k, v),
+  removeItem: (k: string) => void store.delete(k),
+  clear: () => store.clear(),
+};
+
 Object.assign(globalThis, {
   window: {
     location,
+    localStorage,
     history: {
       // The real one rewrites the address bar; ours rewrites the fake location
       // so a test can assert what the bootstrap left behind.
       replaceState: (_s: unknown, _t: unknown, url: string) => apply(url),
     },
   },
-  localStorage: {
-    getItem: (k: string) => store.get(k) ?? null,
-    setItem: (k: string, v: string) => void store.set(k, v),
-    removeItem: (k: string) => void store.delete(k),
-    clear: () => store.clear(),
-  },
+  localStorage,
 });
 
-const { bootstrapSsoAndInvitation, peekPendingInvitation, clearPendingInvitation } =
-  await import('./ssoBootstrap');
+const { bootstrapSsoAndInvitation } = await import('./ssoBootstrap');
+const { peekInvitation, resetInvitationCaptureForTests } = await import(
+  './invitationIntents'
+);
 
 const NODE = 'http://localhost:2528';
 const APP_ID = '9xQe1v2b3c4d5e6f';
 
 beforeEach(() => {
   vi.clearAllMocks();
+  resetInvitationCaptureForTests();
   store.clear();
   locate('');
 });
@@ -122,17 +137,23 @@ describe('persistAuthHash (via bootstrapSsoAndInvitation)', () => {
   });
 });
 
-describe('captureInvitation (via bootstrapSsoAndInvitation)', () => {
-  it('stashes ?invitation= and strips it from the address bar', () => {
-    locate('?invitation=PAYLOAD');
+describe('invitation capture (via bootstrapSsoAndInvitation)', () => {
+  // The bootstrap now delegates to the platform deep-link controller
+  // (`auth/invitationIntents`, which has its own suite). What is pinned HERE is
+  // the wiring — that boot starts capture at all, and that starting it does not
+  // disturb the auth hash. Both were regressions waiting to happen: the capture
+  // MUST run before React mounts, because App.tsx redirects a signed-in visitor
+  // off `/` with `<Navigate replace>`, which rewrites the URL query and all.
+  it('captures ?invitation= at boot and strips it from the address bar', () => {
+    locate('issue-tracker?invitation=PAYLOAD');
     bootstrapSsoAndInvitation();
-    // Peek, not take: the join is only attempted once authenticated and a
-    // failed attempt has to stay retryable, so it is cleared explicitly.
-    expect(peekPendingInvitation()).toBe('PAYLOAD');
-    expect(peekPendingInvitation()).toBe('PAYLOAD');
+    expect(peekInvitation()?.code).toBe('PAYLOAD');
+    // Sticky: reading it does not consume it, so the route gate and the
+    // workspace both see the same capture.
+    expect(peekInvitation()?.code).toBe('PAYLOAD');
     expect(location.search).toBe('');
-    clearPendingInvitation();
-    expect(peekPendingInvitation()).toBeNull();
+    peekInvitation()!.resolve();
+    expect(peekInvitation()).toBeNull();
   });
 
   it('keeps a token-bearing hash while stripping the invitation query', () => {

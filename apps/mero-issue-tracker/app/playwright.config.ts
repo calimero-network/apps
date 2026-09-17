@@ -27,7 +27,7 @@ export default defineConfig({
   globalSetup: './e2e/global-setup.ts',
   globalTeardown: './e2e/global-teardown.ts',
   use: {
-    baseURL: 'http://localhost:5173',
+    baseURL: 'http://localhost:5179',
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
     // Fail fast on a missing/wrong selector: a locator action (fill/click)
@@ -36,8 +36,12 @@ export default defineConfig({
     actionTimeout: 15_000,
   },
   webServer: {
-    command: 'npx vite --port 5173',
-    port: 5173,
+    // 5179, matching vite.config.ts, and NOT the 5173 every app defaults to.
+    // `reuseExistingServer` attaches to whatever is already listening: with a
+    // dozen apps in this monorepo all defaulting to 5173, a local run would
+    // silently drive a DIFFERENT app's UI and report its failures as this app's.
+    command: 'npx vite --port 5179',
+    port: 5179,
     reuseExistingServer: true,
     timeout: 30_000,
   },

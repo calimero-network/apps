@@ -4,7 +4,8 @@ import { tokens as t } from '../theme';
 import { generateInvitationDeepLink, generateInvitationUrl } from '../utils/invitation';
 
 interface InviteModalProps {
-  onInvite: () => Promise<unknown>;
+  /** Mints an invitation and returns the JSON payload the link carries. */
+  onInvite: () => Promise<string>;
   onClose: () => void;
 }
 
@@ -29,7 +30,11 @@ export default function InviteModal({ onInvite, onClose }: InviteModalProps) {
     setLoading(true);
     setError(null);
     try {
-      setPayload(JSON.stringify(await onInvite()));
+      // Already JSON: `useWorkspace.invite` builds the shared payload (which is
+      // what carries the workspace NAME to the joiner) and serialises it. The
+      // old `JSON.stringify(await onInvite())` double-encoded nothing useful —
+      // it wrapped the raw admin response, whose shape no other mero app reads.
+      setPayload(await onInvite());
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create invitation.');
     } finally {

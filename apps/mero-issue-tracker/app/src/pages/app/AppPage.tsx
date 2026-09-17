@@ -16,7 +16,7 @@ import NamespaceCreateDialog from '../../components/NamespaceCreateDialog';
 import AddRepoDialog from '../../components/AddRepoDialog';
 import NsEmptyState from '../../components/NsEmptyState';
 import AliasGate from '../../components/AliasGate';
-import { clearPendingInvitation, peekPendingInvitation } from '../../auth/ssoBootstrap';
+import { usePendingInvitation } from '../../hooks/usePendingInvitation';
 import type { AppCtx, Filters } from './appContext';
 
 const EMPTY_FILTERS: Filters = { status: '', priority: '', assignee: '', label: '' };
@@ -63,15 +63,20 @@ export default function AppPage(): React.ReactElement | null {
   const [searchQuery, setSearchQuery] = useState('');
   const searchInputRef = useRef<HTMLInputElement>(null);
 
-  // A `?invitation=` deep link captured before React mounted (see ssoBootstrap).
-  // Read once, here rather than at capture time, because joining needs an
-  // authenticated session. It is forgotten on a successful join or an explicit
-  // cancel, never on a failure — so a transient error stays retryable.
-  const [pendingInvite, setPendingInvite] = useState<string | null>(() => peekPendingInvitation());
+  // An invitation captured from a link — however it arrived (cold-open URL, the
+  // launcher's warm `deep-link` event, the PWA launch queue). Capture happens
+  // before React mounts; it is REDEEMED here, because joining needs an
+  // authenticated session and the workspace hook.
+  //
+  // The capture is sticky until acked, so this sees it whenever AppPage mounts,
+  // including long after the link was opened. `resolve()` is the ack, called on
+  // a successful join or an explicit cancel and never on a failure — so a
+  // transient error stays retryable across a reload.
+  const pendingInvitation = usePendingInvitation();
+  const pendingInvite = pendingInvitation?.code ?? null;
   const forgetPendingInvite = useCallback(() => {
-    clearPendingInvitation();
-    setPendingInvite(null);
-  }, []);
+    pendingInvitation?.resolve();
+  }, [pendingInvitation]);
 
   const effectiveAssignee = myIssues ? (selfMember ? aliases.resolve(selfMember) : '') : filters.assignee;
   const hookFilters = useMemo(
@@ -190,10 +195,13 @@ export default function AppPage(): React.ReactElement | null {
     </>
   );
 
-  // An SSO callback context is still resolving its namespace: hold off
-  // (mirrors App.tsx's isLoading guard) rather than flash the picker right
-  // before the desktop handoff lands.
-  if (!ws.activeNs && ws.resolvingCallback) return null;
+  // Still resolving something that decides WHICH workspaces exist: hold off
+  // (mirrors App.tsx's isLoading guard) rather than flash the picker.
+  //  - `resolvingCallback`: an SSO callback context whose namespace is being
+  //    looked up, right before the desktop handoff lands;
+  //  - `resolvingApplicationId`: the node has not yet said which installed
+  //    application this app is, and the namespace list is scoped by it.
+  if (!ws.activeNs && (ws.resolvingCallback || ws.resolvingApplicationId)) return null;
 
   // No active namespace (none yet, or a stale/invalid prior choice): never
   // silently enter one, and never fall through to the Shell either - that

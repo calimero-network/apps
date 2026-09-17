@@ -20,14 +20,20 @@
  *     token blob) for BOTH token-less and token-bearing hashes: token-less
  *     pre-fills the connect screen, and token-bearing needs node_url seeded
  *     so mero-react ≥4.2.0 trusts the callback's node (see persistAuthHash).
- *  2. Web invitation capture: a shared link is `?invitation=<encoded>`. We stash
- *     it (the join flow consumes it after auth) and strip it from the URL.
+ *  2. Invitation capture: starting the platform deep-link controller (see
+ *     `auth/invitationIntents`). This used to be a hand-rolled read of
+ *     `location.search` right here; it now lives next to the link builder and
+ *     covers the launcher's warm `deep-link` event, the PWA launch queue and
+ *     `calimero://` links as well as the cold-open URL.
+ *
+ *     It still has to happen HERE, before React mounts: `App.tsx` redirects a
+ *     signed-in visitor off `/` with `<Navigate replace>`, which rewrites the
+ *     URL — query string and all — before any component below it mounts.
  *
  * Both are best-effort and never throw into the render path.
  */
 import { setNodeUrl, setApplicationId } from '@calimero-network/mero-react';
-
-const INVITATION_KEY = 'pending-invitation';
+import { ensureInvitationCapture } from './invitationIntents';
 
 /** True when running inside the Calimero desktop (Tauri) shell. */
 export const IS_DESKTOP =
@@ -37,7 +43,7 @@ export const IS_DESKTOP =
 export function bootstrapSsoAndInvitation(): void {
   if (typeof window === 'undefined') return;
   try { persistAuthHash(); } catch { /* never block boot on a bad hash */ }
-  try { captureInvitation(); } catch { /* never block boot on a bad query */ }
+  try { ensureInvitationCapture(); } catch { /* never block boot on a bad query */ }
 }
 
 /**
@@ -82,32 +88,4 @@ function persistAuthHash(): void {
   // node_url above; leave the TOKEN and the hash itself untouched so
   // parseAuthCallback stores the token where mero-js reads it and strips the
   // hash (see file header — touching the token/hash here breaks auth).
-}
-
-/** Web invitation: stash `?invitation=` for the join flow, then clean the URL. */
-function captureInvitation(): void {
-  const params = new URLSearchParams(window.location.search);
-  const raw = params.get('invitation');
-  if (!raw) return;
-  localStorage.setItem(INVITATION_KEY, raw);
-  params.delete('invitation');
-  const qs = params.toString();
-  window.history.replaceState(
-    {}, '',
-    window.location.pathname + (qs ? `?${qs}` : '') + window.location.hash,
-  );
-}
-
-/**
- * Read a captured invitation WITHOUT consuming it. The join is only attempted
- * once the user is authenticated, and a failed attempt has to stay retryable,
- * so the value is cleared explicitly on success or cancel — not on read.
- */
-export function peekPendingInvitation(): string | null {
-  return localStorage.getItem(INVITATION_KEY);
-}
-
-/** Forget a captured invitation (joined successfully, or the user dismissed it). */
-export function clearPendingInvitation(): void {
-  localStorage.removeItem(INVITATION_KEY);
 }

@@ -7,8 +7,16 @@
  *  - A context inside the namespace is ONE repo. Repos are added explicitly
  *    (name + GitHub URL); `activeRepo` (a contextId) is persisted per
  *    namespace and feeds every issue view.
- *  - People names come from namespace member metadata (setMemberMetadata);
- *    repo names are the context label passed at createContext.
+ *  - Every human-readable NAME lives somewhere replicated, because a name only
+ *    one node can read is worse than no name at all: the creator sees "Platform
+ *    team" and everyone they invite sees `20150f8a`.
+ *      * workspace name -> `createNamespace({name})` + the group metadata record
+ *        it is served from, and `groupAlias` inside the invitation payload so
+ *        `joinNamespace({groupName})` can record it at join time;
+ *      * repo name      -> the context metadata record (`setContextMetadata`),
+ *        not just `createContext({name})`, which is a label local to the node
+ *        that created it;
+ *      * people names   -> namespace member metadata (`setMemberMetadata`).
  *  - Desktop SSO: when the auth callback carries a contextId + identity, we
  *    treat that context as the active repo and resolve its namespace, skipping
  *    the pickers entirely.
@@ -28,7 +36,13 @@ import {
 import { useSubscription } from '@calimero-network/mero-react';
 import { PRIMARY_SERVICE } from '../config';
 import { decodeInvitation } from '../utils/invitation';
+import {
+  buildInvitePayload,
+  groupIdOfInvite,
+  parseInvitePayload,
+} from '../utils/invitePayload';
 import { IssueTrackerClient } from '../generated/IssueTrackerClient';
+import { useApplicationId } from './useApplicationId';
 import { buildAliasMap } from './useAliases';
 import {
   readActiveNs,
@@ -38,8 +52,6 @@ import {
   writeActiveRepo,
   clearPersistedWorkspace,
 } from './workspacePersistence';
-
-const ENV_APPLICATION_ID = import.meta.env.VITE_APPLICATION_ID?.trim() || null;
 
 // Members can create per-namespace contexts + invite others. Mirrors core's
 // MemberCapabilities bits (CAN_CREATE_CONTEXT | CAN_INVITE_MEMBERS).
@@ -53,6 +65,8 @@ export interface RepoEntry {
 
 export interface UseWorkspaceReturn {
   applicationId: string | null;
+  /** True while the node is still being asked which installed app this is. */
+  resolvingApplicationId: boolean;
 
   // namespaces
   namespaces: Namespace[];
@@ -67,7 +81,8 @@ export interface UseWorkspaceReturn {
   createNamespaceError: Error | null;
   join: (code: string) => Promise<void>;
   joinLoading: boolean;
-  invite: () => Promise<unknown>;
+  /** Mints an invitation and returns the JSON payload to wrap in a share link. */
+  invite: () => Promise<string>;
   inviteLoading: boolean;
 
   // repos (contexts inside the active namespace)
@@ -108,7 +123,25 @@ export function useWorkspace(): UseWorkspaceReturn {
     contextId: callbackContextId,
     contextIdentity: callbackContextIdentity,
   } = useMero();
-  const applicationId = authApplicationId || ENV_APPLICATION_ID;
+  // Which installed application IS this app: asked of the node and matched by
+  // the bundle's `package` (see utils/appId). The session's id and a baked
+  // `VITE_APPLICATION_ID` both describe how you ARRIVED, and on a shared origin
+  // the session's belongs to whichever mero app logged in last — every namespace
+  // read is scoped by it, so the workspace switcher then lists the other app's
+  // workspaces while looking like it ignores the filter.
+  //
+  // The session id remains as a fallback for the one case the node cannot
+  // answer: this app is not installed there under its package (a raw-wasm dev
+  // install). That is strictly the old behaviour, and only where the old
+  // behaviour was all there was.
+  const { appId: nodeApplicationId, resolving: resolvingApplicationId } = useApplicationId();
+  // Null while the node is still answering, NOT the session id. Scoping the
+  // namespace list to a possibly-wrong id for one render is how a stale pick
+  // gets auto-selected and then persisted; `resolvingApplicationId` lets the
+  // caller hold the onboarding pane back for that window instead.
+  const applicationId = resolvingApplicationId
+    ? null
+    : nodeApplicationId || authApplicationId || null;
 
   const { namespaces, loading: nsLoading, refetch: refetchNamespaces } =
     useNamespacesForApplication(applicationId);
@@ -178,9 +211,57 @@ export function useWorkspace(): UseWorkspaceReturn {
   // --- Contexts (repos) in the active namespace ---
   const { contexts, loading: reposLoading, refetch: refetchContexts } =
     useGroupContexts(activeNs);
-  const repos = useMemo<RepoEntry[]>(
-    () => contexts.map((c) => ({ contextId: c.contextId, name: c.name?.trim() || c.contextId.slice(0, 8) })),
+
+  // Repo names, from the REPLICATED context metadata record.
+  //
+  // `createContext({name})` gives the context a label on the CREATOR's node.
+  // `listGroupContexts` then reports it there and the creator sees "mero-core"
+  // — but an invited member's node never received that label, so the same repo
+  // rendered as `a1b2c3d4` for everyone else. `setContextMetadata` writes a CRDT
+  // `MetadataRecord` against the managing group, which is the only place a name
+  // written on one node is readable on another (this app ships the pattern as
+  // `recipes/context-metadata`; `addRepo` now writes it).
+  //
+  // Keyed off the context IDS rather than the array, because `refetchContexts`
+  // returns a fresh array on every poll and would otherwise re-fetch metadata
+  // for every repo on every refetch.
+  const contextIdsKey = useMemo(
+    () => contexts.map((c) => c.contextId).join(','),
     [contexts],
+  );
+  const [repoMetaNames, setRepoMetaNames] = useState<Map<string, string>>(new Map());
+  useEffect(() => {
+    const ids = contextIdsKey ? contextIdsKey.split(',') : [];
+    if (!mero || !activeNs || ids.length === 0) { setRepoMetaNames(new Map()); return; }
+    let cancelled = false;
+    (async () => {
+      const entries = await Promise.all(
+        ids.map(async (contextId) => {
+          const rec = await mero.admin
+            .getContextMetadata(activeNs, contextId)
+            .catch(() => null);
+          const name = rec?.name?.trim();
+          return name ? ([contextId, name] as const) : null;
+        }),
+      );
+      if (cancelled) return;
+      setRepoMetaNames(new Map(entries.filter((e): e is [string, string] => e !== null)));
+    })();
+    return () => { cancelled = true; };
+  }, [mero, activeNs, contextIdsKey]);
+
+  const repos = useMemo<RepoEntry[]>(
+    () =>
+      contexts.map((c) => ({
+        contextId: c.contextId,
+        // Shared record first: the listing's `name` is this node's own label and
+        // is absent on a node that did not create the context.
+        name:
+          repoMetaNames.get(c.contextId) ||
+          c.name?.trim() ||
+          c.contextId.slice(0, 8),
+      })),
+    [contexts, repoMetaNames],
   );
 
   // --- Active repo (a contextId; persisted per namespace) ---
@@ -237,7 +318,20 @@ export function useWorkspace(): UseWorkspaceReturn {
     (async () => {
       try {
         const { identities } = await mero.admin.getContextIdentitiesOwned(activeRepo);
-        if (!cancelled && identities.length > 0) setExecutorPublicKey(identities[0]);
+        if (cancelled) return;
+        if (identities.length > 0) { setExecutorPublicKey(identities[0]); return; }
+
+        // No identity in this context yet. Auto-follow enrols a member in
+        // contexts created AFTER they joined the namespace and in no others, so
+        // every repo that already existed when someone accepted an invitation
+        // lands here — and without an executor key `ready` never flips, which
+        // read as "the invite worked but the app is stuck loading forever".
+        // Joining is an explicit call; membership in the namespace is what
+        // authorises it.
+        const joined = await mero.admin.joinContext(activeRepo);
+        if (!cancelled && joined?.memberPublicKey) {
+          setExecutorPublicKey(joined.memberPublicKey);
+        }
       } catch {
         /* leave null - useItems stays not-ready until an identity resolves */
       }
@@ -356,6 +450,14 @@ export function useWorkspace(): UseWorkspaceReturn {
           name: trimmed,
         });
         if (!ns?.namespaceId) throw new Error('createNamespace returned no namespaceId');
+        // Pin the name into the group's metadata record as well as the create
+        // call. `Namespace.name` is served FROM that record, so the two agree on
+        // a node that honours `createNamespace({name})` — and on one that does
+        // not, this is what stops the workspace from showing up as a hex id.
+        // Best-effort; the create call's name already covers the common case.
+        try {
+          await mero.admin.setGroupMetadata(ns.namespaceId, { name: trimmed });
+        } catch { /* createNamespace's own name stands */ }
         // Best-effort: the namespace is usable without it; an admin can re-set.
         try {
           await mero.admin.setDefaultCapabilities(ns.namespaceId, {
@@ -401,6 +503,17 @@ export function useWorkspace(): UseWorkspaceReturn {
         await new IssueTrackerClient(mero, ctx.contextId, ctx.memberPublicKey).setRepoUrl({
           url: trimmedUrl,
         });
+        // Publish the name where every OTHER node can read it. `createContext`'s
+        // `name` above is this node's label and travels nowhere; the context
+        // metadata record is a CRDT against the managing group, so it reaches
+        // everyone the namespace does. Without this an invited teammate sees
+        // `a1b2c3d4` where the creator sees the repo's name.
+        //
+        // Best-effort: a nameless repo still works, and a metadata write is not
+        // worth failing an otherwise-created repo over.
+        try {
+          await mero.admin.setContextMetadata(activeNs, ctx.contextId, { name: trimmedName });
+        } catch { /* the local label above still names it here */ }
         // Best-effort node alias so tools can resolve the repo by name.
         try {
           await mero.admin.createContextAlias({ alias: trimmedName, contextId: ctx.contextId });
@@ -418,33 +531,50 @@ export function useWorkspace(): UseWorkspaceReturn {
     [mero, applicationId, activeNs, refetchContexts, selectRepo],
   );
 
-  const invite = useCallback(async () => {
+  /**
+   * Mint an invitation and return the JSON payload the share link carries.
+   *
+   * The payload is the ecosystem's shape — `{invitation, groupAlias, groupId,
+   * kind}` — which is what mero-stream, mero-meet and mero-chat mint and parse,
+   * so a code from any of them is readable here and vice versa. It used to be
+   * the admin response `JSON.stringify`d verbatim, which was neither.
+   *
+   * `groupAlias` is the whole reason names cross nodes: `joinNamespace` takes a
+   * `groupName` and there is nowhere else for the joiner's node to learn it from
+   * at join time.
+   */
+  const invite = useCallback(async (): Promise<string> => {
     if (!activeNs) throw new Error('No workspace yet - create one first.');
-    return createNamespaceInvitation(activeNs, { recursive: true });
-  }, [activeNs, createNamespaceInvitation]);
+    // Non-recursive: this app invites to the WORKSPACE, and the recursive form
+    // returns a different envelope for no extra grant. Old recursive codes are
+    // still decoded on the way in.
+    const res = await createNamespaceInvitation(activeNs, {});
+    const namespaceName =
+      namespaces.find((n) => n.namespaceId === activeNs)?.name?.trim() || null;
+    const payload = buildInvitePayload(res, { namespaceId: activeNs, namespaceName });
+    if (!payload) {
+      throw new Error('The node returned an invitation with no signature.');
+    }
+    return JSON.stringify(payload);
+  }, [activeNs, namespaces, createNamespaceInvitation]);
 
   const join = useCallback(async (code: string) => {
-    const parsed = decodeInvitation(code) as any;
+    const payload = parseInvitePayload(decodeInvitation(code));
+    if (!payload) throw new Error('That invite link could not be read.');
 
-    // Share codes wrap the raw namespace invitation; unwrap to {nsId, invitation}.
-    let nsId: string | null = null;
-    let invitation = parsed;
-    let groupName: string | undefined;
-    if (Array.isArray(parsed?.invitations) && parsed.invitations.length > 0) {
-      const first = parsed.invitations[0];
-      nsId = first.groupId;
-      invitation = first.invitation;
-      groupName = first.groupAlias || undefined;
-    } else if (parsed?.invitation?.groupId) {
-      const gid = parsed.invitation.groupId;
-      nsId = Array.isArray(gid)
-        ? gid.map((b: number) => b.toString(16).padStart(2, '0')).join('')
-        : String(gid);
-      groupName = parsed.groupAlias || undefined;
-    }
+    // The id to act on comes from INSIDE the signed invitation, never from the
+    // wrapper around it, so a tampered link cannot redirect a join. The wrapper's
+    // `groupId` is only a fallback for a node that signs no group id.
+    const nsId = groupIdOfInvite(payload) || payload.groupId || null;
     if (!nsId) throw new Error('Invalid invitation: cannot determine namespace.');
 
-    await joinNamespace(nsId, { invitation, groupName });
+    // `groupName` is the creator's workspace name, riding along in the payload.
+    // Passing it is what makes the joiner's sidebar say "Platform team" instead
+    // of `20150f8a`.
+    await joinNamespace(nsId, {
+      invitation: payload.invitation as never,
+      ...(payload.groupAlias ? { groupName: payload.groupAlias } : {}),
+    });
     await refetchNamespaces();
     selectNamespace(nsId);
     await refetchContexts();
@@ -454,6 +584,7 @@ export function useWorkspace(): UseWorkspaceReturn {
 
   return {
     applicationId,
+    resolvingApplicationId,
     namespaces,
     activeNs,
     resolvingCallback,
@@ -484,7 +615,7 @@ export function useWorkspace(): UseWorkspaceReturn {
     repoUrl,
     setRepoUrl,
     ready: activeRepo !== null && executorPublicKey !== null,
-    loading: nsLoading || reposLoading,
+    loading: resolvingApplicationId || nsLoading || reposLoading,
     error: null,
     clearPersisted,
   };
