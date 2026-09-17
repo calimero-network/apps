@@ -7,12 +7,19 @@
  * The app used to share whatever `createNamespaceInvitation(ns, {recursive:true})
  * returned, `JSON.stringify`d verbatim. Three things were wrong with that:
  *
- *   1. **The workspace name never travelled.** `useWorkspace.join` read
- *      `parsed.invitations[0].groupAlias`, but the recursive entry's field is
- *      spelled `groupName` on the wire (`RecursiveInvitationEntry`), so the value
- *      was `undefined` every single time. `joinNamespace(ns, {groupName})` then
- *      recorded no name, and the joiner's sidebar showed a truncated hex id
- *      forever while the creator saw "Platform team".
+ *   1. **The workspace name never travelled.** `useWorkspace.join` read one
+ *      spelling of the alias off the recursive entry and passed it straight to
+ *      `joinNamespace`, so whenever that single guess did not match what the
+ *      node sent, no name was recorded and the joiner's sidebar showed a
+ *      truncated hex id forever while the creator saw "Platform team".
+ *
+ *      ⚠️ Which spelling is canonical is NOT settled. `@calimero-network/
+ *      mero-js@1.4.1` declares `RecursiveInvitationEntry.groupAlias?: string`
+ *      and `JoinNamespaceRequest.groupAlias?: string`, but `groupName` has been
+ *      observed in responses too, and the .d.ts has been stale before. Rather
+ *      than pick a winner, `buildInvitePayload` reads BOTH and falls back to the
+ *      namespace name the caller already knows — which is correct under either
+ *      answer, and does not silently break when the SDK changes its mind.
  *   2. **The single-invitation shape could not be read at all.** The fallback
  *      branch looked for `parsed.invitation.groupId`; the signed body spells it
  *      `group_id` and it is a BYTE ARRAY, not a string. So a non-recursive
@@ -92,8 +99,9 @@ export function groupIdOfInvite(payload: WorkspaceInvitePayload | SignedInvitati
  * Wrap whatever `createNamespaceInvitation` returned into the shared payload,
  * attaching the workspace name so the joiner's node can record it.
  *
- * Handles both response shapes: `{invitation, groupName?}` (the default) and
- * `{invitations: [{groupId, invitation, groupName?}]}` (`recursive: true`). For
+ * Handles both response shapes: `{invitation, groupName?/groupAlias?}` (the
+ * default) and `{invitations: [{groupId, invitation, groupName?/groupAlias?}]}`
+ * (`recursive: true`); both alias spellings are read, see the header note. For
  * the recursive one the FIRST entry is the outermost group — the namespace —
  * which is the only one this app grants.
  *
