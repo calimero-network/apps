@@ -34,6 +34,7 @@ import { createIdentity, restoreIdentity, type DeviceIdentity } from './lib/iden
 import {
   describeRelay,
   discoverAdmitter,
+  sendJoin,
   openSession,
   readContext,
   writeContext,
@@ -316,6 +317,40 @@ function NodeStep({
   const [classified, setClassified] = useState<ClassifiedNode[]>([]);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   const [busy, setBusy] = useState(false);
+  const [joined, setJoined] = useState(false);
+
+  const join = useCallback(async () => {
+    setBusy(true);
+    setOutcome(null);
+    try {
+      if (!identity) throw new Error('Mint or restore an account in step 1 first.');
+      if (settings.admitUrl === '') throw new Error('Find an admitter first — the button above.');
+      const { published } = await sendJoin(
+        settings.admitUrl,
+        identity,
+        settings.namespaceId,
+        settings.invitationJson,
+      );
+      setJoined(published);
+      setOutcome({
+        // `published` is the honest word the endpoint uses, and the distinction
+        // is real: the admitter put the op on the namespace topic and neither
+        // applies it nor waits for anyone who does. Membership lands when peers
+        // fold it, which is why the read is what confirms this worked.
+        text: published
+          ? 'Signed and published. The admitter carried it; membership lands when peers fold ' +
+            'the op, so step 4 is what confirms it — a 403 straight after is usually a race, ' +
+            'not a refusal.'
+          : 'The admitter accepted the call but reported nothing published. Treat that as not ' +
+            'joined and try another admitter.',
+        error: !published,
+      });
+    } catch (error) {
+      setOutcome({ text: error instanceof Error ? error.message : String(error), error: true });
+    } finally {
+      setBusy(false);
+    }
+  }, [identity, settings.admitUrl, settings.namespaceId, settings.invitationJson]);
 
   const discover = useCallback(async () => {
     setBusy(true);
@@ -337,7 +372,11 @@ function NodeStep({
       // reuse `nodeUrl` even when the panel had just said this node cannot
       // execute — it told you the problem and then walked into it.
       const relayUrl = result.executor?.relayUrl ?? '';
-      onChange({ nodeUrl: result.chosen.relayUrl ?? '', relayUrl });
+      onChange({
+        nodeUrl: result.chosen.relayUrl ?? '',
+        relayUrl,
+        admitUrl: result.chosen.admitUrl ?? '',
+      });
 
       const admitLine = `Admitting through ${result.chosen.peerId} at ${result.chosen.relayUrl}.`;
       const writeLine =
@@ -428,9 +467,26 @@ function NodeStep({
         binding the key into the attestation quote, which is tracked separately.
       </p>
 
-      <button type="button" onClick={discover} disabled={busy || !identity}>
-        {busy ? 'Asking the cloud…' : 'Find a node that can admit me'}
-      </button>
+      <div className="row">
+        <button type="button" onClick={discover} disabled={busy || !identity}>
+          {busy ? 'Asking the cloud…' : 'Find a node that can admit me'}
+        </button>
+        <button
+          type="button"
+          onClick={() => void join()}
+          disabled={busy || !identity || settings.admitUrl === ''}
+        >
+          {busy ? 'Signing and sending…' : joined ? 'Join sent — send again' : 'Sign and send my join'}
+        </button>
+      </div>
+      <p className="aside">
+        The second button is the one that makes you a <strong>member</strong>. Your device signs
+        the membership op and the admitter only carries it — every peer checks the signer against
+        the certificate in the op, so the node relaying it cannot admit a different account,
+        change the group or grant itself a role. It can refuse, and that is the whole of its
+        power. Until this succeeds the read answers 403 and the write is refused, because there
+        is nothing to be a member of yet.
+      </p>
       {!identity && (
         <p className="aside">
           Disabled until step 1 holds a key. The cloud asks this read to name an account, and

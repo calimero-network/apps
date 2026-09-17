@@ -83,6 +83,7 @@ describe('settings', () => {
       contextId: '1'.repeat(64),
       nodeUrl: 'http://n',
       relayUrl: 'http://relay',
+      admitUrl: 'http://n/admin-api/namespaces/ns/admit',
     };
     saveSettings(settings);
     expect(loadSettings()).toEqual(settings);

@@ -26,6 +26,7 @@ import {
   RelayClient,
   createLocalStorageNonceSource,
   login,
+  signMemberJoinOp,
   type DelegatedSession,
   type IntentResult,
 } from '@calimero-network/mero-js';
@@ -39,7 +40,7 @@ import {
 } from './admission.js';
 
 import type { DeviceIdentity } from './identity.js';
-import { nonceStorageKey } from './storage.js';
+import { joinNonceStorageKey, nonceStorageKey } from './storage.js';
 
 /** Strip a trailing slash so a pasted URL and a typed one address the same node. */
 function normaliseUrl(url: string): string {
@@ -267,4 +268,113 @@ export async function discoverAdmitter(
   // round-trip to learn nothing new.
   const { chosen: executor, reason: executorReason } = chooseExecutor(routing.nodes);
   return { classified, chosen, reason, signedAdmitters, executor, executorReason };
+}
+
+
+/**
+ * Claim an invitation: sign the membership op and hand it to an admitter.
+ *
+ * This is the step that makes the account a MEMBER, and without it the read
+ * answers 403 and the write is refused — the demo could resolve a node and then
+ * had nothing to be on it.
+ *
+ * ## The joiner signs; the admitter only carries
+ *
+ * The op is signed by the device key inside the credential it carries, and
+ * every peer checks `signer == credential.sign_pk` when applying it. So the
+ * admitter cannot substitute a different account, change the group or grant a
+ * role — all of that sits inside a signature it does not hold. What it can do is
+ * refuse, which is a liveness problem and not an authority one, and is why an
+ * invitation naming several admitters is worth more than one naming a single
+ * node.
+ *
+ * The node adds its own `AdmitterEndorsement` as it relays. That rides the
+ * envelope, outside this signature and outside the op's id, which is exactly
+ * what lets a keyholder be admissible at all: an endorsement can only be signed
+ * by an account the invitation named, and a keyholder is not one.
+ *
+ * ## Parents are empty, and that is not an oversight
+ *
+ * A keyholder holds no node, so it has no view of the namespace DAG and cannot
+ * name its heads. Empty parents is the only thing it *can* sign, and the direct
+ * admission path exists precisely for callers in that position.
+ *
+ * ## Posted with `fetch`, like the read
+ *
+ * mero-js has `AdminClient.admitJoin`, but `AdminClient` is built around a node
+ * credential this caller does not have. The endpoint takes no authentication —
+ * the signature is the authorization — so a plain POST is the honest shape.
+ */
+export async function sendJoin(
+  admitUrl: string,
+  identity: DeviceIdentity,
+  namespaceId: string,
+  invitationJson: string,
+): Promise<{ published: boolean }> {
+  let invitation: Parameters<typeof signMemberJoinOp>[0]['invitation'];
+  try {
+    invitation = JSON.parse(invitationJson) as typeof invitation;
+  } catch (cause) {
+    throw new Error(
+      `That is not valid JSON. Paste the invitation exactly as the node printed it — ${
+        cause instanceof Error ? cause.message : String(cause)
+      }`,
+    );
+  }
+
+  const nonces = createLocalStorageNonceSource(joinNonceStorageKey(identity.devicePublicKey));
+  const signedOp = await signMemberJoinOp({
+    namespaceId,
+    member: identity.accountId,
+    invitation,
+    credential: identity.credential,
+    deviceSecret: identity.deviceSecret,
+    nonce: await nonces.next(),
+  });
+
+  const response = await fetch(admitUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify({ invitation, signedOp }),
+  });
+
+  const text = await response.text();
+  if (!response.ok) {
+    throw new Error(explainAdmitFailure(response.status, text));
+  }
+
+  const body = text ? (JSON.parse(text) as { data?: { published?: boolean } }) : {};
+  return { published: body.data?.published === true };
+}
+
+/**
+ * Turn an admit refusal into the thing to go and do about it.
+ *
+ * Each status here has one dominant cause and they have nothing to do with each
+ * other, so a bare "HTTP 403" sends people to the wrong place — most often to
+ * the invitation when the real answer is which node they sent it to.
+ */
+function explainAdmitFailure(status: number, body: string): string {
+  const detail = body ? `: ${body}` : '';
+  switch (status) {
+    case 400:
+      return (
+        `the node refused the op as malformed (400)${detail}. The signature covers the ` +
+        'invitation exactly as sent, so a re-serialised or edited invitation fails here.'
+      );
+    case 403:
+      return (
+        `the node refused to carry this join (403)${detail}. Either it is not in the ` +
+        'invitation’s signed `admitters` list — being live and listed by the cloud is not ' +
+        'the same thing — or the invitation itself was rejected as expired or not the ' +
+        'inviter’s to issue.'
+      );
+    case 409:
+      return (
+        `that node holds no device of its own, so it cannot endorse anyone (409)${detail}. ` +
+        'Pick another admitter.'
+      );
+    default:
+      return `the join was not published (HTTP ${status})${detail}`;
+  }
 }

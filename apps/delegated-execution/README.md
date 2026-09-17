@@ -149,9 +149,23 @@ id the first panel shows:
 meroctl --node demo namespace invite <namespace-id>              # → invitation blob
 ```
 
-The joining side of that is not in this demo — the browser signs member-join ops through
-mero-js's `signMemberJoinOp`, but wiring an admitter into the page is a larger piece of
-work than the flow being shown here. Admit the account from a node you control.
+The joining side **is** in the demo now: step 2's second button signs the membership op
+with the device key and posts it to the admitter the cloud resolved. You do not admit the
+account from a node you control — that is the whole point, and it is what makes the
+account a member of a namespace it has no node in.
+
+The admitter only carries the op. Every peer checks the signer against the certificate
+inside it, so the relaying node cannot admit a different account, change the group or
+grant a role; it can refuse, and that is the whole of its power. Its own consent —
+an `AdmitterEndorsement` — is attached as it relays, outside the joiner's signature and
+outside the op's id, which is exactly what lets a keyholder be admissible at all: an
+endorsement can only be signed by an account the invitation named, and a keyholder is
+not one.
+
+`published: true` means the op reached the namespace topic, not that you are a member.
+Membership lands when peers fold it, which the admitter neither performs nor waits for —
+so step 4 is the confirmation, and a 403 immediately after sending is usually that race
+rather than a refusal.
 
 ## Running it
 
@@ -169,7 +183,7 @@ are two different audiences.
 | Step | What happens | What it demonstrates |
 | --- | --- | --- |
 | 1. Mint | An account root and a device key are generated in the tab; the root certifies the device | Two keys, one certificate. Neither secret is ever sent; what travels carries no secret |
-| 2. Accept | The invitation's signed `admitters` list is intersected with the cloud's live routing, and the routing read names your account | Two sources, two questions: who is *allowed* to admit you, and who is *reachable*. The node signing key is still **pinned out of band** — otherwise whoever answers picks what you sign about |
+| 2. Accept | The signed `admitters` list is intersected with the cloud's live routing, the routing read names your account, and the device signs the membership op the admitter carries | Two sources, two questions: who is *allowed* to admit you, and who is *reachable*. The node signing key is still **pinned out of band** — otherwise whoever answers picks what you sign about |
 | 3. Session | Challenge → statement signed by the device key → token | A session with no password in the path. The token authorises reads only |
 | 4. Read | `POST /admin-api/contexts/<id>/query` with the token | Membership is re-checked per call, not per session; only `&self` methods are reachable |
 | 5. Write | A warrant signed by the device, spent by the **cloud-resolved relay** | The session plays **no part**. The delta is attributed to *your* account, not the node's — and the relay need not be the node that admitted you |
