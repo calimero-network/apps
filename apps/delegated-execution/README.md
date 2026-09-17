@@ -29,6 +29,28 @@ Two consequences worth knowing:
 - `scripts/landing/generate.mjs` builds landing pages from an explicit list in
   `apps.config.mjs`. This app is not in it and gets no landing page — it is a tool, not
   something to install.
+- It **does** carry a `vercel.json`, because `scripts/check-vercel-output.sh` requires one
+  for every `apps/*/app` and fails the `frontend` job without it. Deploying it also needs
+  a Vercel project pointing at `apps/delegated-execution/app`, which is created in the
+  Vercel dashboard and not from this repository.
+
+## Pointing it at a hosted HA node
+
+The demo does not care whether the node is yours or a fleet relay, but a relay has to
+expose what the flow uses. On a mero-tee node that is decided by
+`mero-traefik/templates/traefik-routing.yml.j2`:
+
+| what the demo calls | router | gated? |
+| --- | --- | --- |
+| `GET /auth/challenge`, `POST /auth/token` | `auth-public` | no — `cors` only |
+| `POST /admin-api/contexts/<id>/intents` | `node-api-intents` | no — `cors` only, **relay builds only** (`fleet_delegated_execution`) |
+| `POST /admin-api/contexts/<id>/query` | `node-api` (generic) | yes — `cors` + `auth-node`, so the session token has to satisfy it |
+| `POST /admin-api/namespaces/<id>/admit` | `node-api-admit` | no — `cors` only |
+
+Two things still have to be true beyond routing: the node's auth service must have the
+`account_proof` provider **enabled** (routing exposes `/auth/`, it does not turn the
+provider on), and the node's account must hold `CAN_AUTHOR_ON_BEHALF` on the group that
+owns the context — which the "Check first" button answers without signing anything.
 
 ## It pins mero-js instead of using `catalog:`
 
