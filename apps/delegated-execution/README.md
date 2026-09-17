@@ -55,7 +55,7 @@ owns the context — which the "Check first" button answers without signing anyt
 ## It pins mero-js instead of using `catalog:`
 
 ```json
-"@calimero-network/mero-js": "^19.8.0"
+"@calimero-network/mero-js": "^19.9.0"
 ```
 
 The workspace catalog is on `^18.3.0`, which predates `login()`, `RelayClient` and
@@ -63,15 +63,6 @@ The workspace catalog is on `^18.3.0`, which predates `login()`, `RelayClient` a
 would re-resolve and re-test all sixteen apps for the benefit of this one, so the pin is
 local and this paragraph is the reason. **Fold it back into the catalog** the next time the
 catalog moves past this version.
-
-> **This pin is one release behind what step 2 needs.** Claiming the account uses
-> `signAccountLogin` and `CloudClient.getAccountLoginChallenge` / `submitAccountLogin`,
-> which land in the mero-js release after 19.8.1. The pin stays on a version that exists so
-> `pnpm install` resolves; bump it to the new release and the app typechecks. Until then
-> `pnpm -r typecheck` reports those three names as missing from the module, and step 2's
-> four tests in `src/lib/flow.test.ts` fail with
-> `cloud.getAccountLoginChallenge is not a function` — that is the pending bump and nothing
-> else. Both were run green here against a local build of the mero-js branch.
 
 ## What you need running
 
