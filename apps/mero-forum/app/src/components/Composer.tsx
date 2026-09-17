@@ -4,8 +4,11 @@ import { useState } from "react";
  *  first thing on the page. */
 export default function Composer({
   onSubmit,
+  as,
 }: {
   onSubmit: (title: string, body: string) => Promise<void>;
+  /** The name this post will carry. "" when none has been chosen. */
+  as?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState("");
@@ -43,6 +46,19 @@ export default function Composer({
   return (
     <div className="composer">
       {error && <div className="error">{error}</div>}
+      {/* Said at the moment of writing, not only in the header: by the time you
+          are typing, the header has scrolled away. */}
+      <p className="composerAs" data-testid="composer-as">
+        {as ? (
+          <>
+            You are creating a post as <strong>{as}</strong>
+          </>
+        ) : (
+          <>
+            You have not picked a name — this will be signed with an account id
+          </>
+        )}
+      </p>
       <input
         autoFocus
         placeholder="Title"
@@ -65,7 +81,11 @@ export default function Composer({
         >
           {busy ? "Posting…" : "Post"}
         </button>
-        <button className="ghost" onClick={() => setOpen(false)} disabled={busy}>
+        <button
+          className="ghost"
+          onClick={() => setOpen(false)}
+          disabled={busy}
+        >
           Cancel
         </button>
       </div>

@@ -48,6 +48,35 @@
         }
       ]
     },
+    "CommentVote": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "comment_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "voter",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "i32"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
     "MeroForum": {
       "kind": "record",
       "fields": [
@@ -86,6 +115,32 @@
             },
             "value": {
               "$ref": "Vote"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "comment_votes",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "CommentVote"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "profiles",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Profile"
             },
             "crdt_type": "unordered_map"
           }
@@ -135,6 +190,29 @@
           "name": "deleted",
           "type": {
             "kind": "bool"
+          }
+        }
+      ]
+    },
+    "Profile": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "account",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
           }
         }
       ]

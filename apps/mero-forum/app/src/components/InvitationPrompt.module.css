@@ -1,0 +1,85 @@
+/* ── Invitation prompt ──────────────────────────────────────────────────────
+ *
+ * Mounted at the app level (see the component doc), so it floats above whatever
+ * route the link happened to land on rather than living in one page's layout.
+ */
+.wrap {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  /* Above the call's own bars, below a modal dialog's top layer. */
+  z-index: 20;
+  display: flex;
+  justify-content: center;
+  padding: 12px;
+  pointer-events: none;
+}
+
+.prompt {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  max-width: 760px;
+  padding: 12px 16px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  background: var(--bg-elev);
+  box-shadow: var(--shadow);
+  font-size: 0.94rem;
+}
+
+.promptError {
+  border-color: var(--red);
+}
+
+.text {
+  flex: 1;
+  min-width: 200px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sub {
+  font-size: 0.85rem;
+  color: var(--text-dim);
+}
+
+.accept {
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  color: var(--accent-fg);
+  padding: 8px 18px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.accept:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+.accept:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.ghost {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  padding: 8px 14px;
+  font-size: 0.9rem;
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.ghost:hover:not(:disabled) {
+  background: var(--surface-hover);
+  color: var(--text);
+}
