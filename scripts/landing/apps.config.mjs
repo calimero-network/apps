@@ -54,6 +54,40 @@ import { DOCS } from './docs.config.mjs';
 
 /** @type {Record<string, import('./types.js').AppLanding>} */
 export const APPS = {
+  'mero-chess': {
+    e2eDir: 'e2e',
+    availability: 'web+desktop',
+    trust: ['No game server', 'Rules run in the contract', 'No accounts'],
+    explainer: [
+      'Two-player chess where the board is not hosted anywhere. A table is a Calimero context holding two seats and a list of moves, and it replicates between the two players\u2019 own nodes — so a game is a thing the two of you have, not a row in somebody else\u2019s database.',
+      'The rules live in the contract rather than in either client: legal moves, check, mate, castling, en passant, promotion, and every one of the draws. Your client asks the contract what it may play and gets a list back, which is why the board never offers a move the node would refuse — and why a modified client cannot cheat.',
+    ],
+    features: [
+      { icon: 'CloudX', title: 'No game server', body: 'A table is a context. Two nodes hold the same move list and nobody hosts a game.' },
+      { icon: 'LockCheck', title: 'The contract is the referee', body: 'Every rule is enforced inside the WASM contract, on both players\u2019 nodes. A client that asks for an illegal move is simply told no.' },
+      { icon: 'Target', title: 'Moves, never a board', body: 'State is the move list keyed by ply. Two people moving at once resolve to one move — the same one on every node.' },
+      { icon: 'ArrowUpRight', title: 'Results nobody writes down', body: 'Checkmate, stalemate and the repetition rules are derived from the moves, so the result cannot disagree with the game.' },
+      { icon: 'ExternalLink', title: 'Invite by link', body: 'One link opens the table. No sign-up, no account, no email address — and whoever opens it can play or watch.' },
+    ],
+    faq: [
+      {
+        q: 'Can my opponent cheat with a modified client?',
+        a: 'No. Nothing about the game is decided in the browser: every move is validated by the contract running on your node as well as theirs, and a move your node rejects never becomes part of the game.',
+      },
+      {
+        q: 'What happens if we both move at the same time?',
+        a: 'Only one of you can take that ply. Moves are keyed by ply number and merge to a single winner by a rule every node applies identically, so the two boards agree — the move that lost simply never happened.',
+      },
+      {
+        q: 'Is there a clock?',
+        a: 'No. Games here are correspondence-paced: the table keeps the move list and the players\u2019 presence, and there is no time control to run out of while your laptop is shut.',
+      },
+      {
+        q: 'Can other people watch?',
+        a: 'Yes. Anyone in the namespace can open the table; the two seats are taken but the board and the moves are visible to everyone, which is what a game of complete information should be.',
+      },
+    ],
+  },
   battleships: {
     e2eDir: 'e2e',
     availability: 'web+desktop',

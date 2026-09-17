@@ -1,0 +1,44 @@
+{
+  "name": "mero-chess",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -b",
+    "test": "vitest run",
+    "codegen": "calimero-abi-codegen -i ../logic/res/abi.json -o src/generated --client-name MeroChessClient --import-path @calimero-network/mero-js",
+    "icons": "node scripts/gen-icons.mjs",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui"
+  },
+  "dependencies": {
+    "@calimero-network/mero-js": "catalog:",
+    "@calimero-network/mero-platform": "catalog:",
+    "@calimero-network/mero-platform-react": "catalog:",
+    "@calimero-network/mero-react": "catalog:",
+    "bs58": "catalog:",
+    "fflate": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "react-router-dom": "catalog:",
+    "@calimero-network/mero-icons": "catalog:"
+  },
+  "devDependencies": {
+    "@calimero-network/abi-codegen": "catalog:",
+    "@playwright/test": "catalog:",
+    "@testing-library/jest-dom": "catalog:",
+    "@testing-library/react": "catalog:",
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@vitejs/plugin-react": "catalog:",
+    "jsdom": "catalog:",
+    "tweetnacl": "^1.0.3",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vitest": "catalog:"
+  }
+}

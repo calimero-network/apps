@@ -1,0 +1,25 @@
+{
+  "// note": "Browser code. Tests are a separate project (tsconfig.test.json) because they read the ABI off disk and so need node types, which browser code must not have.",
+  "// noUncheckedIndexedAccess": [
+    "Off for THIS project only, and only because of src/pages/landing.",
+    "",
+    "That page is generated from the fleet-wide template by `pnpm landing:generate`,",
+    "and every other app that renders it has a hand-rolled tsconfig without this",
+    "flag — so the template has never been compiled under it and does not",
+    "index-check. Editing the generated copy is not an option: `pnpm landing:check`",
+    "fails CI the moment it drifts.",
+    "",
+    "The code this app actually owns keeps the check: src/utils and src/generated",
+    "are also compiled by tsconfig.test.json, which inherits the flag from",
+    "tsconfig.base.json."
+  ],
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist-types/app",
+    "tsBuildInfoFile": "./dist-types/app.tsbuildinfo",
+    "types": ["vite/client"],
+    "noUncheckedIndexedAccess": false
+  },
+  "include": ["src"],
+  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx", "src/test"]
+}

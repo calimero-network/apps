@@ -1,0 +1,83 @@
+[package]
+name = "mero-chess"
+description = "Calimero chess table — seats, moves and the rules, replicated as CRDT state"
+# NOT the release version. Cargo requires a version field; the release workflow
+# ignores it, because the REGISTRY owns the number: it takes the highest
+# published appVersion for this package and increments the patch (0.0.1 when
+# nothing is published). Bumping this changes nothing about what ships, so never
+# read a shipped version out of the tree.
+version = "0.0.1"
+edition.workspace    = true
+authors.workspace    = true
+license.workspace    = true
+repository.workspace = true
+publish = false
+
+[lib]
+# `cdylib` for the wasm the node loads. `rlib` as well so `cargo test` can link
+# the crate — without it `tests/perft.rs` cannot `use mero_chess::board`.
+crate-type = ["cdylib", "rlib"]
+
+# Read by `cargo mero build` / `cargo mero bundle`. Every field the node and the
+# registry render has a producer here, so nothing hand-writes a manifest.json.
+#
+# `appVersion` is deliberately absent — the release workflow resolves it from
+# the registry and passes `--app-version`.
+#
+# NOTE: none of this can be inherited from the workspace. `[package.metadata]`
+# is not on cargo's inheritable list, so `min-runtime-version.workspace = true`
+# resolves to the literal `{"workspace": true}`. `scripts/check-app-metadata.sh`
+# asserts the fleet-wide values match `[workspace.metadata.mero-apps]` instead.
+[package.metadata.calimero]
+package = "com.calimero.mero-chess"
+name = "Mero Chess"
+description = "Two-player chess with no game server. A table is a Calimero context: the move list replicates as CRDT state and the rules — legal moves, check, mate, the draws — run inside the contract on both players' own nodes."
+author = "Calimero"
+# The slug IS the package id: the desktop and links.calimero.network resolve a
+# deep link by `Application.package`, so these must never drift apart.
+slug = "com.calimero.mero-chess"
+# ⚠️ REQUIRED. `cargo mero bundle` refuses to run without an icon decision — a
+# path, "default", or --no-icon — and it fails at BUNDLE time, which a pull
+# request never reaches. A missing icon is therefore a green PR that breaks the
+# moment it merges.
+icon = "../app/public/icon-512.png"
+category = "games"
+tags = ["game", "chess", "two-player", "crdt"]
+github = "https://github.com/calimero-network/apps"
+# Asserted equal to [workspace.metadata.mero-apps] in CI.
+min-runtime-version = "0.11.0-rc.37"
+# Doubles as this app's registered redirect URI: the auth frontend treats the
+# registry-declared frontend origin as the only callback it will authorize, and
+# compares it by EXACT ORIGIN. Get it wrong and hosted login breaks *after*
+# credentials are accepted, while local and desktop login keep working (loopback
+# is always trusted).
+#
+# Written without a trailing slash: an origin is scheme + host (+ port) and
+# nothing else, and `window.location.origin` never carries one.
+#
+# ⚠️ This resolves to nothing until the Vercel project exists — Root Directory
+# `apps/mero-chess/app`, project named `mero-chess` so the domain matches.
+frontend = "https://mero-chess.vercel.app"
+
+# ⚠️ The dependency tables come AFTER this one deliberately: do not move this to
+# the end of the file. `scripts/landing/generate.mjs` reads this table with
+# `/^\[package\.metadata\.calimero\]$([\s\S]*?)(?=^\[|\Z)/m`, and `\Z` is not a
+# JavaScript escape — it matches the literal letter Z. So the lookahead only
+# ends at the NEXT table, and a calimero table with nothing after it does not
+# match at all: the landing generator then fails with "no
+# [package.metadata.calimero] table with a package id found" for a file that
+# plainly has one.
+[dependencies]
+calimero-sdk.workspace           = true
+calimero-storage.workspace       = true
+calimero-storage-macros.workspace = true
+
+[dev-dependencies]
+# The `testing` feature enables the native mock host, which is what lets
+# `TestHost` and `converge_app` drive real CRDT state under `cargo test` with no
+# node and no wasm.
+calimero-storage = { workspace = true, features = ["testing"] }
+# Convergence tests are serial: converge_app clears and repopulates the
+# process-global merge registry per run, so two of them in parallel would
+# deregister each other's merge functions mid-test.
+serial_test = "3"
