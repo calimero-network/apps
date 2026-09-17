@@ -51,6 +51,10 @@ const ALL_BASE_CAPABILITIES = 15;
 const IDENTITY_TIMEOUT_MS = 60_000;
 const IDENTITY_POLL_MS = 1_500;
 
+/** How long to keep asking a room to admit us while the grant projects. */
+const ADMISSION_TIMEOUT_MS = 20_000;
+const ADMISSION_POLL_MS = 1_200;
+
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
@@ -541,6 +545,120 @@ async function ownedIdentity(
  *      and not guaranteed — so poll, and fall back to an explicit `joinContext`.
  *      `dev-invite.sh` and suite S4 both need this same fallback.
  */
+
+/** A 403 from the admission check, as opposed to a network or shape failure. */
+function isForbidden(e: unknown): boolean {
+  return /403|forbidden|not allowed|not eligible/i.test(
+    e instanceof Error ? e.message : String(e),
+  );
+}
+
+/**
+ * Join a room by inheritance, retrying while the node says "not eligible".
+ *
+ * A 403 here is NOT proof that the room is restricted, which is what this used
+ * to assert. Inheritance is checked against the namespace membership as this
+ * node has PROJECTED it, and a membership that exists is not yet a membership
+ * that confers anything — on a cold join the grant arrives over gossip and is
+ * projected a moment later. The redeem path joins the namespace and enters the
+ * room back to back, so it lands inside exactly that window: the user is told
+ * their room was "probably created as restricted" about a room that is open,
+ * and a retry a second later would have worked.
+ *
+ * So: re-ask, nudging a sync between attempts, and only report after the
+ * window has genuinely passed. Verified against two live nodes — the same
+ * sequence succeeds on the first attempt once the membership has projected,
+ * and the open/restricted setting is unchanged throughout.
+ */
+async function joinRoomWithRetry(
+  admin: AdminLike,
+  roomId: string,
+  onStatus: StatusFn,
+): Promise<void> {
+  const deadline = Date.now() + ADMISSION_TIMEOUT_MS;
+  let lastError: unknown = null;
+  let attempt = 0;
+
+  while (Date.now() < deadline) {
+    attempt += 1;
+    try {
+      await admin.joinSubgroupInheritance(roomId);
+      return;
+    } catch (e) {
+      // Re-joining something already held is success, not failure.
+      if (isAlreadyMember(e)) return;
+      // Anything that is not an admission refusal is a real error: a bad id, a
+      // shape rejection, an unreachable node. Retrying those just delays the
+      // message by the length of the window.
+      if (!isForbidden(e)) throw e;
+      lastError = e;
+      if (attempt === 1) {
+        onStatus("Waiting for your membership to reach this node…");
+      }
+      // Nudge the namespace along rather than only sleeping: the thing being
+      // waited for is a projection of state that arrives over gossip.
+      await admin.syncGroup(roomId).catch(() => {});
+      await sleep(ADMISSION_POLL_MS);
+    }
+  }
+
+  const msg = lastError instanceof Error ? lastError.message : String(lastError);
+  throw new Error(
+    `The room did not admit you after ${Math.round(ADMISSION_TIMEOUT_MS / 1000)}s ` +
+      `(${msg}). ${await diagnoseAdmission(admin, roomId)}`,
+  );
+}
+
+/**
+ * Work out WHY a room refused us, instead of asserting a cause.
+ *
+ * The two candidates look identical from a 403 and want opposite responses —
+ * one is "wait or rejoin the stream", the other is "this room can never admit
+ * anyone invited to the stream". Guessing sends people to check a setting that
+ * is usually correct, so ask the node which it is.
+ *
+ * Best-effort by construction: this runs on a path that is already failing, so
+ * every read is allowed to fail and the answer degrades to naming both
+ * possibilities rather than throwing a second error over the first.
+ */
+async function diagnoseAdmission(
+  admin: AdminLike,
+  roomId: string,
+): Promise<string> {
+  const visibility = await admin
+    .getSubgroupVisibility(roomId)
+    .then((v) => String(v ?? "").toLowerCase())
+    .catch(() => "");
+
+  if (visibility === "restricted") {
+    return (
+      "The room is RESTRICTED, so being in the stream does not admit you — " +
+      "whoever created it has to open it, or invite you to the room directly."
+    );
+  }
+
+  const namespaceId = await parentNamespaceOf(admin, roomId).catch(() => null);
+  if (!namespaceId) {
+    return (
+      "This node cannot see which stream the room belongs to, which means the " +
+      "stream has not replicated here yet — rejoin the stream, then try again."
+    );
+  }
+
+  if (visibility === "open") {
+    return (
+      "The room is open, so this is your membership of the stream not having " +
+      "reached this node yet. Try again in a moment; if it persists, rejoin " +
+      "the stream from the invitation."
+    );
+  }
+
+  return (
+    "Could not read the room's visibility. Either your membership of the " +
+    "stream has not reached this node yet, or the room was created restricted."
+  );
+}
+
 export async function enterRoomContext(
   admin: AdminLike,
   opts: { roomId: string; contextId: string },
@@ -554,21 +672,7 @@ export async function enterRoomContext(
   if (existing) return existing;
 
   onStatus("Joining the room…");
-  try {
-    await admin.joinSubgroupInheritance(opts.roomId);
-  } catch (e) {
-    if (!isAlreadyMember(e)) {
-      // A restricted room is the one failure worth naming precisely: the generic
-      // 403 gives no hint that visibility is the cause, and it is the single most
-      // likely reason a room cannot be entered.
-      const msg = e instanceof Error ? e.message : String(e);
-      throw new Error(
-        /403|forbidden|not allowed/i.test(msg)
-          ? `The room did not admit you (${msg}). It was probably created as restricted rather than open.`
-          : msg,
-      );
-    }
-  }
+  await joinRoomWithRetry(admin, opts.roomId, onStatus);
 
   onStatus("Waiting for your identity in the call…");
   const deadline = Date.now() + IDENTITY_TIMEOUT_MS;
