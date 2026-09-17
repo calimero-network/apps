@@ -505,6 +505,13 @@
           "type": {
             "kind": "string"
           }
+        },
+        {
+          "name": "account",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
         }
       ]
     },
