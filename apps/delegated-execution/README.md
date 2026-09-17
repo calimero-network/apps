@@ -64,6 +64,12 @@ would re-resolve and re-test all sixteen apps for the benefit of this one, so th
 local and this paragraph is the reason. **Fold it back into the catalog** the next time the
 catalog moves past 19.7.1.
 
+> **This pin is one release behind what step 2 needs.** The routing proof below uses
+> `CloudClient`'s `routingCredential`, which lands in the mero-js release after 19.7.1.
+> Bump this pin to it and the app typechecks; until then `pnpm -r typecheck` reports
+> `'routingCredential' does not exist in type 'CloudClientConfig'`, which is that missing
+> bump and nothing else.
+
 ## What you need running
 
 A node on **`merod 0.11.0-rc.38` or newer**. rc.38 is the first release carrying the
@@ -143,9 +149,23 @@ id the first panel shows:
 meroctl --node demo namespace invite <namespace-id>              # → invitation blob
 ```
 
-The joining side of that is not in this demo — the browser signs member-join ops through
-mero-js's `signMemberJoinOp`, but wiring an admitter into the page is a larger piece of
-work than the flow being shown here. Admit the account from a node you control.
+The joining side **is** in the demo now: step 2's second button signs the membership op
+with the device key and posts it to the admitter the cloud resolved. You do not admit the
+account from a node you control — that is the whole point, and it is what makes the
+account a member of a namespace it has no node in.
+
+The admitter only carries the op. Every peer checks the signer against the certificate
+inside it, so the relaying node cannot admit a different account, change the group or
+grant a role; it can refuse, and that is the whole of its power. Its own consent —
+an `AdmitterEndorsement` — is attached as it relays, outside the joiner's signature and
+outside the op's id, which is exactly what lets a keyholder be admissible at all: an
+endorsement can only be signed by an account the invitation named, and a keyholder is
+not one.
+
+`published: true` means the op reached the namespace topic, not that you are a member.
+Membership lands when peers fold it, which the admitter neither performs nor waits for —
+so step 4 is the confirmation, and a 403 immediately after sending is usually that race
+rather than a refusal.
 
 ## Running it
 
@@ -163,10 +183,70 @@ are two different audiences.
 | Step | What happens | What it demonstrates |
 | --- | --- | --- |
 | 1. Mint | An account root and a device key are generated in the tab; the root certifies the device | Two keys, one certificate. Neither secret is ever sent; what travels carries no secret |
-| 2. Point | Node URL, node signing key, context id | The node key is **pinned out of band**, never read from the node — otherwise whoever answers picks what you sign about |
+| 2. Accept | The signed `admitters` list is intersected with the cloud's live routing, the routing read names your account, and the device signs the membership op the admitter carries | Two sources, two questions: who is *allowed* to admit you, and who is *reachable*. The node signing key is still **pinned out of band** — otherwise whoever answers picks what you sign about |
 | 3. Session | Challenge → statement signed by the device key → token | A session with no password in the path. The token authorises reads only |
 | 4. Read | `POST /admin-api/contexts/<id>/query` with the token | Membership is re-checked per call, not per session; only `&self` methods are reachable |
-| 5. Write | A warrant signed by the device, spent by the relay | The session plays **no part**. The delta is attributed to *your* account, not the node's |
+| 5. Write | A warrant signed by the device, spent by the **cloud-resolved relay** | The session plays **no part**. The delta is attributed to *your* account, not the node's — and the relay need not be the node that admitted you |
+
+## The routing read proves an account, and only that
+
+Step 2 asks the cloud where to send a signed join. That read used to be anonymous, which
+meant anyone who learned a 32-byte namespace id could map which nodes serve it, their URLs
+and their liveness.
+
+It cannot be gated on a cloud login. A joiner is by construction **not** the namespace
+owner, and holding no cloud account is the entire point of this path — the whole demo is a
+keyholder that mints a root, certifies a device and signs its own membership op offline.
+So the browser proves possession of the credential it already holds instead: it fetches a
+sealed, namespace-bound challenge, signs it with the certified **device** key, and resends
+with `X-Calimero-Credential`, `X-Calimero-Nonce` and `X-Calimero-Signature`. mero-js's
+`routingCredential` does all of that; nothing new is minted, stored or typed.
+
+The device signs, not the root — the opposite of the account-link proof, and on purpose.
+This runs on every routing read from a tab that deliberately discards the root after
+certifying its device, and requiring the root would mean re-entering 24 words to look up a
+URL.
+
+**What it establishes:** the caller holds a device key certified by some account root, and
+which account that is. **What it does not:** that the account was invited, or that it is a
+member. The cloud cannot check either — membership is governance state on the nodes — and
+anyone can mint a root offline, so this is not a wall. It buys attribution and it ends
+anonymous bulk discovery. Authorization stays where it always was: at the node, on the
+signed op, which is why step 2 still refuses a node outside the invitation's signed list.
+
+The cloud does not yet *require* the proof. This demo sends it anyway, so a client that
+gets it wrong finds out now rather than on the day the flag flips.
+
+## The admitter and the relay are two different nodes
+
+Step 2 resolves both from one cloud read, and they are separate answers because
+they are separate permissions:
+
+- **Admission** is authorised by the invitation's signed `admitters` list. A node
+  outside that list refuses a join claim whatever else is true of it.
+- **Authorship** is authorised by `CAN_AUTHOR_ON_BEHALF` on the owning group — a
+  governance op an admin signed. The cloud reports it as `canExecute` and has no
+  say in granting it.
+
+One node often holds both, and step 2 prefers such a node so the demo lands on
+one. But it only *prefers*: admission is the leg that cannot proceed without a
+node, so when no invited node can execute, step 2 still picks an admit-only one.
+Before the two were split, the write leg then reused that node — the panel said
+"it can admit but not execute" and the button posted there anyway.
+
+So the relay is chosen separately, across **every** node the cloud lists rather
+than only the invited ones. Intersecting against `admitters` would be wrong here
+in exactly the case that matters: a node assigned after the invitation was minted
+is absent from the signed list, is a perfectly good relay, and would be discarded
+for a reason that applies only to joins.
+
+Nothing forces the two legs onto one node. The intent carries a **warrant**, not
+the session token, so the relay never needs the session the admitter issued.
+
+When no node holds the grant, step 2 says so and leaves the relay unset rather
+than falling back — a healthy fleet with no authorship grant is a real state, and
+the remedy is a governance op, not a retry. The write panel shows which node it
+will use, and says when that differs from the admitter.
 
 ## Things it deliberately does not do
 

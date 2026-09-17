@@ -68,6 +68,28 @@ export interface Settings {
   nodeKey: string;
   /** The context to read and write, 64 hex. */
   contextId: string;
+  /**
+   * The node the delegated WRITE is posted to — resolved from the cloud, and
+   * deliberately NOT the same field as {@link Settings.nodeUrl}.
+   *
+   * Admission and authorship are different permissions held by different nodes:
+   * the invitation's signed `admitters` decides who may relay a join,
+   * `CAN_AUTHOR_ON_BEHALF` decides who may write on your behalf, and one node
+   * can hold either without the other. The two legs are independent anyway —
+   * the intent carries a warrant, not the session token — so nothing requires
+   * them to be the same node.
+   */
+  relayUrl: string;
+  /**
+   * Where a signed join is posted — the cloud's ready-made `admitUrl` for the
+   * chosen admitter.
+   *
+   * Stored rather than rebuilt from {@link Settings.nodeUrl}: the cloud hands
+   * this over complete so a caller never has to know the path, and a client
+   * that reassembles it is one core route rename away from a 404 that reads
+   * like a refusal.
+   */
+  admitUrl: string;
   /** Resolved by discovery, not typed: the chosen admitter's base URL. */
   nodeUrl: string;
 }
@@ -79,6 +101,8 @@ export const EMPTY_SETTINGS: Settings = {
   nodeKey: '',
   contextId: '',
   nodeUrl: '',
+  relayUrl: '',
+  admitUrl: '',
 };
 
 /** Read JSON from `localStorage`, treating any failure as absence. */
@@ -158,6 +182,7 @@ export function clearStored(devicePublicKey: string | null): void {
     localStorage.removeItem(IDENTITY_KEY);
     if (devicePublicKey) {
       localStorage.removeItem(nonceStorageKey(devicePublicKey));
+      localStorage.removeItem(joinNonceStorageKey(devicePublicKey));
     }
   } catch {
     // Nothing was persisted; nothing to forget.
@@ -173,4 +198,18 @@ export function clearStored(devicePublicKey: string | null): void {
  */
 export function nonceStorageKey(devicePublicKey: string): string {
   return `calimero.warrant.nonce.${devicePublicKey}`;
+}
+
+/**
+ * The counter for governance ops this device signs — separate from the warrant
+ * counter above, and deliberately so.
+ *
+ * The two are different anti-replay windows kept by different code for
+ * different things: a warrant's nonce is spent against a relay on apply, a
+ * namespace op's is checked by every peer that folds the op. Sharing one
+ * counter would make each spend a number the other then skips, which reads as
+ * a gap in a sequence that is supposed to be dense.
+ */
+export function joinNonceStorageKey(devicePublicKey: string): string {
+  return `calimero.namespace-op.nonce.${devicePublicKey}`;
 }

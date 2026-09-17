@@ -133,3 +133,70 @@ export function chooseAdmitter(classified: readonly ClassifiedNode[]): {
   }
   return { chosen: null, reason: 'The cloud reports no nodes serving this namespace yet.' };
 }
+
+/**
+ * The node to send the delegated WRITE to, which is a different question from
+ * admission and has a different answer.
+ *
+ * ## Why this is not `chooseAdmitter`
+ *
+ * {@link chooseAdmitter} intersects against the invitation's signed
+ * `admitters`, because admission is what that list authorises: a node outside
+ * it refuses a join claim. **Authorship is not on that list.** What lets a node
+ * write on your behalf is `CAN_AUTHOR_ON_BEHALF` on the owning group — a
+ * governance op its admin signed — and the cloud reports it as `canExecute`.
+ *
+ * So the executor is chosen across EVERY node the cloud lists, not just the
+ * invited ones. Intersecting here would be over-restrictive in the exact case
+ * this exists to handle: a node assigned after the invitation was minted is
+ * absent from the signed list, is a perfectly valid relay, and would be
+ * discarded for a reason that does not apply to writes.
+ *
+ * ## Why it is a separate selection at all
+ *
+ * `chooseAdmitter` already *prefers* a node that can do both, so the two often
+ * agree and the demo lands on one node for both legs. But it prefers — it never
+ * insists, because admission is the step that cannot proceed without a node and
+ * authorship is not. When no invited node can execute it returns an admit-only
+ * node, and before this function existed the write leg then posted to that node
+ * anyway: the UI said "it can admit but not execute" and the button walked
+ * straight into it.
+ *
+ * The two legs are genuinely independent — the intent carries a warrant, not
+ * the session token, so the relay need not be the node that issued the session.
+ *
+ * `null` with a reason where nothing can execute. That is a real state, not an
+ * error: a fleet whose nodes hold no authorship grant is healthy and simply not
+ * writable yet, and the remedy is a governance op, not a retry.
+ */
+export function chooseExecutor(nodes: readonly RoutableNode[]): {
+  readonly chosen: RoutableNode | null;
+  readonly reason: string | null;
+} {
+  const executing = nodes.find((n) => n.canExecute && n.relayUrl !== null);
+  if (executing !== undefined) return { chosen: executing, reason: null };
+
+  // Split the two ways this fails, because the remedies are unrelated.
+  const grantedButUnreachable = nodes.some((n) => n.canExecute && n.relayUrl === null);
+  if (grantedButUnreachable) {
+    return {
+      chosen: null,
+      reason:
+        'A node holds the authorship grant but the cloud knows no relay URL for it yet. ' +
+        'This is a wait, not a missing permission.',
+    };
+  }
+  if (nodes.length > 0) {
+    return {
+      chosen: null,
+      reason:
+        'No node serving this namespace holds CAN_AUTHOR_ON_BEHALF, so nothing can write ' +
+        'on your behalf yet. An admin of the owning group grants it — the cloud only ' +
+        'reports it. Reads and the session still work.',
+    };
+  }
+  return {
+    chosen: null,
+    reason: 'The cloud lists no nodes for this namespace, so there is no relay to write through.',
+  };
+}

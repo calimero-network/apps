@@ -34,6 +34,7 @@ import { createIdentity, restoreIdentity, type DeviceIdentity } from './lib/iden
 import {
   describeRelay,
   discoverAdmitter,
+  sendJoin,
   openSession,
   readContext,
   writeContext,
@@ -153,7 +154,12 @@ export function App() {
         }}
       />
 
-      <NodeStep settings={settings} onChange={updateSettings} ready={ready.node} />
+      <NodeStep
+        settings={settings}
+        onChange={updateSettings}
+        ready={ready.node}
+        identity={identity}
+      />
 
       <SessionStep
         identity={identity}
@@ -295,44 +301,98 @@ function NodeStep({
   settings,
   onChange,
   ready,
+  identity,
 }: {
   settings: Settings;
   onChange: (patch: Partial<Settings>) => void;
   ready: boolean;
+  /**
+   * Needed to *read* routing, not to join with — the cloud asks a caller to
+   * prove which account is asking. So step 2 now depends on step 1, which is
+   * the honest ordering: there was never a point in resolving a node before
+   * holding the key that will sign the join.
+   */
+  identity: DeviceIdentity | null;
 }) {
   const [classified, setClassified] = useState<ClassifiedNode[]>([]);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   const [busy, setBusy] = useState(false);
+  const [joined, setJoined] = useState(false);
 
-  const discover = useCallback(async () => {
+  const join = useCallback(async () => {
     setBusy(true);
     setOutcome(null);
     try {
-      const result = await discoverAdmitter(
-        settings.cloudUrl,
+      if (!identity) throw new Error('Mint or restore an account in step 1 first.');
+      if (settings.admitUrl === '') throw new Error('Find an admitter first — the button above.');
+      const { published } = await sendJoin(
+        settings.admitUrl,
+        identity,
         settings.namespaceId,
         settings.invitationJson,
       );
-      setClassified(result.classified);
-      if (result.chosen === null) {
-        setOutcome({ text: result.reason ?? 'No node can take a join right now.', error: true });
-        return;
-      }
-      onChange({ nodeUrl: result.chosen.relayUrl ?? '' });
+      setJoined(published);
       setOutcome({
-        text:
-          `Using ${result.chosen.peerId} at ${result.chosen.relayUrl}. ` +
-          (result.chosen.canExecute
-            ? 'It can also take delegated writes, so one node serves both legs.'
-            : 'It can admit but not execute — the write leg will need another node.'),
-        error: false,
+        // `published` is the honest word the endpoint uses, and the distinction
+        // is real: the admitter put the op on the namespace topic and neither
+        // applies it nor waits for anyone who does. Membership lands when peers
+        // fold it, which is why the read is what confirms this worked.
+        text: published
+          ? 'Signed and published. The admitter carried it; membership lands when peers fold ' +
+            'the op, so step 4 is what confirms it — a 403 straight after is usually a race, ' +
+            'not a refusal.'
+          : 'The admitter accepted the call but reported nothing published. Treat that as not ' +
+            'joined and try another admitter.',
+        error: !published,
       });
     } catch (error) {
       setOutcome({ text: error instanceof Error ? error.message : String(error), error: true });
     } finally {
       setBusy(false);
     }
-  }, [settings.cloudUrl, settings.namespaceId, settings.invitationJson, onChange]);
+  }, [identity, settings.admitUrl, settings.namespaceId, settings.invitationJson]);
+
+  const discover = useCallback(async () => {
+    setBusy(true);
+    setOutcome(null);
+    try {
+      if (!identity) throw new Error('Mint or restore an account in step 1 first.');
+      const result = await discoverAdmitter(
+        settings.cloudUrl,
+        settings.namespaceId,
+        settings.invitationJson,
+        identity,
+      );
+      setClassified(result.classified);
+      if (result.chosen === null) {
+        setOutcome({ text: result.reason ?? 'No node can take a join right now.', error: true });
+        return;
+      }
+      // Two fields, because they answer two questions. The write leg used to
+      // reuse `nodeUrl` even when the panel had just said this node cannot
+      // execute — it told you the problem and then walked into it.
+      const relayUrl = result.executor?.relayUrl ?? '';
+      onChange({
+        nodeUrl: result.chosen.relayUrl ?? '',
+        relayUrl,
+        admitUrl: result.chosen.admitUrl ?? '',
+      });
+
+      const admitLine = `Admitting through ${result.chosen.peerId} at ${result.chosen.relayUrl}.`;
+      const writeLine =
+        result.executor === null
+          ? ` No relay for the write: ${result.executorReason ?? 'none available.'}`
+          : result.executor.peerId === result.chosen.peerId
+            ? ' It also holds the authorship grant, so one node serves both legs.'
+            : ` Writing through ${result.executor.peerId} at ${result.executor.relayUrl}` +
+              ' — a different node, because admission and authorship are different grants.';
+      setOutcome({ text: admitLine + writeLine, error: false });
+    } catch (error) {
+      setOutcome({ text: error instanceof Error ? error.message : String(error), error: true });
+    } finally {
+      setBusy(false);
+    }
+  }, [settings.cloudUrl, settings.namespaceId, settings.invitationJson, identity, onChange]);
 
   return (
     <Step
@@ -407,9 +467,35 @@ function NodeStep({
         binding the key into the attestation quote, which is tracked separately.
       </p>
 
-      <button type="button" onClick={discover} disabled={busy}>
-        {busy ? 'Asking the cloud…' : 'Find a node that can admit me'}
-      </button>
+      <div className="row">
+        <button type="button" onClick={discover} disabled={busy || !identity}>
+          {busy ? 'Asking the cloud…' : 'Find a node that can admit me'}
+        </button>
+        <button
+          type="button"
+          onClick={() => void join()}
+          disabled={busy || !identity || settings.admitUrl === ''}
+        >
+          {busy ? 'Signing and sending…' : joined ? 'Join sent — send again' : 'Sign and send my join'}
+        </button>
+      </div>
+      <p className="aside">
+        The second button is the one that makes you a <strong>member</strong>. Your device signs
+        the membership op and the admitter only carries it — every peer checks the signer against
+        the certificate in the op, so the node relaying it cannot admit a different account,
+        change the group or grant itself a role. It can refuse, and that is the whole of its
+        power. Until this succeeds the read answers 403 and the write is refused, because there
+        is nothing to be a member of yet.
+      </p>
+      {!identity && (
+        <p className="aside">
+          Disabled until step 1 holds a key. The cloud asks this read to name an account, and
+          the proof is a challenge signed by your certified device key — so there is nothing to
+          sign with yet. It proves you hold <em>an</em> account, not that you were invited to this
+          namespace: the cloud cannot know that, because membership lives on the nodes. What it
+          buys is that a routing read is attributable rather than anonymous.
+        </p>
+      )}
 
       {classified.length > 0 && (
         <ul className="nodes">
@@ -578,6 +664,14 @@ function WriteStep({
   const { outcome, busy, run } = useOutcome();
   const [args, setArgs] = useState('{"key": "delegated", "value": "written-from-a-browser"}');
 
+  // The relay the cloud resolved, falling back to the admitter. The fallback is
+  // for the manual path — settings typed by hand, or restored from a blob
+  // written before this field existed — and NOT a default for the discovered
+  // case: step 2 leaves `relayUrl` empty on purpose when no node holds the
+  // authorship grant, and silently posting to the admitter there is exactly the
+  // bug this split fixes. It fails at the relay with a clear refusal instead.
+  const writeUrl = settings.relayUrl || settings.nodeUrl;
+
   return (
     <Step
       n={5}
@@ -592,6 +686,22 @@ function WriteStep({
         </>
       }
     >
+      <dl className="kv">
+        <dt>relay</dt>
+        <dd>
+          {writeUrl === '' ? (
+            <em>none resolved — run step 2, or set a node URL by hand</em>
+          ) : (
+            <>
+              {writeUrl}
+              {settings.relayUrl === '' ? ' (the admitter, no cloud-resolved relay)' : ''}
+              {settings.relayUrl !== '' && settings.relayUrl !== settings.nodeUrl
+                ? ' (a different node from the one that admitted you)'
+                : ''}
+            </>
+          )}
+        </dd>
+      </dl>
       <label>
         Arguments to <code>set</code> — the exact bytes the warrant will commit to
         <textarea value={args} onChange={(e) => setArgs(e.target.value)} />
@@ -603,7 +713,7 @@ function WriteStep({
           disabled={!enabled || busy}
           onClick={() =>
             void run(async () => {
-              const described = await describeRelay(settings.nodeUrl, settings.contextId);
+              const described = await describeRelay(writeUrl, settings.contextId);
               return described.canAuthorOnBehalf
                 ? `this node may author on your behalf.\nexecutor: ${described.executorAccount}\ngroup:    ${described.groupId}`
                 : `this node may NOT author on your behalf yet.\nexecutor: ${described.executorAccount}\ngroup:    ${described.groupId}\n\n` +
@@ -622,7 +732,7 @@ function WriteStep({
               const parsed = parseJson(args, 'arguments');
               if (parsed.error !== null) throw new Error(parsed.error);
               const result = await writeContext(
-                settings.nodeUrl,
+                writeUrl,
                 identity,
                 settings.contextId,
                 'set',
