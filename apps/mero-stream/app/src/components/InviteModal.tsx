@@ -115,7 +115,14 @@ export default function InviteModal({
           {scope}
         </p>
 
-        <code className={styles.link} title={share.link} data-testid="invite-link">
+        {/* One line by default; `showRaw` is also the "clipboard failed" state,
+            where the characters have to be selectable. */}
+        <code
+          className={styles.link}
+          title={share.link}
+          data-full={showRaw ? "true" : "false"}
+          data-testid="invite-link"
+        >
           {share.link}
         </code>
 

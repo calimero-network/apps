@@ -162,7 +162,18 @@ export async function createStreamNamespace(
  * the caller knows how it wants to route.
  */
 export type Redeemed =
-  | { kind: "room"; contextId: string; identity: string; roomName?: string }
+  | {
+      kind: "room";
+      contextId: string;
+      identity: string;
+      roomName?: string;
+      /**
+       * The stream this room belongs to, when the invitation named it. Carried
+       * so the call can offer a way back to the room list: a context knows
+       * nothing about its namespace, and the admin API has no "parent of" read.
+       */
+      namespaceId?: string;
+    }
   | { kind: "namespace"; namespaceId: string }
   | { kind: "joined" };
 
@@ -193,6 +204,7 @@ export async function redeemInvite(
       contextId: accepted.contextId,
       identity,
       roomName: accepted.roomName,
+      namespaceId: accepted.namespaceId ?? undefined,
     };
   }
   if (accepted.namespaceId) {

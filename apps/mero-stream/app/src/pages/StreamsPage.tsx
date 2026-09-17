@@ -148,7 +148,7 @@ export default function StreamsPage() {
         showToast(`Invite ready for “${ns.name}”.`);
       });
     },
-    [mero, run],
+    [mero, run, showToast],
   );
 
   /**
@@ -183,7 +183,7 @@ export default function StreamsPage() {
 
         if (landed.kind === "room") {
           if (landed.roomName) setRoomName(landed.contextId, landed.roomName);
-          setActiveRoom(landed.contextId, landed.identity);
+          setActiveRoom(landed.contextId, landed.identity, landed.namespaceId);
           navigate("/live");
           return;
         }
@@ -194,7 +194,7 @@ export default function StreamsPage() {
         showToast("Joined. Your streams are listed below.");
       });
     },
-    [mero, run, load, navigate],
+    [mero, run, load, navigate, showToast],
   );
 
   const join = useCallback(() => {

@@ -75,7 +75,7 @@ export default function InvitationPrompt() {
       setPending(null);
       if (landed.kind === "room") {
         if (landed.roomName) setRoomName(landed.contextId, landed.roomName);
-        setActiveRoom(landed.contextId, landed.identity);
+        setActiveRoom(landed.contextId, landed.identity, landed.namespaceId);
         navigate("/live");
       } else if (landed.kind === "namespace") {
         navigate(`/streams/${landed.namespaceId}`);

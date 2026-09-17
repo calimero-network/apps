@@ -21,6 +21,7 @@
 let contextId: string | null = null;
 let executorPublicKey: string | null = null;
 let applicationId: string | null = null;
+let activeNamespaceId: string | null = null;
 let devMode = false;
 
 // The desktop passes the session (app id, stream context, identity, dev mode) in
@@ -87,10 +88,13 @@ export function captureSessionFromHash(): void {
     try {
       const saved = localStorage.getItem(streamStorageKey());
       if (saved) {
-        const { ctx, executor } = JSON.parse(saved);
+        const { ctx, executor, ns } = JSON.parse(saved);
         if (ctx && executor) {
           contextId = ctx;
           executorPublicKey = executor;
+          // Absent for rooms stored before this was recorded — the call then
+          // simply offers no "back to rooms", rather than routing nowhere.
+          if (ns) activeNamespaceId = ns;
         }
       }
     } catch {
@@ -115,6 +119,17 @@ export function getExecutorPublicKey(): string | null {
   return executorPublicKey;
 }
 
+/**
+ * The stream (namespace) the active room belongs to, when we know it.
+ *
+ * Null after a cold reload that restored a room saved before this was stored,
+ * so callers must treat "back to rooms" as an affordance that may be absent
+ * rather than assuming a destination.
+ */
+export function getActiveNamespaceId(): string | null {
+  return activeNamespaceId;
+}
+
 /** The installed Mero Stream application id (needed to create streams). */
 export function getApplicationId(): string | null {
   return applicationId;
@@ -125,11 +140,23 @@ export function getApplicationId(): string | null {
  * a reload (or the next open of this app) returns here. Used after the user
  * creates or joins a stream in the picker.
  */
-export function setActiveRoom(ctx: string, executor: string): void {
+export function setActiveRoom(
+  ctx: string,
+  executor: string,
+  namespaceId?: string,
+): void {
   contextId = ctx;
   executorPublicKey = executor;
+  // Remembered so the call can offer a way BACK to its room list. A context
+  // knows nothing about the namespace that holds it, and there is no "parent
+  // of" read in the admin API, so the only cheap place to keep the link is
+  // here — at the moment we entered the room and already knew it.
+  if (namespaceId) activeNamespaceId = namespaceId;
   try {
-    localStorage.setItem(streamStorageKey(), JSON.stringify({ ctx, executor }));
+    localStorage.setItem(
+      streamStorageKey(),
+      JSON.stringify({ ctx, executor, ns: activeNamespaceId }),
+    );
   } catch {
     /* ignore blocked storage */
   }
@@ -148,6 +175,7 @@ export function setActiveRoom(ctx: string, executor: string): void {
 export function clearActiveRoom(): void {
   contextId = null;
   executorPublicKey = null;
+  activeNamespaceId = null;
   try {
     localStorage.removeItem(streamStorageKey());
   } catch {

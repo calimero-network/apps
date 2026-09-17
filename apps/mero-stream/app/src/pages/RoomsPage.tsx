@@ -172,7 +172,7 @@ export default function RoomsPage() {
       );
       setRoomName(contextId, roomName);
       setName("");
-      setActiveRoom(contextId, memberPublicKey);
+      setActiveRoom(contextId, memberPublicKey, namespaceId);
       // Into the call: the creator is already a member, so there is nothing to wait
       // for. 480p H.264 (/live), not the 64x48 in-WASM comparison route.
       navigate("/live");
@@ -197,11 +197,11 @@ export default function RoomsPage() {
           onStatus,
         );
         setRoomName(contextId, room.name);
-        setActiveRoom(contextId, identity);
+        setActiveRoom(contextId, identity, namespaceId);
         navigate("/live");
       });
     },
-    [mero, run, navigate],
+    [mero, run, navigate, namespaceId],
   );
 
   const inviteToRoom = useCallback(
@@ -236,7 +236,7 @@ export default function RoomsPage() {
         showToast(`Invite ready for “${room.name}”.`);
       });
     },
-    [mero, namespaceId, nsName, run],
+    [mero, namespaceId, nsName, run, showToast],
   );
 
   const inviteToNamespace = useCallback(() => {
@@ -262,7 +262,7 @@ export default function RoomsPage() {
       });
       showToast(`Invite ready for “${nsName}”.`);
     });
-  }, [mero, namespaceId, nsName, run]);
+  }, [mero, namespaceId, nsName, run, showToast]);
 
   /** This room's labelled roster, or undefined when we do not have one. */
   const roomRoster = (room: RoomRow): RoomMemberLabel[] | undefined =>

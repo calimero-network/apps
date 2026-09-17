@@ -15,12 +15,21 @@
  * and the things as a card grid. Joining by code moved into a dialog — it is
  * something you do once, not something that should occupy the screen forever.
  */
+/* Not flat white. A single soft wash of the brand green at the top gives the
+   page a horizon, so content sits ON something instead of floating on paper —
+   and it is a fixed background so the wash does not scroll away with the list. */
 .page {
   min-height: 100vh;
   min-height: 100dvh;
   display: grid;
   grid-template-rows: auto 1fr;
   background: var(--bg);
+  background-image: radial-gradient(
+    120% 55% at 50% -10%,
+    var(--accent-soft) 0%,
+    transparent 62%
+  );
+  background-attachment: fixed;
   color: var(--text);
   font-family: var(--font);
 }
@@ -32,7 +41,11 @@
   gap: 12px;
   padding: 10px 20px;
   border-bottom: 1px solid var(--border);
-  background: var(--bg-elev);
+  /* Lets the wash show through as the page scrolls under it, rather than
+     cutting it off with an opaque slab. */
+  background: color-mix(in srgb, var(--bg-elev) 88%, transparent);
+  backdrop-filter: blur(8px);
+  box-shadow: inset 0 -2px 0 -1px var(--accent-soft);
   min-height: 52px;
   position: sticky;
   top: 0;
@@ -190,8 +203,9 @@
 
 .sectionTitle {
   margin: 0;
+  color: var(--accent-ink);
   font-size: 0.78rem;
-  font-weight: 600;
+  font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--text-dim);
@@ -207,40 +221,54 @@
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(288px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(264px, 1fr));
+  gap: 10px;
 }
 
 .card {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 9px;
   background: var(--bg-elev);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 14px;
+  padding: 11px 12px;
   min-width: 0;
+  box-shadow: var(--shadow-sm);
+  transition: border-color 120ms ease, box-shadow 120ms ease,
+    transform 120ms ease;
+}
+
+.card:hover {
+  border-color: var(--accent-ink);
+  box-shadow: var(--shadow);
+  transform: translateY(-1px);
 }
 
 .cardTop {
   display: flex;
   align-items: center;
-  gap: 11px;
+  gap: 9px;
   min-width: 0;
 }
 
+/* A solid brand chip, not a tint. `color: var(--accent)` on `--accent-soft` was
+   bright green on pale green — about 1.5:1 in light mode, and the initials were
+   effectively invisible. Near-black on the full accent is the readable pairing
+   and gives each row a spot of real colour. */
 .avatar {
   display: grid;
   place-items: center;
-  width: 38px;
-  height: 38px;
+  width: 34px;
+  height: 34px;
   flex: none;
   border-radius: var(--radius-sm);
-  background: var(--accent-soft);
-  border: 1px solid var(--border);
-  color: var(--accent);
-  font-weight: 600;
-  font-size: 0.78rem;
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  color: var(--accent-text);
+  font-weight: 700;
+  font-size: 0.75rem;
+  letter-spacing: 0.01em;
 }
 
 .cardText {
@@ -251,7 +279,7 @@
 }
 
 .cardName {
-  font-size: 0.98rem;
+  font-size: 0.92rem;
   font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -259,7 +287,7 @@
 }
 
 .cardMeta {
-  font-size: 0.8rem;
+  font-size: 0.75rem;
   color: var(--text-faint);
   display: flex;
   align-items: center;
@@ -280,11 +308,14 @@
   white-space: nowrap;
 }
 .pillJoined {
-  border-color: var(--green);
-  color: var(--green);
+  border-color: var(--accent-ink);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  font-weight: 600;
 }
 .pillWaiting {
   border-color: var(--amber);
+  background: color-mix(in srgb, var(--amber) 10%, transparent);
   color: var(--amber);
 }
 

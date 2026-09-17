@@ -56,20 +56,35 @@
   color: var(--text-dim);
 }
 
-/* The link is long. Wrap it rather than truncating: this is the value being
-   copied, and a viewer who cannot reach the clipboard has to select it. */
+/* ONE line, ellipsised. The link is ~380 characters of base58 and wrapping it
+   turned the dialog into a wall of text that buried the Copy button below the
+   fold — nobody reads an invitation token, they copy it.
+
+   The full value stays reachable: it is the element's `title`, and
+   `data-full="true"` unwraps it for the one case that genuinely needs the
+   characters on screen — a blocked clipboard, where selecting by hand is the
+   only way left. */
 .link {
   display: block;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.75rem;
   line-height: 1.5;
-  color: var(--text);
+  color: var(--text-dim);
   background: var(--surface);
   border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
   border-radius: var(--radius-sm, 8px);
-  padding: 10px 12px;
-  overflow-wrap: anywhere;
+  padding: 9px 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   user-select: all;
+}
+
+.link[data-full="true"] {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  color: var(--text);
 }
 
 .primary {

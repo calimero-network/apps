@@ -103,7 +103,8 @@
   flex: none;
   border-radius: 50%;
   background: var(--accent-soft);
-  color: var(--accent);
+  /* Ink, not the fill: bright green on a pale green tint is ~1.5:1. */
+  color: var(--accent-ink);
   font-size: 0.66rem;
   font-weight: 600;
 }
@@ -502,4 +503,33 @@
 }
 .dotLive {
   background: var(--red);
+}
+
+/* ── Back to the room list ──────────────────────────────────────────────────
+   A call used to have no exit but the browser's back button. Sits left of the
+   title, where a back control is looked for, and stays quiet: it competes with
+   nothing during a call and is the first thing found when the call is over. */
+.backBtn {
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--text-dim);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 6px 11px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 120ms ease, border-color 120ms ease, background 120ms ease;
+}
+
+.backBtn:hover {
+  color: var(--text);
+  background: var(--surface-hover);
+  border-color: var(--border-strong);
+}
+
+.backBtn:focus-visible {
+  outline: 2px solid var(--accent-ink);
+  outline-offset: 2px;
 }

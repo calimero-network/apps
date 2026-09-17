@@ -183,8 +183,9 @@
 }
 .avatarSelf {
   background: var(--accent-soft);
-  border-color: var(--accent);
-  color: var(--accent);
+  border-color: var(--accent-ink);
+  /* Ink, not the fill: bright green on a pale green tint is ~1.5:1. */
+  color: var(--accent-ink);
 }
 
 .who {
