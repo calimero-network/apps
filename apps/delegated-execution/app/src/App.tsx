@@ -48,7 +48,9 @@ import {
 import { errorText, parseJson, pretty, short } from './lib/format.js';
 import { CloudClient } from '@calimero-network/mero-js';
 import {
-  EMPTY_SETTINGS,
+  DEFAULT_CLOUD_URL,
+  DEFAULT_PORTAL_URL,
+  DEFAULT_SETTINGS,
   clearPendingLink,
   clearStored,
   loadClaim,
@@ -99,7 +101,7 @@ export function App() {
   const [identity, setIdentity] = useState<DeviceIdentity | null>(null);
   const [phrase, setPhrase] = useState<string | null>(null);
   const [restoreFrom, setRestoreFrom] = useState('');
-  const [settings, setSettings] = useState<Settings>(EMPTY_SETTINGS);
+  const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [session, setSession] = useState<DelegatedSession | null>(null);
   const [claim, setClaim] = useState<AccountClaim | null>(null);
 
@@ -518,7 +520,7 @@ function AccountCloudStep({
         <input
           type="text"
           value={settings.cloudUrl}
-          placeholder="https://manager.cloud.calimero.network"
+          placeholder={DEFAULT_CLOUD_URL}
           onChange={(e) => onChange({ cloudUrl: e.target.value.trim() })}
         />
       </label>
@@ -527,13 +529,15 @@ function AccountCloudStep({
         <input
           type="text"
           value={settings.portalUrl}
-          placeholder="https://cloud.calimero.network"
+          placeholder={DEFAULT_PORTAL_URL}
           onChange={(e) => onChange({ portalUrl: e.target.value.trim() })}
         />
       </label>
       <p className="aside">
-        Two fields because they are two hosts: the portal serves the sign-in page and does not
-        proxy <code>/api/*</code>, and the API host has no sign-in page.
+        Both are prefilled with the hosted cloud and both are editable — point them at a local or
+        staging cloud and the rest of the page follows. Two fields because they are two hosts: the
+        portal serves the sign-in page and does not proxy <code>/api/*</code>, and the API host has
+        no sign-in page.
       </p>
 
       <div className="row">

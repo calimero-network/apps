@@ -121,9 +121,29 @@ export interface Settings {
   nodeUrl: string;
 }
 
-export const EMPTY_SETTINGS: Settings = {
-  cloudUrl: '',
-  portalUrl: '',
+/**
+ * The hosted Calimero Cloud, prefilled so the page works out of the box.
+ *
+ * These are defaults and not constants: every field stays editable, and a value
+ * typed over one of them is stored and wins on the next load. Someone pointing
+ * this at a local or staging cloud is doing the same thing they did before, with
+ * one fewer thing to paste first.
+ */
+export const DEFAULT_CLOUD_URL = 'https://manager.cloud.calimero.network';
+export const DEFAULT_PORTAL_URL = 'https://cloud.calimero.network';
+
+/**
+ * A fresh page's settings: blank everywhere the value is specific to one
+ * operator's invitation, and pointed at the hosted cloud everywhere it is not.
+ *
+ * Also the base `loadSettings` merges a stored blob onto, so a field added after
+ * someone's settings were written loads as its default rather than `undefined`.
+ * An empty string is still a real stored value and overrides the default, so
+ * clearing a URL on purpose survives a reload.
+ */
+export const DEFAULT_SETTINGS: Settings = {
+  cloudUrl: DEFAULT_CLOUD_URL,
+  portalUrl: DEFAULT_PORTAL_URL,
   namespaceId: '',
   invitationJson: '',
   nodeKey: '',
@@ -183,8 +203,8 @@ export function loadSettings(): Settings {
   // uncontrolled input and warns on the first keystroke. Listing the fields by
   // hand meant every new setting needed a matching line here, and forgetting one
   // showed up only as that warning.
-  const merged: Settings = { ...EMPTY_SETTINGS };
-  for (const key of Object.keys(EMPTY_SETTINGS) as (keyof Settings)[]) {
+  const merged: Settings = { ...DEFAULT_SETTINGS };
+  for (const key of Object.keys(DEFAULT_SETTINGS) as (keyof Settings)[]) {
     const value = stored?.[key];
     if (typeof value === 'string') merged[key] = value;
   }
