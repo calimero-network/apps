@@ -32,6 +32,7 @@ import {
 
 import {
   chooseAdmitter,
+  chooseExecutor,
   classifyNodes,
   type ClassifiedNode,
   type RoutableNode,
@@ -229,6 +230,10 @@ export async function discoverAdmitter(
   chosen: RoutableNode | null;
   reason: string | null;
   signedAdmitters: string[];
+  /** Where the delegated WRITE goes — a separate answer; see `chooseExecutor`. */
+  executor: RoutableNode | null;
+  /** Why no node can execute, when none can. Not an error state. */
+  executorReason: string | null;
 }> {
   let invitation: { invitation?: { admitters?: string[] } };
   try {
@@ -257,5 +262,9 @@ export async function discoverAdmitter(
 
   const classified = classifyNodes(routing.nodes, signedAdmitters);
   const { chosen, reason } = chooseAdmitter(classified);
-  return { classified, chosen, reason, signedAdmitters };
+  // Both answers from ONE routing read. The cloud already returned `canExecute`
+  // and `relayUrl` per node, so asking twice would cost a second challenge
+  // round-trip to learn nothing new.
+  const { chosen: executor, reason: executorReason } = chooseExecutor(routing.nodes);
+  return { classified, chosen, reason, signedAdmitters, executor, executorReason };
 }

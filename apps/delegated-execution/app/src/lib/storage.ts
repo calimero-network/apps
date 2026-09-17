@@ -68,6 +68,18 @@ export interface Settings {
   nodeKey: string;
   /** The context to read and write, 64 hex. */
   contextId: string;
+  /**
+   * The node the delegated WRITE is posted to — resolved from the cloud, and
+   * deliberately NOT the same field as {@link Settings.nodeUrl}.
+   *
+   * Admission and authorship are different permissions held by different nodes:
+   * the invitation's signed `admitters` decides who may relay a join,
+   * `CAN_AUTHOR_ON_BEHALF` decides who may write on your behalf, and one node
+   * can hold either without the other. The two legs are independent anyway —
+   * the intent carries a warrant, not the session token — so nothing requires
+   * them to be the same node.
+   */
+  relayUrl: string;
   /** Resolved by discovery, not typed: the chosen admitter's base URL. */
   nodeUrl: string;
 }
@@ -79,6 +91,7 @@ export const EMPTY_SETTINGS: Settings = {
   nodeKey: '',
   contextId: '',
   nodeUrl: '',
+  relayUrl: '',
 };
 
 /** Read JSON from `localStorage`, treating any failure as absence. */

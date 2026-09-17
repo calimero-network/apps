@@ -172,7 +172,7 @@ are two different audiences.
 | 2. Accept | The invitation's signed `admitters` list is intersected with the cloud's live routing, and the routing read names your account | Two sources, two questions: who is *allowed* to admit you, and who is *reachable*. The node signing key is still **pinned out of band** — otherwise whoever answers picks what you sign about |
 | 3. Session | Challenge → statement signed by the device key → token | A session with no password in the path. The token authorises reads only |
 | 4. Read | `POST /admin-api/contexts/<id>/query` with the token | Membership is re-checked per call, not per session; only `&self` methods are reachable |
-| 5. Write | A warrant signed by the device, spent by the relay | The session plays **no part**. The delta is attributed to *your* account, not the node's |
+| 5. Write | A warrant signed by the device, spent by the **cloud-resolved relay** | The session plays **no part**. The delta is attributed to *your* account, not the node's — and the relay need not be the node that admitted you |
 
 ## The routing read proves an account, and only that
 
@@ -202,6 +202,37 @@ signed op, which is why step 2 still refuses a node outside the invitation's sig
 
 The cloud does not yet *require* the proof. This demo sends it anyway, so a client that
 gets it wrong finds out now rather than on the day the flag flips.
+
+## The admitter and the relay are two different nodes
+
+Step 2 resolves both from one cloud read, and they are separate answers because
+they are separate permissions:
+
+- **Admission** is authorised by the invitation's signed `admitters` list. A node
+  outside that list refuses a join claim whatever else is true of it.
+- **Authorship** is authorised by `CAN_AUTHOR_ON_BEHALF` on the owning group — a
+  governance op an admin signed. The cloud reports it as `canExecute` and has no
+  say in granting it.
+
+One node often holds both, and step 2 prefers such a node so the demo lands on
+one. But it only *prefers*: admission is the leg that cannot proceed without a
+node, so when no invited node can execute, step 2 still picks an admit-only one.
+Before the two were split, the write leg then reused that node — the panel said
+"it can admit but not execute" and the button posted there anyway.
+
+So the relay is chosen separately, across **every** node the cloud lists rather
+than only the invited ones. Intersecting against `admitters` would be wrong here
+in exactly the case that matters: a node assigned after the invitation was minted
+is absent from the signed list, is a perfectly good relay, and would be discarded
+for a reason that applies only to joins.
+
+Nothing forces the two legs onto one node. The intent carries a **warrant**, not
+the session token, so the relay never needs the session the admitter issued.
+
+When no node holds the grant, step 2 says so and leaves the relay unset rather
+than falling back — a healthy fleet with no authorship grant is a real state, and
+the remedy is a governance op, not a retry. The write panel shows which node it
+will use, and says when that differs from the admitter.
 
 ## Things it deliberately does not do
 

@@ -82,6 +82,7 @@ describe('settings', () => {
       nodeKey: 'f'.repeat(64),
       contextId: '1'.repeat(64),
       nodeUrl: 'http://n',
+      relayUrl: 'http://relay',
     };
     saveSettings(settings);
     expect(loadSettings()).toEqual(settings);

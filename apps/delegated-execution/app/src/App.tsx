@@ -333,15 +333,21 @@ function NodeStep({
         setOutcome({ text: result.reason ?? 'No node can take a join right now.', error: true });
         return;
       }
-      onChange({ nodeUrl: result.chosen.relayUrl ?? '' });
-      setOutcome({
-        text:
-          `Using ${result.chosen.peerId} at ${result.chosen.relayUrl}. ` +
-          (result.chosen.canExecute
-            ? 'It can also take delegated writes, so one node serves both legs.'
-            : 'It can admit but not execute — the write leg will need another node.'),
-        error: false,
-      });
+      // Two fields, because they answer two questions. The write leg used to
+      // reuse `nodeUrl` even when the panel had just said this node cannot
+      // execute — it told you the problem and then walked into it.
+      const relayUrl = result.executor?.relayUrl ?? '';
+      onChange({ nodeUrl: result.chosen.relayUrl ?? '', relayUrl });
+
+      const admitLine = `Admitting through ${result.chosen.peerId} at ${result.chosen.relayUrl}.`;
+      const writeLine =
+        result.executor === null
+          ? ` No relay for the write: ${result.executorReason ?? 'none available.'}`
+          : result.executor.peerId === result.chosen.peerId
+            ? ' It also holds the authorship grant, so one node serves both legs.'
+            : ` Writing through ${result.executor.peerId} at ${result.executor.relayUrl}` +
+              ' — a different node, because admission and authorship are different grants.';
+      setOutcome({ text: admitLine + writeLine, error: false });
     } catch (error) {
       setOutcome({ text: error instanceof Error ? error.message : String(error), error: true });
     } finally {
@@ -602,6 +608,14 @@ function WriteStep({
   const { outcome, busy, run } = useOutcome();
   const [args, setArgs] = useState('{"key": "delegated", "value": "written-from-a-browser"}');
 
+  // The relay the cloud resolved, falling back to the admitter. The fallback is
+  // for the manual path — settings typed by hand, or restored from a blob
+  // written before this field existed — and NOT a default for the discovered
+  // case: step 2 leaves `relayUrl` empty on purpose when no node holds the
+  // authorship grant, and silently posting to the admitter there is exactly the
+  // bug this split fixes. It fails at the relay with a clear refusal instead.
+  const writeUrl = settings.relayUrl || settings.nodeUrl;
+
   return (
     <Step
       n={5}
@@ -616,6 +630,22 @@ function WriteStep({
         </>
       }
     >
+      <dl className="kv">
+        <dt>relay</dt>
+        <dd>
+          {writeUrl === '' ? (
+            <em>none resolved — run step 2, or set a node URL by hand</em>
+          ) : (
+            <>
+              {writeUrl}
+              {settings.relayUrl === '' ? ' (the admitter, no cloud-resolved relay)' : ''}
+              {settings.relayUrl !== '' && settings.relayUrl !== settings.nodeUrl
+                ? ' (a different node from the one that admitted you)'
+                : ''}
+            </>
+          )}
+        </dd>
+      </dl>
       <label>
         Arguments to <code>set</code> — the exact bytes the warrant will commit to
         <textarea value={args} onChange={(e) => setArgs(e.target.value)} />
@@ -627,7 +657,7 @@ function WriteStep({
           disabled={!enabled || busy}
           onClick={() =>
             void run(async () => {
-              const described = await describeRelay(settings.nodeUrl, settings.contextId);
+              const described = await describeRelay(writeUrl, settings.contextId);
               return described.canAuthorOnBehalf
                 ? `this node may author on your behalf.\nexecutor: ${described.executorAccount}\ngroup:    ${described.groupId}`
                 : `this node may NOT author on your behalf yet.\nexecutor: ${described.executorAccount}\ngroup:    ${described.groupId}\n\n` +
@@ -646,7 +676,7 @@ function WriteStep({
               const parsed = parseJson(args, 'arguments');
               if (parsed.error !== null) throw new Error(parsed.error);
               const result = await writeContext(
-                settings.nodeUrl,
+                writeUrl,
                 identity,
                 settings.contextId,
                 'set',
