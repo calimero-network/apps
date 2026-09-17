@@ -167,12 +167,24 @@ pub struct BoardInfo {
 }
 
 /// A member paired with their effective role, for the settings/members UI.
+///
+/// Carries BOTH ids on purpose. `member` is the board's device-scoped id — what
+/// elements are authored by, and what `get_members` keys usernames on. `account`
+/// is the authorization subject, and it is what `/groups/{id}/members` lists, so
+/// it is the only field the settings UI can join its two sources on. Without it
+/// the UI has an account id in one hand and a device key in the other, and since
+/// rc.27 both are 64 hex — indistinguishable, so the mismatch reads as a missing
+/// member rather than a type error.
+///
+/// `None` means this member has never written to the board, so the pairing is
+/// genuinely unknown; a grant cannot name them yet.
 #[derive(AbiType, Serialize, Deserialize, Clone, Debug)]
 #[serde(crate = "calimero_sdk::serde")]
 #[serde(rename_all = "camelCase")]
 pub struct MemberRole {
     pub member: String,
     pub role: String,
+    pub account: Option<String>,
 }
 
 // ── Comments ──────────────────────────────────────────────────────────────────
@@ -368,18 +380,48 @@ impl MeroDesign {
         }
     }
 
-    /// Resolve a client-supplied member key to the account a grant can name.
+    /// An account this board has already recorded for some member, matched by
+    /// its string form. Reverse lookup over `accounts`' VALUES, where
+    /// [`Self::account_of`] looks up its keys.
+    fn account_if_known(&self, candidate: &str) -> Option<AccountId> {
+        let entries = self.accounts.entries().ok()?;
+        for (_, known) in entries {
+            let account = *known.get();
+            if account.to_string() == candidate {
+                return Some(account);
+            }
+        }
+        None
+    }
+
+    /// Resolve a client-supplied id to the account a grant can name.
+    ///
+    /// Accepts either id a caller can hold, because since rc.27 they are the
+    /// same shape — 64 hex — and nothing about the string says which it is:
+    ///
+    ///   * a board MEMBER key (device-scoped), resolved through `accounts`;
+    ///   * an ACCOUNT id, which is what `/groups/{id}/members` lists and
+    ///     therefore what the settings UI has for every row.
+    ///
+    /// The account form is accepted ONLY when this board already recorded it
+    /// for some member. That restraint is the whole point: `AccessControl` will
+    /// happily store a grant for 32 arbitrary bytes, and a grant naming an
+    /// account no one here speaks for authorizes nobody, silently — it looks
+    /// like it worked and the member still cannot edit.
     fn require_account(&self, member: &str) -> app::Result<AccountId> {
-        // Validate the key shape first, so a typo reads as "invalid key" rather
+        // Validate the shape first, so a typo reads as "invalid key" rather
         // than "hasn't opened the board".
         let _ = Self::parse_pk(member)?;
-        match self.account_of(member) {
-            Some(account) => Ok(account),
-            None => app::bail!(
-                "that member hasn't opened this board yet, so their account is unknown — \
-                 ask them to open it once, then set the role"
-            ),
+        if let Some(account) = self.account_of(member) {
+            return Ok(account);
         }
+        if let Some(account) = self.account_if_known(member) {
+            return Ok(account);
+        }
+        app::bail!(
+            "that member hasn't opened this board yet, so their account is unknown — \
+             ask them to open it once, then set the role"
+        )
     }
 
     /// Record the caller's device→account pairing. Idempotent: an unchanged
@@ -552,11 +594,16 @@ impl MeroDesign {
         let mut out = Vec::new();
         if let Ok(entries) = self.members.entries() {
             for (id, _) in entries {
-                let role = match self.account_of(&id) {
+                let known = self.account_of(&id);
+                let role = match known {
                     Some(account) => self.role_label(&account),
                     None => "viewer".to_string(),
                 };
-                out.push(MemberRole { member: id, role });
+                out.push(MemberRole {
+                    member: id,
+                    role,
+                    account: known.map(|a| a.to_string()),
+                });
             }
         }
         out
@@ -1095,6 +1142,61 @@ mod tests {
         assert!(app
             .call_as_account(OTHER_ACCOUNT, OTHER, |s| s.delete_element("e1".to_owned()))
             .is_err());
+    }
+
+    #[test]
+    fn a_role_can_be_granted_by_account_id_not_just_member_key() {
+        // The settings UI lists namespace members from `/groups/{id}/members`,
+        // and those rows are ACCOUNT-keyed — it never sees a device key. Since
+        // rc.27 both ids are 64 hex, so passing the account here parsed fine and
+        // then missed the `accounts` lookup, failing as "hasn't opened this
+        // board yet" for a member who was demonstrably sitting on it.
+        let mut app = new_board();
+        app.call_as_account(OTHER_ACCOUNT, OTHER, |s| s.join("bob".to_owned(), None, 1));
+
+        let bob_account = AccountId::from(OTHER_ACCOUNT).to_string();
+        let bob_member = String::from(PublicKey::from(OTHER));
+        assert_ne!(bob_account, bob_member, "the two ids must not be the same");
+
+        app.call(|s| s.grant_editor(bob_account.clone())).unwrap();
+        // Granting by account authorizes the same person the member key names.
+        assert_eq!(app.view(|s| s.get_role(bob_member.clone())), "editor");
+        app.call_as_account(OTHER_ACCOUNT, OTHER, |s| {
+            s.add_element(sample_element("e1"))
+        })
+        .unwrap();
+
+        // And revoking by the same account id undoes it.
+        app.call(|s| s.revoke_editor(bob_account)).unwrap();
+        assert_eq!(app.view(|s| s.get_role(bob_member)), "viewer");
+    }
+
+    #[test]
+    fn list_roles_carries_both_ids_so_the_ui_can_join_its_two_sources() {
+        let mut app = new_board();
+        app.call_as_account(OTHER_ACCOUNT, OTHER, |s| s.join("bob".to_owned(), None, 1));
+
+        let roles = app.view(|s| s.list_roles());
+        let bob = roles
+            .iter()
+            .find(|r| r.member == String::from(PublicKey::from(OTHER)))
+            .expect("bob is on the board");
+        assert_eq!(
+            bob.account.as_deref(),
+            Some(AccountId::from(OTHER_ACCOUNT).to_string().as_str()),
+            "without the account the settings UI cannot match this row to a \
+             namespace member, and falls back to showing a raw id"
+        );
+    }
+
+    #[test]
+    fn an_account_this_board_never_saw_is_still_refused() {
+        // The restraint that makes accepting an account id safe: AccessControl
+        // stores a grant for arbitrary bytes quite happily, and one naming an
+        // account nobody here speaks for authorizes no one, silently.
+        let mut app = new_board();
+        let stranger = AccountId::from([0x5Au8; 32]).to_string();
+        assert!(app.call(|s| s.grant_editor(stranger)).is_err());
     }
 
     #[test]

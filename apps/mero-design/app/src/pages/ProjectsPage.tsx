@@ -8,7 +8,7 @@ import SettingsModal from "../components/SettingsModal";
 import ProjectThumbnail from "../components/ProjectThumbnail";
 import { useToast } from "../contexts/ToastContext";
 import { extractErrorMessage, humanizeError } from "../utils/errorMessage";
-import { encodeInvitationObject } from "../utils/invitation";
+import { encodeInvitationObject, invitationLink } from "../utils/invitation";
 import { truncateMiddle } from "../utils/format";
 import { getStoredTeamName } from "../utils/teamName";
 import type { Project } from "../types";
@@ -244,8 +244,11 @@ export default function ProjectsPage() {
 
   async function copyInvite() {
     if (!invitation || inviteCopying) return;
-    await navigator.clipboard.writeText(invitation);
-    showToast("Invitation copied to clipboard.", "success");
+    // Share the canonical link, not the bare token: it opens the desktop app
+    // where installed and the published web build otherwise. The join box on
+    // the Teams page still accepts either form, so links already shared work.
+    await navigator.clipboard.writeText(invitationLink(invitation));
+    showToast("Invitation link copied to clipboard.", "success");
     // Show a brief loader, then reset back to the "Generate invitation" state so
     // each share starts from a fresh, single-use invitation.
     setInviteCopying(true);
@@ -340,7 +343,9 @@ export default function ProjectsPage() {
         {tab === "invitations" && (
           <div className={styles.inviteSection}>
             <p className={styles.inviteDesc}>
-              Generate an invitation code and share it with teammates. They paste it on the Teams page to join.
+              Generate an invitation link and share it with teammates. Opening it launches
+              the desktop app where installed, and the web build otherwise — or they can
+              paste it on the Teams page to join.
             </p>
             {invitation ? (
               inviteCopying ? (
@@ -350,8 +355,12 @@ export default function ProjectsPage() {
                 </div>
               ) : (
                 <div className={styles.tokenBox}>
-                  <code className={styles.token} data-testid="invite-token" title={invitation}>
-                    {truncateMiddle(invitation, 22, 12)}
+                  <code
+                    className={styles.token}
+                    data-testid="invite-token"
+                    title={invitationLink(invitation)}
+                  >
+                    {truncateMiddle(invitationLink(invitation), 28, 10)}
                   </code>
                   <button className={styles.copyBtn} onClick={copyInvite} data-testid="copy-invite">
                     Copy
