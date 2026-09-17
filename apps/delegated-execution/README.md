@@ -183,7 +183,7 @@ are two different audiences.
 | Step | What happens | What it demonstrates |
 | --- | --- | --- |
 | 1. Mint | An account root and a device key are generated in the tab; the root certifies the device | Two keys, one certificate. Neither secret is ever sent; what travels carries no secret |
-| 2. Accept | The signed `admitters` list is intersected with the cloud's live routing, the routing read names your account, and the device signs the membership op the admitter carries | Two sources, two questions: who is *allowed* to admit you, and who is *reachable*. The node signing key is still **pinned out of band** — otherwise whoever answers picks what you sign about |
+| 2. Prove & accept | The device key signs a cloud challenge so the routing read names your account; the signed `admitters` list is intersected with the cloud's live routing; the device signs the membership op the admitter carries | Two sources, two questions: who is *allowed* to admit you, and who is *reachable*. The node signing key is still **pinned out of band** — otherwise whoever answers picks what you sign about |
 | 3. Session | Challenge → statement signed by the device key → token | A session with no password in the path. The token authorises reads only |
 | 4. Read | `POST /admin-api/contexts/<id>/query` with the token | Membership is re-checked per call, not per session; only `&self` methods are reachable |
 | 5. Write | A warrant signed by the device, spent by the **cloud-resolved relay** | The session plays **no part**. The delta is attributed to *your* account, not the node's — and the relay need not be the node that admitted you |
@@ -216,6 +216,14 @@ signed op, which is why step 2 still refuses a node outside the invitation's sig
 
 The cloud does not yet *require* the proof. This demo sends it anyway, so a client that
 gets it wrong finds out now rather than on the day the flag flips.
+
+**"Prove my account to the cloud" makes it visible.** The proof rides every routing read
+whether or not you press it, so the button adds no capability — it exists because a demo
+that performs its central claim invisibly has not demonstrated anything. Pressing it shows
+the sealed challenge, the device signature, and the account the cloud then served the read
+as. There is deliberately nothing to stay connected to afterwards: no session is issued and
+nothing is stored, because a challenge is namespace-bound and expires in about two minutes,
+and every read proves itself again.
 
 ## The admitter and the relay are two different nodes
 

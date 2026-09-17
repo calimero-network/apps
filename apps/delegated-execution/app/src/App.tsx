@@ -31,9 +31,11 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Out, Step, type StepState } from './steps/Step.js';
 import type { ClassifiedNode } from './lib/admission.js';
 import { createIdentity, restoreIdentity, type DeviceIdentity } from './lib/identity.js';
+import type { AccountProofResult } from './lib/flow.js';
 import {
   describeRelay,
   discoverAdmitter,
+  proveAccountToCloud,
   sendJoin,
   openSession,
   readContext,
@@ -318,6 +320,29 @@ function NodeStep({
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   const [busy, setBusy] = useState(false);
   const [joined, setJoined] = useState(false);
+  const [proof, setProof] = useState<AccountProofResult | null>(null);
+
+  const prove = useCallback(async () => {
+    setBusy(true);
+    setOutcome(null);
+    try {
+      if (!identity) throw new Error('Mint or restore an account in step 1 first.');
+      if (settings.namespaceId.trim() === '') throw new Error('Enter the namespace id first.');
+      const result = await proveAccountToCloud(settings.cloudUrl, settings.namespaceId, identity);
+      setProof(result);
+      setOutcome({
+        text:
+          `The cloud served this read as ${short(result.accountId, 10)} rather than anonymously, ` +
+          `and answered with ${result.nodeCount} node(s).`,
+        error: false,
+      });
+    } catch (error) {
+      setProof(null);
+      setOutcome({ text: error instanceof Error ? error.message : String(error), error: true });
+    } finally {
+      setBusy(false);
+    }
+  }, [identity, settings.cloudUrl, settings.namespaceId]);
 
   const join = useCallback(async () => {
     setBusy(true);
@@ -397,7 +422,7 @@ function NodeStep({
   return (
     <Step
       n={2}
-      title="Accept an invitation, and let the cloud say where"
+      title="Prove your account to the cloud, and accept an invitation"
       state={ready ? 'done' : 'idle'}
       stateLabel={ready ? 'set' : 'incomplete'}
       why={
@@ -468,6 +493,9 @@ function NodeStep({
       </p>
 
       <div className="row">
+        <button type="button" onClick={() => void prove()} disabled={busy || !identity}>
+          {busy ? 'Proving…' : 'Prove my account to the cloud'}
+        </button>
         <button type="button" onClick={discover} disabled={busy || !identity}>
           {busy ? 'Asking the cloud…' : 'Find a node that can admit me'}
         </button>
@@ -487,6 +515,37 @@ function NodeStep({
         power. Until this succeeds the read answers 403 and the write is refused, because there
         is nothing to be a member of yet.
       </p>
+      {proof !== null && (
+        <>
+          <dl className="kv">
+            <dt>challenge</dt>
+            <dd>
+              {short(proof.nonce, 12)} — expires{' '}
+              {new Date(proof.expiresAtMs).toLocaleTimeString()}
+            </dd>
+            <dt>signed by</dt>
+            <dd>the device key, {short(proof.signature, 12)}</dd>
+            <dt>read as</dt>
+            <dd>{proof.accountId}</dd>
+          </dl>
+          <p className="aside">
+            Three steps, and the middle one is the one that matters: the cloud minted a sealed
+            challenge bound to this namespace, your <strong>device</strong> key signed it, and the
+            routing read went through naming that account. The certificate alone would prove
+            nothing — it travels in the clear inside every device-link op, so anyone who has seen
+            one could present it. Only this signature binds you to the device.
+          </p>
+          <p className="aside">
+            Nothing was stored and no session was issued. A challenge expires in about two minutes
+            and every routing read proves itself again, which is why this button demonstrates
+            rather than connects. What it buys the cloud is <em>attribution</em>: this read can be
+            rate-limited to an account instead of being anonymous. It does <strong>not</strong>
+            prove you were invited or are a member — the cloud cannot know either, and anyone can
+            mint an account offline. That check lives at the node, on the signed op.
+          </p>
+        </>
+      )}
+
       {!identity && (
         <p className="aside">
           Disabled until step 1 holds a key. The cloud asks this read to name an account, and

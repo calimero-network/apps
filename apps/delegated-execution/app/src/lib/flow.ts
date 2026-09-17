@@ -26,6 +26,7 @@ import {
   RelayClient,
   createLocalStorageNonceSource,
   login,
+  routingProofHeaders,
   signMemberJoinOp,
   type DelegatedSession,
   type IntentResult,
@@ -377,4 +378,81 @@ function explainAdmitFailure(status: number, body: string): string {
     default:
       return `the join was not published (HTTP ${status})${detail}`;
   }
+}
+
+
+/** What proving an account to the cloud actually produced, so it can be shown. */
+export interface AccountProofResult {
+  /** The account the proof names — re-derived by the cloud from the root key. */
+  accountId: string;
+  /** The sealed challenge, as the cloud minted it. */
+  nonce: string;
+  /** When that challenge stops being accepted. */
+  expiresAtMs: number;
+  /** The signature sent, base64. */
+  signature: string;
+  /** Whether the cloud then served the routing read to this account. */
+  accepted: boolean;
+  /** How many nodes it answered with — evidence the read really happened. */
+  nodeCount: number;
+}
+
+/**
+ * Prove this account to the cloud, visibly and on its own.
+ *
+ * {@link discoverAdmitter} already does this as part of the routing read, but
+ * silently — which is the wrong shape for a demo whose entire job is to make
+ * the flow inspectable. This performs the same three steps and returns what
+ * each one produced, so the panel can show a challenge, a signature and the
+ * account the cloud read it as.
+ *
+ * There is deliberately no "connection" to hold onto afterwards. The cloud
+ * issues no session here and the client stores nothing: a challenge is sealed,
+ * namespace-bound and expires in about two minutes, and every routing read
+ * proves itself afresh. A button labelled "connect" would suggest a durable
+ * thing that does not exist — so this one demonstrates rather than connects.
+ */
+export async function proveAccountToCloud(
+  cloudUrl: string,
+  namespaceId: string,
+  identity: DeviceIdentity,
+): Promise<AccountProofResult> {
+  const base = normaliseUrl(cloudUrl);
+  const credential = {
+    credential: identity.credential,
+    deviceSecret: identity.deviceSecret,
+  };
+
+  // 1. Ask for a challenge. Public and unauthenticated on purpose: the nonce is
+  //    sealed and bound to one namespace, so it is not a capability — it is the
+  //    thing a capability gets demonstrated against.
+  const challenge = await new CloudClient({ cloudBaseUrl: base }).getRoutingChallenge(namespaceId);
+  if (challenge.nonce === '') {
+    throw new Error(
+      'The cloud returned no challenge. That endpoint is public, so this is usually the wrong ' +
+        'cloud URL or a manager too old to have it.',
+    );
+  }
+
+  // 2. Sign it with the DEVICE key — not the root, which this tab no longer
+  //    holds. The certificate alone would prove nothing: it travels in the clear
+  //    in every device-link op, so only this signature binds us to the device.
+  const headers = await routingProofHeaders(challenge, credential);
+
+  // 3. Spend it on the read it exists for, and report what came back. Doing the
+  //    real read rather than stopping at the signature is the point: it is the
+  //    difference between "we produced a proof" and "the cloud accepted it".
+  const routing = await new CloudClient({
+    cloudBaseUrl: base,
+    routingCredential: credential,
+  }).getNamespaceRouting(namespaceId);
+
+  return {
+    accountId: identity.accountId,
+    nonce: challenge.nonce,
+    expiresAtMs: challenge.expiresAtMs,
+    signature: headers['X-Calimero-Signature'],
+    accepted: true,
+    nodeCount: routing.nodes.length,
+  };
 }
