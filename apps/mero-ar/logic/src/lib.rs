@@ -760,12 +760,24 @@ impl MeroAR {
     }
 
     /// Take the advisory lock on an object, in the caller's own name.
+    ///
+    /// ⚠️ Advances the object's clock, and that is load-bearing rather than
+    /// bookkeeping. `SceneObject` merges through `take_if_greater`, which breaks
+    /// an exact clock tie on canonical borsh bytes — and `locked_by` is an
+    /// `Option` whose every other field is unchanged across a toggle, so the
+    /// comparison comes down to the option tag: `None` encodes `0x00`, `Some`
+    /// `0x01`. A lock and an unlock written at the SAME clock are therefore not
+    /// resolved by which happened — `Some` wins, always. Left unbumped, an
+    /// unlock could never take effect at all, and across replicas a lock could
+    /// never be released while any of them still held the locked copy.
     pub fn lock_object(&mut self, id: String) -> app::Result<()> {
         self.require_editor()?;
         let by = Self::caller_id();
+        let next = self.bump_version();
         if let Ok(Some(mut obj)) = self.objects.get_mut(&id) {
             if obj.locked_by.is_none() {
                 obj.locked_by = Some(by);
+                obj.version = next;
                 drop(obj);
                 app::emit!(Event::ObjectLocked(id));
             }
@@ -775,13 +787,19 @@ impl MeroAR {
 
     /// Release a lock the caller holds. An admin may break any lock, so a member
     /// who leaves mid-edit can't wedge an object permanently.
+    ///
+    /// Advances the clock for the reason spelled out on [`Self::lock_object`] —
+    /// this is the direction that loses the byte tie-break, so without the bump
+    /// the release is silently discarded by the merge.
     pub fn unlock_object(&mut self, id: String) -> app::Result<()> {
         self.require_editor()?;
         let by = Self::caller_id();
         let is_admin = self.roles.is_admin(&Self::caller_account());
+        let next = self.bump_version();
         if let Ok(Some(mut obj)) = self.objects.get_mut(&id) {
             if pure::may_unlock(obj.locked_by.as_deref(), &by, is_admin) {
                 obj.locked_by = None;
+                obj.version = next;
                 drop(obj);
                 app::emit!(Event::ObjectUnlocked(id));
             }
@@ -1230,6 +1248,36 @@ mod merge_tests {
         let (old, new) = (pose(1.0, 10), pose(2.0, 20));
         assert_eq!(merged(&old, &new).camera_position.x, 2.0);
         assert_eq!(merged(&new, &old).camera_position.x, 2.0);
+    }
+
+    /// Why `lock_object`/`unlock_object` must advance the object's clock.
+    ///
+    /// At an exact clock tie the merge falls through to canonical borsh bytes,
+    /// and `locked_by` is the only field a lock toggle changes. `None` encodes
+    /// as the option tag `0x00` and `Some` as `0x01`, so at an equal clock the
+    /// LOCKED copy wins no matter which write happened first — an unlock can
+    /// never take effect, on one node or across replicas. This is a property of
+    /// the tie-break, not a bug in it: the fix belongs at the call site, which
+    /// bumps the version so the release wins on the clock and never reaches
+    /// this comparison.
+    #[test]
+    fn an_unlock_can_never_win_a_clock_tie() {
+        let locked = |v: u64| {
+            let mut o = obj("3A86FF", v, 100);
+            o.locked_by = Some("b".repeat(64));
+            o
+        };
+        let unlocked = |v: u64| obj("3A86FF", v, 100);
+
+        // Same clock: the release is discarded, whichever side it arrives on.
+        assert!(merged(&locked(1), &unlocked(1)).locked_by.is_some());
+        assert!(merged(&unlocked(1), &locked(1)).locked_by.is_some());
+
+        // One tick of the clock is all it takes for the release to land — and
+        // it must land the same way from either direction, or the replicas
+        // have permanently disagreed about who holds the lock.
+        assert!(merged(&locked(1), &unlocked(2)).locked_by.is_none());
+        assert!(merged(&unlocked(2), &locked(1)).locked_by.is_none());
     }
 
     #[test]

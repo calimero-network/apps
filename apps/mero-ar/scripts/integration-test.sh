@@ -25,18 +25,36 @@ bash "$SCRIPT_DIR/dev-node.sh" >/dev/null 2>&1 || { red "dev-node.sh failed"; ex
 [ -f "$ENV_FILE" ] || { red "no .env.integration"; exit 1; }
 set -a; . "$ENV_FILE"; set +a
 CTX="$E2E_CONTEXT_ID"; URL="$E2E_NODE_URL"; TOK="$E2E_ACCESS_TOKEN"
-# Since core rc.20 the contract attributes every write to the signing identity,
-# so calls must name one: without `executorPublicKey` the node picks the
-# context's default identity and the assertions below can't check attribution.
-MEMBER="${E2E_MEMBER_KEY:-}"
 [ -n "$CTX" ] || { red "no context id"; exit 1; }
 green "node up, context $CTX"
 
+# `execute` takes contextId / method / argsJson and nothing else. A JSON-RPC
+# error comes back as HTTP **200** with an `error` member, so `curl -sf` sees
+# success and `.result.output` yields a bare `null` — which every assertion
+# below would then report as its own mismatch. Surface it once, here.
 call() {
-  curl -sf -X POST "$URL/jsonrpc" -H "Authorization: Bearer $TOK" -H "Content-Type: application/json" \
-    -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"execute\",\"params\":{\"contextId\":\"$CTX\",\"method\":\"$1\",\"argsJson\":$2,\"executorPublicKey\":\"$MEMBER\"}}" \
-    | jq -c '.result.output'
+  local res out
+  res=$(curl -sS -X POST "$URL/jsonrpc" -H "Authorization: Bearer $TOK" -H "Content-Type: application/json" \
+    -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"execute\",\"params\":{\"contextId\":\"$CTX\",\"method\":\"$1\",\"argsJson\":$2}}" 2>/dev/null)
+  if [ -n "$(echo "$res" | jq -r '.error // empty' 2>/dev/null)" ]; then
+    red "$1 → $(echo "$res" | jq -c '.error')"
+    return 1
+  fi
+  echo "$res" | jq -c '.result.output'
 }
+
+# Who the CONTRACT thinks is calling — its own answer, not the node's.
+#
+# ⚠️ Not `E2E_MEMBER_KEY`. Since rc.27 a device key and an account id are both
+# 64 hex characters, so the wrong one is indistinguishable from the right one by
+# inspection. Context creation answers with `memberPublicKey`, the DEVICE key
+# (c43a5d… on a fresh node); this contract keys the roster, the admin tier and
+# the room's owner by `env::account_id()`, a different 64 hex string (3337…).
+# Comparing against the device key fails every attribution assertion below for a
+# reason none of them names. `whoami` is what the iOS app asks, too.
+MEMBER=$(call whoami '{}' | jq -r '. // empty')
+[ -n "$MEMBER" ] || { red "whoami returned nothing — the contract is not reachable"; exit 1; }
+green "calling as $MEMBER"
 assert_eq()  { [ "$2" = "$3" ] && green "$1" || red "$1 (got '$2', want '$3')"; }
 # Numeric compare (tolerates 5 vs 5.0 float formatting from jq/serde_json).
 assert_num() { awk -v a="$2" -v b="$3" 'BEGIN{exit !(a==b)}' && green "$1" || red "$1 (got '$2', want '$3')"; }
@@ -81,7 +99,14 @@ assert_num "position.x=9" "$(call get_object '{"id":"o1"}' | jq -r '.transform.p
 step "presence + comment are keyed to the signer"
 call update_presence '{"camera_position":{"x":0,"y":1.6,"z":0},"camera_rotation":{"x":0,"y":0,"z":0,"w":1},"updated_at":6000}' >/dev/null
 assert_eq "presence count=1" "$(call get_presence '{}' | jq -r 'length')" "1"
-assert_eq "presence identity=signer" "$(call get_presence '{}' | jq -r '.[0].identity')" "$MEMBER"
+# Presence is the ONE piece of device-keyed state here: a pose belongs to the
+# phone that took it, so one member on two devices is two viewpoints rather than
+# two writes fighting over one row. `identity` is therefore the DEVICE and
+# `member` is the account — asserting the account on `identity` compares two
+# unrelated 64-hex strings and fails for a reason neither name gives away.
+assert_eq "presence member=signer" "$(call get_presence '{}' | jq -r '.[0].member')" "$MEMBER"
+assert_eq "presence identity is a device, not the account" \
+  "$(call get_presence '{}' | jq -r 'if .[0].identity == .[0].member then "same" else "distinct" end')" "distinct"
 call add_comment '{"id":"c1","text":"note","position":{"x":0,"y":0,"z":0},"created_at":7000}' >/dev/null
 assert_eq "comment text" "$(call get_comments '{}' | jq -r '.[0].text')" "note"
 assert_eq "comment author=signer" "$(call get_comments '{}' | jq -r '.[0].author')" "$MEMBER"
