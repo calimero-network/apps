@@ -38,11 +38,21 @@ export default function InviteModal({
   const dialogRef = useRef<HTMLDialogElement | null>(null);
   const { showToast } = useToast();
   const [showRaw, setShowRaw] = useState(false);
-  const share = useMemo(() => shareableInvitation(code), [code]);
+  // Guarded, because this component is mounted for the whole page life now —
+  // `open` drives it, not a conditional render — so it renders many times with
+  // no invitation minted yet. `shareableInvitation` THROWS on an empty code,
+  // which took the whole page down on load until this returned null instead.
+  const share = useMemo(
+    () => (code.trim() ? shareableInvitation(code) : null),
+    [code],
+  );
 
-  useDialogOpen(dialogRef, open);
+  useDialogOpen(dialogRef, open && !!share);
 
   const copyAndClose = useCallback(async () => {
+    // Defined above the early return, so `share` is nullable here even though
+    // the button that calls it only exists once it is not.
+    if (!share) return;
     try {
       await navigator.clipboard.writeText(share.link);
       showToast("Invitation link copied.", "success");
@@ -57,7 +67,7 @@ export default function InviteModal({
       );
       setShowRaw(true);
     }
-  }, [share.link, showToast, onClose]);
+  }, [share, showToast, onClose]);
 
   const copyQuietly = useCallback(
     async (value: string, label: string) => {
@@ -70,6 +80,10 @@ export default function InviteModal({
     },
     [showToast],
   );
+
+  // After the hooks, never before: an early return above them would change the
+  // hook order between renders.
+  if (!share) return null;
 
   return (
     <dialog
