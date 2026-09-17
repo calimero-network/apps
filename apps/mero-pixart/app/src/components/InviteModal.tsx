@@ -73,8 +73,9 @@ export default function InviteModal({ teamId, onClose }: Props) {
         </div>
 
         <p className={styles.desc}>
-          Generate an invitation token and share it with your teammate.
-          They paste it into their node to join this team.
+          Generate an invitation link and share it with your teammate. Opening it
+          launches the desktop app where installed, and the web build otherwise —
+          or they can paste it into their node to join this team.
         </p>
 
         {invitation ? (
@@ -85,8 +86,12 @@ export default function InviteModal({ teamId, onClose }: Props) {
             </div>
           ) : (
             <div className={styles.tokenBox}>
-              <code className={styles.token} data-testid="invite-token" title={invitation}>
-                {truncateMiddle(invitation, 22, 12)}
+              <code
+                className={styles.token}
+                data-testid="invite-token"
+                title={invitationLink(invitation)}
+              >
+                {truncateMiddle(invitationLink(invitation), 28, 10)}
               </code>
               <button className="mp-btn" onClick={copy} data-testid="copy-invite">
                 Copy
