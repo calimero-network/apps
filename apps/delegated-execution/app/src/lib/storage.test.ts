@@ -128,6 +128,7 @@ describe('settings', () => {
   it('round-trips', () => {
     const settings = {
       cloudUrl: 'https://manager.example',
+      portalUrl: 'https://cloud.example',
       namespaceId: 'a'.repeat(64),
       invitationJson: '{"invitation":{}}',
       nodeKey: 'f'.repeat(64),

@@ -183,6 +183,40 @@ are two different audiences.
 | 5. Read | `POST /admin-api/contexts/<id>/query` with the token | Membership is re-checked per call, not per session; only `&self` methods are reachable |
 | 6. Write | A warrant signed by the device, spent by the **cloud-resolved relay** | The session plays **no part**. The delta is attributed to *your* account, not the node's — and the relay need not be the node that admitted you |
 
+## Connecting: consent from the cloud, the key from here
+
+Step 2 is two actions, and they answer different questions.
+
+**Connect** opens the cloud portal in a tab. You sign in there, read what is being asked
+(the app's origin and the account id), and agree — and you come back holding a **grant**.
+
+This round trip exists because of a real bind: only Google issues a *first* cloud session,
+and linking an account lives behind one. A tab that holds an account root can therefore
+prove it owns that account forever and never get a session, because
+[the proof says who you are and the link says what you are entitled to](#connecting-the-account-to-your-cloud-is-the-roots-one-job).
+So the consent is collected where you are signed in, and carried back across the redirect.
+
+**What crosses is a grant, deliberately not a session token and not a Google ID token.** It
+authorises exactly one link, on one named account, expires in five minutes, and is spendable
+only by whoever can sign it with that account's root — so a grant someone intercepts links
+nothing. It arrives in the URL *fragment*, which browsers never send to servers. Handing the
+tab a session instead would give it everything that cloud login owns.
+
+Three checks make it safe, and all three are on the server:
+
+- the grant names one account, sealed at consent time, and the cloud re-derives the account
+  from the key that signs. The app chooses which account to ask about, so without this it
+  could ask about the account you expect and spend the consent on one it controls;
+- the grant carries a purpose, so an ordinary link challenge cannot be spent as one;
+- the callback origin is allow-listed (`account_link_callback_origins`, empty by default).
+  The portal checks too, but a check in the page decides nothing — the redirect target is
+  exactly what an attacker controls.
+
+Cancelling at the cloud sends you back with `error=denied` and links nothing.
+
+The demo needs both URLs because production has two hosts: the **portal** serves the sign-in
+page and does not proxy `/api/*`, and the **API** host has no sign-in page.
+
 ## Connecting the account to your cloud is the root's one job
 
 Everything else this page signs is signed by the **device** key: the routing proof, the

@@ -49,6 +49,7 @@ import type { DeviceIdentity } from './identity.js';
 const IDENTITY_KEY = 'calimero.delegated-demo.identity';
 const SETTINGS_KEY = 'calimero.delegated-demo.settings';
 const CLAIM_KEY = 'calimero.delegated-demo.account-claim';
+const PENDING_LINK_KEY = 'calimero.delegated-demo.pending-link';
 
 /** Where this tab is pointed, and at what. */
 export interface Settings {
@@ -61,6 +62,17 @@ export interface Settings {
    * say, and all of which decide whether a write will be taken.
    */
   cloudUrl: string;
+  /**
+   * The cloud PORTAL's base URL — where a person signs in, as opposed to
+   * {@link Settings.cloudUrl}, which is where the API lives.
+   *
+   * Two fields because they are two hosts in production: `cloud.calimero.network`
+   * serves the sign-in page and does not proxy `/api/*`, and
+   * `manager.cloud.calimero.network` answers the API and has no sign-in page.
+   * Deriving one from the other would work in exactly the deployments where it
+   * did not matter.
+   */
+  portalUrl: string;
   /** The namespace the invitation is for, 64 hex. */
   namespaceId: string;
   /**
@@ -111,6 +123,7 @@ export interface Settings {
 
 export const EMPTY_SETTINGS: Settings = {
   cloudUrl: '',
+  portalUrl: '',
   namespaceId: '',
   invitationJson: '',
   nodeKey: '',
@@ -199,6 +212,7 @@ export function clearStored(devicePublicKey: string | null): void {
     // about, and a receipt outliving its key reads as "still connected" on a
     // page that now holds nothing.
     localStorage.removeItem(CLAIM_KEY);
+    localStorage.removeItem(PENDING_LINK_KEY);
     if (devicePublicKey) {
       localStorage.removeItem(nonceStorageKey(devicePublicKey));
       localStorage.removeItem(joinNonceStorageKey(devicePublicKey));
@@ -238,6 +252,35 @@ export interface AccountClaim {
   sessionToken: string;
   /** The linked login's email, or `''`. */
   email: string;
+}
+
+/**
+ * The cloud round-trip in progress, if any.
+ *
+ * Stored because the answer arrives on a *fresh page load*. The person leaves
+ * for the portal, consents there, and comes back to a new instance of this app
+ * that remembers nothing — so which cloud they went to, and which account they
+ * were asked about, have to survive in the one place that spans the gap.
+ *
+ * Cleared as soon as it is consumed, success or failure: a stale pending link
+ * would make the next ordinary reload look like a callback.
+ */
+export function loadPendingLink(): { cloudUrl: string; accountId: string } | null {
+  const stored = read<{ cloudUrl: string; accountId: string }>(PENDING_LINK_KEY);
+  if (!stored) return null;
+  return typeof stored.cloudUrl === 'string' && typeof stored.accountId === 'string' ? stored : null;
+}
+
+export function savePendingLink(pending: { cloudUrl: string; accountId: string }): void {
+  write(PENDING_LINK_KEY, pending);
+}
+
+export function clearPendingLink(): void {
+  try {
+    localStorage.removeItem(PENDING_LINK_KEY);
+  } catch {
+    // Nothing was stored; nothing to clear.
+  }
 }
 
 export function loadClaim(): AccountClaim | null {

@@ -569,6 +569,86 @@ export async function claimAccountWithCloud(
   }
 }
 
+/** Where the demo stores the portal URL it is mid-round-trip with. */
+export interface PendingLink {
+  /** The cloud the person was sent to. */
+  cloudUrl: string;
+  /** The account consent was asked for — checked against what comes back. */
+  accountId: string;
+}
+
+/**
+ * Send the person to the cloud to authorise linking this account.
+ *
+ * Opens a tab rather than navigating, so an unfinished consent leaves the demo
+ * exactly as it was — the person can close the tab and nothing has changed. The
+ * callback is this page's own URL, so coming back is a reload rather than a
+ * route this app would otherwise have no reason to own.
+ *
+ * Returns what to remember while they are away. It is stored because the answer
+ * arrives on a *fresh page load*: the app that asked is gone by then, and only
+ * `localStorage` crosses that gap.
+ */
+export function startCloudLink(
+  cloudUrl: string,
+  portalUrl: string,
+  identity: DeviceIdentity,
+): PendingLink {
+  // Come back to this page, minus any fragment it is already carrying: a second
+  // round trip would otherwise append its answer to the first one's, and the
+  // callback reader would take whichever came first.
+  const here = new URL(window.location.href);
+  here.hash = '';
+
+  const { url } = CloudClient.accountLinkHandoff({
+    portalUrl: normaliseUrl(portalUrl),
+    accountId: identity.accountId,
+    callbackUrl: here.toString(),
+  });
+  window.open(url, '_blank', 'noopener');
+  return { cloudUrl: normaliseUrl(cloudUrl), accountId: identity.accountId };
+}
+
+/** What came back from the cloud, once the grant has been spent. */
+export interface LinkResult {
+  accountId: string;
+  /** True when this account was already linked to that login. */
+  alreadyLinked: boolean;
+}
+
+/**
+ * Finish a link the person authorised: spend the grant with the account root.
+ *
+ * The grant is consent from a cloud login; the signature proves this app holds
+ * the account's root. The cloud needs both, which is what made the grant safe to
+ * send back through a browser in the first place.
+ *
+ * Refuses a grant for an account this tab does not hold, rather than trying it:
+ * the cloud would refuse it anyway (it re-derives the account from the signing
+ * key) but failing here says which of the two accounts is wrong, and a mismatch
+ * means the identity changed mid-round-trip.
+ */
+export async function finishCloudLink(
+  pending: PendingLink,
+  grant: string,
+  identity: DeviceIdentity,
+): Promise<LinkResult> {
+  if (!identity.rootSecret) {
+    throw new Error('This identity has no stored account root, so it cannot sign the grant.');
+  }
+  if (pending.accountId !== identity.accountId) {
+    throw new Error(
+      'The account this tab holds is not the one the cloud was asked about. ' +
+        'Start the connection again.',
+    );
+  }
+  const link = await new CloudClient({ cloudBaseUrl: pending.cloudUrl }).linkAccountWithGrant({
+    grant,
+    rootSecret: identity.rootSecret,
+  });
+  return { accountId: link.accountId, alreadyLinked: link.alreadyLinked };
+}
+
 /**
  * Spend an account session on a cloud read, to show it is a real session.
  *
