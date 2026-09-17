@@ -209,6 +209,12 @@ export interface RoomRow {
   memberCount: number;
   /** True when this node already holds an identity in the room's context. */
   joined: boolean;
+  /**
+   * The identity this node holds in the room's context, or null. The room's
+   * contract keys its roster by this, so it is what marks "you" in a member
+   * list.
+   */
+  identity: string | null;
 }
 
 /**
@@ -238,7 +244,7 @@ export async function listRooms(
         admin.getGroupMetadata(sg.groupId).catch(() => null),
       ]);
       const contextId = contexts?.[0]?.contextId ?? null;
-      const joined = contextId ? await holdsIdentity(admin, contextId) : false;
+      const identity = contextId ? await ownedIdentity(admin, contextId) : null;
       return {
         roomId: sg.groupId,
         name:
@@ -247,7 +253,8 @@ export async function listRooms(
           `Room ${sg.groupId.slice(0, 6)}`,
         contextId,
         memberCount: members.length,
-        joined,
+        joined: !!identity,
+        identity,
       };
     }),
   );
@@ -491,14 +498,22 @@ async function parentNamespaceOf(
 }
 
 /** Does this node already hold a member identity in `contextId`? */
-async function holdsIdentity(
+/**
+ * The identity this node holds in a context, or null when it holds none.
+ *
+ * Returns the identity rather than a boolean because the caller needs both: the
+ * boolean answers "can I enter", and the identity is what the room's contract
+ * roster keys its members by — without it a member list cannot tell which row
+ * is you. The round trip is the same either way.
+ */
+async function ownedIdentity(
   admin: AdminLike,
   contextId: string,
-): Promise<boolean> {
+): Promise<string | null> {
   const owned = await admin
     .getContextIdentitiesOwned(contextId)
     .catch(() => null);
-  return !!owned?.identities?.length;
+  return owned?.identities?.[0] ?? null;
 }
 
 /**

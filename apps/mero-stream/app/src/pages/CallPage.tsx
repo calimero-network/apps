@@ -6,6 +6,7 @@ import DataDialog from "../components/DataDialog";
 import { MetricValue } from "../components/MetricValue";
 import PeopleDialog from "../components/PeopleDialog";
 import { buildRoster, initials, shortId } from "../lib/people";
+import SessionMenu from "../components/SessionMenu";
 import { getUsername, setUsername } from "../lib/session";
 import {
   DEGRADED_DELIVERY_PERCENT,
@@ -243,6 +244,7 @@ export default function CallPage() {
               <span className={styles.identityFlag}>set name</span>
             )}
           </button>
+          <SessionMenu />
         </div>
       </header>
 

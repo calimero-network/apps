@@ -1,60 +1,68 @@
 /* ── Theme tokens ───────────────────────────────────────────────────────────
  *
- * A deliberately PLAIN palette: neutral slate surfaces, one blue accent, flat
- * fills, hairline borders, small radii. Nothing here is a gradient and nothing
- * glows.
+ * The Calimero brand palette, matching the landing page this app ships with:
+ * green #a5ff11, near-black #131215, off-white #fcfcfc. Flat fills, hairline
+ * borders, small radii. Nothing here is a gradient and nothing glows.
  *
- * What it replaced and why: the previous theme carried
- * `--accent-grad: linear-gradient(135deg, #6d83ff, #a06bff)`, a matching
- * `--shadow-glow`, and two large radial washes painted onto <body>. On a video
- * app those are actively harmful rather than merely a matter of taste — a violet
- * cast behind the tiles is the one thing you cannot subtract from your judgement
- * of a decoded picture, which is most of what this app is for. The stage is now
- * a flat neutral ground so the only colour on screen is the video.
+ * LIGHT IS THE DEFAULT. It used to be dark with a blue accent, so the app and
+ * its own landing page looked like two products — you met Calimero green on the
+ * marketing page and a blue-on-slate app one click later. Dark is still here
+ * under `data-theme="dark"`, and the whole set stays token-driven so both
+ * remain switchable.
  *
- * Dark is the default; light is available via `data-theme="light"` on <html>.
- * There is no toggle UI — the tokens exist so the pages stay re-themable and
- * consistent with the other mero apps.
+ * The green is a FILL, not an ink: #a5ff11 on white is ~1.5:1, so accent TEXT
+ * uses `--accent-ink` (#5f9400) and text ON the green uses `--accent-text`
+ * (near-black). Using --accent for a label is a contrast bug every time.
+ *
+ * The one thing that does NOT go light: the video stage. A white surround is
+ * the fastest way to make a correctly decoded frame look wrong, and a violet or
+ * bright cast behind a tile is the one thing you cannot subtract from your
+ * judgement of the picture — which is most of what this app is for. `--stage`
+ * and `--tile` stay dark in both themes, deliberately.
  */
 :root,
-:root[data-theme="dark"] {
-  color-scheme: dark;
+:root[data-theme="light"] {
+  color-scheme: light;
 
-  --bg: #0c0d10;
-  --bg-elev: #15171b;
-  --surface: #1b1e23;
-  --surface-hover: #22262c;
-  --surface-strong: #2a2f36;
-  --border: #262a31;
-  --border-strong: #363c45;
+  --bg: #fcfcfc;
+  --bg-elev: #ffffff;
+  --surface: #ffffff;
+  --surface-hover: #f2f2f3;
+  --surface-strong: #e9e9eb;
+  --border: #e4e4e6;
+  --border-strong: #c8c8c8;
 
-  --text: #e8eaed;
-  --text-dim: #9ba1ab;
-  --text-faint: #6b7280;
+  --text: #131215;
+  --text-dim: #404040;
+  --text-faint: #8e8e8e;
 
-  --accent: #3b82f6;
-  --accent-hover: #2f6fdc;
-  --accent-fg: #ffffff;
-  --accent-soft: rgba(59, 130, 246, 0.14);
-  --green: #22c55e;
-  --red: #ef4444;
-  --red-hover: #dc2626;
-  --amber: #f59e0b;
+  --accent: #a5ff11;
+  --accent-hover: #b6ff3d;
+  --accent-soft: rgba(165, 255, 17, 0.18);
+  /* Text ON the green fill. */
+  --accent-text: #131215;
+  /* Accent-coloured TEXT on the page background — deepened to stay legible. */
+  --accent-ink: #5f9400;
+  /* Kept as an alias: older rules use --accent-fg for "text on the accent". */
+  --accent-fg: #131215;
 
-  /* The video stage sits on its own ground, darker than the chrome around it,
-     so a black letterbox inside a tile reads as part of the picture rather than
-     as a hole in the page. */
-  --stage: #08090b;
+  --green: #4f9a00;
+  --red: #c62828;
+  --red-hover: #a51d1d;
+  --danger: #c62828;
+  --amber: #b26a00;
+
+  --stage: #131215;
   --tile: #000000;
 
-  --radius-sm: 6px;
-  --radius: 8px;
-  --radius-lg: 12px;
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
-  --shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+  --radius-sm: 7px;
+  --radius: 10px;
+  --radius-lg: 16px;
+  --shadow-sm: 0 2px 10px rgba(19, 18, 21, 0.07);
+  --shadow: 0 10px 34px rgba(19, 18, 21, 0.1);
 
-  --scrollbar: #363c45;
-  --scrollbar-hover: #4a515c;
+  --scrollbar: #c8c8c8;
+  --scrollbar-hover: #a8a8a8;
 
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   --font:
@@ -62,40 +70,44 @@
     Arial, sans-serif;
 }
 
-:root[data-theme="light"] {
-  color-scheme: light;
+:root[data-theme="dark"] {
+  color-scheme: dark;
 
-  --bg: #ffffff;
-  --bg-elev: #ffffff;
-  --surface: #f6f7f9;
-  --surface-hover: #eef0f3;
-  --surface-strong: #e4e7ec;
-  --border: #e2e5ea;
-  --border-strong: #cbd1da;
+  --bg: #131215;
+  --bg-elev: #1a191d;
+  --surface: #1a191d;
+  --surface-hover: #232227;
+  --surface-strong: #2b2a30;
+  --border: #2a292f;
+  --border-strong: #3a3940;
 
-  --text: #14171c;
-  --text-dim: #5b636f;
-  --text-faint: #8b929d;
+  --text: #fcfcfc;
+  --text-dim: #b4b4b8;
+  --text-faint: #8e8e8e;
 
-  --accent: #2563eb;
-  --accent-hover: #1d4fd7;
-  --accent-fg: #ffffff;
-  --accent-soft: rgba(37, 99, 235, 0.1);
-  --green: #16a34a;
-  --red: #dc2626;
-  --red-hover: #b91c1c;
-  --amber: #d97706;
+  /* Same green in both themes — it is the one constant across every app. On
+     #131215 the brand green is legible as ink, so accent text uses it directly. */
+  --accent: #a5ff11;
+  --accent-hover: #b6ff3d;
+  --accent-soft: rgba(165, 255, 17, 0.16);
+  --accent-text: #131215;
+  --accent-ink: #a5ff11;
+  --accent-fg: #131215;
 
-  /* Even in light mode the stage stays dark. A white surround around video is
-     the single fastest way to make a correctly decoded frame look wrong. */
-  --stage: #101216;
+  --green: #a5ff11;
+  --red: #ef4444;
+  --red-hover: #dc2626;
+  --danger: #ef4444;
+  --amber: #f59e0b;
+
+  --stage: #08090b;
   --tile: #000000;
 
-  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06);
-  --shadow: 0 4px 16px rgba(16, 24, 40, 0.1);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
 
-  --scrollbar: #cbd1da;
-  --scrollbar-hover: #aab2bd;
+  --scrollbar: #3a3940;
+  --scrollbar-hover: #4a4952;
 }
 
 * {

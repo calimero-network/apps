@@ -20,7 +20,13 @@ export default defineConfig({
     __APP_VERSION__: JSON.stringify(pkg.version),
   },
   server: {
-    port: Number(process.env.PW_PORT) || 5173,
+    // Pinned, and NOT 5173. Every mero app served from the same origin shares one
+    // localStorage, so running this on the port another Calimero app had used
+    // inherited that app's mero-react session — you were logged straight in as
+    // whoever was last here, with THEIR application id, and the stream picker
+    // then listed that app's namespaces. One port per app makes that impossible.
+    // (Overridable for Playwright, which needs to pick its own.)
+    port: Number(process.env.PW_PORT) || 5178,
     strictPort: false,
   },
   test: {

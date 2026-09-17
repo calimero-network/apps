@@ -404,6 +404,10 @@ describe("listRooms", () => {
         contextId: "ctx1",
         memberCount: 1,
         joined: true,
+        // The identity itself, not just the fact of holding one: the room's
+        // contract keys its roster by this, so it is what marks "you" in a
+        // member list.
+        identity: "pk-mine",
       },
       {
         roomId: "r2",
@@ -411,6 +415,7 @@ describe("listRooms", () => {
         contextId: null,
         memberCount: 1,
         joined: false,
+        identity: null,
       },
     ]);
   });

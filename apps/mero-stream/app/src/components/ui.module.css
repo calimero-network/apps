@@ -110,14 +110,15 @@
 
 .statusOk {
   color: var(--green);
-  background: rgba(67, 209, 127, 0.08);
-  border: 1px solid rgba(67, 209, 127, 0.25);
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-ink);
 }
 
 .statusError {
-  color: #ff8088;
-  background: rgba(255, 83, 101, 0.08);
-  border: 1px solid rgba(255, 83, 101, 0.25);
+  /* Tokenised: #ff8088 is a light-on-dark red and measures ~2.3:1 on white. */
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent);
 }
 
 .statusInfo {
