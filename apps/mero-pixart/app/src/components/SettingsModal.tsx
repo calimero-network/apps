@@ -1,8 +1,13 @@
 import { useEffect, useState } from "react";
 import { useMero } from "@calimero-network/mero-react";
 import { adminGet, adminPut, getNodeIdentity, rpcCall } from "../api/rpc";
+import { listTeamContexts } from "../api/teamContexts";
 import { useToast } from "../contexts/ToastContext";
 import { extractErrorMessage } from "../utils/errorMessage";
+import {
+  adminsMissingDocumentAccess,
+  effectiveDocumentRole,
+} from "../utils/documentRoles";
 import { truncateMiddle } from "../utils/format";
 import { useEditorStore } from "../store/editorStore";
 import type { DocumentInfo, MemberRole as ContractMemberRole } from "../types";
@@ -190,10 +195,73 @@ export default function SettingsModal({ type, id, groupId, name, onClose }: Prop
   const selfIsAdmin =
     !!selfIdentity && members.some((m) => m.identity === selfIdentity && m.role === "Admin");
 
+  // ── Team Admin implies document edit ────────────────────────────────────────
+  //
+  // The two role systems are independent: the contract cannot see team roles, so
+  // a promotion grants nothing on the document and the member reads as "Admin"
+  // while still being refused every edit. Promote/demote cascades from team
+  // settings, but an admin promoted before this existed — or on a document that
+  // refused the call then — is only reachable from the document itself, so
+  // whoever opens settings holding document admin reconciles it.
+  //
+  // Runs only when there is something to fix, so the common case issues no calls.
+  useEffect(() => {
+    if (type !== "project" || myContractRole !== "admin") return;
+    const needed = adminsMissingDocumentAccess(members, contractRoles);
+    if (needed.length === 0) return;
+
+    let cancelled = false;
+    (async () => {
+      for (const identity of needed) {
+        try {
+          await rpcCall(id, "grant_editor", { member: identity });
+          if (cancelled) return;
+          setContractRoles((prev) => ({ ...prev, [identity]: "editor" }));
+        } catch {
+          // Non-fatal and deliberately quiet: the row keeps showing the real
+          // document role, and the explicit button is still there as a fallback.
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [type, id, members, contractRoles, myContractRole]);
+
   async function copyText(text: string, key: string) {
     await navigator.clipboard.writeText(text);
     setCopied(key);
     setTimeout(() => setCopied(null), 2000);
+  }
+
+  /**
+   * Carry a governance change onto every document in the team.
+   *
+   * Admin implies document edit, so the two directions are not symmetric in
+   * importance: a promotion that fails to grant just leaves someone needing a
+   * manual grant, but a demotion that fails to revoke leaves a former admin
+   * still able to edit — which is the one that matters.
+   *
+   * Runs per document because access is per contract. A document where this
+   * caller is not the admin refuses the call; that is counted and reported
+   * rather than swallowed, because silence there would read as "revoked
+   * everywhere" when it was not.
+   */
+  async function cascadeDocumentRole(
+    identity: string,
+    role: "Admin" | "Member",
+  ): Promise<{ changed: number; failed: number }> {
+    const contexts = await listTeamContexts(membersGroupId);
+    const method = role === "Admin" ? "grant_editor" : "revoke_editor";
+    let changed = 0;
+    let failed = 0;
+    for (const contextId of contexts) {
+      try {
+        await rpcCall(contextId, method, { member: identity });
+        changed += 1;
+      } catch {
+        failed += 1;
+      }
+    }
+    return { changed, failed };
   }
 
   // Promote (→ Admin) / demote (→ Member). Only namespace (team) members carry
@@ -203,7 +271,23 @@ export default function SettingsModal({ type, id, groupId, name, onClose }: Prop
     try {
       await adminPut(`/groups/${membersGroupId}/members/${identity}/role`, { role });
       setMembers((prev) => prev.map((m) => (m.identity === identity ? { ...m, role } : m)));
-      showToast(role === "Admin" ? "Member promoted to admin." : "Admin demoted to member.", "success");
+
+      const { changed, failed } = await cascadeDocumentRole(identity, role);
+      const base =
+        role === "Admin" ? "Member promoted to admin." : "Admin demoted to member.";
+      const docs =
+        role === "Admin"
+          ? `Edit access granted on ${changed} document${changed === 1 ? "" : "s"}.`
+          : `Edit access revoked on ${changed} document${changed === 1 ? "" : "s"}.`;
+      if (failed > 0) {
+        // Named explicitly: those documents still have the OLD access.
+        showToast(
+          `${base} ${docs} ${failed} document${failed === 1 ? "" : "s"} could not be updated — open its settings as document admin.`,
+        );
+        return;
+      }
+      showToast(changed > 0 ? `${base} ${docs}` : base, "success");
+      return;
     } catch (err) {
       showToast(extractErrorMessage(err, "Could not update role."));
     } finally {
@@ -307,25 +391,26 @@ export default function SettingsModal({ type, id, groupId, name, onClose }: Prop
                 const initial = (m.name?.[0] ?? m.identity[0] ?? "?").toUpperCase();
                 const canModerate = type === "team" && selfIsAdmin && !isSelf;
                 const busy = pendingRole === m.identity;
-                // Contract editor role (project documents). Admins are implicitly
-                // editors; a member is an editor only if explicitly granted.
-                const contractRole = contractRoles[m.identity];
-                const isEditor = contractRole === "admin" || contractRole === "editor";
-                const isOwner = contractRole === "admin";
-                // This list is the NODE's group membership, which knows nothing
-                // about the document. A role grant names an account, and the
-                // contract only learns a member's device→account pairing once
-                // that member has opened the document — so granting someone who
-                // never has fails with "that member hasn't opened this document
-                // yet". `list_roles` only reports members the document knows, so
-                // an absent entry is exactly that case: don't offer the action.
-                const knownToDocument = contractRole !== undefined;
+                // Document role. `list_roles` only enumerates members who have
+                // opened the document, so an absent entry means plain viewer —
+                // which is exactly what the contract's own `get_role` answers
+                // for an account it has never seen.
+                const documentRole = effectiveDocumentRole(contractRoles, m.identity);
+                const isEditor = documentRole !== "viewer";
+                const isOwner = documentRole === "admin";
+                // No "has this member opened it yet" gate. That guarded the
+                // rc.20 model, where the contract had to learn a member's
+                // device→account pairing from their own writes before a grant
+                // could name them. A member id IS an account here, so
+                // `require_account` is a parse and a grant works before the
+                // invitee has ever opened the document — see the contract test
+                // `a_member_can_be_granted_before_they_ever_open_the_document`.
+                // Keeping the gate hid the control from precisely the members
+                // who needed it.
                 const canSetEditor =
-                  type === "project" && myContractRole === "admin" && !isSelf && !isOwner && knownToDocument;
+                  type === "project" && myContractRole === "admin" && !isSelf && !isOwner;
                 const canTransfer =
-                  type === "project" && myContractRole === "admin" && !isSelf && !isOwner && knownToDocument;
-                const showNotOpenedHint =
-                  type === "project" && myContractRole === "admin" && !isSelf && !knownToDocument;
+                  type === "project" && myContractRole === "admin" && !isSelf && !isOwner;
                 const editorBusy = pendingEditor === m.identity;
                 const transferBusy = pendingTransfer === m.identity;
                 return (
@@ -348,11 +433,15 @@ export default function SettingsModal({ type, id, groupId, name, onClose }: Prop
                         {!m.name && isSelf && <span className={styles.youTag}>you</span>}
                       </div>
                     </div>
-                    {type === "team" && (
-                      <span className={`${styles.roleBadge} ${isAdmin ? styles.roleAdmin : styles.roleMember}`}>
-                        {isAdmin ? "Admin" : "Member"}
-                      </span>
-                    )}
+                    {/* Team role, shown in BOTH scopes. In project settings the
+                        two badges sit side by side, so it is visible that team
+                        governance and document access are different things. */}
+                    <span
+                      className={`${styles.roleBadge} ${isAdmin ? styles.roleAdmin : styles.roleMember}`}
+                      title="Team role (namespace governance)"
+                    >
+                      {isAdmin ? "Admin" : "Member"}
+                    </span>
                     {canModerate && (
                       <button
                         className={styles.roleBtn}
@@ -362,7 +451,10 @@ export default function SettingsModal({ type, id, groupId, name, onClose }: Prop
                         {busy ? "…" : isAdmin ? "Demote" : "Promote"}
                       </button>
                     )}
-                    {type === "project" && contractRole && (
+                    {/* Document access, for EVERY member — not only those the
+                        document has already heard from, who were the only rows
+                        that used to get a badge at all. */}
+                    {type === "project" && (
                       <span
                         className={`${styles.roleBadge} ${isEditor ? styles.roleAdmin : styles.roleMember}`}
                         title="Document access (merge-enforced)"
@@ -389,18 +481,6 @@ export default function SettingsModal({ type, id, groupId, name, onClose }: Prop
                       >
                         {transferBusy ? "…" : "Make owner"}
                       </button>
-                    )}
-                    {showNotOpenedHint && (
-                      <span
-                        className={`${styles.roleBadge} ${styles.roleMember}`}
-                        title={
-                          "Roles are granted to a person, and this member's node has not opened " +
-                          "the document yet, so the document does not know which account their " +
-                          "device speaks for. Ask them to open it once, then set the role."
-                        }
-                      >
-                        Not opened yet
-                      </span>
                     )}
                   </div>
                 );
