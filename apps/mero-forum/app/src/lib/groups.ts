@@ -403,6 +403,61 @@ export async function createForum(
   };
 }
 
+/**
+ * Delete a forum: its context first, then the subgroup that held it.
+ *
+ * ⚠️ Order matters and is not interchangeable. The context is bound to the
+ * subgroup, so removing the subgroup first orphans a context that no member can
+ * reach and no longer appears in any listing — it keeps replicating and cannot
+ * be cleaned up through the app. Context, then group.
+ *
+ * The context delete is NOT swallowed: if it fails, stop, because proceeding is
+ * exactly how the orphan above gets made. The subgroup delete is allowed to
+ * report its own failure, by which point the forum is already unreadable.
+ *
+ * This removes it for EVERYONE, not just this node — it is a governance op on
+ * the namespace, not a local hide.
+ */
+export async function deleteForum(
+  admin: AdminLike,
+  opts: { forumId: string; contextId: string | null },
+  onStatus: StatusFn = noop,
+): Promise<void> {
+  if (opts.contextId) {
+    onStatus("Deleting the forum's context…");
+    await admin.deleteContext(opts.contextId);
+  }
+  onStatus("Removing the forum…");
+  await admin.deleteGroup(opts.forumId);
+}
+
+/**
+ * Delete a space, and every forum in it.
+ *
+ * Each forum's context is deleted first for the reason above, then the
+ * namespace goes. A forum whose context this node has never seen is skipped
+ * rather than failing the whole delete: it cannot be addressed from here, and
+ * refusing to delete the space because one context has not replicated would
+ * leave the space undeletable on exactly the node that most wants rid of it.
+ */
+export async function deleteSpace(
+  admin: AdminLike,
+  opts: { namespaceId: string },
+  onStatus: StatusFn = noop,
+): Promise<void> {
+  onStatus("Finding the forums in this space…");
+  const forums = await listForums(admin, opts.namespaceId).catch(() => []);
+
+  for (const forum of forums) {
+    if (!forum.contextId) continue;
+    onStatus(`Deleting “${forum.name}”…`);
+    await admin.deleteContext(forum.contextId).catch(() => {});
+  }
+
+  onStatus("Removing the space…");
+  await admin.deleteNamespace(opts.namespaceId);
+}
+
 // ── Invitations ───────────────────────────────────────────────────────────────
 
 /**

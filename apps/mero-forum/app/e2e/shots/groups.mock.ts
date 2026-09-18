@@ -108,3 +108,11 @@ export async function redeemInvite() {
 export async function enterForumContext() {
   return MY_IDENTITY;
 }
+
+export async function deleteSpace() {
+  /* the shots never mutate — the confirm dialog is photographed, not driven */
+}
+
+export async function deleteForum() {
+  /* as above */
+}

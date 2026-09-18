@@ -226,3 +226,107 @@
   font-family: var(--mono);
   font-size: 12px;
 }
+
+
+/* ── Card row menu ───────────────────────────────────────────────────────────
+ *
+ * The kebab + dropdown mero-design and mero-pixart use on their Teams and
+ * Projects cards, so the three apps behave the same way on the same screen.
+ *
+ * Destructive actions live in here rather than on the card face: deleting a
+ * space takes every forum in it, and that is not a button anyone should be able
+ * to hit while reaching for Open.
+ *
+ * ⚠️ The button is `opacity: 0` until hover — but ALSO revealed on
+ * `:focus-within`, or it would be unreachable by keyboard. mero-design's
+ * version only has the hover rule; this is the one deliberate divergence.
+ */
+.cardWrap {
+  position: relative;
+}
+.cardWrap:hover .menuBtn,
+.cardWrap:focus-within .menuBtn {
+  opacity: 1;
+}
+
+.menuBtn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  line-height: 1;
+  padding: 0;
+  color: var(--text-dim);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 120ms ease, background 120ms ease, color 120ms ease;
+  z-index: 2;
+}
+.menuBtn:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+.menuBtn:focus-visible {
+  opacity: 1;
+  outline: 2px solid var(--accent-ink);
+  outline-offset: 1px;
+}
+
+.dropdown {
+  position: absolute;
+  top: 36px;
+  right: 0;
+  min-width: 150px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  z-index: 100;
+  overflow: hidden;
+}
+
+.dropdownItem {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: 0;
+  padding: 9px 12px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+}
+.dropdownItem:hover {
+  background: var(--surface-hover);
+}
+.dropdownItem:focus-visible {
+  outline: 2px solid var(--accent-ink);
+  outline-offset: -2px;
+}
+.dropdownDanger {
+  color: var(--red);
+}
+.dropdownDanger:hover {
+  background: color-mix(in srgb, var(--red) 8%, transparent);
+}
+
+/* The confirm step for a delete that takes other things with it. */
+.confirmText {
+  font-size: 13px;
+  color: var(--text-dim);
+  line-height: 1.5;
+  margin: 0 0 14px;
+}
+.confirmStrong {
+  color: var(--text);
+  font-weight: 650;
+}

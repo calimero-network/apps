@@ -31,7 +31,8 @@ export interface ActionButtonProps {
   pendingLabel?: string;
   /** Unavailable for a reason other than being in flight. */
   disabled?: boolean;
-  variant?: "primary" | "secondary";
+  /** `danger` is the red fill, for a confirm that destroys data. */
+  variant?: "primary" | "secondary" | "danger";
   size?: "normal" | "small";
   title?: string;
   testId?: string;
@@ -58,6 +59,7 @@ export function ActionButton({
   const cls = [
     styles.btn,
     variant === "secondary" ? styles.secondary : "",
+    variant === "danger" ? styles.danger : "",
     size === "small" ? styles.small : "",
   ]
     .filter(Boolean)

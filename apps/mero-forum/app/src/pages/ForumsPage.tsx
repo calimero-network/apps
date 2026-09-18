@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useMero } from "@calimero-network/mero-react";
 import { useApplicationId } from "../hooks/useApplicationId";
@@ -6,6 +6,7 @@ import { useToast } from "../contexts/ToastContext";
 import { setActiveForum, setForumName } from "../lib/session";
 import {
   createForum,
+  deleteForum,
   enterForumContext,
   listForums,
   mintNamespaceInvite,
@@ -15,6 +16,8 @@ import {
 import { ActionButton, StatusNote, Spinner } from "../components/ui";
 import InviteModal from "../components/InviteModal";
 import SessionMenu from "../components/SessionMenu";
+import CardMenu from "../components/CardMenu";
+import { useDialogOpen } from "../hooks/useDialogOpen";
 import styles from "./Shell.module.css";
 
 /**
@@ -59,6 +62,10 @@ export default function ForumsPage() {
     scope: string;
     hint: React.ReactNode;
   } | null>(null);
+  // The forum pending deletion. Its posts and comments go with it, for
+  // everyone — a sentence `window.confirm` has no room for.
+  const [pendingDelete, setPendingDelete] = useState<ForumRow | null>(null);
+  const deleteDialogRef = useRef<HTMLDialogElement | null>(null);
 
   const run = useCallback(
     async (
@@ -216,6 +223,26 @@ export default function ForumsPage() {
     });
   }, [mero, namespaceId, nsName, run, showToast]);
 
+  useDialogOpen(deleteDialogRef, !!pendingDelete);
+
+  const removeForum = useCallback(
+    (forum: ForumRow) => {
+      if (!mero) return;
+      setPendingDelete(null);
+      void run(`delete:${forum.forumId}`, async (onStatus) => {
+        await deleteForum(
+          mero.admin,
+          { forumId: forum.forumId, contextId: forum.contextId },
+          onStatus,
+        );
+        onStatus("Refreshing forums…");
+        await load(false);
+        showToast(`Deleted \u201c${forum.name}\u201d.`);
+      });
+    },
+    [mero, run, load, showToast],
+  );
+
   return (
     <div className={styles.root}>
       <header className={styles.header}>
@@ -303,56 +330,68 @@ export default function ForumsPage() {
             </div>
             <div className={styles.grid}>
               {forums.map((forum) => (
-                <div
-                  className={styles.card}
-                  key={forum.forumId}
-                  data-testid="forum-row"
-                >
-                  <span className={styles.cardName}>{forum.name}</span>
-                  <div className={styles.cardMeta}>
-                    <span className={styles.chip}>
-                      {forum.memberCount} member
-                      {forum.memberCount === 1 ? "" : "s"}
-                    </span>
-                    {forum.joined ? (
-                      <span className={styles.chip}>joined</span>
-                    ) : forum.contextId ? (
-                      <span className={styles.chip}>not joined</span>
-                    ) : (
-                      /* No context on this node yet. It is a real, temporary
+                <div className={styles.cardWrap} key={forum.forumId}>
+                  <CardMenu
+                    testId="forum-menu"
+                    label={`Actions for ${forum.name}`}
+                    items={[
+                      {
+                        label: "Delete forum",
+                        danger: true,
+                        testId: "delete-forum",
+                        onSelect: () => setPendingDelete(forum),
+                      },
+                    ]}
+                  />
+                  <div className={styles.card} data-testid="forum-row">
+                    <span className={styles.cardName}>{forum.name}</span>
+                    <div className={styles.cardMeta}>
+                      <span className={styles.chip}>
+                        {forum.memberCount} member
+                        {forum.memberCount === 1 ? "" : "s"}
+                      </span>
+                      {forum.joined ? (
+                        <span className={styles.chip}>joined</span>
+                      ) : forum.contextId ? (
+                        <span className={styles.chip}>not joined</span>
+                      ) : (
+                        /* No context on this node yet. It is a real, temporary
                          state — the subgroup exists and its context has not
                          replicated here — so it says that rather than showing
                          an Open button that cannot work. */
-                      <span className={`${styles.chip} ${styles.chipWarn}`}>
-                        syncing
+                        <span className={`${styles.chip} ${styles.chipWarn}`}>
+                          syncing
+                        </span>
+                      )}
+                    </div>
+                    {forum.contextId ? (
+                      <span className={styles.cardId} title={forum.contextId}>
+                        {forum.contextId.slice(0, 10)}…
+                      </span>
+                    ) : (
+                      <span className={styles.cardId}>
+                        waiting to replicate
                       </span>
                     )}
-                  </div>
-                  {forum.contextId ? (
-                    <span className={styles.cardId} title={forum.contextId}>
-                      {forum.contextId.slice(0, 10)}…
-                    </span>
-                  ) : (
-                    <span className={styles.cardId}>waiting to replicate</span>
-                  )}
-                  <div className={styles.cardActions}>
-                    <ActionButton
-                      onClick={() => enter(forum)}
-                      pending={pending === `enter:${forum.forumId}`}
-                      disabled={!forum.contextId}
-                      testId="enter-forum"
-                    >
-                      {forum.joined ? "Open" : "Join"}
-                    </ActionButton>
-                    <ActionButton
-                      onClick={() => inviteToForum(forum)}
-                      pending={pending === `invite:${forum.forumId}`}
-                      variant="secondary"
-                      testId="invite-forum"
-                      title="Invite someone straight into this forum"
-                    >
-                      Invite
-                    </ActionButton>
+                    <div className={styles.cardActions}>
+                      <ActionButton
+                        onClick={() => enter(forum)}
+                        pending={pending === `enter:${forum.forumId}`}
+                        disabled={!forum.contextId}
+                        testId="enter-forum"
+                      >
+                        {forum.joined ? "Open" : "Join"}
+                      </ActionButton>
+                      <ActionButton
+                        onClick={() => inviteToForum(forum)}
+                        pending={pending === `invite:${forum.forumId}`}
+                        variant="secondary"
+                        testId="invite-forum"
+                        title="Invite someone straight into this forum"
+                      >
+                        Invite
+                      </ActionButton>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -360,6 +399,35 @@ export default function ForumsPage() {
           </>
         )}
       </main>
+
+      <dialog
+        ref={deleteDialogRef}
+        className={styles.joinDialog}
+        onClose={() => setPendingDelete(null)}
+      >
+        <h2>Delete this forum?</h2>
+        <p className={styles.confirmText}>
+          <span className={styles.confirmStrong}>{pendingDelete?.name}</span>{" "}
+          and every post and comment in it will be deleted. This happens for
+          everyone in the space, not just on this node, and it cannot be undone.
+        </p>
+        <div className={styles.cardActions}>
+          <ActionButton
+            onClick={() => pendingDelete && removeForum(pendingDelete)}
+            pending={pending === `delete:${pendingDelete?.forumId}`}
+            variant="danger"
+            testId="confirm-delete-forum"
+          >
+            Delete forum
+          </ActionButton>
+          <ActionButton
+            onClick={() => setPendingDelete(null)}
+            variant="secondary"
+          >
+            Cancel
+          </ActionButton>
+        </div>
+      </dialog>
 
       <InviteModal
         open={!!invite}

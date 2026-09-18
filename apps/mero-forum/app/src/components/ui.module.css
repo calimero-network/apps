@@ -127,3 +127,15 @@
   border: 1px dashed var(--border-strong);
 }
 
+
+/* A confirm that destroys data. Uses --red-text, not white: the correct ink for
+   the red fill flips between themes, which is why that token exists. */
+.danger {
+  background: var(--red);
+  border-color: var(--red);
+  color: var(--red-text);
+}
+.danger:hover:not(:disabled) {
+  background: var(--red-hover);
+  border-color: var(--red-hover);
+}
