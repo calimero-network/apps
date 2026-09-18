@@ -1,7 +1,12 @@
 // "Member defaults" admin section — sets the capability bitmask that
 // every NEW member of this namespace inherits when they join by invite
 // (core's `default_capabilities`, per design spec §5.2). Existing
-// members are unaffected; this only changes what future joiners get.
+// members are unaffected by the save itself — which is the trap this panel
+// now has an answer to. An admin widens the defaults, the save succeeds, and
+// every person already in the workspace still cannot do the newly-granted
+// thing, because `default_capabilities` is consulted at JOIN time and never
+// again. "Apply to existing members" below is the explicit sweep; see
+// `planDefaultsSweep` for who it deliberately leaves out.
 //
 // Gated on `canManageNamespace` (returns null otherwise) so the
 // settings surface doesn't advertise an action the caller can't take.
@@ -14,9 +19,10 @@
 // reset target.
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { RotateCcw } from 'lucide-react';
+import { RotateCcw, Users } from 'lucide-react';
 import {
   useDefaultCapabilities,
+  useMero,
   useSetDefaultCapabilities,
 } from '@calimero-network/mero-react';
 import { Button } from '@/components/ui/button';
@@ -28,7 +34,9 @@ import {
   withoutCap,
 } from '@/constants/config';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
+import { useFolderMembership } from '@/hooks/useFolderMembership';
 import { useNamespacePermissions } from '@/hooks/useNamespacePermissions';
+import { planDefaultsSweep } from '@/lib/roles';
 
 const C = CAPABILITIES;
 
@@ -84,6 +92,11 @@ export function MemberDefaultsPanel() {
     useDefaultCapabilities(namespaceId ?? undefined);
   const { setDefaultCapabilities, loading: saving } =
     useSetDefaultCapabilities();
+  const { mero } = useMero();
+  const membership = useFolderMembership(rootGroupId);
+  const [applying, setApplying] = useState(false);
+  const [applyResult, setApplyResult] = useState<string | null>(null);
+  const [applyError, setApplyError] = useState<string | null>(null);
 
   // The committed value the server currently has — null until loaded.
   // Once loaded, an unset default reads as `DEFAULT_NEW_MEMBER_CAPS`
@@ -179,6 +192,55 @@ export function MemberDefaultsPanel() {
 
   const shown = draft ?? effectiveCurrent;
 
+  // The sweep applies the COMMITTED value, never the draft: applying an
+  // unsaved checklist would leave existing members on a mask that no new
+  // member will ever get, which is a harder state to reason about than either
+  // end of the change.
+  const sweep = planDefaultsSweep(membership.members);
+
+  const onApplyToExisting = async () => {
+    if (!mero || !rootGroupId) return;
+    setApplyError(null);
+    setApplyResult(null);
+    setApplying(true);
+    try {
+      const failures: string[] = [];
+      for (const m of sweep.apply) {
+        try {
+          await mero.admin.setMemberCapabilities(rootGroupId, m.identity, {
+            capabilities: effectiveCurrent,
+          });
+        } catch {
+          failures.push(m.name ?? `${m.identity.slice(0, 8)}…`);
+        }
+      }
+      const parts: string[] = [];
+      parts.push(
+        `Updated ${sweep.apply.length - failures.length} of ${sweep.apply.length} member${sweep.apply.length === 1 ? '' : 's'}.`,
+      );
+      if (sweep.skippedAdmins.length > 0) {
+        parts.push(
+          `${sweep.skippedAdmins.length} admin${sweep.skippedAdmins.length === 1 ? '' : 's'} skipped — admins already bypass this list.`,
+        );
+      }
+      if (sweep.skippedReadOnly.length > 0) {
+        parts.push(
+          `${sweep.skippedReadOnly.length} read-only member${sweep.skippedReadOnly.length === 1 ? '' : 's'} skipped — granting these would let them make changes.`,
+        );
+      }
+      if (failures.length > 0) {
+        parts.push(`Failed for: ${failures.join(', ')}.`);
+      }
+      setApplyResult(parts.join(' '));
+      await membership.refetch();
+    } catch (e: unknown) {
+      const err = e instanceof Error ? e : new Error(String(e));
+      setApplyError(err.message);
+    } finally {
+      setApplying(false);
+    }
+  };
+
   return (
     <section
       aria-labelledby="member-defaults-heading"
@@ -235,6 +297,51 @@ export function MemberDefaultsPanel() {
           Save failed: {saveError}
         </p>
       )}
+
+      <div className="border-t border-border/60 px-4 py-3">
+        <div className="flex items-start justify-between gap-3">
+          <p className="text-xs text-muted-foreground">
+            Saving above only affects people who join later. To give the
+            {' '}
+            {sweep.apply.length} existing member
+            {sweep.apply.length === 1 ? '' : 's'} the saved permissions too,
+            apply them explicitly.
+          </p>
+          <Button
+            size="sm"
+            variant="outline"
+            className="shrink-0"
+            disabled={
+              applying ||
+              saving ||
+              dirty ||
+              membership.loading ||
+              sweep.apply.length === 0
+            }
+            title={
+              dirty
+                ? 'Save the defaults first — this applies the saved value.'
+                : undefined
+            }
+            onClick={() => {
+              void onApplyToExisting();
+            }}
+          >
+            <Users className="mr-1.5 h-3.5 w-3.5" />
+            {applying ? 'Applying…' : 'Apply to existing members'}
+          </Button>
+        </div>
+        {applyResult && (
+          <p className="mt-2 text-xs text-muted-foreground" role="status">
+            {applyResult}
+          </p>
+        )}
+        {applyError && (
+          <p className="mt-2 text-xs text-destructive" role="alert">
+            {applyError}
+          </p>
+        )}
+      </div>
 
       <div className="flex items-center justify-between gap-3 border-t border-border/60 px-4 py-3">
         <button

@@ -485,6 +485,13 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
   // --- Registry client (memoized) ---
   const registryClient = useMemo<RegistryClient | null>(() => {
     if (!mero || !registryContextId || !selfIdentity) return null;
+    // The third argument is the generated client's `executorPublicKey`, which
+    // mero-js marks `@deprecated — no longer used by the server`: the node
+    // derives the caller from the authenticated session, and the contract
+    // reads it back as `env::account_id()`. Passing the account here is
+    // therefore both inert on the wire and the honest description of who is
+    // calling — do not "fix" it to a signing key on the strength of the
+    // parameter's name.
     return new RegistryClient(mero, registryContextId, selfIdentity);
   }, [mero, registryContextId, selfIdentity]);
 
@@ -554,6 +561,14 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
   }, [registryClient]);
 
   const registryAdmin = useMemo<RegistryAdminSlice>(() => {
+    // ⚠️ Both sides of this comparison must be ACCOUNTS. `getOwner()` returns
+    // whatever `claim_owner` stored, which the contract derives from
+    // `env::account_id()` — it used to derive it from `env::device_id()`, and
+    // an account never equals a device id, so this was permanently false and
+    // the real owner's own client hid every admin control from them. Two
+    // 64-hex ids compare happily and say nothing about whether they name the
+    // same kind of thing; the only defence is that one contract change and
+    // this line moved together.
     const isOwner = !!regOwner && regOwner === selfIdentity;
     const isOwnerOrManager =
       isOwner || (!!selfIdentity && regManagers.includes(selfIdentity));

@@ -27,6 +27,13 @@ import {
 import { useContextEvents } from '@/hooks/useContextEvents';
 import { useMemberDisplayName } from '@/hooks/useMemberDisplayName';
 import { MemberRoleSelect } from './MemberRoleSelect';
+import { GroupRoleSelect } from './GroupRoleSelect';
+import { useGroupRoleAdmin } from '@/hooks/useGroupRoleAdmin';
+import {
+  canChangeRole,
+  parseGroupRole,
+  type GroupRole,
+} from '@/lib/roles';
 
 interface Props {
   groupId: string;
@@ -36,9 +43,18 @@ interface Props {
    *  with no display name still gets the parent panel's chosen text;
    *  also reused for the "Remove member?" confirm dialog. */
   label: string;
-  /** Server-reported role: Admin / Member / ReadOnly. Undefined if
-   *  the caller didn't resolve it. */
+  /** Server-reported core group role: Admin / Member / ReadOnly.
+   *  Undefined if the caller didn't resolve it. */
   role?: string;
+  /** The acting user's own role on this group, for the promote/demote gate. */
+  actorRole: GroupRole;
+  /** The acting user's own capability bitmask on this group. */
+  actorCaps: number | null;
+  /** How many Admins this group currently has — the last-admin guard. */
+  adminCount: number;
+  /** Called after a successful role change so the parent can refetch the
+   *  roster (the badge, and the admin count, both move). */
+  onAfterRoleChange?: () => void;
   /** True when this row is the caller's own identity — surfaces a
    *  "(you)" badge after the display name. */
   isSelf?: boolean;
@@ -66,8 +82,12 @@ export function NamespaceMemberRow({
   identity,
   label,
   role,
+  actorRole,
+  actorCaps,
+  adminCount,
   isSelf,
   canManage,
+  onAfterRoleChange,
   onRemove,
 }: Props) {
   const caps = useGroupCapabilities(groupId, identity);
@@ -154,6 +174,55 @@ export function NamespaceMemberRow({
     setUpdateError(null);
     try {
       await caps.setCapabilities(nextMask);
+    } catch (e: unknown) {
+      const err = e instanceof Error ? e : new Error(String(e));
+      setUpdateError(err.message);
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  // --- Core group role (promote / demote) ---
+  const currentRole = parseGroupRole(role);
+  // `true`: this roster IS the workspace, so "Admin here" is the claim that
+  // should also carry registry-manager rights. A folder roster passes false.
+  const roleAdmin = useGroupRoleAdmin(groupId, true);
+  const [roleWarnings, setRoleWarnings] = useState<string[]>([]);
+
+  const roleVeto = useCallback(
+    (nextRole: GroupRole): string | null => {
+      const verdict = canChangeRole({
+        nextRole,
+        currentRole,
+        isSelf: !!isSelf,
+        actorRole,
+        actorCaps,
+        adminCount,
+      });
+      return verdict.allowed ? null : (verdict.reason ?? 'Not permitted.');
+    },
+    [currentRole, isSelf, actorRole, actorCaps, adminCount],
+  );
+
+  const onGroupRoleChange = async (nextRole: GroupRole) => {
+    const veto = roleVeto(nextRole);
+    if (veto) {
+      setUpdateError(veto);
+      return;
+    }
+    setUpdating(true);
+    setUpdateError(null);
+    setRoleWarnings([]);
+    try {
+      const result = await roleAdmin.setRole(
+        identity,
+        nextRole,
+        caps.capabilities,
+        currentRole,
+      );
+      setRoleWarnings(result.warnings);
+      await capsRefetch();
+      onAfterRoleChange?.();
     } catch (e: unknown) {
       const err = e instanceof Error ? e : new Error(String(e));
       setUpdateError(err.message);
@@ -270,22 +339,38 @@ export function NamespaceMemberRow({
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {role === 'Admin' ? (
+          <GroupRoleSelect
+            value={currentRole}
+            onChange={(next) => {
+              void onGroupRoleChange(next);
+            }}
+            reasonFor={roleVeto}
+            disabled={!canManage || updating || roleAdmin.saving}
+            ariaLabel={`Access level for ${label}`}
+          />
+          {currentRole === 'Admin' ? (
             // Admins bypass the cap bitmask entirely on the server
             // (is_group_admin_or_has_capability short-circuits role
             // === Admin to "all caps allowed"), so exposing a
             // cap-preset picker here would suggest a choice that
-            // wouldn't actually take effect. The role badge to the
-            // left already communicates the privilege level.
+            // wouldn't actually take effect.
             <span className="text-xs text-muted-foreground">
               All permissions
             </span>
+          ) : currentRole === 'ReadOnly' ? (
+            // Same reasoning inverted: a ReadOnly member's bits would still
+            // be honoured by the server, so offering a preset picker here
+            // would let an admin build a "read-only" member who can write.
+            // Demoting to ReadOnly clears the bitmask (see
+            // `capabilitiesForRole`); switch them back to Member to grant
+            // anything.
+            <span className="text-xs text-muted-foreground">No permissions</span>
           ) : (
             <MemberRoleSelect
               value={caps.capabilities}
               onChange={onRoleChange}
               disabled={!canManage || updating || caps.loading}
-              ariaLabel={`Role for ${label}`}
+              ariaLabel={`Permissions for ${label}`}
             />
           )}
           {canManage && (
@@ -312,6 +397,15 @@ export function NamespaceMemberRow({
           Role update failed: {updateError}
         </p>
       )}
+      {roleWarnings.map((w) => (
+        <p
+          key={w}
+          className="mt-1 text-xs text-amber-600 dark:text-amber-400"
+          role="status"
+        >
+          {w}
+        </p>
+      ))}
       {caps.error && !updateError && (
         <p className="mt-1 text-xs text-destructive" role="alert">
           Couldn't load role: {caps.error.message}
