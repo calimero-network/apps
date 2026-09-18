@@ -141,7 +141,26 @@ steps:
     method: claim_owner
     executor_public_key: '{{alice_key}}'
 
-  - name: get_owner returns Alice's key
+  # ⚠️ This returns Alice's ACCOUNT, which is NOT `alice_key`.
+  #
+  # `alice_key` is the context executor key merobox minted; `get_owner` returns
+  # what `claim_owner` stored, which the contract derives itself from
+  # `env::account_id()`. Three different 32-byte ids are in play across this
+  # file (account, device, executor key) and they all print as 64 hex, so do
+  # NOT "tighten" this into `registry_owner == alice_key` — that assertion is
+  # false and would red the run.
+  #
+  # Note what this step therefore does and does not prove. It proves the
+  # registry is claimable and that the owner-gated writes below work, because
+  # `require_admin` compares the caller against the stored value using the SAME
+  # derivation on both sides — which held even when that derivation was
+  # `device_id`. What it does not prove is the property the account switch
+  # exists for: that the stored id equals the ACCOUNT a CLIENT can name, which
+  # is the only id `listGroupMembers` hands out. Proving that needs a step that
+  # asserts `get_owner` against the account from the node's own identity
+  # endpoint, and a manager appointed by account who then writes successfully.
+  # Neither exists yet; see the PR.
+  - name: get_owner returns Alice's registry principal
     type: call
     node: calimero-node-1
     context_id: '{{reg_ctx}}'
