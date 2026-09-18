@@ -76,7 +76,8 @@
       "params": [],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "entries",
@@ -89,7 +90,8 @@
         "value": {
           "kind": "string"
         }
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "get",
@@ -103,7 +105,8 @@
       ],
       "returns": {
         "kind": "string"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "get_or_insert",
@@ -123,7 +126,8 @@
       ],
       "returns": {
         "kind": "string"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "get_result",
@@ -137,7 +141,8 @@
       ],
       "returns": {
         "kind": "string"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "get_unchecked",
@@ -151,7 +156,8 @@
       ],
       "returns": {
         "kind": "string"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "init",
@@ -165,7 +171,8 @@
       "params": [],
       "returns": {
         "kind": "u32"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "remove",
@@ -179,7 +186,8 @@
       ],
       "returns": {
         "kind": "string"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "set",
@@ -199,7 +207,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "update_if_exists",
@@ -219,7 +228,8 @@
       ],
       "returns": {
         "kind": "bool"
-      }
+      },
+      "intent": "mutating"
     }
   ],
   "events": [

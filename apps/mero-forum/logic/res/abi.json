@@ -555,7 +555,8 @@
       ],
       "returns": {
         "kind": "string"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "create_post",
@@ -575,7 +576,8 @@
       ],
       "returns": {
         "kind": "string"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "delete_comment",
@@ -589,7 +591,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "delete_post",
@@ -603,7 +606,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "edit_comment",
@@ -623,7 +627,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "edit_post",
@@ -649,7 +654,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "get_nickname",
@@ -663,7 +669,8 @@
       ],
       "returns": {
         "kind": "string"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "get_post",
@@ -677,7 +684,8 @@
       ],
       "returns": {
         "$ref": "PostView"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "init",
@@ -711,7 +719,8 @@
       ],
       "returns": {
         "$ref": "CommentPage"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "list_posts",
@@ -739,7 +748,8 @@
       ],
       "returns": {
         "$ref": "PostPage"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "set_nickname",
@@ -753,7 +763,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "vote",
@@ -773,7 +784,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "vote_comment",
@@ -793,7 +805,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     }
   ],
   "events": [
