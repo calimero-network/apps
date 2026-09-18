@@ -121,3 +121,58 @@ describe("describeGetUserMediaError", () => {
     expect(describeGetUserMediaError(err)).toContain("device in use");
   });
 });
+
+describe("which cause it blames", () => {
+  // The whole point of this function is telling two fixes apart: "change the
+  // URL you opened" and "open it somewhere else". Blaming the wrong one sends
+  // people to reinstall a browser over a problem in their address bar.
+  const withEnv = (opts: {
+    secure: boolean | undefined;
+    origin: string;
+    hostname: string;
+  }) => {
+    const w = globalThis as unknown as Record<string, unknown>;
+    const prevNav = w.navigator;
+    const prevLoc = w.location;
+    // navigator present but WITHOUT mediaDevices — the state being diagnosed.
+    Object.defineProperty(w, "navigator", { value: {}, configurable: true });
+    Object.defineProperty(w, "location", {
+      value: { origin: opts.origin, hostname: opts.hostname },
+      configurable: true,
+    });
+    Object.defineProperty(w, "isSecureContext", {
+      value: opts.secure,
+      configurable: true,
+    });
+    try {
+      return localMediaUnavailableReason();
+    } finally {
+      Object.defineProperty(w, "navigator", { value: prevNav, configurable: true });
+      Object.defineProperty(w, "location", { value: prevLoc, configurable: true });
+    }
+  };
+
+  it("blames the ORIGIN when the page is plainly insecure", () => {
+    const msg = withEnv({ secure: false, origin: "http://192.168.1.5:5177", hostname: "192.168.1.5" });
+    expect(msg).toContain("secure page");
+    expect(msg).toContain("http://192.168.1.5:5177");
+  });
+
+  it("blames the ORIGIN when the flag is missing but the host is not trustworthy", () => {
+    // The regression this replaces: `isSecureContext !== false` treated
+    // `undefined` as secure, so this case blamed the webview instead.
+    const msg = withEnv({ secure: undefined, origin: "http://192.168.1.5:5177", hostname: "192.168.1.5" });
+    expect(msg).toContain("secure page");
+  });
+
+  it("blames the WEBVIEW only when the origin really is trustworthy", () => {
+    const msg = withEnv({ secure: true, origin: "https://mero-meet.vercel.app", hostname: "mero-meet.vercel.app" });
+    expect(msg).toContain("never published it");
+    expect(msg).toContain("https://mero-meet.vercel.app");
+  });
+
+  it("treats localhost over plain http as trustworthy", () => {
+    const msg = withEnv({ secure: undefined, origin: "http://localhost:5177", hostname: "localhost" });
+    expect(msg).toContain("never published it");
+  });
+});
