@@ -176,3 +176,25 @@ describe("which cause it blames", () => {
     expect(msg).toContain("never published it");
   });
 });
+
+describe("the isolated-window case", () => {
+  it("names the NODE, not the browser or the URL", () => {
+    // The third distinct fix. Without this the app told someone to change
+    // browsers when the actual cause was which node the window was opened
+    // against — advice that cannot work, because every isolated window behaves
+    // the same way whatever browser engine is underneath.
+    const w = globalThis as unknown as Record<string, unknown>;
+    const prevNav = w.navigator;
+    Object.defineProperty(w, "navigator", { value: {}, configurable: true });
+    Object.defineProperty(w, "isSecureContext", { value: true, configurable: true });
+    Object.defineProperty(w, "__CALIMERO_WEBVIEW_ISOLATED__", { value: true, configurable: true });
+    try {
+      const msg = localMediaUnavailableReason();
+      expect(msg).toContain("second node");
+      expect(msg).toContain("primary node");
+    } finally {
+      Object.defineProperty(w, "navigator", { value: prevNav, configurable: true });
+      Object.defineProperty(w, "__CALIMERO_WEBVIEW_ISOLATED__", { value: undefined, configurable: true });
+    }
+  });
+});

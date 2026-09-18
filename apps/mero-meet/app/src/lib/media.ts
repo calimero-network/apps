@@ -85,6 +85,29 @@ export function localMediaUnavailableReason(): string | null {
     );
   }
 
+  // An ISOLATED desktop window: opened against a second node, so its webview
+  // runs on its own WKWebsiteDataStore — and camera/microphone do not come with
+  // a non-default store on macOS. The Calimero shell publishes this flag
+  // (proxy_script.js) precisely because the page cannot tell: a missing
+  // `mediaDevices` looks the same as an embedder that never had it.
+  //
+  // Worth a message of its own, because the fix is neither of the other two —
+  // not the URL, not a different browser, but the node this window was opened
+  // against.
+  const isolated =
+    typeof window !== "undefined" &&
+    (window as Window & { __CALIMERO_WEBVIEW_ISOLATED__?: boolean })
+      .__CALIMERO_WEBVIEW_ISOLATED__ === true;
+
+  if (isolated) {
+    return (
+      "This window was opened against a second node, so it runs on an isolated " +
+      "webview store — and camera and microphone are not available in one. " +
+      "Open Mero Meet on your primary node to join with media, or open this " +
+      "link in a browser."
+    );
+  }
+
   // Secure, and the API is still absent: the embedder genuinely does not
   // publish it. The origin is named because that is the first thing anyone
   // debugging this will ask, and it was missing from the old message.
