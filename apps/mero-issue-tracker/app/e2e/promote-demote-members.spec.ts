@@ -138,6 +138,15 @@ test.describe('promote and demote a workspace member', () => {
 
       // Only now the UI: with an Admin viewer and another member present, the
       // control has to be there.
+      //
+      // The roster is eventually consistent from the page's side — the node
+      // already has both members (asserted above), but the app learns about the
+      // join from a refetch. So wait for the row before asserting the control
+      // inside it, which keeps a failure here meaning "the control is missing"
+      // rather than "the list had not caught up yet".
+      await expect(pageA.getByTestId('member-row')).toHaveCount(roster.length, {
+        timeout: 30_000,
+      });
       const roleSelect = pageA
         .locator(`[data-testid="member-role-select"][data-account="${account}"]`);
       await expect(roleSelect).toBeVisible({ timeout: 30_000 });

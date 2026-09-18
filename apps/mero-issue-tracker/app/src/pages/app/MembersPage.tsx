@@ -63,6 +63,24 @@ export default function MembersPage(): React.ReactElement {
     [selfAccount, members],
   );
 
+  // Refresh the roster whenever this page is opened.
+  //
+  // The list is otherwise only refetched when a GroupMembership event arrives,
+  // and an invited teammate who joins while you are looking at the board then
+  // never appears here until you reload the whole app — the inviter's own
+  // Members page kept showing one member while the node's roster already had
+  // two. It is also what the Role control is gated on, so a stale list reads as
+  // "promoting people does not work" rather than as "this list is old".
+  //
+  // Held in a ref because both callbacks are recreated on every render; this
+  // must run on open and on workspace change, not on every paint.
+  const refreshRef = useRef<() => void>(() => {});
+  refreshRef.current = () => {
+    void ws.refetchMembers();
+    void roles.refetch();
+  };
+  useEffect(() => { refreshRef.current(); }, [ws.activeNs]);
+
   // One-shot nudge: once names have settled, prompt for one if this member has
   // none. Keyed by ACCOUNT, which is what member names are stored against.
   const promptedRef = useRef(false);
