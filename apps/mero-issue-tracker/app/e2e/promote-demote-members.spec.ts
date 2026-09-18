@@ -75,27 +75,20 @@ async function memberCapabilities(
 }
 
 /**
- * The workspace the page is looking at.
+ * The workspace the Members page is actually showing.
  *
- * POLLED, not read once. `activeNs` is persisted only on an explicit selection,
- * so immediately after the join flow the value can still be in-memory while the
- * page settles — which failed this test on its first attempt and then passed on
- * the retry. A retry-rescued test is not a passing test: it hides exactly this
- * kind of ordering assumption, so the wait is explicit here instead.
+ * Read off the rendered table, NOT out of localStorage. `activeNs` is persisted
+ * only on an explicit selection, so on the isolated-fixture path — where the
+ * workspace arrives as an injected context — it is never written at all, and a
+ * 30s poll for it still failed on a cold first attempt while passing on the
+ * retry. Reading what the page rendered is both always available and a more
+ * honest thing to assert against: it is the workspace the user is looking at.
  */
 async function activeNamespace(page: Page): Promise<string> {
-  await expect
-    .poll(
-      () => page.evaluate(() => window.localStorage.getItem('issue-tracker:activeNs:v2')),
-      {
-        message: 'the inviter never persisted an active workspace',
-        timeout: 30_000,
-      },
-    )
-    .toBeTruthy();
-  const nsId = await page.evaluate(() =>
-    window.localStorage.getItem('issue-tracker:activeNs:v2'),
-  );
+  const table = page.getByTestId('members-table');
+  await expect(table).toBeVisible({ timeout: 30_000 });
+  const nsId = await table.getAttribute('data-namespace');
+  expect(nsId, 'the members table names no workspace').toBeTruthy();
   return nsId as string;
 }
 
@@ -111,10 +104,9 @@ test.describe('promote and demote a workspace member', () => {
       await loginViaHash(pageB, 1);
       await inviteAndJoin(pageA, pageB);
 
-      const nsId = await activeNamespace(pageA);
-
       await pageA.getByTestId('nav-members').click();
       await expect(pageA.getByTestId('member-row').first()).toBeVisible({ timeout: 30_000 });
+      const nsId = await activeNamespace(pageA);
 
       // ── Governance first, UI second ──────────────────────────────────────
       //

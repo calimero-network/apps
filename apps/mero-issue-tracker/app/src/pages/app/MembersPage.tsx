@@ -175,7 +175,12 @@ export default function MembersPage(): React.ReactElement {
 
       {error && <ErrorBanner data-testid="members-error">{error}</ErrorBanner>}
 
-      <Table>
+      {/* The workspace these rows belong to. Rendered because every row's
+          meaning is relative to it — a role is held IN a namespace — and so a
+          test (or a bug report screenshot) can say which one it was looking at
+          without reaching into localStorage, where the id is only persisted on
+          an explicit selection and is absent on the desktop hand-off path. */}
+      <Table data-testid="members-table" data-namespace={ws.activeNs ?? ''}>
         <Row className="head">
           <span>Member</span><span>Account</span><span>Role</span><span>Can</span>
         </Row>
