@@ -227,6 +227,86 @@ export async function describeRelay(nodeUrl: string, contextId: string) {
  * once.
  */
 /**
+ * What a pasted invitation actually says, read once.
+ *
+ * ## The namespace id is in here, so the page must not ask for it
+ *
+ * `GroupInvitationFromAdmin.group_id` is *inside* the body the admin signed —
+ * for a namespace invitation it is the namespace id. Asking someone to paste
+ * the invitation and then type the namespace id beside it made two fields out
+ * of one fact, and made a mismatch between them possible: a typed id that
+ * disagreed with the signed one produced a join op for a namespace the
+ * invitation does not cover, refused at the admitter with a 403 that reads like
+ * a permissions problem. Deriving it removes both the retyping and that class
+ * of failure.
+ *
+ * ## `admitters` is read from inside the signature too
+ *
+ * The envelope also carries `admitter_addrs`, which is a hint whoever relayed
+ * the invitation chose and the admin did not sign. Trusting that for
+ * authorization would let the relayer nominate the node that admits you.
+ */
+export interface ParsedInvitation {
+  /** The namespace the invitation is for, from inside the signed body. */
+  namespaceId: string;
+  /** The accounts permitted to admit a claim of it, from inside the signed body. */
+  admitters: string[];
+}
+
+/**
+ * Parse an invitation, or explain what is wrong with it.
+ *
+ * Three failures, told apart because the fixes differ: not JSON at all (a
+ * truncated paste), JSON without the signed body (the wrong blob entirely —
+ * an invitation *response* rather than the invitation), and a body with no
+ * `group_id` (an invitation from a core too old to carry one, which this flow
+ * cannot use because it has nowhere else to learn the namespace from).
+ */
+export function readInvitation(invitationJson: string): ParsedInvitation {
+  const text = invitationJson.trim();
+  if (text === '') {
+    throw new Error('Paste the invitation the operator’s node issued.');
+  }
+
+  let parsed: {
+    invitation?: { group_id?: unknown; admitters?: unknown };
+  };
+  try {
+    parsed = JSON.parse(text) as typeof parsed;
+  } catch (cause) {
+    throw new Error(
+      `That is not valid JSON. Paste the invitation exactly as the node printed it — ${
+        cause instanceof Error ? cause.message : String(cause)
+      }`,
+    );
+  }
+
+  const body = parsed.invitation;
+  if (body === undefined || body === null || typeof body !== 'object') {
+    throw new Error(
+      'That JSON has no `invitation` object in it. What you want is the whole blob the node ' +
+        'printed, with `invitation` and `inviter_signature` at the top level — not one field ' +
+        'out of it.',
+    );
+  }
+
+  const namespaceId = typeof body.group_id === 'string' ? body.group_id.trim().toLowerCase() : '';
+  if (!/^[0-9a-f]{64}$/.test(namespaceId)) {
+    throw new Error(
+      'The invitation carries no `group_id`, so there is no namespace to join. Every ' +
+        'invitation this flow can use names one inside the signed body; ask for a freshly ' +
+        'minted one.',
+    );
+  }
+
+  const admitters = Array.isArray(body.admitters)
+    ? body.admitters.filter((a): a is string => typeof a === 'string')
+    : [];
+
+  return { namespaceId, admitters };
+}
+
+/**
  * The relays this account is already known to, from the cloud.
  *
  * Proven with the device certificate, not a cloud session — so a browser that
@@ -265,10 +345,11 @@ export async function findAccountRelays(
 
 export async function discoverAdmitter(
   cloudUrl: string,
-  namespaceId: string,
   invitationJson: string,
   identity: DeviceIdentity,
 ): Promise<{
+  /** The namespace read out of the signed body, so the caller need not carry it. */
+  namespaceId: string;
   classified: ClassifiedNode[];
   chosen: RoutableNode | null;
   reason: string | null;
@@ -278,21 +359,9 @@ export async function discoverAdmitter(
   /** Why no node can execute, when none can. Not an error state. */
   executorReason: string | null;
 }> {
-  let invitation: { invitation?: { admitters?: string[] } };
-  try {
-    invitation = JSON.parse(invitationJson) as typeof invitation;
-  } catch (cause) {
-    throw new Error(
-      `That is not valid JSON. Paste the invitation exactly as the node printed it — ${
-        cause instanceof Error ? cause.message : String(cause)
-      }`,
-    );
-  }
-  // Read the admitters from INSIDE the signed body. The envelope also carries
-  // `admitter_addrs`, which is a hint the relayer chose and the admin did not
-  // sign; trusting that for authorization would let whoever passed the
-  // invitation along nominate the node.
-  const signedAdmitters = invitation.invitation?.admitters ?? [];
+  // Both the namespace and the admitters come from inside the signature; see
+  // `readInvitation`.
+  const { namespaceId, admitters: signedAdmitters } = readInvitation(invitationJson);
 
   const cloud = new CloudClient({
     cloudBaseUrl: normaliseUrl(cloudUrl),
@@ -309,7 +378,7 @@ export async function discoverAdmitter(
   // and `relayUrl` per node, so asking twice would cost a second challenge
   // round-trip to learn nothing new.
   const { chosen: executor, reason: executorReason } = chooseExecutor(routing.nodes);
-  return { classified, chosen, reason, signedAdmitters, executor, executorReason };
+  return { namespaceId, classified, chosen, reason, signedAdmitters, executor, executorReason };
 }
 
 
@@ -350,19 +419,15 @@ export async function discoverAdmitter(
 export async function sendJoin(
   admitUrl: string,
   identity: DeviceIdentity,
-  namespaceId: string,
   invitationJson: string,
-): Promise<{ published: boolean }> {
-  let invitation: Parameters<typeof signMemberJoinOp>[0]['invitation'];
-  try {
-    invitation = JSON.parse(invitationJson) as typeof invitation;
-  } catch (cause) {
-    throw new Error(
-      `That is not valid JSON. Paste the invitation exactly as the node printed it — ${
-        cause instanceof Error ? cause.message : String(cause)
-      }`,
-    );
-  }
+): Promise<{ published: boolean; namespaceId: string }> {
+  // Validated first, then handed on verbatim. The signature covers the
+  // invitation as sent, so what is POSTed below is the ORIGINAL text's parse
+  // and never a re-serialisation of `readInvitation`'s narrowed view.
+  const { namespaceId } = readInvitation(invitationJson);
+  const invitation = JSON.parse(invitationJson) as Parameters<
+    typeof signMemberJoinOp
+  >[0]['invitation'];
 
   const nonces = createLocalStorageNonceSource(joinNonceStorageKey(identity.devicePublicKey));
   const signedOp = await signMemberJoinOp({
@@ -386,7 +451,7 @@ export async function sendJoin(
   }
 
   const body = text ? (JSON.parse(text) as { data?: { published?: boolean } }) : {};
-  return { published: body.data?.published === true };
+  return { published: body.data?.published === true, namespaceId };
 }
 
 /**
