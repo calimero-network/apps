@@ -67,8 +67,9 @@
   --cal-lp-radius: 10px;
   --cal-lp-radius-sm: 7px;
   --cal-lp-radius-lg: 16px;
-  --cal-lp-font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
-  --cal-lp-shadow: 0 10px 34px rgba(19, 18, 21, 0.10);
+  --cal-lp-font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial,
+    sans-serif;
+  --cal-lp-shadow: 0 10px 34px rgba(19, 18, 21, 0.1);
   --cal-lp-shadow-sm: 0 2px 10px rgba(19, 18, 21, 0.07);
 
   /* Fixed chrome dimensions, so a host app's global CSS cannot make one app's
@@ -124,7 +125,8 @@
   transform: none;
 }
 .cal-lp-reveal--in {
-  animation: cal-lp-rise var(--cal-lp-reveal) cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: cal-lp-rise var(--cal-lp-reveal) cubic-bezier(0.22, 1, 0.36, 1)
+    both;
 }
 @keyframes cal-lp-rise {
   from {
@@ -547,7 +549,11 @@
   padding: 30px;
   border: 1px solid var(--cal-lp-border);
   border-radius: var(--cal-lp-radius-lg);
-  background: linear-gradient(135deg, var(--cal-lp-accent-soft), transparent 70%),
+  background: linear-gradient(
+      135deg,
+      var(--cal-lp-accent-soft),
+      transparent 70%
+    ),
     var(--cal-lp-bg-1);
 }
 .cal-lp-bandtext {
@@ -645,7 +651,6 @@
   color: var(--cal-lp-text-faint);
 }
 
-
 /* ── Animation primitives ───────────────────────────────────────────────
    Every app's hero animation is its OWN component (`animation.tsx`), but they
    all compose from these, so fourteen animations do not mean fourteen
@@ -728,7 +733,6 @@
   box-shadow: 0 0 0 2px var(--cal-lp-bg-1);
 }
 
-
 /* Text inside an animation. The old bespoke previews worked because they showed
    REAL labels — column letters, project names, "=SUM(A1:A3)" — not grey boxes.
    An abstract rectangle communicates nothing about what the app does. */
@@ -740,7 +744,9 @@
   color: var(--cal-lp-text-dim);
   white-space: nowrap;
 }
-.cal-lp-a-txt--dim { color: var(--cal-lp-text-faint); }
+.cal-lp-a-txt--dim {
+  color: var(--cal-lp-text-faint);
+}
 .cal-lp-a-txt--head {
   font-size: 9px;
   font-weight: 700;
@@ -748,8 +754,14 @@
   text-transform: uppercase;
   color: var(--cal-lp-text-faint);
 }
-.cal-lp-a-txt--val { color: var(--cal-lp-text); font-weight: 600; }
-.cal-lp-a-txt--accent { color: var(--cal-lp-accent-ink); font-weight: 650; }
+.cal-lp-a-txt--val {
+  color: var(--cal-lp-text);
+  font-weight: 600;
+}
+.cal-lp-a-txt--accent {
+  color: var(--cal-lp-accent-ink);
+  font-weight: 650;
+}
 /* The window chrome every preview sits in. */
 .cal-lp-a-tool {
   position: absolute;
@@ -785,13 +797,27 @@
    to review this — shows an almost empty frame. Without a fill mode the resting
    state is the element as authored, i.e. VISIBLE, and the animation only adds
    emphasis on top. Every keyframe below therefore ends where it started. */
-.cal-lp-a-in     { animation: cal-lp-a-in     var(--t, 4s) ease-in-out var(--d, 0s) infinite; }
-.cal-lp-a-fill   { animation: cal-lp-a-fill   var(--t, 4s) ease-in-out var(--d, 0s) infinite; }
-.cal-lp-a-flash  { animation: cal-lp-a-flash  var(--t, 4s) ease-in-out var(--d, 0s) infinite; }
-.cal-lp-a-grow   { animation: cal-lp-a-grow   var(--t, 4s) ease-out    var(--d, 0s) infinite; }
-.cal-lp-a-drift  { animation: cal-lp-a-drift  var(--t, 4s) ease-in-out var(--d, 0s) infinite; }
-.cal-lp-a-blink  { animation: cal-lp-a-blink  var(--t, 4s) ease-in-out var(--d, 0s) infinite; }
-.cal-lp-a-rise   { animation: cal-lp-a-rise   var(--t, 4s) ease-out    var(--d, 0s) infinite; }
+.cal-lp-a-in {
+  animation: cal-lp-a-in var(--t, 4s) ease-in-out var(--d, 0s) infinite;
+}
+.cal-lp-a-fill {
+  animation: cal-lp-a-fill var(--t, 4s) ease-in-out var(--d, 0s) infinite;
+}
+.cal-lp-a-flash {
+  animation: cal-lp-a-flash var(--t, 4s) ease-in-out var(--d, 0s) infinite;
+}
+.cal-lp-a-grow {
+  animation: cal-lp-a-grow var(--t, 4s) ease-out var(--d, 0s) infinite;
+}
+.cal-lp-a-drift {
+  animation: cal-lp-a-drift var(--t, 4s) ease-in-out var(--d, 0s) infinite;
+}
+.cal-lp-a-blink {
+  animation: cal-lp-a-blink var(--t, 4s) ease-in-out var(--d, 0s) infinite;
+}
+.cal-lp-a-rise {
+  animation: cal-lp-a-rise var(--t, 4s) ease-out var(--d, 0s) infinite;
+}
 /* A pair: `peek` shows something briefly, `hide` takes something away for
    exactly that window. They exist because a mock that reveals a secret was
    drawing the revealed value ON TOP of the masked dots it was supposed to
@@ -799,52 +825,135 @@
    as a plain declaration, so a paused animation (which is what
    prefers-reduced-motion and every headless capture get) still shows the
    masked state rather than both at once. */
-.cal-lp-a-peek   { opacity: 0; animation: cal-lp-a-peek   var(--t, 4s) ease-in-out var(--d, 0s) infinite; }
-.cal-lp-a-hide   { opacity: 1; animation: cal-lp-a-hide   var(--t, 4s) ease-in-out var(--d, 0s) infinite; }
+.cal-lp-a-peek {
+  opacity: 0;
+  animation: cal-lp-a-peek var(--t, 4s) ease-in-out var(--d, 0s) infinite;
+}
+.cal-lp-a-hide {
+  opacity: 1;
+  animation: cal-lp-a-hide var(--t, 4s) ease-in-out var(--d, 0s) infinite;
+}
 
 @keyframes cal-lp-a-in {
-  0%, 100%  { opacity: 1; transform: none; }
-  6%        { opacity: 0.15; transform: translateY(7px) scale(0.96); }
-  20%, 92%  { opacity: 1; transform: none; }
+  0%,
+  100% {
+    opacity: 1;
+    transform: none;
+  }
+  6% {
+    opacity: 0.15;
+    transform: translateY(7px) scale(0.96);
+  }
+  20%,
+  92% {
+    opacity: 1;
+    transform: none;
+  }
 }
 @keyframes cal-lp-a-fill {
-  0%, 10%, 100% { background: var(--cal-lp-bg-3); }
-  26%, 76%      { background: var(--cal-lp-accent-soft); }
+  0%,
+  10%,
+  100% {
+    background: var(--cal-lp-bg-3);
+  }
+  26%,
+  76% {
+    background: var(--cal-lp-accent-soft);
+  }
 }
 @keyframes cal-lp-a-flash {
-  0%, 16%   { border-color: var(--cal-lp-border); }
-  24%, 40%  { border-color: var(--cal-lp-accent); }
-  56%, 100% { border-color: var(--cal-lp-border); }
+  0%,
+  16% {
+    border-color: var(--cal-lp-border);
+  }
+  24%,
+  40% {
+    border-color: var(--cal-lp-accent);
+  }
+  56%,
+  100% {
+    border-color: var(--cal-lp-border);
+  }
 }
 @keyframes cal-lp-a-grow {
-  0%        { transform: scaleX(1); }
-  8%        { transform: scaleX(0.06); }
-  58%, 100% { transform: scaleX(1); }
+  0% {
+    transform: scaleX(1);
+  }
+  8% {
+    transform: scaleX(0.06);
+  }
+  58%,
+  100% {
+    transform: scaleX(1);
+  }
 }
 @keyframes cal-lp-a-drift {
-  0%, 100%  { transform: translate(0, 0); }
-  30%       { transform: translate(var(--dx, 18px), var(--dy, 10px)); }
-  65%       { transform: translate(calc(var(--dx, 18px) * 0.3), calc(var(--dy, 10px) * 1.6)); }
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  30% {
+    transform: translate(var(--dx, 18px), var(--dy, 10px));
+  }
+  65% {
+    transform: translate(
+      calc(var(--dx, 18px) * 0.3),
+      calc(var(--dy, 10px) * 1.6)
+    );
+  }
 }
 @keyframes cal-lp-a-blink {
-  0%, 100%  { opacity: 1; }
-  40%       { opacity: 0.3; }
-  70%       { opacity: 1; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  40% {
+    opacity: 0.3;
+  }
+  70% {
+    opacity: 1;
+  }
 }
 @keyframes cal-lp-a-peek {
-  0%, 100%  { opacity: 0; }
-  6%, 26%   { opacity: 1; }
-  33%       { opacity: 0; }
+  0%,
+  100% {
+    opacity: 0;
+  }
+  6%,
+  26% {
+    opacity: 1;
+  }
+  33% {
+    opacity: 0;
+  }
 }
 @keyframes cal-lp-a-hide {
-  0%, 100%  { opacity: 1; }
-  6%, 26%   { opacity: 0; }
-  33%       { opacity: 1; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  6%,
+  26% {
+    opacity: 0;
+  }
+  33% {
+    opacity: 1;
+  }
 }
 @keyframes cal-lp-a-rise {
-  0%, 100%  { opacity: 1; transform: none; }
-  10%       { opacity: 0.2; transform: translateY(11px); }
-  34%       { opacity: 1; transform: none; }
+  0%,
+  100% {
+    opacity: 1;
+    transform: none;
+  }
+  10% {
+    opacity: 0.2;
+    transform: translateY(11px);
+  }
+  34% {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 /* ── Default peer-sync animation ────────────────────────────────────────
@@ -944,11 +1053,26 @@
   animation: cal-lp-fill 3.2s ease-in-out infinite;
   animation-play-state: var(--cal-lp-anim);
 }
-.cal-lp-row:nth-child(1) { width: 82%; animation-delay: 0.1s; }
-.cal-lp-row:nth-child(2) { width: 64%; animation-delay: 0.4s; }
-.cal-lp-row:nth-child(3) { width: 91%; animation-delay: 0.7s; }
-.cal-lp-row:nth-child(4) { width: 47%; animation-delay: 1s; }
-.cal-lp-row:nth-child(5) { width: 73%; animation-delay: 1.3s; }
+.cal-lp-row:nth-child(1) {
+  width: 82%;
+  animation-delay: 0.1s;
+}
+.cal-lp-row:nth-child(2) {
+  width: 64%;
+  animation-delay: 0.4s;
+}
+.cal-lp-row:nth-child(3) {
+  width: 91%;
+  animation-delay: 0.7s;
+}
+.cal-lp-row:nth-child(4) {
+  width: 47%;
+  animation-delay: 1s;
+}
+.cal-lp-row:nth-child(5) {
+  width: 73%;
+  animation-delay: 1.3s;
+}
 @keyframes cal-lp-fill {
   0%,
   100% {
@@ -1346,5 +1470,89 @@
     animation-duration: 0.001s !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.001s !important;
+  }
+}
+
+/* ── The signature stroke (mero-sign) ────────────────────────────────────────
+   A self-drawing path: `pathLength="1"` normalises the geometry so the dash
+   values are 1 regardless of the control points.
+
+   ⚠️ 0% IS THE FINISHED SIGNATURE, and the animation takes it away mid-cycle
+   rather than building it up — the same shape as `cal-lp-a-rise` above, and for
+   the same reason. A headless capture photographs the first frame it can get.
+   The first version of this ran the draw-on at the START of the cycle, and the
+   computed `stroke-dashoffset` at capture time was `1px`: every screenshot of
+   the hero was a blank sheet of paper. Any keyframe set here that begins hidden
+   brings that back, and it fails silently — the code reads correctly and the
+   picture is empty. */
+.cal-lp-a-ink {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 0;
+  animation: cal-lp-a-ink var(--t, 6s) ease-in-out var(--d, 0s) infinite;
+}
+/* The crossbar, struck through the flourish AFTER it — as a hand would. */
+.cal-lp-a-ink--late {
+  animation-name: cal-lp-a-ink-late;
+}
+@keyframes cal-lp-a-ink {
+  0%,
+  50% {
+    stroke-dashoffset: 0;
+  }
+  51% {
+    stroke-dashoffset: 1;
+  }
+  86%,
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+@keyframes cal-lp-a-ink-late {
+  0%,
+  50% {
+    stroke-dashoffset: 0;
+  }
+  51%,
+  84% {
+    stroke-dashoffset: 1;
+  }
+  93%,
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* The nib rides the same timeline. It is absent from the resting frame on
+   purpose: a pen parked on a signature that is already finished reads as a
+   smudge, and the ink is what carries the meaning. */
+.cal-lp-a-nib {
+  opacity: 0;
+  animation: cal-lp-a-nib var(--t, 6s) ease-in-out var(--d, 0s) infinite;
+}
+@keyframes cal-lp-a-nib {
+  0%,
+  50% {
+    opacity: 0;
+  }
+  53%,
+  84% {
+    opacity: 1;
+  }
+  88%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cal-lp-a-ink,
+  .cal-lp-a-nib {
+    animation: none;
+  }
+  .cal-lp-a-ink {
+    stroke-dashoffset: 0;
+  }
+  .cal-lp-a-nib {
+    opacity: 0;
   }
 }

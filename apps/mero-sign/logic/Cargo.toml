@@ -38,7 +38,17 @@ category = "security"
 tags        = ["documents", "signing", "pdf"]
 github      = "https://github.com/calimero-network/apps"
 min-runtime-version = "0.11.0-rc.37"
-frontend    = "https://mero-sign.vercel.app"
+# ⚠️ `mero-sign-eta`, not `mero-sign`. The bare `mero-sign.vercel.app` project
+# serves a STALE build from another source entirely — a `spa-github-pages` shim
+# with `pathSegmentsToKeep = 1` that exists nowhere in this repo, emitting
+# `assets/main-*.js` and `<title>MeroSign</title>` where this repo emits
+# `assets/index-*.js` and `Mero Sign`. That shim is what turns any unknown path
+# into the runaway `/landing/?/&/~and~/~and~/…` redirect.
+#
+# This value is what the registry and the desktop launcher resolve an
+# invitation link against, so pointing it at the stale project sends every
+# invitee to a build that cannot honour the link.
+frontend    = "https://mero-sign-eta.vercel.app"
 
 [dependencies]
 

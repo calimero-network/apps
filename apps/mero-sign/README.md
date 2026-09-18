@@ -8,7 +8,7 @@ all without centralized servers or intermediaries.
 
 ## Live Application
 
-🔗 [MeroSign App](https://mero-sign.vercel.app)
+🔗 [MeroSign App](https://mero-sign-eta.vercel.app)
 
 ---
 

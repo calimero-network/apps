@@ -19,7 +19,13 @@ import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { mkdirSync, existsSync } from 'node:fs';
 import {
-  dirname, extname, isAbsolute, join, normalize, relative, resolve,
+  dirname,
+  extname,
+  isAbsolute,
+  join,
+  normalize,
+  relative,
+  resolve,
 } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
@@ -39,22 +45,42 @@ const OUT = resolve(argOf('--out') ?? resolve(APP, '../data/shots'));
 // list of string literals. Each entry names the landmark it waits for, so a
 // blank screenshot on a timer cannot pass.
 const SCENARIOS = [
-  ['landing',           'The front door, signed out',        'h1'],
-  ['agreements',        'Your agreements',                   '[data-testid="agreement-card"]'],
-  ['agreements-empty',  'No agreements yet',                 '[data-testid="agreements-empty"]'],
-  ['agreements-error',  'The node could not be reached',     '[data-testid="list-error"]'],
-  ['documents',         'Documents in one agreement',        '[data-testid="document-card"]'],
-  ['documents-empty',   'An agreement with nothing in it',   '[data-testid="documents-empty"]'],
-  ['documents-upload',  'Uploading a document',              '[data-testid="upload-input"]'],
-  ['people',            'The roster, as an admin',           '[data-testid="person-row"]'],
-  ['people-member',     'The roster, as a signer',           '[data-testid="person-row"]'],
-  ['invite',            'Before an invitation is minted',    '[data-testid="mint-invite"]'],
-  ['invite-minted',     'A shareable invitation link',       '[data-testid="invite-link"]'],
-  ['signatures',        'The signature library',             '[data-testid="signature-card"]'],
-  ['signatures-empty',  'No signatures yet',                 '[data-testid="signatures-empty"]'],
-  ['signatures-delete', 'Confirming a signature delete',     '[data-testid="confirm-delete-signature"]'],
-  ['connect',           'Signed out on an app route',        '[data-testid="connect-cta"]'],
-  ['not-found',         'An address the app does not have',  '[data-testid="not-found"]'],
+  ['landing', 'The front door, signed out', 'h1'],
+  ['agreements', 'Your agreements', '[data-testid="agreement-card"]'],
+  ['agreements-empty', 'No agreements yet', '[data-testid="agreements-empty"]'],
+  [
+    'agreements-error',
+    'The node could not be reached',
+    '[data-testid="list-error"]',
+  ],
+  ['documents', 'Documents in one agreement', '[data-testid="document-card"]'],
+  [
+    'documents-empty',
+    'An agreement with nothing in it',
+    '[data-testid="documents-empty"]',
+  ],
+  ['documents-upload', 'Uploading a document', '[data-testid="upload-input"]'],
+  ['people', 'The roster, as an admin', '[data-testid="person-row"]'],
+  ['people-member', 'The roster, as a signer', '[data-testid="person-row"]'],
+  ['invite', 'Before an invitation is minted', '[data-testid="mint-invite"]'],
+  [
+    'invite-minted',
+    'A shareable invitation link',
+    '[data-testid="invite-link"]',
+  ],
+  ['signatures', 'The signature library', '[data-testid="signature-card"]'],
+  ['signatures-empty', 'No signatures yet', '[data-testid="signatures-empty"]'],
+  [
+    'signatures-delete',
+    'Confirming a signature delete',
+    '[data-testid="confirm-delete-signature"]',
+  ],
+  ['connect', 'Signed out on an app route', '[data-testid="connect-cta"]'],
+  [
+    'not-found',
+    'An address the app does not have',
+    '[data-testid="not-found"]',
+  ],
 ];
 
 const MIME = {
@@ -82,23 +108,31 @@ function serve(root) {
         return;
       }
       const body = await readFile(target);
-      res.writeHead(200, { 'content-type': MIME[extname(target)] ?? 'text/plain' });
+      res.writeHead(200, {
+        'content-type': MIME[extname(target)] ?? 'text/plain',
+      });
       res.end(body);
     } catch {
       res.writeHead(404).end('not found');
     }
   });
   return new Promise((ok) =>
-    server.listen(0, '127.0.0.1', () => ok({ server, port: server.address().port })),
+    server.listen(0, '127.0.0.1', () =>
+      ok({ server, port: server.address().port }),
+    ),
   );
 }
 
 async function main() {
   console.log('• building the harness');
-  execFileSync('pnpm', ['exec', 'vite', 'build', '--config', 'e2e/shots/vite.config.ts'], {
-    cwd: APP,
-    stdio: 'inherit',
-  });
+  execFileSync(
+    'pnpm',
+    ['exec', 'vite', 'build', '--config', 'e2e/shots/vite.config.ts'],
+    {
+      cwd: APP,
+      stdio: 'inherit',
+    },
+  );
   if (!existsSync(join(BUILD, 'index.html'))) {
     throw new Error(`harness build missing at ${BUILD}`);
   }
@@ -116,13 +150,18 @@ async function main() {
       });
       const errors = [];
       page.on('pageerror', (e) => errors.push(String(e)));
-      await page.goto(`http://127.0.0.1:${port}/index.html?s=${id}`, { waitUntil: 'load' });
+      await page.goto(`http://127.0.0.1:${port}/index.html?s=${id}`, {
+        waitUntil: 'load',
+      });
 
       // Wait for the thing this scenario is ABOUT, never a fixed sleep: a blank
       // screenshot taken on a timer is the classic way a harness lies about
       // what shipped.
       try {
-        await page.locator(waitFor).first().waitFor({ state: 'visible', timeout: 15_000 });
+        await page
+          .locator(waitFor)
+          .first()
+          .waitFor({ state: 'visible', timeout: 15_000 });
       } catch (e) {
         failures.push(`${id}: never rendered ${waitFor}`);
         console.log(`  ✗ ${id.padEnd(18)} never rendered ${waitFor}`);
@@ -132,7 +171,33 @@ async function main() {
       }
       await page.waitForTimeout(250);
 
-      await page.screenshot({ path: join(OUT, `${id}.png`), fullPage: id === 'landing' });
+      // The hero has photographed as a blank sheet of paper TWICE: the
+      // signature is a dash-offset animation, and both times the cycle happened
+      // to be part-way through hiding it at the moment the shutter opened. Code
+      // review cannot catch that — the component reads correctly either way —
+      // and neither can "did the page render", because the paper renders fine.
+      // So measure the one value that decides it, at the instant of capture.
+      if (id === 'landing') {
+        const offsets = await page.$$eval('.cal-lp-a-ink', (els) =>
+          els.map((el) => getComputedStyle(el).strokeDashoffset),
+        );
+        const blank = offsets.filter((o) => parseFloat(o) !== 0);
+        // Reported through `errors`, which the scenario already checks, so a
+        // hidden signature reads as one ✗ line rather than a ✗ and a ✓.
+        if (offsets.length === 0) {
+          errors.push('no .cal-lp-a-ink in the hero — the signature is gone');
+        } else if (blank.length) {
+          errors.push(
+            `${blank.length}/${offsets.length} signature stroke(s) hidden at capture ` +
+              `(stroke-dashoffset ${blank.join(', ')}) — the hero photographs as a blank page`,
+          );
+        }
+      }
+
+      await page.screenshot({
+        path: join(OUT, `${id}.png`),
+        fullPage: id === 'landing',
+      });
 
       if (errors.length) {
         failures.push(`${id}: ${errors[0]}`);
