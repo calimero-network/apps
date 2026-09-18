@@ -13,13 +13,19 @@
  *      node sent, no name was recorded and the joiner's sidebar showed a
  *      truncated hex id forever while the creator saw "Platform team".
  *
- *      ⚠️ Which spelling is canonical is NOT settled. `@calimero-network/
- *      mero-js@1.4.1` declares `RecursiveInvitationEntry.groupAlias?: string`
- *      and `JoinNamespaceRequest.groupAlias?: string`, but `groupName` has been
- *      observed in responses too, and the .d.ts has been stale before. Rather
- *      than pick a winner, `buildInvitePayload` reads BOTH and falls back to the
- *      namespace name the caller already knows — which is correct under either
- *      answer, and does not silently break when the SDK changes its mind.
+ *      The spelling this app builds against is `groupName`: the catalog pins
+ *      `@calimero-network/mero-js` at ^18.3.0, and 18.3.0 declares
+ *      `groupName?: string` on `RecursiveInvitationEntry`,
+ *      `CreateNamespaceInvitationResponseData` and `JoinNamespaceRequest` —
+ *      with no `groupAlias` anywhere.
+ *
+ *      ⚠️ It has NOT always been spelled that way, and the store can hold more
+ *      than one copy: mero-js@1.4.1 (present here as another package's
+ *      dependency) declares `groupAlias?` on the same types. Checking the wrong
+ *      copy is an easy mistake and was made once on this file already. So
+ *      `buildInvitePayload` reads BOTH spellings and falls back to the
+ *      namespace name the caller already knows — correct under either, and it
+ *      does not break silently the next time the SDK renames the field.
  *   2. **The single-invitation shape could not be read at all.** The fallback
  *      branch looked for `parsed.invitation.groupId`; the signed body spells it
  *      `group_id` and it is a BYTE ARRAY, not a string. So a non-recursive
