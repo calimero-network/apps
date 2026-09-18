@@ -465,3 +465,27 @@ Two things worth knowing about the node's own account: it is created as the name
 optional — the default-capability seeding covers members admitted later, not the creator.
 And the capabilities call **replaces** the whole mask, so read it first on a node that
 holds others.
+
+### The delegated read needs an app built after core#3936
+
+The read (steps 5 and 9) is gated on the method's **declared** `MethodIntent`, and the gate
+**fails closed** on `Unspecified` — core refuses rather than guesses, because a wrong guess
+would run an unreviewed method under the caller's identity with no warrant behind it.
+
+`feat(sdk): derive MethodIntent from the receiver` (#3936, 2026-09-15) is what makes `&self`
+mean `ReadOnly`. Before it, intent came from `#[app::view]` alone — and as that commit's own
+note records, two methods across the entire `apps/` tree carried the annotation against 573
+`pub fn`s, so "every read gate downstream refused nearly everything".
+
+`scaffolding-e2e` annotates nothing, so a bundle built before that date declares no intent
+for any method and the read answers:
+
+```
+HTTP 409  method 'get' is not declared read-only; a session authorizes reads only,
+          so this call needs a warrant
+```
+
+That is the gate working, not a client bug — and it applies to step 5 exactly as it does to
+step 9. If your `dist/*.mpk` predates 2026-09-15, rebuild it (`cargo mero build
+--manifest-path apps/scaffolding-e2e/Cargo.toml` in core) or the read cannot succeed however
+correct the session is.
