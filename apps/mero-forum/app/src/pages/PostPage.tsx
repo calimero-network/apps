@@ -113,7 +113,7 @@ export default function PostPage() {
       </div>
 
       <Link className="back" to="/f">
-        ← Back to the feed
+        Back to the feed
       </Link>
 
       {error && <div className="error">{error}</div>}

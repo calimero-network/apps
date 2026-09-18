@@ -254,8 +254,62 @@ button.ghost { background: transparent; color: var(--text-faint); border: 1px so
 @keyframes shimmer { to { background-position: -200% 0; } }
 @media (prefers-reduced-motion: reduce) { .skeleton { animation: none; } }
 
-.back { color: var(--text-faint); font-size: 13px; display: inline-block; margin-bottom: 14px; }
-.back:hover { color: var(--text); }
+/* Back links.
+ *
+ * Used on BOTH an <a> (the thread page) and a <button> (the feed, which has to
+ * read the stored namespace before it knows where "back" goes). The old rule
+ * set only `color` and `font-size`, so the <button> kept the browser's default
+ * chrome — a grey bevelled box with its own font — next to a styled link doing
+ * the same job. Reset the chrome here, once, rather than at each call site.
+ *
+ * `gap` on a flex row rather than a literal "←" in the markup: the arrow is
+ * decoration, and a screen reader should hear "All forums", not "left arrow
+ * All forums". */
+.back {
+  appearance: none;
+  -webkit-appearance: none;
+  background: none;
+  border: 0;
+  padding: 4px 8px 4px 4px;
+  margin: 0 0 14px -4px;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.2;
+  color: var(--text-dim);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: var(--radius-sm);
+  text-decoration: none;
+  transition: color 120ms ease, background 120ms ease;
+}
+.back::before {
+  content: "←";
+  font-size: 14px;
+  line-height: 1;
+}
+.back:hover {
+  color: var(--text);
+  background: var(--surface-hover);
+}
+.back:focus-visible {
+  outline: 2px solid var(--accent-ink);
+  outline-offset: 1px;
+}
+
+/* The account id beside a name in a byline.
+ *
+ * Always present, because a nickname is a claim anyone can make — including
+ * somebody else's. Small, monospace and dim so it disambiguates without
+ * competing with the name it qualifies. */
+.authorId {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-faint);
+  font-weight: 400;
+  margin-left: 6px;
+}
 
 /* ── unauthenticated notice ─────────────────────────────────────────────────
    The page keeps its chrome with no node attached (the browser e2e asserts that

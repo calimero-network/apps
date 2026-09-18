@@ -73,7 +73,7 @@ export default function FeedPage() {
             navigate(ns ? `/spaces/${ns}` : "/spaces");
           }}
         >
-          ← All forums
+          All forums
         </button>
         <span className="brand">{forumName || "Forum"}</span>
         <div className="grow" />
