@@ -29,6 +29,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { Out, Step, type StepState } from './steps/Step.js';
+import { HardenedPath } from './steps/Hardened.js';
 import type { ClassifiedNode } from './lib/admission.js';
 import { createIdentity, restoreIdentity, type DeviceIdentity } from './lib/identity.js';
 import type { AccountClaimResult, AccountProofResult } from './lib/flow.js';
@@ -213,6 +214,8 @@ export function App() {
         settings={settings}
         enabled={ready.identity && ready.node && ready.context}
       />
+
+      <HardenedPath settings={settings} />
 
       <footer>
         <p>

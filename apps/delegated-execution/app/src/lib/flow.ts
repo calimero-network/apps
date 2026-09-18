@@ -94,7 +94,12 @@ export interface ReadResult {
  */
 export async function readContext(
   nodeUrl: string,
-  session: DelegatedSession,
+  // Only the bearer token is read, so this is spelled structurally rather than
+  // as mero-js's `DelegatedSession`. The hardened path in `steps/Hardened.tsx`
+  // mints its session with a non-extractable key and has no mero-js session
+  // object to hand over; requiring the nominal type would have forced a cast
+  // asserting a shape neither side actually depends on.
+  session: { accessToken: string },
   contextId: string,
   method: string,
   argsJson: unknown,

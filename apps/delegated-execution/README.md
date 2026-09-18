@@ -337,3 +337,76 @@ will use, and says when that differs from the admitter.
   device" clears both, plus the warrant nonce counter, which must go with them or the next
   device replays numbers the network has already seen.
 - **It does not refresh the session.** Tokens expire; open a new one.
+
+## Steps 7–10: the same flow with both secrets removed
+
+Steps 1–6 keep an account root and a device secret in `localStorage`, and the bullet
+above concedes that a product must not. Steps 7–10 are the other half of that sentence —
+the same legs, with the compromise actually removed rather than only admitted:
+
+| | steps 1–6 | steps 7–10 |
+| --- | --- | --- |
+| account root | generated in the tab, kept in `localStorage` | never in the browser; a CLI holding it signs the certificate |
+| device key | a hex secret in `localStorage` | a non-extractable `CryptoKey` in IndexedDB |
+| warrant, login statement | mero-js, from that hex secret | reproduced against the key, pinned to core's fixtures |
+
+Both paths stay on the page because the **contrast is the subject**. Deleting the original
+would leave a demo asserting that a compromise used to exist.
+
+### Why the signing is reimplemented rather than delegated
+
+mero-js 19.10 takes every secret as 32 hex bytes — `WarrantInput.deviceSecret`,
+`signLoginStatement`'s `deviceSecret`, `signDeviceCert`'s `rootSecret`. There is no signer
+hook to pass a `CryptoKey` through, so a key that *cannot* be exported cannot be used with
+it at all. `lib/warrant.ts` and `lib/login.ts` therefore reproduce the two byte contracts
+around a key instead of a secret.
+
+That is a real risk and it is covered the way core asks for it to be: both are pinned to
+core's own vectors — `crates/account/src/tests/warrant_wire_fixture.rs` and
+`login_wire_fixture.rs` — because the domain constants are `pub(crate)` there and nothing
+on that side forces anyone to notice this code depends on them. A drift arrives as a 403
+at a relay or a 401 at login, nowhere near its cause. If `pnpm test` is green, these bytes
+match the node's.
+
+The audience is the field a reimplementation gets wrong, and all three variants are pinned
+for that reason: in the **preimage** it is `tag ‖ body` with no length (`domain_hash`
+prefixes each part it is handed, so a length here is counted twice), and on the **wire** it
+is a borsh enum — tag, then a borsh `String`. `Cli` is a bare tag with neither, which is
+what makes a "length-prefix everything" implementation look correct right up until someone
+logs in from a browser.
+
+### Certifying a device
+
+The certificate is signed where the root is. Build the CLI from `poc/webcert`:
+
+```bash
+cargo run -p certifier -- new --out account.key
+```
+
+That prints the account id and writes the root to a file the browser never sees. Invite
+that account to the namespace the way you would invite any other (`meroctl --node demo
+namespace invite <namespace-id>`), then press **Generate a device key** in step 7 and run
+the command it shows:
+
+```bash
+cargo run -p certifier -- certify --key account.key --device-key <64 hex> --kem-key <64 hex>
+```
+
+Paste the account id, device id and credential back into step 7. The credential is an
+`AccountProof<DeviceCert>`: it carries no secret, is public by construction, and travels in
+the clear inside every device-link op anyway.
+
+In the shape this stands in for, the root is in a Secure Enclave or on a YubiKey and the
+signing happens there. The ceremony is identical; only custody differs — which is why the
+certifier is a separate binary from `publisher` rather than another subcommand on it. A
+publisher root certifies *apps*, an account root certifies *devices*, and one key file
+holding both would be one compromise losing both.
+
+### What this still does not fix
+
+Script injected into this origin can **use** the key for as long as the page is open: it
+can open sessions and spend warrants. That residual cannot be removed, because a key usable
+by the page is usable by anything running as the page. What is removed is **exfiltration** —
+the attacker cannot walk away with the identity, and revoking the device ends it. A stolen
+hex secret, by contrast, is the account until the root revokes it, and a stolen root is the
+account permanently.
