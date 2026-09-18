@@ -17,7 +17,9 @@ mero-drive-types        = { path = "../types" }
 calimero-sdk            = { workspace = true }
 calimero-storage        = { workspace = true }
 calimero-storage-macros = { workspace = true }
-# Every id this service stores is a device key, hex-encoded. core
-# 0.11.0-rc.27 removed base58 (core#3691); the admin API now hands out hex
-# device keys, and role rows must match what clients pass in.
+# Every id this service stores is an ACCOUNT, hex-encoded — the same principal
+# `listGroupMembers` rows are keyed by, so a row written from the client and a
+# caller checked in the contract name the same person. It stored DEVICE keys
+# until the roles pass; see `permissions::caller_account_hex`. core
+# 0.11.0-rc.27 removed base58 (core#3691), so hex is the only encoding here.
 hex                     = { workspace = true }

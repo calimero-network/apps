@@ -54,7 +54,27 @@ describe('buildInviteUrl — canonical deep link', () => {
     const url = buildInviteUrl('namespace', 'ns1', INV, 'My Space');
     const parsed = parseInviteUrl(new URL(url).searchParams);
     expect('error' in parsed).toBe(false);
-    expect((parsed as ParsedInvite).namespaceName).toBe('My Space');
+    expect((parsed as ParsedInvite).targetName).toBe('My Space');
+  });
+
+  // A folder invite is the one whose recipient can least identify the target
+  // by id — the folder may be restricted, so the id is all they would see.
+  it('round-trips a FOLDER name through parseInviteUrl', () => {
+    const url = buildInviteUrl('group', 'g-7', INV, 'Q3 Budget');
+    const parsed = parseInviteUrl(new URL(url).searchParams);
+    expect('error' in parsed).toBe(false);
+    expect((parsed as ParsedInvite).kind).toBe('group');
+    expect((parsed as ParsedInvite).targetName).toBe('Q3 Budget');
+  });
+
+  // `&`/`#`/`=` in a workspace name would otherwise truncate the link into
+  // something that fails at the joiner rather than at build time.
+  it('survives a name containing URL-significant characters', () => {
+    const name = 'R&D #2 = fun';
+    const url = buildInviteUrl('namespace', 'ns1', INV, name);
+    const parsed = parseInviteUrl(new URL(url).searchParams);
+    expect((parsed as ParsedInvite).targetName).toBe(name);
+    expect((parsed as ParsedInvite).targetId).toBe('ns1');
   });
 });
 
@@ -122,7 +142,7 @@ describe('extractInviteParams', () => {
     const parsed = parseInviteUrl(params!);
     expect('error' in parsed).toBe(false);
     expect((parsed as ParsedInvite).targetId).toBe('ns-1');
-    expect((parsed as ParsedInvite).namespaceName).toBe('Test');
+    expect((parsed as ParsedInvite).targetName).toBe('Test');
   });
 
   it('parses a legacy invite= payload through parseInviteUrl', () => {
@@ -145,8 +165,16 @@ describe('invite expiry', () => {
     expect(inviteExpiryMs(t * 1e9)).toBe(t * 1000);
   });
 
+  // ⚠️ `expiration_timestamp`, not `expirationTimestamp`.
+  // `GroupInvitationFromAdmin` mirrors a core PRIMITIVE, which carries no
+  // camelCase rename — unlike every admin DTO around it. This fixture used the
+  // camelCase spelling and so did the code, so the pair agreed with each other
+  // and with nothing core has ever put on the wire: `isInviteExpired` returned
+  // `false` for every real invitation. A hand-written fixture cannot catch that
+  // on its own, which is why the snake_case name is now the one under test and
+  // the camelCase tolerance is asserted separately, as tolerance.
   const withExpiry = (ts: number) =>
-    ({ invitation: { expirationTimestamp: ts } }) as SignedGroupOpenInvitation;
+    ({ invitation: { expiration_timestamp: ts } }) as unknown as SignedGroupOpenInvitation;
 
   it('flags a past timestamp as expired in any unit', () => {
     const past = Math.floor(NOW / 1000) - 3600; // one hour ago, seconds
@@ -163,6 +191,22 @@ describe('invite expiry', () => {
   it('never expires when the timestamp is missing or zero', () => {
     expect(isInviteExpired(withExpiry(0))).toBe(false);
     expect(isInviteExpired({} as SignedGroupOpenInvitation)).toBe(false);
+  });
+
+  it('reads the snake_case wire key core actually sends', () => {
+    const past = Math.floor(NOW / 1000) - 3600;
+    const wire = {
+      invitation: { expiration_timestamp: past },
+    } as unknown as SignedGroupOpenInvitation;
+    expect(isInviteExpired(wire)).toBe(true);
+  });
+
+  it('still tolerates a camelCase timestamp', () => {
+    const past = Math.floor(NOW / 1000) - 3600;
+    const renamed = {
+      invitation: { expirationTimestamp: past },
+    } as unknown as SignedGroupOpenInvitation;
+    expect(isInviteExpired(renamed)).toBe(true);
   });
 });
 

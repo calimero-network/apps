@@ -21,7 +21,28 @@ import { useCallback, useEffect, useRef } from 'react';
 import {
   useSubscription,
   type SseEventData,
+  type SubscriptionEventData,
 } from '@calimero-network/mero-react';
+
+/**
+ * Narrow a subscription event to the CONTEXT family.
+ *
+ * mero-react widened the `useSubscription` callback to a union: context events
+ * plus the group-keyed membership and migration families, and those two carry
+ * a `groupId` and no `contextId` at all. Reading `event.contextId` off the
+ * union is how a filter silently starts comparing `undefined` — so this tests
+ * for the field the filter actually needs, and anything without it is simply
+ * not a context event.
+ */
+export function isContextEvent(
+  event: SubscriptionEventData,
+): event is SseEventData {
+  return (
+    !!event &&
+    typeof (event as SseEventData).contextId === 'string' &&
+    (event as SseEventData).contextId.length > 0
+  );
+}
 
 /** Normalise a context-id input (single id, array, or nullable) into a
  *  sorted, de-nulled string[]. Shared with useSyncStatus so both feed
@@ -107,10 +128,11 @@ export function useContextEvents(
   );
 
   const handler = useCallback(
-    (event: SseEventData) => {
+    (event: SubscriptionEventData) => {
+      if (!isContextEvent(event)) return;
       if (strict) {
         const allowed = idsKey.length > 0 ? idsKey.split(',') : [];
-        if (!event || !allowed.includes(event.contextId)) return;
+        if (!allowed.includes(event.contextId)) return;
       }
       if (debounceMs <= 0) {
         onChange();

@@ -13,9 +13,10 @@
 // This eliminates the alias-lookup + lazy-create + cross-tab race
 // dance that the old `useWorkspaceBootstrap` needed.
 //
-// Per-namespace identity comes from `useGroupMembers(ns).selfIdentity`
-// — the mero-react primitive. No custom fetch, no localStorage cache,
-// no mero-js unwrap() workaround needed.
+// Identity comes from `useNodeIdentity().identity.accountId` — the
+// ACCOUNT this node writes as, which is exactly the key
+// `listGroupMembers` rows are filed under. No custom fetch, no
+// localStorage cache, no mero-js unwrap() workaround needed.
 //
 // Surface (everything a consumer used to need from useWorkspace +
 // useRegistry + useSelfIdentity is now on this one hook):
@@ -50,6 +51,7 @@ import {
   useNamespacesForApplication,
   useGroupContexts,
   useGroupMembers,
+  useNodeIdentity,
   useSubgroups,
   type Namespace,
 } from '@calimero-network/mero-react';
@@ -58,6 +60,7 @@ import { useContextEvents } from './useContextEvents';
 import { useSyncStatus, type SyncSnapshot } from './useSyncStatus';
 import { useLocalStorage } from './useLocalStorage';
 import { useNamespaceDisplayNames } from './useNamespaceDisplayNames';
+import { useApplicationId } from './useApplicationId';
 import {
   mergeAdminAndRegistry,
   type AdminSubgroup,
@@ -68,6 +71,8 @@ import {
   DEFAULT_NEW_MEMBER_CAPS,
   ENV_APPLICATION_ID,
   MAX_ALIAS_LENGTH,
+  PACKAGE_NAME,
+  REGISTRY_CONTEXT_ALIAS,
   REGISTRY_SERVICE_ID,
 } from '@/constants/config';
 import { isAccessDeniedError } from '@/utils/accessDenied';
@@ -220,11 +225,36 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
   const {
     mero,
     applicationId: authApplicationId,
-    contextIdentity,
     isAuthenticated,
     isLoading: authLoading,
   } = useMero();
-  const applicationId = authApplicationId || ENV_APPLICATION_ID || null;
+
+  // --- Which app are we? ---
+  //
+  // Everything below is scoped by application id: the namespace list, every
+  // create, every invite pre-check. It used to be
+  // `useMero().applicationId || VITE_APPLICATION_ID`, and neither of those
+  // says which app this is — see lib/appId. Ask the node and match on the
+  // bundle package instead.
+  //
+  // The old pair survives only as a fallback for the one case where matching
+  // by package cannot answer: a node that installed this app from a raw
+  // `.wasm` files it with no package at all, which is what the dev scripts
+  // produce. `inconclusive` is that case specifically, and is NOT the same as
+  // "not installed" — which resolves to null so the UI can say so rather than
+  // quietly running against another app's id.
+  const {
+    appId: nodeApplicationId,
+    resolving: appIdResolving,
+    inconclusive: appIdInconclusive,
+    notInstalled: appIdNotInstalled,
+  } = useApplicationId();
+  const applicationId = appIdResolving
+    ? null
+    : nodeApplicationId ||
+      (appIdInconclusive
+        ? authApplicationId || ENV_APPLICATION_ID || null
+        : null);
 
   // --- Namespace list + persisted selection ---
   const {
@@ -278,9 +308,28 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
 
   const rootGroupId = selectedNsId;
 
-  // --- Per-namespace identity via mero-react's primitive ---
+  // --- Identity via mero-react's primitive ---
+  //
+  // ⚠️ This used to read `selfIdentity` off `useGroupMembers`. mero-react
+  // removed that field, so the destructure resolved to `undefined` and the
+  // value returned below fell through to `contextIdentity` — the EXECUTOR
+  // PUBLIC KEY from the auth flow. Both are 64 hex, so nothing complained:
+  // the app simply addressed a principal that exists in no member list.
+  // Every identity-keyed surface went wrong at once — `setMemberMetadata`
+  // wrote a display name against a nonexistent member, `isSelf` was never
+  // true, `useMemberCaps` reported no capabilities, and the registry's
+  // owner/manager comparison never matched. In MultiContext mode
+  // `contextIdentity` is null as well, which pinned `stage` on
+  // `resolving-registry-context` and left the workspace on its spinner.
+  //
+  // `useNodeIdentity().identity.accountId` is the account, and the account
+  // is what governance rows name. It is per-NODE, not per-namespace: one
+  // account speaks in every namespace this node has joined, so it does not
+  // re-resolve on a namespace switch.
+  const { identity: nodeIdentity, loading: identityLoading } =
+    useNodeIdentity();
+  const selfIdentity = nodeIdentity?.accountId ?? null;
   const {
-    selfIdentity,
     members: nsMembers,
     loading: membersLoading,
     refetch: refetchNsMembers,
@@ -357,6 +406,12 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
           groupId: healingNsId,
           serviceName: REGISTRY_SERVICE_ID,
           initializationParams: [],
+          // Name it on the wire. `CreateContextRequest.name` is a replicated
+          // label every member of the group reads back from
+          // `listGroupContexts` — so the registry context is identifiable on
+          // the joiner's node too, not just by being `contexts[0]` on the
+          // node that happened to create it.
+          name: REGISTRY_CONTEXT_ALIAS,
         });
         // Best-effort: claim the registry owner slot — but ONLY if the
         // caller is a core namespace-admin. `claim_owner` in the WASM
@@ -430,6 +485,13 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
   // --- Registry client (memoized) ---
   const registryClient = useMemo<RegistryClient | null>(() => {
     if (!mero || !registryContextId || !selfIdentity) return null;
+    // The third argument is the generated client's `executorPublicKey`, which
+    // mero-js marks `@deprecated — no longer used by the server`: the node
+    // derives the caller from the authenticated session, and the contract
+    // reads it back as `env::account_id()`. Passing the account here is
+    // therefore both inert on the wire and the honest description of who is
+    // calling — do not "fix" it to a signing key on the strength of the
+    // parameter's name.
     return new RegistryClient(mero, registryContextId, selfIdentity);
   }, [mero, registryContextId, selfIdentity]);
 
@@ -499,6 +561,14 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
   }, [registryClient]);
 
   const registryAdmin = useMemo<RegistryAdminSlice>(() => {
+    // ⚠️ Both sides of this comparison must be ACCOUNTS. `getOwner()` returns
+    // whatever `claim_owner` stored, which the contract derives from
+    // `env::account_id()` — it used to derive it from `env::device_id()`, and
+    // an account never equals a device id, so this was permanently false and
+    // the real owner's own client hid every admin control from them. Two
+    // 64-hex ids compare happily and say nothing about whether they name the
+    // same kind of thing; the only defence is that one contract change and
+    // this line moved together.
     const isOwner = !!regOwner && regOwner === selfIdentity;
     const isOwnerOrManager =
       isOwner || (!!selfIdentity && regManagers.includes(selfIdentity));
@@ -865,6 +935,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
           groupId: ns.namespaceId,
           serviceName: REGISTRY_SERVICE_ID,
           initializationParams: [],
+          name: REGISTRY_CONTEXT_ALIAS,
         });
         // Step 4 — claim the registry's owner slot for the creator.
         // The permissions layer is fail-closed (set_folder_role,
@@ -1084,10 +1155,17 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
   // --- Stage derivation for loading-indicator UX ---
   let stage: DriveLoadingStage = 'ready';
   if (authLoading) stage = 'awaiting-auth';
+  else if (appIdResolving) stage = 'awaiting-auth';
   else if (!isAuthenticated || !applicationId) stage = 'awaiting-auth';
   else if (nsLoading) stage = 'resolving-namespaces';
   else if (!selectedNsId) stage = 'idle';
-  else if (contextsLoading || !registryContextId || membersLoading || !selfIdentity)
+  else if (
+    contextsLoading ||
+    !registryContextId ||
+    membersLoading ||
+    identityLoading ||
+    !selfIdentity
+  )
     stage = isJustJoined ? 'syncing-from-peers' : 'resolving-registry-context';
   else if (subLoading) stage = 'loading-subgroups';
   else if (regLoading) stage = 'loading-folders';
@@ -1096,12 +1174,29 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
     stage = 'syncing-from-peers';
 
   const loading = stage !== 'ready' && stage !== 'idle';
-  const error = nsError ?? regError ?? null;
+  // A node that knows packages and does not have this one installed is a real,
+  // reportable condition — not an auth problem and not an empty workspace list.
+  // Without this it surfaced as a permanently empty switcher, which reads as
+  // "you have no workspaces" and sends the user off to create another one on a
+  // node that cannot run them.
+  const appIdError = useMemo(
+    () =>
+      appIdNotInstalled
+        ? new Error(
+            `mero-drive (${PACKAGE_NAME}) is not installed on this node. ` +
+              'Install it from the app registry, then reload.',
+          )
+        : null,
+    [appIdNotInstalled],
+  );
+  const error = appIdError ?? nsError ?? regError ?? null;
 
   return useMemo<DriveWorkspaceState>(
     () => ({
       applicationId,
-      selfIdentity: selfIdentity ?? contextIdentity ?? null,
+      // No `contextIdentity` fallback: that is the executor signing key,
+      // not an account, and substituting it names nobody.
+      selfIdentity,
       namespaceMemberNames,
 
       namespaces,
@@ -1133,7 +1228,6 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
     [
       applicationId,
       selfIdentity,
-      contextIdentity,
       namespaceMemberNames,
       namespaces,
       selectedNsId,

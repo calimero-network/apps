@@ -143,6 +143,11 @@ export function useFolderOperations(
           groupId: newId,
           serviceName: DOCS_SERVICE_ID,
           initializationParams: [],
+          // The folder's own name, on the context too. `listGroupContexts`
+          // returns this label to every member of the subgroup, so anyone who
+          // joins the folder by invite can tell what its docs context is
+          // without holding the registry entry that names it.
+          name: input.alias,
         });
         if (!ctx?.contextId) {
           throw new Error('createContext returned no contextId');

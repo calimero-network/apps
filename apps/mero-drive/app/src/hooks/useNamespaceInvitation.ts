@@ -18,6 +18,17 @@
 // the invitee into the namespace root group; group invites add them
 // to exactly the named folder subgroup. Back-compat on parse: `invite=`
 // (the pre-deep-link param) and `ns=` (alias for `id=`) are accepted.
+//
+// `name=` carries the target's HUMAN NAME, for both kinds. It is not the
+// authority on the name — core's group metadata is, and it replicates — but a
+// joiner cannot read a group's metadata until it holds an identity in that
+// group, which is after the join it is being asked to confirm. Without the
+// param the accept card can only offer `9f3c1a2b…`, so the name is minted into
+// the link by the inviter's node (`groupName` on the create-invitation
+// response) and handed straight back to the joiner's node on the join call
+// (`groupName` on the join request), which files it against the joiner's own
+// governance row. That is the whole path by which a name typed on one node is
+// on the other node's screen, and it needs no app-level replication.
 
 import { useCallback } from 'react';
 import { DEEP_LINK_BASE, PACKAGE_NAME } from '@/constants/config';
@@ -36,6 +47,8 @@ export interface InviteCreation {
   kind: InviteKind;
   targetId: string;
   invitation: SignedGroupOpenInvitation;
+  /** The target's name as the minting node resolved it, when it had one. */
+  name?: string;
   url: string;
 }
 
@@ -43,10 +56,11 @@ export interface ParsedInvite {
   kind: InviteKind;
   targetId: string;
   invitation: SignedGroupOpenInvitation;
-  /** Namespace display name carried on the invite URL (`&name=`).
-   *  Present for namespace invites minted after this field was added;
-   *  the join flow persists it via `rememberNamespaceName`. */
-  namespaceName?: string;
+  /** The target's display name carried on the invite URL (`&name=`) — the
+   *  workspace for a `namespace` invite, the folder for a `group` one. Absent
+   *  on links minted before the param existed, and on links whose minting node
+   *  had no name for the group. */
+  targetName?: string;
 }
 
 // UTF-8-safe base64url codec. Earlier versions used
@@ -79,11 +93,12 @@ export function buildInviteUrl(
   kind: InviteKind,
   targetId: string,
   invitation: SignedGroupOpenInvitation,
-  // Namespace display name — resolved by core's
-  // `createNamespaceInvitation` as `groupName`. Carried on the URL so
-  // the joiner can show the real name immediately:
-  // `listNamespacesForApplication` won't surface it until the joined
-  // node has synced the namespace's root-group metadata.
+  // The target's display name, as the minting node resolved it
+  // (`groupName` on both create-invitation responses). Carried on the URL
+  // because the joiner cannot read it from anywhere else before joining:
+  // `listNamespacesForApplication` omits a namespace's name until the joined
+  // node has synced the root-group metadata, and a folder's metadata is not
+  // readable at all without an identity in that folder.
   name?: string,
 ): string {
   const payload = base64urlEncode(JSON.stringify(invitation));
@@ -170,7 +185,7 @@ export function parseInviteUrl(
       kind,
       targetId: id,
       invitation,
-      namespaceName: name ?? undefined,
+      targetName: name ?? undefined,
     };
   } catch {
     return {
@@ -216,9 +231,22 @@ export function classifyJoinError(message: string): JoinFailure {
 }
 
 /** True when the parsed invite carries a positive expiration timestamp
- *  that is already in the past. Missing/zero timestamps never expire. */
+ *  that is already in the past. Missing/zero timestamps never expire.
+ *
+ *  ⚠️ The wire key is `expiration_timestamp`. `GroupInvitationFromAdmin`
+ *  mirrors a core PRIMITIVE (`calimero_context_config::types`), which carries
+ *  no camelCase rename — unlike the admin DTOs that wrap it, where every other
+ *  field in this file is camelCase. This read was spelled
+ *  `expirationTimestamp`, so it was `undefined` on every invitation core has
+ *  ever minted, the guard below returned `false` unconditionally, and the
+ *  "this invitation has expired" card could not appear: an expired link went
+ *  to the server and came back as a raw rejection string. Both spellings are
+ *  accepted here so a link minted by a node that does rename it still reads. */
 export function isInviteExpired(invitation: SignedGroupOpenInvitation): boolean {
-  const ts = invitation?.invitation?.expirationTimestamp;
+  const inner = invitation?.invitation as
+    | { expiration_timestamp?: number; expirationTimestamp?: number }
+    | undefined;
+  const ts = inner?.expiration_timestamp ?? inner?.expirationTimestamp;
   if (typeof ts !== 'number' || !Number.isFinite(ts) || ts <= 0) return false;
   return inviteExpiryMs(ts) < Date.now();
 }
@@ -243,15 +271,16 @@ export function useCreateNamespaceInvite() {
         'namespace',
         namespaceId,
         single.invitation,
-        // core resolves the namespace's metadata name here; carrying it
-        // on the URL lets the joiner display it without waiting for a
-        // metadata sync that may never converge on a small cluster.
+        // core resolves the namespace's metadata name here; carrying it on
+        // the URL lets the joiner display it without waiting for a metadata
+        // sync that may never converge on a small cluster.
         single.groupName,
       );
       return {
         kind: 'namespace',
         targetId: namespaceId,
         invitation: single.invitation,
+        name: single.groupName,
         url,
       };
     },
@@ -268,12 +297,25 @@ export function useJoinNamespaceByInvite() {
     async (
       namespaceId: string,
       invitation: SignedGroupOpenInvitation,
+      // The name the invite carried. `JoinNamespaceRequest.groupName` is how
+      // the joiner's node files a name for a group whose metadata it cannot
+      // read yet, so passing it is what makes the creator's chosen workspace
+      // name appear on the joiner's machine instead of a 64-hex id. Omitted
+      // when the link carried none, rather than sent as '' — a blank name
+      // would overwrite a real one the node may already hold.
+      groupName?: string,
     ): Promise<string> => {
       if (!mero) throw new Error('Mero client not ready');
       const response = await mero.admin.joinNamespace(namespaceId, {
         invitation,
+        ...(groupName ? { groupName } : {}),
       });
-      return response.groupId;
+      // ⚠️ `groupId` was renamed to `namespaceId` in core 0.11.0-rc.25
+      // (core#3598) and this read was never updated: it returned `undefined`
+      // on every current node, silently. mero-js back-fills `namespaceId` from
+      // whichever spelling the node sent, so reading it works on both sides of
+      // that release; the `groupId` fall-back is belt and braces.
+      return response.namespaceId ?? response.groupId ?? namespaceId;
     },
     [mero],
   );
@@ -298,11 +340,23 @@ export function useCreateFolderInvite() {
         );
       }
       const single = response as CreateGroupInvitationResponseData;
-      const url = buildInviteUrl('group', folderId, single.invitation);
+      // `createGroupInvitation` resolves the folder's metadata name into
+      // `groupName` exactly as the namespace call does, and this discarded it
+      // — so every folder invite asked its recipient to accept `9f3c1a2b…`
+      // while the namespace ones showed a real name. A folder invitee is the
+      // person who can LEAST identify a group by id: the folder may be
+      // restricted, so the id is all they will ever be shown.
+      const url = buildInviteUrl(
+        'group',
+        folderId,
+        single.invitation,
+        single.groupName,
+      );
       return {
         kind: 'group',
         targetId: folderId,
         invitation: single.invitation,
+        name: single.groupName,
         url,
       };
     },
@@ -316,12 +370,21 @@ export function useJoinFolderByInvite() {
   const { mero } = useMero();
 
   const join = useCallback(
-    async (invitation: SignedGroupOpenInvitation): Promise<string> => {
+    async (
+      invitation: SignedGroupOpenInvitation,
+      // Same pass-through as the namespace join: the folder's name, so the
+      // joiner's node has one for a subgroup whose metadata it cannot read
+      // until it is a member of it.
+      groupName?: string,
+    ): Promise<string> => {
       if (!mero) throw new Error('Mero client not ready');
       // mero-js's joinGroup uses the `group_id` carried inside the
       // signed invitation — no separate groupId path param, unlike
-      // joinNamespace. The API takes only `{invitation}`.
-      const response = await mero.admin.joinGroup({ invitation });
+      // joinNamespace.
+      const response = await mero.admin.joinGroup({
+        invitation,
+        ...(groupName ? { groupName } : {}),
+      });
       return response.groupId;
     },
     [mero],

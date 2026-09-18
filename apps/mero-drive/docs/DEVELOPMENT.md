@@ -10,7 +10,7 @@ pnpm dev:full
 
 This starts:
 - 🌐 **Local registry** (port 8082) - Stores and serves WASM files
-- 🎨 **Vite dev server** (port 5173) - Frontend app
+- 🎨 **Vite dev server** (port 5179) - Frontend app
 - 👀 **File watcher** - Auto-syncs WASM changes to registry
 
 ### What Happens When You Edit Logic?
@@ -23,7 +23,7 @@ This starts:
 6. Registry CLI **copies** WASM to local storage
 7. Registry **serves** WASM via HTTP
 8. App refetches manifest from registry
-9. **Test immediately** in browser at `http://localhost:5173`
+9. **Test immediately** in browser at `http://localhost:5179`
 
 ---
 
@@ -88,14 +88,14 @@ Top-level workspace and folder flows talk to the Calimero node admin API directl
 Examples:
 
 ```text
-http://localhost:5173/?node_url=http://localhost:2428
-http://localhost:5173/#node_url=http://localhost:2428&access_token=...&refresh_token=...
+http://localhost:5179/?node_url=http://localhost:2428
+http://localhost:5179/#node_url=http://localhost:2428&access_token=...&refresh_token=...
 ```
 
 Important notes:
 
 - Group admin requests are sent to `${node_url}/admin-api/*`, not to the Vite origin
-- Vite does not proxy `/admin-api` in development, so a same-origin request such as `http://localhost:5173/admin-api/groups` will 404
+- Vite does not proxy `/admin-api` in development, so a same-origin request such as `http://localhost:5179/admin-api/groups` will 404
 - Group-scoped context creation uses `POST /admin-api/contexts` with `groupId` in the request body; there is no `POST /admin-api/groups/:groupId/contexts` route on the core server
 
 ---
@@ -273,7 +273,7 @@ Folder {
 
 1. **Build the logic:** `pnpm logic:build`
 2. **Start full dev:** `pnpm dev:full`
-3. **Open browser:** http://localhost:5173
+3. **Open browser:** http://localhost:5179
 4. **Make changes** to `logic/src/lib.rs` and see them auto-sync!
 
 Happy coding! 🚀

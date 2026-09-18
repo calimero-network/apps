@@ -1,4 +1,9 @@
 # Ignore artifacts:
+# `dist` is where vite.config.js actually writes (`build` is a leftover from
+# when it did not, kept so an old local tree is still ignored). Without `dist`
+# here, running `pnpm lint` any time after `pnpm build` lints the minified
+# bundle and reports hundreds of errors in code nobody wrote.
 build
+dist
 coverage
 node_modules

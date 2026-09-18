@@ -20,21 +20,57 @@ pub(crate) fn role_key_prefix(folder_id: &str) -> String {
     format!("{folder_id}\u{1f}")
 }
 
-/// Hex device public key of the caller. Deliberately NOT `account_id()`:
-/// the admin API only exposes members as device public keys, and role rows
-/// must match what clients pass in. core 0.11.0-rc.27 removed base58
-/// (core#3691), so this is hex now — as is everything the admin API returns.
-/// Switch when core exposes member accounts.
-pub(crate) fn caller_hex() -> Result<String, DriveError> {
-    let id = calimero_sdk::env::device_id();
+/// Hex ACCOUNT id of the caller — who is calling as a person, not which
+/// machine they are calling from.
+///
+/// ⚠️ THIS WAS `device_id()`, AND THAT MADE EVERY GRANT IN THIS FILE A NO-OP.
+///
+/// Ownership, the manager list and the per-(folder, member) role map are all
+/// PER-PERSON state, and the SDK is explicit that per-person state is keyed by
+/// the account: `device_id` is "distinct per machine even for one person,
+/// which is what makes it right for per-writer state and wrong for per-person
+/// state."
+///
+/// The practical failure was total and silent, because every id involved is 32
+/// bytes of hex and nothing can tell them apart:
+///
+///   * `add_manager` / `set_folder_role` take a member key from the client,
+///     and the only member list a client has is `listGroupMembers`, whose rows
+///     are ACCOUNTS. So a manager row was filed under an account, while
+///     `is_admin` looked the caller up by DEVICE — the row could never match,
+///     and a promoted manager stayed `Forbidden` on everything.
+///   * The frontend's "am I the owner" check compares `get_owner()` against
+///     the account it holds. `claim_owner` stored a device id, so the real
+///     owner's own client reported `isOwner: false` and hid every admin
+///     control from the one person entitled to use them.
+///
+/// The old comment said to "switch when core exposes member accounts". It
+/// does: mero-js documents `GroupMember.identity` as "The member's ACCOUNT: 64
+/// hex", and `useNodeIdentity().identity.accountId` is the same value for
+/// oneself. So this now keys on the account, and every id that crosses the
+/// wire in either direction is the same kind of id.
+///
+/// Consequence for deployed state: an existing registry's `owner` row holds a
+/// device id and will never equal an account, so a workspace created before
+/// this change cannot be administered after it. Those contexts must be
+/// recreated — see the PR.
+pub(crate) fn caller_account_hex() -> Result<String, DriveError> {
+    let id = calimero_sdk::env::account_id();
     if id.len() != 32 {
-        return Err(DriveError::Invalid("device id length".into()));
+        return Err(DriveError::Invalid("account id length".into()));
     }
     Ok(hex::encode(id))
 }
 
-/// Validate & normalise an incoming hex 32-byte public key. Re-encoding
-/// lower-cases it, so the stored form is canonical regardless of input case.
+/// Validate & normalise an incoming hex 32-byte ACCOUNT id — the same
+/// principal `caller_account_hex` produces, and the same one
+/// `listGroupMembers` rows are keyed by. Re-encoding lower-cases it, so the
+/// stored form is canonical regardless of input case.
+///
+/// Note this cannot verify WHICH kind of 32-byte id it was handed: an account,
+/// a device id and a signing key are all 32 bytes. The only defence is that
+/// both ends of every path in this file now name the account, so there is one
+/// kind of id in play rather than two.
 pub(crate) fn validate_member_key(s: &str) -> Result<String, DriveError> {
     let decoded = hex::decode(s).map_err(|e| DriveError::Invalid(format!("bad hex key: {e}")))?;
     if decoded.len() != 32 {
@@ -201,8 +237,8 @@ impl RegistryState {
         Ok(())
     }
 
-    /// Read — no caller gating. Validates `member` as base58; returns the
-    /// stored role or `Role::Editor` if none.
+    /// Read — no caller gating. Validates `member` as a hex account; returns
+    /// the stored role or `Role::Editor` if none.
     pub(crate) fn get_folder_role_inner(
         &self,
         folder_id: &str,

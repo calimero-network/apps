@@ -16,6 +16,8 @@ import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useFolderMembership } from '@/hooks/useFolderMembership';
 import { useNamespacePermissions } from '@/hooks/useNamespacePermissions';
 import { NamespaceMemberRow } from '@/components/admin/NamespaceMemberRow';
+import { useMemberCaps } from '@/hooks/useMemberCaps';
+import { countAdmins, parseGroupRole } from '@/lib/roles';
 import { InviteDialog } from './InviteDialog';
 import { useCreateNamespaceInvite } from '@/hooks/useNamespaceInvitation';
 
@@ -24,6 +26,24 @@ export function NamespaceMembersPanel() {
     useDriveWorkspace();
   const perms = useNamespacePermissions(namespaceId ?? '', rootGroupId ?? '');
   const membership = useFolderMembership(rootGroupId);
+  // The acting user's own role + bitmask on this group. Each row needs both to
+  // decide which promotions it may offer, and re-deriving them per row would
+  // fan N identical probes across an N-member roster.
+  const selfCaps = useMemberCaps(namespaceId ?? '', rootGroupId ?? '');
+  const selfRow = membership.members.find((m) => m.identity === selfIdentity);
+  // Prefer the roster's own answer; fall back to `useMemberCaps`'s admin
+  // short-circuit for the window before the roster lands, so an admin's
+  // controls are not briefly disabled on first paint.
+  const actorRole = selfRow
+    ? parseGroupRole(selfRow.role)
+    : selfCaps.isAdmin
+      ? 'Admin'
+      : 'Member';
+  // The last-admin guard is only as good as the list it counts. An empty or
+  // still-loading roster would report 0 admins and make every demotion look
+  // safe, so treat "not loaded yet" as "at least this many" by counting only
+  // once there are rows to count.
+  const adminCount = countAdmins(membership.members);
   const { create: createInvite } = useCreateNamespaceInvite();
   const [removeError, setRemoveError] = useState<string | null>(null);
   const [inviteOpen, setInviteOpen] = useState(false);
@@ -122,8 +142,14 @@ export function NamespaceMembersPanel() {
             identity={m.identity}
             label={m.name ?? `${m.identity.slice(0, 8)}…`}
             role={m.role}
+            actorRole={actorRole}
+            actorCaps={selfCaps.caps}
+            adminCount={adminCount}
             isSelf={!!selfIdentity && m.identity === selfIdentity}
             canManage={perms.canManageMembers}
+            onAfterRoleChange={() => {
+              void membership.refetch();
+            }}
             onRemove={onRemove}
           />
         ))}

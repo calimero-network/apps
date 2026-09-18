@@ -578,7 +578,7 @@ impl RegistryState {
     // ---- permissions: owner / managers ----------------------------------
 
     pub fn claim_owner(&mut self) -> app::Result<()> {
-        let caller = permissions::caller_hex().map_err(|e| AppError::msg(e.to_string()))?;
+        let caller = permissions::caller_account_hex().map_err(|e| AppError::msg(e.to_string()))?;
         self.claim_owner_inner(&caller)
             .map_err(|e| AppError::msg(e.to_string()))?;
         app::emit!(Event::OwnerClaimed { owner: &caller });
@@ -595,7 +595,7 @@ impl RegistryState {
     }
 
     pub fn add_manager(&mut self, member: String) -> app::Result<()> {
-        let caller = permissions::caller_hex().map_err(|e| AppError::msg(e.to_string()))?;
+        let caller = permissions::caller_account_hex().map_err(|e| AppError::msg(e.to_string()))?;
         let member_for_event = member.clone();
         self.add_manager_inner(&caller, &member)
             .map_err(|e| AppError::msg(e.to_string()))?;
@@ -606,7 +606,7 @@ impl RegistryState {
     }
 
     pub fn remove_manager(&mut self, member: String) -> app::Result<()> {
-        let caller = permissions::caller_hex().map_err(|e| AppError::msg(e.to_string()))?;
+        let caller = permissions::caller_account_hex().map_err(|e| AppError::msg(e.to_string()))?;
         let member_for_event = member.clone();
         self.remove_manager_inner(&caller, &member)
             .map_err(|e| AppError::msg(e.to_string()))?;
@@ -630,7 +630,7 @@ impl RegistryState {
         member: String,
         role: Role,
     ) -> app::Result<()> {
-        let caller = permissions::caller_hex().map_err(|e| AppError::msg(e.to_string()))?;
+        let caller = permissions::caller_account_hex().map_err(|e| AppError::msg(e.to_string()))?;
         let fid = folder_id.0.clone();
         let member_for_event = member.clone();
         self.set_folder_role_inner(&caller, &folder_id.0, &member, role)
@@ -643,7 +643,7 @@ impl RegistryState {
     }
 
     pub fn clear_folder_role(&mut self, folder_id: FolderId, member: String) -> app::Result<()> {
-        let caller = permissions::caller_hex().map_err(|e| AppError::msg(e.to_string()))?;
+        let caller = permissions::caller_account_hex().map_err(|e| AppError::msg(e.to_string()))?;
         let fid = folder_id.0.clone();
         let member_for_event = member.clone();
         self.clear_folder_role_inner(&caller, &folder_id.0, &member)
@@ -678,6 +678,79 @@ mod tests {
 
     fn fid(s: &str) -> FolderId {
         FolderId(s.to_string())
+    }
+
+    // ---- which principal gates this service ----
+    //
+    // The regression these pin down was invisible to every test above, because
+    // they all pass `caller` in by hand: the bug lived entirely in how the
+    // caller string is DERIVED. Ownership, managers and folder roles are
+    // per-person state, and the client can only ever name a person by the
+    // ACCOUNT that `listGroupMembers` returns — so a contract deriving its
+    // caller from `device_id` filed every grant under an id no caller could
+    // ever present. Nothing failed; the grants simply authorised nobody.
+    //
+    // Account and device are both 32 bytes, so these set them to DIFFERENT
+    // values: an assertion against a host where they coincide would pass for
+    // either implementation and prove nothing.
+
+    fn probe_ids() -> ([u8; 32], [u8; 32]) {
+        ([0xA1; 32], [0xD2; 32])
+    }
+
+    #[test]
+    fn caller_is_derived_from_the_account_not_the_device() {
+        let (account, device) = probe_ids();
+        let mut host = calimero_sdk::testing::TestHost::new(RegistryState::init);
+        host.set_account(account);
+        host.set_device(device);
+
+        let caller = permissions::caller_account_hex().unwrap();
+        assert_eq!(caller, hex::encode(account));
+        assert_ne!(caller, hex::encode(device));
+    }
+
+    #[test]
+    fn a_grant_written_for_an_account_authorises_that_caller() {
+        let (account, device) = probe_ids();
+        let mut host = calimero_sdk::testing::TestHost::new(RegistryState::init);
+        host.set_account(account);
+        host.set_device(device);
+
+        // What a client can actually pass: the member's ACCOUNT, because that
+        // is the only id `listGroupMembers` gives it.
+        let member_account = hex::encode(account);
+
+        let mut app = RegistryState::init();
+        let owner = hex::encode([0x77; 32]);
+        app.claim_owner_inner(&owner).unwrap();
+        app.add_manager_inner(&owner, &member_account).unwrap();
+
+        // And the caller the contract derives for that same person.
+        let caller = permissions::caller_account_hex().unwrap();
+        assert!(
+            app.is_admin(&caller).unwrap(),
+            "a manager row written under the account a client can name must \
+             authorise the caller the contract derives for that person",
+        );
+    }
+
+    #[test]
+    fn a_grant_written_for_a_device_authorises_nobody() {
+        // The shape of the old bug, kept as an executable description of it:
+        // a row filed under any id the caller is not derived from is inert.
+        let (account, device) = probe_ids();
+        let mut host = calimero_sdk::testing::TestHost::new(RegistryState::init);
+        host.set_account(account);
+        host.set_device(device);
+
+        let mut app = RegistryState::init();
+        let owner = hex::encode([0x77; 32]);
+        app.claim_owner_inner(&owner).unwrap();
+        app.add_manager_inner(&owner, &hex::encode(device)).unwrap();
+
+        let caller = permissions::caller_account_hex().unwrap();
+        assert!(!app.is_admin(&caller).unwrap());
     }
     fn cid(s: &str) -> ContextId {
         ContextId(s.to_string())

@@ -1,5 +1,25 @@
 # merobox scenarios — parked on RUNTIME, no longer on the bundle
 
+> ### ⚠️ While they are parked here, `E2E (mero-drive)` runs NOTHING and reports SUCCESS
+>
+> CI globs `workflows/*.yml`. These live in `workflows/probes/`, and the job's
+> `shopt -s nullglob` turns the empty match into silence rather than an error,
+> so both its steps are no-ops:
+>
+> ```
+> Validate workflows   0s  success
+> Run workflows        0s  success
+> ```
+>
+> The job still takes a couple of minutes — that is `pip install` — so it looks
+> like it did something. It did not. mero-drive is the only app in this repo
+> with nothing directly under `workflows/`; every other app has at least one.
+>
+> **So a green `E2E (mero-drive)` is not evidence about this contract.** Any
+> claim that a change here is verified against a live node has to come from
+> somewhere else until at least one scenario moves up a directory.
+
+
 ⚠️ **The blocker this file was written about is gone.** `ci.yml`'s `e2e` job now
 downloads the `mpk-<app>-<sha>` artifact and names it `dist/<package-id>.mpk`,
 which is exactly the path these scenarios install from. A bundle-installing

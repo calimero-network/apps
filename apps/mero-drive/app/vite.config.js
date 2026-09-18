@@ -17,6 +17,22 @@ export default defineConfig({
     include: ['src/**/*.{test,spec}.{ts,tsx}'],
     exclude: ['e2e/**', 'node_modules/**', 'build/**', 'dist/**'],
   },
+  // ⚠️ Pinned, and strict.
+  //
+  // Vite's default is 5173, which mero-issue-tracker and mero-sheets also use,
+  // and its default on a busy port is to quietly move to the next free one —
+  // where it lands on some OTHER app's pinned port. Two apps on one origin also
+  // share a `localStorage`, so the wrong app on this port does not merely serve
+  // the wrong UI: it inherits this app's session and application id. A
+  // screenshot of that is sharp, plausible, and of a different product.
+  //
+  // `strictPort` turns the clash into a startup failure naming the port, which
+  // is the only outcome that cannot be mistaken for a working dev server.
+  // PW_PORT is the override Playwright uses to run two servers side by side.
+  server: {
+    port: Number(process.env.PW_PORT) || 5179,
+    strictPort: true,
+  },
   base: '/',
   build: {
     // Match battleships (apps/battleships/app/vite.config.js): outDir

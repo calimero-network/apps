@@ -9,6 +9,7 @@ import {
   useMero,
   useNamespacesForApplication,
 } from '@calimero-network/mero-react';
+import { useApplicationId } from '@/hooks/useApplicationId';
 import { Button } from '@/components/ui/button';
 import {
   type ParsedInvite,
@@ -32,7 +33,13 @@ interface Props {
 }
 
 export function JoinInviteCard({ parsed, onJoined, secondaryAction }: Props) {
-  const { isAuthenticated, isLoading, applicationId } = useMero();
+  const { isAuthenticated, isLoading } = useMero();
+  // ⚠️ NOT `useMero().applicationId`. The membership pre-check below lists
+  // namespaces scoped by application id, and the provider's id belongs to
+  // whichever app last logged in on this origin — so on a shared dev origin
+  // this listed another app's namespaces and told a real member they were not
+  // one. Resolve mero-drive's own id from the node, by package. See lib/appId.
+  const { appId } = useApplicationId();
   const { join: joinNs } = useJoinNamespaceByInvite();
   const { join: joinGroup } = useJoinFolderByInvite();
   const [joining, setJoining] = useState(false);
@@ -50,7 +57,7 @@ export function JoinInviteCard({ parsed, onJoined, secondaryAction }: Props) {
   // invites have no cheap client-side membership source; the join call's
   // error mapping covers them.
   const { namespaces } = useNamespacesForApplication(
-    isAuthenticated && parsed.kind === 'namespace' ? applicationId : null,
+    isAuthenticated && parsed.kind === 'namespace' && appId ? appId : null,
   );
   const isMember =
     alreadyMember ||
@@ -62,20 +69,28 @@ export function JoinInviteCard({ parsed, onJoined, secondaryAction }: Props) {
     setError(null);
     try {
       if (parsed.kind === 'namespace') {
-        await joinNs(parsed.targetId, parsed.invitation);
-        // Persist the invite-carried namespace name so the workspace
-        // switcher shows it immediately. `listNamespacesForApplication`
-        // won't surface it until the joined node has synced the
-        // namespace's root-group metadata — which can lag indefinitely.
-        if (parsed.namespaceName) {
-          rememberNamespaceName(parsed.targetId, parsed.namespaceName);
+        // The name goes to the NODE, not just to this browser: `groupName` on
+        // the join request is what files the creator's chosen workspace name
+        // against the joiner's own governance row, so it is there for every
+        // tab and every future session on this machine — and for the desktop
+        // app, which shares the node and not the localStorage.
+        await joinNs(parsed.targetId, parsed.invitation, parsed.targetName);
+        // Mirror it into the local snapshot as well. Belt and braces for the
+        // window between the join returning and the node's namespace list
+        // reporting a name: `listNamespacesForApplication` omits `name` until
+        // the root-group metadata has synced, which on a small cluster can lag
+        // indefinitely. The snapshot is only ever read when the node has no
+        // name of its own (see useNamespaceDisplayNames), so it can never
+        // shadow a real rename.
+        if (parsed.targetName) {
+          rememberNamespaceName(parsed.targetId, parsed.targetName);
         }
         // Flag the fresh namespace so useDriveWorkspace shows a
         // "Syncing from peers…" state while the governance op +
         // registry state propagate, rather than a raw empty view.
         markNamespaceJustJoined(parsed.targetId);
       } else {
-        await joinGroup(parsed.invitation);
+        await joinGroup(parsed.invitation, parsed.targetName);
         // For folder joins the namespace is already in place; no
         // sync gate needed — the folder's docs context will sync
         // in the background the usual way.
@@ -107,9 +122,9 @@ export function JoinInviteCard({ parsed, onJoined, secondaryAction }: Props) {
     <>
       <p className="mb-6 text-sm text-muted-foreground">
         You've been invited to join {scopeLabel}{' '}
-        {parsed.namespaceName ? (
+        {parsed.targetName ? (
           <span className="font-medium text-foreground">
-            {parsed.namespaceName}
+            {parsed.targetName}
           </span>
         ) : (
           <code className="rounded bg-muted px-1.5 py-0.5 text-xs text-foreground">

@@ -230,15 +230,16 @@ describe('useFolderOperations.create — drift on partial failure', () => {
     };
     const boom = new Error(`${step} boom`);
     const led = wireLedger(registry, step, boom);
+    const refetch = vi.fn().mockResolvedValue(undefined);
 
     const { result } = renderHook(() =>
-      useFolderOperations(registry as never, ROOT, 'app-1'),
+      useFolderOperations(registry as never, ROOT, 'app-1', refetch),
     );
     await expect(
       result.current.create({
         namespaceId: 'ns-1',
         alias: 'Docs',
-        parentGroupId: null,
+        parentGroupId: ROOT,
         visibility: 'Restricted',
         members: [],
       }),
@@ -265,15 +266,16 @@ describe('useFolderOperations.create — drift on partial failure', () => {
     const led = wireLedger(registry, 'createContext', new Error('context boom'));
     // The rollback for the group also fails, and the code swallows that.
     deleteGroup.mockRejectedValue(new Error('rollback boom'));
+    const refetch = vi.fn().mockResolvedValue(undefined);
 
     const { result } = renderHook(() =>
-      useFolderOperations(registry as never, ROOT, 'app-1'),
+      useFolderOperations(registry as never, ROOT, 'app-1', refetch),
     );
     await expect(
       result.current.create({
         namespaceId: 'ns-1',
         alias: 'Docs',
-        parentGroupId: null,
+        parentGroupId: ROOT,
         visibility: 'Restricted',
         members: [],
       }),

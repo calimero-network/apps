@@ -23,11 +23,31 @@ vi.mock('@/hooks/useMemberDisplayName', () => ({
     refetch: vi.fn().mockResolvedValue(undefined),
   }),
 }));
+const addManagerMock = vi.fn().mockResolvedValue(undefined);
+const removeManagerMock = vi.fn().mockResolvedValue(undefined);
 vi.mock('@/hooks/useDriveWorkspace', () => ({
-  useDriveWorkspace: () => ({ namespaceId: 'ns', rootGroupId: 'ns' }),
+  useDriveWorkspace: () => ({
+    namespaceId: 'ns',
+    rootGroupId: 'ns',
+    registryAdmin: {
+      isOwner: true,
+      addManager: addManagerMock,
+      removeManager: removeManagerMock,
+    },
+  }),
 }));
+const updateMemberRoleMock = vi.fn().mockResolvedValue(undefined);
+const setMemberCapabilitiesMock = vi.fn().mockResolvedValue(undefined);
 vi.mock('@calimero-network/mero-react', () => ({
   useSubscription: vi.fn(),
+  useMero: () => ({
+    mero: { admin: { setMemberCapabilities: setMemberCapabilitiesMock } },
+  }),
+  useUpdateMemberRole: () => ({
+    updateMemberRole: updateMemberRoleMock,
+    loading: false,
+    error: null,
+  }),
   useGroupCapabilities: () => ({
     capabilities: 1,
     loading: false,
@@ -58,6 +78,9 @@ describe('NamespaceMemberRow admin-rename affordance', () => {
       <NamespaceMemberRow
         groupId="ns"
         identity="bob-id"
+        actorRole="Admin"
+        actorCaps={null}
+        adminCount={2}
         label="bob-id"
         role="Member"
         isSelf={false}
@@ -77,6 +100,9 @@ describe('NamespaceMemberRow admin-rename affordance', () => {
       <NamespaceMemberRow
         groupId="ns"
         identity="self-id"
+        actorRole="Admin"
+        actorCaps={null}
+        adminCount={2}
         label="self-id"
         role="Member"
         isSelf={true}
@@ -96,6 +122,9 @@ describe('NamespaceMemberRow admin-rename affordance', () => {
       <NamespaceMemberRow
         groupId="ns"
         identity="bob-id"
+        actorRole="Admin"
+        actorCaps={null}
+        adminCount={2}
         label="bob-id"
         role="Member"
         isSelf={false}
@@ -116,6 +145,9 @@ describe('NamespaceMemberRow admin-rename affordance', () => {
       <NamespaceMemberRow
         groupId="ns"
         identity="bob-id"
+        actorRole="Admin"
+        actorCaps={null}
+        adminCount={2}
         label="bob-id"
         role="Member"
         isSelf={false}
@@ -145,6 +177,9 @@ describe('NamespaceMemberRow admin-rename affordance', () => {
       <NamespaceMemberRow
         groupId="ns"
         identity="bob-id"
+        actorRole="Admin"
+        actorCaps={null}
+        adminCount={2}
         label="bob-id"
         role="Member"
         isSelf={false}
