@@ -253,8 +253,8 @@ importers:
   apps/delegated-execution/app:
     dependencies:
       '@calimero-network/mero-js':
-        specifier: ^19.10.0
-        version: 19.10.0
+        specifier: ^19.13.0
+        version: 19.13.0
       react:
         specifier: 'catalog:'
         version: 19.2.8
@@ -2427,8 +2427,8 @@ packages:
     resolution: {integrity: sha512-lmiXGFt7q4Zhq2FehT66Sx8cT2kqUb109TJZMpQ6JBFAnTkAj6JLM0+RS9MVq29AQ73EA5t2omgUoWXWuxgvUg==}
     engines: {node: '>=18.0.0'}
 
-  '@calimero-network/mero-js@19.10.0':
-    resolution: {integrity: sha512-gGDdgiA8kVX/LgYk+JIt6rsQBN0CWztj9o7zYCk/u14ug0dVpseSqcF+8ZQYjLU0Unf4WKPoZ+QeAl6L3HZTpw==}
+  '@calimero-network/mero-js@19.13.0':
+    resolution: {integrity: sha512-S7yfX6v3rl0V1FKqI6/MQz71Xp6V/rW9onRqnJutOLtLxVTfmoa4RhtfWlg4P9id2Avt0X+o/mwy7R1GJe6/sQ==}
     engines: {node: '>=18.0.0'}
 
   '@calimero-network/mero-platform-react@0.1.0':
@@ -9054,7 +9054,7 @@ snapshots:
 
   '@calimero-network/mero-js@18.3.0': {}
 
-  '@calimero-network/mero-js@19.10.0': {}
+  '@calimero-network/mero-js@19.13.0': {}
 
   '@calimero-network/mero-platform-react@0.1.0(react@19.2.8)':
     dependencies:

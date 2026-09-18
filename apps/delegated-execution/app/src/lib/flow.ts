@@ -31,6 +31,7 @@ import {
   routingProofHeaders,
   signAccountLogin,
   signMemberJoinOp,
+  type CloudAccountRelay,
   type DelegatedSession,
   type IntentResult,
 } from '@calimero-network/mero-js';
@@ -225,6 +226,43 @@ export async function describeRelay(nodeUrl: string, contextId: string) {
  * succeeds — rather than on the day the flag flips and every client breaks at
  * once.
  */
+/**
+ * The relays this account is already known to, from the cloud.
+ *
+ * Proven with the device certificate, not a cloud session — so a browser that
+ * holds only a key can ask, which is the whole point of the flow this page
+ * demonstrates.
+ *
+ * **An empty list is the normal answer for a new account, not a failure.** The
+ * cloud derives this from the recovery records relays write for members they
+ * serve, so an account that has never joined anything has no relay to report.
+ * That makes this a *returning device* path: useful when you hold a key and
+ * have lost the node address, useless for a first join, which still needs an
+ * invitation naming an admitter. The caller must tell a person those two apart,
+ * because "no relays yet" and "the lookup failed" look identical otherwise.
+ *
+ * Usable relays are the ones with a URL and a fresh heartbeat; the rest are
+ * returned too, because "your relay is down" and "you have no relay" need
+ * different actions and an empty list would erase the difference.
+ */
+export async function findAccountRelays(
+  cloudUrl: string,
+  identity: DeviceIdentity,
+): Promise<{ usable: CloudAccountRelay[]; others: CloudAccountRelay[] }> {
+  const cloud = new CloudClient({
+    cloudBaseUrl: normaliseUrl(cloudUrl),
+    routingCredential: {
+      credential: identity.credential,
+      deviceSecret: identity.deviceSecret,
+    },
+  });
+  const relays = await cloud.getAccountRelays(identity.accountId);
+  return {
+    usable: relays.filter((r) => r.fresh && !!r.relayUrl),
+    others: relays.filter((r) => !(r.fresh && r.relayUrl)),
+  };
+}
+
 export async function discoverAdmitter(
   cloudUrl: string,
   namespaceId: string,
