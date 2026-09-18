@@ -1,15 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useParams } from "react-router-dom";
+import { useParams } from 'react-router-dom';
 import { useMero } from '@calimero-network/mero-react';
 
 import AppHeader from '../../components/AppHeader';
 import InviteModal from '../../components/InviteModal';
 import SecretForm from '../../components/SecretForm';
 import { useApplicationId } from '../../hooks/useApplicationId';
-import type {
-  AuditLogEntry,
-  SecretItem,
-} from '../../generated/MeroPassClient';
+import type { AuditLogEntry, SecretItem } from '../../generated/MeroPassClient';
 import { useVaultClient, useVaultName } from '../../lib/vault';
 import { findVaultByContext, mintVaultInvite } from '../../lib/vaults';
 import shell from '../../styles/shell.module.css';
@@ -84,6 +81,10 @@ export default function VaultPage() {
     scope: string;
     hint: string;
   } | null>(null);
+  // Null until the lookup lands. NOT defaulted to `false`: rendering "shared
+  // with your team" on a vault that turns out to be private, even for the
+  // half-second the scan takes, is the wrong way round to be wrong.
+  const [personal, setPersonal] = useState<boolean | null>(null);
   const [teamId, setTeamId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -125,7 +126,9 @@ export default function VaultPage() {
     let cancelled = false;
     findVaultByContext(mero.admin, appId, vaultId)
       .then((found) => {
-        if (!cancelled) setTeamId(found?.namespaceId ?? null);
+        if (cancelled) return;
+        setTeamId(found?.namespaceId ?? null);
+        setPersonal(found?.personal ?? null);
       })
       .catch(() => {});
     return () => {
@@ -218,7 +221,14 @@ export default function VaultPage() {
   return (
     <div className={shell.root}>
       <AppHeader
-        back={{ label: 'Teams', to: teamId ? `/teams/${teamId}` : '/teams' }}
+        // A personal vault's parent namespace is an implementation detail with
+        // nothing in it but this vault, so "back" goes to the vault list rather
+        // than to a team screen that would offer to invite people into it.
+        back={
+          personal === true
+            ? { label: 'Vaults', to: '/teams' }
+            : { label: 'Teams', to: teamId ? `/teams/${teamId}` : '/teams' }
+        }
         crumb={vaultName}
       />
 
@@ -228,20 +238,31 @@ export default function VaultPage() {
             <h1 className={shell.title} data-testid="vault-heading">
               {vaultName}
             </h1>
-            <p className={shell.subtitle}>
-              Shared with everyone in this vault&rsquo;s team.
+            <p className={shell.subtitle} data-testid="vault-scope">
+              {personal === true
+                ? 'Private. Only you can open this vault — it has no other members and cannot be shared.'
+                : personal === false
+                  ? "Shared with everyone in this vault's team."
+                  : '\u00a0'}
             </p>
           </div>
           <div className={shell.titleRowActions}>
-            <button
-              type="button"
-              className={shell.btnGhost}
-              onClick={() => void inviteMember()}
-              disabled={minting || !mero || !appId}
-              data-testid="vault-invite"
-            >
-              {minting ? 'Minting…' : 'Invite'}
-            </button>
+            {/* A personal vault has nobody to invite, and `mintVaultInvite`
+                refuses one outright — so the control would be a button that
+                only ever produces an error. It is hidden, not disabled: a
+                greyed-out "Invite" implies the vault could be shared if some
+                condition changed, and this one cannot be. */}
+            {personal !== true && (
+              <button
+                type="button"
+                className={shell.btnGhost}
+                onClick={() => void inviteMember()}
+                disabled={minting || !mero || !appId}
+                data-testid="vault-invite"
+              >
+                {minting ? 'Minting…' : 'Invite'}
+              </button>
+            )}
             <button
               type="button"
               className={shell.btn}

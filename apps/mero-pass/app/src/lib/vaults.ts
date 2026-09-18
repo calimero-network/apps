@@ -166,11 +166,47 @@ export function displayName(
 
 // ── Teams (namespaces) ──────────────────────────────────────────────────────
 
+/**
+ * The key written into a namespace's metadata `data` map to mark it PERSONAL.
+ *
+ * A personal vault is not a team you happen not to have invited anyone to. It
+ * is built differently (see `createPersonalVault`) and must be recognisable as
+ * such on every device of the account, so the marker has to live somewhere
+ * replicated. `MetadataRecord.data` is a free-form `Record<string, string>`,
+ * which is the only free-form replicated field available here — the request
+ * bodies are all `deny_unknown_fields`, so an invented top-level key would be a
+ * 400 for the whole call.
+ *
+ * ⚠️ Writing metadata WHOLLY REPLACES the record: `data` defaults to `{}`
+ * server-side. Anything that later sets a name on a personal namespace must
+ * pass this map back, or the vault silently demotes itself to a shared team —
+ * which is a privacy regression, not a cosmetic one. `markPersonal` below is
+ * the only writer, and it always writes both fields together.
+ */
+export const PERSONAL_KIND_KEY = 'kind';
+export const PERSONAL_KIND_VALUE = 'personal';
+
 export interface TeamRow {
   namespaceId: string;
   name: string;
   memberCount: number;
   vaultCount: number;
+  /**
+   * True when this namespace holds ONE person's private vault.
+   *
+   * Read from replicated metadata rather than inferred from `memberCount === 1`:
+   * a shared team looks exactly like that between being created and the first
+   * invitation, and treating it as private would put a "nobody else can see
+   * this" label on a vault that is one click from being shared.
+   */
+  personal: boolean;
+}
+
+/** Whether a metadata record carries the personal marker. */
+export function isPersonalRecord(
+  meta: { data?: Record<string, string> | null } | null | undefined,
+): boolean {
+  return meta?.data?.[PERSONAL_KIND_KEY] === PERSONAL_KIND_VALUE;
 }
 
 /**
@@ -191,13 +227,19 @@ export async function listTeams(
   const namespaces = await admin.listNamespacesForApplication(applicationId);
   return Promise.all(
     (namespaces ?? []).map(async (n) => {
-      const meta =
-        (n.name ?? '').trim() === ''
-          ? await admin.getGroupMetadata(n.namespaceId).catch(() => null)
-          : null;
+      // ⚠️ UNCONDITIONAL now. This used to be skipped whenever the listing
+      // already carried a name, which was a fair saving when the record only
+      // held a fallback name — but the record is also where `personal` lives,
+      // and a named personal vault would have come back with `personal: false`
+      // and been rendered as a shared team. Getting that wrong in this
+      // direction understates privacy on screen, so the request is not optional.
+      const meta = await admin
+        .getGroupMetadata(n.namespaceId)
+        .catch(() => null);
       return {
         namespaceId: n.namespaceId,
         name: displayName([n.name, meta?.name], n.namespaceId, 'Team'),
+        personal: isPersonalRecord(meta),
         memberCount: n.memberCount ?? 0,
         // `subgroupCount` is the vault count. Preferred over listing every
         // team's groups: that would be one request per row just to render a
@@ -373,6 +415,143 @@ export async function createVault(
   };
 }
 
+// ── The personal vault ───────────────────────────────────────────────────────
+
+/**
+ * Create the vault that is yours alone: its own namespace, a RESTRICTED
+ * subgroup, and a context nobody is ever invited to.
+ *
+ * ── Why it is not a vault inside a team ──────────────────────────────────────
+ *
+ * `createVault` sets `subgroupVisibility: 'open'`, and it has to: an invited
+ * team member reaches a vault by inheritance, and a restricted one answers
+ * `join-via-inheritance` with a 403. The consequence is that EVERY vault in a
+ * team is readable by every member of that team — which is the correct model
+ * for shared credentials and a fatal one for private ones. A "private vault"
+ * placed in a team namespace would be self-joinable by every colleague in it.
+ *
+ * So the isolation boundary is the NAMESPACE, not the subgroup. Nobody is ever
+ * a member of this namespace except you, which means there is no one for
+ * inheritance to admit.
+ *
+ * ── The four things that make it private, in order of what breaks ────────────
+ *
+ *   1. its own namespace, with no invitation ever minted against it;
+ *   2. `defaultCapabilities: 0`, so a member arriving by any route this app
+ *      does not know about can do nothing;
+ *   3. the namespace root is NOT opened — `createTeam` opens it so invitees can
+ *      reach vaults, and that step is simply absent here;
+ *   4. the subgroup is explicitly RESTRICTED rather than left to default.
+ *
+ * (4) is belt and braces on (1): restricted IS the server default, and the
+ * comment at the top of this file says so. It is written out anyway because the
+ * default is a property of a core release, this app already carries a note
+ * about a core release changing a default under it, and a password manager is
+ * the wrong place to depend on one. Unlike the `open` call in `createVault`
+ * this one is NOT swallowed: if the node will not make the subgroup restricted,
+ * the honest outcome is a failure, not a vault that quietly is not private.
+ *
+ * ── Multi-device ─────────────────────────────────────────────────────────────
+ *
+ * Namespace membership is per ACCOUNT, so a second device of the same account
+ * sees this namespace and syncs the vault. That is the intended behaviour —
+ * your own passwords on your own devices — and it is why the marker is written
+ * to replicated metadata rather than to `localStorage`.
+ */
+export async function createPersonalVault(
+  admin: AdminLike,
+  opts: { applicationId: string; name?: string },
+  onStatus: StatusFn = noop,
+): Promise<{ namespaceId: string; vaultId: string; contextId: string }> {
+  const name = (opts.name ?? '').trim() || 'Personal';
+
+  onStatus('Creating your private vault…');
+  const ns = await admin.createNamespace({
+    applicationId: opts.applicationId,
+    name,
+  });
+
+  onStatus('Marking it private…');
+  // Name and marker in ONE write, because a write replaces the record. Not
+  // swallowed: without the marker this namespace is indistinguishable from a
+  // team, and the UI would offer an "Invite someone" menu on a private vault.
+  await admin.setGroupMetadata(ns.namespaceId, {
+    name,
+    data: { [PERSONAL_KIND_KEY]: PERSONAL_KIND_VALUE },
+  });
+
+  onStatus('Closing it to everyone else…');
+  // Nobody should ever be a member here, so anyone who somehow is gets nothing.
+  await admin
+    .setDefaultCapabilities(ns.namespaceId, { defaultCapabilities: 0 })
+    .catch(() => {});
+
+  // NOTE: no `setSubgroupVisibility(ns.namespaceId, 'open')`. `createTeam` makes
+  // that call so invited members can reach the team's vaults; its ABSENCE is
+  // part of what makes this vault private, so it is called out rather than
+  // merely missing.
+
+  onStatus('Creating the vault…');
+  const sg = await admin.createGroupInNamespace(ns.namespaceId, {
+    groupName: name,
+  });
+  await admin.setGroupMetadata(sg.groupId, { name }).catch(() => {});
+
+  onStatus('Keeping it closed…');
+  await admin.setSubgroupVisibility(sg.groupId, {
+    subgroupVisibility: 'restricted',
+  });
+
+  onStatus('Preparing storage…');
+  const ctx = await admin.createContext({
+    applicationId: opts.applicationId,
+    groupId: sg.groupId,
+    initializationParams: initParamsFor(name),
+  });
+
+  return {
+    namespaceId: ns.namespaceId,
+    vaultId: sg.groupId,
+    contextId: ctx.contextId,
+  };
+}
+
+/**
+ * Throw if this namespace is someone's personal vault.
+ *
+ * Called by both mint paths. The UI does not render an invite control for a
+ * personal vault, and that is the right UX — but "the button is not on screen"
+ * is not an access control. A stale tab, a saved deep link, a future screen, or
+ * a caller written six months from now all reach the library directly, and the
+ * cost of being wrong here is publishing a link to one person's private
+ * passwords. So the refusal lives next to the operation it refuses.
+ */
+async function refuseIfPersonal(
+  admin: AdminLike,
+  namespaceId: string,
+): Promise<void> {
+  // ⚠️ A FAILED READ IS TREATED AS PERSONAL. The safe default under an
+  // unreachable node is to decline to mint, not to mint anyway: declining
+  // costs an invitation that can be retried, and the alternative cost is
+  // unbounded. This is the one place in the app where a node hiccup blocks a
+  // legitimate action, and that trade is deliberate.
+  let meta: Awaited<ReturnType<AdminLike['getGroupMetadata']>> | null;
+  try {
+    meta = await admin.getGroupMetadata(namespaceId);
+  } catch {
+    throw new Error(
+      'Could not confirm whether this is your private vault, so no invitation ' +
+        'was created. Check the node connection and try again.',
+    );
+  }
+  if (isPersonalRecord(meta)) {
+    throw new Error(
+      'This is your private vault. It has no members but you, and it cannot be ' +
+        'shared — create a team if you want to share credentials with someone.',
+    );
+  }
+}
+
 // ── Invitations ──────────────────────────────────────────────────────────────
 
 /**
@@ -387,6 +566,7 @@ export async function mintTeamInvite(
   opts: { namespaceId: string; teamName?: string },
   onStatus: StatusFn = noop,
 ): Promise<string> {
+  await refuseIfPersonal(admin, opts.namespaceId);
   onStatus('Minting an invitation…');
   const res = await admin.createNamespaceInvitation(opts.namespaceId, {});
   const invitation = unwrapInvitation(res);
@@ -429,6 +609,7 @@ export async function mintVaultInvite(
   },
   onStatus: StatusFn = noop,
 ): Promise<string> {
+  await refuseIfPersonal(admin, opts.namespaceId);
   onStatus('Minting an invitation for this vault…');
   const res = await admin.createNamespaceInvitation(opts.namespaceId, {});
   const invitation = unwrapInvitation(res);
@@ -781,6 +962,8 @@ export async function findVaultByContext(
   vaultId: string;
   teamName: string;
   vaultName: string;
+  /** True when this vault's namespace is the caller's personal one. */
+  personal: boolean;
 } | null> {
   const teams = await listTeams(admin, applicationId).catch(() => []);
   for (const team of teams) {
@@ -792,6 +975,7 @@ export async function findVaultByContext(
         vaultId: hit.vaultId,
         teamName: team.name,
         vaultName: hit.name,
+        personal: team.personal,
       };
     }
   }

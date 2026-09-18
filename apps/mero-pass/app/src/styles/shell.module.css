@@ -134,6 +134,23 @@
   margin-bottom: 24px;
 }
 
+/* A heading WITHIN a screen — "Private", "Teams" — as opposed to `.title`,
+   which names the screen. Smaller and uppercase-tracked so the page still has
+   one visual h1 and the sections read as dividers rather than as competing
+   titles. The top margin is asymmetric on purpose: a section heading belongs to
+   what follows it, not to what it follows. */
+.sectionTitle {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  margin: 32px 0 12px;
+}
+.sectionTitle:first-of-type {
+  margin-top: 8px;
+}
+
 .titleRow {
   display: flex;
   align-items: flex-start;

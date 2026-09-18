@@ -1,10 +1,7 @@
 // Aliased over src/lib/vaults. Fixture data only — every shape here matches what
 // the real module returns, so the screenshots document the real components.
 import { VARIANT } from './fixtures';
-import {
-  ADMIN_CAPABILITIES,
-  MEMBER_CAPABILITIES,
-} from '../../src/lib/roles';
+import { ADMIN_CAPABILITIES, MEMBER_CAPABILITIES } from '../../src/lib/roles';
 
 // Inlined, not re-exported: the alias in vite.config.ts matches `/lib/vaults`
 // anywhere, including this file's own import of it, which rollup reports as a
@@ -22,10 +19,45 @@ export function displayName(
 }
 
 const TEAMS = [
-  { namespaceId: 'ns-1', name: 'Acme Ltd', memberCount: 4, vaultCount: 3 },
-  { namespaceId: 'ns-2', name: 'Home', memberCount: 2, vaultCount: 1 },
-  { namespaceId: 'ns-3', name: 'Side project', memberCount: 1, vaultCount: 0 },
-  { namespaceId: 'ns-4', name: 'Ops on-call', memberCount: 7, vaultCount: 5 },
+  // The personal vault arrives in the SAME listing as the teams — it is a
+  // namespace like any other on the wire — and the screen is what separates
+  // them. Note `memberCount: 1` on both this and "Side project": the marker is
+  // what makes one private, not the headcount.
+  {
+    namespaceId: 'ns-p',
+    name: 'Personal',
+    memberCount: 1,
+    vaultCount: 1,
+    personal: true,
+  },
+  {
+    namespaceId: 'ns-1',
+    name: 'Acme Ltd',
+    memberCount: 4,
+    vaultCount: 3,
+    personal: false,
+  },
+  {
+    namespaceId: 'ns-2',
+    name: 'Home',
+    memberCount: 2,
+    vaultCount: 1,
+    personal: false,
+  },
+  {
+    namespaceId: 'ns-3',
+    name: 'Side project',
+    memberCount: 1,
+    vaultCount: 0,
+    personal: false,
+  },
+  {
+    namespaceId: 'ns-4',
+    name: 'Ops on-call',
+    memberCount: 7,
+    vaultCount: 5,
+    personal: false,
+  },
 ];
 
 const VAULTS = [
@@ -95,8 +127,12 @@ const MISMATCHED = [
 ];
 
 export async function listTeams() {
-  if (VARIANT === 'error') throw new Error('The node refused the request (503).');
-  return VARIANT === 'empty' ? [] : TEAMS;
+  if (VARIANT === 'error')
+    throw new Error('The node refused the request (503).');
+  if (VARIANT === 'empty') return [];
+  // `noPersonal` is the state before anyone has made one — the screen has to
+  // offer to create it, and that offer is a different shape from a card.
+  return VARIANT === 'noPersonal' ? TEAMS.filter((t) => !t.personal) : TEAMS;
 }
 
 export async function listVaults() {
@@ -109,6 +145,9 @@ export async function listTeamMembers() {
 
 export async function createTeam() {
   return { namespaceId: 'ns-new' };
+}
+export async function createPersonalVault() {
+  return { namespaceId: 'ns-p', vaultId: 'sg-p', contextId: 'ctx-p' };
 }
 export async function createVault() {
   return { vaultId: 'sg-new', contextId: 'ctx-new', memberPublicKey: 'k' };
@@ -134,12 +173,21 @@ export async function myCapabilities() {
   return ADMIN_CAPABILITIES;
 }
 export async function findVaultByContext() {
-  return {
-    namespaceId: 'ns-1',
-    vaultId: 'sg-1',
-    teamName: 'Acme Ltd',
-    vaultName: 'Bank logins',
-  };
+  return VARIANT === 'personal'
+    ? {
+        namespaceId: 'ns-p',
+        vaultId: 'sg-p',
+        teamName: 'Personal',
+        vaultName: 'Personal',
+        personal: true,
+      }
+    : {
+        namespaceId: 'ns-1',
+        vaultId: 'sg-1',
+        teamName: 'Acme Ltd',
+        vaultName: 'Bank logins',
+        personal: false,
+      };
 }
 export async function acceptInvite() {
   return {

@@ -26,10 +26,10 @@
 // expect test.describe() to be called here" — the catalog pins @playwright/test
 // and this file pinned playwright itself, so a catalog bump desynced them.
 // @playwright/test re-exports chromium, so one dependency covers both uses.
-import { chromium } from "@playwright/test";
-import { createServer } from "node:http";
-import { readFile } from "node:fs/promises";
-import { mkdirSync, existsSync } from "node:fs";
+import { chromium } from '@playwright/test';
+import { createServer } from 'node:http';
+import { readFile } from 'node:fs/promises';
+import { mkdirSync, existsSync } from 'node:fs';
 import {
   dirname,
   extname,
@@ -38,19 +38,19 @@ import {
   normalize,
   relative,
   resolve,
-} from "node:path";
-import { fileURLToPath } from "node:url";
-import { execFileSync } from "node:child_process";
+} from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { execFileSync } from 'node:child_process';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const APP = resolve(HERE, "..");
-const BUILD = resolve(APP, "../data/shots-build");
+const APP = resolve(HERE, '..');
+const BUILD = resolve(APP, '../data/shots-build');
 
 function argOf(flag) {
   const i = process.argv.indexOf(flag);
   return i > -1 ? process.argv[i + 1] : undefined;
 }
-const OUT = resolve(argOf("--out") ?? resolve(APP, "../data/shots"));
+const OUT = resolve(argOf('--out') ?? resolve(APP, '../data/shots'));
 
 // Kept in step with e2e/shots/fixtures.ts by hand. Duplicated rather than
 // imported because that file is TypeScript and this driver is plain node —
@@ -63,81 +63,163 @@ const OUT = resolve(argOf("--out") ?? resolve(APP, "../data/shots"));
 // screenshot set that only shows the resting state of each page is exactly how
 // a redesign ships with an unstyled modal in it.
 const SCENARIOS = [
-  ["teams", "Teams — the front screen", '[data-testid="team-card"]'],
-  ["teams-empty", "No teams yet", '[data-testid="teams-empty"]'],
-  ["teams-error", "The node refused the list", '[data-testid="error"]'],
-  ["teams-not-installed", "App not installed on this node", '[data-testid="not-installed"]'],
-  ["teams-menu", "Teams — the ⋯ menu open", '[data-testid="team-dropdown"]', { scenario: "teams", click: '[data-testid="team-menu"]' }],
-  ["teams-invite", "Teams — an invitation minted", '[data-testid="invite-modal"]', { scenario: "teams", click: '[data-testid="team-menu"]', then: 'text=Invite someone' }],
-  ["team-vaults", "One team's vaults, as an Admin", '[data-testid="vault-card"]'],
-  ["team-empty", "A team with no vaults", '[data-testid="vaults-empty"]'],
-  ["team-member", "The same team, as a Member", '[data-testid="member-notice"]'],
-  ["team-people", "People and roles", '[data-testid="member-row"]'],
-  ["team-people-member", "People, read-only", '[data-testid="read-only-roles"]'],
-  ["team-people-mismatch", "A role whose capabilities have not landed", '[data-testid="role-mismatch"]'],
-  ["team-people-confirm", "Confirming a demotion", '[data-testid="role-warning"]', { scenario: "team-people", click: '[data-testid="role-change"]' }],
-  ["vault", "A vault's secrets", '[data-testid="secret-row"]'],
-  ["vault-open", "A secret expanded, values concealed", '[data-testid="field-hidden"]', { scenario: "vault", click: '[data-testid="secret-row"] button' }],
-  ["vault-revealed", "One field revealed on request", '[data-testid="field-shown"]', { scenario: "vault", click: '[data-testid="secret-row"] button', then: '[data-testid="reveal"]' }],
-  ["vault-delete", "Deleting reaches everyone", '[data-testid="secret-delete-confirm"]', { scenario: "vault", click: '[data-testid="secret-row"] button', then: '[data-testid="secret-delete"]' }],
-  ["vault-form", "Adding a secret", '[data-testid="secret-form"]', { scenario: "vault", click: '[data-testid="secret-add"]' }],
-  ["vault-empty", "A vault with no secrets", '[data-testid="secrets-empty"]'],
-  ["vault-activity", "What has happened in this vault", '[data-testid="activity-list"]', { scenario: "vault", click: '[data-testid="tab-activity"]' }],
-  ["vault-no-identity", "In the team, not yet in the vault", '[data-testid="no-identity"]'],
-  ["landing", "The front door", ".cal-lp-brand"],
+  ['teams', 'Teams — the front screen', '[data-testid="team-card"]'],
+  [
+    'teams-no-personal',
+    'Before you have a private vault',
+    '[data-testid="personal-create"]',
+  ],
+  ['teams-empty', 'No teams yet', '[data-testid="teams-empty"]'],
+  ['teams-error', 'The node refused the list', '[data-testid="error"]'],
+  [
+    'teams-not-installed',
+    'App not installed on this node',
+    '[data-testid="not-installed"]',
+  ],
+  [
+    'teams-menu',
+    'Teams — the ⋯ menu open',
+    '[data-testid="team-dropdown"]',
+    { scenario: 'teams', click: '[data-testid="team-menu"]' },
+  ],
+  [
+    'teams-invite',
+    'Teams — an invitation minted',
+    '[data-testid="invite-modal"]',
+    {
+      scenario: 'teams',
+      click: '[data-testid="team-menu"]',
+      then: 'text=Invite someone',
+    },
+  ],
+  [
+    'team-vaults',
+    "One team's vaults, as an Admin",
+    '[data-testid="vault-card"]',
+  ],
+  ['team-empty', 'A team with no vaults', '[data-testid="vaults-empty"]'],
+  [
+    'team-member',
+    'The same team, as a Member',
+    '[data-testid="member-notice"]',
+  ],
+  ['team-people', 'People and roles', '[data-testid="member-row"]'],
+  [
+    'team-people-member',
+    'People, read-only',
+    '[data-testid="read-only-roles"]',
+  ],
+  [
+    'team-people-mismatch',
+    'A role whose capabilities have not landed',
+    '[data-testid="role-mismatch"]',
+  ],
+  [
+    'team-people-confirm',
+    'Confirming a demotion',
+    '[data-testid="role-warning"]',
+    { scenario: 'team-people', click: '[data-testid="role-change"]' },
+  ],
+  ['vault', "A vault's secrets", '[data-testid="secret-row"]'],
+  [
+    'vault-open',
+    'A secret expanded, values concealed',
+    '[data-testid="field-hidden"]',
+    { scenario: 'vault', click: '[data-testid="secret-row"] button' },
+  ],
+  [
+    'vault-revealed',
+    'One field revealed on request',
+    '[data-testid="field-shown"]',
+    {
+      scenario: 'vault',
+      click: '[data-testid="secret-row"] button',
+      then: '[data-testid="reveal"]',
+    },
+  ],
+  [
+    'vault-delete',
+    'Deleting reaches everyone',
+    '[data-testid="secret-delete-confirm"]',
+    {
+      scenario: 'vault',
+      click: '[data-testid="secret-row"] button',
+      then: '[data-testid="secret-delete"]',
+    },
+  ],
+  [
+    'vault-form',
+    'Adding a secret',
+    '[data-testid="secret-form"]',
+    { scenario: 'vault', click: '[data-testid="secret-add"]' },
+  ],
+  ['vault-personal', 'Your private vault', '[data-testid="vault-scope"]'],
+  ['vault-empty', 'A vault with no secrets', '[data-testid="secrets-empty"]'],
+  [
+    'vault-activity',
+    'What has happened in this vault',
+    '[data-testid="activity-list"]',
+    { scenario: 'vault', click: '[data-testid="tab-activity"]' },
+  ],
+  [
+    'vault-no-identity',
+    'In the team, not yet in the vault',
+    '[data-testid="no-identity"]',
+  ],
+  ['landing', 'The front door', '.cal-lp-brand'],
 ];
 
 const MIME = {
-  ".html": "text/html; charset=utf-8",
-  ".js": "text/javascript; charset=utf-8",
-  ".css": "text/css; charset=utf-8",
-  ".svg": "image/svg+xml",
-  ".ico": "image/x-icon",
-  ".png": "image/png",
-  ".json": "application/json",
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.svg': 'image/svg+xml',
+  '.ico': 'image/x-icon',
+  '.png': 'image/png',
+  '.json': 'application/json',
 };
 
 function serve(root) {
   const server = createServer(async (req, res) => {
     try {
-      const url = new URL(req.url, "http://localhost");
+      const url = new URL(req.url, 'http://localhost');
       // A path-BOUNDARY check, not a string prefix. `startsWith(root)` also
       // accepts a sibling directory whose name merely begins with the same
       // characters (`shots-build` vs `shots-build-secret`), which is a known
       // anti-pattern worth not copying elsewhere even where — as here — the
       // server is ephemeral, bound to 127.0.0.1, and serving a build directory.
       const target = normalize(
-        join(root, url.pathname === "/" ? "/index.html" : url.pathname),
+        join(root, url.pathname === '/' ? '/index.html' : url.pathname),
       );
       const rel = relative(root, target);
-      if (rel !== "" && (rel.startsWith("..") || isAbsolute(rel))) {
-        res.writeHead(403).end("nope");
+      if (rel !== '' && (rel.startsWith('..') || isAbsolute(rel))) {
+        res.writeHead(403).end('nope');
         return;
       }
       const body = await readFile(target);
       res.writeHead(200, {
-        "content-type": MIME[extname(target)] ?? "text/plain",
+        'content-type': MIME[extname(target)] ?? 'text/plain',
       });
       res.end(body);
     } catch {
-      res.writeHead(404).end("not found");
+      res.writeHead(404).end('not found');
     }
   });
   return new Promise((ok) =>
-    server.listen(0, "127.0.0.1", () =>
+    server.listen(0, '127.0.0.1', () =>
       ok({ server, port: server.address().port }),
     ),
   );
 }
 
 async function main() {
-  console.log("• building the harness");
+  console.log('• building the harness');
   execFileSync(
-    "pnpm",
-    ["exec", "vite", "build", "--config", "e2e/shots/vite.config.ts"],
-    { cwd: APP, stdio: "inherit" },
+    'pnpm',
+    ['exec', 'vite', 'build', '--config', 'e2e/shots/vite.config.ts'],
+    { cwd: APP, stdio: 'inherit' },
   );
-  if (!existsSync(join(BUILD, "index.html"))) {
+  if (!existsSync(join(BUILD, 'index.html'))) {
     throw new Error(`harness build missing at ${BUILD}`);
   }
 
@@ -153,10 +235,10 @@ async function main() {
         deviceScaleFactor: 2, // retina, so the text in the screenshots is legible
       });
       const errors = [];
-      page.on("pageerror", (e) => errors.push(String(e)));
+      page.on('pageerror', (e) => errors.push(String(e)));
       await page.goto(
         `http://127.0.0.1:${port}/index.html?s=${drive?.scenario ?? id}`,
-        { waitUntil: "load" },
+        { waitUntil: 'load' },
       );
 
       // Drive into a post-interaction state before waiting on its landmark.
@@ -172,7 +254,7 @@ async function main() {
       await page
         .locator(waitFor)
         .first()
-        .waitFor({ state: "visible", timeout: 15_000 });
+        .waitFor({ state: 'visible', timeout: 15_000 });
       // Two rAFs' worth: the canvas patterns are painted on rAF, and the first
       // frame lands after mount.
       await page.waitForTimeout(600);

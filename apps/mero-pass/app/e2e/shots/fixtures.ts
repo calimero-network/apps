@@ -8,6 +8,7 @@ export type Scenario = {
 
 export const SCENARIOS: Scenario[] = [
   { id: 'teams', page: 'teams' },
+  { id: 'teams-no-personal', page: 'teams', variant: 'noPersonal' },
   { id: 'teams-empty', page: 'teams', variant: 'empty' },
   { id: 'teams-error', page: 'teams', variant: 'error' },
   { id: 'teams-not-installed', page: 'teams', variant: 'notInstalled' },
@@ -18,6 +19,7 @@ export const SCENARIOS: Scenario[] = [
   { id: 'team-people-member', page: 'team', variant: 'peopleMember' },
   { id: 'team-people-mismatch', page: 'team', variant: 'peopleMismatch' },
   { id: 'vault', page: 'vault' },
+  { id: 'vault-personal', page: 'vault', variant: 'personal' },
   { id: 'vault-empty', page: 'vault', variant: 'empty' },
   { id: 'vault-activity', page: 'vault', variant: 'activity' },
   { id: 'vault-no-identity', page: 'vault', variant: 'noIdentity' },

@@ -4,6 +4,7 @@ import { CAPABILITIES } from '@calimero-network/mero-js';
 import { decodeInvite } from './inviteCodec';
 import { ADMIN_CAPABILITIES, MEMBER_CAPABILITIES } from './roles';
 import {
+  createPersonalVault,
   createTeam,
   createVault,
   displayName,
@@ -13,6 +14,7 @@ import {
   mintTeamInvite,
   listTeamMembers,
   mintVaultInvite,
+  isPersonalRecord,
   myCapabilities,
   setMemberRole,
   unwrapInvitation,
@@ -529,5 +531,162 @@ describe('myCapabilities', () => {
       getMemberCapabilities: () => Promise.reject(new Error('offline')),
     });
     expect(await myCapabilities(admin, 'ns-1', 'acct-a')).toBeNull();
+  });
+});
+
+// ── The personal vault ──────────────────────────────────────────────────────
+//
+// These assert the four properties that make a vault private, INDIVIDUALLY.
+// A single "it is private" test passes as long as one of them holds, and the
+// failure mode here is silent: a personal vault built like a team looks
+// identical on screen and is readable by anyone who joins the namespace.
+
+describe('createPersonalVault', () => {
+  it('never opens the namespace root, the way a team does', async () => {
+    const { admin, calls } = fakeAdmin();
+    await createPersonalVault(admin as unknown as AdminLike, {
+      applicationId: 'app-1',
+    });
+
+    // `createTeam` calls this with the NAMESPACE id to let invitees reach its
+    // vaults by inheritance. Its absence is what leaves nobody a way in.
+    const visibilityTargets = calls
+      .filter((c) => c.method === 'setSubgroupVisibility')
+      .map((c) => c.args[0]);
+    expect(visibilityTargets).not.toContain('ns-1');
+  });
+
+  it('makes the subgroup restricted, explicitly', async () => {
+    const { admin, calls } = fakeAdmin();
+    await createPersonalVault(admin as unknown as AdminLike, {
+      applicationId: 'app-1',
+    });
+    expect(argsOf(calls, 'setSubgroupVisibility')).toEqual([
+      'sub-1',
+      { subgroupVisibility: 'restricted' },
+    ]);
+  });
+
+  it('grants an arriving member nothing', async () => {
+    const { admin, calls } = fakeAdmin();
+    await createPersonalVault(admin as unknown as AdminLike, {
+      applicationId: 'app-1',
+    });
+    expect(argsOf(calls, 'setDefaultCapabilities')).toEqual([
+      'ns-1',
+      { defaultCapabilities: 0 },
+    ]);
+  });
+
+  it('writes the marker and the name in ONE record', async () => {
+    const { admin, calls } = fakeAdmin();
+    await createPersonalVault(admin as unknown as AdminLike, {
+      applicationId: 'app-1',
+      name: 'Personal',
+    });
+    // Metadata writes REPLACE the record, so a name written without the marker
+    // (or a marker written without the name) loses the other one. The first
+    // write is the namespace's and must carry both.
+    const first = calls.find(
+      (c) => c.method === 'setGroupMetadata' && c.args[0] === 'ns-1',
+    );
+    expect(first?.args[1]).toEqual({
+      name: 'Personal',
+      data: { kind: 'personal' },
+    });
+  });
+
+  it('fails rather than shipping a vault that is not private', async () => {
+    const { admin } = fakeAdmin({
+      setSubgroupVisibility: () => Promise.reject(new Error('nope')),
+    });
+    await expect(
+      createPersonalVault(admin as unknown as AdminLike, {
+        applicationId: 'app-1',
+      }),
+    ).rejects.toThrow('nope');
+  });
+});
+
+describe('a personal vault cannot be invited into', () => {
+  const personal = { name: 'Personal', data: { kind: 'personal' } };
+
+  it('refuses a team invite', async () => {
+    const { admin, calls } = fakeAdmin({
+      getGroupMetadata: () => Promise.resolve(personal),
+    });
+    await expect(
+      mintTeamInvite(admin as unknown as AdminLike, { namespaceId: 'ns-1' }),
+    ).rejects.toThrow('private vault');
+    // The point is that nothing was MINTED, not merely that it threw.
+    expect(methodsOf(calls)).not.toContain('createNamespaceInvitation');
+  });
+
+  it('refuses a vault invite', async () => {
+    const { admin, calls } = fakeAdmin({
+      getGroupMetadata: () => Promise.resolve(personal),
+    });
+    await expect(
+      mintVaultInvite(admin as unknown as AdminLike, {
+        namespaceId: 'ns-1',
+        vaultId: 'sub-1',
+      }),
+    ).rejects.toThrow('private vault');
+    expect(methodsOf(calls)).not.toContain('createNamespaceInvitation');
+  });
+
+  it('refuses when it cannot tell, rather than minting anyway', async () => {
+    const { admin, calls } = fakeAdmin({
+      getGroupMetadata: () => Promise.reject(new Error('node down')),
+    });
+    await expect(
+      mintTeamInvite(admin as unknown as AdminLike, { namespaceId: 'ns-1' }),
+    ).rejects.toThrow('Could not confirm');
+    expect(methodsOf(calls)).not.toContain('createNamespaceInvitation');
+  });
+
+  it('still mints for an ordinary team', async () => {
+    const { admin } = fakeAdmin({
+      getGroupMetadata: () => Promise.resolve({ name: 'Acme', data: {} }),
+    });
+    await expect(
+      mintTeamInvite(admin as unknown as AdminLike, { namespaceId: 'ns-1' }),
+    ).resolves.toBeTruthy();
+  });
+});
+
+describe('isPersonalRecord', () => {
+  it('is false for a team, a bare record and nothing at all', () => {
+    expect(isPersonalRecord(null)).toBe(false);
+    expect(isPersonalRecord({ data: {} })).toBe(false);
+    expect(isPersonalRecord({ data: { kind: 'team' } })).toBe(false);
+  });
+
+  it('is true only for the exact marker', () => {
+    expect(isPersonalRecord({ data: { kind: 'personal' } })).toBe(true);
+  });
+});
+
+describe('listTeams', () => {
+  it('reports a namespace as personal from its record, not its size', async () => {
+    const { admin } = fakeAdmin({
+      listNamespacesForApplication: () =>
+        Promise.resolve([
+          { namespaceId: 'ns-p', name: 'Personal', memberCount: 1 },
+          { namespaceId: 'ns-t', name: 'Acme', memberCount: 1 },
+        ]),
+      getGroupMetadata: (id: string) =>
+        Promise.resolve(
+          id === 'ns-p'
+            ? { name: 'Personal', data: { kind: 'personal' } }
+            : { name: 'Acme', data: {} },
+        ),
+    });
+    const rows = await listTeams(admin as unknown as AdminLike, 'app-1');
+    // Both have ONE member. Only the marked one is private.
+    expect(rows.map((r) => [r.namespaceId, r.personal])).toEqual([
+      ['ns-p', true],
+      ['ns-t', false],
+    ]);
   });
 });

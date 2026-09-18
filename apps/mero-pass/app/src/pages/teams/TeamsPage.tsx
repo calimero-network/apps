@@ -5,7 +5,13 @@ import { useMero } from '@calimero-network/mero-react';
 import AppHeader from '../../components/AppHeader';
 import InviteModal from '../../components/InviteModal';
 import { useApplicationId } from '../../hooks/useApplicationId';
-import { createTeam, listTeams, mintTeamInvite } from '../../lib/vaults';
+import {
+  createPersonalVault,
+  createTeam,
+  listTeams,
+  listVaults,
+  mintTeamInvite,
+} from '../../lib/vaults';
 import type { TeamRow } from '../../lib/vaults';
 import styles from '../../styles/shell.module.css';
 
@@ -35,6 +41,10 @@ export default function TeamsPage() {
   const { appId, resolving, notInstalled } = useApplicationId();
 
   const [teams, setTeams] = useState<TeamRow[]>([]);
+  // The personal vault's context, resolved at load so the card can go straight
+  // into the secrets rather than via a team screen that would list exactly one
+  // vault and offer to invite people to it.
+  const [personalVaultId, setPersonalVaultId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [newName, setNewName] = useState('');
@@ -52,7 +62,20 @@ export default function TeamsPage() {
     }
     setLoading(true);
     try {
-      setTeams(await listTeams(mero.admin, appId));
+      const rows = await listTeams(mero.admin, appId);
+      setTeams(rows);
+      const mine = rows.find((t) => t.personal);
+      if (mine) {
+        // One extra request, only when a personal vault exists. A failure here
+        // degrades the card to "open the namespace" rather than emptying the
+        // screen — the vault still exists either way.
+        const vaults = await listVaults(mero.admin, mine.namespaceId).catch(
+          () => [],
+        );
+        setPersonalVaultId(vaults[0]?.contextId ?? null);
+      } else {
+        setPersonalVaultId(null);
+      }
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -97,6 +120,24 @@ export default function TeamsPage() {
     }
   }, [mero, appId, newName, load, navigate]);
 
+  const createPersonal = useCallback(async () => {
+    if (!mero || !appId) return;
+    setError(null);
+    try {
+      const { contextId } = await createPersonalVault(
+        mero.admin,
+        { applicationId: appId },
+        setBusy,
+      );
+      await load();
+      navigate(`/vault/${contextId}`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(null);
+    }
+  }, [mero, appId, load, navigate]);
+
   const inviteTo = useCallback(
     async (team: TeamRow) => {
       if (!mero) return;
@@ -118,14 +159,70 @@ export default function TeamsPage() {
     [mero],
   );
 
+  // Two different things share one listing on the wire. Split them here so no
+  // screen below has to remember which kind of row it is looking at.
+  const personalTeam = teams.find((t) => t.personal) ?? null;
+  const sharedTeams = teams.filter((t) => !t.personal);
+
   return (
     <div className={styles.root}>
       <AppHeader />
 
       <main className={styles.main}>
-        <h1 className={styles.title}>Your teams</h1>
+        <h1 className={styles.title}>Your vaults</h1>
         <p className={styles.subtitle}>
-          A team is the people. The vaults inside it are shared with everyone
+          Keep credentials to yourself in your private vault, or share them with
+          people you invite to a team.
+        </p>
+
+        {/* ── Private ──────────────────────────────────────────────────────
+            Above the teams, because it is the one vault that is always yours
+            and the one most people open most often. It is created on request
+            rather than on first load: a write that happens by itself the
+            moment a screen renders races a second device doing the same, and
+            this app has already been bitten by lazy-create minting duplicates.
+        */}
+        <h2 className={styles.sectionTitle}>Private</h2>
+        {loading ? (
+          <p className={styles.empty}>Loading…</p>
+        ) : personalTeam ? (
+          <div className={styles.grid}>
+            <button
+              type="button"
+              className={styles.card}
+              onClick={() =>
+                navigate(
+                  personalVaultId
+                    ? `/vault/${personalVaultId}`
+                    : `/teams/${personalTeam.namespaceId}`,
+                )
+              }
+              data-testid="personal-card"
+            >
+              <span className={styles.cardName}>{personalTeam.name}</span>
+              <span className={styles.cardSub}>Only you · never shared</span>
+            </button>
+          </div>
+        ) : (
+          <div className={styles.createRow}>
+            <p className={styles.empty} style={{ margin: 0, flex: 1 }}>
+              A vault only you can open, synced across your own devices.
+            </p>
+            <button
+              type="button"
+              className={styles.btn}
+              onClick={() => void createPersonal()}
+              disabled={!mero || !appId || !!busy}
+              data-testid="personal-create"
+            >
+              Create private vault
+            </button>
+          </div>
+        )}
+
+        <h2 className={styles.sectionTitle}>Teams</h2>
+        <p className={styles.subtitle}>
+          A team is the people. Every vault inside it is readable by everyone
           you invite.
         </p>
 
@@ -163,7 +260,7 @@ export default function TeamsPage() {
           </p>
         ) : loading ? (
           <p className={styles.empty}>Loading…</p>
-        ) : teams.length === 0 ? (
+        ) : sharedTeams.length === 0 ? (
           // ⚠️ Only when the load SUCCEEDED and came back empty. A failed list
           // is not evidence of no teams, and saying "No teams yet" under a 503
           // tells someone their data is gone when the node merely did not
@@ -176,7 +273,7 @@ export default function TeamsPage() {
           )
         ) : (
           <div className={styles.grid} data-testid="team-grid">
-            {teams.map((team) => (
+            {sharedTeams.map((team) => (
               <div
                 key={team.namespaceId}
                 className={styles.cardWrap}
