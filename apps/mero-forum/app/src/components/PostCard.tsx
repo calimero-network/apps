@@ -2,7 +2,7 @@ import { Link } from "react-router-dom";
 
 import type { PostView } from "../generated/ForumClient";
 import { timeAgo } from "../lib/forum";
-import { authorLabel } from "../lib/nickname";
+import { authorLabel, shortAccount } from "../lib/nickname";
 
 export function VoteColumn({
   score,
@@ -59,6 +59,26 @@ export function Byline({
   return (
     <span className="author" data-anonymous={a.anonymous} title={account}>
       {a.label}
+      {/* The id ALWAYS, beside the name — never instead of it and never only on
+          hover.
+
+          A nickname is a claim, not an identity: `set_nickname` lets anyone call
+          themselves anything, including exactly what somebody else is called,
+          and nothing in the contract prevents it or could. So a byline showing
+          a name alone is forgeable by design — two people can be "ana" in the
+          same thread and the reader cannot tell them apart.
+
+          The account id is the thing that cannot be changed, so it is what
+          makes the byline decidable. Rendered small and dim: it is a
+          disambiguator, not the headline, and putting it in a title= attribute
+          instead would hide it from exactly the reader who is being fooled. */}
+      {/* Not when the label IS the id — an author with no name would otherwise
+          render the same short id twice. */}
+      {!a.anonymous && (
+        <span className="authorId" title={account}>
+          {shortAccount(account)}
+        </span>
+      )}
       {a.isSelf && <span className="youTag"> (you)</span>}
     </span>
   );
