@@ -5,6 +5,7 @@ import App from './App';
 import { AppMode, CalimeroProvider } from '@calimero-network/calimero-client';
 import { PACKAGE_NAME, REGISTRY_URL } from './constants/config';
 import { startInvitationCapture } from './lib/invitationIntents';
+import { bootstrapDesktopSession } from './auth/desktopBootstrap';
 
 // Disable StrictMode in production to avoid double-rendering
 // which can cause 429 errors from CalimeroProvider's auth checks
@@ -13,26 +14,16 @@ const AppWrapper = import.meta.env.DEV ? StrictMode : React.Fragment;
 // ── Desktop auth-skip ─────────────────────────────────────────────────────────
 //
 // The launcher opens an app at its registry `links.frontend` with the session
-// already in the URL fragment. Read at module scope, before the provider's first
-// render consumes and strips it. No hash means nothing is seeded, so an ordinary
-// web visit is unchanged.
-const hashNodeUrl =
-  typeof window === 'undefined'
-    ? null
-    : new URLSearchParams(window.location.hash.slice(1)).get('node_url');
-if (hashNodeUrl) {
-  try {
-    // The legacy client reads its node from this key. Seeding it is what makes
-    // the handed-over session usable instead of dropped — this app has no
-    // `allowedNodeUrls` equivalent, so the stored node IS the anchor.
-    if (!localStorage.getItem('node-url')) {
-      localStorage.setItem('node-url', new URL(hashNodeUrl).origin);
-    }
-  } catch {
-    // A malformed node_url or blocked storage just means no auto-login; the
-    // Connect button still works.
-  }
-}
+// already in the URL fragment. Seeded at module scope, before the provider's
+// first render consumes and strips it. See `auth/desktopBootstrap`.
+//
+// ⚠️ WHAT WAS HERE HAD NEVER WORKED. It wrote the node to
+// `localStorage['node-url']`, and `calimero-client` reads `app-url` —
+// JSON-encoded. `node-url` occurs exactly once in that SDK's bundle, as the
+// placeholder text of an input box. So the handed-over node was written to a key
+// nothing reads, the application id was never seeded at all, and the desktop
+// "skip" silently degraded to the ordinary connect screen.
+bootstrapDesktopSession();
 
 // ── Invitations, captured before anything renders ─────────────────────────────
 //
@@ -83,5 +74,3 @@ createRoot(document.getElementById('root')!).render(
     </CalimeroProvider>
   </AppWrapper>,
 );
-
-

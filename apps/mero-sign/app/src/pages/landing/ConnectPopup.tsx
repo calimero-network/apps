@@ -1,62 +1,57 @@
-import { CalimeroConnectButton } from '@calimero-network/calimero-client';
+import { useEffect, useRef } from 'react';
+import { useCalimero } from '@calimero-network/calimero-client';
 import type { LoginPopupProps } from './landingTypes';
-import styles from '../app/AgreementsPage.module.css';
 
 /**
- * The node-connection popup behind the landing page's "Connect to node".
+ * The node-connection step behind the landing page's "Connect to node".
  *
- * ⚠️ NOT the generated `loginPopup.tsx`. That one is written into every app
- * that depends on `@calimero-network/mero-react` and uses its `LoginModal` +
+ * ⚠️ NOT the generated `loginPopup.tsx`. That one is written into every app that
+ * depends on `@calimero-network/mero-react` and uses its `LoginModal` +
  * `connectToNode`; Mero Sign is the app still on
  * `@calimero-network/calimero-client`, so `landing:generate` skips it and this
- * is the hand-owned equivalent. Same contract (`isOpen` / `onClose`), same
- * place in the flow.
+ * is the hand-owned equivalent. Same contract (`isOpen` / `onClose`), same place
+ * in the flow.
  *
- * ── Why this had to exist ───────────────────────────────────────────────────
+ * ── Why this renders nothing ────────────────────────────────────────────────
  *
- * The only way to sign in to this app used to be a `<CalimeroConnectButton />`
- * at the bottom of the sidebar, and the landing page's CTA was wired to open
- * that sidebar. Deleting the sidebar therefore deleted the way in — which the
- * landing suite caught immediately ("connecting does not navigate to another
- * page" timed out on a button that no longer did anything).
+ * It used to be a modal: a heading, a paragraph explaining that Mero Sign runs
+ * against a node you control, a `<CalimeroConnectButton />`, and a Cancel. So
+ * pressing "Connect to node" on the landing page opened a dialog whose only
+ * real content was ANOTHER button you had to press to reach the node picker.
+ * Two clicks and a wall of text between the person and the one control that
+ * does anything, and the text said nothing the picker does not say better.
  *
- * So the connect control survives the redesign, but as a MODAL you open when
- * you are signed out, rather than as permanent chrome. The thing the brief
- * asked to remove was the button that rendered connection state to somebody who
- * was already connected — it only ever appeared once you were signed in, at the
- * foot of a rail you had to open a hamburger to see.
+ * `useCalimero().login()` is what that button called. Calling it directly on
+ * open means the picker appears immediately, which is what "Connect to node"
+ * already promised. There is no dialog left to render — the picker IS the
+ * dialog — so this component's whole job is to fire `login()` once and hand
+ * control back.
+ *
+ * ── Why the ref ─────────────────────────────────────────────────────────────
+ *
+ * `login()` opens a window. Under React 19 StrictMode every effect runs twice
+ * in development, and an effect keyed only on `isOpen` also re-fires whenever
+ * the provider hands down a new `login` identity. Either one opens a second
+ * picker over the first. The guard makes it once per open, and resets when the
+ * popup closes so a cancelled connect can be retried.
  */
 export default function ConnectPopup({ isOpen, onClose }: LoginPopupProps) {
-  if (!isOpen) return null;
+  const { login } = useCalimero();
+  const fired = useRef(false);
 
-  return (
-    <div className={styles.modalBackdrop} onClick={onClose}>
-      <div
-        className={styles.modal}
-        style={{ maxWidth: 400 }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h2 className={styles.modalTitle}>Connect your node</h2>
-        <p className={styles.modalDesc}>
-          Mero Sign runs against a Calimero node you control. Point it at yours
-          and it will sign you in and bring you back here.
-        </p>
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'center',
-            padding: '8px 0',
-          }}
-          data-testid="connect-control"
-        >
-          <CalimeroConnectButton />
-        </div>
-        <div className={styles.modalRow}>
-          <button className={styles.btnGhost} onClick={onClose}>
-            Cancel
-          </button>
-        </div>
-      </div>
-    </div>
-  );
+  useEffect(() => {
+    if (!isOpen) {
+      fired.current = false;
+      return;
+    }
+    if (fired.current) return;
+    fired.current = true;
+    login();
+    // Our own overlay is done the moment the picker is up; leaving it mounted
+    // would put a second backdrop behind the picker and swallow the click that
+    // dismisses it.
+    onClose();
+  }, [isOpen, login, onClose]);
+
+  return null;
 }

@@ -127,7 +127,7 @@ export default function SignAnimation() {
         className="cal-lp-a-txt cal-lp-a-txt--dim"
         style={{ left: PAGE_X + 20, top: PAGE_Y + 240, fontSize: 8.5 }}
       >
-        Signed by Ana Petrović
+        Signed by John Doe
       </span>
 
       {/* Ink and nib. Motion lives in landing.css (`.cal-lp-a-ink` /
