@@ -241,6 +241,28 @@ and are four:
 The panels are grouped by that provenance — *found*, *given*, *pinned* — so the
 distinction is the layout rather than a paragraph somebody has to read.
 
+## Checking it renders
+
+`tsc -b`, `vitest run` and `npm run build` do not mount the component, so all
+three stayed green while the deployed page was a blank screen: the status strip
+built a `URL` from the stored node URL inline, `URL` throws on anything without
+a scheme, and a throw during render takes the whole page rather than the one
+label. The bad value is the persisted one, so every reload reproduced it.
+
+`app/scripts/render-check.mjs` loads the page in a real browser against the
+stored blobs people actually have — a bare host, a lone space, a typo'd scheme,
+unparseable JSON — and fails on a blank screen:
+
+```bash
+cd app
+npm run build
+npx vite preview --port 4174 &
+npm i --no-save playwright
+node scripts/render-check.mjs
+```
+
+Run it after touching anything that reads `localStorage` during render.
+
 ## The status strip
 
 Every panel sets state a later one needs, and the only way to find out whether a
