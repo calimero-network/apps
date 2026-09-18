@@ -136,9 +136,75 @@ impl Mergeable for CursorData {
     }
 }
 
+/// A collaborator's chosen nickname, keyed by the same device hex the cursors
+/// are keyed by (`caller_hex`).
+///
+/// This exists because the only thing the app could previously put next to a
+/// cursor was a raw 64-hex device key, which answers no question anyone has.
+/// A nickname has to live HERE and not in `localStorage`: localStorage is
+/// per-browser, so a name kept there is visible to exactly the one person who
+/// does not need it.
+#[app::mergeable(id = "mero_sheets::MemberData")]
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, AbiType)]
+#[borsh(crate = "calimero_sdk::borsh")]
+pub struct MemberData {
+    pub nickname: String,
+    /// First time this device announced itself. Earliest wins on merge — a
+    /// later rename must not look like a later arrival.
+    pub joined_at: u64,
+    pub updated_at: u64,
+}
+
+impl Mergeable for MemberData {
+    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        // Newer rename wins; an exact clock tie breaks on the nickname itself so
+        // two devices of one account cannot settle on different strings. The
+        // tie-break spans the assigned field, not a field beside it — an
+        // equal-clock compare that ignores the value is how a write gets
+        // silently discarded.
+        if (other.updated_at, &other.nickname) > (self.updated_at, &self.nickname) {
+            self.nickname = other.nickname.clone();
+            self.updated_at = other.updated_at;
+        }
+        // Arrival is a minimum, not a last-write: whichever replica saw this
+        // member first is the truth, regardless of which rename landed last.
+        if other.joined_at < self.joined_at {
+            self.joined_at = other.joined_at;
+        }
+        Ok(())
+    }
+}
+
 // ---------------------------------------------------------------------------
 // View types returned to callers (must derive Serialize + Deserialize)
 // ---------------------------------------------------------------------------
+
+/// The project's own identity, as the UI titles it.
+///
+/// `init_project` has always written `project_name`, and until now NOTHING
+/// could read it back — there was no view method over the register at all. That
+/// is the whole reason the workspace list fell back to names cached in
+/// `localStorage`, which meant every peer but the creator saw "Workspace 1".
+#[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct Project {
+    /// Empty until `init_project` runs.
+    pub id: String,
+    pub name: String,
+    pub created_at: u64,
+}
+
+/// One collaborator, by the name they chose.
+#[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct Member {
+    /// Device hex — the same key `Cursor.author` carries, so a roster and the
+    /// live cursors join on it without a translation step.
+    pub id: String,
+    pub nickname: String,
+    pub joined_at: u64,
+    pub updated_at: u64,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
 #[serde(crate = "calimero_sdk::serde")]
@@ -225,6 +291,13 @@ pub struct Spreadsheet {
     cells: UnorderedMap<String, CellData>,
     /// Live cursors keyed by author pubkey hex (one entry per connected user).
     cursors: AuthoredMap<String, CursorData>,
+    /// Chosen nicknames keyed by the same device hex as `cursors`.
+    ///
+    /// An `UnorderedMap`, not an `AuthoredMap`: the roster must be readable by
+    /// everyone and survive a member going away, whereas an `AuthoredMap` entry
+    /// is per-writer live state (which is exactly right for a cursor and
+    /// exactly wrong for a name).
+    members: UnorderedMap<String, MemberData>,
 }
 
 #[app::logic]
@@ -238,6 +311,7 @@ impl Spreadsheet {
             sheets: UnorderedMap::new_with_field_name("spreadsheet:sheets"),
             cells: UnorderedMap::new_with_field_name("spreadsheet:cells"),
             cursors: AuthoredMap::new_with_field_name("spreadsheet:cursors"),
+            members: UnorderedMap::new_with_field_name("spreadsheet:members"),
         }
     }
 
@@ -262,6 +336,98 @@ impl Spreadsheet {
             name: &name,
         });
         Ok(id)
+    }
+
+    /// The project's id, name and creation time.
+    ///
+    /// New. `init_project` wrote the name into `project_name` from the first
+    /// version of this contract and no method ever read it, so the name was
+    /// replicated to every peer and visible to none of them.
+    ///
+    /// Never errors and never 404s: an uninitialised project is a real,
+    /// transient state (a context exists the moment it is created, `init_project`
+    /// lands a round-trip later) and it answers with empty strings so a caller
+    /// can render a placeholder instead of an error.
+    pub fn get_project(&self) -> app::Result<Project> {
+        Ok(Project {
+            id: self.project_id.get().clone(),
+            name: self.project_name.get().clone(),
+            created_at: *self.project_created_at.get(),
+        })
+    }
+
+    // ---- Members ----
+
+    /// The id THIS caller is known by in here — the key its cursor is authored
+    /// by and its roster row is stored under.
+    ///
+    /// Exists so the frontend never has to guess which row is "me". It had been
+    /// comparing `Cursor.author` against the context's executor public key,
+    /// which is a different value from a different family: a device key and a
+    /// context identity are both 64 hex, so the comparison type-checks, returns
+    /// false forever, and shows the local user as a stranger in their own
+    /// spreadsheet. Asking the contract costs one read and cannot be wrong.
+    pub fn whoami(&self) -> app::Result<String> {
+        Ok(self.caller_hex())
+    }
+
+    /// Announce this device under a chosen nickname, or rename it.
+    ///
+    /// Idempotent by design — it is called on every open, not only on the first
+    /// one, because there is no reliable "first" for a replicated context and a
+    /// join that only registers once leaves anyone whose first attempt failed
+    /// permanently anonymous. `joined_at` is preserved across re-calls so a
+    /// rename does not reorder the roster.
+    pub fn join(&mut self, nickname: String) -> app::Result<()> {
+        let nickname = nickname.trim().to_string();
+        validate_label(&nickname).map_err(AppError::from)?;
+        let me = self.caller_hex();
+        let now = storage_env::time_now();
+
+        let existing = self.members.get(&me)?;
+        let joined_at = existing.as_ref().map_or(now, |m| m.joined_at);
+        let is_new = existing.is_none();
+
+        self.members.insert(
+            me.clone(),
+            MemberData {
+                nickname: nickname.clone(),
+                joined_at,
+                updated_at: now,
+            },
+        )?;
+
+        if is_new {
+            app::emit!(Event::MemberJoined {
+                id: &me,
+                nickname: &nickname,
+            });
+        } else {
+            app::emit!(Event::MemberRenamed {
+                id: &me,
+                nickname: &nickname,
+            });
+        }
+        Ok(())
+    }
+
+    /// Everyone who has ever announced themselves, oldest arrival first.
+    ///
+    /// Sorted here rather than in the UI so every peer renders the same order;
+    /// the map's own iteration order is not a stable thing to show a person.
+    pub fn get_members(&self) -> app::Result<Vec<Member>> {
+        let mut members: Vec<Member> = self
+            .members
+            .entries()?
+            .map(|(id, d)| Member {
+                id,
+                nickname: d.nickname,
+                joined_at: d.joined_at,
+                updated_at: d.updated_at,
+            })
+            .collect();
+        members.sort_by(|a, b| a.joined_at.cmp(&b.joined_at).then(a.id.cmp(&b.id)));
+        Ok(members)
     }
 
     // ---- Sheets ----
@@ -949,6 +1115,129 @@ mod tests {
         let id = app.call(|s| s.init_project("Q3 Budget".into())).unwrap();
         assert!(!id.is_empty());
         assert_eq!(app.events().len(), 1);
+    }
+
+    #[test]
+    fn get_project_reads_back_the_name_init_project_wrote() {
+        // The gap this closes: `project_name` was written from day one and no
+        // method could read it, so every peer but the creator saw a placeholder.
+        let mut app = make_app();
+        let id = app.call(|s| s.init_project("Q3 Budget".into())).unwrap();
+        let project = app.view(|s| s.get_project()).unwrap();
+        assert_eq!(project.id, id);
+        assert_eq!(project.name, "Q3 Budget");
+        assert!(project.created_at > 0);
+    }
+
+    #[test]
+    fn get_project_on_an_uninitialised_context_is_empty_not_an_error() {
+        // A context exists before `init_project` lands. That window must render
+        // a placeholder, not an error page.
+        let app = make_app();
+        let project = app.view(|s| s.get_project()).unwrap();
+        assert_eq!(project.id, "");
+        assert_eq!(project.name, "");
+    }
+
+    #[test]
+    fn join_records_a_nickname_and_get_members_reads_it() {
+        let mut app = make_app();
+        app.call(|s| s.init_project("P".into())).unwrap();
+        app.call(|s| s.join("Ada".into())).unwrap();
+        let members = app.view(|s| s.get_members()).unwrap();
+        assert_eq!(members.len(), 1);
+        assert_eq!(members[0].nickname, "Ada");
+        assert!(!members[0].id.is_empty());
+    }
+
+    #[test]
+    fn join_is_idempotent_and_renames_in_place() {
+        // Called on every open, not only the first — so a second call must
+        // rename rather than add a second row for the same device.
+        let mut app = make_app();
+        app.call(|s| s.join("Ada".into())).unwrap();
+        let first = app.view(|s| s.get_members()).unwrap()[0].joined_at;
+        app.call(|s| s.join("Ada Lovelace".into())).unwrap();
+        let members = app.view(|s| s.get_members()).unwrap();
+        assert_eq!(members.len(), 1);
+        assert_eq!(members[0].nickname, "Ada Lovelace");
+        assert_eq!(
+            members[0].joined_at, first,
+            "a rename must not look like a later arrival"
+        );
+    }
+
+    #[test]
+    fn join_trims_and_rejects_an_empty_or_overlong_nickname() {
+        let mut app = make_app();
+        app.call(|s| s.join("  Ada  ".into())).unwrap();
+        assert_eq!(app.view(|s| s.get_members()).unwrap()[0].nickname, "Ada");
+        assert!(app.call(|s| s.join("   ".into())).is_err());
+        assert!(app.call(|s| s.join("n".repeat(65))).is_err());
+    }
+
+    #[test]
+    fn whoami_is_the_key_this_caller_writes_under() {
+        let mut app = make_app();
+        app.call(|s| s.init_project("P".into())).unwrap();
+        app.call(|s| s.join("Ada".into())).unwrap();
+        let me = app.view(|s| s.whoami()).unwrap();
+        assert_eq!(me.len(), 64, "a device id is 64 hex since rc.27");
+        assert_eq!(app.view(|s| s.get_members()).unwrap()[0].id, me);
+    }
+
+    #[test]
+    fn a_member_id_is_the_same_key_a_cursor_is_authored_by() {
+        // The whole point of keying both on `caller_hex`: the roster and the
+        // live cursors join without a translation step, so a cursor can be
+        // labelled with the name its author chose.
+        let mut app = make_app();
+        app.call(|s| s.init_project("P".into())).unwrap();
+        let sid = app.call(|s| s.create_sheet("S".into())).unwrap();
+        app.call(|s| s.join("Ada".into())).unwrap();
+        app.call(|s| s.update_cursor(sid, 1, 1)).unwrap();
+        let members = app.view(|s| s.get_members()).unwrap();
+        let cursors = app.view(|s| s.get_cursors()).unwrap();
+        assert_eq!(cursors.len(), 1);
+        assert_eq!(cursors[0].author, members[0].id);
+    }
+
+    #[test]
+    fn member_merge_keeps_the_newer_name_and_the_earlier_arrival() {
+        let mut mine = MemberData {
+            nickname: "Ada".into(),
+            joined_at: 100,
+            updated_at: 100,
+        };
+        let theirs = MemberData {
+            nickname: "Ada Lovelace".into(),
+            joined_at: 50,
+            updated_at: 200,
+        };
+        mine.merge(&theirs).unwrap();
+        assert_eq!(mine.nickname, "Ada Lovelace");
+        assert_eq!(mine.updated_at, 200);
+        assert_eq!(mine.joined_at, 50);
+    }
+
+    #[test]
+    fn member_merge_breaks_an_equal_clock_tie_on_the_nickname() {
+        // An equal-clock compare that ignores the value silently discards one
+        // side's write and leaves two replicas showing different names.
+        let mut a = MemberData {
+            nickname: "Ada".into(),
+            joined_at: 10,
+            updated_at: 100,
+        };
+        let mut b = MemberData {
+            nickname: "Bob".into(),
+            joined_at: 10,
+            updated_at: 100,
+        };
+        let (a0, b0) = (a.clone(), b.clone());
+        a.merge(&b0).unwrap();
+        b.merge(&a0).unwrap();
+        assert_eq!(a.nickname, b.nickname);
     }
 
     #[test]

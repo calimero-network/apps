@@ -18,7 +18,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMero, useSubscription } from '@calimero-network/mero-react';
 import { SpreadsheetClient } from '../api/spreadsheet/SpreadsheetClient';
-import type { Sheet, Cell, Cursor, FunctionDef } from '../api/spreadsheet/SpreadsheetClient';
+import type {
+  Sheet, Cell, Cursor, FunctionDef, Member, Project,
+} from '../api/spreadsheet/SpreadsheetClient';
 import { CellOp as CellOpWire } from '../api/spreadsheet/SpreadsheetClient';
 import type { CellOp } from '../spreadsheet/ops';
 import { initEngine, engineReady, evaluate as engineEvaluate } from '../engine/engine';
@@ -28,7 +30,7 @@ import {
 } from '../engine/derive';
 
 // Re-export domain types so components import from one place
-export type { Sheet, Cell, Cursor, FunctionDef };
+export type { Sheet, Cell, Cursor, FunctionDef, Member, Project };
 
 // ── Built-in function reference (static fallback) ────────────────────────────
 export const BUILTIN_FUNCTIONS: FunctionDef[] = [
@@ -84,6 +86,28 @@ export interface UseSpreadsheetReturn {
   cells: Cell[];
   cursors: Cursor[];
   functions: FunctionDef[];
+  /**
+   * Everyone who has named themselves in this spreadsheet. Keyed by the same id
+   * `Cursor.author` carries, so a cursor can be labelled with its author's name.
+   */
+  members: Member[];
+  /**
+   * The project's own title, read from the contract. `init_project` has always
+   * written it; until `get_project` existed nothing could read it back, which is
+   * why the picker fell back to per-browser names nobody else could see.
+   */
+  project: Project | null;
+  /**
+   * The id THIS node writes under, straight from the contract (`whoami`).
+   *
+   * Asked rather than inferred: a cursor's author is a DEVICE key and
+   * `executorPublicKey` is a CONTEXT identity. Both are 64 hex, so comparing
+   * them type-checks and is false forever — which showed the local user as a
+   * stranger in their own spreadsheet.
+   */
+  selfId: string | null;
+  /** True once `members` has been fetched at least once for this context. */
+  membersLoaded: boolean;
   loading: boolean;
   /** True once the first refresh for the current context has completed. */
   loaded: boolean;
@@ -94,6 +118,8 @@ export interface UseSpreadsheetReturn {
   ready: boolean;
   // Project init (called once by the workspace creator after bootstrap)
   initProject: (name: string) => Promise<void>;
+  /** Announce (or rename) this device under a chosen nickname. */
+  joinAs: (nickname: string) => Promise<void>;
   // Sheet mutations
   createSheet: (name: string) => Promise<void>;
   renameSheet: (sheetId: string, newName: string) => Promise<void>;
@@ -126,6 +152,10 @@ export function useSpreadsheet({
   const [cells, setCells] = useState<Cell[]>([]);
   const [cursors, setCursors] = useState<Cursor[]>([]);
   const [functions, setFunctions] = useState<FunctionDef[]>(BUILTIN_FUNCTIONS);
+  const [members, setMembers] = useState<Member[]>([]);
+  const [membersLoaded, setMembersLoaded] = useState(false);
+  const [project, setProject] = useState<Project | null>(null);
+  const [selfId, setSelfId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   // False until the first refresh for the current client resolves. Distinguishes
   // "not fetched yet" from "fetched and genuinely empty" — callers must not treat
@@ -240,16 +270,25 @@ export function useSpreadsheet({
     setLoading(true);
     setError(null);
     try {
-      const [fetchedSheets, fetchedCursors, fetchedFunctions, allCells] = await Promise.all([
+      const [
+        fetchedSheets, fetchedCursors, fetchedFunctions, allCells,
+        fetchedMembers, fetchedProject, me,
+      ] = await Promise.all([
         client.listSheets(),
         client.getCursors(),
         client.getFunctions(),
         client.getAllCells(),
+        client.getMembers(),
+        client.getProject(),
+        client.whoami(),
       ]);
       snapshotRef.current = snapshotFromCells(allCells);
       overlayRef.current = retireOverlay(overlayRef.current, snapshotRef.current);
       setSheets(fetchedSheets.sort((a, b) => a.position - b.position));
       setCursors(fetchedCursors);
+      setMembers(fetchedMembers);
+      setProject(fetchedProject);
+      setSelfId(me);
       // Only replace the built-in functions if the backend returned a non-empty list
       if (fetchedFunctions.length > 0) setFunctions(fetchedFunctions);
       deriveAndSet();
@@ -258,12 +297,23 @@ export function useSpreadsheet({
     } finally {
       setLoading(false);
       setLoaded(true);
+      setMembersLoaded(true);
     }
   }, [client, deriveAndSet]);
 
   // Reset the loaded flag whenever the client changes (new context) so callers
   // wait for that context's first fetch before acting on empty state.
-  useEffect(() => { setLoaded(false); }, [client]);
+  useEffect(() => {
+    setLoaded(false);
+    // The roster and the identity belong to the PREVIOUS context. Leaving them
+    // in place would show the last spreadsheet's collaborators next to this
+    // one's cursors for as long as the first fetch takes, and — worse — mark the
+    // wrong row as "you".
+    setMembersLoaded(false);
+    setMembers([]);
+    setProject(null);
+    setSelfId(null);
+  }, [client]);
 
   // Full reload when the context (client) changes.
   useEffect(() => { void refresh(); }, [refresh]);
@@ -298,6 +348,12 @@ export function useSpreadsheet({
       await client.initProject({ name });
       await client.createSheet({ name: 'Sheet 1' });
     });
+    await refresh();
+  }, [client, refresh, enqueue]);
+
+  const joinAs = useCallback(async (nickname: string) => {
+    if (!client) return;
+    await enqueue(() => client.join({ nickname }));
     await refresh();
   }, [client, refresh, enqueue]);
 
@@ -403,12 +459,17 @@ export function useSpreadsheet({
     cells,
     cursors,
     functions,
+    members,
+    membersLoaded,
+    project,
+    selfId,
     loading,
     loaded,
     mutating: pendingMutations > 0,
     error,
     ready: client !== null,
     initProject,
+    joinAs,
     createSheet,
     renameSheet,
     deleteSheet,

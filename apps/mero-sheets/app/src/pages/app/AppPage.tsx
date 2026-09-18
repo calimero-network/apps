@@ -39,11 +39,14 @@ import SheetTabs from '../../components/SheetTabs';
 import FunctionHelpPanel from '../../components/FunctionHelpPanel';
 import InviteModal from '../../components/InviteModal';
 import JoinModal from '../../components/JoinModal';
+import NicknameModal from '../../components/NicknameModal';
 import ContextMenu from '../../components/ContextMenu';
 import { sheetsToCsv } from '../../spreadsheet/download';
 import { idsToNames, namesToIds } from '../../spreadsheet/sheetref';
 import StatusBar from '../../components/StatusBar';
 import { distinctCollaborators, peerCount } from '../../spreadsheet/presence';
+import { labelMembers, labelsById } from '../../lib/people';
+import { rememberName, rememberedName } from '../../lib/displayName';
 
 const COLS = 26;
 const ROWS = 50;
@@ -73,6 +76,63 @@ export default function AppPage() {
   // ── Workspace modals ────────────────────────────────────────────
   const [showInvite, setShowInvite] = useState(false);
   const [showJoin, setShowJoin] = useState(false);
+  // The minted code lives here rather than inside InviteModal, because minting
+  // is a network call against the namespace and the modal is a presentation of
+  // its result — keeping them together made the dialog either mint on every open
+  // or show a stale invitation from a previous one.
+  const [inviteCode, setInviteCode] = useState('');
+  const [inviteError, setInviteError] = useState<string | null>(null);
+
+  const openInvite = useCallback(async () => {
+    setShowInvite(true);
+    setInviteCode('');
+    setInviteError(null);
+    try {
+      setInviteCode(
+        await ws.invite({ contextId: ws.contextId, projectName: ws.activeName }),
+      );
+    } catch (err) {
+      setInviteError(describeError(err));
+    }
+  }, [ws]);
+
+  // ── Nickname ────────────────────────────────────────────────────
+  // Asked once per spreadsheet, the first time this device opens one it has not
+  // named itself in. The name goes to the CONTRACT (`join`), because a name in
+  // localStorage is visible only to the person who already knows it. What the
+  // browser remembers is the SUGGESTION, so the second spreadsheet does not ask
+  // again from scratch.
+  const [savingNickname, setSavingNickname] = useState(false);
+  const [nicknameError, setNicknameError] = useState<string | null>(null);
+  const [nicknameSkipped, setNicknameSkipped] = useState(false);
+  // Per spreadsheet, not per session: skipping in one should not leave you
+  // silently unnamed in the next one you open.
+  useEffect(() => {
+    setNicknameSkipped(false);
+    setNicknameError(null);
+  }, [ws.contextId]);
+  const needsNickname =
+    !nicknameSkipped &&
+    ss.ready &&
+    ss.membersLoaded &&
+    ss.selfId !== null &&
+    !ss.members.some((m) => m.id === ss.selfId && m.nickname.trim());
+
+  const submitNickname = useCallback(
+    async (name: string) => {
+      setSavingNickname(true);
+      setNicknameError(null);
+      try {
+        await ss.joinAs(name);
+        rememberName(name);
+      } catch (err) {
+        setNicknameError(describeError(err));
+      } finally {
+        setSavingNickname(false);
+      }
+    },
+    [ss],
+  );
 
   // ── New-workspace bootstrap ─────────────────────────────────────
   const [projectName, setProjectName] = useState('Untitled Spreadsheet');
@@ -672,7 +732,11 @@ export default function AppPage() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${APP_DISPLAY_NAME.replace(/\s+/g, '-').toLowerCase()}.csv`;
+    // The spreadsheet's own name, not the app's. Every export from every
+    // project used to land in Downloads as `mero-sheets.csv`, so the second one
+    // was `mero-sheets (1).csv` and neither file said what it held.
+    const title = ss.project?.name?.trim() || APP_DISPLAY_NAME;
+    a.download = `${title.replace(/[\\/:*?"<>|]/g, '').replace(/\s+/g, '-').toLowerCase()}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   }, [ss]);
@@ -695,14 +759,14 @@ export default function AppPage() {
               <path d="M3 9h18M9 21V9" />
             </svg>
           </WelcomeIcon>
-          <h2>{APP_DISPLAY_NAME}</h2>
+          <h2>{ws.namespaceName}</h2>
           <p>
-            Open a workspace, create a new one, or join one you&rsquo;ve been
-            invited to. All data lives on your node — no central server.
+            Open a spreadsheet, create a new one, or join a workspace you&rsquo;ve
+            been invited to. All data lives on your node — no central server.
           </p>
 
           {ws.workspaces.length > 0 && (
-            <WorkspaceList aria-label="Your workspaces">
+            <WorkspaceList aria-label={`Spreadsheets in ${ws.namespaceName}`}>
               {ws.workspaces.map((w) => (
                 <WorkspaceRow
                   key={w.contextId}
@@ -711,7 +775,9 @@ export default function AppPage() {
                   title={`Open ${w.name}`}
                 >
                   <WorkspaceMeta>
-                    <WorkspaceName>{w.name}</WorkspaceName>
+                    {/* An unnamed row is styled as the placeholder it is rather
+                        than passed off as a title someone chose. */}
+                    <WorkspaceName $placeholder={w.unnamed}>{w.name}</WorkspaceName>
                     <WorkspaceId>{w.contextId.slice(0, 10)}…</WorkspaceId>
                   </WorkspaceMeta>
                   <OpenChevron aria-hidden="true">→</OpenChevron>
@@ -720,10 +786,16 @@ export default function AppPage() {
             </WorkspaceList>
           )}
 
-          {listLoading && <p style={{ margin: '4px 0 16px' }}>Loading workspaces…</p>}
+          {listLoading && <p style={{ margin: '4px 0 16px' }}>Loading spreadsheets…</p>}
+          {ws.notInstalled && (
+            <ErrLine>
+              This app is not installed on your node, so it has nowhere to keep a
+              spreadsheet. Install it from the registry and reload.
+            </ErrLine>
+          )}
 
           <label htmlFor="project-name" style={{ display: 'block', textAlign: 'left', marginBottom: 6, fontSize: 13, fontWeight: 600, color: C.muted }}>
-            New workspace name
+            New spreadsheet name
           </label>
           <ProjectNameInput
             id="project-name"
@@ -739,13 +811,14 @@ export default function AppPage() {
               disabled={!projectName.trim() || ws.loading}
               onClick={() => void ws.createWorkspace(projectName.trim())}
             >
-              Create workspace
+              Create spreadsheet
             </PrimaryBtn>
             <SecondaryBtn onClick={() => setShowJoin(true)}>
               Join with invitation
             </SecondaryBtn>
           </ButtonRow>
 
+          {ws.status && <StatusLine>{ws.status}</StatusLine>}
           {ws.error && <ErrLine>{describeError(ws.error)}</ErrLine>}
         </WelcomeCard>
 
@@ -764,9 +837,14 @@ export default function AppPage() {
     return (
       <FullCenter>
         <WelcomeCard>
-          <h2>Opening workspace…</h2>
-          <p>Resolving your identity in this context.</p>
-          <SecondaryBtn onClick={ws.leaveWorkspace}>← Back to workspaces</SecondaryBtn>
+          <h2>Opening {ws.activeName}…</h2>
+          {/* This screen used to say "Resolving your identity" and wait forever
+              for an identity that, for anyone who joined by invitation, was
+              never coming. It now names each step, and a failure ends here
+              instead of in a spinner. */}
+          <p>{ws.status ?? 'Getting you into this spreadsheet.'}</p>
+          {ws.error && <ErrLine>{describeError(ws.error)}</ErrLine>}
+          <SecondaryBtn onClick={ws.leaveWorkspace}>← Back to spreadsheets</SecondaryBtn>
         </WelcomeCard>
       </FullCenter>
     );
@@ -774,10 +852,17 @@ export default function AppPage() {
 
   // 3. Full spreadsheet view
   const selRef = selectedCell ? cellRef(selectedCell.row, selectedCell.col) : null;
-  const activeWorkspaceName =
-    ws.workspaces.find((w) => w.contextId === ws.contextId)?.name ?? APP_DISPLAY_NAME;
-  const collaborators = distinctCollaborators(ss.cursors, ws.executorPublicKey, C.green);
-  const peers = peerCount(ss.cursors, ws.executorPublicKey);
+  // The contract's own title first — it is the one every peer sees. The picker's
+  // name (from the replicated context metadata) covers the window before
+  // `init_project` lands, and only then a placeholder.
+  const activeWorkspaceName = ss.project?.name?.trim() || ws.activeName;
+  const roster = labelsById(labelMembers(ss.members, ss.selfId));
+  // `ss.selfId` — the id the CONTRACT writes under — and NOT
+  // `ws.executorPublicKey`, which is a context identity. Both are 64 hex, so the
+  // old comparison type-checked, never matched, and rendered the local user as a
+  // stranger in their own spreadsheet.
+  const collaborators = distinctCollaborators(ss.cursors, ss.selfId, C.green, roster);
+  const peers = peerCount(ss.cursors, ss.selfId);
   const connected = ss.ready && ss.loaded;
   const synced = ss.loaded && !ss.mutating;
 
@@ -788,8 +873,8 @@ export default function AppPage() {
         <Lights aria-hidden="true"><i /><i /><i /></Lights>
         <BackBtn
           onClick={async () => { if (isDirty) await commitCellRef.current?.(); ws.leaveWorkspace(); }}
-          title="Back to workspaces"
-          aria-label="Back to workspaces"
+          title="Back to spreadsheets"
+          aria-label="Back to spreadsheets"
         >
           ←
         </BackBtn>
@@ -814,19 +899,28 @@ export default function AppPage() {
               key={c.author}
               style={{ background: c.color }}
               $self={c.isSelf}
-              title={c.isSelf ? 'You' : c.author}
+              // The name, not the 64-hex key. An unnamed peer says so in words
+              // rather than presenting a truncated id as if it were a name.
+              title={
+                c.isSelf
+                  ? `You · ${c.name}`
+                  : c.anonymous
+                    ? `Has not chosen a name yet (${c.author.slice(0, 12)}…)`
+                    : c.name
+              }
+              data-testid="collaborator-avatar"
             >
               {c.label}
             </Avatar>
           ))}
         </Avatars>
-        <CollabCount>
+        <CollabCount title={collaborators.map((c) => (c.isSelf ? 'You' : c.name)).join(', ')}>
           {collaborators.length} collaborator{collaborators.length === 1 ? '' : 's'}
         </CollabCount>
 
         <ActionsSpacer />
 
-        <PrimaryAction onClick={() => setShowInvite(true)} aria-label="Invite collaborators">
+        <PrimaryAction onClick={() => void openInvite()} aria-label="Invite collaborators">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
             stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
@@ -960,7 +1054,13 @@ export default function AppPage() {
       )}
       {showInvite && (
         <InviteModal
-          onInvite={ws.invite}
+          code={inviteCode}
+          // Says what the invitation actually grants. The grant is the
+          // NAMESPACE — one membership covers every spreadsheet in it — so the
+          // UI says that rather than implying a narrower scope than it gives.
+          scope={`${ws.namespaceName} · all ${ws.workspaces.length} spreadsheet${ws.workspaces.length === 1 ? '' : 's'}, opening “${activeWorkspaceName}”`}
+          loading={ws.inviteLoading && !inviteCode}
+          error={inviteError}
           onClose={() => setShowInvite(false)}
         />
       )}
@@ -968,6 +1068,16 @@ export default function AppPage() {
         <JoinModal
           onJoin={async (code) => { await ws.join(code); setShowJoin(false); }}
           onClose={() => setShowJoin(false)}
+        />
+      )}
+      {needsNickname && (
+        <NicknameModal
+          projectName={activeWorkspaceName}
+          initialName={rememberedName()}
+          saving={savingNickname}
+          error={nicknameError}
+          onSubmit={(name) => void submitNickname(name)}
+          onSkip={() => setNicknameSkipped(true)}
         />
       )}
       {ctxMenu && (
@@ -1305,10 +1415,11 @@ const WorkspaceMeta = styled.div`
   min-width: 0;
 `;
 
-const WorkspaceName = styled.span`
+const WorkspaceName = styled.span<{ $placeholder?: boolean }>`
   font-size: 14px;
-  font-weight: 600;
-  color: ${C.ink};
+  font-weight: ${(p) => (p.$placeholder ? 500 : 600)};
+  font-style: ${(p) => (p.$placeholder ? 'italic' : 'normal')};
+  color: ${(p) => (p.$placeholder ? C.mutedSoft : C.ink)};
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1404,4 +1515,10 @@ const ErrLine = styled.p`
   margin: 12px 0 0;
   font-size: 13px;
   color: ${C.danger};
+`;
+
+const StatusLine = styled.p`
+  margin: 12px 0 0;
+  font-size: 13px;
+  color: ${C.muted};
 `;

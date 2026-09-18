@@ -26,4 +26,8 @@ pub enum Event<'a> {
     CursorMoved { author: &'a str, sheet_id: &'a str },
     /// A collaborator's cursor was removed.
     CursorRemoved { author: &'a str },
+    /// A device announced itself under a nickname for the first time.
+    MemberJoined { id: &'a str, nickname: &'a str },
+    /// A member changed the nickname they are shown under.
+    MemberRenamed { id: &'a str, nickname: &'a str },
 }
