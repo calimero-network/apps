@@ -85,8 +85,25 @@ export default function AppPage(): React.ReactElement | null {
     filters: hookFilters,
   });
 
+  // One toast per distinct problem, not one per failed read.
+  //
+  // `data.error` is a fresh Error object on every failure, so this effect used
+  // to fire on each one — a burst of sync events during a join produced a burst
+  // of identical toasts. `useIssues` now withholds the transient
+  // "context not initialized yet" case entirely (see utils/contextReadiness), so
+  // that burst no longer reaches here at all; this dedupe is the second line of
+  // defence, and it also stops a genuinely repeating failure from stacking up.
+  //
+  // Keyed on the MESSAGE rather than the object: identical text is the same
+  // problem as far as anyone reading it is concerned. Cleared when the error
+  // does, so the same failure recurring after a recovery is reported again.
+  const lastToastRef = useRef<string | null>(null);
   useEffect(() => {
-    if (data.error) toast.show({ variant: 'error', description: describeError(data.error) });
+    if (!data.error) { lastToastRef.current = null; return; }
+    const description = describeError(data.error);
+    if (description === lastToastRef.current) return;
+    lastToastRef.current = description;
+    toast.show({ variant: 'error', description });
   }, [data.error, toast]);
 
   const [showNew, setShowNew] = useState(false);

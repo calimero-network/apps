@@ -10,7 +10,7 @@
  * The board reads `issues` (server-filtered via list_issues) + `counts`
  * (get_status_counts), and every mutation refetches so the UI never lags.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMero, useSubscription } from '@calimero-network/mero-react';
 import {
   IssueTrackerClient,
@@ -18,6 +18,11 @@ import {
   CommentView,
   IssueDetail,
 } from '../generated/IssueTrackerClient';
+import {
+  SYNC_COALESCE_MS,
+  WARMUP_RETRY_MS,
+  classifyReadError,
+} from '../utils/contextReadiness';
 
 export type { IssueView, CommentView, IssueDetail };
 
@@ -38,6 +43,13 @@ export interface UseIssuesReturn {
   counts: Record<string, number>;
   loading: boolean;
   error: Error | null;
+  /**
+   * The context exists but its state has not synced yet — a join in progress.
+   * NOT an error: callers should show "syncing", never a failure. It clears on
+   * the first successful read, or is promoted into `error` if it never does
+   * (see WARMUP_GRACE_MS).
+   */
+  warmingUp: boolean;
   ready: boolean;
   refresh: () => Promise<void>;
   createIssue: (
@@ -75,6 +87,17 @@ export function useIssues({
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
+  const [warmingUp, setWarmingUp] = useState(false);
+
+  // One read at a time. A join delivers a burst of sync events and the reads
+  // they trigger otherwise overlap, each racing the others to set state.
+  // `pendingRef` remembers that something changed while a read was in flight, so
+  // the burst costs one extra read rather than one per event.
+  const inFlightRef = useRef(false);
+  const pendingRef = useRef(false);
+  // When the context was FIRST seen un-initialised, so a warm-up that never
+  // finishes can be promoted to a real error instead of hiding forever.
+  const warmingSinceRef = useRef<number | null>(null);
 
   // Memoized typed client — null until the context + identity resolve.
   const client = useMemo(
@@ -89,8 +112,13 @@ export function useIssues({
 
   const refresh = useCallback(async () => {
     if (!client) return;
+    if (inFlightRef.current) {
+      // Coalesce: whatever prompted this will be covered by the re-run below.
+      pendingRef.current = true;
+      return;
+    }
+    inFlightRef.current = true;
     setLoading(true);
-    setError(null);
     try {
       const [list, statusCounts] = await Promise.all([
         client.listIssues({
@@ -104,20 +132,62 @@ export function useIssues({
       setCounts(
         Object.fromEntries(statusCounts.map((c) => [c.status, c.count])),
       );
+      setError(null);
+      setWarmingUp(false);
+      warmingSinceRef.current = null;
     } catch (err) {
-      setError(err instanceof Error ? err : new Error(String(err)));
+      // The suppression rule itself lives in `utils/contextReadiness` as a pure
+      // function: a transient "still syncing" failure is withheld while a join
+      // is plausibly in progress, and promoted to a real error if it never
+      // clears. Everything else is reported at once, unchanged.
+      const outcome = classifyReadError(err, warmingSinceRef.current);
+      warmingSinceRef.current = outcome.warmingSince;
+      setWarmingUp(outcome.warmingUp);
+      setError(outcome.error);
     } finally {
+      inFlightRef.current = false;
       setLoading(false);
+      if (pendingRef.current) {
+        pendingRef.current = false;
+        void refreshRef.current();
+      }
     }
   }, [client, status, assignee, label]);
+
+  // Latest `refresh`, for the timers and the coalescing re-run above — both need
+  // to call it without being re-created (and re-scheduled) on every render.
+  const refreshRef = useRef(refresh);
+  refreshRef.current = refresh;
 
   useEffect(() => {
     void refresh();
   }, [refresh]);
 
+  // Keep trying while the context is warming up. Sync events alone are not
+  // enough: the last one can arrive BEFORE the state is readable, and then
+  // nothing would ever ask again and the board would sit empty.
+  useEffect(() => {
+    if (!warmingUp || !client) return;
+    const timer = setInterval(() => void refreshRef.current(), WARMUP_RETRY_MS);
+    return () => clearInterval(timer);
+  }, [warmingUp, client]);
+
   // Live updates: re-fetch on any sync event for this context (local or remote).
+  //
+  // DEBOUNCED. A join replicates in a burst, and reading once per event meant
+  // ~20 reads against a context that was not ready — the cause of the toast
+  // storm rather than its symptom. One settled read answers the whole burst.
+  const coalesceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => { if (coalesceRef.current) clearTimeout(coalesceRef.current); },
+    [],
+  );
   useSubscription(contextId ? [contextId] : [], () => {
-    void refresh();
+    if (coalesceRef.current) clearTimeout(coalesceRef.current);
+    coalesceRef.current = setTimeout(() => {
+      coalesceRef.current = null;
+      void refreshRef.current();
+    }, SYNC_COALESCE_MS);
   });
 
   const createIssue = useCallback(
@@ -275,6 +345,7 @@ export function useIssues({
     counts,
     loading,
     error,
+    warmingUp,
     ready: client !== null,
     refresh,
     createIssue,

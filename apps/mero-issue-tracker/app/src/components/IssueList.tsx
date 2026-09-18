@@ -18,12 +18,16 @@ export default function IssueList({
   issues,
   aliases,
   query,
+  warmingUp,
   onOpen,
 }: {
   issues: IssueView[];
   aliases: UseAliasesReturn;
   /** Active search query, only used to word the empty state. */
   query?: string;
+  /** The context is still replicating (a join in progress), so "no issues" is
+   *  not yet a fact about this board — say so instead of asserting emptiness. */
+  warmingUp?: boolean;
   onOpen: (id: string) => void;
 }): React.ReactElement {
   const groups = STATUSES
@@ -31,6 +35,12 @@ export default function IssueList({
     .filter((g) => g.rows.length > 0);
 
   if (issues.length === 0) {
+    // While the context is syncing we do not KNOW the board is empty — we just
+    // cannot read it yet. Claiming "no issues match" during a join is the same
+    // class of untruth as the error toasts that used to fire here.
+    if (warmingUp) {
+      return <Empty data-testid="issues-syncing">Syncing this workspace…</Empty>;
+    }
     return (
       <Empty>
         {query?.trim() ? `No issues match "${query.trim()}".` : 'No issues match these filters.'}
