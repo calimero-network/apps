@@ -1,0 +1,228 @@
+/* ── The outer shell for the namespace/context pickers ───────────────────────
+ *
+ * Deliberately the same shape mero-design and mero-pixart use for
+ * Teams → Projects: a sticky header, one centred column, a title and a
+ * one-line explanation, a create row, then a grid of cards.
+ *
+ * These pages were ported from mero-stream's call picker, which is a different
+ * product — a full-bleed dark control surface built around entering a call.
+ * Carrying its layout over left a forum looking like a video app and reading
+ * like one. The tokens stay Calimero (index.css); only the structure is
+ * borrowed.
+ */
+
+.root {
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 40px;
+  height: 56px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-elev);
+  position: sticky;
+  top: 0;
+  z-index: 50;
+}
+
+.logo {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.logoVersion {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--text-faint);
+}
+
+.headerRight {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.main {
+  padding: 48px 40px 96px;
+  max-width: 880px;
+  margin: 0 auto;
+}
+
+/* The trail back up the hierarchy. A forum page with no way back to its space
+   was one of the reported problems. */
+.crumbs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-faint);
+  margin-bottom: 14px;
+}
+.crumbLink {
+  color: var(--text-dim);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+}
+.crumbLink:hover { color: var(--text); }
+
+.title {
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+  margin: 0 0 6px;
+}
+.subtitle {
+  font-size: 13px;
+  color: var(--text-dim);
+  margin: 0 0 28px;
+  max-width: 60ch;
+  line-height: 1.5;
+}
+
+.createRow {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 32px;
+  flex-wrap: wrap;
+}
+.createInput {
+  flex: 1;
+  min-width: 220px;
+  max-width: 420px;
+  margin-bottom: 0;
+}
+
+.sectionLabel {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  margin-bottom: 12px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 16px;
+  margin-bottom: 48px;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 18px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  text-align: left;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+.card:hover {
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-sm);
+}
+
+.cardName {
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  word-break: break-word;
+}
+
+/* ⚠️ The id is a FALLBACK, never the headline. Rendering it at the same weight
+   as a name is what made every card read as a hex string. */
+.cardId {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+.cardMeta {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: var(--text-faint);
+}
+.chip {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 1px 8px;
+  white-space: nowrap;
+}
+.chipWarn { border-color: var(--amber); color: var(--amber); }
+
+.cardActions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+  width: 100%;
+}
+.cardActions > :first-child { flex: 1; }
+
+.empty {
+  color: var(--text-faint);
+  font-size: 13px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  padding: 28px 20px;
+  text-align: center;
+}
+
+.notice {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  margin-bottom: 24px;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+.noticeTitle { font-weight: 650; color: var(--text); margin-bottom: 4px; }
+
+/* ── The join dialog ─────────────────────────────────────────────────────────
+ * A <dialog>, so the backdrop and Esc come from the platform rather than a
+ * hand-rolled overlay. `useDialogOpen` drives showModal/close.
+ */
+.joinDialog {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-elev);
+  color: var(--text);
+  padding: 24px;
+  max-width: 520px;
+  width: calc(100vw - 48px);
+  box-shadow: var(--shadow);
+}
+.joinDialog::backdrop { background: rgba(19, 18, 21, 0.38); }
+.joinDialog h2 { margin: 0 0 8px; font-size: 18px; font-weight: 700; }
+.joinDialog p {
+  margin: 0 0 14px;
+  font-size: 13px;
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+.joinDialog textarea {
+  width: 100%;
+  font-family: var(--mono);
+  font-size: 12px;
+}

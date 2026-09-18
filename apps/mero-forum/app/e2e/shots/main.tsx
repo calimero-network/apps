@@ -29,15 +29,31 @@ createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <ToastProvider>
       <MemoryRouter initialEntries={[initial]}>
-        {/* `.shell` is the width constraint App.tsx wraps the app routes in. */}
-        <div className="shell">
-          <Routes>
-            <Route path="/spaces" element={<SpacesPage />} />
-            <Route path="/spaces/:namespaceId" element={<ForumsPage />} />
-            <Route path="/f" element={<FeedPage />} />
-            <Route path="/p/:postId" element={<PostPage />} />
-          </Routes>
-        </div>
+        {/* ⚠️ `.shell` (a 720px column) wraps ONLY the feed and thread routes in
+            App.tsx — the pickers own their full-width layout. The harness used
+            to wrap everything, which squeezed the space and forum pages into a
+            narrow off-centre column and photographed a layout the app never
+            renders. A harness that does not mirror its app documents fiction. */}
+        <Routes>
+          <Route path="/spaces" element={<SpacesPage />} />
+          <Route path="/spaces/:namespaceId" element={<ForumsPage />} />
+          <Route
+            path="/f"
+            element={
+              <div className="shell">
+                <FeedPage />
+              </div>
+            }
+          />
+          <Route
+            path="/p/:postId"
+            element={
+              <div className="shell">
+                <PostPage />
+              </div>
+            }
+          />
+        </Routes>
       </MemoryRouter>
     </ToastProvider>
   </StrictMode>,

@@ -13,19 +13,18 @@ import {
   type NamespaceRow,
 } from "../lib/groups";
 import { ActionButton, StatusNote, Spinner } from "../components/ui";
-import { initials } from "../lib/people";
 import InviteModal from "../components/InviteModal";
 import SessionMenu from "../components/SessionMenu";
 import { invitationFromRaw } from "../lib/inviteLink";
 import { useDialogOpen } from "../hooks/useDialogOpen";
-import styles from "./Manage.module.css";
+import styles from "./Shell.module.css";
 
 /**
  * Spaces = NAMESPACES. One level up from where this page used to sit.
  *
- * It used to list contexts and call each one a "space", which collapsed two
+ * It used to list contexts and name each one a "space", which collapsed two
  * distinct things into one and left no forum for forums: creating a space made a
- * namespace plus a context and nothing could ever add a second call to it. The
+ * namespace plus a context and nothing could ever add a second forum to it. The
  * model that actually matches Calimero, and what the two-node suite proves:
  *
  *   Namespace ("space")  ← you invite people HERE
@@ -206,59 +205,59 @@ export default function SpacesPage() {
   useDialogOpen(joinDialogRef, showJoin);
 
   return (
-    <div className={styles.page}>
-      <header className={styles.topbar}>
-        <div className={styles.brand}>
-          <h1 className={styles.brandName}>Mero Forum</h1>
-          <span className={styles.version}>v{__APP_VERSION__}</span>
+    <div className={styles.root}>
+      <header className={styles.header}>
+        <span className={styles.logo}>
+          Mero Forum{" "}
+          <span className={styles.logoVersion}>v{__APP_VERSION__}</span>
+        </span>
+        <div className={styles.headerRight}>
+          {/* Secondary: joining is the rarer path, and a filled accent button
+              here competes with Create for the eye on the one screen whose job
+              is to get you into a space. */}
+          <ActionButton
+            onClick={() => setShowJoin(true)}
+            pending={pending === "join"}
+            variant="secondary"
+            testId="open-join"
+          >
+            Join with a link or code
+          </ActionButton>
+          <SessionMenu />
         </div>
-        <span className={styles.spacer} />
-        <button
-          type="button"
-          className={styles.ghostBtn}
-          onClick={() => setShowJoin(true)}
-          data-testid="open-join"
-        >
-          Join with a link or code
-        </button>
-        <SessionMenu />
       </header>
 
-      <main className={styles.content}>
-        <div className={styles.heading}>
-          <h2 className={styles.title}>Your spaces</h2>
-          <p className={styles.subtitle}>
-            A <strong>space</strong> is a namespace you invite people to. Inside
-            it, each <strong>forum</strong> is one discussion board with its own
-            posts and comments. Invite people to the space once and every forum
-            in it is open to them.
-          </p>
-        </div>
+      <main className={styles.main}>
+        <h1 className={styles.title}>Your spaces</h1>
+        <p className={styles.subtitle}>
+          A <strong>space</strong> is a namespace you invite people to. Inside
+          it, each <strong>forum</strong> is a discussion board with its own
+          posts and comments. Invite someone to the space once and every forum
+          in it is open to them.
+        </p>
 
-        <div className={styles.toolbar}>
+        <div className={styles.createRow}>
           <input
-            className={styles.input}
-            placeholder="Name a new space"
+            className={styles.createInput}
             value={name}
             onChange={(e) => setName(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && create()}
-            maxLength={60}
-            disabled={pending === "create"}
+            placeholder="Name a new space"
+            aria-label="Name a new space"
             data-testid="space-name-input"
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && name.trim()) create();
+            }}
           />
           <ActionButton
             onClick={create}
             pending={pending === "create"}
-            pendingLabel="Creating…"
-            disabled={!name.trim() || !mero}
+            disabled={!name.trim() || !appId}
             testId="create-space"
           >
             Create space
           </ActionButton>
         </div>
 
-        {/* Step-level status: these flows are 3-6 round-trips deep, and naming
-            the step is what separates "loading" from "hung". */}
         {status && (
           <StatusNote tone="pending" testId="spaces-status">
             {status}
@@ -270,177 +269,115 @@ export default function SpacesPage() {
           </StatusNote>
         )}
 
-        {/* A modal, not an inline panel. Expanding in place pushed the list
-            down, so the row you just clicked moved out from under the pointer,
-            and it stayed open until something replaced it — a stale invitation
-            for one space reading as current while you looked at another. */}
-        <InviteModal
-          open={!!invite}
-          code={invite?.code ?? ""}
-          scope={`Whole space · ${
-            namespaces.find((n) => n.namespaceId === invite?.id)?.name ??
-            "space"
-          }`}
-          onClose={() => setInvite(null)}
-          hint={
-            <>
-              Anyone with this link can join that space and every forum in it.
-              Opening it shows them what they have been invited to and a Join
-              button — in the web app, the installed app, or the desktop
-              launcher. To invite someone into one specific call, open the space
-              and use <strong>Invite</strong> on that forum.
-            </>
-          }
-        />
-
-        <div className={styles.sectionHead}>
-          <h3 className={styles.sectionTitle}>
-            {namespaces.length} space{namespaces.length === 1 ? "" : "s"}
-          </h3>
-          {(listing || resolvingAppId) && (
-            <span className={styles.sectionNote}>
-              <Spinner label="Loading spaces" /> loading…
-            </span>
-          )}
-        </div>
-
-        {/* "Not installed" is its own state, distinct from "no spaces". The
-            list is scoped to this app's id, so without one there is nothing to
-            scope BY — showing "No spaces yet" there invites you to create one,
-            and the create would fail for a reason the empty state never named. */}
         {notInstalled && (
-          <div className={styles.empty}>
-            <span className={styles.emptyTitle}>
+          <div className={styles.notice}>
+            <div className={styles.noticeTitle}>
               Mero Forum is not installed on this node
-            </span>
-            <span className={styles.emptyHint}>
-              Install it from the marketplace, then reload. Spaces are listed
-              per application, so there is nothing to show until the node has
-              this one.
-            </span>
+            </div>
+            Install it from the marketplace, then reload. Spaces are listed per
+            application, so there is nothing to show until this node has this
+            one.
           </div>
         )}
 
-        {!listing &&
-          !resolvingAppId &&
-          !notInstalled &&
-          namespaces.length === 0 && (
-            <div className={styles.empty}>
-              <span className={styles.emptyTitle}>No spaces yet</span>
-              <span className={styles.emptyHint}>
-                Create one above to start a call, or use{" "}
-                <strong>Join with a link or code</strong> if someone invited
-                you.
-              </span>
+        {listing || resolvingAppId ? (
+          <Spinner label="Loading your spaces…" />
+        ) : namespaces.length === 0 ? (
+          !notInstalled && (
+            <div className={styles.empty} data-testid="spaces-empty">
+              No spaces yet. Create one above, or join one you were invited to.
             </div>
-          )}
-
-        {namespaces.length > 0 && (
-          <div className={styles.grid}>
-            {namespaces.map((ns) => (
-              <article
-                key={ns.namespaceId}
-                className={styles.card}
-                data-testid="space-row"
-                data-namespace={ns.namespaceId}
-              >
-                <div className={styles.cardTop}>
-                  <span className={styles.avatar} aria-hidden="true">
-                    {initials(ns.name)}
-                  </span>
-                  <span className={styles.cardText}>
-                    <span className={styles.cardName} title={ns.name}>
-                      {ns.name}
+          )
+        ) : (
+          <>
+            <div className={styles.sectionLabel}>
+              {namespaces.length} space{namespaces.length === 1 ? "" : "s"}
+            </div>
+            <div className={styles.grid}>
+              {namespaces.map((ns) => (
+                <div
+                  className={styles.card}
+                  key={ns.namespaceId}
+                  data-testid="space-row"
+                >
+                  <span className={styles.cardName}>{ns.name}</span>
+                  <div className={styles.cardMeta}>
+                    <span className={styles.chip}>
+                      {ns.forumCount} forum{ns.forumCount === 1 ? "" : "s"}
                     </span>
-                    <span className={styles.cardMeta}>
-                      <span className={styles.pill}>
-                        {ns.forumCount} forum{ns.forumCount === 1 ? "" : "s"}
-                      </span>
-                      <span className={styles.pill}>
-                        {ns.memberCount} member
-                        {ns.memberCount === 1 ? "" : "s"}
-                      </span>
+                    <span className={styles.chip}>
+                      {ns.memberCount} member{ns.memberCount === 1 ? "" : "s"}
                     </span>
+                  </div>
+                  {/* The id is a fallback for telling two same-named spaces
+                      apart — deliberately not the headline, which is what made
+                      every card read as a hex string. */}
+                  <span className={styles.cardId} title={ns.namespaceId}>
+                    {ns.namespaceId.slice(0, 10)}…
                   </span>
+                  <div className={styles.cardActions}>
+                    <ActionButton
+                      onClick={() => navigate(`/spaces/${ns.namespaceId}`)}
+                      testId="open-space"
+                    >
+                      Open
+                    </ActionButton>
+                    <ActionButton
+                      onClick={() => mintInvite(ns)}
+                      pending={pending === `invite:${ns.namespaceId}`}
+                      variant="secondary"
+                      testId="invite-btn"
+                      title="Invite someone to this whole space"
+                    >
+                      Invite
+                    </ActionButton>
+                  </div>
                 </div>
-                <span className={styles.cardId} title={ns.namespaceId}>
-                  {ns.namespaceId}
-                </span>
-                <div className={styles.cardActions}>
-                  <button
-                    type="button"
-                    className={styles.openBtn}
-                    onClick={() => navigate(`/spaces/${ns.namespaceId}`)}
-                    data-testid="open-space"
-                  >
-                    Open
-                  </button>
-                  {/* Outside any wrapping button: nested interactive elements are
-                      invalid HTML and the inner click does not reliably fire. */}
-                  <ActionButton
-                    onClick={() => mintInvite(ns)}
-                    pending={pending === `invite:${ns.namespaceId}`}
-                    pendingLabel="Minting…"
-                    variant="secondary"
-                    testId="invite-btn"
-                    title="Invite someone to this whole space"
-                  >
-                    Invite
-                  </ActionButton>
-                </div>
-              </article>
-            ))}
-          </div>
+              ))}
+            </div>
+          </>
         )}
       </main>
 
+      <InviteModal
+        open={!!invite}
+        code={invite?.code ?? ""}
+        scope={`Whole space · ${namespaces.find((n) => n.namespaceId === invite?.id)?.name ?? ""}`}
+        onClose={() => setInvite(null)}
+      />
+
       <dialog
         ref={joinDialogRef}
-        className={styles.dialog}
-        data-testid="join-dialog"
+        className={styles.joinDialog}
         onClose={() => setShowJoin(false)}
       >
-        <div className={styles.dialogHead}>
-          <h2 className={styles.dialogTitle}>Join a space or forum</h2>
-          <span className={styles.spacer} />
-          <button
-            type="button"
-            className={styles.ghostBtn}
-            onClick={() => setShowJoin(false)}
-            data-testid="join-dialog-close"
+        <h2>Join a space or forum</h2>
+        <p>
+          An invite link normally just needs opening — it brings you here and
+          joins on its own. Paste one in only if it did not survive however it
+          was sent to you. A raw code is one long line of base58 with no spaces,
+          and any mero app's code works here.
+        </p>
+        <textarea
+          value={joinCode}
+          onChange={(e) => setJoinCode(e.target.value)}
+          placeholder="Paste an invite link or code"
+          aria-label="Invite link or code"
+          rows={3}
+          data-testid="join-input"
+        />
+        <div className={styles.cardActions}>
+          <ActionButton
+            onClick={join}
+            pending={pending === "join"}
+            disabled={!joinCode.trim()}
+            testId="join-btn"
           >
+            Join
+          </ActionButton>
+          <ActionButton onClick={() => setShowJoin(false)} variant="secondary">
             Close
-          </button>
-        </div>
-        <div className={styles.dialogBody}>
-          <div className={styles.dialogRow}>
-            <input
-              className={styles.dialogInput}
-              placeholder="Paste an invite link or code"
-              value={joinCode}
-              onChange={(e) => setJoinCode(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && join()}
-              disabled={pending === "join"}
-              data-testid="join-code-input"
-              aria-label="Invite link or code"
-            />
-            <ActionButton
-              onClick={join}
-              pending={pending === "join"}
-              pendingLabel="Joining…"
-              disabled={!joinCode.trim() || !mero}
-              testId="join-submit"
-            >
-              Join
-            </ActionButton>
-          </div>
-          <p className={styles.help}>
-            An invite <strong>link</strong> normally just needs opening — it
-            brings you here and joins on its own. Paste one in only if it did
-            not survive however it was sent to you. A raw <strong>code</strong>{" "}
-            is one long line of base58 with no spaces, and any mero app&apos;s
-            code works here.
-          </p>
+          </ActionButton>
         </div>
       </dialog>
     </div>
