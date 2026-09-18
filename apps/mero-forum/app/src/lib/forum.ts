@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useMero } from "@calimero-network/mero-react";
+import { useMero, useNodeIdentity } from "@calimero-network/mero-react";
 
-import { useForumWorkspace } from "./workspace";
+import { getContextId } from "./session";
 import { ForumClient } from "../generated/ForumClient";
 import type { CommentView, PostView } from "../generated/ForumClient";
 
@@ -16,19 +16,44 @@ import type { CommentView, PostView } from "../generated/ForumClient";
  * on that contract. It also had no way to create one, so a fresh node was a
  * permanently empty feed.
  */
-export function useForumContext(): { contextId: string | null; loading: boolean } {
-  const { contextId, loading } = useForumWorkspace();
-  return { contextId, loading };
+export function useForumContext(): {
+  contextId: string | null;
+  loading: boolean;
+} {
+  // The SESSION, not "the first context on the node".
+  //
+  // This used to be `getContexts().contexts[0]` — whatever context happened to
+  // be first, whichever application it belonged to. On a node running more than
+  // one Calimero app that is somebody else's context, and every forum call
+  // against it came back `FunctionCallError`, because the method does not exist
+  // on that contract.
+  //
+  // Now the forum you are in is an explicit choice made on the spaces/forums
+  // pages and recorded in `lib/session`, so there is nothing to guess.
+  const [contextId, setContextId] = useState<string | null>(getContextId);
+
+  // `setActiveForum` writes synchronously and the pages navigate straight after,
+  // so a re-read on mount is enough; there is no cross-tab case to follow.
+  useEffect(() => {
+    setContextId(getContextId());
+  }, []);
+
+  return { contextId, loading: false };
 }
 
 /**
- * A typed client, or null until the node AND this node's identity in the
- * context have resolved.
+ * This node's ACCOUNT id — who the contract will record as the author.
  *
- * ⚠️ The executor is the identity this node OWNS in the context, not the
- * account id. Both are 64 hex characters since rc.27, so passing the wrong one
- * type-checks, sends, and comes back rejected as an unauthorized signer.
+ * Not the context identity. Both are 64 hex characters since rc.27, so mixing
+ * them type-checks and then silently marks every one of your own posts as
+ * somebody else's: `Post.author` is the account, and "can I delete this" is an
+ * account comparison.
  */
+export function useSelfAccount(): string | null {
+  const { identity } = useNodeIdentity();
+  return identity?.accountId ?? null;
+}
+
 export function useForumClient(): ForumClient | null {
   const { mero } = useMero();
   const { contextId } = useForumContext();
@@ -52,7 +77,10 @@ export function useForumClient(): ForumClient | null {
   }, [mero, contextId]);
 
   return useMemo(
-    () => (mero && contextId && executor ? new ForumClient(mero, contextId, executor) : null),
+    () =>
+      mero && contextId && executor
+        ? new ForumClient(mero, contextId, executor)
+        : null,
     [mero, contextId, executor],
   );
 }
@@ -120,7 +148,10 @@ export function useFeed(client: ForumClient | null, sort: Sort) {
 }
 
 /** Comments on one post, same paging contract as the feed. */
-export function useComments(client: ForumClient | null, postId: string | undefined) {
+export function useComments(
+  client: ForumClient | null,
+  postId: string | undefined,
+) {
   const [items, setItems] = useState<CommentView[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(true);
@@ -132,7 +163,11 @@ export function useComments(client: ForumClient | null, postId: string | undefin
     inFlight.current = true;
     setLoading(true);
     try {
-      const page = await client.listComments({ post_id: postId, cursor, limit: 20 });
+      const page = await client.listComments({
+        post_id: postId,
+        cursor,
+        limit: 20,
+      });
       setItems((prev) => {
         const seen = new Set(prev.map((c) => c.id));
         return [...prev, ...page.items.filter((c) => !seen.has(c.id))];
@@ -152,11 +187,12 @@ export function useComments(client: ForumClient | null, postId: string | undefin
   }, []);
 
   useEffect(() => {
-    if (client && postId && items.length === 0 && hasMore && !loading) void loadMore();
+    if (client && postId && items.length === 0 && hasMore && !loading)
+      void loadMore();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [client, postId, items.length, hasMore]);
 
-  return { items, loadMore, hasMore, loading, reload };
+  return { items, loadMore, hasMore, loading, reload, setItems };
 }
 
 /** "3h ago" — short, and stable enough not to need a ticking clock. */
@@ -172,7 +208,6 @@ export function timeAgo(ms: number, now: number = Date.now()): string {
   return new Date(ms).toLocaleDateString();
 }
 
-/** An account id is 64 hex characters; show enough to tell people apart. */
-export function shortAuthor(account: string): string {
-  return account.length > 10 ? `${account.slice(0, 6)}…${account.slice(-4)}` : account;
-}
+/** @deprecated Use `authorLabel` from lib/nickname — it prefers the chosen name
+ *  and flags an id fallback instead of passing an id off as one. */
+export { shortAccount as shortAuthor } from "./nickname";

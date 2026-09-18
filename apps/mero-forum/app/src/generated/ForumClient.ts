@@ -25,9 +25,19 @@ export interface CommentView {
   id: string;
   post_id: string;
   author: string;
+  author_name: string;
   body: string;
   created_at: number;
   edited_at: number;
+  score: number;
+  my_vote: number;
+}
+
+export interface CommentVote {
+  comment_id: string;
+  voter: string;
+  value: number;
+  updated_at: number;
 }
 
 export interface Event_CommentCreated {
@@ -45,6 +55,11 @@ export interface Event_CommentEdited {
   id: string;
 }
 
+export interface Event_CommentVoted {
+  post_id: string;
+  comment_id: string;
+}
+
 export interface Event_PostCreated {
   id: string;
 }
@@ -57,6 +72,10 @@ export interface Event_PostEdited {
   id: string;
 }
 
+export interface Event_ProfileSet {
+  account: string;
+}
+
 export interface Event_Voted {
   post_id: string;
 }
@@ -65,6 +84,8 @@ export interface MeroForum {
   posts: Record<string, Post>;
   comments: Record<string, Comment>;
   votes: Record<string, Vote>;
+  comment_votes: Record<string, CommentVote>;
+  profiles: Record<string, Profile>;
 }
 
 export interface Post {
@@ -85,6 +106,7 @@ export interface PostPage {
 export interface PostView {
   id: string;
   author: string;
+  author_name: string;
   title: string;
   body: string;
   created_at: number;
@@ -92,6 +114,12 @@ export interface PostView {
   score: number;
   comment_count: number;
   my_vote: number;
+}
+
+export interface Profile {
+  account: string;
+  name: string;
+  updated_at: number;
 }
 
 export interface Vote {
@@ -108,13 +136,17 @@ export interface Vote {
 
 
 
+
+
 export type AbiEvent =
   | { name: "CommentCreated"; payload: Event_CommentCreated }
   | { name: "CommentDeleted"; payload: Event_CommentDeleted }
   | { name: "CommentEdited"; payload: Event_CommentEdited }
+  | { name: "CommentVoted"; payload: Event_CommentVoted }
   | { name: "PostCreated"; payload: Event_PostCreated }
   | { name: "PostDeleted"; payload: Event_PostDeleted }
   | { name: "PostEdited"; payload: Event_PostEdited }
+  | { name: "ProfileSet"; payload: Event_ProfileSet }
   | { name: "Voted"; payload: Event_Voted }
 ;
 
@@ -179,6 +211,14 @@ export class ForumClient {
   }
 
   /**
+   * get_nickname
+   */
+  public async getNickname(params: { account: string }): Promise<string> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_nickname', argsJson: params, executorPublicKey: this._executorPublicKey });
+    return response as string;
+  }
+
+  /**
    * get_post
    */
   public async getPost(params: { post_id: string }): Promise<PostView> {
@@ -211,10 +251,26 @@ export class ForumClient {
   }
 
   /**
+   * set_nickname
+   */
+  public async setNickname(params: { name: string }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_nickname', argsJson: params, executorPublicKey: this._executorPublicKey });
+    return response as void;
+  }
+
+  /**
    * vote
    */
   public async vote(params: { post_id: string; value: number }): Promise<void> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'vote', argsJson: params, executorPublicKey: this._executorPublicKey });
+    return response as void;
+  }
+
+  /**
+   * vote_comment
+   */
+  public async voteComment(params: { comment_id: string; value: number }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'vote_comment', argsJson: params, executorPublicKey: this._executorPublicKey });
     return response as void;
   }
 

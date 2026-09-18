@@ -28,6 +28,9 @@ const MAX_TITLE: usize = 300;
 const MAX_BODY: usize = 10_000;
 /// Largest page `list_posts`/`list_comments` will return, whatever is asked for.
 const MAX_PAGE: usize = 100;
+/// A display name, not a bio. Long enough for a real name, short enough that it
+/// cannot be used to smuggle a paragraph into every byline on the page.
+const MAX_NICKNAME: usize = 64;
 /// Page size used when the caller asks for 0.
 const DEFAULT_PAGE: usize = 20;
 
@@ -127,6 +130,79 @@ impl Mergeable for Vote {
     }
 }
 
+/// One account's vote on one COMMENT.
+///
+/// A separate type and a separate map from {@link Vote}, rather than widening
+/// `Vote` to carry either kind of subject. Two reasons, and the second is the
+/// load-bearing one:
+///
+///   * `Vote.post_id` holding a comment id would be a lie in the field name,
+///     and the ABI is a public surface that clients read;
+///   * `tally` already scans the WHOLE vote map once per post, so `list_posts`
+///     is O(posts x votes). Folding comment votes into the same map would make
+///     every post listing pay for every comment vote in the forum, on a page
+///     that never displays one.
+#[app::mergeable(id = "mero_forum::CommentVote")]
+#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct CommentVote {
+    pub comment_id: String,
+    pub voter: String,
+    /// +1, -1, or 0 for retracted.
+    pub value: i8,
+    pub updated_at: u64,
+}
+
+impl Mergeable for CommentVote {
+    fn merge(&mut self, other: &Self) -> std::result::Result<(), MergeError> {
+        // Same rule as Vote: one voter, so the only conflict is that person
+        // voting from two devices at once. The value breaks a timestamp tie so
+        // both replicas choose identically.
+        if (other.updated_at, other.value) > (self.updated_at, self.value) {
+            *self = other.clone();
+        }
+        Ok(())
+    }
+}
+
+/// The display name one ACCOUNT chose for itself.
+///
+/// ── Why this is in the contract and not just localStorage ────────────────────
+///
+/// A nickname kept only in the browser is a nickname only its owner can see:
+/// every other reader still gets a 64-hex account id, which is the thing the
+/// name was supposed to replace. localStorage remains the source for the input
+/// (so the field is pre-filled and survives a reload before you ever post), but
+/// the value has to reach the contract for anyone else's feed to render it.
+///
+/// Keyed by ACCOUNT, matching `Post.author` — so one person is one name across
+/// their laptop and their phone.
+///
+/// This is a claim, not an identity. Names are not unique and are not verified;
+/// the account id remains the only thing that authorises anything, and every
+/// author-gated check below still compares accounts, never names.
+#[app::mergeable(id = "mero_forum::Profile")]
+#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct Profile {
+    pub account: String,
+    pub name: String,
+    pub updated_at: u64,
+}
+
+impl Mergeable for Profile {
+    fn merge(&mut self, other: &Self) -> std::result::Result<(), MergeError> {
+        // One owner, so the only conflict is renaming from two devices at once.
+        // The name breaks a timestamp tie so both replicas pick the same one.
+        if (other.updated_at, &other.name) > (self.updated_at, &self.name) {
+            *self = other.clone();
+        }
+        Ok(())
+    }
+}
+
 // ── Views (what the RPC surface returns) ─────────────────────────────────────
 
 #[derive(AbiType, Debug, Clone, Serialize, Deserialize)]
@@ -134,6 +210,10 @@ impl Mergeable for Vote {
 pub struct PostView {
     pub id: String,
     pub author: String,
+    /// The author's chosen name, or "" when they have not set one. Empty is a
+    /// real state — someone can post before naming themselves — so the UI falls
+    /// back to a short id rather than rendering a blank byline.
+    pub author_name: String,
     pub title: String,
     pub body: String,
     pub created_at: u64,
@@ -150,9 +230,13 @@ pub struct CommentView {
     pub id: String,
     pub post_id: String,
     pub author: String,
+    pub author_name: String,
     pub body: String,
     pub created_at: u64,
     pub edited_at: u64,
+    pub score: i64,
+    /// The CALLER's vote, so the UI can render the arrows without a second call.
+    pub my_vote: i8,
 }
 
 /// One page, plus the cursor that fetches the next.
@@ -187,17 +271,45 @@ pub struct MeroForum {
     comments: UnorderedMap<String, Comment>,
     /// Keyed `"<post_id>|<account>"` — one row per voter per post.
     votes: UnorderedMap<String, Vote>,
+    /// Keyed `"<comment_id>|<account>"` — one row per voter per comment.
+    comment_votes: UnorderedMap<String, CommentVote>,
+    /// Keyed by ACCOUNT — the display name each person chose.
+    profiles: UnorderedMap<String, Profile>,
 }
 
 #[app::event]
 pub enum Event<'a> {
-    PostCreated { id: &'a str },
-    PostEdited { id: &'a str },
-    PostDeleted { id: &'a str },
-    CommentCreated { post_id: &'a str, id: &'a str },
-    CommentEdited { post_id: &'a str, id: &'a str },
-    CommentDeleted { post_id: &'a str, id: &'a str },
-    Voted { post_id: &'a str },
+    PostCreated {
+        id: &'a str,
+    },
+    PostEdited {
+        id: &'a str,
+    },
+    PostDeleted {
+        id: &'a str,
+    },
+    CommentCreated {
+        post_id: &'a str,
+        id: &'a str,
+    },
+    CommentEdited {
+        post_id: &'a str,
+        id: &'a str,
+    },
+    CommentDeleted {
+        post_id: &'a str,
+        id: &'a str,
+    },
+    Voted {
+        post_id: &'a str,
+    },
+    CommentVoted {
+        post_id: &'a str,
+        comment_id: &'a str,
+    },
+    ProfileSet {
+        account: &'a str,
+    },
 }
 
 // ── Logic ────────────────────────────────────────────────────────────────────
@@ -210,6 +322,8 @@ impl MeroForum {
             posts: UnorderedMap::new(),
             comments: UnorderedMap::new(),
             votes: UnorderedMap::new(),
+            comment_votes: UnorderedMap::new(),
+            profiles: UnorderedMap::new(),
         }
     }
 
@@ -339,6 +453,7 @@ impl MeroForum {
             score,
             my_vote,
             id: post.id,
+            author_name: self.name_of(&post.author),
             author: post.author,
             title: post.title,
             body: post.body,
@@ -410,6 +525,7 @@ impl MeroForum {
             let (_, my_vote) = self.tally(id, &me)?;
             items.push(PostView {
                 id: post.id.clone(),
+                author_name: self.name_of(&post.author),
                 author: post.author.clone(),
                 title: post.title.clone(),
                 body: post.body.clone(),
@@ -521,20 +637,24 @@ impl MeroForum {
             None
         };
 
-        Ok(CommentPage {
-            items: slice
-                .into_iter()
-                .map(|c| CommentView {
-                    id: c.id.clone(),
-                    post_id: c.post_id.clone(),
-                    author: c.author.clone(),
-                    body: c.body.clone(),
-                    created_at: c.created_at,
-                    edited_at: c.edited_at,
-                })
-                .collect(),
-            next_cursor,
-        })
+        let me = Self::caller();
+        let mut items = Vec::with_capacity(slice.len());
+        for c in slice {
+            let (score, my_vote) = self.comment_tally(&c.id, &me)?;
+            items.push(CommentView {
+                id: c.id.clone(),
+                post_id: c.post_id.clone(),
+                author_name: self.name_of(&c.author),
+                author: c.author.clone(),
+                body: c.body.clone(),
+                created_at: c.created_at,
+                edited_at: c.edited_at,
+                score,
+                my_vote,
+            });
+        }
+
+        Ok(CommentPage { items, next_cursor })
     }
 
     // ── votes ────────────────────────────────────────────────────────────────
@@ -564,7 +684,97 @@ impl MeroForum {
         Ok(())
     }
 
+    /// Up/down/retract one COMMENT, same contract as {@link vote}: +1, -1, or 0.
+    ///
+    /// Gated on the comment still existing, which also rejects a vote on a
+    /// deleted one — `load_comment` treats a tombstone as absent. Without that
+    /// check a vote row could outlive its subject and keep a score alive for
+    /// something nobody can read.
+    pub fn vote_comment(&mut self, comment_id: String, value: i8) -> app::Result<()> {
+        if !(-1..=1).contains(&value) {
+            return Err(AppError::msg("vote must be -1, 0 or 1"));
+        }
+        let comment = self.load_comment(&comment_id)?;
+
+        let voter = Self::caller();
+        let key = Self::vote_key(&comment_id, &voter);
+        self.comment_votes
+            .insert(
+                key,
+                CommentVote {
+                    comment_id: comment_id.clone(),
+                    voter,
+                    value,
+                    updated_at: env::time_now(),
+                },
+            )
+            .map_err(|e| AppError::msg(format!("comment_votes.insert failed: {e}")))?;
+
+        app::emit!(Event::CommentVoted {
+            post_id: &comment.post_id,
+            comment_id: &comment_id,
+        });
+        Ok(())
+    }
+
+    /// Claim a display name for the calling ACCOUNT.
+    ///
+    /// No `account` argument, for the same reason `create_post` takes no author:
+    /// a caller-supplied identity is an impersonation hole. You can only name
+    /// yourself.
+    ///
+    /// An empty name CLEARS the claim rather than storing a blank, so "I'd
+    /// rather be anonymous" is expressible and does not leave a row that
+    /// renders as an empty byline.
+    pub fn set_nickname(&mut self, name: String) -> app::Result<()> {
+        let account = Self::caller();
+        let trimmed = name.trim();
+
+        if trimmed.is_empty() {
+            self.profiles
+                .remove(&account)
+                .map_err(|e| AppError::msg(format!("profiles.remove failed: {e}")))?;
+            app::emit!(Event::ProfileSet { account: &account });
+            return Ok(());
+        }
+
+        Self::check_len("nickname", trimmed, MAX_NICKNAME)?;
+        self.profiles
+            .insert(
+                account.clone(),
+                Profile {
+                    account: account.clone(),
+                    name: trimmed.to_owned(),
+                    updated_at: env::time_now(),
+                },
+            )
+            .map_err(|e| AppError::msg(format!("profiles.insert failed: {e}")))?;
+
+        app::emit!(Event::ProfileSet { account: &account });
+        Ok(())
+    }
+
+    /// The name this account chose, or "" when it has not chosen one.
+    pub fn get_nickname(&self, account: String) -> app::Result<String> {
+        Ok(self
+            .profiles
+            .get(&account)
+            .map_err(|e| AppError::msg(format!("profiles.get failed: {e}")))?
+            .map(|p| p.name.clone())
+            .unwrap_or_default())
+    }
+
     // ── internal ─────────────────────────────────────────────────────────────
+
+    /// One account's display name, or "" — the lookup every view goes through.
+    fn name_of(&self, account: &str) -> String {
+        self.profiles
+            .get(&account.to_owned())
+            .ok()
+            .flatten()
+            .map(|p| p.name.clone())
+            .unwrap_or_default()
+    }
 
     fn page_size(limit: u32) -> usize {
         match limit as usize {
@@ -585,6 +795,31 @@ impl MeroForum {
             return Err(AppError::msg(format!("comment is deleted: {comment_id}")));
         }
         Ok(comment)
+    }
+
+    /// `(score, caller's own vote)` for one comment.
+    ///
+    /// Same shape as {@link tally}, over the comment map. Both scan the whole
+    /// map per subject, so a listing is O(rows x votes) — fine at forum scale
+    /// and unchanged from what post voting already did, but it is the first
+    /// thing to index if a thread ever gets big.
+    fn comment_tally(&self, comment_id: &str, me: &str) -> app::Result<(i64, i8)> {
+        let mut score = 0i64;
+        let mut mine = 0i8;
+        for (_, vote) in self
+            .comment_votes
+            .entries()
+            .map_err(|e| AppError::msg(format!("comment_votes.entries failed: {e}")))?
+        {
+            if vote.comment_id != comment_id {
+                continue;
+            }
+            score += i64::from(vote.value);
+            if vote.voter == me {
+                mine = vote.value;
+            }
+        }
+        Ok((score, mine))
     }
 
     /// `(score, caller's own vote)` for one post.
@@ -787,6 +1022,157 @@ mod tests {
         assert_eq!(page.items[0].id, loud);
         assert_eq!(page.items[0].score, 2);
         assert_eq!(page.items[1].id, quiet);
+    }
+
+    // ── nicknames ────────────────────────────────────────────────────────────
+
+    #[test]
+    fn a_name_reaches_every_reader_not_just_its_owner() {
+        // The whole reason the name is in the contract rather than localStorage:
+        // somebody ELSE has to be able to see it.
+        let mut app = new_forum();
+        app.call(|s| s.set_nickname("ana".to_owned())).unwrap();
+        post(&mut app, "p");
+
+        app.set_account(BOB_ACCOUNT);
+        app.set_device(BOB_DEVICE);
+        let seen_by_bob = app.view(|s| s.list_posts(None, None, 10)).unwrap();
+        assert_eq!(seen_by_bob.items[0].author_name, "ana");
+    }
+
+    #[test]
+    fn an_unnamed_author_reads_as_empty_not_as_a_blank_row() {
+        let mut app = new_forum();
+        let p = post(&mut app, "p");
+        assert_eq!(app.view(|s| s.get_post(p)).unwrap().author_name, "");
+    }
+
+    #[test]
+    fn a_name_is_per_account_so_both_devices_share_it() {
+        // Named on the laptop, posting from the phone: one person, one name.
+        let mut app = new_forum();
+        app.call(|s| s.set_nickname("ana".to_owned())).unwrap();
+        let p = app
+            .call_as(MY_PHONE, |s| {
+                s.create_post("from the phone".to_owned(), "b".to_owned())
+            })
+            .unwrap();
+        assert_eq!(app.view(|s| s.get_post(p)).unwrap().author_name, "ana");
+    }
+
+    #[test]
+    fn an_empty_nickname_clears_the_claim() {
+        let mut app = new_forum();
+        app.call(|s| s.set_nickname("ana".to_owned())).unwrap();
+        app.call(|s| s.set_nickname("   ".to_owned())).unwrap();
+        let p = post(&mut app, "p");
+        assert_eq!(app.view(|s| s.get_post(p)).unwrap().author_name, "");
+    }
+
+    #[test]
+    fn a_nickname_cannot_be_a_paragraph() {
+        let mut app = new_forum();
+        assert!(app.call(|s| s.set_nickname("x".repeat(65))).is_err());
+    }
+
+    #[test]
+    fn a_comment_carries_its_authors_name_too() {
+        let mut app = new_forum();
+        app.call(|s| s.set_nickname("ana".to_owned())).unwrap();
+        let p = post(&mut app, "p");
+        comment(&mut app, &p, "hello");
+        let page = app.view(|s| s.list_comments(p, None, 10)).unwrap();
+        assert_eq!(page.items[0].author_name, "ana");
+    }
+
+    // ── comment votes ────────────────────────────────────────────────────────
+
+    fn comment(app: &mut TestHost<MeroForum>, post_id: &str, body: &str) -> String {
+        app.call(|s| s.create_comment(post_id.to_owned(), body.to_owned()))
+            .unwrap()
+    }
+
+    #[test]
+    fn a_comment_carries_its_score_and_the_callers_own_vote() {
+        let mut app = new_forum();
+        let p = post(&mut app, "p");
+        let c = comment(&mut app, &p, "hello");
+
+        app.call(|s| s.vote_comment(c.clone(), 1)).unwrap();
+        app.call_as_account(BOB_ACCOUNT, BOB_DEVICE, |s| s.vote_comment(c.clone(), 1))
+            .unwrap();
+
+        let page = app.view(|s| s.list_comments(p.clone(), None, 10)).unwrap();
+        assert_eq!(page.items[0].score, 2);
+        // The view is rendered for whoever asks, so my_vote is the CALLER's.
+        assert_eq!(page.items[0].my_vote, 1);
+    }
+
+    #[test]
+    fn one_account_gets_one_vote_per_comment_however_many_times_it_votes() {
+        let mut app = new_forum();
+        let p = post(&mut app, "p");
+        let c = comment(&mut app, &p, "hello");
+        app.call(|s| s.vote_comment(c.clone(), 1)).unwrap();
+        app.call(|s| s.vote_comment(c.clone(), 1)).unwrap();
+        app.call(|s| s.vote_comment(c.clone(), 1)).unwrap();
+        let page = app.view(|s| s.list_comments(p, None, 10)).unwrap();
+        assert_eq!(page.items[0].score, 1);
+    }
+
+    #[test]
+    fn voting_zero_retracts_a_comment_vote() {
+        let mut app = new_forum();
+        let p = post(&mut app, "p");
+        let c = comment(&mut app, &p, "hello");
+        app.call(|s| s.vote_comment(c.clone(), -1)).unwrap();
+        assert_eq!(
+            app.view(|s| s.list_comments(p.clone(), None, 10))
+                .unwrap()
+                .items[0]
+                .score,
+            -1
+        );
+        app.call(|s| s.vote_comment(c.clone(), 0)).unwrap();
+        let page = app.view(|s| s.list_comments(p, None, 10)).unwrap();
+        assert_eq!(page.items[0].score, 0);
+        assert_eq!(page.items[0].my_vote, 0);
+    }
+
+    #[test]
+    fn a_comment_vote_must_be_minus_one_zero_or_one() {
+        let mut app = new_forum();
+        let p = post(&mut app, "p");
+        let c = comment(&mut app, &p, "hello");
+        assert!(app.call(|s| s.vote_comment(c.clone(), 2)).is_err());
+        assert!(app.call(|s| s.vote_comment(c, -2)).is_err());
+    }
+
+    #[test]
+    fn a_deleted_comment_cannot_be_voted_on() {
+        // Otherwise a vote row outlives its subject and keeps a score alive for
+        // something nobody can read.
+        let mut app = new_forum();
+        let p = post(&mut app, "p");
+        let c = comment(&mut app, &p, "hello");
+        app.call(|s| s.delete_comment(c.clone())).unwrap();
+        assert!(app.call(|s| s.vote_comment(c, 1)).is_err());
+    }
+
+    #[test]
+    fn comment_votes_do_not_leak_into_post_scores() {
+        // The two live in separate maps precisely so neither tally sees the
+        // other. If they were ever folded into one map, this is what breaks.
+        let mut app = new_forum();
+        let p = post(&mut app, "p");
+        let c = comment(&mut app, &p, "hello");
+        app.call(|s| s.vote_comment(c.clone(), 1)).unwrap();
+        assert_eq!(app.view(|s| s.get_post(p.clone())).unwrap().score, 0);
+
+        app.call(|s| s.vote(p.clone(), 1)).unwrap();
+        assert_eq!(app.view(|s| s.get_post(p.clone())).unwrap().score, 1);
+        let page = app.view(|s| s.list_comments(p, None, 10)).unwrap();
+        assert_eq!(page.items[0].score, 1);
     }
 
     // ── votes ────────────────────────────────────────────────────────────────

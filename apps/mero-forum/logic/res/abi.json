@@ -91,6 +91,12 @@
           }
         },
         {
+          "name": "author_name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
           "name": "body",
           "type": {
             "kind": "string"
@@ -104,6 +110,47 @@
         },
         {
           "name": "edited_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "score",
+          "type": {
+            "kind": "i64"
+          }
+        },
+        {
+          "name": "my_vote",
+          "type": {
+            "kind": "i32"
+          }
+        }
+      ]
+    },
+    "CommentVote": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "comment_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "voter",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "i32"
+          }
+        },
+        {
+          "name": "updated_at",
           "type": {
             "kind": "u64"
           }
@@ -161,6 +208,23 @@
         }
       ]
     },
+    "Event_CommentVoted": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "post_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "comment_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
     "Event_PostCreated": {
       "kind": "record",
       "fields": [
@@ -188,6 +252,17 @@
       "fields": [
         {
           "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_ProfileSet": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "account",
           "type": {
             "kind": "string"
           }
@@ -243,6 +318,32 @@
             },
             "value": {
               "$ref": "Vote"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "comment_votes",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "CommentVote"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "profiles",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Profile"
             },
             "crdt_type": "unordered_map"
           }
@@ -333,6 +434,12 @@
           }
         },
         {
+          "name": "author_name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
           "name": "title",
           "type": {
             "kind": "string"
@@ -372,6 +479,29 @@
           "name": "my_vote",
           "type": {
             "kind": "i32"
+          }
+        }
+      ]
+    },
+    "Profile": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "account",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
           }
         }
       ]
@@ -522,6 +652,20 @@
       }
     },
     {
+      "name": "get_nickname",
+      "params": [
+        {
+          "name": "account",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      }
+    },
+    {
       "name": "get_post",
       "params": [
         {
@@ -598,10 +742,44 @@
       }
     },
     {
+      "name": "set_nickname",
+      "params": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
       "name": "vote",
       "params": [
         {
           "name": "post_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "i32"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "vote_comment",
+      "params": [
+        {
+          "name": "comment_id",
           "type": {
             "kind": "string"
           }
@@ -638,6 +816,12 @@
       }
     },
     {
+      "name": "CommentVoted",
+      "payload": {
+        "$ref": "Event_CommentVoted"
+      }
+    },
+    {
       "name": "PostCreated",
       "payload": {
         "$ref": "Event_PostCreated"
@@ -653,6 +837,12 @@
       "name": "PostEdited",
       "payload": {
         "$ref": "Event_PostEdited"
+      }
+    },
+    {
+      "name": "ProfileSet",
+      "payload": {
+        "$ref": "Event_ProfileSet"
       }
     },
     {

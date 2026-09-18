@@ -1,0 +1,191 @@
+.dialog {
+  border: 1px solid var(--border);
+  border-radius: var(--radius, 12px);
+  background: var(--bg-elev);
+  color: var(--text);
+  padding: 0;
+  width: min(92vw, 520px);
+  box-shadow: var(--shadow, 0 10px 34px rgba(19, 18, 21, 0.1));
+}
+
+.dialog::backdrop {
+  background: rgba(19, 18, 21, 0.38);
+}
+
+.body {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.title {
+  margin: 0;
+  font-size: 1.0625rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.close {
+  font: inherit;
+  font-size: 1rem;
+  line-height: 1;
+  color: var(--text-faint);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: var(--radius-sm, 8px);
+}
+
+.close:hover {
+  color: var(--text);
+  background: var(--surface-hover);
+}
+
+.scope {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--text-dim);
+}
+
+/* ONE line, ellipsised. The link is ~380 characters of base58 and wrapping it
+   turned the dialog into a wall of text that buried the Copy button below the
+   fold — nobody reads an invitation token, they copy it.
+
+   The full value stays reachable: it is the element's `title`, and
+   `data-full="true"` unwraps it for the one case that genuinely needs the
+   characters on screen — a blocked clipboard, where selecting by hand is the
+   only way left. */
+.link {
+  display: block;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--text-dim);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-sm, 8px);
+  padding: 9px 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  user-select: all;
+}
+
+.link[data-full="true"] {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  color: var(--text);
+}
+
+.primary {
+  font: inherit;
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: var(--accent-text);
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm, 8px);
+  padding: 10px 14px;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+
+.primary:hover {
+  background: var(--accent-hover);
+}
+
+.primary:focus-visible {
+  outline: 2px solid var(--accent-ink);
+  outline-offset: 2px;
+}
+
+.hint {
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+
+.disclosure {
+  align-self: flex-start;
+  font: inherit;
+  font-size: 0.8125rem;
+  color: var(--accent-ink);
+  background: transparent;
+  border: none;
+  padding: 2px 0;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.more {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+
+.moreLabel {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.moreNote {
+  font-weight: 400;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: var(--text-faint);
+}
+
+.moreRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.moreValue {
+  flex: 1;
+  min-width: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.6875rem;
+  color: var(--text-dim);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 8px);
+  padding: 7px 9px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.secondary {
+  font: inherit;
+  font-size: 0.8125rem;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm, 8px);
+  padding: 7px 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.secondary:hover {
+  background: var(--surface-hover);
+}
