@@ -38,7 +38,7 @@
 .close {
   background: transparent;
   border: none;
-  color: #9aa6bd;
+  color: var(--text-dim);
   cursor: pointer;
   font-size: 0.85rem;
 }
@@ -153,4 +153,4 @@
 .lvl_signal { color: #9ec1ff; }
 .lvl_peer { color: #8ff0ad; }
 .lvl_error { color: #ffb3b9; }
-.lvl_info { color: #9aa6bd; }
+.lvl_info { color: var(--text-dim); }

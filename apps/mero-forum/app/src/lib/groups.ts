@@ -130,8 +130,26 @@ export function unwrapInvitation(payload: unknown): SignedInvitation | null {
 }
 
 /** `init(name)` takes JSON bytes — see the contract's `init`. */
-function initParamsFor(name: string): number[] {
-  return Array.from(new TextEncoder().encode(JSON.stringify({ name })));
+/**
+ * The bytes handed to the contract's `init`.
+ *
+ * ⚠️ **`MeroForum::init()` TAKES NO ARGUMENTS.** This module was ported from
+ * mero-stream, whose `init(name: String)` does, and the `{name}` payload came
+ * with it. The runtime does not ignore a surplus field — it panics inside the
+ * guest and the whole create fails with
+ *
+ *     HTTP 400: application initialization failed: guest panicked:
+ *     init: takes no arguments, but the call sent unknown field(s): ["name"]
+ *
+ * which names the contract, not the caller that sent it. The forum's name lives
+ * in the subgroup's metadata record (see `createForum`), which is where the
+ * list reads it from — the contract never needed it.
+ *
+ * `{}` rather than an empty byte array: the runtime expects a JSON object for
+ * the argument map, and an empty body is a different shape.
+ */
+function initParams(): number[] {
+  return Array.from(new TextEncoder().encode("{}"));
 }
 
 /**
@@ -375,7 +393,7 @@ export async function createForum(
   const ctx = await admin.createContext({
     applicationId: opts.applicationId,
     groupId: sg.groupId, // bound to the SUBGROUP, not the namespace
-    initializationParams: initParamsFor(opts.name),
+    initializationParams: initParams(),
   });
 
   return {

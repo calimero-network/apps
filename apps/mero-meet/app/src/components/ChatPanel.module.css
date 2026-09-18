@@ -92,7 +92,7 @@
 }
 .mine .bubble {
   background: var(--accent);
-  color: #fff;
+  color: var(--accent-text);
 }
 .time {
   font-size: 0.66rem;
@@ -127,7 +127,7 @@
   border-radius: 10px;
   border: none;
   background: var(--accent);
-  color: #fff;
+  color: var(--accent-text);
   cursor: pointer;
 }
 .send:disabled {
