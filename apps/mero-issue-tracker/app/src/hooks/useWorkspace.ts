@@ -389,7 +389,7 @@ export function useWorkspace(): UseWorkspaceReturn {
   // Roles + capabilities for this workspace. Keyed by ACCOUNT throughout —
   // `nsMembers[].identity` and `selfIdentity` are accounts; `executorPublicKey`
   // is a context executor key and is NOT interchangeable with them.
-  const roles = useMemberRoles(activeNs, nsMembers, selfIdentity);
+  const roles = useMemberRoles(activeNs, nsMembers, selfIdentity, refetchMembers);
 
   const setMemberName = useCallback(
     async (name: string) => {

@@ -12,7 +12,7 @@
  * accepted, which is the difference between "this works" and "this appears to
  * work in the promoter's browser".
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMero } from '@calimero-network/mero-react';
 import type { GroupMember } from '@calimero-network/mero-js';
 import {
@@ -55,6 +55,16 @@ export function useMemberRoles(
   namespaceId: string | null,
   members: GroupMember[],
   selfAccount: string | null,
+  /**
+   * Refetches the member ROSTER, which is where `role` comes from.
+   *
+   * Required, and held in a ref below: the roles map is derived from the
+   * `members` prop, so refreshing only this hook's own reads leaves `role`
+   * exactly as stale as before. That is not theoretical — it is why a promotion
+   * that the node had accepted, and had already replicated to the other node,
+   * still showed "Member" in the promoter's own dropdown.
+   */
+  refetchMembers: () => Promise<void>,
 ): UseMemberRolesReturn {
   const { mero } = useMero();
   const [overrides, setOverrides] = useState<Map<string, number>>(new Map());
@@ -74,6 +84,12 @@ export function useMemberRoles(
     [members],
   );
 
+  // Kept in a ref so `load` has a stable identity: `refetchMembers` is
+  // recreated by its own hook on every render, and depending on it directly
+  // would make `load` change every render and the effect below re-run forever.
+  const refetchMembersRef = useRef(refetchMembers);
+  refetchMembersRef.current = refetchMembers;
+
   const load = useCallback(async () => {
     if (!mero || !namespaceId) {
       setOverrides(new Map());
@@ -83,6 +99,9 @@ export function useMemberRoles(
     const accounts = accountsKey ? accountsKey.split(',') : [];
     setLoading(true);
     try {
+      // The roster first and always: `roles` is derived from it, and a write
+      // that changed a role is invisible until this lands.
+      await refetchMembersRef.current().catch(() => {});
       const [groupDefault, entries] = await Promise.all([
         // A thin read over getGroupInfo. Null rather than 0 on failure: 0 is a
         // real value meaning "members may do nothing", and showing that when we

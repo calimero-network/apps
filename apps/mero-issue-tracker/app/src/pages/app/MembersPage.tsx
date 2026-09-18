@@ -74,11 +74,10 @@ export default function MembersPage(): React.ReactElement {
   //
   // Held in a ref because both callbacks are recreated on every render; this
   // must run on open and on workspace change, not on every paint.
+  // `roles.refetch` refreshes the roster too — role comes FROM the roster — so
+  // this is one call, not two.
   const refreshRef = useRef<() => void>(() => {});
-  refreshRef.current = () => {
-    void ws.refetchMembers();
-    void roles.refetch();
-  };
+  refreshRef.current = () => { void roles.refetch(); };
   useEffect(() => { refreshRef.current(); }, [ws.activeNs]);
 
   // One-shot nudge: once names have settled, prompt for one if this member has
