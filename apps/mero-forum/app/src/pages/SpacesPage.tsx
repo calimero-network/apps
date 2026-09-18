@@ -13,13 +13,10 @@ import {
   redeemInvite,
   type NamespaceRow,
 } from "../lib/groups";
-import { ActionButton, StatusNote, Spinner } from "../components/ui";
 import InviteModal from "../components/InviteModal";
-import SessionMenu from "../components/SessionMenu";
-import CardMenu from "../components/CardMenu";
 import { invitationFromRaw } from "../lib/inviteLink";
 import { useDialogOpen } from "../hooks/useDialogOpen";
-import styles from "./Shell.module.css";
+import styles from "./SpacesPage.module.css";
 
 /**
  * Spaces = NAMESPACES. One level up from where this page used to sit.
@@ -42,17 +39,24 @@ import styles from "./Shell.module.css";
  */
 export default function SpacesPage() {
   const navigate = useNavigate();
-  const { mero } = useMero();
+  const { mero, logout, nodeUrl } = useMero();
   const { showToast } = useToast();
   // Resolved from the NODE by package, not from the session — see lib/appId.
   const { appId, resolving: resolvingAppId, notInstalled } = useApplicationId();
+  const nodeLabel = (() => {
+    if (!nodeUrl) return "";
+    try {
+      const u = new URL(nodeUrl);
+      return u.port ? `${u.hostname}:${u.port}` : u.hostname;
+    } catch {
+      return nodeUrl;
+    }
+  })();
 
   const [namespaces, setNamespaces] = useState<NamespaceRow[]>([]);
   const [listing, setListing] = useState(true);
   const [name, setName] = useState("");
   const [joinCode, setJoinCode] = useState("");
-  const [showJoin, setShowJoin] = useState(false);
-  const joinDialogRef = useRef<HTMLDialogElement | null>(null);
 
   // One key names the action in flight ("create", "join", `invite:<id>`), instead
   // of a single `busy` boolean. With a boolean, clicking Invite disabled Create,
@@ -66,6 +70,10 @@ export default function SpacesPage() {
   );
   // The space pending deletion. A confirm step rather than `confirm()`, because
   // this takes every forum in the space with it and the sentence has to say so.
+  // Which card's menu is open. mero-design keys this by id and closes on an
+  // outside click via a ref on the OPEN card only — same shape here.
+  const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
   const [pendingDelete, setPendingDelete] = useState<NamespaceRow | null>(null);
   const deleteDialogRef = useRef<HTMLDialogElement | null>(null);
 
@@ -115,6 +123,18 @@ export default function SpacesPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Close an open card menu on an outside click. The ref is attached to the
+  // OPEN card only (see the grid below), so this compares against one node
+  // rather than tracking every card.
+  useEffect(() => {
+    if (!menuOpenId) return;
+    const onDown = (e: MouseEvent) => {
+      if (!menuRef.current?.contains(e.target as Node)) setMenuOpenId(null);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [menuOpenId]);
 
   const create = useCallback(() => {
     const spaceName = name.trim();
@@ -221,195 +241,182 @@ export default function SpacesPage() {
     [mero, run, load, navigate, showToast],
   );
 
-  const join = useCallback(() => {
-    acceptCode(joinCode);
-    setShowJoin(false);
-  }, [acceptCode, joinCode]);
-
-  useDialogOpen(joinDialogRef, showJoin);
   useDialogOpen(deleteDialogRef, !!pendingDelete);
 
   return (
     <div className={styles.root}>
       <header className={styles.header}>
-        <span className={styles.logo}>
-          Mero Forum{" "}
-          <span className={styles.logoVersion}>v{__APP_VERSION__}</span>
-        </span>
+        <span className={styles.logo}>Mero Forum</span>
         <div className={styles.headerRight}>
-          {/* Secondary: joining is the rarer path, and a filled accent button
-              here competes with Create for the eye on the one screen whose job
-              is to get you into a space. */}
-          <ActionButton
-            onClick={() => setShowJoin(true)}
-            pending={pending === "join"}
-            variant="secondary"
-            testId="open-join"
-          >
-            Join with a link or code
-          </ActionButton>
-          <SessionMenu />
+          <span className={styles.nodeTag}>{nodeLabel}</span>
+          <button className={styles.logoutBtn} onClick={logout}>
+            Logout
+          </button>
         </div>
       </header>
 
       <main className={styles.main}>
-        <h1 className={styles.title}>Your spaces</h1>
-        <p className={styles.subtitle}>
-          A <strong>space</strong> is a namespace you invite people to. Inside
-          it, each <strong>forum</strong> is a discussion board with its own
-          posts and comments. Invite someone to the space once and every forum
-          in it is open to them.
-        </p>
+        <h1 className={styles.title}>Your Spaces</h1>
 
         <div className={styles.createRow}>
           <input
-            className={styles.createInput}
+            className={styles.input}
+            placeholder="New space name…"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="Name a new space"
-            aria-label="Name a new space"
             data-testid="space-name-input"
             onKeyDown={(e) => {
               if (e.key === "Enter" && name.trim()) create();
             }}
           />
-          <ActionButton
+          <button
+            className={styles.btn}
             onClick={create}
-            pending={pending === "create"}
-            disabled={!name.trim() || !appId}
-            testId="create-space"
+            disabled={pending === "create" || !name.trim() || !appId}
+            data-testid="create-space"
           >
-            Create space
-          </ActionButton>
+            {pending === "create" ? "Creating…" : "Create"}
+          </button>
         </div>
 
-        {status && (
-          <StatusNote tone="pending" testId="spaces-status">
-            {status}
-          </StatusNote>
-        )}
-        {error && (
-          <StatusNote tone="error" testId="spaces-error">
-            {error}
-          </StatusNote>
-        )}
+        {status && <p className={styles.empty}>{status}</p>}
+        {error && <p className={styles.joinError}>{error}</p>}
 
         {notInstalled && (
-          <div className={styles.notice}>
-            <div className={styles.noticeTitle}>
-              Mero Forum is not installed on this node
-            </div>
-            Install it from the marketplace, then reload. Spaces are listed per
-            application, so there is nothing to show until this node has this
-            one.
-          </div>
+          <p className={styles.empty}>
+            Mero Forum is not installed on this node. Install it from the
+            marketplace, then reload — spaces are listed per application.
+          </p>
         )}
 
         {listing || resolvingAppId ? (
-          <Spinner label="Loading your spaces…" />
+          <p className={styles.empty}>Loading…</p>
         ) : namespaces.length === 0 ? (
           !notInstalled && (
-            <div className={styles.empty} data-testid="spaces-empty">
-              No spaces yet. Create one above, or join one you were invited to.
-            </div>
+            <p className={styles.empty} data-testid="spaces-empty">
+              No spaces yet. Create one above.
+            </p>
           )
         ) : (
-          <>
-            <div className={styles.sectionLabel}>
-              {namespaces.length} space{namespaces.length === 1 ? "" : "s"}
-            </div>
-            <div className={styles.grid}>
-              {namespaces.map((ns) => (
-                <div className={styles.cardWrap} key={ns.namespaceId}>
-                  <CardMenu
-                    testId="space-menu"
-                    label={`Actions for ${ns.name}`}
-                    items={[
-                      {
-                        label: "Delete space",
-                        danger: true,
-                        testId: "delete-space",
-                        onSelect: () => setPendingDelete(ns),
-                      },
-                    ]}
-                  />
-                  <div className={styles.card} data-testid="space-row">
-                    <span className={styles.cardName}>{ns.name}</span>
-                    <div className={styles.cardMeta}>
-                      <span className={styles.chip}>
-                        {ns.forumCount} forum{ns.forumCount === 1 ? "" : "s"}
-                      </span>
-                      <span className={styles.chip}>
-                        {ns.memberCount} member{ns.memberCount === 1 ? "" : "s"}
-                      </span>
-                    </div>
-                    {/* The id is a fallback for telling two same-named spaces
-                      apart — deliberately not the headline, which is what made
-                      every card read as a hex string. */}
-                    <span className={styles.cardId} title={ns.namespaceId}>
-                      {ns.namespaceId.slice(0, 10)}…
-                    </span>
-                    <div className={styles.cardActions}>
-                      <ActionButton
-                        onClick={() => navigate(`/spaces/${ns.namespaceId}`)}
-                        testId="open-space"
-                      >
-                        Open
-                      </ActionButton>
-                      <ActionButton
-                        onClick={() => mintInvite(ns)}
-                        pending={pending === `invite:${ns.namespaceId}`}
-                        variant="secondary"
-                        testId="invite-btn"
-                        title="Invite someone to this whole space"
-                      >
-                        Invite
-                      </ActionButton>
-                    </div>
+          <div className={styles.grid}>
+            {namespaces.map((ns) => (
+              <div
+                key={ns.namespaceId}
+                className={styles.cardWrap}
+                ref={menuOpenId === ns.namespaceId ? menuRef : null}
+              >
+                <button
+                  className={styles.card}
+                  data-testid="space-row"
+                  onClick={() => navigate(`/spaces/${ns.namespaceId}`)}
+                >
+                  <span className={styles.cardName}>{ns.name}</span>
+                  <span className={styles.cardSub}>
+                    {ns.forumCount} forum{ns.forumCount === 1 ? "" : "s"} ·{" "}
+                    {ns.memberCount} member{ns.memberCount === 1 ? "" : "s"}
+                  </span>
+                </button>
+                <button
+                  className={styles.menuBtn}
+                  data-testid="space-menu"
+                  title="More options"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setMenuOpenId(
+                      menuOpenId === ns.namespaceId ? null : ns.namespaceId,
+                    );
+                  }}
+                >
+                  ⋯
+                </button>
+                {menuOpenId === ns.namespaceId && (
+                  <div className={styles.dropdown}>
+                    <button
+                      className={styles.dropdownItem}
+                      onClick={() => {
+                        setMenuOpenId(null);
+                        mintInvite(ns);
+                      }}
+                      data-testid="invite-btn"
+                    >
+                      Invite
+                    </button>
+                    <button
+                      className={`${styles.dropdownItem} ${styles.dropdownDanger}`}
+                      onClick={() => {
+                        setMenuOpenId(null);
+                        setPendingDelete(ns);
+                      }}
+                      data-testid="delete-space"
+                    >
+                      Delete
+                    </button>
                   </div>
-                </div>
-              ))}
-            </div>
-          </>
+                )}
+              </div>
+            ))}
+          </div>
         )}
+
+        <div className={styles.joinSection}>
+          <p className={styles.joinLabel}>Got an invitation? Join a space!</p>
+          <div className={styles.joinRow}>
+            <input
+              className={styles.input}
+              placeholder="Paste an invitation link or code…"
+              value={joinCode}
+              onChange={(e) => setJoinCode(e.target.value)}
+              data-testid="join-input"
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && joinCode.trim()) acceptCode(joinCode);
+              }}
+            />
+            <button
+              className={styles.btn}
+              onClick={() => acceptCode(joinCode)}
+              disabled={pending === "join" || !joinCode.trim()}
+              data-testid="join-btn"
+            >
+              {pending === "join" ? "Joining…" : "Join"}
+            </button>
+          </div>
+        </div>
       </main>
 
-      {/* A confirm step, not `window.confirm`. Deleting a space deletes every
-          forum in it for everyone, and a native dialog cannot name what is
-          about to go — which is the only thing that makes the decision
-          informed. */}
+      {/* A confirm step rather than `window.confirm`: deleting a space deletes
+          every forum in it, for everyone, and a native dialog has no room to
+          say so. */}
       <dialog
         ref={deleteDialogRef}
-        className={styles.joinDialog}
+        className={styles.confirmDialog}
         onClose={() => setPendingDelete(null)}
       >
-        <h2>Delete this space?</h2>
+        <h2 className={styles.confirmTitle}>Delete this space?</h2>
         <p className={styles.confirmText}>
-          <span className={styles.confirmStrong}>{pendingDelete?.name}</span>{" "}
-          and the{" "}
-          <span className={styles.confirmStrong}>
+          <strong>{pendingDelete?.name}</strong> and the{" "}
+          <strong>
             {pendingDelete?.forumCount ?? 0} forum
             {pendingDelete?.forumCount === 1 ? "" : "s"}
-          </span>{" "}
+          </strong>{" "}
           inside it will be deleted, with every post and comment in them. This
           happens for everyone in the space, not just on this node, and it
           cannot be undone.
         </p>
-        <div className={styles.cardActions}>
-          <ActionButton
+        <div className={styles.confirmRow}>
+          <button
+            className={`${styles.btn} ${styles.btnDanger}`}
             onClick={() => pendingDelete && removeSpace(pendingDelete)}
-            pending={pending === `delete:${pendingDelete?.namespaceId}`}
-            variant="danger"
-            testId="confirm-delete-space"
+            disabled={pending === `delete:${pendingDelete?.namespaceId}`}
+            data-testid="confirm-delete-space"
           >
-            Delete space
-          </ActionButton>
-          <ActionButton
+            Delete
+          </button>
+          <button
+            className={styles.logoutBtn}
             onClick={() => setPendingDelete(null)}
-            variant="secondary"
           >
             Cancel
-          </ActionButton>
+          </button>
         </div>
       </dialog>
 
@@ -419,41 +426,6 @@ export default function SpacesPage() {
         scope={`Whole space · ${namespaces.find((n) => n.namespaceId === invite?.id)?.name ?? ""}`}
         onClose={() => setInvite(null)}
       />
-
-      <dialog
-        ref={joinDialogRef}
-        className={styles.joinDialog}
-        onClose={() => setShowJoin(false)}
-      >
-        <h2>Join a space or forum</h2>
-        <p>
-          An invite link normally just needs opening — it brings you here and
-          joins on its own. Paste one in only if it did not survive however it
-          was sent to you. A raw code is one long line of base58 with no spaces,
-          and any mero app's code works here.
-        </p>
-        <textarea
-          value={joinCode}
-          onChange={(e) => setJoinCode(e.target.value)}
-          placeholder="Paste an invite link or code"
-          aria-label="Invite link or code"
-          rows={3}
-          data-testid="join-input"
-        />
-        <div className={styles.cardActions}>
-          <ActionButton
-            onClick={join}
-            pending={pending === "join"}
-            disabled={!joinCode.trim()}
-            testId="join-btn"
-          >
-            Join
-          </ActionButton>
-          <ActionButton onClick={() => setShowJoin(false)} variant="secondary">
-            Close
-          </ActionButton>
-        </div>
-      </dialog>
     </div>
   );
 }

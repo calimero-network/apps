@@ -13,12 +13,9 @@ import {
   mintForumInvite,
   type ForumRow,
 } from "../lib/groups";
-import { ActionButton, StatusNote, Spinner } from "../components/ui";
 import InviteModal from "../components/InviteModal";
-import SessionMenu from "../components/SessionMenu";
-import CardMenu from "../components/CardMenu";
 import { useDialogOpen } from "../hooks/useDialogOpen";
-import styles from "./Shell.module.css";
+import styles from "./ForumsPage.module.css";
 
 /**
  * Forums inside one space (namespace). A forum is a SUBGROUP plus the context bound
@@ -42,7 +39,7 @@ import styles from "./Shell.module.css";
 export default function ForumsPage() {
   const navigate = useNavigate();
   const { namespaceId = "" } = useParams();
-  const { mero } = useMero();
+  const { mero, logout } = useMero();
   const { showToast } = useToast();
   // Resolved from the NODE by package, not from the session — see lib/appId.
   const { appId } = useApplicationId();
@@ -64,6 +61,8 @@ export default function ForumsPage() {
   } | null>(null);
   // The forum pending deletion. Its posts and comments go with it, for
   // everyone — a sentence `window.confirm` has no room for.
+  const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
   const [pendingDelete, setPendingDelete] = useState<ForumRow | null>(null);
   const deleteDialogRef = useRef<HTMLDialogElement | null>(null);
 
@@ -225,6 +224,15 @@ export default function ForumsPage() {
 
   useDialogOpen(deleteDialogRef, !!pendingDelete);
 
+  useEffect(() => {
+    if (!menuOpenId) return;
+    const onDown = (e: MouseEvent) => {
+      if (!menuRef.current?.contains(e.target as Node)) setMenuOpenId(null);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [menuOpenId]);
+
   const removeForum = useCallback(
     (forum: ForumRow) => {
       if (!mero) return;
@@ -246,186 +254,148 @@ export default function ForumsPage() {
   return (
     <div className={styles.root}>
       <header className={styles.header}>
-        <span className={styles.logo}>
-          Mero Forum{" "}
-          <span className={styles.logoVersion}>v{__APP_VERSION__}</span>
-        </span>
+        <button className={styles.back} onClick={() => navigate("/spaces")}>
+          ← Spaces
+        </button>
+        <span className={styles.logo}>{nsName || "Space"}</span>
         <div className={styles.headerRight}>
-          <ActionButton
+          <button
+            className={styles.logoutBtn}
             onClick={inviteToNamespace}
-            pending={pending === "invite-ns"}
-            variant="secondary"
-            testId="invite-space"
-            title="Invite someone to this whole space"
+            disabled={pending === "invite-ns"}
+            data-testid="invite-space"
           >
-            Invite to space
-          </ActionButton>
-          <SessionMenu />
+            {pending === "invite-ns" ? "Inviting…" : "Invite"}
+          </button>
+          <button className={styles.logoutBtn} onClick={logout}>
+            Logout
+          </button>
         </div>
       </header>
 
       <main className={styles.main}>
-        <nav className={styles.crumbs}>
-          <button
-            className={styles.crumbLink}
-            onClick={() => navigate("/spaces")}
-          >
-            All spaces
-          </button>
-          <span>/</span>
-          <span>{nsName || "Space"}</span>
-        </nav>
-
-        <h1 className={styles.title}>{nsName || "Space"}</h1>
-        <p className={styles.subtitle}>
-          Each <strong>forum</strong> is a discussion board with its own posts
-          and comments. Everyone invited to this space can read and post in any
-          forum in it, and a forum link opens that board directly.
-        </p>
+        <h1 className={styles.title}>Forums</h1>
 
         <div className={styles.createRow}>
           <input
-            className={styles.createInput}
+            className={styles.input}
+            placeholder="New forum name…"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="Name a new forum"
-            aria-label="Name a new forum"
             data-testid="forum-name-input"
             onKeyDown={(e) => {
               if (e.key === "Enter" && name.trim()) create();
             }}
           />
-          <ActionButton
+          <button
+            className={styles.btn}
             onClick={create}
-            pending={pending === "create"}
-            disabled={!name.trim() || !appId}
-            testId="create-forum"
+            disabled={pending === "create" || !name.trim() || !appId}
+            data-testid="create-forum"
           >
-            Create forum
-          </ActionButton>
+            {pending === "create" ? "Creating…" : "Create"}
+          </button>
         </div>
 
-        {status && (
-          <StatusNote tone="pending" testId="forums-status">
-            {status}
-          </StatusNote>
-        )}
-        {error && (
-          <StatusNote tone="error" testId="forums-error">
-            {error}
-          </StatusNote>
-        )}
+        {status && <p className={styles.empty}>{status}</p>}
+        {error && <p className={styles.joinError}>{error}</p>}
 
         {listing ? (
-          <Spinner label="Loading forums…" />
+          <p className={styles.empty}>Loading…</p>
         ) : forums.length === 0 ? (
-          <div className={styles.empty} data-testid="forums-empty">
-            No forums in this space yet. Create one above — everyone already
-            invited to the space will see it.
-          </div>
+          <p className={styles.empty} data-testid="forums-empty">
+            No forums yet. Create one above.
+          </p>
         ) : (
-          <>
-            <div className={styles.sectionLabel}>
-              {forums.length} forum{forums.length === 1 ? "" : "s"}
-            </div>
-            <div className={styles.grid}>
-              {forums.map((forum) => (
-                <div className={styles.cardWrap} key={forum.forumId}>
-                  <CardMenu
-                    testId="forum-menu"
-                    label={`Actions for ${forum.name}`}
-                    items={[
-                      {
-                        label: "Delete forum",
-                        danger: true,
-                        testId: "delete-forum",
-                        onSelect: () => setPendingDelete(forum),
-                      },
-                    ]}
-                  />
-                  <div className={styles.card} data-testid="forum-row">
-                    <span className={styles.cardName}>{forum.name}</span>
-                    <div className={styles.cardMeta}>
-                      <span className={styles.chip}>
-                        {forum.memberCount} member
-                        {forum.memberCount === 1 ? "" : "s"}
-                      </span>
-                      {forum.joined ? (
-                        <span className={styles.chip}>joined</span>
-                      ) : forum.contextId ? (
-                        <span className={styles.chip}>not joined</span>
-                      ) : (
-                        /* No context on this node yet. It is a real, temporary
-                         state — the subgroup exists and its context has not
-                         replicated here — so it says that rather than showing
-                         an Open button that cannot work. */
-                        <span className={`${styles.chip} ${styles.chipWarn}`}>
-                          syncing
-                        </span>
-                      )}
-                    </div>
-                    {forum.contextId ? (
-                      <span className={styles.cardId} title={forum.contextId}>
-                        {forum.contextId.slice(0, 10)}…
-                      </span>
-                    ) : (
-                      <span className={styles.cardId}>
-                        waiting to replicate
-                      </span>
-                    )}
-                    <div className={styles.cardActions}>
-                      <ActionButton
-                        onClick={() => enter(forum)}
-                        pending={pending === `enter:${forum.forumId}`}
-                        disabled={!forum.contextId}
-                        testId="enter-forum"
-                      >
-                        {forum.joined ? "Open" : "Join"}
-                      </ActionButton>
-                      <ActionButton
-                        onClick={() => inviteToForum(forum)}
-                        pending={pending === `invite:${forum.forumId}`}
-                        variant="secondary"
-                        testId="invite-forum"
-                        title="Invite someone straight into this forum"
-                      >
-                        Invite
-                      </ActionButton>
-                    </div>
+          <div className={styles.grid}>
+            {forums.map((forum) => (
+              <div
+                key={forum.forumId}
+                className={styles.cardWrap}
+                ref={menuOpenId === forum.forumId ? menuRef : null}
+              >
+                <button
+                  className={styles.card}
+                  data-testid="forum-row"
+                  disabled={!forum.contextId}
+                  onClick={() => enter(forum)}
+                >
+                  <span className={styles.cardName}>{forum.name}</span>
+                  <span className={styles.cardSub}>
+                    {forum.contextId
+                      ? `${forum.memberCount} member${forum.memberCount === 1 ? "" : "s"}${forum.joined ? "" : " · not joined"}`
+                      : "syncing…"}
+                  </span>
+                </button>
+                <button
+                  className={styles.menuBtn}
+                  data-testid="forum-menu"
+                  title="More options"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setMenuOpenId(
+                      menuOpenId === forum.forumId ? null : forum.forumId,
+                    );
+                  }}
+                >
+                  ⋯
+                </button>
+                {menuOpenId === forum.forumId && (
+                  <div className={styles.dropdown}>
+                    <button
+                      className={styles.dropdownItem}
+                      data-testid="invite-forum"
+                      onClick={() => {
+                        setMenuOpenId(null);
+                        inviteToForum(forum);
+                      }}
+                    >
+                      Invite
+                    </button>
+                    <button
+                      className={`${styles.dropdownItem} ${styles.dropdownDanger}`}
+                      data-testid="delete-forum"
+                      onClick={() => {
+                        setMenuOpenId(null);
+                        setPendingDelete(forum);
+                      }}
+                    >
+                      Delete
+                    </button>
                   </div>
-                </div>
-              ))}
-            </div>
-          </>
+                )}
+              </div>
+            ))}
+          </div>
         )}
       </main>
 
       <dialog
         ref={deleteDialogRef}
-        className={styles.joinDialog}
+        className={styles.confirmDialog}
         onClose={() => setPendingDelete(null)}
       >
-        <h2>Delete this forum?</h2>
+        <h2 className={styles.confirmTitle}>Delete this forum?</h2>
         <p className={styles.confirmText}>
-          <span className={styles.confirmStrong}>{pendingDelete?.name}</span>{" "}
-          and every post and comment in it will be deleted. This happens for
-          everyone in the space, not just on this node, and it cannot be undone.
+          <strong>{pendingDelete?.name}</strong> and every post and comment in
+          it will be deleted. This happens for everyone in the space, not just
+          on this node, and it cannot be undone.
         </p>
-        <div className={styles.cardActions}>
-          <ActionButton
+        <div className={styles.confirmRow}>
+          <button
+            className={`${styles.btn} ${styles.btnDanger}`}
             onClick={() => pendingDelete && removeForum(pendingDelete)}
-            pending={pending === `delete:${pendingDelete?.forumId}`}
-            variant="danger"
-            testId="confirm-delete-forum"
+            disabled={pending === `delete:${pendingDelete?.forumId}`}
+            data-testid="confirm-delete-forum"
           >
-            Delete forum
-          </ActionButton>
-          <ActionButton
+            Delete
+          </button>
+          <button
+            className={styles.logoutBtn}
             onClick={() => setPendingDelete(null)}
-            variant="secondary"
           >
             Cancel
-          </ActionButton>
+          </button>
         </div>
       </dialog>
 
