@@ -412,6 +412,11 @@ pub enum MeroSignEvent {
     ParticipantLeft {
         user_id: UserId,
     },
+    /// An admin changed an existing participant's permission level.
+    ParticipantPermissionChanged {
+        user_id: UserId,
+        permission: PermissionLevel,
+    },
 }
 
 /// Helper to decode base58 blob_id from API input
@@ -757,6 +762,23 @@ impl MeroSignState {
         Ok(context_details)
     }
 
+    /// The admin gate for this shared context.
+    ///
+    /// ⚠️ THIS CHECK USED TO PASS FOR EVERYONE. It read
+    /// `let current_user = *self.owner.get();` — the CREATOR's account, an
+    /// `LwwRegister` that holds the same value on every node and is set to
+    /// `Admin` by `init`. So it looked up the owner's permission, found `Admin`,
+    /// and returned `Ok(())` no matter who was calling. Every participant could
+    /// `delete_document`, `add_participant` and `remove_participant`: the only
+    /// authorization gate in the app was a no-op.
+    ///
+    /// The idiom is correct in `join_shared_context` and `resolve_private_identity`,
+    /// which run in the PRIVATE context where the owner IS the caller. It was
+    /// copied into shared-context code, where those are different people.
+    ///
+    /// The ACCOUNT, not the device: `init` and `register_self_as_participant`
+    /// both key `participants`/`permissions` by `env::account_id()`, so an
+    /// admin on a second machine must still be an admin.
     fn validate_admin_permissions(&self) -> app::Result<()> {
         if *self.is_private.get() {
             return Err(AppError::msg(
@@ -764,9 +786,9 @@ impl MeroSignState {
             ));
         }
 
-        let current_user = *self.owner.get();
-        // `.as_deref()` so the pattern sees `PermissionLevel`, not the
-        // `ValueRef` wrapper the map hands back.
+        let current_user = env::account_id();
+        // `.map(|v| v.level.clone())` so the pattern sees `PermissionLevel`,
+        // not the `ValueRef` wrapper the map hands back.
         match self
             .permissions
             .get(&current_user)
@@ -823,7 +845,11 @@ impl MeroSignState {
             app::log!("Failed to announce PDF blob {} to network", pdf_blob_id_str);
         }
 
-        let uploaded_by = *self.owner.get();
+        // ⚠️ WAS `*self.owner.get()` — the same copy-paste as the admin gate
+        // above, so EVERY document in a shared context was recorded as uploaded
+        // by the agreement's creator, whoever actually uploaded it. The account,
+        // to match `participants`.
+        let uploaded_by = env::account_id();
         let document = DocumentInfo {
             id: document_id.clone(),
             name: name.clone(),
@@ -1119,20 +1145,8 @@ impl MeroSignState {
             .insert(executor_id, PermissionLevel::Sign.into())
             .map_err(|e| AppError::msg(format!("Failed to set permissions: {:?}", e)))?;
 
-        // Update document statuses since new signer joined
-        let mut docs_to_update = Vec::new();
-        if let Ok(entries) = self.documents.entries() {
-            for (_, document) in entries {
-                if document.status == DocumentStatus::FullySigned {
-                    let mut updated_document = document.clone();
-                    updated_document.status = DocumentStatus::PartiallySigned;
-                    docs_to_update.push(updated_document);
-                }
-            }
-        }
-        for document in docs_to_update {
-            let _ = self.documents.insert(document.id.clone(), document);
-        }
+        // A new signer means the documents that were complete no longer are.
+        self.reopen_fully_signed_documents();
 
         app::emit!(MeroSignEvent::ParticipantJoined {
             user_id: executor_id
@@ -1163,20 +1177,8 @@ impl MeroSignState {
             .insert(user_id, permission.clone().into())
             .map_err(|e| AppError::msg(format!("Failed to set permissions: {:?}", e)))?;
 
-        if permission == PermissionLevel::Sign {
-            let mut docs_to_update = Vec::new();
-            if let Ok(entries) = self.documents.entries() {
-                for (_, document) in entries {
-                    if document.status == DocumentStatus::FullySigned {
-                        let mut updated_document = document.clone();
-                        updated_document.status = DocumentStatus::PartiallySigned;
-                        docs_to_update.push(updated_document);
-                    }
-                }
-            }
-            for document in docs_to_update {
-                let _ = self.documents.insert(document.id.clone(), document);
-            }
+        if PermissionCell::rank(&permission) >= PermissionCell::rank(&PermissionLevel::Sign) {
+            self.reopen_fully_signed_documents();
         }
 
         app::emit!(MeroSignEvent::ParticipantJoined { user_id });
@@ -1205,6 +1207,125 @@ impl MeroSignState {
         app::emit!(MeroSignEvent::ParticipantLeft { user_id });
 
         Ok(())
+    }
+
+    /// Change an EXISTING participant's permission level.
+    ///
+    /// `add_participant` cannot do this: it refuses a user who is already a
+    /// participant, so before this method there was NO way to promote or demote
+    /// anybody. A role was whatever it was set to at the moment they joined —
+    /// `Admin` for the creator, `Sign` for everyone who redeemed an invitation —
+    /// and it stayed that way forever.
+    ///
+    /// ⚠️ A DEMOTION IS REFUSED, and that refusal is the honest answer rather
+    /// than a missing feature. `permissions` is an `UnorderedMap<UserId,
+    /// PermissionCell>` and `PermissionCell::merge` takes the HIGHER rank, so
+    /// lowering a level is discarded the moment it meets a replica that still
+    /// holds the old one: the demotion would appear to work on the admin's node
+    /// and never reach anybody else's. Accepting a write that cannot converge is
+    /// worse than refusing it, because the admin would believe authority had been
+    /// withdrawn when it had not.
+    ///
+    /// The convergent way to withdraw authority today is `remove_participant`,
+    /// whose removals are tombstoned and do converge.
+    ///
+    /// Making a demotion stick needs a permission cell that merges
+    /// last-writer-wins (a `level` plus a timestamp, or `LwwRegister`). That
+    /// changes the stored layout, so it cannot be done without recreating every
+    /// existing context — an owner's decision, not one to smuggle into a bug fix.
+    /// When it is made, delete the `Ordering::Less` arm below and nothing else
+    /// here changes.
+    pub fn set_participant_permission(
+        &mut self,
+        user_id_str: String,
+        permission: PermissionLevel,
+    ) -> app::Result<()> {
+        self.validate_admin_permissions()?;
+
+        let user_id = parse_public_key_hex(&user_id_str)?;
+
+        if !self.participants.contains(&user_id).unwrap_or(false) {
+            return Err(AppError::msg("User is not a participant".to_string()));
+        }
+
+        let current = self
+            .permissions
+            .get(&user_id)
+            .map_err(|e| AppError::msg(format!("Failed to read permission: {:?}", e)))?
+            .map(|v| v.level.clone())
+            .unwrap_or(PermissionLevel::Read);
+
+        match PermissionCell::rank(&permission).cmp(&PermissionCell::rank(&current)) {
+            // Idempotent: setting the level somebody already holds is a no-op,
+            // not an error. A UI that re-sends the current value is not a bug.
+            Ordering::Equal => return Ok(()),
+            Ordering::Less => {
+                return Err(AppError::msg(
+                    "Lowering a permission cannot converge on this contract: \
+                     permissions merge by taking the higher level, so the change \
+                     would be discarded on every other node. Remove the \
+                     participant instead."
+                        .to_string(),
+                ))
+            }
+            Ordering::Greater => {}
+        }
+
+        self.permissions
+            .insert(user_id, permission.clone().into())
+            .map_err(|e| AppError::msg(format!("Failed to set permissions: {:?}", e)))?;
+
+        // Someone who could not sign now can, so a document that was complete
+        // is complete no longer.
+        if PermissionCell::rank(&permission) >= PermissionCell::rank(&PermissionLevel::Sign)
+            && PermissionCell::rank(&current) < PermissionCell::rank(&PermissionLevel::Sign)
+        {
+            self.reopen_fully_signed_documents();
+        }
+
+        app::emit!(MeroSignEvent::ParticipantPermissionChanged {
+            user_id,
+            permission
+        });
+
+        Ok(())
+    }
+
+    /// The caller's ACCOUNT id, as this contract sees it.
+    ///
+    /// Exists because the frontend cannot work it out. A device key and an
+    /// account id have both been 32 raw bytes — 64 hex characters — since core
+    /// 0.11.0-rc.27, so the two are indistinguishable by inspection, and this
+    /// app holds a DEVICE key in `localStorage` (`agreementContextUserID`, the
+    /// context member public key from the join response) while `participants`
+    /// and `permissions` are keyed by ACCOUNT. Comparing the two type-checks and
+    /// silently matches nothing, which is how a UI ends up unable to tell an
+    /// admin that they are one.
+    ///
+    /// One call removes the guess: the contract is the only thing that knows.
+    pub fn whoami(&self) -> UserId {
+        env::account_id()
+    }
+
+    /// Re-open every document that had been fully signed.
+    ///
+    /// Called whenever someone gains the ability to sign, because "everybody has
+    /// signed" stops being true the moment the set of signers grows. Was three
+    /// copies of the same loop.
+    fn reopen_fully_signed_documents(&mut self) {
+        let mut docs_to_update = Vec::new();
+        if let Ok(entries) = self.documents.entries() {
+            for (_, document) in entries {
+                if document.status == DocumentStatus::FullySigned {
+                    let mut updated_document = document.clone();
+                    updated_document.status = DocumentStatus::PartiallySigned;
+                    docs_to_update.push(updated_document);
+                }
+            }
+        }
+        for document in docs_to_update {
+            let _ = self.documents.insert(document.id.clone(), document);
+        }
     }
 
     /// List all participants
@@ -1436,5 +1557,298 @@ fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
         0.0
     } else {
         dot_product / (norm_a * norm_b)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use calimero_sdk::testing::TestHost;
+
+    use super::*;
+
+    // Two DISTINCT people. Both axes have to move: `call_as` alone changes only
+    // the device and keeps the account, which models one human's second machine.
+    // Since every permission in this contract is keyed by ACCOUNT, a test that
+    // used `call_as` for "somebody else" would silently assert nothing.
+    const ALICE_ACCOUNT: [u8; 32] = [0xA0; 32];
+    const ALICE_DEVICE: [u8; 32] = [0xA1; 32];
+    const BOB_ACCOUNT: [u8; 32] = [0xB0; 32];
+    const BOB_DEVICE: [u8; 32] = [0xB1; 32];
+    // Alice again, on a second machine.
+    const ALICE_PHONE: [u8; 32] = [0xA2; 32];
+
+    fn hexed(id: [u8; 32]) -> String {
+        hex::encode(id)
+    }
+
+    /// A shared agreement created by Alice, who is therefore its only admin.
+    fn new_agreement() -> TestHost<MeroSignState> {
+        let mut app = TestHost::new(|| MeroSignState::init(false, "NDA with Acme".to_owned()));
+        app.set_account(ALICE_ACCOUNT);
+        app.set_device(ALICE_DEVICE);
+        // `init` ran as the harness default, so re-seat ownership on Alice.
+        app.call(|s| {
+            s.owner = ALICE_ACCOUNT.into();
+            let _ = s.participants.insert(ALICE_ACCOUNT);
+            let _ = s
+                .permissions
+                .insert(ALICE_ACCOUNT, PermissionLevel::Admin.into());
+        });
+        app
+    }
+
+    /// Bob redeems an invitation: he joins and registers himself, which is the
+    /// only way a non-creator becomes a participant.
+    fn bob_joins(app: &mut TestHost<MeroSignState>) {
+        app.call_as_account(BOB_ACCOUNT, BOB_DEVICE, |s| {
+            s.register_self_as_participant()
+        })
+        .unwrap();
+    }
+
+    fn permission_of(app: &TestHost<MeroSignState>, account: [u8; 32]) -> PermissionLevel {
+        app.view(|s| s.get_user_permission(hexed(account))).unwrap()
+    }
+
+    // ── the admin gate ───────────────────────────────────────────────────────
+
+    /// The regression this contract shipped with: `validate_admin_permissions`
+    /// looked up `*self.owner.get()` — the CREATOR — rather than the caller, so
+    /// it found `Admin` every time and returned `Ok(())` for everybody. Bob
+    /// could delete Alice's documents and add participants to her agreement.
+    ///
+    /// If someone "simplifies" the gate back to the owner, this fails, which is
+    /// the point: nothing else in the app would have complained.
+    #[test]
+    fn a_plain_participant_is_not_an_admin() {
+        let mut app = new_agreement();
+        bob_joins(&mut app);
+
+        let err = app
+            .call_as_account(BOB_ACCOUNT, BOB_DEVICE, |s| {
+                s.set_participant_permission(hexed(BOB_ACCOUNT), PermissionLevel::Admin)
+            })
+            .unwrap_err();
+        assert!(
+            format!("{err:?}").contains("Admin permissions required"),
+            "a participant must not pass the admin gate, got: {err:?}"
+        );
+
+        assert_eq!(
+            permission_of(&app, BOB_ACCOUNT),
+            PermissionLevel::Sign,
+            "Bob must not have been able to promote himself"
+        );
+    }
+
+    #[test]
+    fn a_participant_cannot_delete_a_document() {
+        let mut app = new_agreement();
+        bob_joins(&mut app);
+        let doc = upload_doc(&mut app);
+
+        let err = app
+            .call_as_account(BOB_ACCOUNT, BOB_DEVICE, |s| s.delete_document(doc.clone()))
+            .unwrap_err();
+        assert!(format!("{err:?}").contains("Admin permissions required"));
+        assert_eq!(app.view(|s| s.list_documents()).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn a_stranger_who_never_joined_is_not_an_admin() {
+        const NOBODY: [u8; 32] = [0xCC; 32];
+        let mut app = new_agreement();
+        let err = app
+            .call_as_account(NOBODY, NOBODY, |s| {
+                s.add_participant(hexed(BOB_ACCOUNT), PermissionLevel::Admin)
+            })
+            .unwrap_err();
+        assert!(
+            format!("{err:?}").contains("User permissions not found"),
+            "got: {err:?}"
+        );
+    }
+
+    #[test]
+    fn the_admin_is_the_account_so_a_second_device_still_qualifies() {
+        // The whole reason the gate reads `account_id()` and not the device: an
+        // admin on their phone is the same admin.
+        let mut app = new_agreement();
+        bob_joins(&mut app);
+        app.call_as_account(ALICE_ACCOUNT, ALICE_PHONE, |s| {
+            s.set_participant_permission(hexed(BOB_ACCOUNT), PermissionLevel::Admin)
+        })
+        .unwrap();
+        assert_eq!(permission_of(&app, BOB_ACCOUNT), PermissionLevel::Admin);
+    }
+
+    // ── promote / demote ─────────────────────────────────────────────────────
+
+    #[test]
+    fn an_admin_can_promote_a_participant() {
+        let mut app = new_agreement();
+        bob_joins(&mut app);
+        assert_eq!(permission_of(&app, BOB_ACCOUNT), PermissionLevel::Sign);
+
+        app.call(|s| s.set_participant_permission(hexed(BOB_ACCOUNT), PermissionLevel::Admin))
+            .unwrap();
+
+        assert_eq!(permission_of(&app, BOB_ACCOUNT), PermissionLevel::Admin);
+    }
+
+    #[test]
+    fn a_promoted_participant_can_then_actually_do_admin_things() {
+        // "…and making them be able to use things also work": a promotion that
+        // does not change what someone may DO is a label.
+        let mut app = new_agreement();
+        bob_joins(&mut app);
+        let doc = upload_doc(&mut app);
+
+        app.call(|s| s.set_participant_permission(hexed(BOB_ACCOUNT), PermissionLevel::Admin))
+            .unwrap();
+
+        app.call_as_account(BOB_ACCOUNT, BOB_DEVICE, |s| s.delete_document(doc))
+            .unwrap();
+        assert!(app.view(|s| s.list_documents()).unwrap().is_empty());
+    }
+
+    #[test]
+    fn setting_the_level_somebody_already_holds_is_a_no_op_not_an_error() {
+        let mut app = new_agreement();
+        bob_joins(&mut app);
+        app.call(|s| s.set_participant_permission(hexed(BOB_ACCOUNT), PermissionLevel::Sign))
+            .unwrap();
+        assert_eq!(permission_of(&app, BOB_ACCOUNT), PermissionLevel::Sign);
+    }
+
+    /// A demotion is REFUSED, on purpose — see `set_participant_permission`.
+    /// `PermissionCell` merges by rank-max, so a lowered level is discarded the
+    /// moment it meets a replica holding the old one. Refusing is the honest
+    /// answer; accepting would tell an admin authority had been withdrawn when
+    /// it had not.
+    #[test]
+    fn a_demotion_is_refused_because_it_cannot_converge() {
+        let mut app = new_agreement();
+        bob_joins(&mut app);
+        app.call(|s| s.set_participant_permission(hexed(BOB_ACCOUNT), PermissionLevel::Admin))
+            .unwrap();
+
+        let err = app
+            .call(|s| s.set_participant_permission(hexed(BOB_ACCOUNT), PermissionLevel::Sign))
+            .unwrap_err();
+        assert!(
+            format!("{err:?}").contains("cannot converge"),
+            "the refusal must say why, got: {err:?}"
+        );
+        assert_eq!(permission_of(&app, BOB_ACCOUNT), PermissionLevel::Admin);
+    }
+
+    /// The merge rule the refusal above exists because of, asserted directly so
+    /// that lifting the refusal without fixing the rule fails here.
+    #[test]
+    fn permission_merge_takes_the_higher_rank_so_a_demotion_is_lost() {
+        let mut demoted = PermissionCell::from(PermissionLevel::Sign);
+        let mut still_admin = PermissionCell::from(PermissionLevel::Admin);
+        let (d0, a0) = (demoted.clone(), still_admin.clone());
+
+        demoted.merge(&a0).unwrap();
+        still_admin.merge(&d0).unwrap();
+
+        assert_eq!(demoted.level, PermissionLevel::Admin);
+        assert_eq!(still_admin.level, PermissionLevel::Admin);
+    }
+
+    #[test]
+    fn a_non_participant_cannot_be_given_a_permission() {
+        let mut app = new_agreement();
+        let err = app
+            .call(|s| s.set_participant_permission(hexed(BOB_ACCOUNT), PermissionLevel::Admin))
+            .unwrap_err();
+        assert!(
+            format!("{err:?}").contains("not a participant"),
+            "got: {err:?}"
+        );
+    }
+
+    #[test]
+    fn removing_a_participant_takes_their_permission_with_them() {
+        let mut app = new_agreement();
+        bob_joins(&mut app);
+        app.call(|s| s.remove_participant(hexed(BOB_ACCOUNT)))
+            .unwrap();
+
+        assert!(app
+            .view(|s| s.get_user_permission(hexed(BOB_ACCOUNT)))
+            .is_err());
+        let err = app
+            .call_as_account(BOB_ACCOUNT, BOB_DEVICE, |s| {
+                s.add_participant(hexed(BOB_ACCOUNT), PermissionLevel::Admin)
+            })
+            .unwrap_err();
+        assert!(format!("{err:?}").contains("User permissions not found"));
+    }
+
+    // ── whoami ───────────────────────────────────────────────────────────────
+
+    #[test]
+    fn whoami_is_the_account_not_the_device() {
+        let mut app = new_agreement();
+        assert_eq!(app.view(|s| s.whoami()), ALICE_ACCOUNT);
+        // Same person, second machine: same answer. This is exactly what the
+        // frontend could not work out for itself — a device key and an account
+        // id are both 64 hex characters since rc.27.
+        assert_eq!(
+            app.call_as_account(ALICE_ACCOUNT, ALICE_PHONE, |s| s.whoami()),
+            ALICE_ACCOUNT
+        );
+        assert_eq!(
+            app.call_as_account(BOB_ACCOUNT, BOB_DEVICE, |s| s.whoami()),
+            BOB_ACCOUNT
+        );
+    }
+
+    // ── attribution ──────────────────────────────────────────────────────────
+
+    /// `upload_document` recorded `*self.owner.get()`, so every document in a
+    /// shared agreement was attributed to its CREATOR whoever uploaded it.
+    #[test]
+    fn a_document_is_attributed_to_whoever_uploaded_it() {
+        let mut app = new_agreement();
+        bob_joins(&mut app);
+
+        app.call_as_account(BOB_ACCOUNT, BOB_DEVICE, |s| {
+            s.upload_document(
+                "contract.pdf".to_owned(),
+                "deadbeef".to_owned(),
+                hexed([0x11; 32]),
+                1024,
+                None,
+                None,
+                None,
+            )
+        })
+        .unwrap();
+
+        let docs = app.view(|s| s.list_documents()).unwrap();
+        assert_eq!(docs.len(), 1);
+        assert_eq!(
+            docs[0].uploaded_by, BOB_ACCOUNT,
+            "the uploader, not the agreement's creator"
+        );
+    }
+
+    fn upload_doc(app: &mut TestHost<MeroSignState>) -> String {
+        app.call(|s| {
+            s.upload_document(
+                "contract.pdf".to_owned(),
+                "deadbeef".to_owned(),
+                hexed([0x11; 32]),
+                1024,
+                None,
+                None,
+                None,
+            )
+        })
+        .unwrap()
     }
 }

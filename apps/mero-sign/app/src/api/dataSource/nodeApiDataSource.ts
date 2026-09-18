@@ -9,6 +9,7 @@ import type {
   VerifyContextResponse,
 } from '../nodeApi';
 import { apiClient } from '@calimero-network/calimero-client';
+import { APP_PACKAGE, resolveApplicationId } from '../../lib/appId';
 
 export class ContextApiDataSource implements NodeApi {
   private app: any;
@@ -36,10 +37,20 @@ export class ContextApiDataSource implements NodeApi {
     }
 
     try {
-      const applicationId = import.meta.env.VITE_APPLICATION_ID;
+      // ⚠️ WAS `import.meta.env.VITE_APPLICATION_ID`, with a base58 id in
+      // `.env.example` to copy. An ApplicationId is `hash(package, signer)` and
+      // therefore per-install, so a baked one is right only on the machine it
+      // came from; core answers a request naming an unknown application with an
+      // opaque 500 that never mentions application ids. Ask the node which
+      // installed app is us, matched by package. See `lib/appId.ts`.
+      const applicationId = await resolveApplicationId(() =>
+        apiClient.node().getInstalledApplications(),
+      );
       if (!applicationId) {
         throw new Error(
-          'Application ID not available in environment variables',
+          `${APP_PACKAGE} is not installed on this node, so there is no ` +
+            'application to create a context for. Install it from the registry ' +
+            'and try again.',
         );
       }
       const result = await apiClient

@@ -19,6 +19,9 @@ export enum ClientMethod {
   GET_CONTEXT_DETAILS = 'get_context_details',
   ADD_PARTICIPANT = 'add_participant',
   REGISTER_SELF_AS_PARTICIPANT = 'register_self_as_participant',
+  REMOVE_PARTICIPANT = 'remove_participant',
+  SET_PARTICIPANT_PERMISSION = 'set_participant_permission',
+  WHOAMI = 'whoami',
   MARK_PARTICIPANT_SIGNED = 'mark_participant_signed',
   SET_CONSENT = 'set_consent',
   HAS_CONSENTED = 'has_consented',
@@ -196,6 +199,24 @@ export interface ClientApi {
     agreementContextID?: string,
     agreementContextUserID?: string,
   ): ApiResponse<boolean>;
+  // Contract expects: user_id_str (HEX account id) — raising only; the contract
+  // refuses a demotion because permissions merge by taking the higher rank.
+  setParticipantPermission(
+    userIdStr: UserId,
+    permission: PermissionLevel,
+    agreementContextID?: string,
+    agreementContextUserID?: string,
+  ): ApiResponse<void>;
+  removeParticipant(
+    userIdStr: UserId,
+    agreementContextID?: string,
+    agreementContextUserID?: string,
+  ): ApiResponse<void>;
+  /** The caller's ACCOUNT id, which the frontend cannot derive for itself. */
+  whoami(
+    agreementContextID?: string,
+    agreementContextUserID?: string,
+  ): ApiResponse<UserId>;
   isDefaultPrivateContext(): ApiResponse<boolean>;
   searchDocumentByEmbedding(
     queryEmbedding: number[],

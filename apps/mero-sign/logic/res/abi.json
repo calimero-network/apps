@@ -404,6 +404,24 @@
         }
       ]
     },
+    "MeroSignEvent_ParticipantPermissionChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "user_id",
+          "type": {
+            "kind": "bytes",
+            "size": 32
+          }
+        },
+        {
+          "name": "permission",
+          "type": {
+            "$ref": "PermissionLevel"
+          }
+        }
+      ]
+    },
     "MeroSignEvent_SignatureCreated": {
       "kind": "record",
       "fields": [
@@ -1081,6 +1099,26 @@
       }
     },
     {
+      "name": "set_participant_permission",
+      "params": [
+        {
+          "name": "user_id_str",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "permission",
+          "type": {
+            "$ref": "PermissionLevel"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
       "name": "sign_document",
       "params": [
         {
@@ -1176,6 +1214,14 @@
       "returns": {
         "kind": "string"
       }
+    },
+    {
+      "name": "whoami",
+      "params": [],
+      "returns": {
+        "kind": "bytes",
+        "size": 32
+      }
     }
   ],
   "events": [
@@ -1225,6 +1271,12 @@
       "name": "ParticipantLeft",
       "payload": {
         "$ref": "MeroSignEvent_ParticipantLeft"
+      }
+    },
+    {
+      "name": "ParticipantPermissionChanged",
+      "payload": {
+        "$ref": "MeroSignEvent_ParticipantPermissionChanged"
       }
     },
     {

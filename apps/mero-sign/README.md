@@ -39,6 +39,30 @@ all without centralized servers or intermediaries.
   - Members can **view or sign**, according to their permissions
   - Access remains restricted to invited participants—**no third parties have access**
 
+### Roles
+
+Every participant holds one of three levels, stored in the agreement's own
+contract state and keyed by **account** (so the same person on a second machine
+keeps their role):
+
+| Level   | What it allows                                                                 |
+| ------- | ------------------------------------------------------------------------------ |
+| `Read`  | Open the agreement and read its documents.                                     |
+| `Sign`  | Upload documents and sign them. What redeeming an invitation gives you.        |
+| `Admin` | Everything a signer can do, plus deleting documents and managing participants. |
+
+The agreement's creator is its first `Admin`. An admin can **promote** anyone in
+the roster, from the participants panel.
+
+⚠️ **Demotion is not offered, and that is a property of the contract rather than
+a missing button.** Permissions merge by taking the *higher* level, so a lowered
+level applies on the admin's node and is discarded the moment it meets a replica
+that still holds the old one. The contract refuses the write rather than
+accepting one it cannot converge, and the panel says so. The way to withdraw
+authority that does reach every node is to **remove** the participant. Making a
+demotion stick needs a last-writer-wins permission cell, which changes the stored
+layout and so requires recreating every existing context — an owner's decision.
+
 ### Signature Library
 
 Each user can maintain a **personal signature library** within their private default context. This feature allows users to:
@@ -100,6 +124,7 @@ _Note: This feature is currently under development and will be available in a fu
 | Agreement Creation         | Create a shared context; you become its administrator.                             |
 | Invitation System          | Shareable Calimero invite links, plus targeted payloads tied to an identity.       |
 | Join Agreement             | Open the link, or paste it; the agreement keeps the name its creator gave it.      |
+| Roles                      | Read / Sign / Admin, keyed by account; admins can promote and remove.              |
 | Collaborative PDF Workflow | Users upload, view, and sign PDFs based on assigned roles in context.              |
 | Document Storage           | All documents stored securely and encrypted within Calimero contexts.              |
 | Signature Library          | Personal signature library stored in user's private default context.               |

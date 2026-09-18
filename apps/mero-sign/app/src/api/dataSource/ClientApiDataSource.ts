@@ -16,6 +16,7 @@ import {
   UserId,
 } from '../clientApi';
 import { DefaultContextService } from '../defaultContextService';
+import { toHexId } from '../../lib/participants';
 import bs58 from 'bs58';
 
 const RequestConfig = {
@@ -236,6 +237,135 @@ export class ClientApiDataSource implements ClientApi {
           message: getErrorMessage(error),
         },
       };
+    }
+  }
+
+  /**
+   * Change an EXISTING participant's permission level.
+   *
+   * ⚠️ Raising only. The contract refuses a demotion because permissions merge
+   * by taking the higher rank, so a lowered level would apply on the admin's
+   * node and be discarded everywhere else. The refusal comes back as an error
+   * message explaining that; see `lib/participants.ts`.
+   */
+  async setParticipantPermission(
+    userId: UserId,
+    permission: PermissionLevel,
+    agreementContextID?: string,
+    agreementContextUserID?: string,
+  ): ApiResponse<void> {
+    return this.mutate(
+      ClientMethod.SET_PARTICIPANT_PERMISSION,
+      { user_id_str: userId, permission },
+      agreementContextID,
+      agreementContextUserID,
+    );
+  }
+
+  /** Remove a participant, taking their permission with them. */
+  async removeParticipant(
+    userId: UserId,
+    agreementContextID?: string,
+    agreementContextUserID?: string,
+  ): ApiResponse<void> {
+    return this.mutate(
+      ClientMethod.REMOVE_PARTICIPANT,
+      { user_id_str: userId },
+      agreementContextID,
+      agreementContextUserID,
+    );
+  }
+
+  /**
+   * The caller's ACCOUNT id, straight from the contract.
+   *
+   * The app cannot work this out for itself: it holds
+   * `localStorage['agreementContextUserID']`, which is the context member
+   * (DEVICE) key from the join response, while every permission is keyed by
+   * account — and since core rc.27 both are 64 hex characters, so comparing the
+   * wrong pair type-checks and silently matches nothing. Asking the contract is
+   * the only way to know which row of the roster is you.
+   */
+  async whoami(
+    agreementContextID?: string,
+    agreementContextUserID?: string,
+  ): ApiResponse<UserId> {
+    const res = await this.query(
+      ClientMethod.WHOAMI,
+      {},
+      agreementContextID,
+      agreementContextUserID,
+    );
+    if (res.error) return { data: null, error: res.error };
+    return { data: toHexId(res.data as never), error: null };
+  }
+
+  /**
+   * One place the three-line auth dance and the error unwrapping live, instead
+   * of a copy per method. Used by the calls added with roles; the older methods
+   * are left as they are rather than rewritten under an unrelated change.
+   */
+  private async mutate(
+    method: ClientMethod,
+    argsJson: Record<string, unknown>,
+    agreementContextID?: string,
+    agreementContextUserID?: string,
+  ): ApiResponse<void> {
+    const res = await this.query(
+      method,
+      argsJson,
+      agreementContextID,
+      agreementContextUserID,
+    );
+    if (res.error) return { data: undefined, error: res.error };
+    return { data: undefined, error: null };
+  }
+
+  private async query(
+    method: ClientMethod,
+    argsJson: Record<string, unknown>,
+    agreementContextID?: string,
+    agreementContextUserID?: string,
+  ): ApiResponse<unknown> {
+    try {
+      const authConfig =
+        agreementContextID && agreementContextUserID
+          ? getContextSpecificAuthConfig(
+              agreementContextID,
+              agreementContextUserID,
+            )
+          : getAuthConfig();
+
+      if (authConfig.executorPublicKey) {
+        setExecutorPublicKey(authConfig.executorPublicKey);
+      }
+
+      const response = await rpcClient.execute(
+        {
+          contextId: authConfig.contextId || getContextId() || '',
+          method,
+          argsJson,
+          executorPublicKey: (authConfig.executorPublicKey ||
+            getExecutorPublicKey() ||
+            '') as string,
+        },
+        RequestConfig,
+      );
+
+      if (response?.error) {
+        return {
+          data: null,
+          error: {
+            code: response.error.code ?? 500,
+            message: getErrorMessage(response.error),
+          },
+        };
+      }
+
+      return { data: response.result?.output ?? response.result, error: null };
+    } catch (error: any) {
+      console.error(`ClientApiDataSource: Error in ${method}:`, error);
+      return { data: null, error: { code: 500, message: getErrorMessage(error) } };
     }
   }
 
