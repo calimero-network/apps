@@ -7,6 +7,7 @@ import { setActiveForum, setForumName } from "../lib/session";
 import { decodeInvite } from "../lib/inviteCodec";
 import {
   createSpaceNamespace,
+  deleteSpace,
   listSpaceNamespaces,
   mintNamespaceInvite,
   redeemInvite,
@@ -15,6 +16,7 @@ import {
 import { ActionButton, StatusNote, Spinner } from "../components/ui";
 import InviteModal from "../components/InviteModal";
 import SessionMenu from "../components/SessionMenu";
+import CardMenu from "../components/CardMenu";
 import { invitationFromRaw } from "../lib/inviteLink";
 import { useDialogOpen } from "../hooks/useDialogOpen";
 import styles from "./Shell.module.css";
@@ -62,6 +64,10 @@ export default function SpacesPage() {
   const [invite, setInvite] = useState<{ id: string; code: string } | null>(
     null,
   );
+  // The space pending deletion. A confirm step rather than `confirm()`, because
+  // this takes every forum in the space with it and the sentence has to say so.
+  const [pendingDelete, setPendingDelete] = useState<NamespaceRow | null>(null);
+  const deleteDialogRef = useRef<HTMLDialogElement | null>(null);
 
   /**
    * Run one action under its own key, with step status wired to `onStatus`.
@@ -150,6 +156,24 @@ export default function SpacesPage() {
     [mero, run, showToast],
   );
 
+  const removeSpace = useCallback(
+    (ns: NamespaceRow) => {
+      if (!mero) return;
+      setPendingDelete(null);
+      void run(`delete:${ns.namespaceId}`, async (onStatus) => {
+        await deleteSpace(
+          mero.admin,
+          { namespaceId: ns.namespaceId },
+          onStatus,
+        );
+        onStatus("Refreshing your spaces…");
+        await load(false);
+        showToast(`Deleted \u201c${ns.name}\u201d.`);
+      });
+    },
+    [mero, run, load, showToast],
+  );
+
   /**
    * Accept any code: a namespace invite, or a forum invite (which carries the
    * namespace invitation too, so someone with no prior membership gets both joins
@@ -203,6 +227,7 @@ export default function SpacesPage() {
   }, [acceptCode, joinCode]);
 
   useDialogOpen(joinDialogRef, showJoin);
+  useDialogOpen(deleteDialogRef, !!pendingDelete);
 
   return (
     <div className={styles.root}>
@@ -295,42 +320,52 @@ export default function SpacesPage() {
             </div>
             <div className={styles.grid}>
               {namespaces.map((ns) => (
-                <div
-                  className={styles.card}
-                  key={ns.namespaceId}
-                  data-testid="space-row"
-                >
-                  <span className={styles.cardName}>{ns.name}</span>
-                  <div className={styles.cardMeta}>
-                    <span className={styles.chip}>
-                      {ns.forumCount} forum{ns.forumCount === 1 ? "" : "s"}
-                    </span>
-                    <span className={styles.chip}>
-                      {ns.memberCount} member{ns.memberCount === 1 ? "" : "s"}
-                    </span>
-                  </div>
-                  {/* The id is a fallback for telling two same-named spaces
+                <div className={styles.cardWrap} key={ns.namespaceId}>
+                  <CardMenu
+                    testId="space-menu"
+                    label={`Actions for ${ns.name}`}
+                    items={[
+                      {
+                        label: "Delete space",
+                        danger: true,
+                        testId: "delete-space",
+                        onSelect: () => setPendingDelete(ns),
+                      },
+                    ]}
+                  />
+                  <div className={styles.card} data-testid="space-row">
+                    <span className={styles.cardName}>{ns.name}</span>
+                    <div className={styles.cardMeta}>
+                      <span className={styles.chip}>
+                        {ns.forumCount} forum{ns.forumCount === 1 ? "" : "s"}
+                      </span>
+                      <span className={styles.chip}>
+                        {ns.memberCount} member{ns.memberCount === 1 ? "" : "s"}
+                      </span>
+                    </div>
+                    {/* The id is a fallback for telling two same-named spaces
                       apart — deliberately not the headline, which is what made
                       every card read as a hex string. */}
-                  <span className={styles.cardId} title={ns.namespaceId}>
-                    {ns.namespaceId.slice(0, 10)}…
-                  </span>
-                  <div className={styles.cardActions}>
-                    <ActionButton
-                      onClick={() => navigate(`/spaces/${ns.namespaceId}`)}
-                      testId="open-space"
-                    >
-                      Open
-                    </ActionButton>
-                    <ActionButton
-                      onClick={() => mintInvite(ns)}
-                      pending={pending === `invite:${ns.namespaceId}`}
-                      variant="secondary"
-                      testId="invite-btn"
-                      title="Invite someone to this whole space"
-                    >
-                      Invite
-                    </ActionButton>
+                    <span className={styles.cardId} title={ns.namespaceId}>
+                      {ns.namespaceId.slice(0, 10)}…
+                    </span>
+                    <div className={styles.cardActions}>
+                      <ActionButton
+                        onClick={() => navigate(`/spaces/${ns.namespaceId}`)}
+                        testId="open-space"
+                      >
+                        Open
+                      </ActionButton>
+                      <ActionButton
+                        onClick={() => mintInvite(ns)}
+                        pending={pending === `invite:${ns.namespaceId}`}
+                        variant="secondary"
+                        testId="invite-btn"
+                        title="Invite someone to this whole space"
+                      >
+                        Invite
+                      </ActionButton>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -338,6 +373,45 @@ export default function SpacesPage() {
           </>
         )}
       </main>
+
+      {/* A confirm step, not `window.confirm`. Deleting a space deletes every
+          forum in it for everyone, and a native dialog cannot name what is
+          about to go — which is the only thing that makes the decision
+          informed. */}
+      <dialog
+        ref={deleteDialogRef}
+        className={styles.joinDialog}
+        onClose={() => setPendingDelete(null)}
+      >
+        <h2>Delete this space?</h2>
+        <p className={styles.confirmText}>
+          <span className={styles.confirmStrong}>{pendingDelete?.name}</span>{" "}
+          and the{" "}
+          <span className={styles.confirmStrong}>
+            {pendingDelete?.forumCount ?? 0} forum
+            {pendingDelete?.forumCount === 1 ? "" : "s"}
+          </span>{" "}
+          inside it will be deleted, with every post and comment in them. This
+          happens for everyone in the space, not just on this node, and it
+          cannot be undone.
+        </p>
+        <div className={styles.cardActions}>
+          <ActionButton
+            onClick={() => pendingDelete && removeSpace(pendingDelete)}
+            pending={pending === `delete:${pendingDelete?.namespaceId}`}
+            variant="danger"
+            testId="confirm-delete-space"
+          >
+            Delete space
+          </ActionButton>
+          <ActionButton
+            onClick={() => setPendingDelete(null)}
+            variant="secondary"
+          >
+            Cancel
+          </ActionButton>
+        </div>
+      </dialog>
 
       <InviteModal
         open={!!invite}
