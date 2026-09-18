@@ -72,3 +72,31 @@ export function errorText(err: unknown): string {
   }
   return String(err);
 }
+
+/**
+ * A URL's host, for somewhere too narrow to show the whole thing.
+ *
+ * **Never throws**, which is the entire reason it exists rather than an inline
+ * `new URL(x).host`. `URL` rejects anything without a scheme — `relay.example`
+ * throws where `https://relay.example` does not, and so does a lone space — and
+ * these values come from `localStorage`, typed by hand into a field that has
+ * never validated them. An inline construction therefore threw during render,
+ * which in React takes the whole page rather than the one label: a stored node
+ * URL of `relay.example` turned the app into a blank screen, with the failure
+ * surviving every reload because the bad value is what is persisted.
+ *
+ * Returning the input unparsed is right for a display helper. It is a label; a
+ * value too malformed to parse is exactly the thing the reader needs to see,
+ * and the code that actually *uses* the URL fails with its own error.
+ */
+export function hostOf(url: string): string {
+  try {
+    // An empty host is not a throw and still has to fall back: a typo'd scheme
+    // like `htp:/relay.example` parses as an opaque path, so `.host` is `''`
+    // and the label would render as nothing at all — which reads as "no relay"
+    // for a tab that has one, and is the more misleading of the two failures.
+    return new URL(url).host || url;
+  } catch {
+    return url;
+  }
+}

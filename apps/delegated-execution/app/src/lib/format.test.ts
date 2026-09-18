@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { errorText, parseJson, pretty, short } from './format.js';
+import { errorText, hostOf, parseJson, pretty, short } from './format.js';
 
 describe('short', () => {
   it('keeps both ends so two hashes never look alike', () => {
@@ -66,5 +66,41 @@ describe('errorText', () => {
 
   it('falls back to the value itself', () => {
     expect(errorText('plain string')).toBe('plain string');
+  });
+});
+
+/**
+ * The regression behind a blank page.
+ *
+ * The status strip shows the relay's host, and it did that with an inline
+ * `new URL(settings.nodeUrl).host`. `URL` throws on anything without a scheme,
+ * that value comes from `localStorage`, and it is typed by hand into a field
+ * that has never validated it — so a stored `relay.example` threw during
+ * render, which in React takes the whole page and not the one label. Worse, the
+ * bad value is the persisted one, so every reload reproduced it.
+ *
+ * `npm run build`, `tsc -b` and the unit tests were all green throughout: none
+ * of them renders the component, and the throw needs stored state to reach.
+ */
+describe('hostOf', () => {
+  it('shortens a URL to its host', () => {
+    expect(hostOf('https://relay.example/admin-api/x')).toBe('relay.example');
+    expect(hostOf('http://localhost:5173')).toBe('localhost:5173');
+  });
+
+  it('does not throw on the values a person actually types', () => {
+    // Each of these threw from `new URL` and blanked the page.
+    expect(hostOf('relay.example')).toBe('relay.example');
+    expect(hostOf(' ')).toBe(' ');
+    expect(hostOf('')).toBe('');
+    expect(hostOf('://nonsense')).toBe('://nonsense');
+  });
+
+  it('falls back when the URL parses but has no host', () => {
+    // Not a throw: a typo'd scheme parses as an opaque path, so `.host` is ''.
+    // Rendering nothing reads as "no relay" for a tab that has one, which is
+    // the more misleading of the two failures.
+    expect(hostOf('htp:/typo.example')).toBe('htp:/typo.example');
+    expect(hostOf('mailto:someone@example.com')).toBe('mailto:someone@example.com');
   });
 });
