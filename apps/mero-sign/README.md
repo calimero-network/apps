@@ -63,6 +63,24 @@ authority that does reach every node is to **remove** the participant. Making a
 demotion stick needs a last-writer-wins permission cell, which changes the stored
 layout and so requires recreating every existing context — an owner's decision.
 
+### Signing
+
+A signature is recorded for the **caller's account**, derived inside the contract
+from `env::account_id()`. There is no signer parameter — `sign_document`,
+`set_consent` and `mark_participant_signed` all take only the document. Nothing a
+client sends can name who signed.
+
+To sign you must be a participant holding `Sign` or `Admin`, and you must have
+consented to that document yourself. Once every participant has signed, the
+document becomes `FullySigned`.
+
+⚠️ **Upgrading from a bundle published before this:** consent is now keyed by
+account where it used to be keyed by the context member key, so anyone who had
+consented before the upgrade must consent again. No documents, signatures or
+agreements are lost — the stored layout is unchanged — and signatures recorded
+by the older bundle carry a device key, so they will not count toward
+`FullySigned` and those documents need re-signing.
+
 ### Signature Library
 
 Each user can maintain a **personal signature library** within their private default context. This feature allows users to:
@@ -125,6 +143,7 @@ _Note: This feature is currently under development and will be available in a fu
 | Invitation System          | Shareable Calimero invite links, plus targeted payloads tied to an identity.       |
 | Join Agreement             | Open the link, or paste it; the agreement keeps the name its creator gave it.      |
 | Roles                      | Read / Sign / Admin, keyed by account; admins can promote and remove.              |
+| Signing                    | The signer is the caller's account; no client can name who signed.                 |
 | Collaborative PDF Workflow | Users upload, view, and sign PDFs based on assigned roles in context.              |
 | Document Storage           | All documents stored securely and encrypted within Calimero contexts.              |
 | Signature Library          | Personal signature library stored in user's private default context.               |

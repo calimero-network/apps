@@ -806,6 +806,41 @@ impl MeroSignState {
         }
     }
 
+    /// Require the CALLER to be a participant holding at least `minimum`.
+    ///
+    /// The companion to `validate_admin_permissions`, for the levels below
+    /// Admin. Before this, `Read` and `Sign` were indistinguishable in effect:
+    /// nothing in the contract consulted a permission except the admin gate, so
+    /// a participant set to `Read` could upload and sign exactly like everyone
+    /// else. The enum described an intention that was never enforced.
+    ///
+    /// The ACCOUNT, for the same reason as everywhere else here.
+    fn require_permission(&self, minimum: PermissionLevel) -> app::Result<()> {
+        if *self.is_private.get() {
+            return Err(AppError::msg(
+                "This method can only be called from shared context".to_string(),
+            ));
+        }
+
+        let caller = env::account_id();
+        let held = self
+            .permissions
+            .get(&caller)
+            .map_err(|e| AppError::msg(format!("Failed to check user permissions: {:?}", e)))?
+            .map(|v| v.level.clone());
+
+        match held {
+            Some(level) if PermissionCell::rank(&level) >= PermissionCell::rank(&minimum) => Ok(()),
+            Some(_) => Err(AppError::msg(format!(
+                "{:?} permission or higher is required for this operation",
+                minimum
+            ))),
+            None => Err(AppError::msg(
+                "You are not a participant in this agreement".to_string(),
+            )),
+        }
+    }
+
     /// Upload a document
     #[allow(clippy::too_many_arguments)]
     pub fn upload_document(
@@ -818,6 +853,11 @@ impl MeroSignState {
         extracted_text: Option<String>,
         chunks: Option<Vec<DocumentChunk>>,
     ) -> app::Result<String> {
+        // The other half of making `Read` mean something: a reader reads. Before
+        // this, nothing in the contract consulted a permission except the admin
+        // gate, so every level could upload.
+        self.require_permission(PermissionLevel::Sign)?;
+
         // NOT `doc_<millis>_<name>`: two uploads of the same filename inside one
         // millisecond produced the same key, and `insert` is an upsert — so one
         // document silently destroyed the other, and converged to the loss on
@@ -923,9 +963,18 @@ impl MeroSignState {
         Ok(documents)
     }
 
-    /// Set consent for a user on a document
-    pub fn set_consent(&mut self, user_id_str: String, document_id: String) -> app::Result<()> {
-        let user_id = parse_public_key_hex(&user_id_str)?;
+    /// Record the CALLER's consent to sign a document.
+    ///
+    /// ⚠️ THIS USED TO TAKE THE USER AS A PARAMETER, with no gate of any kind:
+    /// anybody could record consent on behalf of anybody. That was not a
+    /// cosmetic problem, because consent was the ONLY precondition
+    /// `sign_document` checked — so the pair let one member manufacture both
+    /// halves of somebody else's signature.
+    ///
+    /// Consent is a personal act. Nobody can give it for you, so there is no
+    /// parameter to give.
+    pub fn set_consent(&mut self, document_id: String) -> app::Result<()> {
+        let user_id = env::account_id();
         let key = format!("{}|{}", hex::encode(user_id), document_id);
         self.consents
             .insert(key, true.into())
@@ -949,19 +998,56 @@ impl MeroSignState {
         self.check_consent(&user_id, &document_id)
     }
 
+    /// Record the CALLER's signature on a document.
+    ///
+    /// ⚠️ THIS USED TO TAKE THE SIGNER AS A PARAMETER:
+    ///
+    /// ```text
+    /// pub fn sign_document(…, signer_id_str: String) -> app::Result<()> {
+    ///     let signer_id = parse_public_key_hex(&signer_id_str)?;
+    ///     let has_consent = self.check_consent(&signer_id, &document_id)?;
+    ///     …
+    ///     let signature = DocumentSignature { signer: signer_id, … };
+    /// ```
+    ///
+    /// `env::account_id()` appeared nowhere in the function. The only gate was
+    /// `check_consent(&signer_id, …)` — consent for the id the CALLER had just
+    /// supplied, which is circular rather than an authorization check, and which
+    /// the caller could satisfy themselves because `set_consent` took the same
+    /// unchecked id. So any member of the agreement could record a signature
+    /// attributed to another member, on a document of their choosing, and the
+    /// audit trail would show that person as having signed it. In an app whose
+    /// entire purpose is signed agreements, that is the whole ball game.
+    ///
+    /// The parameter is REMOVED rather than accepted-and-ignored, deliberately:
+    /// an old client calling with `signer_id_str` now fails loudly on an unknown
+    /// argument instead of appearing to work while signing as somebody else.
+    /// That is an ABI change, and an intended one.
+    ///
+    /// The ACCOUNT, not the device — a document is signed by a PERSON, and one
+    /// signer on two machines must not read as two signatories. It is also what
+    /// `participants` and `permissions` are keyed by, which is what makes
+    /// `mark_participant_signed`'s "has everybody signed?" comparison able to
+    /// match at all; see the note there.
     pub fn sign_document(
         &mut self,
         document_id: String,
         pdf_blob_id_str: String,
         file_size: u64,
         new_hash: String,
-        signer_id_str: String,
     ) -> app::Result<()> {
-        let signer_id = parse_public_key_hex(&signer_id_str)?;
+        let signer_id = env::account_id();
+
+        // A signature from somebody who is not in the agreement is not a
+        // signature, and it would also break `mark_participant_signed`'s
+        // all-signed count. `Read` is a real level in this contract and this is
+        // the one place it means something.
+        self.require_permission(PermissionLevel::Sign)?;
+
         let has_consent = self.check_consent(&signer_id, &document_id)?;
         if !has_consent {
             return Err(AppError::msg(
-                "User must provide consent before signing this document".to_string(),
+                "You must provide consent before signing this document".to_string(),
             ));
         }
 
@@ -1041,17 +1127,28 @@ impl MeroSignState {
         Ok(signatures)
     }
 
-    /// Update document status to fully signed
-    pub fn mark_participant_signed(
-        &mut self,
-        document_id: String,
-        user_id_str: String,
-    ) -> app::Result<()> {
-        let user_id = parse_public_key_hex(&user_id_str)?;
+    /// Recompute a document's status after the CALLER has signed it.
+    ///
+    /// The `user_id_str` parameter is gone for the same reason as the other two:
+    /// it was a caller-supplied id where the caller's own account is meant. It
+    /// could not forge a signature — everything it claimed was verified against
+    /// stored state — but it was the same shape, and the shape is the bug.
+    ///
+    /// ⚠️ THE ALL-SIGNED COUNT BELOW COULD NEVER SUCCEED. It compares
+    /// `sig.signer` against each entry of `participants`. Signatures held
+    /// whatever the frontend passed — `localStorage['agreementContextUserID']`,
+    /// the context member DEVICE key — while `participants` holds ACCOUNTS, and
+    /// since core 0.11.0-rc.27 both are 32 raw bytes, so the comparison
+    /// type-checked, ran, and matched nothing. No document could reach
+    /// `FullySigned`. Deriving the signer from `env::account_id()` puts both
+    /// sides of that comparison in the same identity space, which is what makes
+    /// this method able to do its job at all.
+    pub fn mark_participant_signed(&mut self, document_id: String) -> app::Result<()> {
+        let user_id = env::account_id();
         let has_consent = self.check_consent(&user_id, &document_id)?;
         if !has_consent {
             return Err(AppError::msg(
-                "User must provide consent before being marked as signed".to_string(),
+                "You must provide consent before being marked as signed".to_string(),
             ));
         }
 
@@ -1085,7 +1182,7 @@ impl MeroSignState {
         }
         if !already_signed {
             return Err(AppError::msg(
-                "User has not signed this document yet".to_string(),
+                "You have not signed this document yet".to_string(),
             ));
         }
 
@@ -1582,12 +1679,23 @@ mod tests {
     }
 
     /// A shared agreement created by Alice, who is therefore its only admin.
+    ///
+    /// `TestHost::new` runs `init` immediately, as the harness's default
+    /// account, and `init` seats that account as a participating admin. Leaving
+    /// it there would put a third person in `participants` who never signs
+    /// anything — which is invisible to most assertions but makes
+    /// `mark_participant_signed`'s all-signed count unreachable, so the fixture
+    /// evicts it and seats Alice instead.
     fn new_agreement() -> TestHost<MeroSignState> {
         let mut app = TestHost::new(|| MeroSignState::init(false, "NDA with Acme".to_owned()));
+        let seeded = app.account_id();
         app.set_account(ALICE_ACCOUNT);
         app.set_device(ALICE_DEVICE);
-        // `init` ran as the harness default, so re-seat ownership on Alice.
         app.call(|s| {
+            if seeded != ALICE_ACCOUNT {
+                let _ = s.participants.remove(&seeded);
+                let _ = s.permissions.remove(&seeded);
+            }
             s.owner = ALICE_ACCOUNT.into();
             let _ = s.participants.insert(ALICE_ACCOUNT);
             let _ = s
@@ -1835,6 +1943,248 @@ mod tests {
             docs[0].uploaded_by, BOB_ACCOUNT,
             "the uploader, not the agreement's creator"
         );
+    }
+
+    // ── signatures and consent ───────────────────────────────────────────────
+
+    fn sign_as(
+        app: &mut TestHost<MeroSignState>,
+        account: [u8; 32],
+        device: [u8; 32],
+        doc: &str,
+    ) -> app::Result<()> {
+        app.call_as_account(account, device, |s| {
+            s.sign_document(
+                doc.to_owned(),
+                hexed([0x22; 32]),
+                2048,
+                "cafebabe".to_owned(),
+            )
+        })
+    }
+
+    fn signers_of(app: &TestHost<MeroSignState>, doc: &str) -> Vec<UserId> {
+        app.view(|s| s.get_document_signatures(doc.to_owned()))
+            .unwrap()
+            .into_iter()
+            .map(|sig| sig.signer)
+            .collect()
+    }
+
+    /// ⚠️ THE ONE THAT MATTERS.
+    ///
+    /// `sign_document` used to take `signer_id_str` and write it straight into
+    /// `DocumentSignature.signer`, with `env::account_id()` appearing nowhere in
+    /// the function. Its only gate was `check_consent` for the id the caller had
+    /// just supplied — circular, and satisfiable by the caller because
+    /// `set_consent` took the same unchecked id. So Bob could record Alice as
+    /// having signed a document she had never seen.
+    ///
+    /// The parameter is gone, so the forgery is no longer expressible: this test
+    /// is the strongest statement the type system allows — whatever Bob does, the
+    /// signature that lands carries BOB.
+    #[test]
+    fn a_signature_is_always_attributed_to_the_caller() {
+        let mut app = new_agreement();
+        bob_joins(&mut app);
+        let doc = upload_doc(&mut app);
+
+        // Bob consents and signs. There is no argument with which he could name
+        // anyone else, and he cannot consent on Alice's behalf either.
+        app.call_as_account(BOB_ACCOUNT, BOB_DEVICE, |s| s.set_consent(doc.clone()))
+            .unwrap();
+        sign_as(&mut app, BOB_ACCOUNT, BOB_DEVICE, &doc).unwrap();
+
+        assert_eq!(
+            signers_of(&app, &doc),
+            vec![BOB_ACCOUNT],
+            "the signature must carry the caller"
+        );
+        assert!(
+            !signers_of(&app, &doc).contains(&ALICE_ACCOUNT),
+            "Alice never signed and must not appear"
+        );
+    }
+
+    /// Bob consenting does not let him sign as Alice, because consent is now
+    /// keyed by the caller too. Before, `set_consent(alice_id, doc)` from Bob
+    /// was accepted with no gate at all, which was the other half of the forgery.
+    #[test]
+    fn consent_is_recorded_for_the_caller_and_nobody_else() {
+        let mut app = new_agreement();
+        bob_joins(&mut app);
+        let doc = upload_doc(&mut app);
+
+        app.call_as_account(BOB_ACCOUNT, BOB_DEVICE, |s| s.set_consent(doc.clone()))
+            .unwrap();
+
+        assert!(app
+            .view(|s| s.has_consented(hexed(BOB_ACCOUNT), doc.clone()))
+            .unwrap());
+        assert!(
+            !app.view(|s| s.has_consented(hexed(ALICE_ACCOUNT), doc.clone()))
+                .unwrap(),
+            "Bob's consent must not be recorded against Alice"
+        );
+
+        // And so Alice cannot be made to have signed: her consent is missing.
+        let err = sign_as(&mut app, ALICE_ACCOUNT, ALICE_DEVICE, &doc).unwrap_err();
+        assert!(
+            format!("{err:?}").contains("consent"),
+            "expected a consent refusal, got: {err:?}"
+        );
+    }
+
+    /// The other side of the same coin: signing as yourself still works, on any
+    /// of your devices, and is recorded once against your ACCOUNT.
+    #[test]
+    fn a_participant_can_sign_as_themselves_from_any_device() {
+        let mut app = new_agreement();
+        bob_joins(&mut app);
+        let doc = upload_doc(&mut app);
+
+        app.call_as_account(ALICE_ACCOUNT, ALICE_DEVICE, |s| s.set_consent(doc.clone()))
+            .unwrap();
+        // Consent on the laptop, sign on the phone: one person, one signature.
+        sign_as(&mut app, ALICE_ACCOUNT, ALICE_PHONE, &doc).unwrap();
+
+        assert_eq!(signers_of(&app, &doc), vec![ALICE_ACCOUNT]);
+    }
+
+    #[test]
+    fn signing_without_consenting_is_refused() {
+        let mut app = new_agreement();
+        bob_joins(&mut app);
+        let doc = upload_doc(&mut app);
+
+        let err = sign_as(&mut app, BOB_ACCOUNT, BOB_DEVICE, &doc).unwrap_err();
+        assert!(format!("{err:?}").contains("consent"), "got: {err:?}");
+        assert!(signers_of(&app, &doc).is_empty());
+    }
+
+    /// A signature from somebody who is not in the agreement is not a signature.
+    #[test]
+    fn a_non_participant_cannot_sign() {
+        const NOBODY: [u8; 32] = [0xCC; 32];
+        let mut app = new_agreement();
+        let doc = upload_doc(&mut app);
+
+        app.call_as_account(NOBODY, NOBODY, |s| s.set_consent(doc.clone()))
+            .unwrap();
+        let err = sign_as(&mut app, NOBODY, NOBODY, &doc).unwrap_err();
+        assert!(
+            format!("{err:?}").contains("not a participant"),
+            "got: {err:?}"
+        );
+        assert!(signers_of(&app, &doc).is_empty());
+    }
+
+    // ── `Read` finally means something ───────────────────────────────────────
+
+    #[test]
+    fn a_reader_can_neither_upload_nor_sign() {
+        const READER: [u8; 32] = [0xDD; 32];
+        let mut app = new_agreement();
+        // Only an admin can seat somebody at `Read`; `register_self_as_participant`
+        // grants `Sign`.
+        app.call(|s| s.add_participant(hexed(READER), PermissionLevel::Read))
+            .unwrap();
+        let doc = upload_doc(&mut app);
+
+        let err = app
+            .call_as_account(READER, READER, |s| {
+                s.upload_document(
+                    "sneaky.pdf".to_owned(),
+                    "deadbeef".to_owned(),
+                    hexed([0x11; 32]),
+                    1,
+                    None,
+                    None,
+                    None,
+                )
+            })
+            .unwrap_err();
+        assert!(format!("{err:?}").contains("Sign"), "got: {err:?}");
+
+        app.call_as_account(READER, READER, |s| s.set_consent(doc.clone()))
+            .unwrap();
+        let err = sign_as(&mut app, READER, READER, &doc).unwrap_err();
+        assert!(format!("{err:?}").contains("Sign"), "got: {err:?}");
+    }
+
+    /// And a promotion makes both work — the roles are enforced, not decorative.
+    #[test]
+    fn promoting_a_reader_lets_them_sign() {
+        const READER: [u8; 32] = [0xDD; 32];
+        let mut app = new_agreement();
+        app.call(|s| s.add_participant(hexed(READER), PermissionLevel::Read))
+            .unwrap();
+        let doc = upload_doc(&mut app);
+        app.call_as_account(READER, READER, |s| s.set_consent(doc.clone()))
+            .unwrap();
+
+        app.call(|s| s.set_participant_permission(hexed(READER), PermissionLevel::Sign))
+            .unwrap();
+
+        sign_as(&mut app, READER, READER, &doc).unwrap();
+        assert_eq!(signers_of(&app, &doc), vec![READER]);
+    }
+
+    // ── the all-signed count, which could never succeed before ───────────────
+
+    /// `mark_participant_signed` compares `sig.signer` against each entry of
+    /// `participants`. Signatures held the DEVICE key the frontend passed while
+    /// `participants` holds ACCOUNTS — both 32 bytes since rc.27 — so the
+    /// comparison matched nothing and no document could ever reach
+    /// `FullySigned`. With the signer derived from `env::account_id()` both
+    /// sides are in the same identity space.
+    #[test]
+    fn a_document_reaches_fully_signed_once_every_participant_has_signed() {
+        let mut app = new_agreement();
+        bob_joins(&mut app);
+        let doc = upload_doc(&mut app);
+
+        for (account, device) in [(ALICE_ACCOUNT, ALICE_DEVICE), (BOB_ACCOUNT, BOB_DEVICE)] {
+            app.call_as_account(account, device, |s| s.set_consent(doc.clone()))
+                .unwrap();
+            sign_as(&mut app, account, device, &doc).unwrap();
+            app.call_as_account(account, device, |s| s.mark_participant_signed(doc.clone()))
+                .unwrap();
+        }
+
+        let docs = app.view(|s| s.list_documents()).unwrap();
+        assert_eq!(docs[0].status, DocumentStatus::FullySigned);
+    }
+
+    #[test]
+    fn one_signature_short_is_not_fully_signed() {
+        let mut app = new_agreement();
+        bob_joins(&mut app);
+        let doc = upload_doc(&mut app);
+
+        app.call(|s| s.set_consent(doc.clone())).unwrap();
+        sign_as(&mut app, ALICE_ACCOUNT, ALICE_DEVICE, &doc).unwrap();
+        app.call(|s| s.mark_participant_signed(doc.clone()))
+            .unwrap();
+
+        let docs = app.view(|s| s.list_documents()).unwrap();
+        assert_eq!(docs[0].status, DocumentStatus::PartiallySigned);
+    }
+
+    #[test]
+    fn marking_yourself_signed_without_having_signed_is_refused() {
+        let mut app = new_agreement();
+        bob_joins(&mut app);
+        let doc = upload_doc(&mut app);
+        app.call_as_account(BOB_ACCOUNT, BOB_DEVICE, |s| s.set_consent(doc.clone()))
+            .unwrap();
+
+        let err = app
+            .call_as_account(BOB_ACCOUNT, BOB_DEVICE, |s| {
+                s.mark_participant_signed(doc.clone())
+            })
+            .unwrap_err();
+        assert!(format!("{err:?}").contains("not signed"), "got: {err:?}");
     }
 
     fn upload_doc(app: &mut TestHost<MeroSignState>) -> String {

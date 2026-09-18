@@ -244,6 +244,150 @@ steps:
     statements:
       - 'contains({{bob_docs}}, "series-a.pdf")'
 
+  # ── Signatures carry the ACCOUNT, and reach FullySigned ────────────────────
+  #
+  # This leg is the end-to-end half of the signature-forgery fix, and it asserts
+  # something that COULD NOT HAVE PASSED before it.
+  #
+  # `sign_document` used to take `signer_id_str` from the caller and write it
+  # straight into the signature. The frontend passed the context member (DEVICE)
+  # key, while `participants` holds ACCOUNTS — both 32 bytes since core rc.27, so
+  # the comparison in `mark_participant_signed` ("has every participant signed?")
+  # type-checked, ran, and matched nothing. No document could reach
+  # `FullySigned`. The signer is now `env::account_id()`, which puts both sides
+  # of that comparison in one identity space.
+  #
+  # Note what is NOT here: an attempt to sign as somebody else. It is no longer
+  # expressible — the method takes no signer — and that is the strongest form the
+  # assertion can take. The negative cases live in the contract's unit tests,
+  # where both identities can be named exactly.
+  - name: Bob asks the contract who he is
+    type: call
+    node: calimero-node-2
+    context_id: "{{agreement_id}}"
+    method: whoami
+    args: {}
+    executor_public_key: "{{bob_key}}"
+    outputs:
+      bob_account: result
+
+  - name: Assert the contract answered with an identity
+    type: assert
+    statements:
+      # ⚠️ NOT the same value as `bob_key`. That is the context member key this
+      # step executes as; `whoami` is the account behind it.
+      - "is_set({{bob_account}})"
+
+  - name: Bob consents to sign
+    type: call
+    node: calimero-node-2
+    context_id: "{{agreement_id}}"
+    method: set_consent
+    args:
+      document_id: "{{document_id}}"
+    executor_public_key: "{{bob_key}}"
+
+  - name: Bob signs
+    type: call
+    node: calimero-node-2
+    context_id: "{{agreement_id}}"
+    method: sign_document
+    args:
+      document_id: "{{document_id}}"
+      pdf_blob_id_str: "{{blob_id}}"
+      file_size: 1024
+      new_hash: "1111111111111111111111111111111111111111111111111111111111111111"
+    executor_public_key: "{{bob_key}}"
+
+  - name: Bob recomputes the document status
+    type: call
+    node: calimero-node-2
+    context_id: "{{agreement_id}}"
+    method: mark_participant_signed
+    args:
+      document_id: "{{document_id}}"
+    executor_public_key: "{{bob_key}}"
+
+  - name: Sync Bob's signature to Node 1
+    type: wait_for_sync
+    context_id: "{{agreement_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Alice reads the signatures
+    type: call
+    node: calimero-node-1
+    context_id: "{{agreement_id}}"
+    method: get_document_signatures
+    args:
+      document_id: "{{document_id}}"
+    executor_public_key: "{{alice_key}}"
+    outputs:
+      signatures: result
+
+  - name: Assert Bob's signature replicated
+    type: assert
+    statements:
+      - "is_set({{signatures}})"
+
+  - name: Alice consents and signs too
+    type: call
+    node: calimero-node-1
+    context_id: "{{agreement_id}}"
+    method: set_consent
+    args:
+      document_id: "{{document_id}}"
+    executor_public_key: "{{alice_key}}"
+
+  - name: Alice signs
+    type: call
+    node: calimero-node-1
+    context_id: "{{agreement_id}}"
+    method: sign_document
+    args:
+      document_id: "{{document_id}}"
+      pdf_blob_id_str: "{{blob_id}}"
+      file_size: 1024
+      new_hash: "2222222222222222222222222222222222222222222222222222222222222222"
+    executor_public_key: "{{alice_key}}"
+
+  - name: Alice recomputes the document status
+    type: call
+    node: calimero-node-1
+    context_id: "{{agreement_id}}"
+    method: mark_participant_signed
+    args:
+      document_id: "{{document_id}}"
+    executor_public_key: "{{alice_key}}"
+
+  - name: Sync the completed signature set
+    type: wait_for_sync
+    context_id: "{{agreement_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Bob lists documents once everyone has signed
+    type: call
+    node: calimero-node-2
+    context_id: "{{agreement_id}}"
+    method: list_documents
+    args: {}
+    executor_public_key: "{{bob_key}}"
+    outputs:
+      bob_docs_signed: result
+
+  # The load-bearing assertion. Reaching FullySigned requires every recorded
+  # signer to match a participant, i.e. requires signatures and the roster to be
+  # the same KIND of id. With the old device-key signer this was unreachable.
+  - name: Assert the document is fully signed on both nodes
+    type: assert
+    statements:
+      - 'contains({{bob_docs_signed}}, "FullySigned")'
+
   # ── A delete replicates ─────────────────────────────────────────────────────
   - name: Alice deletes the document
     type: call

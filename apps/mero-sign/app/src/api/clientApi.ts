@@ -166,14 +166,15 @@ export interface ClientApi {
     agreementContextID?: string,
     agreementContextUserID?: string,
   ): ApiResponse<DocumentInfo[]>;
-  // Contract expects: signer_id_str (base58 public key string)
+  // The signer is the CALLER's account, derived inside the contract. There is
+  // deliberately no signer parameter: the one that used to be here let any
+  // member record a signature attributed to another member.
   signDocument(
     contextId: string,
     documentId: string,
     pdfBlobIdStr: string,
     fileSize: number,
     newHash: string,
-    signerIdStr: string,
     agreementContextID?: string,
     agreementContextUserID?: string,
   ): ApiResponse<void>;
@@ -185,14 +186,15 @@ export interface ClientApi {
     agreementContextID?: string,
     agreementContextUserID?: string,
   ): ApiResponse<void>;
-  // Contract expects: user_id_str (base58 public key string)
+  // Consent is a personal act, so there is no user parameter: the contract
+  // records it for the caller's account.
   setConsent(
-    userIdStr: UserId,
     documentId: string,
     agreementContextID?: string,
     agreementContextUserID?: string,
   ): ApiResponse<void>;
-  // Contract expects: user_id_str (base58 public key string)
+  // A read, so it may ask about anyone. ⚠️ Contract expects a HEX ACCOUNT id —
+  // use `whoami()` for your own, never the context member key.
   hasConsented(
     userIdStr: UserId,
     documentId: string,

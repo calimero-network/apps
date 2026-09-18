@@ -1007,12 +1007,6 @@
           "type": {
             "kind": "string"
           }
-        },
-        {
-          "name": "user_id_str",
-          "type": {
-            "kind": "string"
-          }
         }
       ],
       "returns": {
@@ -1082,12 +1076,6 @@
       "name": "set_consent",
       "params": [
         {
-          "name": "user_id_str",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
           "name": "document_id",
           "type": {
             "kind": "string"
@@ -1141,12 +1129,6 @@
         },
         {
           "name": "new_hash",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "signer_id_str",
           "type": {
             "kind": "string"
           }

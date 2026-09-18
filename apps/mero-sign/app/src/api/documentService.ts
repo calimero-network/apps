@@ -160,11 +160,20 @@ export class DocumentService {
     }
   }
 
+  /**
+   * Sign a document as the signed-in person.
+   *
+   * ⚠️ `signerId` is gone. It used to be `localStorage['agreementContextUserID']`
+   * — the context member DEVICE key — handed to a contract that wrote it into
+   * the signature unchecked. Two separate faults in one argument: anybody could
+   * name anybody, and the value named was the wrong KIND of id, so the recorded
+   * signer matched no row of the participant roster. The contract derives the
+   * signer from `env::account_id()` now.
+   */
   async signDocument(
     contextId: string,
     documentId: string,
     updatedPdfFile: File,
-    signerId: string,
     agreementContextID?: string,
     agreementContextUserID?: string,
     onProgress?: (progress: number) => void,
@@ -205,16 +214,17 @@ export class DocumentService {
         base58BlobId,
         updatedPdfFile.size,
         newHash,
-        signerId,
         agreementContextID,
         agreementContextUserID,
       );
 
       if (!response.error) {
+        // Recomputes "has everybody signed?" against the participant roster.
+        // That comparison could never succeed before: signatures held the device
+        // key passed above and the roster holds accounts.
         await this.clientApi.markParticipantSigned(
           contextId,
           documentId,
-          signerId,
           agreementContextID,
           agreementContextUserID,
         );
