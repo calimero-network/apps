@@ -64,7 +64,13 @@ function useOutcome() {
   return { outcome, busy, run };
 }
 
-export function HardenedPath({ settings }: { settings: Settings }) {
+export function HardenedPath({
+  settings,
+  onChange,
+}: {
+  settings: Settings;
+  onChange: (patch: Partial<Settings>) => void;
+}) {
   const [handle, setHandle] = useState<DeviceHandle | null>(null);
   const [device, setDevice] = useState<EnrolledDevice | null>(null);
   const [session, setSession] = useState<DelegatedSession | null>(null);
@@ -97,6 +103,7 @@ export function HardenedPath({ settings }: { settings: Settings }) {
       />
       <HardenedSessionStep
         settings={settings}
+        onChange={onChange}
         device={device}
         handle={handle}
         session={session}
@@ -259,6 +266,7 @@ function EnrollStep({
 
 function HardenedSessionStep({
   settings,
+  onChange,
   device,
   handle,
   session,
@@ -266,6 +274,7 @@ function HardenedSessionStep({
   onHandle,
 }: {
   settings: Settings;
+  onChange: (patch: Partial<Settings>) => void;
   device: EnrolledDevice | null;
   handle: DeviceHandle | null;
   session: DelegatedSession | null;
@@ -300,6 +309,24 @@ function HardenedSessionStep({
           <dd>{window.location.origin}</dd>
         </dl>
       ) : null}
+
+      {/*
+        Typed here rather than resolved from the cloud, unlike step 3.
+        Discovery answers "which node may admit me and which may write for me",
+        and both questions presuppose a cloud that knows this account. This path
+        has no cloud in it at all — the root is offline and the account was added
+        by an operator — so the node is something you say, not something you look
+        up. Without this field the panel silently posted to an empty URL.
+      */}
+      <label>
+        Node URL
+        <input
+          type="text"
+          value={settings.nodeUrl}
+          placeholder="http://localhost:2428"
+          onChange={(e) => onChange({ nodeUrl: e.target.value.trim() })}
+        />
+      </label>
 
       <div className="row">
         <button

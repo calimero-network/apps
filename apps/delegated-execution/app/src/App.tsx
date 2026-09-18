@@ -215,7 +215,7 @@ export function App() {
         enabled={ready.identity && ready.node && ready.context}
       />
 
-      <HardenedPath settings={settings} />
+      <HardenedPath settings={settings} onChange={updateSettings} />
 
       <footer>
         <p>
