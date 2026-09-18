@@ -24,7 +24,7 @@
 // retry and fallback in them, they are the part most likely to need a fix, and a
 // component is the worst place to unit-test one.
 
-import type { MeroJs } from "@calimero-network/mero-js";
+import { CAPABILITIES, type MeroJs } from "@calimero-network/mero-js";
 import {
   encodeInvite,
   groupIdOfInvite,
@@ -44,8 +44,56 @@ export type AdminLike = MeroJs["admin"];
 export type StatusFn = (message: string) => void;
 const noop: StatusFn = () => {};
 
-/** All base capabilities. Members who cannot post chunks are of no use here. */
-const ALL_BASE_CAPABILITIES = 15;
+/**
+ * What an invited MEMBER may do.
+ *
+ * ── Why this is not 15 ───────────────────────────────────────────────────────
+ *
+ * It was, with the comment "members who cannot post chunks are of no use here".
+ * That reasoning was about participation, and it is right — but the number does
+ * not say it. Two things are wrong with `15`, pulling in opposite directions:
+ *
+ *   1. **It includes MANAGE_MEMBERS (1 << 3).** So everyone invited could
+ *      change anyone's role, including demoting whoever invited them. There was
+ *      no role system, only the appearance of one.
+ *
+ *   2. **It omits the bits `createRoom` needs** — CAN_CREATE_SUBGROUP (1 << 5),
+ *      CAN_MANAGE_VISIBILITY (1 << 7), CAN_MANAGE_METADATA (1 << 8). A
+ *      namespace OWNER holds full capabilities independently of this default,
+ *      so that only ever failed for other people: making a room worked for
+ *      whoever created the space and was refused for everyone they invited. The
+ *      hard half to notice, because the person who would report it is not the
+ *      person testing it.
+ *
+ * So the old default over-granted governance and under-granted participation at
+ * once. The bits below are derived from this module's own call sites:
+ *
+ *   createRoom()    →  createGroupInNamespace    CAN_CREATE_SUBGROUP
+ *                      setGroupMetadata          CAN_MANAGE_METADATA
+ *                      setSubgroupVisibility     CAN_MANAGE_VISIBILITY
+ *                      createContext             CAN_CREATE_CONTEXT
+ *   mint*Invite()   →  createNamespaceInvitation CAN_INVITE_MEMBERS
+ *   enterRoom*()    →  joinSubgroupInheritance   CAN_JOIN_OPEN_SUBGROUPS
+ *   (admin only)    →  updateMemberRole          MANAGE_MEMBERS
+ *
+ * A member gets everything except the last: join, publish, start a room, invite
+ * people. What they cannot do is change who governs the space.
+ *
+ * ⚠️ Withheld from both roles: CAN_AUTHOR_ON_BEHALF (1 << 9), which lets a node
+ * publish writes attributed to another member, and MANAGE_APPLICATION (1 << 4).
+ * No call site needs either.
+ */
+export const MEMBER_CAPABILITIES =
+  CAPABILITIES.CAN_CREATE_CONTEXT |
+  CAPABILITIES.CAN_INVITE_MEMBERS |
+  CAPABILITIES.CAN_JOIN_OPEN_SUBGROUPS |
+  CAPABILITIES.CAN_CREATE_SUBGROUP |
+  CAPABILITIES.CAN_MANAGE_VISIBILITY |
+  CAPABILITIES.CAN_MANAGE_METADATA;
+
+/** A member, plus the one bit that governs the namespace. */
+export const ADMIN_CAPABILITIES =
+  MEMBER_CAPABILITIES | CAPABILITIES.MANAGE_MEMBERS;
 
 /** How long to wait for a joined context's identity to land, and how often to look. */
 const IDENTITY_TIMEOUT_MS = 60_000;
@@ -144,7 +192,7 @@ export async function createTeamNamespace(
   // invitees their permissions rather than breaking the namespace.
   await admin
     .setDefaultCapabilities(ns.namespaceId, {
-      defaultCapabilities: ALL_BASE_CAPABILITIES,
+      defaultCapabilities: MEMBER_CAPABILITIES,
     })
     .catch(() => {});
 
