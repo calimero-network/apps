@@ -74,11 +74,28 @@ async function memberCapabilities(
   return typeof caps === 'number' ? caps : null;
 }
 
+/**
+ * The workspace the page is looking at.
+ *
+ * POLLED, not read once. `activeNs` is persisted only on an explicit selection,
+ * so immediately after the join flow the value can still be in-memory while the
+ * page settles — which failed this test on its first attempt and then passed on
+ * the retry. A retry-rescued test is not a passing test: it hides exactly this
+ * kind of ordering assumption, so the wait is explicit here instead.
+ */
 async function activeNamespace(page: Page): Promise<string> {
+  await expect
+    .poll(
+      () => page.evaluate(() => window.localStorage.getItem('issue-tracker:activeNs:v2')),
+      {
+        message: 'the inviter never persisted an active workspace',
+        timeout: 30_000,
+      },
+    )
+    .toBeTruthy();
   const nsId = await page.evaluate(() =>
     window.localStorage.getItem('issue-tracker:activeNs:v2'),
   );
-  expect(nsId, 'the inviter has no active workspace persisted').toBeTruthy();
   return nsId as string;
 }
 
