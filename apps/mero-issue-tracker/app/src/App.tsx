@@ -9,6 +9,7 @@ import IssuesView from './pages/app/IssuesView';
 import IssueDetailPage from './pages/app/IssueDetailPage';
 import BoardPage from './pages/app/BoardPage';
 import MembersPage from './pages/app/MembersPage';
+import InvitationRouteGate from './components/InvitationRouteGate';
 import { AppThemeProvider } from './theme';
 import { APP_PACKAGE, APP_ROUTE } from './config';
 
@@ -60,6 +61,10 @@ export default function App() {
       <ToastProvider>
         <AppThemeProvider>
           <BrowserRouter basename="/">
+            {/* An invitation link can land on ANY route, so the thing that knows
+                one is waiting has to live above the router's outlet. It only
+                routes; AppPage does the joining. */}
+            <InvitationRouteGate />
             <Routes>
               {/* Landing is the front door; authenticated users (incl. desktop
                   SSO skip) are redirected straight into the app. */}
