@@ -1,9 +1,9 @@
-// ── Spaces, vaults, invitations ──────────────────────────────────────────────
+// ── Teams, vaults, invitations ──────────────────────────────────────────────
 //
 // The model, with the vocabulary kept straight deliberately: a "group" is a
 // SUBGROUP inside a namespace, never the namespace itself.
 //
-//   Space (namespace)  = a team, a household, a company   ← invite people HERE
+//   Team (namespace)  = a team, a household, a company   ← invite people HERE
 //     └── Vault (subgroup + context)                      ← one set of secrets
 //     └── Vault (subgroup + context)
 //
@@ -14,7 +14,7 @@
 // the namespace, no way to create the vault, and no way to mint the invitation.
 //
 // Two node behaviours are encoded below and are the reason vaults are reachable
-// by the people invited to a space. Both are inherited from mero-stream's
+// by the people invited to a team. Both are inherited from mero-stream's
 // two-node suite rather than rediscovered:
 //
 //   1. JOINING A NAMESPACE DOES NOT PUT YOU IN ITS SUBGROUPS. `VisibilityMode`
@@ -30,13 +30,13 @@
 // A name the creator types has to be readable on the node of the person they
 // invited. Three stores exist and they cover different stages of the journey:
 //
-//   * a space's name → `createNamespace({name})`, read back from
+//   * a team's name → `createNamespace({name})`, read back from
 //     `listNamespacesForApplication()[].name`, PLUS the namespace's own metadata
 //     record as a fallback for nodes that answer the listing without a name.
 //   * a vault's name → the subgroup's METADATA record. `createGroupInNamespace`
 //     takes `groupName`, the value does NOT persist, and the listing comes back
 //     as a bare `{groupId}` — so `setGroupMetadata` is what makes the name
-//     readable, and it is readable by any member of the space, including one who
+//     readable, and it is readable by any member of the team, including one who
 //     has not entered the vault yet.
 //   * the same vault's name → the CONTRACT, via `init`'s parameters. Contract
 //     state is the authoritative copy for anyone inside the vault, and it is the
@@ -58,7 +58,7 @@ import {
   missingForRole,
   normaliseRole,
   roleLabel,
-  type SpaceRole,
+  type TeamRole,
 } from './roles';
 import {
   encodeInvite,
@@ -164,9 +164,9 @@ export function displayName(
   return `${fallbackPrefix} ${id.slice(0, 8)}…`;
 }
 
-// ── Spaces (namespaces) ──────────────────────────────────────────────────────
+// ── Teams (namespaces) ──────────────────────────────────────────────────────
 
-export interface SpaceRow {
+export interface TeamRow {
   namespaceId: string;
   name: string;
   memberCount: number;
@@ -174,20 +174,20 @@ export interface SpaceRow {
 }
 
 /**
- * Every space this node holds for Mero Pass.
+ * Every team this node holds for Mero Pass.
  *
  * Scoped by application id — NOT by "every context on the node", which is what
  * the vault list did before and is why it showed other apps' contexts as
  * vaults.
  *
- * The metadata read is a second request per space and is worth it: it is the
- * fallback that keeps a space named when the listing answers without one, and
+ * The metadata read is a second request per team and is worth it: it is the
+ * fallback that keeps a team named when the listing answers without one, and
  * a listing with a name skips nothing because both are in flight together.
  */
-export async function listSpaces(
+export async function listTeams(
   admin: AdminLike,
   applicationId: string,
-): Promise<SpaceRow[]> {
+): Promise<TeamRow[]> {
   const namespaces = await admin.listNamespacesForApplication(applicationId);
   return Promise.all(
     (namespaces ?? []).map(async (n) => {
@@ -197,10 +197,10 @@ export async function listSpaces(
           : null;
       return {
         namespaceId: n.namespaceId,
-        name: displayName([n.name, meta?.name], n.namespaceId, 'Space'),
+        name: displayName([n.name, meta?.name], n.namespaceId, 'Team'),
         memberCount: n.memberCount ?? 0,
         // `subgroupCount` is the vault count. Preferred over listing every
-        // space's groups: that would be one request per row just to render a
+        // team's groups: that would be one request per row just to render a
         // number.
         vaultCount: n.subgroupCount ?? 0,
       };
@@ -209,17 +209,17 @@ export async function listSpaces(
 }
 
 /**
- * Create the space that holds vaults.
+ * Create the team that holds vaults.
  *
- * No context is created here — that is a vault's job. A space with no vault is
- * a valid, expected state: you invite people to the space, then make vaults.
+ * No context is created here — that is a vault's job. A team with no vault is
+ * a valid, expected state: you invite people to the team, then make vaults.
  */
-export async function createSpace(
+export async function createTeam(
   admin: AdminLike,
   opts: { applicationId: string; name: string },
   onStatus: StatusFn = noop,
 ): Promise<{ namespaceId: string }> {
-  onStatus('Creating the space…');
+  onStatus('Creating the team…');
   // `name` on the wire, at creation. Passing it here is the difference between
   // everyone seeing the name and everyone seeing a hex stub; an app that keeps
   // the name client-side instead has already lost it for every invitee.
@@ -228,9 +228,9 @@ export async function createSpace(
     name: opts.name,
   });
 
-  onStatus("Recording the space's name…");
+  onStatus("Recording the team's name…");
   // Belt and braces, and cheap. The namespace IS a group, so it has a metadata
-  // record, and `listSpaces` falls back to it when the namespace listing comes
+  // record, and `listTeams` falls back to it when the namespace listing comes
   // back without a name.
   await admin
     .setGroupMetadata(ns.namespaceId, { name: opts.name })
@@ -244,20 +244,20 @@ export async function createSpace(
   // invite further people and to demote you. See `lib/roles`.
   //
   // This sets the default for FUTURE members. It does not touch anyone already
-  // in the space, and it does not touch the creator: a namespace's owner holds
+  // in the team, and it does not touch the creator: a namespace's owner holds
   // full capabilities independently of this value, which is why lowering it
-  // does not lock you out of the space you just made. The merobox scenario
+  // does not lock you out of the team you just made. The merobox scenario
   // pins exactly that — node 1 creates a vault after this call.
   //
   // Non-fatal: a failure here costs invitees their permissions rather than
-  // breaking the space.
+  // breaking the team.
   await admin
     .setDefaultCapabilities(ns.namespaceId, {
       defaultCapabilities: MEMBER_CAPABILITIES,
     })
     .catch(() => {});
 
-  onStatus('Opening the space to invited members…');
+  onStatus('Opening the team to invited members…');
   await admin
     .setSubgroupVisibility(ns.namespaceId, { subgroupVisibility: 'open' })
     .catch(() => {});
@@ -280,7 +280,7 @@ export interface VaultRow {
 }
 
 /**
- * The vaults in a space, each with its context and whether we can enter it.
+ * The vaults in a team, each with its context and whether we can enter it.
  *
  * Fans out per vault because the subgroup listing returns only
  * `{groupId, name?}`, and `name` is not populated. A per-vault failure degrades
@@ -324,7 +324,7 @@ export async function listVaults(
  * Create a vault: subgroup → name → OPEN visibility → its own context.
  *
  * The visibility step is not optional and not cosmetic. A vault created with
- * defaults is RESTRICTED, which means the space members you just invited get a
+ * defaults is RESTRICTED, which means the team members you just invited get a
  * 403 from `join-via-inheritance` and can never reach the secrets.
  */
 export async function createVault(
@@ -342,17 +342,17 @@ export async function createVault(
   });
 
   onStatus('Naming the vault…');
-  // The name, where it is actually readable by another member of the space.
+  // The name, where it is actually readable by another member of the team.
   // Non-fatal: a nameless vault still holds secrets, and losing the label is
   // not worth failing a created vault over — the contract copy below is the
   // authoritative one anyway.
   await admin.setGroupMetadata(sg.groupId, { name: opts.name }).catch(() => {});
 
-  onStatus('Opening the vault to space members…');
+  onStatus('Opening the vault to team members…');
   // Lowercase — core rejects "Open". NOT swallowed: unlike the namespace-root
   // call, this one is load-bearing. If it fails the vault is restricted, and a
   // restricted vault silently cannot be joined by the people invited to the
-  // space. Better to fail here, where the message can say so.
+  // team. Better to fail here, where the message can say so.
   await admin.setSubgroupVisibility(sg.groupId, {
     subgroupVisibility: 'open',
   });
@@ -376,15 +376,15 @@ export async function createVault(
 // ── Invitations ──────────────────────────────────────────────────────────────
 
 /**
- * Mint an OPEN space invitation and encode it as one pasteable code.
+ * Mint an OPEN team invitation and encode it as one pasteable code.
  *
  * OPEN means the invitation carries no invitee key, so anyone holding the code
  * can join. Deliberately do NOT pass `inviteePublicKey`: it is silently ignored
  * and misleads the next reader.
  */
-export async function mintSpaceInvite(
+export async function mintTeamInvite(
   admin: AdminLike,
-  opts: { namespaceId: string; spaceName?: string },
+  opts: { namespaceId: string; teamName?: string },
   onStatus: StatusFn = noop,
 ): Promise<string> {
   onStatus('Minting an invitation…');
@@ -397,7 +397,7 @@ export async function mintSpaceInvite(
   return encodeInvite({
     invitation,
     kind: 'namespace',
-    groupAlias: opts.spaceName,
+    groupAlias: opts.teamName,
     groupId: opts.namespaceId,
   });
 }
@@ -412,10 +412,10 @@ export async function mintSpaceInvite(
  * vault this app makes, because a restricted one cannot be joined by invited
  * members at all).
  *
- * So a vault code is "space grant + open this vault", and the UI says exactly
+ * So a vault code is "team grant + open this vault", and the UI says exactly
  * that rather than implying a narrower grant than it gives. ⚠️ THIS MATTERS
  * MORE HERE THAN IN A CHAT APP: the person accepting is being given access to
- * every vault in the space, not just the one named, and a password manager must
+ * every vault in the team, not just the one named, and a password manager must
  * not misrepresent that.
  */
 export async function mintVaultInvite(
@@ -424,7 +424,7 @@ export async function mintVaultInvite(
     namespaceId: string;
     vaultId: string;
     vaultName?: string;
-    spaceName?: string;
+    teamName?: string;
     contextId?: string | null;
   },
   onStatus: StatusFn = noop,
@@ -446,7 +446,7 @@ export async function mintVaultInvite(
     vaultId: opts.vaultId,
     contextId: opts.contextId ?? undefined,
     vaultName: opts.vaultName,
-    groupAlias: opts.spaceName,
+    groupAlias: opts.teamName,
   });
 }
 
@@ -458,7 +458,7 @@ export interface AcceptedInvite {
   /** Carried by the code as a hint; may not have replicated to this node yet. */
   contextId: string | null;
   vaultName?: string;
-  spaceName?: string;
+  teamName?: string;
 }
 
 /** Where a redeemed invitation should land the user. */
@@ -468,10 +468,10 @@ export type Redeemed =
       contextId: string;
       identity: string;
       vaultName?: string;
-      /** The space the vault belongs to, when the invitation named it. */
+      /** The team the vault belongs to, when the invitation named it. */
       namespaceId?: string;
     }
-  | { kind: 'space'; namespaceId: string }
+  | { kind: 'team'; namespaceId: string }
   | { kind: 'joined' };
 
 /**
@@ -493,10 +493,10 @@ export async function acceptInvite(
     vaultId: payload.vaultId ?? null,
     contextId: payload.contextId ?? null,
     vaultName: payload.vaultName,
-    spaceName: payload.groupAlias,
+    teamName: payload.groupAlias,
   };
 
-  // A vault code's GRANT is the space (see `mintVaultInvite`), so the join step
+  // A vault code's GRANT is the team (see `mintVaultInvite`), so the join step
   // is a namespace join regardless of where the code points. Only an explicit
   // chain entry describes a subgroup invitation.
   const steps: InviteChainEntry[] = payload.chain ?? [
@@ -512,7 +512,7 @@ export async function acceptInvite(
     const signedId = groupIdOfInvite(step.invitation) || step.groupId;
     const label =
       step.kind === 'namespace'
-        ? `space${payload.groupAlias ? ` “${payload.groupAlias}”` : ''}`
+        ? `team${payload.groupAlias ? ` “${payload.groupAlias}”` : ''}`
         : `vault${payload.vaultName ? ` “${payload.vaultName}”` : ''}`;
     onStatus(`Joining the ${label}…`);
     try {
@@ -533,7 +533,7 @@ export async function acceptInvite(
   }
 
   // A vault invite whose chain had no namespace entry still needs one to
-  // navigate to; ask the node which space the vault sits under.
+  // navigate to; ask the node which team the vault sits under.
   if (!result.namespaceId && result.vaultId) {
     result.namespaceId = await parentNamespaceOf(admin, result.vaultId);
   }
@@ -544,8 +544,8 @@ export async function acceptInvite(
  * Accept an invitation and enter whatever it granted.
  *
  * Extracted so the link path and any future paste path cannot drift. A vault
- * invitation needs BOTH joins — the space grant and then the vault's context —
- * and forgetting the second leaves someone a member of a space staring at a
+ * invitation needs BOTH joins — the team grant and then the vault's context —
+ * and forgetting the second leaves someone a member of a team staring at a
  * vault they cannot open.
  */
 export async function redeemInvite(
@@ -570,13 +570,13 @@ export async function redeemInvite(
     };
   }
   if (accepted.namespaceId) {
-    return { kind: 'space', namespaceId: accepted.namespaceId };
+    return { kind: 'team', namespaceId: accepted.namespaceId };
   }
   return { kind: 'joined' };
 }
 
 /**
- * Which space a vault belongs to, discovered by looking for it among the
+ * Which team a vault belongs to, discovered by looking for it among the
  * namespaces this node knows. There is no "parent of" read in the admin API, and
  * the invite wrapper's claim is unsigned, so this is the honest way to get it.
  */
@@ -616,10 +616,10 @@ async function ownedIdentity(
  * Join a vault by inheritance, retrying while the node says "not eligible".
  *
  * A 403 here is NOT proof that the vault is restricted. Inheritance is checked
- * against the space membership as this node has PROJECTED it, and a membership
+ * against the team membership as this node has PROJECTED it, and a membership
  * that exists is not yet a membership that confers anything — on a cold join the
  * grant arrives over gossip and is projected a moment later. The redeem path
- * joins the space and enters the vault back to back, so it lands inside exactly
+ * joins the team and enters the vault back to back, so it lands inside exactly
  * that window.
  */
 async function joinVaultWithRetry(
@@ -647,7 +647,7 @@ async function joinVaultWithRetry(
       if (attempt === 1) {
         onStatus('Waiting for your membership to reach this node…');
       }
-      // Nudge the space along rather than only sleeping: the thing being waited
+      // Nudge the team along rather than only sleeping: the thing being waited
       // for is a projection of state that arrives over gossip.
       await admin.syncGroup(vaultId).catch(() => {});
       await sleep(ADMISSION_POLL_MS);
@@ -666,8 +666,8 @@ async function joinVaultWithRetry(
  * Work out WHY a vault refused us, instead of asserting a cause.
  *
  * The two candidates look identical from a 403 and want opposite responses — one
- * is "wait or rejoin the space", the other is "this vault can never admit anyone
- * invited to the space". Guessing sends people to check a setting that is
+ * is "wait or rejoin the team", the other is "this vault can never admit anyone
+ * invited to the team". Guessing sends people to check a setting that is
  * usually correct, so ask the node which it is.
  *
  * Best-effort by construction: this runs on a path that is already failing, so
@@ -685,7 +685,7 @@ async function diagnoseAdmission(
 
   if (visibility === 'restricted') {
     return (
-      'The vault is RESTRICTED, so being in the space does not admit you — ' +
+      'The vault is RESTRICTED, so being in the team does not admit you — ' +
       'whoever created it has to open it, or invite you to the vault directly.'
     );
   }
@@ -693,22 +693,22 @@ async function diagnoseAdmission(
   const namespaceId = await parentNamespaceOf(admin, vaultId).catch(() => null);
   if (!namespaceId) {
     return (
-      'This node cannot see which space the vault belongs to, which means the ' +
-      'space has not replicated here yet — rejoin the space, then try again.'
+      'This node cannot see which team the vault belongs to, which means the ' +
+      'team has not replicated here yet — rejoin the team, then try again.'
     );
   }
 
   if (visibility === 'open') {
     return (
-      'The vault is open, so this is your membership of the space not having ' +
+      'The vault is open, so this is your membership of the team not having ' +
       'reached this node yet. Try again in a moment; if it persists, rejoin ' +
-      'the space from the invitation.'
+      'the team from the invitation.'
     );
   }
 
   return (
     "Could not read the vault's visibility. Either your membership of the " +
-    'space has not reached this node yet, or the vault was created restricted.'
+    'team has not reached this node yet, or the vault was created restricted.'
   );
 }
 
@@ -720,10 +720,10 @@ async function diagnoseAdmission(
  *   1. Already hold an identity? Done — opening a vault you are in must be
  *      instant.
  *   2. Self-admit into the OPEN subgroup (`joinSubgroupInheritance`). This is
- *      the step whose absence makes vaults unreachable: joining a space does
+ *      the step whose absence makes vaults unreachable: joining a team does
  *      NOT put you in its vaults.
  *   3. Then WAIT. ⚠️ Auto-follow only joins you to contexts created AFTER you
- *      joined the space, so for a vault that already existed it carries nothing
+ *      joined the team, so for a vault that already existed it carries nothing
  *      — poll, then fall back to an explicit `joinContext`.
  */
 export async function enterVaultContext(
@@ -758,18 +758,18 @@ export async function enterVaultContext(
 }
 
 /**
- * Locate the space and subgroup a context belongs to.
+ * Locate the team and subgroup a context belongs to.
  *
  * The vault page is routed by CONTEXT id — that is what a vault is, from the
  * inside — but minting an invitation needs the NAMESPACE, and a context knows
  * nothing about its parents: there is no "parent of" read in the admin API. So
- * walk this app's spaces and their subgroups until the context turns up.
+ * walk this app's teams and their subgroups until the context turns up.
  *
- * Bounded by (spaces x vaults) for one node's own data, and only run when the
+ * Bounded by (teams x vaults) for one node's own data, and only run when the
  * user asks to invite someone, not on every render.
  *
  * Returns null when the context is not one of this app's vaults — a context
- * from another app, or a space that has not replicated here yet — and the
+ * from another app, or a team that has not replicated here yet — and the
  * caller reports that rather than minting an invitation to the wrong group.
  */
 export async function findVaultByContext(
@@ -779,18 +779,18 @@ export async function findVaultByContext(
 ): Promise<{
   namespaceId: string;
   vaultId: string;
-  spaceName: string;
+  teamName: string;
   vaultName: string;
 } | null> {
-  const spaces = await listSpaces(admin, applicationId).catch(() => []);
-  for (const space of spaces) {
-    const vaults = await listVaults(admin, space.namespaceId).catch(() => []);
+  const teams = await listTeams(admin, applicationId).catch(() => []);
+  for (const team of teams) {
+    const vaults = await listVaults(admin, team.namespaceId).catch(() => []);
     const hit = vaults.find((v) => v.contextId === contextId);
     if (hit) {
       return {
-        namespaceId: space.namespaceId,
+        namespaceId: team.namespaceId,
         vaultId: hit.vaultId,
-        spaceName: space.name,
+        teamName: team.name,
         vaultName: hit.name,
       };
     }
@@ -819,12 +819,12 @@ export async function findVaultByContext(
 // the third. They are not interchangeable and there is no runtime check that
 // would catch a swap.
 
-/** One person in a space, with what the node says they may actually do. */
-export interface SpaceMember {
+/** One person in a team, with what the node says they may actually do. */
+export interface TeamMember {
   /** The member's ACCOUNT, 64 hex. What every call in this section takes. */
   accountId: string;
   name: string;
-  role: SpaceRole;
+  role: TeamRole;
   /** The role string exactly as the node spells it, for display when it is unusual. */
   rawRole: string;
   /** The enforced capability bitmask, or null when it could not be read. */
@@ -833,7 +833,7 @@ export interface SpaceMember {
 }
 
 /**
- * The people in a space, each with their ROLE and their real CAPABILITIES.
+ * The people in a team, each with their ROLE and their real CAPABILITIES.
  *
  * Both, because they can disagree and the disagreement is the bug worth
  * surfacing: a row that says "Admin" next to a mask missing MANAGE_MEMBERS is
@@ -843,11 +843,11 @@ export interface SpaceMember {
  * A capability read that fails degrades that one row to `null` rather than
  * emptying the list.
  */
-export async function listSpaceMembers(
+export async function listTeamMembers(
   admin: AdminLike,
   namespaceId: string,
   selfAccountId: string | null,
-): Promise<SpaceMember[]> {
+): Promise<TeamMember[]> {
   const res = await admin.listGroupMembers(namespaceId);
   const members = res.members ?? [];
   return Promise.all(
@@ -868,7 +868,7 @@ export async function listSpaceMembers(
   );
 }
 
-/** This node's own capabilities in a space, or null when they cannot be read. */
+/** This node's own capabilities in a team, or null when they cannot be read. */
 export async function myCapabilities(
   admin: AdminLike,
   namespaceId: string,
@@ -882,7 +882,7 @@ export async function myCapabilities(
 
 /** What `setMemberRole` managed to do, reported honestly. */
 export interface RoleChange {
-  role: SpaceRole;
+  role: TeamRole;
   /** The mask the node reports AFTER the change, or null if it could not be read. */
   capabilities: number | null;
   /** Capabilities the new role wants that have not landed yet. Empty on success. */
@@ -892,7 +892,7 @@ export interface RoleChange {
 }
 
 /**
- * Promote or demote a member of a space.
+ * Promote or demote a member of a team.
  *
  * ── Why this is two writes and a read, not one write ─────────────────────────
  *
@@ -915,18 +915,18 @@ export interface RoleChange {
  * ── What a DEMOTION does and does not do ─────────────────────────────────────
  *
  * ⚠️ Demotion removes the governance bits. It does NOT remove the person from
- * the space, it does NOT close the vaults to them — a Member keeps
+ * the team, it does NOT close the vaults to them — a Member keeps
  * CAN_JOIN_OPEN_SUBGROUPS and can still read and write every secret — and,
  * most importantly, it CANNOT un-sync what their node already holds. Every
  * vault they had entered is replicated on their machine. Demoting somebody
- * stops them governing the space from this moment on; the only thing that
+ * stops them governing the team from this moment on; the only thing that
  * actually protects a secret they have already seen is rotating that secret.
  * The UI says this in the confirmation, and it is said here so that the next
  * person reading this function is not the one who has to discover it.
  */
 export async function setMemberRole(
   admin: AdminLike,
-  opts: { namespaceId: string; accountId: string; role: SpaceRole },
+  opts: { namespaceId: string; accountId: string; role: TeamRole },
   onStatus: StatusFn = noop,
 ): Promise<RoleChange> {
   const wanted = capabilitiesForRole(opts.role);

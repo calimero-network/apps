@@ -1,0 +1,222 @@
+/* Secret-specific chrome. Everything structural comes from shell.module.css;
+   only what is genuinely about a SECRET lives here. */
+
+.stats {
+  display: flex;
+  gap: 28px;
+  margin-bottom: 24px;
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.statValue {
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.statLabel {
+  font-size: 11px;
+  color: var(--ink-faint);
+}
+
+.filters {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.select {
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 13px;
+  background: var(--surface);
+  color: var(--ink);
+  outline: none;
+  min-width: 150px;
+}
+.select:focus {
+  border-color: var(--ink);
+}
+
+.secret {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+.secret + .secret {
+  margin-top: 10px;
+}
+
+.secretHead {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 14px 16px;
+  background: none;
+  border: none;
+  text-align: left;
+}
+.secretHead:hover {
+  background: var(--surface-2);
+}
+
+.secretKind {
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  border-radius: 6px;
+  background: var(--accent-soft);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+}
+
+.secretName {
+  font-size: 13px;
+  font-weight: 600;
+  word-break: break-word;
+}
+
+.secretMeta {
+  /* `block`, or the name and the meta render as one run of text —
+     "GitHublogin · v3". Caught in the screenshots, not by any test. */
+  display: block;
+  font-size: 11px;
+  color: var(--ink-faint);
+  margin-top: 2px;
+}
+
+.tags {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.chevron {
+  color: var(--ink-faint);
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.secretBody {
+  border-top: 1px solid var(--border);
+  padding: 14px 16px;
+  background: #fcfcfc;
+}
+
+.field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+}
+.field + .field {
+  border-top: 1px dashed #ededed;
+}
+
+.fieldName {
+  font-size: 11px;
+  color: var(--ink-faint);
+  width: 110px;
+  flex-shrink: 0;
+  text-transform: capitalize;
+}
+
+/* A revealed value is monospace so an ambiguous character can be read; a
+   concealed one is a fixed run of dots, NOT the value with a filter over it —
+   a CSS mask leaves the characters in the markup and on the clipboard. */
+.fieldValue {
+  flex: 1;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ink-2);
+  word-break: break-all;
+  min-width: 0;
+}
+
+.fieldMasked {
+  letter-spacing: 0.18em;
+  color: var(--ink-faint);
+}
+
+.fieldActions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.mini {
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 500;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--surface);
+  color: var(--ink-dim);
+}
+.mini:hover {
+  background: var(--surface-2);
+  border-color: var(--border-strong);
+  color: var(--ink);
+}
+
+.secretFooter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.secretFooterNote {
+  font-size: 11px;
+  color: var(--ink-faint);
+  margin-right: auto;
+}
+
+/* ── Activity ─────────────────────────────────────────────────────────────── */
+
+.event {
+  display: flex;
+  gap: 12px;
+  padding: 11px 0;
+}
+.event + .event {
+  border-top: 1px solid #ededed;
+}
+
+.eventDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  margin-top: 6px;
+  flex-shrink: 0;
+}
+
+.eventAction {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.eventDetail {
+  font-size: 12px;
+  color: var(--ink-dim);
+}
+
+.eventMeta {
+  font-size: 11px;
+  color: var(--ink-faint);
+  margin-top: 2px;
+}

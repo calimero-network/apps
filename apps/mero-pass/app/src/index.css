@@ -1,111 +1,111 @@
-:root,
-html {
+/* ── Mero Pass, in MeroDesign's visual language ───────────────────────────────
+ *
+ * The tokens and the resets here are MeroDesign's `src/index.css`, taken rather
+ * than re-derived. That distinction is the whole point of this file: the same
+ * look was attempted once by re-expressing it in another app's tokens, and it
+ * came out reading as the old app with different numbers. Copying the actual
+ * values is what produces the same product.
+ *
+ * ONE DELIBERATE SUBSTITUTION: MeroDesign's accent is blue (#0d99ff). Mero Pass
+ * uses the Calimero green, and green needs care that blue does not:
+ *
+ *   --accent (#a5ff11) is a FILL, NEVER AN INK. It measures ~1.2:1 on white.
+ *   Anything written ON it must be --accent-ink (#131215), near-black. White on
+ *   this green is unreadable — that exact pairing shipped in mero-meet.
+ *
+ *   --accent-text (#4e7a00) is the ink for green TEXT on a white surface; it
+ *   measures ~5:1, which clears AA for body copy. The fill is never used for
+ *   text and the text colour is never used as a fill.
+ *
+ * Green is also used SPARINGLY: the primary action, a focus ring, a success
+ * mark. A grid of solid green cards reads as highlighting rather than as a
+ * list, so cards stay white on a hairline and the accent marks what is
+ * actionable.
+ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  /* Neutrals — MeroDesign's, unchanged. */
+  --page: #fafafa;
+  --surface: #ffffff;
+  --surface-2: #f5f5f5;
+  --border: #e0e0e0;
+  --border-soft: #e8e8e8;
+  --border-strong: #bbbbbb;
+  --ink: #111111;
+  --ink-2: #333333;
+  --ink-dim: #555555;
+  --ink-faint: #888888;
+
+  /* Calimero green. Read the note above before using either of these. */
+  --accent: #a5ff11;
+  --accent-hover: #b6ff3d;
+  --accent-ink: #131215;
+  --accent-text: #4e7a00;
+  --accent-soft: rgba(165, 255, 17, 0.18);
+
+  --danger: #c0392b;
+  --danger-soft: #fdf3f2;
+  --success: #15803d;
+
+  --radius: 6px;
+  --radius-lg: 8px;
+  --font:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial,
+    sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+html,
+body {
+  font-family: var(--font);
+  font-size: 13px;
   line-height: 1.5;
-  font-weight: 400;
-
-  color-scheme: light dark;
-  color: #ffffff;
-  background-color: #111111;
-
-  font-synthesis: none;
+  color: var(--ink);
+  /* Light, explicitly. This file used to declare `color-scheme: light dark`
+     with white-on-#111111, which is why every app screen was dark while the
+     landing page it links from was light — two halves of one product
+     disagreeing about what it is. */
+  background: var(--page);
+  color-scheme: light;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-html,
-body {
-  margin: 0;
-  padding: 0;
-  font-family: 'Inter', sans-serif;
-  font-optical-sizing: auto;
-  font-weight: 500;
-  font-style: normal;
-  font-variation-settings: 'slnt' 0;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  font-smooth: never;
+button {
+  font-family: inherit;
+  cursor: pointer;
 }
 
-* {
-  box-sizing: border-box;
+input,
+textarea,
+select {
+  font-family: inherit;
 }
 
-.modal-content {
-  background-color: transparent !important;
+a {
+  color: inherit;
+  text-decoration: none;
 }
 
-/* Additional responsive improvements */
-@media (max-width: 768px) {
-  .main-content {
-    padding: 1rem !important;
-  }
-
-  .card-container {
-    margin: 0 !important;
-    max-width: 100% !important;
-  }
-
-  .form-grid {
-    grid-template-columns: 1fr !important;
-  }
-
-  .button-group {
-    flex-direction: column !important;
-  }
-
-  .button-group button {
-    flex: none !important;
-    width: 100% !important;
-  }
-}
-
-/* Enhanced card styling */
-.card-enhanced {
-  box-shadow:
-    0 4px 6px -1px rgba(0, 0, 0, 0.1),
-    0 2px 4px -1px rgba(0, 0, 0, 0.06);
-  transition: box-shadow 0.2s ease-in-out;
-}
-
-.card-enhanced:hover {
-  box-shadow:
-    0 10px 15px -3px rgba(0, 0, 0, 0.1),
-    0 4px 6px -2px rgba(0, 0, 0, 0.05);
-}
-
-/* Better button styling */
-.button-enhanced {
-  transition: all 0.2s ease-in-out;
-  font-weight: 500;
-}
-
-.button-enhanced:hover {
-  transform: translateY(-1px);
-}
-
-/* Improved table styling */
-.table-enhanced {
-  border-radius: 8px;
-  overflow: hidden;
-}
-
-.table-enhanced th {
-  background: linear-gradient(135deg, #374151 0%, #4b5563 100%);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  font-size: 0.75rem;
-}
-
-/* Better input styling */
-.input-enhanced {
-  transition: all 0.2s ease-in-out;
-  border: 2px solid transparent;
-}
-
-.input-enhanced:focus {
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-  transform: translateY(-1px);
+/* Keyboard focus, once, in the accent. Removing an outline without replacing it
+   is how a keyboard user loses their place; `:focus-visible` keeps it off a
+   mouse click. */
+:focus-visible {
+  outline: 2px solid var(--accent-text);
+  outline-offset: 2px;
 }

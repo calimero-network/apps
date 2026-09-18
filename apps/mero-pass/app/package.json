@@ -23,14 +23,13 @@
     "test:e2e:ui": "playwright test --ui",
     "preview": "vite preview",
     "prettier": "prettier --check 'src/**/*.{js,jsx,ts,tsx,json}'",
-    "prettier:write": "prettier --write 'src/**/*.{js,jsx,ts,tsx,json}'"
+    "prettier:write": "prettier --write 'src/**/*.{js,jsx,ts,tsx,json}'",
+    "shots": "node e2e/shots.mjs"
   },
   "dependencies": {
-    "@calimero-network/mero-icons": "catalog:",
     "@calimero-network/mero-js": "catalog:",
     "@calimero-network/mero-platform": "catalog:",
     "@calimero-network/mero-react": "catalog:",
-    "@calimero-network/mero-ui": "catalog:",
     "bs58": "catalog:",
     "fflate": "catalog:",
     "react": "catalog:",

@@ -1032,9 +1032,6 @@ importers:
 
   apps/mero-pass/app:
     dependencies:
-      '@calimero-network/mero-icons':
-        specifier: 'catalog:'
-        version: 0.0.5(react@19.2.8)
       '@calimero-network/mero-js':
         specifier: 'catalog:'
         version: 18.3.0
@@ -1044,9 +1041,6 @@ importers:
       '@calimero-network/mero-react':
         specifier: 'catalog:'
         version: 9.0.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      '@calimero-network/mero-ui':
-        specifier: 'catalog:'
-        version: 1.5.1(@floating-ui/dom@1.8.0)(@tiptap/core@3.30.5(@tiptap/pm@3.30.5))(@tiptap/pm@3.30.5)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       bs58:
         specifier: 'catalog:'
         version: 6.0.0

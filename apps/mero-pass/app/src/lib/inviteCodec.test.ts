@@ -20,7 +20,7 @@ const GROUP_BYTES = [0x3f, 0x8a, 0x91, 0xc2];
 const GROUP_HEX = '3f8a91c2';
 
 describe('encodeInvite / decodeInvite', () => {
-  it('round-trips a space invitation', () => {
+  it('round-trips a team invitation', () => {
     const payload: PassInvitePayload = {
       invitation: signed(GROUP_BYTES),
       kind: 'namespace',
@@ -54,7 +54,7 @@ describe('encodeInvite / decodeInvite', () => {
   it('produces a code with no characters that break on copy', () => {
     const code = encodeInvite({ invitation: signed(GROUP_BYTES) });
     // Base58 rather than base64 exists precisely so `+`, `/`, `=` and
-    // whitespace never appear — those are what URL encoders and chat clients
+    // whiteteam never appear — those are what URL encoders and chat clients
     // mangle, and an invite code's whole life is being pasted.
     expect(code).toMatch(/^[1-9A-HJ-NP-Za-km-z]+$/);
   });
@@ -63,7 +63,7 @@ describe('encodeInvite / decodeInvite', () => {
     // mero-stream and mero-meet use the same wire format with `roomId` /
     // `roomName`. Their namespace grant is valid here, and honouring their
     // spelling is what makes a cross-app code land on a subgroup rather than
-    // dumping the joiner at the top of a space.
+    // dumping the joiner at the top of a team.
     const json = JSON.stringify({
       invitation: signed(GROUP_BYTES),
       kind: 'room',

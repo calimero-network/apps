@@ -1,5 +1,4 @@
 import { type ReactNode, useCallback, useMemo, useRef, useState } from 'react';
-import { useToast } from '@calimero-network/mero-ui';
 import { shareableInvitation } from '../lib/inviteLink';
 import { useDialogOpen } from '../hooks/useDialogOpen';
 import styles from './InviteModal.module.css';
@@ -13,7 +12,7 @@ import styles from './InviteModal.module.css';
  * in mero-stream, mero-meet, mero-design and mero-calendar.
  *
  * ⚠️ `scope` is not decoration in THIS app. An invitation to a vault grants
- * membership of the whole space, because vault access is inherited — so the
+ * membership of the whole team, because vault access is inherited — so the
  * person clicking Copy has to be able to read what they are about to hand out.
  * A password manager that understates a grant is worse than one with no sharing
  * at all.
@@ -27,13 +26,17 @@ export default function InviteModal({
 }: {
   open: boolean;
   code: string;
-  /** What the invitation grants — "Whole space · Home" or "Opens Bank logins". */
+  /** What the invitation grants — "Whole team · Home" or "Opens Bank logins". */
   scope: string;
   hint?: ReactNode;
   onClose: () => void;
 }) {
   const dialogRef = useRef<HTMLDialogElement | null>(null);
-  const { show } = useToast();
+  // An inline note rather than a toast layer. mero-ui's ToastProvider was the
+  // app's only remaining use of the library, and mounting a whole provider —
+  // plus its stylesheet, plus its surface colours — to say "copied" was not
+  // worth it. The message belongs next to the thing that was copied anyway.
+  const [note, setNote] = useState<string | null>(null);
   const [showRaw, setShowRaw] = useState(false);
   // Guarded, because this component is mounted for the whole page life —
   // `open` drives it, not a conditional render — so it renders many times with
@@ -51,34 +54,27 @@ export default function InviteModal({
     if (!share) return;
     try {
       await navigator.clipboard.writeText(share.link);
-      show({ description: 'Invitation link copied.', variant: 'success' });
+      setNote('Invitation link copied.');
       onClose();
     } catch {
       // Clipboard access is denied outside a secure context and in some
       // embedded webviews. Keep the dialog OPEN so the text is still there to
       // select by hand — closing it would take away the only copy left.
-      show({
-        description:
-          'Could not reach the clipboard — select the link and copy it.',
-        variant: 'error',
-      });
+      setNote('Could not reach the clipboard — select the link and copy it.');
       setShowRaw(true);
     }
-  }, [share, show, onClose]);
+  }, [share, onClose]);
 
   const copyQuietly = useCallback(
     async (value: string, label: string) => {
       try {
         await navigator.clipboard.writeText(value);
-        show({ description: `${label} copied.`, variant: 'success' });
+        setNote(`${label} copied.`);
       } catch {
-        show({
-          description: 'Could not reach the clipboard — select it and copy.',
-          variant: 'error',
-        });
+        setNote('Could not reach the clipboard — select it and copy.');
       }
     },
-    [show],
+    [],
   );
 
   // After the hooks, never before: an early return above them would change the
@@ -134,6 +130,12 @@ export default function InviteModal({
         >
           Copy link
         </button>
+
+        {note && (
+          <p className={styles.hint} data-testid="invite-note">
+            {note}
+          </p>
+        )}
 
         {hint && <p className={styles.hint}>{hint}</p>}
 

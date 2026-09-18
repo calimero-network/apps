@@ -1,0 +1,532 @@
+/* ── The app shell, taken from MeroDesign ────────────────────────────────────
+ *
+ * Values copied from `apps/mero-design/app/src/pages/TeamsPage.module.css` and
+ * `ProjectsPage.module.css` rather than re-derived: 56px header on a hairline,
+ * one centred column, 22px title, 13px/11px card type, white cards on #e0e0e0,
+ * a `⋯` hover menu, destructive items in #c0392b.
+ *
+ * Shared by the three app screens because they ARE the same screen at different
+ * depths — teams, then the vaults in one, then the secrets in one. MeroDesign
+ * keeps a copy per page; one module here means the three cannot drift, which is
+ * the failure that made this app look like four different products.
+ *
+ * The accent is green, not MeroDesign's blue. See `src/index.css` for why
+ * `--accent` is only ever a fill and `--accent-text` only ever an ink.
+ */
+
+.root {
+  min-height: 100vh;
+  background: var(--page);
+}
+
+/* ── Header ───────────────────────────────────────────────────────────────── */
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 40px;
+  height: 56px;
+  border-bottom: 1px solid var(--border-soft);
+  background: var(--surface);
+  position: sticky;
+  top: 0;
+  z-index: 50;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--ink);
+}
+
+.mark {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Near-black ON the green. Never white — this fill is ~1.2:1 against it. */
+  color: var(--accent-ink);
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.back {
+  background: none;
+  border: none;
+  font-size: 13px;
+  color: var(--ink-dim);
+  padding: 0;
+}
+.back:hover {
+  color: var(--ink);
+}
+
+.crumb {
+  font-size: 13px;
+  color: var(--ink-faint);
+}
+
+.headerRight {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* The node this app is talking to. All that is left of the old ConnectButton,
+   which rendered the whole connection flow to somebody already connected. */
+.nodeChip {
+  font-size: 11px;
+  color: var(--ink-faint);
+  font-family: var(--mono);
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.logoutBtn {
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  font-size: 12px;
+  color: var(--ink-dim);
+}
+.logoutBtn:hover {
+  background: var(--surface-2);
+  border-color: var(--border-strong);
+}
+
+/* ── Column ───────────────────────────────────────────────────────────────── */
+
+.main {
+  padding: 48px 40px;
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.mainWide {
+  padding: 32px 40px;
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.title {
+  font-size: 22px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.subtitle {
+  font-size: 13px;
+  color: var(--ink-faint);
+  margin-bottom: 24px;
+}
+
+.titleRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.titleRow .title {
+  margin-bottom: 4px;
+}
+.titleRow .subtitle {
+  margin-bottom: 0;
+}
+.titleRowActions {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* ── Controls ─────────────────────────────────────────────────────────────── */
+
+.createRow {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 32px;
+}
+
+.input {
+  flex: 1;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 13px;
+  outline: none;
+  background: var(--surface);
+  color: var(--ink);
+  min-width: 0;
+}
+.input:focus {
+  border-color: var(--ink);
+}
+.input::placeholder {
+  color: var(--ink-faint);
+}
+
+/* ONE button system for the whole app: a black primary, a bordered secondary,
+   a destructive. Not three per screen, which is what was here — mero-ui's
+   `variant="primary" | "secondary" | "error"` rendered differently on every
+   page that used it, and the vault page invented two more.
+   
+   The green is NOT a button. It is the accent inside this system — the mark,
+   the active tab, a badge, a membership hairline — always as a FILL with
+   near-black ink, never as a wall and never behind white text. */
+.btn {
+  padding: 9px 18px;
+  background: var(--ink);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius);
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.btn:hover:not(:disabled) {
+  background: var(--ink-2);
+}
+.btn:disabled {
+  background: var(--surface-2);
+  color: var(--ink-faint);
+  cursor: default;
+}
+
+.btnGhost {
+  padding: 8px 14px;
+  background: var(--surface);
+  color: var(--ink-dim);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.btnGhost:hover:not(:disabled) {
+  background: var(--surface-2);
+  border-color: var(--border-strong);
+  color: var(--ink);
+}
+.btnGhost:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.btnDanger {
+  padding: 8px 14px;
+  background: var(--surface);
+  color: var(--danger);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.btnDanger:hover:not(:disabled) {
+  background: var(--danger-soft);
+  border-color: var(--danger);
+}
+
+/* ── Messages ─────────────────────────────────────────────────────────────── */
+
+.empty {
+  color: var(--ink-faint);
+  font-size: 13px;
+}
+
+.error {
+  font-size: 12px;
+  color: var(--danger);
+  background: var(--danger-soft);
+  border: 1px solid #f3d6d2;
+  border-radius: var(--radius);
+  padding: 9px 12px;
+  margin-bottom: 16px;
+}
+
+.notice {
+  font-size: 12px;
+  color: var(--ink-2);
+  background: var(--accent-soft);
+  border: 1px solid rgba(165, 255, 17, 0.5);
+  border-radius: var(--radius);
+  padding: 9px 12px;
+  margin-bottom: 16px;
+}
+
+.status {
+  font-size: 12px;
+  color: var(--ink-faint);
+  margin-bottom: 16px;
+}
+
+/* ── Card grid ────────────────────────────────────────────────────────────── */
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 16px;
+  margin-bottom: 48px;
+}
+
+.gridWide {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 18px;
+  margin-bottom: 40px;
+}
+
+.cardWrap {
+  position: relative;
+}
+.cardWrap:hover .menuBtn {
+  opacity: 1;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 20px 18px;
+  width: 100%;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  text-align: left;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
+}
+.card:hover {
+  border-color: var(--ink);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.cardName {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 4px;
+  word-break: break-word;
+}
+
+.cardSub {
+  font-size: 11px;
+  color: var(--ink-faint);
+}
+
+/* A hairline of green along the top of a card the viewer is a member of.
+   An accent, not a fill: a column of solid green cards reads as highlighting
+   rather than as a list. */
+.cardJoined {
+  box-shadow: inset 0 2px 0 0 var(--accent);
+}
+
+.menuBtn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 14px;
+  color: var(--ink-dim);
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 2;
+  line-height: 1;
+  padding: 0;
+}
+.menuBtn:hover,
+.menuBtn:focus-visible {
+  background: #f0f0f0;
+  color: var(--ink);
+  opacity: 1;
+}
+
+.dropdown {
+  position: absolute;
+  top: 36px;
+  right: 0;
+  min-width: 150px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+  z-index: 100;
+  overflow: hidden;
+}
+
+.dropdownItem {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 14px;
+  font-size: 13px;
+  background: none;
+  border: none;
+  color: var(--ink-2);
+  transition: background 0.1s;
+}
+.dropdownItem:hover {
+  background: var(--surface-2);
+}
+
+.dropdownDanger {
+  color: var(--danger);
+}
+.dropdownDanger:hover {
+  background: var(--danger-soft);
+}
+
+/* ── Tabs ─────────────────────────────────────────────────────────────────── */
+
+.tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 2px solid var(--border-soft);
+  margin-bottom: 28px;
+}
+
+.tab {
+  padding: 10px 18px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink-faint);
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  transition:
+    color 0.15s,
+    border-color 0.15s;
+}
+.tab:hover {
+  color: var(--ink-2);
+}
+.tabActive {
+  color: var(--ink);
+  /* The one structural place the green carries meaning: where you are. */
+  border-bottom-color: var(--accent);
+}
+
+/* ── Rows (a list that is not a card grid) ────────────────────────────────── */
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+.row + .row {
+  margin-top: 10px;
+}
+
+.rowMain {
+  min-width: 0;
+  flex: 1;
+}
+
+.rowName {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 3px;
+  word-break: break-word;
+}
+
+.rowSub {
+  font-size: 11px;
+  color: var(--ink-faint);
+}
+
+.rowActions {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* ── Section ──────────────────────────────────────────────────────────────── */
+
+.section {
+  border-top: 1px solid #ebebeb;
+  padding-top: 32px;
+  margin-top: 8px;
+}
+
+.sectionLabel {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ink-2);
+  margin-bottom: 6px;
+}
+
+.sectionHint {
+  font-size: 12px;
+  color: var(--ink-faint);
+  margin-bottom: 12px;
+  line-height: 1.5;
+  max-width: 560px;
+}
+
+/* ── Small type ───────────────────────────────────────────────────────────── */
+
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  border: 1px solid var(--border);
+  color: var(--ink-dim);
+  background: var(--surface-2);
+}
+
+/* Green as an ink on white, never the fill behind text. */
+.badgeAccent {
+  border-color: rgba(165, 255, 17, 0.6);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+
+.mono {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-faint);
+  word-break: break-all;
+}
+
+@media (max-width: 640px) {
+  .header {
+    padding: 0 16px;
+  }
+  .main,
+  .mainWide {
+    padding: 28px 16px;
+  }
+  .nodeChip {
+    display: none;
+  }
+}

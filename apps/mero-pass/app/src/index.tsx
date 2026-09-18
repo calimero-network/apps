@@ -2,10 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import { AppMode, MeroProvider } from "@calimero-network/mero-react";
-import { ToastProvider } from "@calimero-network/mero-ui";
-import "@calimero-network/mero-ui/styles.css";
 import "./index.css";
-import "./styles/utilities.css";
 import App from "./App";
 
 // ── Desktop SSO ───────────────────────────────────────────────────────────────
@@ -53,11 +50,9 @@ root.render(
       registryUrl="https://apps.calimero.network"
       allowedNodeUrls={hashNodeUrl ? [hashNodeUrl] : undefined}
     >
-      <ToastProvider>
-        <BrowserRouter>
-          <App />
-        </BrowserRouter>
-      </ToastProvider>
+      <BrowserRouter>
+        <App />
+      </BrowserRouter>
     </MeroProvider>
   </React.StrictMode>,
 );
