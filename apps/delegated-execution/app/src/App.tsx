@@ -69,7 +69,7 @@ import {
   readContext,
   writeContext,
 } from './lib/flow.js';
-import { errorText, parseJson, pretty, short } from './lib/format.js';
+import { errorText, hostOf, parseJson, pretty, short } from './lib/format.js';
 import { CloudClient, type CloudAccountRelay } from '@calimero-network/mero-js';
 import {
   DEFAULT_CLOUD_URL,
@@ -182,7 +182,7 @@ export function App() {
       },
       {
         label: 'relay',
-        value: settings.nodeUrl === '' ? 'none' : new URL(settings.nodeUrl).host,
+        value: settings.nodeUrl === '' ? 'none' : hostOf(settings.nodeUrl),
         state: ready.reach ? 'ok' : 'none',
         title:
           settings.nodeUrl === ''
@@ -308,15 +308,6 @@ export function App() {
       </footer>
     </div>
   );
-}
-
-/** A URL's host for the strip, or the whole string when it will not parse. */
-function hostOf(url: string): string {
-  try {
-    return new URL(url).host;
-  } catch {
-    return url;
-  }
 }
 
 function IdentityStep({
