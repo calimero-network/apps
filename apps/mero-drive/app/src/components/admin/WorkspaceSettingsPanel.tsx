@@ -22,7 +22,13 @@ import { MemberPicker } from '@/components/common/MemberPicker';
 import { looksLikeMemberIdentity } from '@/utils/validation';
 
 export function WorkspaceSettingsPanel() {
-  const { namespaceId, rootGroupId, registryClient } = useDriveWorkspace();
+  const {
+    namespaceId,
+    rootGroupId,
+    registryClient,
+    registryContextId,
+    registryDuplicates,
+  } = useDriveWorkspace();
   // Display-name routing in this panel uses the namespace id (not the
   // registry context id) — display names are per-namespace, the same
   // scope as core's MemberMetadata.
@@ -147,6 +153,41 @@ export function WorkspaceSettingsPanel() {
           <p className="text-xs text-destructive" role="alert">
             Couldn't load registry roles: {reg.error.message}
           </p>
+        )}
+
+        {/* Leftovers from the `contexts[0]` era. A namespace could accumulate
+            several registry contexts, and which one the app read depended on
+            list order — so one node showed the folders and another showed an
+            empty workspace. The resolver now adopts the one holding the data
+            and pins it, but the extra contexts still exist on the node, and an
+            admin looking for "why did I see nothing yesterday" deserves to be
+            told rather than left to guess. Deliberately read-only: deleting a
+            context that might hold the only copy of someone's folders is not a
+            thing this panel should offer. */}
+        {registryDuplicates.length > 0 && (
+          <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2">
+            <p className="text-xs font-medium text-amber-700 dark:text-amber-400">
+              This workspace has {registryDuplicates.length + 1} registry
+              contexts.
+            </p>
+            <p className="mt-1 text-xs text-amber-700/90 dark:text-amber-400/90">
+              Older versions of this app picked one by list order, which two
+              nodes do not agree on — that is why folders could appear to
+              vanish. The one holding your folders is now pinned for everyone:
+            </p>
+            <p className="mt-1 font-mono text-[11px] text-foreground">
+              {registryContextId?.slice(0, 16)}…
+            </p>
+            <p className="mt-1 text-xs text-amber-700/90 dark:text-amber-400/90">
+              The others are left in place rather than deleted — they may hold
+              folders created before the pin:
+            </p>
+            <ul className="mt-1 space-y-0.5 font-mono text-[11px] text-muted-foreground">
+              {registryDuplicates.map((id) => (
+                <li key={id}>{id.slice(0, 16)}…</li>
+              ))}
+            </ul>
+          </div>
         )}
 
         {unclaimed ? (

@@ -50,7 +50,10 @@ import {
   useMero,
   useNamespacesForApplication,
   useGroupContexts,
+  useGroupInfo,
   useGroupMembers,
+  useGroupMetadata,
+  useSetGroupMetadata,
   useNodeIdentity,
   useSubgroups,
   type Namespace,
@@ -61,6 +64,18 @@ import { useSyncStatus, type SyncSnapshot } from './useSyncStatus';
 import { useLocalStorage } from './useLocalStorage';
 import { useNamespaceDisplayNames } from './useNamespaceDisplayNames';
 import { useApplicationId } from './useApplicationId';
+import {
+  deriveDriveStage,
+  stageHidesContent,
+  type DriveLoadingStage,
+} from '@/lib/driveStage';
+import {
+  pinnedMetadataData,
+  readPin,
+  resolveRegistryContext,
+  shouldAdoptPin,
+  type RegistryResolution,
+} from '@/lib/registryContext';
 import {
   mergeAdminAndRegistry,
   type AdminSubgroup,
@@ -76,6 +91,9 @@ import {
   REGISTRY_SERVICE_ID,
 } from '@/constants/config';
 import { isAccessDeniedError } from '@/utils/accessDenied';
+
+/** Shared empty array so the "no duplicates" case keeps a stable identity. */
+const EMPTY_DUPLICATES: string[] = [];
 
 /** Persisted-namespace localStorage key. Exported so other call sites
  *  (e.g. WorkspacePage's logout cleanup) can clear the same key without
@@ -120,15 +138,9 @@ export interface RegistryAdminSlice {
   refetch: () => void;
 }
 
-export type DriveLoadingStage =
-  | 'idle'
-  | 'awaiting-auth'
-  | 'resolving-namespaces'
-  | 'resolving-registry-context'
-  | 'loading-subgroups'
-  | 'loading-folders'
-  | 'syncing-from-peers'
-  | 'ready';
+// Re-exported: every consumer already imports it from this hook, and the
+// definition now lives beside the rule that produces it.
+export type { DriveLoadingStage };
 
 /** Session-scoped set of namespace ids awaiting post-join sync.
  *  Exposed so JoinPage can stamp an id at accept time. */
@@ -187,6 +199,14 @@ export interface DriveWorkspaceState {
 
   // registry
   registryContextId: string | null;
+  /** Other contexts in this namespace that also look like registries. Non-empty
+   *  means this workspace was split by the old `contexts[0]` pick; the resolver
+   *  has adopted the one holding the data and these are the leftovers. */
+  registryDuplicates: string[];
+  /** A registry exists but has not replicated to this node yet — distinct from
+   *  "this workspace has no registry", which is what the app used to infer and
+   *  then act on by minting another one. */
+  registryUnsynced: boolean;
   registryClient: RegistryClient | null;
   folders: MergedFolder[];
   /** The COMPLETE folder tree shape (id + parent_id) straight from the
@@ -360,47 +380,291 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
   }, [nsMembers]);
 
   // --- Registry context discovery ---
-  // The Registry context is the first context in the namespace's root
-  // group, by convention established in createWorkspace below.
+  //
+  // ⚠️ THIS USED TO BE `contexts[0].contextId`, AND IT SPLIT WORKSPACES IN TWO.
+  //
+  // `listGroupContexts` order is not stable across reloads and is not the same
+  // on two nodes, so two peers could disagree about which context IS the
+  // registry for one namespace. Measured on a live pair: one namespace, THREE
+  // registry contexts, the user's folders in the second of them, and the app
+  // reading an empty one after a refresh.
+  //
+  // The duplicates came from the lazy-create below, which minted a registry
+  // whenever this list came back empty — and an empty list means either "no
+  // registry yet" or "not replicated to this node yet", which are
+  // indistinguishable from here and need opposite responses. `lib/registryContext`
+  // separates them and picks deterministically; see that file for the full
+  // mechanism. Everything here is plumbing for it.
   const {
     contexts,
     loading: contextsLoading,
     refetch: refetchContexts,
   } = useGroupContexts(selectedNsId ?? undefined);
-  const registryContextId = contexts.length > 0 ? contexts[0].contextId : null;
 
-  // Lazy-create fallback: if this namespace has no contexts at all
-  // (e.g. created before the atomic createWorkspace change, or
-  // createContext failed silently during create), seed the Registry
-  // context here on first observation of the empty state. Without
-  // this, `useGroupContexts(ns)` never returns anything and the UI
-  // hangs on "Bootstrapping workspace…" forever.
+  // The pin: the registry's id recorded in the namespace ROOT group's metadata
+  // `data` map, which replicates to every member. This is the only mechanism
+  // that makes two nodes agree by construction rather than by coincidence.
+  const {
+    metadata: nsMetadata,
+    loading: nsMetadataLoading,
+    refetch: refetchNsMetadata,
+  } = useGroupMetadata(selectedNsId ?? undefined);
+  const { setGroupMetadata } = useSetGroupMetadata();
+
+  // `contextCount` is governance state and arrives separately from the
+  // contexts themselves, so "the group says 1, the list says 0" is a positive
+  // signal that this node is mid-replication — the distinction the old code
+  // could not make.
+  const { groupInfo: nsGroupInfo, loading: nsInfoLoading } = useGroupInfo(
+    selectedNsId ?? undefined,
+  );
+
+  // Folder counts per candidate, probed ONLY when there is more than one
+  // candidate — i.e. only for a namespace that already has duplicates. Picking
+  // the context that actually holds folders is what stops a recovery from
+  // orphaning the data the user already created.
+  const [folderCounts, setFolderCounts] = useState<Record<
+    string,
+    number
+  > | null>(null);
+  const candidateKey = useMemo(
+    () =>
+      contexts
+        .map((c) => c.contextId)
+        .sort()
+        .join(','),
+    [contexts],
+  );
+  useEffect(() => {
+    if (!mero || !selfIdentity) return;
+    const ids = candidateKey ? candidateKey.split(',') : [];
+    if (ids.length < 2) {
+      setFolderCounts(null);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const counts: Record<string, number> = {};
+      await Promise.all(
+        ids.map(async (id) => {
+          try {
+            const rows = await new RegistryClient(
+              mero,
+              id,
+              selfIdentity,
+            ).getFolders();
+            counts[id] = Array.isArray(rows) ? rows.length : 0;
+          } catch {
+            // A context we cannot read contributes no evidence. Counting it as
+            // 0 is right: we must not adopt a registry we cannot query.
+            counts[id] = 0;
+          }
+        }),
+      );
+      if (!cancelled) setFolderCounts(counts);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [mero, selfIdentity, candidateKey]);
+
+  const registryResolution = useMemo<RegistryResolution>(() => {
+    if (!selectedNsId) return { status: 'absent' };
+    // Never answer off a half-loaded picture — an in-flight read looks exactly
+    // like an empty one, and answering "absent" here is what minted duplicates.
+    if (contextsLoading || nsMetadataLoading || nsInfoLoading) {
+      return { status: 'unsynced', reason: 'Reading this workspace…' };
+    }
+    return resolveRegistryContext(
+      {
+        pin: readPin(nsMetadata),
+        listed: contexts.map((c) => ({ contextId: c.contextId, name: c.name })),
+        reportedCount: nsGroupInfo?.contextCount ?? null,
+        folderCounts,
+      },
+      REGISTRY_CONTEXT_ALIAS,
+    );
+  }, [
+    selectedNsId,
+    contextsLoading,
+    nsMetadataLoading,
+    nsInfoLoading,
+    nsMetadata,
+    contexts,
+    nsGroupInfo,
+    folderCounts,
+  ]);
+
+  // ⚠️ STICKY, and this is load-bearing for far more than tidiness.
   //
-  // Guarded by a ref so Strict-Mode double-mount / re-renders don't
-  // fire parallel create calls. The ref is keyed by namespaceId so a
-  // subsequent (different) orphan namespace also gets its one shot.
-  const lazyCreateRef = useRef<{ nsId: string; inFlight: boolean } | null>(null);
+  // mero-react's `useAsyncResource.refetch` calls `setLoading(true)` on EVERY
+  // refetch, and an SSE ding refetches the whole workspace. So `contextsLoading`
+  // / `nsMetadataLoading` / `nsInfoLoading` all flip true a few times a minute,
+  // the memo above correctly declines to answer off a half-read picture, and
+  // without stickiness `registryContextId` would drop to null on every refresh.
+  // That is not a cosmetic flicker: a null id rebuilds the `registryClient`
+  // memo, `loadRegFolders` takes its `if (!registryClient) setRegFolders([])`
+  // branch, and for a moment the app genuinely says the workspace has no
+  // folders — while the sidebar unmounts to a spinner and remounts.
+  //
+  // A namespace's registry does not change, so holding the last resolved answer
+  // across an in-flight read is also the truthful thing to do. A genuinely
+  // different resolved id still wins (that is the adopt/heal path); only
+  // `unsynced` is absorbed.
+  const [stickyRegistry, setStickyRegistry] = useState<{
+    nsId: string;
+    contextId: string;
+  } | null>(null);
+  useEffect(() => {
+    if (registryResolution.status !== 'resolved' || !selectedNsId) return;
+    const next = registryResolution.contextId;
+    setStickyRegistry((prev) =>
+      prev && prev.nsId === selectedNsId && prev.contextId === next
+        ? prev
+        : { nsId: selectedNsId, contextId: next },
+    );
+  }, [registryResolution, selectedNsId]);
+  // Drop it on a namespace switch — never show one workspace's registry under
+  // another's id.
+  useEffect(() => {
+    setStickyRegistry((prev) =>
+      prev && prev.nsId === selectedNsId ? prev : null,
+    );
+  }, [selectedNsId]);
+
+  const registryContextId =
+    registryResolution.status === 'resolved'
+      ? registryResolution.contextId
+      : stickyRegistry && stickyRegistry.nsId === selectedNsId
+        ? stickyRegistry.contextId
+        : null;
+  // Memoised, and not just to quiet the linter: the `: []` branch would mint a
+  // fresh array on every render, which lands in the deps of the big state memo
+  // at the bottom of this hook and rebuilds the whole workspace object — and
+  // with it every consumer — on every single render. That is the same class of
+  // bug as the flicker this change is about, one field over.
+  const registryDuplicates = useMemo(
+    () =>
+      registryResolution.status === 'resolved'
+        ? registryResolution.duplicates
+        : EMPTY_DUPLICATES,
+    [registryResolution],
+  );
+  const registryUnsynced = registryResolution.status === 'unsynced';
+
+  // Adopt: write a guessed answer back as the pin, so the guess happens once
+  // per namespace and every later read — on every node — is the pin. Keyed by
+  // namespace so one failed attempt does not retry on every render.
+  const adoptedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!selectedNsId || !registryContextId) return;
+    if (!shouldAdoptPin(registryResolution)) return;
+    if (adoptedRef.current === selectedNsId) return;
+    adoptedRef.current = selectedNsId;
+    void (async () => {
+      try {
+        // ⚠️ Merge. `SetMetadataRequest` WHOLLY REPLACES the record — sending
+        // `{data: {pin}}` alone would delete the group's other keys, and
+        // omitting `name` is what preserves the workspace's name.
+        await setGroupMetadata(selectedNsId, {
+          data: pinnedMetadataData(nsMetadata?.data, registryContextId),
+        });
+        await refetchNsMetadata();
+      } catch {
+        // Best-effort: a member without metadata rights simply keeps resolving
+        // by the deterministic rule, which gives the same answer on every node
+        // anyway. Allow a later attempt on the next namespace switch.
+        adoptedRef.current = null;
+      }
+    })();
+  }, [
+    selectedNsId,
+    registryContextId,
+    registryResolution,
+    nsMetadata,
+    setGroupMetadata,
+    refetchNsMetadata,
+  ]);
+
+  // Lazy-create fallback: seed a Registry context for a namespace that
+  // genuinely has none (created before the atomic createWorkspace change, or
+  // createContext failed silently during create). Without this,
+  // `useGroupContexts(ns)` never returns anything and the UI hangs on
+  // "Bootstrapping workspace…" forever.
+  //
+  // ⚠️ THIS IS WHAT MINTED THE DUPLICATE REGISTRIES. It fired on "no contexts
+  // in the list", which is also what a node mid-replication sees — so every
+  // observation of a transient empty list created another registry, and
+  // `lazyCreateRef` only ever guarded concurrent calls within ONE mount: not a
+  // reload, not a second node, not a later re-observation. Three registries in
+  // one namespace is what that produced in the field.
+  //
+  // Four things now have to hold before anything is created:
+  //
+  //   1. `registryResolution.status === 'absent'` — the resolver's positive
+  //      "no registry, and nothing says one is coming". An unsynced list, an
+  //      unread context count and a pin naming a context we do not have are
+  //      all `unsynced`, which mints nothing and waits.
+  //   2. The caller is a namespace ADMIN. A plain member observing an
+  //      incomplete list must never fork the workspace; the admin heals it.
+  //   3. An authoritative re-read right before creating, so a stale cached
+  //      list cannot trigger it.
+  //   4. A once-per-namespace ref, kept SET on failure — retrying a mint in a
+  //      loop is how one transient error becomes several registries.
+  //
+  // And on success it writes the pin, so no other node ever reaches step 1
+  // for this namespace again.
+  // One attempt per namespace per mount. Not an in-flight flag: an in-flight
+  // flag is released when the attempt ends, which lets the very next render
+  // start another one — the loop that produced the duplicates.
+  const lazyCreateRef = useRef<string | null>(null);
   useEffect(() => {
     if (!mero || !applicationId || !selectedNsId) return;
     if (contextsLoading) return;
     if (registryContextId) return;
+    // (1) Only a positive "absent". `unsynced` waits.
+    if (registryResolution.status !== 'absent') return;
     // The admin-membership check below needs the caller's verified
     // namespace identity. Wait for it. Without this guard, `selfIdentity`
     // could be `null` and the check would silently fall through to
     // "not admin" (callerIsNsAdmin = false), leaving a legitimate
     // admin's registry unclaimed.
     if (!selfIdentity) return;
-    if (
-      lazyCreateRef.current?.nsId === selectedNsId &&
-      lazyCreateRef.current.inFlight
-    ) {
-      return;
-    }
-    lazyCreateRef.current = { nsId: selectedNsId, inFlight: true };
+    if (lazyCreateRef.current === selectedNsId) return;
+    lazyCreateRef.current = selectedNsId;
     const healingNsId = selectedNsId;
     const callerIdentity = selfIdentity;
     (async () => {
       try {
+        // (2) Admin only. Read the roster BEFORE creating, not after: the old
+        // code created unconditionally and only gated `claimOwner` on admin,
+        // so a non-admin member of a mid-replication namespace still minted a
+        // registry — it just did not claim it.
+        let callerIsNsAdmin = false;
+        try {
+          const raw = (await mero.admin.listGroupMembers(
+            healingNsId,
+          )) as unknown as {
+            members?: Array<{ identity: string; role?: string }>;
+            data?: Array<{ identity: string; role?: string }>;
+          };
+          const membersList = raw.members ?? raw.data ?? [];
+          callerIsNsAdmin =
+            membersList.find((m) => m.identity === callerIdentity)?.role ===
+            'Admin';
+        } catch {
+          callerIsNsAdmin = false;
+        }
+        if (!callerIsNsAdmin) return;
+
+        // (3) Authoritative re-read. `contexts` is a cached hook value that can
+        // be a render behind; creating off it is creating off a snapshot.
+        const fresh = await mero.admin.listGroupContexts(healingNsId);
+        if (Array.isArray(fresh) && fresh.length > 0) {
+          await refetchContexts();
+          return;
+        }
+
         const reg = await mero.admin.createContext({
           applicationId,
           groupId: healingNsId,
@@ -430,34 +694,24 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
         // namespaces with multiple owned identities can have
         // `createContext` mint or pick a different one than the
         // identity that ranks as Admin in the namespace.
-        if (reg?.contextId && reg?.memberPublicKey) {
-          let callerIsNsAdmin = false;
+        if (reg?.contextId) {
+          // Caller is already known to be a namespace admin (checked above),
+          // so claiming is safe. `claim_owner` has no authz gate of its own —
+          // it takes the owner slot for whoever calls it first — which is why
+          // the admin check has to happen on this side.
+          await new RegistryClient(mero, reg.contextId, callerIdentity)
+            .claimOwner()
+            .catch(() => {});
+          // Pin it immediately. This is what stops any OTHER node reaching the
+          // "absent" branch for this namespace: the pin replicates, and a node
+          // that holds a pin it cannot resolve waits instead of minting.
           try {
-            const raw = (await mero.admin.listGroupMembers(
-              healingNsId,
-            )) as unknown as {
-              members?: Array<{ identity: string; role?: string }>;
-              data?: Array<{ identity: string; role?: string }>;
-            };
-            const membersList = raw.members ?? raw.data ?? [];
-            const me = membersList.find(
-              (m) => m.identity === callerIdentity,
-            );
-            callerIsNsAdmin = me?.role === 'Admin';
+            await setGroupMetadata(healingNsId, {
+              data: pinnedMetadataData(nsMetadata?.data, reg.contextId),
+            });
+            await refetchNsMetadata();
           } catch {
-            // If we can't tell, err on the side of NOT claiming —
-            // a real admin can claim later via the WorkspaceSettingsPanel
-            // "Claim ownership" button.
-            callerIsNsAdmin = false;
-          }
-          if (callerIsNsAdmin) {
-            await new RegistryClient(
-              mero,
-              reg.contextId,
-              reg.memberPublicKey,
-            )
-              .claimOwner()
-              .catch(() => {});
+            // Non-fatal: resolution still works by the deterministic rule.
           }
         }
         await refetchContexts();
@@ -466,11 +720,13 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
         // diagnostic instead of a perpetual spinner. Users can
         // retry by switching namespace or reloading.
         setRegError(err instanceof Error ? err : new Error(String(err)));
-      } finally {
-        if (lazyCreateRef.current?.nsId === selectedNsId) {
-          lazyCreateRef.current = { nsId: selectedNsId, inFlight: false };
-        }
       }
+      // (4) The claim is deliberately never released. It stays set for this
+      // namespace for the life of the mount, success or failure, because a
+      // retry loop around `createContext` is precisely how one transient error
+      // became several registries. A reload or a namespace switch is the
+      // retry — and by then the pin, or the freshly-listed context, has made
+      // this branch unreachable anyway.
     })();
   }, [
     mero,
@@ -478,8 +734,12 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
     selectedNsId,
     contextsLoading,
     registryContextId,
+    registryResolution.status,
     selfIdentity,
     refetchContexts,
+    setGroupMetadata,
+    refetchNsMetadata,
+    nsMetadata,
   ]);
 
   // --- Registry client (memoized) ---
@@ -1153,27 +1413,28 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
     regFolders.length > 0 && resolvedFolderIds.size === 0;
 
   // --- Stage derivation for loading-indicator UX ---
-  let stage: DriveLoadingStage = 'ready';
-  if (authLoading) stage = 'awaiting-auth';
-  else if (appIdResolving) stage = 'awaiting-auth';
-  else if (!isAuthenticated || !applicationId) stage = 'awaiting-auth';
-  else if (nsLoading) stage = 'resolving-namespaces';
-  else if (!selectedNsId) stage = 'idle';
-  else if (
-    contextsLoading ||
-    !registryContextId ||
-    membersLoading ||
-    identityLoading ||
-    !selfIdentity
-  )
-    stage = isJustJoined ? 'syncing-from-peers' : 'resolving-registry-context';
-  else if (subLoading) stage = 'loading-subgroups';
-  else if (regLoading) stage = 'loading-folders';
-  else if (awaitingFirstFolderResolve) stage = 'loading-folders';
-  else if (isJustJoined && regFoldersLoadedForNs !== selectedNsId)
-    stage = 'syncing-from-peers';
+  // The rule (and why it exists) lives in `lib/driveStage`, where it can be
+  // asserted; this is just the wiring.
+  const hasLoadedFoldersForNs = regFoldersLoadedForNs === selectedNsId;
+  const stage = deriveDriveStage({
+    authLoading,
+    appIdResolving,
+    isAuthenticated,
+    hasApplicationId: !!applicationId,
+    nsLoading,
+    hasSelectedNamespace: !!selectedNsId,
+    hasRegistryContext: !!registryContextId,
+    membersLoading,
+    identityLoading,
+    hasSelfIdentity: !!selfIdentity,
+    subLoading,
+    regLoading,
+    hasLoadedFoldersForNs,
+    awaitingFirstFolderResolve,
+    isJustJoined,
+  });
 
-  const loading = stage !== 'ready' && stage !== 'idle';
+  const loading = stageHidesContent(stage);
   // A node that knows packages and does not have this one installed is a real,
   // reportable condition — not an auth problem and not an empty workspace list.
   // Without this it surfaced as a permanently empty switcher, which reads as
@@ -1211,6 +1472,8 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
       createWorkspaceError: createError,
 
       registryContextId,
+      registryDuplicates,
+      registryUnsynced,
       registryClient,
       folders,
       allFolderNodes,
@@ -1238,6 +1501,8 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
       createLoading,
       createError,
       registryContextId,
+      registryDuplicates,
+      registryUnsynced,
       registryClient,
       folders,
       allFolderNodes,
