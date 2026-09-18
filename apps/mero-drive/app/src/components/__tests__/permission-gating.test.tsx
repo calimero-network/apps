@@ -108,6 +108,10 @@ vi.mock('@/hooks/useDriveWorkspace', () => ({
     createWorkspaceLoading: false,
     createWorkspaceError: null,
     registryContextId: 'ctx',
+    // A healthy workspace has exactly one registry context. The duplicate
+    // banner is exercised in its own test.
+    registryDuplicates: [],
+    registryUnsynced: false,
     registryClient: {},
     folders: [],
     registryAdmin: {
