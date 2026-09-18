@@ -1,438 +1,149 @@
 @import 'tailwindcss';
 @import '@calimero-network/mero-ui/styles.css';
 
-@layer base {
-  :root {
-    /* shadcn/ui CSS Variables */
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: 83 100% 55%;
-    --primary-foreground: 222.2 84% 4.9%;
-    --secondary: 210 40% 98%;
-    --secondary-foreground: 222.2 84% 4.9%;
-    --muted: 210 40% 96%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96%;
-    --accent-foreground: 222.2 84% 4.9%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 83 100% 55%;
-    --radius: 0.5rem;
+/* ══════════════════════════════════════════════════════════════════════════
+   Mero Sign — base styles
 
-    /* MeroSign Brand Colors */
-    --color-primary: #a9ff1f;
-    --color-background-light: #ffffff;
-    --color-background-dark: #0e1011;
-    --color-surface-light: #f8f9fa;
-    --color-surface-dark: #1a1d1f;
-    --color-text-light: #0e1011;
-    --color-text-dark: #e8e4e1;
-    --color-text-secondary-light: #6c757d;
-    --color-text-secondary-dark: #c5c0b9;
-    --color-muted: #c5c0b9;
-    --color-border-light: #e9ecef;
-    --color-border-dark: #2d3234;
-    --color-card-light: #ffffff;
-    --color-card-dark: #1a1d1f;
+   This file is mero-design's `index.css`, plus the token aliases the handful of
+   remaining Tailwind components still read.
 
-    /* Mobile-first spacing */
-    --spacing-mobile-header: 60px;
-    --spacing-sidebar-width: 280px;
-    --spacing-touch-target: 44px;
+   ── What was here before, and why all of it went ─────────────────────────────
 
-    /* Custom shadows */
-    --shadow-card: 0 8px 32px rgb(0 0 0 / 0.08);
-    --shadow-button: 0 4px 16px rgb(169 255 31 / 0.2);
-    --shadow-large: 0 20px 40px rgb(0 0 0 / 0.1);
-    --shadow-sidebar: 2px 0 10px rgb(0 0 0 / 0.1);
-    --shadow-sidebar-dark: 2px 0 10px rgb(0 0 0 / 0.5);
+   A dark-first token set (`--current-bg`, `--current-text`, …) with a light
+   theme layered on top by class, and then a block of `!important` rules written
+   to wrestle `@calimero-network/mero-ui` into that theme:
 
-    /* Typography */
-    --font-inter: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI',
-      sans-serif;
+       html.light h1, … { color: var(--current-text) !important; }
+       [class*="card"]  { background-color: var(--current-card) !important;
+                          color: var(--current-text) !important; }
 
-    /* Default to dark theme */
-    --current-bg: var(--color-background-dark);
-    --current-text: var(--color-text-dark);
-    --current-surface: var(--color-surface-dark);
-    --current-border: var(--color-border-dark);
-    --current-card: var(--color-card-dark);
-    --current-text-secondary: var(--color-text-secondary-dark);
+   The second one matches ANY class containing "card", case-insensitively — so
+   it captured `.card`, `.cardWrap`, `.cardName`, `.cardSub`, `.cardThumb` and
+   `.cardStatus` from the new stylesheets and repainted every one of them. The
+   first did the same to every heading. The first screenshots of this redesign
+   came back with the right layout in washed-out grey, because a dark theme's
+   ink was being forced onto white cards at `!important`.
 
-    line-height: 1.5;
-    font-weight: 400;
-    font-synthesis: none;
-    text-rendering: optimizeLegibility;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-  }
+   ── The theme ────────────────────────────────────────────────────────────────
 
-  .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 83 100% 55%;
-    --primary-foreground: 222.2 84% 4.9%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 83 100% 55%;
-  }
+   ONE theme: light. mero-design has no dark mode, and "white with black and
+   with greens" is the brief. The dark palette had no way to be reached from the
+   UI anyway — the toggle lived in the landing page's footer, and the landing
+   page carries its own tokens scoped to `.cal-lp-root` and is unaffected by
+   anything here (see the header of `pages/landing/landing.css`).
+   ══════════════════════════════════════════════════════════════════════════ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
 }
 
-/* Light theme class */
-.theme-light,
-html.light {
-  --color-primary: #22c55e;
-  --current-bg: var(--color-background-light);
-  --current-text: var(--color-text-light);
-  --current-surface: var(--color-surface-light);
-  --current-border: var(--color-border-light);
-  --current-card: var(--color-card-light);
-  --current-text-secondary: var(--color-text-secondary-light);
-}
+:root {
+  /* ── mero-design's palette, verbatim ───────────────────────────────────── */
+  --color-bg: #ffffff;
+  --color-page: #fafafa;
+  --color-surface: #f5f5f5;
+  --color-border: #e0e0e0;
+  --color-hairline: #e8e8e8;
+  --color-text: #111111;
+  --color-text-secondary: #666666;
+  --color-text-muted: #888888;
+  --color-danger: #c0392b;
+  --radius: 6px;
+  --font:
+    'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 
-/* Dark theme class (default) */
-.theme-dark,
-html.dark {
-  --current-bg: var(--color-background-dark);
-  --current-text: var(--color-text-dark);
-  --current-surface: var(--color-surface-dark);
-  --current-border: var(--color-border-dark);
-  --current-card: var(--color-card-dark);
-  --current-text-secondary: var(--color-text-secondary-dark);
-}
+  /* ── The one substitution: green where mero-design is blue ─────────────── */
 
-html {
-  color-scheme: dark light;
-  color: var(--current-text);
-  background-color: var(--current-bg);
+  /* A FILL, never an ink. ~1.2:1 on white, so text ON it must be near-black. */
+  --color-accent-fill: #a5ff11;
+  /* The ink that goes on that fill. Never white — that pairing was the bug in
+     mero-meet, and it is unreadable. */
+  --color-on-accent: #131215;
+  /* Green TEXT on white. ~5:1, which is a legible ink rather than a highlight. */
+  --color-accent-ink: #4e7a00;
+  /* mero-design's own success green, for the cases it already styles. */
+  --color-success-ink: #15803d;
+
+  /* ── Aliases for the components still on Tailwind ──────────────────────── */
+  /* PDFViewer, SignaturePad, AuditTrail, SignatureOverlay and LegalChatbot
+     read these. Pointed at the light palette so they inherit the same system
+     instead of carrying a second one. */
+  --current-bg: var(--color-page);
+  --current-text: var(--color-text);
+  --current-text-secondary: var(--color-text-secondary);
+  --current-surface: var(--color-bg);
+  --current-border: var(--color-border);
+  --current-card: var(--color-bg);
+  --color-primary: var(--color-accent-fill);
+  --color-background-dark: var(--color-on-accent);
+
+  /* shadcn variables, kept because `components/ui/*` reference them. */
+  --background: 0 0% 100%;
+  --foreground: 0 0% 7%;
+  --card: 0 0% 100%;
+  --card-foreground: 0 0% 7%;
+  --primary: 83 100% 53%;
+  --primary-foreground: 0 0% 7%;
+  --muted: 0 0% 96%;
+  --muted-foreground: 0 0% 40%;
+  --border: 0 0% 88%;
+  --input: 0 0% 88%;
+  --ring: 0 0% 7%;
+  --destructive: 6 63% 46%;
+  --destructive-foreground: 0 0% 100%;
+  --radius: 0.375rem;
 }
 
 html,
-body {
-  margin: 0;
-  padding: 0;
-  font-family: var(--font-inter);
-  font-optical-sizing: auto;
-  font-weight: 400;
-  font-style: normal;
-  font-variation-settings: 'slnt' 0;
+body,
+#root {
+  height: 100%;
+  font-family: var(--font);
+  font-size: 13px;
+  color: var(--color-text);
+  background: var(--color-bg);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  font-smooth: never;
-  background: var(--current-bg);
-  color: var(--current-text);
-  min-height: 100vh;
-  transition:
-    background-color 0.3s ease,
-    color 0.3s ease;
 }
 
-* {
-  box-sizing: border-box;
+button {
+  font-family: inherit;
+  cursor: pointer;
 }
 
-/* Force all text colors in light mode to use theme colors */
-.theme-light,
-html.light {
-  /* Override any hardcoded text colors */
-  --mero-text-primary: var(--color-text-light);
-  --mero-text-secondary: var(--color-text-secondary-light);
-  --mero-bg-primary: var(--color-background-light);
-  --mero-bg-secondary: var(--color-surface-light);
-  --mero-border: var(--color-border-light);
-}
-
-/* Force text color inheritance in light mode */
-.theme-light *:not(.text-muted-foreground):not([class*="text-"]):not(button):not(a),
-html.light *:not(.text-muted-foreground):not([class*="text-"]):not(button):not(a) {
+a {
   color: inherit;
+  text-decoration: none;
 }
 
-/* Headings in light mode */
-.theme-light h1,
-.theme-light h2,
-.theme-light h3,
-.theme-light h4,
-.theme-light h5,
-.theme-light h6,
-html.light h1,
-html.light h2,
-html.light h3,
-html.light h4,
-html.light h5,
-html.light h6 {
-  color: var(--current-text) !important;
+input,
+textarea,
+select {
+  font-family: inherit;
 }
 
-/* Paragraphs and spans in light mode */
-.theme-light p,
-.theme-light span,
-html.light p,
-html.light span {
-  color: var(--current-text);
+/* One focus treatment across the app, matching the `#111` focus border the
+   copied stylesheets already use on inputs. */
+:focus-visible {
+  outline: 2px solid var(--color-text);
+  outline-offset: 1px;
 }
 
-/* Ensure main content area uses correct colors */
-.theme-light main,
-html.light main {
-  color: var(--current-text);
-}
-
-/* Cards in light mode */
-.theme-light [class*="Card"],
-.theme-light [class*="card"],
-html.light [class*="Card"],
-html.light [class*="card"] {
-  background-color: var(--current-card) !important;
-  color: var(--current-text) !important;
-}
-
-.modal-content {
-  background-color: transparent !important;
-}
-
-/* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 8px;
+  height: 8px;
 }
-
 ::-webkit-scrollbar-track {
-  background: var(--current-surface);
+  background: transparent;
 }
-
 ::-webkit-scrollbar-thumb {
-  background: var(--current-border);
+  background: #d8d8d8;
   border-radius: 4px;
 }
-
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--color-primary);
-}
-
-/* Mobile optimizations */
-@media (max-width: 768px) {
-  html,
-  body {
-    font-size: 16px; /* Prevent zoom on iOS */
-    -webkit-text-size-adjust: 100%;
-  }
-}
-
-/* Focus styles for accessibility */
-button:focus-visible,
-input:focus-visible,
-select:focus-visible,
-textarea:focus-visible {
-  outline: 2px solid var(--color-primary);
-  outline-offset: 2px;
-}
-
-/* Remove focus outline for mouse users */
-button:focus:not(:focus-visible),
-input:focus:not(:focus-visible),
-select:focus:not(:focus-visible),
-textarea:focus:not(:focus-visible) {
-  outline: none;
-}
-
-/* Utility classes for themes */
-.bg-current {
-  background-color: var(--current-bg);
-}
-.bg-surface {
-  background-color: var(--current-surface);
-}
-.bg-card {
-  background-color: var(--current-card);
-}
-.bg-primary {
-  background-color: var(--color-primary);
-}
-
-.text-current {
-  color: var(--current-text);
-}
-.text-secondary {
-  color: var(--current-text-secondary);
-}
-.text-primary {
-  color: var(--color-primary);
-}
-.text-muted {
-  color: var(--color-muted);
-}
-
-.border-current {
-  border-color: var(--current-border);
-}
-.border-primary {
-  border-color: var(--color-primary);
-}
-
-.shadow-card {
-  box-shadow: var(--shadow-card);
-}
-.shadow-large {
-  box-shadow: var(--shadow-large);
-}
-.shadow-button {
-  box-shadow: var(--shadow-button);
-}
-.shadow-sidebar {
-  box-shadow: var(--shadow-sidebar);
-}
-
-/* Animation utilities for landing page */
-@keyframes fadeInUp {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes float {
-  0%,
-  100% {
-    transform: translateY(0px);
-  }
-  50% {
-    transform: translateY(-10px);
-  }
-}
-
-@keyframes shimmer {
-  0% {
-    transform: translateX(-100%);
-  }
-  100% {
-    transform: translateX(100%);
-  }
-}
-
-.animate-fade-in-up {
-  animation: fadeInUp 0.6s ease-out;
-}
-
-.animate-float {
-  animation: float 3s ease-in-out infinite;
-}
-
-.animate-shimmer {
-  animation: shimmer 2s infinite;
-}
-
-/* Loading shimmer effect */
-.shimmer {
-  position: relative;
-  overflow: hidden;
-}
-
-.shimmer::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    rgba(255, 255, 255, 0.1),
-    transparent
-  );
-  animation: shimmer 2s infinite;
-}
-
-/* Button hover effects */
-.btn-hover-lift {
-  transition: all 0.2s ease;
-}
-
-.btn-hover-lift:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 25px rgba(169, 255, 31, 0.25);
-}
-
-.btn-hover-lift:active {
-  transform: translateY(0);
-}
-
-/* Shake animation for form errors */
-@keyframes shake {
-  0%,
-  100% {
-    transform: translateX(0);
-  }
-  25% {
-    transform: translateX(-5px);
-  }
-  75% {
-    transform: translateX(5px);
-  }
-}
-
-.animate-shake {
-  animation: shake 0.5s ease-in-out;
-}
-
-/* Enhanced focus states */
-.focus-ring {
-  transition: all 0.2s ease;
-}
-
-.focus-ring:focus {
-  outline: none;
-  box-shadow: 0 0 0 3px rgba(169, 255, 31, 0.3);
-}
-
-/* Pulse animation for status indicators */
-@keyframes pulse-green {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.5;
-  }
-}
-
-.animate-pulse-green {
-  animation: pulse-green 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-}
-
-/* Glass morphism effect */
-.glass {
-  backdrop-filter: blur(10px);
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-}
-
-/* Gradient text utility */
-.gradient-text {
-  background: linear-gradient(135deg, var(--color-primary) 0%, #22c55e 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  background: #bcbcbc;
 }

@@ -1,0 +1,340 @@
+.root { min-height: 100vh; background: #fafafa; }
+
+.header {
+  display: flex;
+  align-items: center;
+  padding: 0 40px;
+  height: 56px;
+  border-bottom: 1px solid #e8e8e8;
+  background: #fff;
+}
+.logo { font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+
+.headerRight {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.logoutBtn {
+  padding: 6px 14px;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  background: #fff;
+  font-size: 12px;
+  color: #555;
+  cursor: pointer;
+}
+.logoutBtn:hover { background: #f5f5f5; border-color: #bbb; }
+
+.main { padding: 48px 40px; max-width: 800px; margin: 0 auto; }
+
+.title { font-size: 22px; font-weight: 600; margin-bottom: 24px; }
+
+.createRow { display: flex; gap: 10px; margin-bottom: 32px; }
+
+.input {
+  flex: 1;
+  padding: 9px 12px;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  font-size: 13px;
+  outline: none;
+}
+.input:focus { border-color: #111; }
+
+.btn {
+  padding: 9px 18px;
+  background: #111;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.btn:hover:not(:disabled) { background: #333; }
+.btn:disabled { opacity: 0.5; }
+
+.empty { color: #888; font-size: 13px; }
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 16px;
+  margin-bottom: 48px;
+}
+
+/* Card with hover menu */
+.cardWrap {
+  position: relative;
+}
+.cardWrap:hover .menuBtn { opacity: 1; }
+
+.card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 20px 18px;
+  width: 100%;
+  background: #fff;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.card:hover { border-color: #111; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+
+.cardName { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+.cardSub { font-size: 11px; color: #888; }
+
+.menuBtn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255,255,255,0.9);
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  font-size: 14px;
+  color: #555;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 2;
+  line-height: 1;
+  padding: 0;
+}
+.menuBtn:hover { background: #f0f0f0; color: #111; }
+
+.dropdown {
+  position: absolute;
+  top: 36px;
+  right: 0;
+  min-width: 120px;
+  background: #fff;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+  z-index: 100;
+  overflow: hidden;
+}
+
+.dropdownItem {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 14px;
+  font-size: 13px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #333;
+  transition: background 0.1s;
+}
+.dropdownItem:hover { background: #f5f5f5; }
+
+.dropdownDanger { color: #c0392b; }
+.dropdownDanger:hover { background: #fdf3f2; }
+
+/* Join section */
+.joinSection {
+  border-top: 1px solid #ebebeb;
+  padding-top: 32px;
+  margin-top: 8px;
+}
+
+.joinLabel {
+  font-size: 14px;
+  font-weight: 500;
+  color: #333;
+  margin-bottom: 12px;
+}
+
+.joinRow {
+  display: flex;
+  gap: 10px;
+  max-width: 480px;
+}
+
+.joinError {
+  font-size: 12px;
+  color: #c0392b;
+  margin-top: 6px;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Everything above this line is mero-design's `TeamsPage.module.css`, copied
+   VERBATIM (`pages/TeamsPage.module.css` in apps/mero-design). Not re-expressed
+   in this app's tokens, and deliberately so: re-deriving the look from a
+   different palette is how mero-forum ended up "inspired by" it twice and was
+   rejected twice. If mero-design changes, re-copy rather than re-interpret.
+
+   Below: the classes mero-design has no use for, written in its idiom — and
+   ONE substitution.
+
+   ── The green ───────────────────────────────────────────────────────────────
+   mero-design's accent is blue (#2563eb). This app is green. Two rules, both
+   learned the expensive way:
+
+   * `#a5ff11` is a FILL, not an ink. It measures ~1.2:1 on white, so text ON
+     it must be near-black (#131215) and NEVER white — that exact pairing was
+     the mero-meet bug.
+   * Green TEXT on white uses #4e7a00 (~5:1), never the brand fill.
+
+   The primary button stays mero-design's black #111. A column of solid #a5ff11
+   reads as highlighting rather than as a list, so the green appears only where
+   it means something: the signed state, and the brand mark.
+   ───────────────────────────────────────────────────────────────────────────── */
+
+/* Equal-height cards. `.cardWrap` is the grid item and `.card` sits inside it,
+   so without this a long name makes one card taller than its neighbours and the
+   row reads as ragged. */
+.cardWrap { display: flex; }
+.cardWrap > .card { flex: 1; }
+
+/* The brand mark in the header. #a5ff11 as a FILL with near-black ink on it. */
+.mark {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: #a5ff11;
+  color: #131215;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+/* Node host next to the logout button. Quiet: it is a diagnostic, not a
+   control, and the "connected" chrome it replaces rendered the whole
+   connection state to somebody who was already connected. */
+.nodeHost {
+  font-size: 11px;
+  color: #999;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.subtitle {
+  font-size: 13px;
+  color: #666;
+  margin: -16px 0 24px;
+  line-height: 1.5;
+}
+
+/* A card's status line. Green INK (#4e7a00) for a completed agreement; grey
+   for everything else, so the colour marks a state rather than decorating. */
+.cardMeta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: #888;
+  margin-top: 6px;
+}
+.cardMetaDone { color: #4e7a00; font-weight: 500; }
+
+.dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #d0d0d0;
+  flex-shrink: 0;
+}
+.dotDone { background: #a5ff11; }
+
+.error {
+  font-size: 12px;
+  color: #c0392b;
+  margin-bottom: 16px;
+}
+
+.notice {
+  font-size: 13px;
+  color: #15803d;
+  margin-bottom: 16px;
+}
+
+/* The busy state on a button that is doing something, matching
+   ProjectsPage's spinner idiom. */
+.spinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(255,255,255,0.35);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: signSpin 0.8s linear infinite;
+  vertical-align: -1px;
+  margin-right: 6px;
+}
+@keyframes signSpin { to { transform: rotate(360deg); } }
+
+/* Modal, in mero-design's card idiom: white on a hairline, no shadow theatre. */
+.modalBackdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+  padding: 24px;
+}
+.modal {
+  background: #fff;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.12);
+  width: 100%;
+  max-width: 460px;
+  padding: 24px;
+}
+.modalTitle { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
+.modalDesc { font-size: 13px; color: #666; margin-bottom: 16px; line-height: 1.5; }
+.modalRow { display: flex; gap: 10px; justify-content: flex-end; margin-top: 18px; }
+
+.btnGhost {
+  padding: 9px 18px;
+  background: #fff;
+  color: #555;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.btnGhost:hover { background: #f5f5f5; border-color: #bbb; }
+
+.textarea {
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+  resize: vertical;
+  min-height: 84px;
+}
+.textarea:focus { border-color: #111; }
+
+.hint { font-size: 11px; color: #999; margin-top: 6px; line-height: 1.5; }
+
+@media (max-width: 640px) {
+  .header { padding: 0 16px; }
+  .main { padding: 32px 16px; }
+}

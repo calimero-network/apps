@@ -1,0 +1,473 @@
+.root { min-height: 100vh; background: #fafafa; }
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 40px;
+  border-bottom: 1px solid #e8e8e8;
+  background: #fff;
+}
+.back { background: none; border: none; font-size: 13px; color: #555; cursor: pointer; }
+.back:hover { color: #111; }
+.logo { font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.headerRight { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+
+.logoutBtn {
+  padding: 6px 14px;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  background: #fff;
+  font-size: 12px;
+  color: #555;
+  cursor: pointer;
+}
+.logoutBtn:hover { background: #f5f5f5; border-color: #bbb; }
+
+.main { padding: 32px 40px; max-width: 900px; margin: 0 auto; }
+
+/* Tabs */
+.tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 2px solid #e8e8e8;
+  margin-bottom: 28px;
+}
+
+.tab {
+  padding: 10px 18px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #888;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+.tab:hover { color: #333; }
+.tabActive { color: #111; border-bottom-color: #111; }
+
+.createRow { display: flex; gap: 10px; margin-bottom: 28px; }
+
+.input {
+  flex: 1;
+  padding: 9px 12px;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  font-size: 13px;
+  outline: none;
+  max-width: 360px;
+}
+.input:focus { border-color: #111; }
+
+.btn {
+  padding: 9px 18px;
+  background: #111;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.btn:hover:not(:disabled) { background: #333; }
+.btn:disabled { opacity: 0.5; }
+
+.empty { color: #888; font-size: 13px; }
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 18px;
+}
+
+/* Card with hover menu */
+.cardWrap {
+  position: relative;
+}
+.cardWrap:hover .menuBtn { opacity: 1; }
+
+.card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: 100%;
+  background: #fff;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  overflow: hidden;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.card:hover { border-color: #111; box-shadow: 0 2px 10px rgba(0,0,0,0.07); }
+
+.cardThumb {
+  width: 100%;
+  height: 110px;
+  background: linear-gradient(135deg, #f5f5f5 0%, #ececec 100%);
+  animation: thumbShift 14s ease-in-out infinite;
+}
+
+@keyframes thumbShift {
+  0%   { background-position: 0% 50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+.cardName { padding: 10px 12px; font-size: 13px; font-weight: 500; }
+
+.menuBtn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255,255,255,0.9);
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  font-size: 14px;
+  color: #555;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 2;
+  line-height: 1;
+  padding: 0;
+}
+.menuBtn:hover { background: #f0f0f0; color: #111; }
+
+.dropdown {
+  position: absolute;
+  top: 36px;
+  right: 0;
+  min-width: 120px;
+  background: #fff;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+  z-index: 100;
+  overflow: hidden;
+}
+
+.dropdownItem {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 14px;
+  font-size: 13px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #333;
+  transition: background 0.1s;
+}
+.dropdownItem:hover { background: #f5f5f5; }
+
+.dropdownDanger { color: #c0392b; }
+.dropdownDanger:hover { background: #fdf3f2; }
+
+/* Invitations tab */
+.inviteSection {
+  max-width: 500px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.inviteDesc {
+  font-size: 13px;
+  color: #666;
+  line-height: 1.5;
+}
+
+.tokenBox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #f5f5f5;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  padding: 10px 12px;
+}
+
+.token {
+  flex: 1;
+  font-size: 11px;
+  font-family: monospace;
+  word-break: break-all;
+  color: #333;
+}
+
+.copyBtn {
+  flex-shrink: 0;
+  padding: 5px 12px;
+  border: 1px solid #e0e0e0;
+  border-radius: 5px;
+  background: #fff;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.copyBtn:hover { background: #f5f5f5; }
+
+.inviteError { font-size: 12px; color: #c0392b; }
+
+.copiedMsg { font-size: 13px; color: #15803d; font-weight: 500; }
+
+.inviteSpinner {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  border: 2px solid #d7d7d7;
+  border-top-color: #15803d;
+  border-radius: 50%;
+  animation: inviteSpin 0.8s linear infinite;
+}
+
+@keyframes inviteSpin {
+  to { transform: rotate(360deg); }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Everything above this line is mero-design's `ProjectsPage.module.css`, copied
+   VERBATIM. See the note in AgreementsPage.module.css for why it is copied
+   rather than re-expressed, and for the one green substitution.
+   ───────────────────────────────────────────────────────────────────────────── */
+
+.mark {
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+  background: #a5ff11;
+  color: #131215;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.nodeHost {
+  font-size: 11px;
+  color: #999;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.title { font-size: 22px; font-weight: 600; margin-bottom: 4px; }
+.subtitle { font-size: 13px; color: #666; margin-bottom: 24px; }
+
+.sectionRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+.sectionTitle { font-size: 14px; font-weight: 600; }
+
+/* A document card. The thumb carries the STATUS, which is the one place a
+   colour earns its keep on this screen. #a5ff11 is a fill with near-black ink;
+   never white on it. */
+.thumbSigned { background: linear-gradient(135deg, #eaffc4 0%, #dcf7a8 100%); }
+.thumbPartial { background: linear-gradient(135deg, #f7f7f7 0%, #ededed 100%); }
+
+.cardStatus {
+  padding: 0 12px 12px;
+  font-size: 11px;
+  color: #888;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.badge {
+  /* inline-FLEX with a line-height, or the padding collapses and the badge
+     reads as a highlighter mark over the text rather than as a chip. */
+  display: inline-flex;
+  align-items: center;
+  line-height: 1;
+  padding: 5px 9px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.badgeSigned { background: #a5ff11; color: #131215; }
+.badgePartial { background: #f3f3f3; color: #555; }
+.badgePending { background: #f3f3f3; color: #888; }
+
+/* Participants, as rows rather than cards — a roster is a list, not a grid. */
+.rows { display: flex; flex-direction: column; }
+.row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid #ebebeb;
+}
+.row:last-child { border-bottom: none; }
+
+.avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: #f0f0f0;
+  color: #555;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+.avatarAdmin { background: #a5ff11; color: #131215; }
+
+.rowMain {
+  min-width: 0;
+  flex: 1;
+  /* A COLUMN. These were two inline spans, so the id and the role description
+     rendered on one line and ran into each other. */
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.rowName {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rowSub {
+  display: block;
+  font-size: 11px;
+  color: #888;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rowYou { color: #888; font-weight: 400; }
+.rowActions { display: flex; gap: 6px; flex-shrink: 0; }
+
+.smallBtn {
+  padding: 5px 10px;
+  border: 1px solid #e0e0e0;
+  border-radius: 5px;
+  background: #fff;
+  font-size: 11px;
+  color: #555;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.smallBtn:hover:not(:disabled) { background: #f5f5f5; border-color: #bbb; color: #111; }
+.smallBtn:disabled { opacity: 0.5; cursor: default; }
+.smallBtnDanger { color: #c0392b; }
+.smallBtnDanger:hover:not(:disabled) { background: #fdf3f2; border-color: #e6b8b2; color: #c0392b; }
+
+.section {
+  border-top: 1px solid #ebebeb;
+  padding-top: 28px;
+  margin-top: 32px;
+}
+
+/* A styled file input. The native control renders as "Choose File / No file
+   chosen" in the browser's own type and is the one piece of chrome that
+   otherwise refuses to join the system. */
+.drop {
+  display: block;
+  border: 1px dashed #d5d5d5;
+  border-radius: 6px;
+  padding: 18px;
+  text-align: center;
+  font-size: 13px;
+  color: #666;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.drop:hover { border-color: #111; background: #fafafa; }
+.dropPicked { border-style: solid; border-color: #111; color: #111; font-weight: 500; }
+.dropInput { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+
+.note {
+  font-size: 11px;
+  color: #999;
+  line-height: 1.6;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid #ebebeb;
+}
+
+.error { font-size: 12px; color: #c0392b; margin-bottom: 14px; }
+.notice { font-size: 13px; color: #15803d; font-weight: 500; margin-bottom: 14px; }
+
+.spinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(255,255,255,0.35);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: signSpin 0.8s linear infinite;
+  vertical-align: -1px;
+  margin-right: 6px;
+}
+@keyframes signSpin { to { transform: rotate(360deg); } }
+
+.modalBackdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+  padding: 24px;
+}
+.modal {
+  background: #fff;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.12);
+  width: 100%;
+  max-width: 520px;
+  padding: 24px;
+  max-height: 86vh;
+  overflow-y: auto;
+}
+.modalTitle { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
+.modalDesc { font-size: 13px; color: #666; margin-bottom: 16px; line-height: 1.5; }
+.modalRow { display: flex; gap: 10px; justify-content: flex-end; margin-top: 18px; }
+
+.btnGhost {
+  padding: 9px 18px;
+  background: #fff;
+  color: #555;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.btnGhost:hover { background: #f5f5f5; border-color: #bbb; }
+
+.label { font-size: 12px; font-weight: 500; color: #333; margin-bottom: 6px; }
+.hint { font-size: 11px; color: #999; margin-top: 6px; line-height: 1.5; }
+
+.fileInput { font-size: 13px; }
+
+@media (max-width: 640px) {
+  .header { padding: 12px 16px; }
+  .main { padding: 24px 16px; }
+}
