@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Routes, Route, BrowserRouter, useNavigate } from 'react-router-dom';
 import { ThemeProvider } from './contexts/ThemeContext';
 import Dashboard from './pages/dashboard';
@@ -9,31 +9,49 @@ import { CalimeroConnectionRequired } from './components/CalimeroConnectionRequi
 import LandingPage from './pages/landing/LandingPage';
 import InvitationHandlerPopup from './components/InvitationHandlerPopup';
 import { useCalimero } from '@calimero-network/calimero-client';
-import { hasPendingInvitation } from './utils/invitation';
+import {
+  onInvitation,
+  type CapturedInvitation,
+} from './lib/invitationIntents';
 
 function AppContent() {
   const { isAuthenticated } = useCalimero();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [showInvitationHandler, setShowInvitationHandler] = useState(false);
+  const [invitation, setInvitation] = useState<CapturedInvitation | null>(null);
   const navigate = useNavigate();
 
-  useEffect(() => {
-    // Check for pending invitation when authenticated
-    if (isAuthenticated && hasPendingInvitation()) {
-      setShowInvitationHandler(true);
-    }
-  }, [isAuthenticated]);
+  // ── Invitations are captured at APP level, not per page ────────────────────
+  //
+  // An invitation link can land anywhere: `/` for a web visitor, the launcher's
+  // rewritten frontend URL on the desktop, or a route this app does not even
+  // have. Subscribing here means the prompt appears wherever it lands.
+  //
+  // Subscribed OUTSIDE the `isAuthenticated` branch, and unconditionally. The
+  // previous version only looked for an invitation once the session existed, and
+  // only ever read `location.search` — so a signed-out visitor opening a link
+  // went through the auth redirect and arrived with the invitation gone. The
+  // platform store now holds the intent across that redirect (capture starts in
+  // main.tsx, before React mounts) and replays it here.
+  useEffect(() => onInvitation(setInvitation), []);
 
-  const handleInvitationSuccess = () => {
-    setShowInvitationHandler(false);
-    // Navigate to dashboard and reload agreements
-    navigate('/');
-    window.location.reload(); // Reload to refresh agreements list
-  };
+  const handleInvitationSuccess = useCallback(
+    (agreement: { contextId: string; name: string }) => {
+      invitation?.resolve();
+      setInvitation(null);
+      // The dashboard's list comes from the private context, which the redeem
+      // routine has just written to. Navigating with a key forces it to reload
+      // rather than showing the pre-join list.
+      navigate('/', { replace: true, state: { joined: agreement.contextId } });
+    },
+    [invitation, navigate],
+  );
 
-  const handleInvitationError = () => {
-    setShowInvitationHandler(false);
-  };
+  const handleInvitationError = useCallback(() => {
+    // Acked on decline too, or the store replays the same invitation on every
+    // reload and the prompt becomes impossible to dismiss.
+    invitation?.resolve();
+    setInvitation(null);
+  }, [invitation]);
 
   // Unauthenticated, `/` is the explainer and every other path is the connect
   // gate. The app had no landing page at all: an unauthenticated visitor got
@@ -62,7 +80,10 @@ function AppContent() {
         <Route
           path="*"
           element={
-            <MobileLayout sidebarOpen={sidebarOpen} onSidebarToggle={setSidebarOpen}>
+            <MobileLayout
+              sidebarOpen={sidebarOpen}
+              onSidebarToggle={setSidebarOpen}
+            >
               <CalimeroConnectionRequired
                 onOpenSidebar={() => setSidebarOpen(true)}
               />
@@ -76,21 +97,16 @@ function AppContent() {
   return (
     <>
       <MobileLayout sidebarOpen={sidebarOpen} onSidebarToggle={setSidebarOpen}>
-        {isAuthenticated ? (
-          <Routes>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/agreement" element={<AgreementPage />} />
-            <Route path="/signatures" element={<SignaturesPage />} />
-            <Route path="*" element={<Dashboard />} />
-          </Routes>
-        ) : (
-          <CalimeroConnectionRequired
-            onOpenSidebar={() => setSidebarOpen(true)}
-          />
-        )}
+        <Routes>
+          <Route path="/" element={<Dashboard />} />
+          <Route path="/agreement" element={<AgreementPage />} />
+          <Route path="/signatures" element={<SignaturesPage />} />
+          <Route path="*" element={<Dashboard />} />
+        </Routes>
       </MobileLayout>
-      {showInvitationHandler && isAuthenticated && (
+      {invitation && (
         <InvitationHandlerPopup
+          invitation={invitation.code}
           onSuccess={handleInvitationSuccess}
           onError={handleInvitationError}
         />

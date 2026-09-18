@@ -14,7 +14,11 @@ import {
 } from '@calimero-network/mero-ui';
 interface ConsentModalProps {
   open: boolean;
-  userId: string;
+  // ⚠️ No `userId`. Consent is recorded for the caller's own account inside the
+  // contract; this modal used to pass `agreementContextUserID` — the context
+  // member DEVICE key — into a `set_consent` that stored it unchecked, which is
+  // both how consent was recorded against the wrong identity and how one member
+  // could consent on another's behalf.
   documentId: string;
   agreementContextID?: string;
   agreementContextUserID?: string;
@@ -94,7 +98,6 @@ const DisclosureText: React.FC<{ mode: string }> = ({ mode }) => (
 
 const ConsentModal: React.FC<ConsentModalProps> = ({
   open,
-  userId,
   documentId,
   agreementContextID,
   agreementContextUserID,
@@ -115,7 +118,6 @@ const ConsentModal: React.FC<ConsentModalProps> = ({
     setError(null);
 
     const resp = await api.setConsent(
-      userId,
       documentId,
       agreementContextID,
       agreementContextUserID,

@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useCalimero, apiClient } from '@calimero-network/calimero-client';
 import type { ResponseData } from '@calimero-network/calimero-client';
 import type { NodeIdentity } from '@calimero-network/calimero-client/lib/api/nodeApi';
@@ -31,9 +31,8 @@ import {
 } from '@calimero-network/mero-ui';
 import { MobileLayout } from '../../components/MobileLayout';
 import { AgreementService } from '../../api/agreementService';
-import { ContextApiDataSource } from '../../api/dataSource/nodeApiDataSource';
-import { ClientApiDataSource } from '../../api/dataSource/ClientApiDataSource';
 import { Agreement } from '../../api/clientApi';
+import { redeemInvitation } from '../../api/invitationJoin';
 import { UserPlus, Key, Copy } from 'lucide-react';
 import { Textarea } from '@calimero-network/mero-ui';
 
@@ -45,13 +44,18 @@ interface NotificationState {
 
 export default function Dashboard() {
   const navigate = useNavigate();
+  // Redeeming an invitation navigates here. When the dashboard is already
+  // mounted that is not a remount, so the list would keep showing the state from
+  // before the join — which is what the old flow papered over with a full
+  // `window.location.reload()`. `location.key` changes on every navigation, so
+  // depending on it reloads the list without throwing the session away.
+  const location = useLocation();
   const { app } = useCalimero();
   const [searchQuery, setSearchQuery] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showJoinModal, setShowJoinModal] = useState(false);
   const [agreementName, setAgreementName] = useState('');
   const [invitationPayload, setInvitationPayload] = useState('');
-  const [contextName, setContextName] = useState('');
   const [generatedIdentity, setGeneratedIdentity] =
     useState<NodeIdentity | null>(null);
   const [generatingIdentity, setGeneratingIdentity] = useState(false);
@@ -64,8 +68,6 @@ export default function Dashboard() {
     useState<NotificationState | null>(null);
 
   const agreementService = useMemo(() => new AgreementService(app), [app]);
-  const nodeApiService = useMemo(() => new ContextApiDataSource(app), [app]);
-  const clientApiService = useMemo(() => new ClientApiDataSource(app), [app]);
 
   const showModalNotification = useCallback(
     (message: string, type: NotificationType) => {
@@ -88,8 +90,26 @@ export default function Dashboard() {
         console.error('Dashboard: Error from listAgreements:', response.error);
         setError(response.error.message);
         setAgreements([]);
-      } else {
-        setAgreements(response.data || []);
+        return;
+      }
+
+      const rows = response.data || [];
+      setAgreements(rows);
+
+      // Paint the list from this node's own record first, then replace the
+      // names with the ones the agreements' contracts hold. Those are the
+      // replicated values — the same string on every node — and they are what
+      // makes the creator's "NDA with Acme" show up as "NDA with Acme" for the
+      // people they invited instead of a per-browser label. Failures here leave
+      // the already-painted list alone.
+      try {
+        const named = await agreementService.resolveSharedNames(rows);
+        setAgreements((current) =>
+          // Only if nothing else has replaced the list in the meantime.
+          current === rows ? named : current,
+        );
+      } catch (err) {
+        console.warn('Could not refresh agreement names:', err);
       }
     } catch (err) {
       console.error('Failed to load agreements:', err);
@@ -104,7 +124,7 @@ export default function Dashboard() {
     if (app) {
       loadAgreements();
     }
-  }, [app, loadAgreements]);
+  }, [app, loadAgreements, location.key]);
 
   const stats = [
     {
@@ -213,9 +233,30 @@ export default function Dashboard() {
     }
   };
 
+  // ── Joining from a pasted link, code or payload ───────────────────────────
+  //
+  // One box, three inputs, because a person who was sent something has no idea
+  // which of the two invitation KINDS it is and should not have to care:
+  //
+  //   * an invitation LINK (`https://links.calimero.network/…/join?invitation=`)
+  //     or the `calimero://` form, or the bare code inside either;
+  //   * an OPEN invitation minted by "Shareable link";
+  //   * a TARGETED payload minted by "Invite one person" for a named public key.
+  //
+  // `redeemInvitation` works out which it is holding and takes the matching
+  // route — see `api/invitationJoin.ts`.
+  //
+  // ⚠️ What went away here: a "Context Name (Optional)" text box. Whatever the
+  // joiner typed in it was written into their private context as the
+  // agreement's name, defaulting to the literal string 'Agreement'. That is the
+  // whole bug the user reported — the creator's "NDA with Acme" never left the
+  // creator's browser, because nothing ever read the name the contract had been
+  // replicating the entire time. The joiner is not asked to name someone else's
+  // agreement any more.
   const handleJoinByPayload = async () => {
-    if (!invitationPayload.trim()) {
-      setError('Please enter a valid invitation payload');
+    const raw = invitationPayload.trim();
+    if (!raw) {
+      setError('Paste the invitation link or code you were sent.');
       return;
     }
 
@@ -223,117 +264,11 @@ export default function Dashboard() {
       setJoining(true);
       setError(null);
 
-      // If identity was generated, save it for potential future use
-      if (generatedIdentity) {
-        localStorage.setItem(
-          'new-context-identity',
-          JSON.stringify(generatedIdentity),
-        );
-      }
+      const result = await redeemInvitation(raw, app);
 
-      const joinResponse = await nodeApiService.joinContext({
-        invitationPayload: invitationPayload.trim(),
-      });
-
-      if (joinResponse.error) {
-        setError(joinResponse.error.message || 'Failed to join context');
-        return;
-      }
-
-      if (!joinResponse.data) {
-        setError('No data received from join context response');
-        return;
-      }
-
-      const { contextId, memberPublicKey } = joinResponse.data;
-
-      // Validate that both contextId and memberPublicKey are present
-      if (!contextId || !memberPublicKey) {
-        setError(
-          'Invalid join response: missing contextId or memberPublicKey',
-        );
-        return;
-      }
-
-      localStorage.setItem('agreementContextID', contextId);
-      localStorage.setItem('agreementContextUserID', memberPublicKey);
-
-      // Wait a bit for context to sync after joining
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-
-      // Register self as participant in the shared context
-      // This is required for users joining via payload invitation
-      let registerSuccess = false;
-      let registerAttempts = 0;
-      const maxRegisterAttempts = 5;
-
-      while (!registerSuccess && registerAttempts < maxRegisterAttempts) {
-        registerAttempts++;
-        try {
-          const registerResponse = await clientApiService.registerSelfAsParticipant(
-            contextId,
-            memberPublicKey,
-          );
-
-          if (registerResponse.error) {
-            const errorMessage = registerResponse.error.message || '';
-
-            // If already registered, that's fine - continue
-            if (errorMessage.includes('Already registered')) {
-              console.log('Already registered as participant');
-              registerSuccess = true;
-            } else if (
-              errorMessage.includes('Uninitialized') &&
-              registerAttempts < maxRegisterAttempts
-            ) {
-              // State not ready yet, wait and retry
-              console.log(
-                `Register attempt ${registerAttempts} failed with Uninitialized, retrying...`,
-              );
-              await new Promise((resolve) => setTimeout(resolve, 2000));
-            } else {
-              console.warn(
-                'Failed to register as participant:',
-                registerResponse.error,
-              );
-              // Don't block the flow - user can still proceed
-              registerSuccess = true;
-            }
-          } else {
-            console.log('Successfully registered as participant in context');
-            registerSuccess = true;
-          }
-        } catch (error) {
-          console.warn(
-            `Error registering as participant (attempt ${registerAttempts}):`,
-            error,
-          );
-          if (registerAttempts < maxRegisterAttempts) {
-            await new Promise((resolve) => setTimeout(resolve, 2000));
-          } else {
-            // Don't block the flow - user can still proceed
-            registerSuccess = true;
-          }
-        }
-      }
-
-      const joinSharedResponse = await clientApiService.joinSharedContext(
-        contextId,
-        memberPublicKey,
-        contextName.trim() || 'Agreement',
-      );
-
-      if (joinSharedResponse.error) {
-        setError(
-          'Failed to join shared context: ' + joinSharedResponse.error.message,
-        );
-        return;
-      }
-
-      showModalNotification('Successfully joined agreement!', 'success');
+      showModalNotification(`Joined “${result.name}”!`, 'success');
       setShowJoinModal(false);
       setInvitationPayload('');
-      setContextName('');
       await loadAgreements();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to join agreement');
@@ -718,7 +653,6 @@ export default function Dashboard() {
           onClose={() => {
             setShowJoinModal(false);
             setInvitationPayload('');
-            setContextName('');
             setGeneratedIdentity(null);
             setError(null);
           }}
@@ -732,8 +666,9 @@ export default function Dashboard() {
                 color: 'var(--current-text-secondary)',
               }}
             >
-              Generate a new identity (optional) or paste the invitation payload
-              to join an agreement.
+              Paste the invitation link or code you were sent. If someone
+              needs to invite you individually instead, generate an identity
+              below and send them its public key.
             </Text>
 
             {/* Generate Identity Section */}
@@ -829,31 +764,26 @@ export default function Dashboard() {
                 weight="medium"
                 style={{ marginBottom: spacing[2].value }}
               >
-                Invitation Payload
+                Invitation link or code
               </Text>
               <Textarea
                 value={invitationPayload}
                 onChange={(e) => setInvitationPayload(e.target.value)}
-                placeholder="Paste invitation payload..."
+                placeholder="Paste the link or code you were sent…"
                 rows={4}
                 disabled={joining}
               />
-            </Box>
-
-            <Box style={{ marginBottom: spacing[4].value }}>
               <Text
-                size="sm"
-                weight="medium"
-                style={{ marginBottom: spacing[2].value }}
+                size="xs"
+                style={{
+                  marginTop: spacing[2].value,
+                  color: 'var(--current-text-secondary)',
+                }}
               >
-                Context Name (Optional)
+                Opening the link works too — you only need this if the link was
+                sent to you as text. The agreement keeps the name its creator
+                gave it.
               </Text>
-              <Input
-                value={contextName}
-                onChange={(e) => setContextName(e.target.value)}
-                placeholder="Enter context name"
-                disabled={joining}
-              />
             </Box>
 
             {error && (
@@ -868,7 +798,6 @@ export default function Dashboard() {
                 onClick={() => {
                   setShowJoinModal(false);
                   setInvitationPayload('');
-                  setContextName('');
                   setError(null);
                 }}
                 style={{ flex: 1 }}

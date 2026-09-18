@@ -404,6 +404,24 @@
         }
       ]
     },
+    "MeroSignEvent_ParticipantPermissionChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "user_id",
+          "type": {
+            "kind": "bytes",
+            "size": 32
+          }
+        },
+        {
+          "name": "permission",
+          "type": {
+            "$ref": "PermissionLevel"
+          }
+        }
+      ]
+    },
     "MeroSignEvent_SignatureCreated": {
       "kind": "record",
       "fields": [
@@ -989,12 +1007,6 @@
           "type": {
             "kind": "string"
           }
-        },
-        {
-          "name": "user_id_str",
-          "type": {
-            "kind": "string"
-          }
         }
       ],
       "returns": {
@@ -1064,15 +1076,29 @@
       "name": "set_consent",
       "params": [
         {
+          "name": "document_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "set_participant_permission",
+      "params": [
+        {
           "name": "user_id_str",
           "type": {
             "kind": "string"
           }
         },
         {
-          "name": "document_id",
+          "name": "permission",
           "type": {
-            "kind": "string"
+            "$ref": "PermissionLevel"
           }
         }
       ],
@@ -1103,12 +1129,6 @@
         },
         {
           "name": "new_hash",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "signer_id_str",
           "type": {
             "kind": "string"
           }
@@ -1176,6 +1196,14 @@
       "returns": {
         "kind": "string"
       }
+    },
+    {
+      "name": "whoami",
+      "params": [],
+      "returns": {
+        "kind": "bytes",
+        "size": 32
+      }
     }
   ],
   "events": [
@@ -1225,6 +1253,12 @@
       "name": "ParticipantLeft",
       "payload": {
         "$ref": "MeroSignEvent_ParticipantLeft"
+      }
+    },
+    {
+      "name": "ParticipantPermissionChanged",
+      "payload": {
+        "$ref": "MeroSignEvent_ParticipantPermissionChanged"
       }
     },
     {

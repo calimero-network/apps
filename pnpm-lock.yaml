@@ -1320,6 +1320,9 @@ importers:
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
+      '@calimero-network/mero-platform':
+        specifier: 'catalog:'
+        version: 0.1.0
       '@calimero-network/mero-ui':
         specifier: 'catalog:'
         version: 1.5.1(@floating-ui/dom@1.8.0)(@tiptap/core@3.30.5(@tiptap/pm@3.30.5))(@tiptap/pm@3.30.5)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -1359,6 +1362,9 @@ importers:
       clsx:
         specifier: 'catalog:'
         version: 2.1.1
+      fflate:
+        specifier: 'catalog:'
+        version: 0.8.3
       framer-motion:
         specifier: ^12.23.3
         version: 12.43.0(@emotion/is-prop-valid@1.4.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -1471,6 +1477,9 @@ importers:
       vite-plugin-node-polyfills:
         specifier: ^0.21.0
         version: 0.21.0(rollup@4.63.0)(vite@6.4.3(@types/node@22.20.1)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.103.1)(tsx@4.23.13))
+      vitest:
+        specifier: 'catalog:'
+        version: 4.1.11(@types/node@22.20.1)(jsdom@29.1.1)(vite@6.4.3(@types/node@22.20.1)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.103.1)(tsx@4.23.13))
 
   apps/mero-stream/app:
     dependencies:

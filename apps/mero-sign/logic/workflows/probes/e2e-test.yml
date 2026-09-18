@@ -395,7 +395,6 @@ steps:
     executor_public_key: "{{joined_key_2}}"
     method: set_consent
     args:
-      user_id_str: "{{joined_key_2}}"
       document_id: "{{document_id}}"
     outputs:
       consent_result_2: result.output
@@ -435,7 +434,6 @@ steps:
       pdf_blob_id_str: "{{signed_blob_id}}"
       file_size: "{{signed_blob_size}}"
       new_hash: "signed_hash_node2_abc123"
-      signer_id_str: "{{joined_key_2}}"
     outputs:
       sign_result_2: result.output
 
@@ -480,7 +478,6 @@ steps:
       pdf_blob_id_str: "{{signed_blob_id}}"
       file_size: "{{signed_blob_size}}"
       new_hash: "should_fail_hash"
-      signer_id_str: "{{admin_key}}"
     expected_failure: true
     outputs:
       no_consent_error: error_message
@@ -539,7 +536,6 @@ steps:
     executor_public_key: "{{admin_key}}"
     method: set_consent
     args:
-      user_id_str: "{{admin_key}}"
       document_id: "{{document_id}}"
     outputs:
       consent_result_1: result.output
@@ -566,7 +562,6 @@ steps:
       pdf_blob_id_str: "{{signed_blob_id_1}}"
       file_size: "{{signed_blob_size_1}}"
       new_hash: "signed_hash_node1_def456"
-      signer_id_str: "{{admin_key}}"
     outputs:
       sign_result_1: result.output
 

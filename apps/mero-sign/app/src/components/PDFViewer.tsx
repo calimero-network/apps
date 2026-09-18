@@ -495,7 +495,6 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
       const signedFile = new File([signedPDFBlob], file?.name || 'signed.pdf', {
         type: 'application/pdf',
       });
-      const signerId = localStorage.getItem('agreementContextUserID') || '';
       const agreementContextID =
         localStorage.getItem('agreementContextID') || undefined;
       const agreementContextUserID =
@@ -506,7 +505,6 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
         contextId,
         documentId,
         signedFile,
-        signerId,
         agreementContextID,
         agreementContextUserID,
         undefined,
@@ -706,10 +704,22 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
       setError('Missing user identity for consent check.');
       return;
     }
+    // ⚠️ The ACCOUNT, asked of the contract. This used to pass
+    // `agreementContextUserID` — the context member DEVICE key — while consent
+    // is stored against the account, and since core rc.27 both are 64 hex
+    // characters, so the lookup type-checked and always missed. The consent
+    // modal therefore reappeared for someone who had already consented.
+    const me = await api.whoami(agreementContextID, agreementContextUserID);
+    if (me.error || !me.data) {
+      setError('Could not confirm your identity with the agreement.');
+      return;
+    }
+
     const resp = await api.hasConsented(
-      agreementContextUserID || ' ',
+      me.data,
       documentId!,
       agreementContextID,
+      agreementContextUserID,
     );
 
     if (resp.data) {
@@ -1576,7 +1586,6 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
 
       <ConsentModal
         open={showConsentModal}
-        userId={agreementContextUserID || ''}
         documentId={documentId!}
         agreementContextID={agreementContextID}
         agreementContextUserID={agreementContextUserID}

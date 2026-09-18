@@ -19,6 +19,9 @@ export enum ClientMethod {
   GET_CONTEXT_DETAILS = 'get_context_details',
   ADD_PARTICIPANT = 'add_participant',
   REGISTER_SELF_AS_PARTICIPANT = 'register_self_as_participant',
+  REMOVE_PARTICIPANT = 'remove_participant',
+  SET_PARTICIPANT_PERMISSION = 'set_participant_permission',
+  WHOAMI = 'whoami',
   MARK_PARTICIPANT_SIGNED = 'mark_participant_signed',
   SET_CONSENT = 'set_consent',
   HAS_CONSENTED = 'has_consented',
@@ -163,14 +166,15 @@ export interface ClientApi {
     agreementContextID?: string,
     agreementContextUserID?: string,
   ): ApiResponse<DocumentInfo[]>;
-  // Contract expects: signer_id_str (base58 public key string)
+  // The signer is the CALLER's account, derived inside the contract. There is
+  // deliberately no signer parameter: the one that used to be here let any
+  // member record a signature attributed to another member.
   signDocument(
     contextId: string,
     documentId: string,
     pdfBlobIdStr: string,
     fileSize: number,
     newHash: string,
-    signerIdStr: string,
     agreementContextID?: string,
     agreementContextUserID?: string,
   ): ApiResponse<void>;
@@ -182,20 +186,39 @@ export interface ClientApi {
     agreementContextID?: string,
     agreementContextUserID?: string,
   ): ApiResponse<void>;
-  // Contract expects: user_id_str (base58 public key string)
+  // Consent is a personal act, so there is no user parameter: the contract
+  // records it for the caller's account.
   setConsent(
-    userIdStr: UserId,
     documentId: string,
     agreementContextID?: string,
     agreementContextUserID?: string,
   ): ApiResponse<void>;
-  // Contract expects: user_id_str (base58 public key string)
+  // A read, so it may ask about anyone. ⚠️ Contract expects a HEX ACCOUNT id —
+  // use `whoami()` for your own, never the context member key.
   hasConsented(
     userIdStr: UserId,
     documentId: string,
     agreementContextID?: string,
     agreementContextUserID?: string,
   ): ApiResponse<boolean>;
+  // Contract expects: user_id_str (HEX account id) — raising only; the contract
+  // refuses a demotion because permissions merge by taking the higher rank.
+  setParticipantPermission(
+    userIdStr: UserId,
+    permission: PermissionLevel,
+    agreementContextID?: string,
+    agreementContextUserID?: string,
+  ): ApiResponse<void>;
+  removeParticipant(
+    userIdStr: UserId,
+    agreementContextID?: string,
+    agreementContextUserID?: string,
+  ): ApiResponse<void>;
+  /** The caller's ACCOUNT id, which the frontend cannot derive for itself. */
+  whoami(
+    agreementContextID?: string,
+    agreementContextUserID?: string,
+  ): ApiResponse<UserId>;
   isDefaultPrivateContext(): ApiResponse<boolean>;
   searchDocumentByEmbedding(
     queryEmbedding: number[],

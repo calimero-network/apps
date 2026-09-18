@@ -18,7 +18,19 @@ import {
 } from '@calimero-network/calimero-client';
 import type { ResponseData } from '@calimero-network/calimero-client';
 import type { ContextInviteByOpenInvitationResponse } from '@calimero-network/calimero-client/lib/api/nodeApi';
-import { generateInvitationUrl } from '../../utils/invitation';
+import { encodeInvite } from '../../lib/inviteCodec';
+import { shareableInvitation } from '../../lib/inviteLink';
+import {
+  DEMOTION_UNAVAILABLE,
+  LEVEL_DESCRIPTIONS,
+  buildRoster,
+  canRemove,
+  isAdmin,
+  isHexId,
+  promotionsFor,
+  shortId,
+  toHexId,
+} from '../../lib/participants';
 import {
   ArrowLeft,
   Plus,
@@ -56,24 +68,6 @@ import { DocumentService } from '../../api/documentService';
 import { ClientApiDataSource } from '../../api/dataSource/ClientApiDataSource';
 import { ContextApiDataSource } from '../../api/dataSource/nodeApiDataSource';
 import { ContextDetails, PermissionLevel } from '../../api/clientApi';
-import bs58 from 'bs58';
-
-/**
- * Convert a value to base58 string.
- * Handles byte arrays from the contract and passes through strings.
- */
-function toBase58String(value: string | number[] | Uint8Array): string {
-  if (typeof value === 'string') {
-    return value;
-  }
-  if (Array.isArray(value)) {
-    return bs58.encode(new Uint8Array(value));
-  }
-  if (value instanceof Uint8Array) {
-    return bs58.encode(value);
-  }
-  return String(value);
-}
 
 // Constants
 
@@ -223,7 +217,14 @@ const AgreementPage: React.FC = () => {
   const [inviteMode, setInviteMode] = useState<'url' | 'payload'>('url');
   const [inviteId, setInviteId] = useState('');
   const [invitePermission] = useState<PermissionLevel>(PermissionLevel.Sign);
-  const [invitationUrl, setInvitationUrl] = useState<string | null>(null);
+  // The minted invitation, in the three forms it is offered in: an HTTPS link
+  // to share, a `calimero://` link for a device with the desktop app, and the
+  // bare code for pasting into another mero app's join box.
+  const [invite, setInvite] = useState<{
+    link: string;
+    deepLink: string;
+    code: string;
+  } | null>(null);
   const [generatedPayload, setGeneratedPayload] = useState('');
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [generatingInvite, setGeneratingInvite] = useState(false);
@@ -239,6 +240,12 @@ const AgreementPage: React.FC = () => {
     null,
   );
   const [contextLoading, setContextLoading] = useState(true);
+  // MY ACCOUNT id, from the contract's `whoami()`. The app cannot derive it:
+  // `agreementContextUserID` in localStorage is the context member (DEVICE)
+  // key, and since core rc.27 both are 64 hex characters, so comparing the
+  // wrong pair type-checks and matches nothing. "" until the contract answers.
+  const [selfAccountId, setSelfAccountId] = useState('');
+  const [roleBusyFor, setRoleBusyFor] = useState<string | null>(null);
   const [notification, setNotification] = useState<NotificationState | null>(
     null,
   );
@@ -307,6 +314,16 @@ const AgreementPage: React.FC = () => {
       } else {
         setContextDetails(response.data);
       }
+
+      // Which row of the roster is me. Best-effort: a node running a bundle
+      // from before `whoami` existed answers with an error, and "" is the safe
+      // reading — the panel then shows no self-badge and offers no role
+      // controls, rather than badging or empowering the wrong row.
+      const me = await clientApiService.whoami(
+        agreementContextID || undefined,
+        agreementContextUserID || undefined,
+      );
+      setSelfAccountId(me.data ? toHexId(me.data) : '');
     } catch (err) {
       console.error('Failed to load context details:', err);
       setError('Failed to load context details');
@@ -676,11 +693,31 @@ const AgreementPage: React.FC = () => {
     [showNotification, app],
   );
 
+  // ── Minting a shareable invitation ────────────────────────────────────────
+  //
+  // Two things here were broken, and together they meant a shared invitation
+  // link had never once been redeemable:
+  //
+  //   1. The node answers `invite_by_open_invitation` with `{"data": {…}}`, and
+  //      this handler used to `JSON.stringify(response.data)` — the whole
+  //      envelope. The joining end parsed that straight back and posted it as
+  //      the `invitation` field, so the node received
+  //      `{"invitation": {"data": {…}}}`. Every core request body is
+  //      `deny_unknown_fields`, so that is a 400 for the whole call, reported to
+  //      the joiner as a generic "failed to join context".
+  //   2. The link was `window.location.origin + '/?invitation=' + <that JSON>`.
+  //      Origin-derived, so inside the desktop shell it began `tauri://`; and
+  //      around 1,200 percent-escaped characters, which chat and mail clients
+  //      wrap or truncate.
+  //
+  // Now: unwrap the envelope, carry the agreement's name alongside the signed
+  // invitation as a display hint, compress the pair into a short code, and build
+  // the link with the platform SDK. See `lib/inviteCodec.ts` and
+  // `lib/inviteLink.ts`.
   const handleGenerateOpenInvitation = useCallback(async () => {
     const agreementContextUserID = localStorage.getItem(
       'agreementContextUserID',
     );
-
     const agreementContextID = localStorage.getItem('agreementContextID');
 
     if (!agreementContextUserID || !agreementContextID) {
@@ -702,13 +739,11 @@ const AgreementPage: React.FC = () => {
     try {
       setGeneratingInvite(true);
 
-      // Ensure context ID and executor public key are set in Calimero client state
-      // This is required for the API to work properly
+      // The open-invitation route reads the context and inviter from the client
+      // state, so both have to be set before the call.
       setContextId(agreementContextID);
       setExecutorPublicKey(agreementContextUserID);
 
-      // Verify the context is set (like the reference app does)
-      // The reference app uses getContextId() and getExecutorPublicKey() to verify
       const currentContextId = getContextId();
       const currentExecutorPublicKey = getExecutorPublicKey();
 
@@ -720,35 +755,51 @@ const AgreementPage: React.FC = () => {
         return;
       }
 
-      // Generate open invitation using the new API
-      // Use the values from the client state (like reference app)
       const response: ResponseData<ContextInviteByOpenInvitationResponse> =
         await apiClient.node().contextInviteByOpenInvitation(
           currentContextId,
           currentExecutorPublicKey,
-          86400, // 24 hours TTL
+          // `validForBlocks`, not seconds. Core clamps an open invitation to
+          // 24 hours whatever is asked for (it has done since rc.29), so this
+          // is "as long as the node will allow" rather than a precise figure.
+          86400,
         );
 
-      if (response.error) {
+      if (response.error || !response.data) {
         showNotification(
-          response.error.message || 'Failed to generate invitation',
+          response.error?.message || 'Failed to generate invitation',
           'error',
         );
         return;
       }
 
-      if (!response.data) {
-        showNotification('Failed to generate invitation', 'error');
+      // `response.data` is the node's raw body. Core wraps it; older nodes did
+      // not. Accept either rather than depending on which one answered.
+      const envelope = response.data as unknown as Record<string, unknown>;
+      const signed = (envelope.data ?? envelope) as Parameters<
+        typeof encodeInvite
+      >[0]['invitation'];
+
+      if (!signed || typeof signed !== 'object' || !signed.invitation) {
+        showNotification(
+          'The node returned an invitation this app cannot read.',
+          'error',
+        );
         return;
       }
 
-      // Generate invitation URL
-      const invitationPayload = JSON.stringify(response.data);
-      const url = generateInvitationUrl(invitationPayload);
-      setInvitationUrl(url);
+      const code = encodeInvite({
+        invitation: signed,
+        contextId: currentContextId,
+        // A display hint so the recipient's prompt can name the agreement before
+        // they commit to joining. Outside the signature, and superseded by the
+        // contract's own `context_name` the moment the join lands.
+        contextName: contextDetails?.context_name,
+      });
 
+      setInvite(shareableInvitation(code));
       showNotification(
-        'Invitation URL created! Share it with participants.',
+        'Invitation link created — share it with participants.',
         'success',
       );
     } catch (error) {
@@ -760,18 +811,106 @@ const AgreementPage: React.FC = () => {
     } finally {
       setGeneratingInvite(false);
     }
-  }, [showNotification, app]);
+  }, [showNotification, app, contextDetails]);
 
-  const handleCopyInvitationUrl = useCallback(() => {
-    if (invitationUrl) {
-      navigator.clipboard.writeText(invitationUrl);
-      showNotification('Invitation URL copied to clipboard!', 'success');
-    }
-  }, [invitationUrl, showNotification]);
+  const copyToClipboard = useCallback(
+    (value: string, what: string) => {
+      navigator.clipboard.writeText(value);
+      showNotification(`${what} copied to clipboard!`, 'success');
+    },
+    [showNotification],
+  );
+
+  // ── Roles ─────────────────────────────────────────────────────────────────
+  //
+  // The roster and the two things an admin can actually do to it. What is NOT
+  // here is a "demote" control, and that absence is deliberate: the contract
+  // refuses a demotion because `PermissionCell` merges by taking the HIGHER
+  // rank, so a lowered level applies on the admin's node and is discarded the
+  // moment it meets a replica holding the old one. A button that appears to
+  // withdraw authority and does not is worse than no button, particularly in an
+  // app about signed agreements. Removal converges, so removal is what is
+  // offered, and the panel says why.
+  const roster = useMemo(
+    () => buildRoster(contextDetails?.participants ?? [], selfAccountId),
+    [contextDetails, selfAccountId],
+  );
+  const iAmAdmin = useMemo(
+    () => isAdmin(roster, selfAccountId),
+    [roster, selfAccountId],
+  );
+
+  const handlePromote = useCallback(
+    async (userId: string, permission: PermissionLevel) => {
+      const agreementContextID = localStorage.getItem('agreementContextID');
+      const agreementContextUserID = localStorage.getItem(
+        'agreementContextUserID',
+      );
+      try {
+        setRoleBusyFor(userId);
+        const res = await clientApiService.setParticipantPermission(
+          userId,
+          permission,
+          agreementContextID || undefined,
+          agreementContextUserID || undefined,
+        );
+        if (res.error) {
+          showNotification(res.error.message || 'Could not change the role', 'error');
+          return;
+        }
+        showNotification(`${shortId(userId)} is now ${permission}.`, 'success');
+        await loadContextDetails();
+      } finally {
+        setRoleBusyFor(null);
+      }
+    },
+    [clientApiService, showNotification, loadContextDetails],
+  );
+
+  const handleRemoveParticipant = useCallback(
+    async (userId: string) => {
+      const agreementContextID = localStorage.getItem('agreementContextID');
+      const agreementContextUserID = localStorage.getItem(
+        'agreementContextUserID',
+      );
+      try {
+        setRoleBusyFor(userId);
+        const res = await clientApiService.removeParticipant(
+          userId,
+          agreementContextID || undefined,
+          agreementContextUserID || undefined,
+        );
+        if (res.error) {
+          showNotification(
+            res.error.message || 'Could not remove the participant',
+            'error',
+          );
+          return;
+        }
+        showNotification(`${shortId(userId)} removed.`, 'success');
+        await loadContextDetails();
+      } finally {
+        setRoleBusyFor(null);
+      }
+    },
+    [clientApiService, showNotification, loadContextDetails],
+  );
 
   const handleGeneratePayload = useCallback(async () => {
     if (!inviteId.trim()) {
       showNotification('Please enter an invitee ID', 'error');
+      return;
+    }
+
+    // Ids are HEX since core rc.27. Checking here turns the contract's
+    // "contained invalid character '0' at byte 1" — which is what a hex id
+    // looks like to a base58 decoder, and says nothing useful — into a sentence
+    // that names the problem.
+    if (!isHexId(inviteId)) {
+      showNotification(
+        'That is not a Calimero id. It should be 64 hexadecimal characters.',
+        'error',
+      );
       return;
     }
 
@@ -1083,42 +1222,91 @@ const AgreementPage: React.FC = () => {
                   gap: spacing[3].value,
                 }}
               >
-                {contextDetails?.participants && contextDetails.participants.length > 0 ? (
-                  contextDetails.participants.map((participant) => {
-                    const userId = toBase58String(participant.user_id);
+                {roster.length > 0 ? (
+                  roster.map((entry) => {
+                    const promotions = promotionsFor(entry.level);
+                    const busy = roleBusyFor === entry.id;
                     return (
-                      <Flex key={userId} alignItems="center" gap="md">
-                        <Box
-                          style={{
-                            width: '32px',
-                            height: '32px',
-                            backgroundColor: '#16a34a',
-                            borderRadius: '50%',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                          }}
-                        >
-                          <Text
-                            size="sm"
-                            weight="medium"
-                            style={{ color: 'white' }}
+                      <Flex
+                        key={entry.id}
+                        alignItems="center"
+                        gap="md"
+                        style={{ justifyContent: 'space-between' }}
+                      >
+                        <Flex alignItems="center" gap="md">
+                          <Box
+                            style={{
+                              width: '32px',
+                              height: '32px',
+                              backgroundColor:
+                                entry.level === PermissionLevel.Admin
+                                  ? '#2563eb'
+                                  : '#16a34a',
+                              borderRadius: '50%',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              flexShrink: 0,
+                            }}
                           >
-                            {userId.slice(0, 2).toUpperCase()}
-                          </Text>
-                        </Box>
-                        <Box>
-                          <Text size="sm" weight="medium">
-                            {userId.slice(0, 6)}...
-                            {userId.slice(-4)}
-                          </Text>
-                          <Text
-                            size="xs"
-                            style={{ color: 'var(--current-text-secondary)' }}
-                          >
-                            {participant.permission_level}
-                          </Text>
-                        </Box>
+                            <Text
+                              size="sm"
+                              weight="medium"
+                              style={{ color: 'white' }}
+                            >
+                              {entry.id.slice(0, 2).toUpperCase()}
+                            </Text>
+                          </Box>
+                          <Box>
+                            {/*
+                              HEX, not base58. This panel used to render
+                              `bs58.encode(user_id)`, so every id on screen was
+                              in an encoding the contract rejects — copying one
+                              into the invite box failed with "contained invalid
+                              character '0'", because base58 has no `0` and that
+                              is what a hex id looks like to a base58 decoder.
+                            */}
+                            <Text size="sm" weight="medium">
+                              {shortId(entry.id)}
+                              {entry.isSelf ? ' (you)' : ''}
+                            </Text>
+                            <Text
+                              size="xs"
+                              style={{ color: 'var(--current-text-secondary)' }}
+                            >
+                              {entry.level} — {LEVEL_DESCRIPTIONS[entry.level]}
+                            </Text>
+                          </Box>
+                        </Flex>
+
+                        {iAmAdmin && (promotions.length > 0 ||
+                          canRemove(roster, entry)) ? (
+                          <Flex gap="sm" style={{ flexShrink: 0 }}>
+                            {promotions.map((level) => (
+                              <Button
+                                key={level}
+                                variant="secondary"
+                                disabled={busy}
+                                onClick={() => handlePromote(entry.id, level)}
+                                style={{ height: '32px', padding: '0 10px' }}
+                              >
+                                <Text size="xs">Make {level}</Text>
+                              </Button>
+                            ))}
+                            {canRemove(roster, entry) && (
+                              <Button
+                                variant="secondary"
+                                disabled={busy}
+                                onClick={() =>
+                                  handleRemoveParticipant(entry.id)
+                                }
+                                style={{ height: '32px', padding: '0 10px' }}
+                              >
+                                <Text size="xs">Remove</Text>
+                              </Button>
+                            )}
+                          </Flex>
+                        ) : null}
                       </Flex>
                     );
                   })
@@ -1127,6 +1315,18 @@ const AgreementPage: React.FC = () => {
                     {contextLoading
                       ? 'Loading participants...'
                       : 'No participants found'}
+                  </Text>
+                )}
+
+                {iAmAdmin && roster.length > 0 && (
+                  <Text
+                    size="xs"
+                    style={{
+                      color: 'var(--current-text-secondary)',
+                      marginTop: spacing[2].value,
+                    }}
+                  >
+                    {DEMOTION_UNAVAILABLE}
                   </Text>
                 )}
               </Box>
@@ -1560,7 +1760,7 @@ const AgreementPage: React.FC = () => {
           open={showInviteModal}
           onClose={() => {
             setShowInviteModal(false);
-            setInvitationUrl(null);
+            setInvite(null);
             setGeneratedPayload('');
             setInviteId('');
             setInviteMode('url');
@@ -1574,29 +1774,30 @@ const AgreementPage: React.FC = () => {
                 variant={inviteMode === 'url' ? 'primary' : 'secondary'}
                 onClick={() => {
                   setInviteMode('url');
-                  setInvitationUrl(null);
+                  setInvite(null);
                   setGeneratedPayload('');
                 }}
                 style={{ flex: 1 }}
               >
-                Invitation URL
+                Shareable link
               </Button>
               <Button
                 variant={inviteMode === 'payload' ? 'primary' : 'secondary'}
                 onClick={() => {
                   setInviteMode('payload');
-                  setInvitationUrl(null);
+                  setInvite(null);
                   setGeneratedPayload('');
                 }}
                 style={{ flex: 1 }}
               >
-                Invitation Payload
+                Invite one person
               </Button>
             </Flex>
 
             {inviteMode === 'url' ? (
-              // URL Mode
-              invitationUrl ? (
+              // Shareable-link mode: an OPEN invitation anybody holding the
+              // link may redeem, for the 24 hours it is valid.
+              invite ? (
                 <>
                   <Card
                     style={{
@@ -1623,12 +1824,15 @@ const AgreementPage: React.FC = () => {
                         marginBottom: spacing[3].value,
                       }}
                     >
-                      Share this URL with participants to invite them to this
-                      agreement:
+                      Send this link to the people you want on this agreement.
+                      It opens MeroSign — the desktop app if they have it
+                      installed, the web app otherwise — and joins them. It
+                      expires within a day, and it grants membership of this
+                      agreement and nothing else.
                     </Text>
                     <Input
                       type="text"
-                      value={invitationUrl}
+                      value={invite.link}
                       disabled={true}
                       style={{
                         marginBottom: spacing[3].value,
@@ -1637,18 +1841,46 @@ const AgreementPage: React.FC = () => {
                       }}
                     />
                     <Button
-                      onClick={handleCopyInvitationUrl}
+                      onClick={() =>
+                        copyToClipboard(invite.link, 'Invitation link')
+                      }
                       variant="primary"
                       style={{ width: '100%' }}
                     >
-                      Copy Invitation URL
+                      Copy invitation link
                     </Button>
+                    <Flex gap="sm" style={{ marginTop: spacing[3].value }}>
+                      {/*
+                        Secondary affordances. `calimero://` is a device-local
+                        transport — it does not survive being pasted into a chat
+                        window — and the bare code is for someone joining from
+                        another mero app's paste box.
+                      */}
+                      <Button
+                        variant="secondary"
+                        onClick={() =>
+                          copyToClipboard(invite.deepLink, 'Desktop link')
+                        }
+                        style={{ flex: 1 }}
+                      >
+                        Copy desktop link
+                      </Button>
+                      <Button
+                        variant="secondary"
+                        onClick={() =>
+                          copyToClipboard(invite.code, 'Invitation code')
+                        }
+                        style={{ flex: 1 }}
+                      >
+                        Copy code
+                      </Button>
+                    </Flex>
                   </Card>
                   <Button
                     variant="secondary"
                     onClick={() => {
                       setShowInviteModal(false);
-                      setInvitationUrl(null);
+                      setInvite(null);
                       setInviteMode('url');
                     }}
                     style={{ width: '100%' }}
@@ -1665,9 +1897,9 @@ const AgreementPage: React.FC = () => {
                       marginBottom: spacing[4].value,
                     }}
                   >
-                    Generate an invitation URL that participants can use to join
-                    this agreement. They will be able to join by clicking the
-                    link.
+                    Create a link anybody can use to join this agreement. Good
+                    for sending to several people at once; it expires within a
+                    day.
                   </Text>
                   <Button
                     onClick={handleGenerateOpenInvitation}
@@ -1681,7 +1913,7 @@ const AgreementPage: React.FC = () => {
                         <Text>Creating Invitation...</Text>
                       </Flex>
                     ) : (
-                      'Create Invitation URL'
+                      'Create invitation link'
                     )}
                   </Button>
                 </>

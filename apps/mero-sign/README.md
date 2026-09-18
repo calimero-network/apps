@@ -23,9 +23,13 @@ all without centralized servers or intermediaries.
 
 ### Creating or Joining Agreements
 
-- **Create Agreement**: A user creates a new shared context and becomes the Admin.
-- **Invite Collaborators**: The Admin generates an **invite payload** using other participants’ Calimero identity and assigns permissions (view/sign).
-- **Join Agreement**: A user on a different node enters the invite payload and names the agreement on their node.
+- **Create Agreement**: A user creates a new shared context, names it, and becomes the Admin. The name is written into the agreement's own contract state, so it replicates — it is not a label in one browser.
+- **Invite Collaborators**: two ways, both from the agreement screen.
+  - **Shareable link** — an open invitation, valid 24 hours, anybody holding the link may redeem it:
+    `https://links.calimero.network/com.calimero.mero-sign/join?invitation=<code>`.
+    It opens the desktop app on a device that has it and the web app otherwise. A `calimero://` deep link and the bare code are offered alongside it for the desktop and for pasting into another mero app.
+  - **Invite one person** — a targeted invitation minted for a named Calimero identity, with a permission assigned up front.
+- **Join Agreement**: open the link, or paste the link/code into *Join Agreement*. The joiner is **not** asked to name the agreement: the name comes from the agreement's replicated contract state, so every node shows what the creator typed.
 
 ### Shared Context Workflow
 
@@ -34,6 +38,48 @@ all without centralized servers or intermediaries.
   - Users **upload PDFs**
   - Members can **view or sign**, according to their permissions
   - Access remains restricted to invited participants—**no third parties have access**
+
+### Roles
+
+Every participant holds one of three levels, stored in the agreement's own
+contract state and keyed by **account** (so the same person on a second machine
+keeps their role):
+
+| Level   | What it allows                                                                 |
+| ------- | ------------------------------------------------------------------------------ |
+| `Read`  | Open the agreement and read its documents.                                     |
+| `Sign`  | Upload documents and sign them. What redeeming an invitation gives you.        |
+| `Admin` | Everything a signer can do, plus deleting documents and managing participants. |
+
+The agreement's creator is its first `Admin`. An admin can **promote** anyone in
+the roster, from the participants panel.
+
+⚠️ **Demotion is not offered, and that is a property of the contract rather than
+a missing button.** Permissions merge by taking the *higher* level, so a lowered
+level applies on the admin's node and is discarded the moment it meets a replica
+that still holds the old one. The contract refuses the write rather than
+accepting one it cannot converge, and the panel says so. The way to withdraw
+authority that does reach every node is to **remove** the participant. Making a
+demotion stick needs a last-writer-wins permission cell, which changes the stored
+layout and so requires recreating every existing context — an owner's decision.
+
+### Signing
+
+A signature is recorded for the **caller's account**, derived inside the contract
+from `env::account_id()`. There is no signer parameter — `sign_document`,
+`set_consent` and `mark_participant_signed` all take only the document. Nothing a
+client sends can name who signed.
+
+To sign you must be a participant holding `Sign` or `Admin`, and you must have
+consented to that document yourself. Once every participant has signed, the
+document becomes `FullySigned`.
+
+⚠️ **Upgrading from a bundle published before this:** consent is now keyed by
+account where it used to be keyed by the context member key, so anyone who had
+consented before the upgrade must consent again. No documents, signatures or
+agreements are lost — the stored layout is unchanged — and signatures recorded
+by the older bundle carry a device key, so they will not count toward
+`FullySigned` and those documents need re-signing.
 
 ### Signature Library
 
@@ -94,8 +140,10 @@ _Note: This feature is currently under development and will be available in a fu
 | -------------------------- | ---------------------------------------------------------------------------------- |
 | Private Context            | Local workspace per user for signature library and agreement list.                 |
 | Agreement Creation         | Create a shared context; you become its administrator.                             |
-| Invitation System          | Generate secure invite payloads tied to Calimero identities with permissions.      |
-| Join Agreement             | Input invite payload to create shared context on your node.                        |
+| Invitation System          | Shareable Calimero invite links, plus targeted payloads tied to an identity.       |
+| Join Agreement             | Open the link, or paste it; the agreement keeps the name its creator gave it.      |
+| Roles                      | Read / Sign / Admin, keyed by account; admins can promote and remove.              |
+| Signing                    | The signer is the caller's account; no client can name who signed.                 |
 | Collaborative PDF Workflow | Users upload, view, and sign PDFs based on assigned roles in context.              |
 | Document Storage           | All documents stored securely and encrypted within Calimero contexts.              |
 | Signature Library          | Personal signature library stored in user's private default context.               |
@@ -170,7 +218,8 @@ Replace `<APP_ID>`, `nodeX`, and other parameters as needed for your deployment.
 **Calimero-Based Contexts**
 
 - User-specific default context stores local signatures and membership.
-- Shared contexts are created or joined via invite payloads.
+- Shared contexts are created or joined via invitation links (open invitations) or targeted invite payloads.
+- An agreement's name lives in its contract state (`context_name`), which is why it is the same on every node.
 - All interactions (invite, upload, sign) use Calimero RPC and encryption.
 - Documents are stored encrypted within Calimero contexts, ensuring complete privacy.
 

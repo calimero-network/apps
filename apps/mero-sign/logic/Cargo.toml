@@ -56,3 +56,9 @@ hex                     = { workspace = true }
 #
 # NOTE: no [profile.*] — cargo ignores profiles in a workspace member and
 # `cargo mero build` then fails with `profile 'app-release' is not defined`.
+
+[dev-dependencies]
+# Enables `register_crdt_merge` + the native mock host, so `TestHost` can drive
+# CRDT state under `cargo test`. The contract had NO tests at all before this —
+# which is how `validate_admin_permissions` shipped passing for every caller.
+calimero-storage = { workspace = true, features = ["testing"] }

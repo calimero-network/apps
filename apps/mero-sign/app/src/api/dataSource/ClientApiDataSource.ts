@@ -16,6 +16,7 @@ import {
   UserId,
 } from '../clientApi';
 import { DefaultContextService } from '../defaultContextService';
+import { toHexId } from '../../lib/participants';
 import bs58 from 'bs58';
 
 const RequestConfig = {
@@ -66,8 +67,20 @@ export class ClientApiDataSource implements ClientApi {
     this.app = app;
   }
 
+  /**
+   * Record MY consent to sign a document.
+   *
+   * ⚠️ The `userId` parameter is gone. The contract used to take one and store
+   * consent against it with no gate at all, and consent was the only
+   * precondition `sign_document` checked — so the two together let one member
+   * manufacture both halves of somebody else's signature. The contract now
+   * derives the consenter from `env::account_id()`.
+   *
+   * `agreementContextUserID` is still passed, and is still correct: it is the
+   * EXECUTOR key that identifies which context member is making the call. Its
+   * only wrong use was as a signer identity.
+   */
   async setConsent(
-    userId: UserId,
     documentId: string,
     agreementContextID?: string,
     agreementContextUserID?: string,
@@ -86,7 +99,6 @@ export class ClientApiDataSource implements ClientApi {
           contextId: authConfig.contextId || getContextId() || '',
           method: ClientMethod.SET_CONSENT,
           argsJson: {
-            user_id_str: userId,
             document_id: documentId,
           },
           executorPublicKey: (authConfig.executorPublicKey ||
@@ -122,10 +134,23 @@ export class ClientApiDataSource implements ClientApi {
     }
   }
 
+  /**
+   * Has this ACCOUNT consented to sign this document?
+   *
+   * ⚠️ The first parameter used to be called `agreementContextUserID` and was
+   * used for BOTH the `user_id_str` argument and the executor key — one
+   * variable standing for two different identities. It held the context member
+   * (DEVICE) key, while consent is stored against the ACCOUNT, and since core
+   * rc.27 both are 64 hex characters, so the lookup type-checked and always
+   * missed: the consent modal reappeared for people who had already consented.
+   * The two are now separate parameters, and callers get their account from
+   * `whoami()`.
+   */
   async hasConsented(
-    agreementContextUserID: string,
+    userIdStr: UserId,
     documentId: string,
     agreementContextID?: string,
+    agreementContextUserID?: string,
   ): ApiResponse<boolean> {
     try {
       const authConfig =
@@ -141,7 +166,7 @@ export class ClientApiDataSource implements ClientApi {
           contextId: authConfig.contextId || getContextId() || '',
           method: ClientMethod.HAS_CONSENTED,
           argsJson: {
-            user_id_str: agreementContextUserID,
+            user_id_str: userIdStr,
             document_id: documentId,
           },
           executorPublicKey: (authConfig.executorPublicKey ||
@@ -236,6 +261,135 @@ export class ClientApiDataSource implements ClientApi {
           message: getErrorMessage(error),
         },
       };
+    }
+  }
+
+  /**
+   * Change an EXISTING participant's permission level.
+   *
+   * ⚠️ Raising only. The contract refuses a demotion because permissions merge
+   * by taking the higher rank, so a lowered level would apply on the admin's
+   * node and be discarded everywhere else. The refusal comes back as an error
+   * message explaining that; see `lib/participants.ts`.
+   */
+  async setParticipantPermission(
+    userId: UserId,
+    permission: PermissionLevel,
+    agreementContextID?: string,
+    agreementContextUserID?: string,
+  ): ApiResponse<void> {
+    return this.mutate(
+      ClientMethod.SET_PARTICIPANT_PERMISSION,
+      { user_id_str: userId, permission },
+      agreementContextID,
+      agreementContextUserID,
+    );
+  }
+
+  /** Remove a participant, taking their permission with them. */
+  async removeParticipant(
+    userId: UserId,
+    agreementContextID?: string,
+    agreementContextUserID?: string,
+  ): ApiResponse<void> {
+    return this.mutate(
+      ClientMethod.REMOVE_PARTICIPANT,
+      { user_id_str: userId },
+      agreementContextID,
+      agreementContextUserID,
+    );
+  }
+
+  /**
+   * The caller's ACCOUNT id, straight from the contract.
+   *
+   * The app cannot work this out for itself: it holds
+   * `localStorage['agreementContextUserID']`, which is the context member
+   * (DEVICE) key from the join response, while every permission is keyed by
+   * account — and since core rc.27 both are 64 hex characters, so comparing the
+   * wrong pair type-checks and silently matches nothing. Asking the contract is
+   * the only way to know which row of the roster is you.
+   */
+  async whoami(
+    agreementContextID?: string,
+    agreementContextUserID?: string,
+  ): ApiResponse<UserId> {
+    const res = await this.query(
+      ClientMethod.WHOAMI,
+      {},
+      agreementContextID,
+      agreementContextUserID,
+    );
+    if (res.error) return { data: null, error: res.error };
+    return { data: toHexId(res.data as never), error: null };
+  }
+
+  /**
+   * One place the three-line auth dance and the error unwrapping live, instead
+   * of a copy per method. Used by the calls added with roles; the older methods
+   * are left as they are rather than rewritten under an unrelated change.
+   */
+  private async mutate(
+    method: ClientMethod,
+    argsJson: Record<string, unknown>,
+    agreementContextID?: string,
+    agreementContextUserID?: string,
+  ): ApiResponse<void> {
+    const res = await this.query(
+      method,
+      argsJson,
+      agreementContextID,
+      agreementContextUserID,
+    );
+    if (res.error) return { data: undefined, error: res.error };
+    return { data: undefined, error: null };
+  }
+
+  private async query(
+    method: ClientMethod,
+    argsJson: Record<string, unknown>,
+    agreementContextID?: string,
+    agreementContextUserID?: string,
+  ): ApiResponse<unknown> {
+    try {
+      const authConfig =
+        agreementContextID && agreementContextUserID
+          ? getContextSpecificAuthConfig(
+              agreementContextID,
+              agreementContextUserID,
+            )
+          : getAuthConfig();
+
+      if (authConfig.executorPublicKey) {
+        setExecutorPublicKey(authConfig.executorPublicKey);
+      }
+
+      const response = await rpcClient.execute(
+        {
+          contextId: authConfig.contextId || getContextId() || '',
+          method,
+          argsJson,
+          executorPublicKey: (authConfig.executorPublicKey ||
+            getExecutorPublicKey() ||
+            '') as string,
+        },
+        RequestConfig,
+      );
+
+      if (response?.error) {
+        return {
+          data: null,
+          error: {
+            code: response.error.code ?? 500,
+            message: getErrorMessage(response.error),
+          },
+        };
+      }
+
+      return { data: response.result?.output ?? response.result, error: null };
+    } catch (error: any) {
+      console.error(`ClientApiDataSource: Error in ${method}:`, error);
+      return { data: null, error: { code: 500, message: getErrorMessage(error) } };
     }
   }
 
@@ -424,13 +578,30 @@ export class ClientApiDataSource implements ClientApi {
       };
     }
   }
+  /**
+   * Sign a document AS MYSELF.
+   *
+   * ⚠️ The `signerId` parameter is gone, and its absence is the point. The
+   * contract used to take `signer_id_str` and write it straight into
+   * `DocumentSignature.signer` with no check against the caller, so any member
+   * could record a signature attributed to another member. This app handed it
+   * `localStorage['agreementContextUserID']` — the context member DEVICE key —
+   * while the contract keys participants and permissions by ACCOUNT, so the
+   * recorded signer matched nobody in the roster and no document could ever
+   * reach `FullySigned` either.
+   *
+   * The contract now derives the signer from `env::account_id()`. Nothing here
+   * can name a signer, so nothing here can name the wrong one.
+   *
+   * The executor key is still the device key, which is its correct use: it says
+   * which context member is making the call, not who is signing.
+   */
   async signDocument(
     contextId: string,
     documentId: string,
     pdfBlobIdStr: string,
     fileSize: number,
     newHash: string,
-    signerId: string,
     agreementContextID?: string,
     agreementContextUserID?: string,
   ): ApiResponse<void> {
@@ -443,7 +614,11 @@ export class ClientApiDataSource implements ClientApi {
             )
           : getAuthConfig();
 
-      if (!authConfig || !authConfig.contextId || !signerId) {
+      const executorPublicKey = (authConfig?.executorPublicKey ||
+        getExecutorPublicKey() ||
+        '') as string;
+
+      if (!contextId || !executorPublicKey) {
         return {
           data: null,
           error: {
@@ -458,7 +633,6 @@ export class ClientApiDataSource implements ClientApi {
         pdf_blob_id_str: string;
         file_size: number;
         new_hash: string;
-        signer_id_str: string;
       }> = {
         contextId: contextId,
         method: ClientMethod.SIGN_DOCUMENT,
@@ -467,9 +641,8 @@ export class ClientApiDataSource implements ClientApi {
           pdf_blob_id_str: pdfBlobIdStr,
           file_size: fileSize,
           new_hash: newHash,
-          signer_id_str: signerId,
         },
-        executorPublicKey: signerId,
+        executorPublicKey,
       };
 
       const response = await rpcClient.execute<
@@ -478,7 +651,6 @@ export class ClientApiDataSource implements ClientApi {
           pdf_blob_id_str: string;
           file_size: number;
           new_hash: string;
-          signer_id_str: string;
         },
         void
       >(params, RequestConfig);
@@ -1190,10 +1362,17 @@ export class ClientApiDataSource implements ClientApi {
     }
   }
 
+  /**
+   * Recompute a document's status after I have signed it.
+   *
+   * The `userId` parameter is gone for the same reason as the other two. Note
+   * the effect this unlocks: the contract compares recorded signers against
+   * `participants`, which holds ACCOUNTS, while signatures held the DEVICE key
+   * this app used to pass — so no document could ever reach `FullySigned`.
+   */
   async markParticipantSigned(
     contextId: string,
     documentId: string,
-    userId: string,
     agreementContextID?: string,
     agreementContextUserID?: string,
   ): ApiResponse<void> {
@@ -1215,7 +1394,6 @@ export class ClientApiDataSource implements ClientApi {
           method: ClientMethod.MARK_PARTICIPANT_SIGNED,
           argsJson: {
             document_id: documentId,
-            user_id_str: userId,
           },
           executorPublicKey: (authConfig.executorPublicKey ||
             getExecutorPublicKey() ||
