@@ -374,6 +374,14 @@ function AccountCloudStep({
     // Strip the fragment first, so a reload after this does not replay it.
     window.history.replaceState(null, '', window.location.pathname + window.location.search);
     const pending = loadPendingLink();
+    // Read the identity from storage rather than from `identity` above. This
+    // effect has `[]` deps, so its closure holds the FIRST render's value --
+    // and `identity` is null then, because it is loaded in the effect above
+    // and `setIdentity` does not apply until the next render. Reading the
+    // state variable here made `!identity` always true, so every returning
+    // grant was rejected as "this tab no longer knows what it was for" and the
+    // link could never complete. `pending` was already read this way.
+    const linkIdentity = loadIdentity();
     clearPendingLink();
 
     if (callback.error) {
@@ -386,17 +394,22 @@ function AccountCloudStep({
       });
       return;
     }
-    if (!pending || !identity) {
+    // Two different failures; say which, because the fixes differ. A missing
+    // pending record means this browser did not start the round trip (or
+    // already answered it); a missing identity means the key it was for is
+    // gone, and starting again would only reach the same place.
+    if (!pending || !linkIdentity) {
       setOutcome({
-        text:
-          'A grant came back but this tab no longer knows what it was for. Start the connection again.',
+        text: !linkIdentity
+          ? 'A grant came back but this browser holds no account key to sign it with. Create or restore an identity, then connect again.'
+          : 'A grant came back but this tab no longer knows what it was for. Start the connection again.',
         error: true,
       });
       return;
     }
 
     setBusy(true);
-    finishCloudLink(pending, callback.grant as string, identity)
+    finishCloudLink(pending, callback.grant as string, linkIdentity)
       .then((link) => {
         setLinked(true);
         setOutcome({
@@ -408,9 +421,10 @@ function AccountCloudStep({
       })
       .catch((error) => setOutcome({ text: errorText(error), error: true }))
       .finally(() => setBusy(false));
-    // Mount only: a callback is answered once, and `identity` arrives in the
-    // same first render pass from `loadIdentity`.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Mount only: a callback is answered once. Nothing here reads component
+    // state, so the dep list is honestly empty and needs no suppression --
+    // the previous `exhaustive-deps` disable is what hid the stale `identity`
+    // read that broke this path.
   }, []);
 
   const connectCloud = useCallback(() => {
