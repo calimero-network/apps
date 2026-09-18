@@ -83,7 +83,7 @@
 }
 .copyBtn {
   background: var(--accent-grad);
-  color: #fff;
+  color: var(--accent-text);
   border: none;
   border-radius: 8px;
   padding: 7px 16px;
@@ -133,7 +133,7 @@
 
 .callBtn {
   background: var(--accent-grad);
-  color: #fff;
+  color: var(--accent-text);
   border: none;
   border-radius: 12px;
   padding: 13px 26px;
@@ -146,7 +146,7 @@
 }
 .callBtn:hover {
   transform: translateY(-2px);
-  box-shadow: 0 12px 38px rgba(109, 131, 255, 0.5);
+  box-shadow: 0 12px 38px var(--accent-soft);
 }
 .callBtn:active {
   transform: translateY(0);
@@ -195,8 +195,8 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  background: linear-gradient(90deg, rgba(67, 209, 127, 0.12), rgba(67, 209, 127, 0.04));
-  border: 1px solid rgba(67, 209, 127, 0.28);
+  background: linear-gradient(90deg, rgba(165, 255, 17, 0.12), rgba(165, 255, 17, 0.04));
+  border: 1px solid rgba(165, 255, 17, 0.28);
   border-radius: var(--radius);
   padding: 15px 18px;
   margin-bottom: 26px;
@@ -207,13 +207,13 @@
   height: 10px;
   border-radius: 50%;
   background: var(--green);
-  box-shadow: 0 0 0 0 rgba(67, 209, 127, 0.6);
+  box-shadow: 0 0 0 0 rgba(165, 255, 17, 0.6);
   animation: pulse 1.8s infinite;
 }
 @keyframes pulse {
-  0% { box-shadow: 0 0 0 0 rgba(67, 209, 127, 0.5); }
-  70% { box-shadow: 0 0 0 10px rgba(67, 209, 127, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(67, 209, 127, 0); }
+  0% { box-shadow: 0 0 0 0 rgba(165, 255, 17, 0.5); }
+  70% { box-shadow: 0 0 0 10px rgba(165, 255, 17, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(165, 255, 17, 0); }
 }
 
 .bannerJoin {
@@ -272,23 +272,32 @@
 }
 .on {
   background: var(--green);
-  box-shadow: 0 0 8px rgba(67, 209, 127, 0.7);
+  box-shadow: 0 0 8px rgba(165, 255, 17, 0.7);
 }
-.off { background: #4a5366; }
+.off { background: var(--text-faint); }
 
+/* The initials chip in the people list.
+ *
+ * It was `--accent-grad` (now a flat #a5ff11) with `color: #fff` — white on the
+ * brightest colour in the palette, about 1.2:1, which is the single worst
+ * pairing the theme can produce. The green is a FILL, and the ink for it is
+ * --accent-text; that is the whole reason the token exists.
+ *
+ * `--accent-soft` for the tint rather than the fill, so a column of these reads
+ * as a list of people instead of a row of highlighter marks. */
 .avatar {
   width: 42px;
   height: 42px;
   border-radius: 12px;
-  background: var(--accent-grad);
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-ink);
   display: flex;
   align-items: center;
   justify-content: center;
   font-weight: 700;
   font-size: 0.85rem;
-  color: #fff;
+  color: var(--accent-ink);
   flex-shrink: 0;
-  box-shadow: 0 4px 14px rgba(109, 131, 255, 0.3);
 }
 
 .who {
