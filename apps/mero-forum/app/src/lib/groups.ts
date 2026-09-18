@@ -24,7 +24,7 @@
 // retry and fallback in them, they are the part most likely to need a fix, and a
 // component is the worst place to unit-test one.
 
-import type { MeroJs } from "@calimero-network/mero-js";
+import { CAPABILITIES, type MeroJs } from "@calimero-network/mero-js";
 import {
   encodeInvite,
   groupIdOfInvite,
@@ -44,8 +44,61 @@ export type AdminLike = MeroJs["admin"];
 export type StatusFn = (message: string) => void;
 const noop: StatusFn = () => {};
 
-/** All base capabilities. Members who cannot post chunks are of no use here. */
-const ALL_BASE_CAPABILITIES = 15;
+/**
+ * What an invited MEMBER may do in a space.
+ *
+ * ── Why this is not 15 ───────────────────────────────────────────────────────
+ *
+ * It was. `15` came over from mero-stream with this module, where the comment
+ * read "members who cannot post chunks are of no use here" — a fair call for a
+ * video app. Two things are wrong with it here, and they pull in opposite
+ * directions:
+ *
+ *   1. **15 includes MANAGE_MEMBERS (1 << 3).** So every person you invited to
+ *      a space could change anyone's role, including demoting you. There was no
+ *      role system to speak of, only the appearance of one: everyone admitted
+ *      was an admin.
+ *
+ *   2. **15 does NOT include the bits `createForum` actually needs** —
+ *      CAN_CREATE_SUBGROUP (1 << 5), CAN_MANAGE_VISIBILITY (1 << 7) and
+ *      CAN_MANAGE_METADATA (1 << 8). The namespace OWNER holds full
+ *      capabilities independently of this default, so creating a forum worked
+ *      for whoever made the space and failed for everyone they invited.
+ *
+ * So the old default simultaneously over-granted governance and under-granted
+ * the thing a member is there to do.
+ *
+ * The bits below are derived from this app's own call sites, not chosen:
+ *
+ *   createForum()   →  createGroupInNamespace    CAN_CREATE_SUBGROUP
+ *                      setGroupMetadata          CAN_MANAGE_METADATA
+ *                      setSubgroupVisibility     CAN_MANAGE_VISIBILITY
+ *                      createContext             CAN_CREATE_CONTEXT
+ *   mint*Invite()   →  createNamespaceInvitation CAN_INVITE_MEMBERS
+ *   enterForum()    →  joinSubgroupInheritance   CAN_JOIN_OPEN_SUBGROUPS
+ *   (admin only)    →  updateMemberRole          MANAGE_MEMBERS
+ *
+ * A forum is collaborative, so a Member gets everything except the last one:
+ * they can read, post, start a new forum and invite people. What they cannot do
+ * is change who governs the space.
+ *
+ * ⚠️ Deliberately withheld from BOTH roles: CAN_AUTHOR_ON_BEHALF (1 << 9),
+ * which lets a node publish writes attributed to another member, and
+ * MANAGE_APPLICATION (1 << 4). No call site here needs either, and the first
+ * would let one member post under another's name — in an app whose whole
+ * premise is who said what.
+ */
+export const MEMBER_CAPABILITIES =
+  CAPABILITIES.CAN_CREATE_CONTEXT |
+  CAPABILITIES.CAN_INVITE_MEMBERS |
+  CAPABILITIES.CAN_JOIN_OPEN_SUBGROUPS |
+  CAPABILITIES.CAN_CREATE_SUBGROUP |
+  CAPABILITIES.CAN_MANAGE_VISIBILITY |
+  CAPABILITIES.CAN_MANAGE_METADATA;
+
+/** A Member, plus the one bit that governs the space. */
+export const ADMIN_CAPABILITIES =
+  MEMBER_CAPABILITIES | CAPABILITIES.MANAGE_MEMBERS;
 
 /** How long to wait for a joined context's identity to land, and how often to look. */
 const IDENTITY_TIMEOUT_MS = 60_000;
@@ -144,7 +197,7 @@ export async function createSpaceNamespace(
   // invitees their permissions rather than breaking the namespace.
   await admin
     .setDefaultCapabilities(ns.namespaceId, {
-      defaultCapabilities: ALL_BASE_CAPABILITIES,
+      defaultCapabilities: MEMBER_CAPABILITIES,
     })
     .catch(() => {});
 
