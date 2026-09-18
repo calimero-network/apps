@@ -39,15 +39,37 @@ const DEFAULTS = {
   namespaceId: '', invitationJson: '', nodeKey: '', contextId: '',
   nodeUrl: '', relayUrl: '', admitUrl: '',
 };
+const ID = {
+  accountId: 'aa'.repeat(32), deviceId: 'bb'.repeat(32),
+  devicePublicKey: 'cc'.repeat(32), deviceSecret: 'dd'.repeat(32),
+  credential: 'ee'.repeat(64), rootSecret: 'ff'.repeat(32),
+};
+const CLAIM = {
+  accountId: 'aa'.repeat(32), cloudUrl: 'https://manager.example',
+  provenAt: Date.now(), linked: true, sessionToken: 'tok', email: 'a@b.c',
+};
+
+// Every key the app reads at mount, and the values that have actually been
+// stored by earlier versions or by hand. `settings` alone was not enough: the
+// blank screen was in the strip, and the strip reads all four.
 const cases = [
-  ['fresh tab', null],
-  ['bare host', { nodeUrl: 'relay.example' }],
-  ['whitespace', { nodeUrl: ' ' }],
-  ['no scheme', { nodeUrl: 'localhost:2428' }],
-  ['typo scheme', { nodeUrl: 'htp:/relay.example' }],
-  ['valid url', { nodeUrl: 'https://relay.example' }],
-  ['populated', { nodeUrl: 'relay.example', nodeKey: 'ab'.repeat(32), contextId: 'cd'.repeat(32), namespaceId: 'ff'.repeat(32), invitationJson: '{"invitation":{"group_id":"' + 'ab'.repeat(32) + '","admitters":["aa"]}}' }],
-  ['garbage json', 'RAW'],
+  ['fresh tab', {}],
+  ['bare host', { settings: { nodeUrl: 'relay.example' } }],
+  ['whitespace', { settings: { nodeUrl: ' ' } }],
+  ['no scheme', { settings: { nodeUrl: 'localhost:2428' } }],
+  ['typo scheme', { settings: { nodeUrl: 'htp:/relay.example' } }],
+  ['valid url', { settings: { nodeUrl: 'https://relay.example' } }],
+  ['populated', { settings: { nodeUrl: 'relay.example', nodeKey: 'ab'.repeat(32), contextId: 'cd'.repeat(32), namespaceId: 'ff'.repeat(32), invitationJson: '{"invitation":{"group_id":"' + 'ab'.repeat(32) + '","admitters":["aa"]}}' } }],
+  ['garbage settings', { settings: 'RAW' }],
+  ['identity held', { identity: ID }],
+  ['identity + bad url', { identity: ID, settings: { nodeUrl: 'relay.example' } }],
+  ['claim linked', { identity: ID, claim: CLAIM }],
+  ['claim unlinked', { identity: ID, claim: { ...CLAIM, linked: false, sessionToken: '', email: undefined } }],
+  ['claim half-written', { identity: ID, claim: { accountId: 'aa'.repeat(32), cloudUrl: 'https://x.example' } }],
+  ['garbage identity', { identity: 'RAW' }],
+  ['garbage claim', { claim: 'RAW' }],
+  ['pending link', { identity: ID, pendingLink: { cloudUrl: 'https://manager.example', accountId: 'aa'.repeat(32) } }],
+  ['everything at once', { identity: ID, claim: CLAIM, settings: { nodeUrl: 'relay.example', relayUrl: ' ', nodeKey: 'zz', contextId: 'x' }, pendingLink: { cloudUrl: 'https://m.example', accountId: 'aa'.repeat(32) } }],
 ];
 const browser = await chromium.launch(
   process.env.PW_CHROMIUM ? { executablePath: process.env.PW_CHROMIUM } : {},
@@ -57,11 +79,22 @@ for (const [name, patch] of cases) {
   const page = await browser.newPage();
   const errs = [];
   page.on('pageerror', (e) => errs.push(e.message));
-  if (patch !== null) {
-    await page.addInitScript((p) => {
-      localStorage.setItem('calimero.delegated-demo.settings', p === 'RAW' ? '{not json' : JSON.stringify(p));
-    }, patch === 'RAW' ? 'RAW' : { ...DEFAULTS, ...patch });
-  }
+  await page.addInitScript((p) => {
+    const KEYS = {
+      identity: 'calimero.delegated-demo.identity',
+      settings: 'calimero.delegated-demo.settings',
+      claim: 'calimero.delegated-demo.account-claim',
+      pendingLink: 'calimero.delegated-demo.pending-link',
+    };
+    for (const [name, key] of Object.entries(KEYS)) {
+      const value = p[name];
+      if (value === undefined) continue;
+      // 'RAW' seeds a blob that is not JSON at all, which is what a value
+      // written by an older shape (or a truncated write) looks like.
+      localStorage.setItem(key, value === 'RAW' ? '{not json' : JSON.stringify(value));
+    }
+  }, { ...patch, settings: patch.settings === 'RAW' ? 'RAW' : patch.settings ? { ...DEFAULTS, ...patch.settings } : undefined });
+
   await page.goto(`${BASE}/`, { waitUntil: 'networkidle' });
   await page.waitForTimeout(400);
   const len = (await page.locator('body').innerText()).length;
