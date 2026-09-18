@@ -410,3 +410,58 @@ by the page is usable by anything running as the page. What is removed is **exfi
 the attacker cannot walk away with the identity, and revoking the device ends it. A stolen
 hex secret, by contrast, is the account until the root revokes it, and a stolen root is the
 account permanently.
+
+### Running steps 7–10 against a local node
+
+The setup above (written for rc.38) does not work on master, in four ways that each fail
+silently or confusingly. What follows was run end to end against `merod` built from master.
+
+```bash
+merod --home ~/.calimero --node demo init --server-port 2428 --swarm-port 2528 --auth-mode embedded --no-admin --device-key-login --device-key-login-audience http://localhost:5173 --public-intents
+```
+
+- **`--auth-mode embedded` is required.** `--device-key-login` warns and does nothing
+  without it: the provider lives in an auth service the node is otherwise not running.
+- **`--public-intents` is required for step 10.** Without it the relay route
+  (`POST /admin-api/contexts/{id}/intents`) is not served to a caller holding no node
+  credential, which is every caller this demo is about.
+- **`node_key` needs no value.** Master fills it from the node's own signing key at
+  startup; the older instruction to read it from `GET /admin-api/identity` risks pinning
+  the libp2p key, which is a different key and fails at login. A node that has never taken
+  part in a namespace has no signing key yet, and the provider stays disabled until it does.
+- **`--device-key-login` sets the `providers` toggle for you.** Hand-editing
+  `[auth.account_proof]` alone leaves the provider off, and `/auth/challenge` answers 404 —
+  the symptom the older instructions blamed on the release.
+
+`--no-admin` keeps the node free of a password account, which is fine for the provider but
+means `meroctl` cannot authenticate: it only signs in through a loopback browser flow.
+Either drop `--no-admin` and pass admin credentials at init, or provision one afterwards
+with the node **stopped** (`merod auth set-admin` takes an exclusive lock on the auth
+database):
+
+```bash
+merod --home ~/.calimero --node demo auth set-admin --admin-user demo --admin-password-file ./admin.pw
+```
+
+Then install the bundle, create the namespace and context, grant the node authorship, and
+add your offline account as a member. A namespace **is** its root group, so membership and
+capabilities are group routes:
+
+```bash
+meroctl --node demo app install --path dist/com.calimero.scaffolding-e2e-0.0.0.mpk
+meroctl --node demo namespace create --application-id <app-id>
+meroctl --node demo context create --application-id <app-id> --group-id <namespace-id>
+meroctl --node demo group members set-capabilities <namespace-id> <node-account> --can-author-on-behalf
+meroctl --node demo group members add <namespace-id> <your-account-id> Member
+```
+
+**The account never signs to become a member**, which is what makes steps 7–10 possible at
+all: `MemberAdded` is admin-signed, so an operator adds the account and the account holder
+proves possession later, at login. The joiner-signed membership op that step 3 uses would
+need the device key, and that key cannot leave the browser.
+
+Two things worth knowing about the node's own account: it is created as the namespace's
+`Admin` with a capability mask of **0**, so the `CAN_AUTHOR_ON_BEHALF` grant above is not
+optional — the default-capability seeding covers members admitted later, not the creator.
+And the capabilities call **replaces** the whole mask, so read it first on a node that
+holds others.
