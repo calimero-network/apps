@@ -66,7 +66,7 @@
 
 .createBtn {
   background: var(--accent-grad);
-  color: #fff;
+  color: var(--accent-text);
   border: none;
   border-radius: 12px;
   padding: 13px 24px;
@@ -156,7 +156,7 @@
 }
 .row:hover {
   background: var(--surface-hover);
-  border-color: rgba(109, 131, 255, 0.5);
+  border-color: var(--accent-soft);
   transform: translateY(-1px);
 }
 .row:disabled {
@@ -171,11 +171,14 @@
   width: 40px;
   height: 40px;
   border-radius: 11px;
-  background: var(--accent-grad);
-  color: #fff;
+  /* Soft, not the full fill: these stack in a list, and a column of solid
+     #a5ff11 blocks reads as highlighting rather than as rooms. */
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-ink);
+  color: var(--accent-ink);
   font-weight: 700;
   font-size: 0.8rem;
-  box-shadow: 0 4px 14px rgba(109, 131, 255, 0.3);
+  box-shadow: 0 4px 14px var(--accent-soft);
 }
 
 .roomId {

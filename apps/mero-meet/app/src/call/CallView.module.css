@@ -41,7 +41,7 @@
   border-radius: 50%;
   flex: none;
   background: var(--accent-grad);
-  box-shadow: 0 0 10px rgba(109, 131, 255, 0.8);
+  box-shadow: 0 0 10px var(--accent-soft);
 }
 .topRight {
   display: inline-flex;
@@ -205,7 +205,7 @@
   border-radius: 9px;
   border: none;
   background: var(--accent);
-  color: #fff;
+  color: var(--accent-text);
   font-weight: 600;
   cursor: pointer;
 }
@@ -293,7 +293,7 @@
   padding: 0 4px;
   border-radius: 999px;
   background: var(--accent);
-  color: #fff;
+  color: var(--accent-text);
   font-size: 0.68rem;
   font-weight: 700;
   display: grid;
@@ -345,7 +345,7 @@
 }
 .popSel {
   background: var(--accent);
-  color: #fff;
+  color: var(--accent-text);
 }
 .popSel:hover {
   background: var(--accent-2);

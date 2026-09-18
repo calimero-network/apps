@@ -252,10 +252,18 @@
   min-width: 0;
 }
 
-/* A solid brand chip, not a tint. `color: var(--accent)` on `--accent-soft` was
-   bright green on pale green — about 1.5:1 in light mode, and the initials were
-   effectively invisible. Near-black on the full accent is the readable pairing
-   and gives each row a spot of real colour. */
+/* A TINT with a dark ink — reported as "too green".
+ *
+ * Two earlier attempts bracket the right answer. `color: var(--accent)` on
+ * `--accent-soft` was bright green on pale green, ~1.5:1, and the initials were
+ * effectively invisible. Replacing it with near-black on the FULL accent fixed
+ * the contrast (15:1) and introduced the opposite problem: a list is a column
+ * of these, and a column of solid #a5ff11 blocks reads as highlighting rather
+ * than as rooms — the brightest colour in the palette repeated down the page.
+ *
+ * `--accent-ink` on `--accent-soft` is 4.85:1 (measured over a white card), so
+ * it clears AA while the row reads as a list again. The full fill is kept for
+ * the video tile, where the chip sits on near-black and IS the contrast. */
 .avatar {
   display: grid;
   place-items: center;
@@ -263,9 +271,9 @@
   height: 34px;
   flex: none;
   border-radius: var(--radius-sm);
-  background: var(--accent);
-  border: 1px solid var(--accent);
-  color: var(--accent-text);
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-ink);
+  color: var(--accent-ink);
   font-weight: 700;
   font-size: 0.75rem;
   letter-spacing: 0.01em;

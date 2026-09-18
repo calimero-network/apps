@@ -27,7 +27,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: radial-gradient(circle at 50% 38%, #232838, #0f1118 72%);
+  background: radial-gradient(circle at 50% 38%, #1b1b1f, #0b0b0d 72%);
 }
 
 .avatar span {
@@ -36,12 +36,16 @@
   width: clamp(52px, 22%, 96px);
   aspect-ratio: 1;
   border-radius: 50%;
-  background: var(--accent-grad);
+  /* The green is a fill; --accent-text is its ink. This was white on #a5ff11,
+     about 1.2:1 — and unlike the list avatar this one keeps the bright fill,
+     because it sits on the near-black video tile where the chip itself is what
+     provides the contrast. */
+  background: var(--accent);
   font-size: clamp(1.1rem, 4vw, 2rem);
   font-weight: 700;
-  color: #fff;
+  color: var(--accent-text);
   letter-spacing: 0.04em;
-  box-shadow: 0 8px 26px rgba(109, 131, 255, 0.35);
+  box-shadow: 0 8px 26px var(--accent-soft);
 }
 
 .overlay {
