@@ -1,110 +1,129 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Routes, Route, BrowserRouter, useNavigate } from 'react-router-dom';
 import { ThemeProvider } from './contexts/ThemeContext';
-import Dashboard from './pages/dashboard';
-import AgreementPage from './pages/agreement';
-import SignaturesPage from './pages/signatures';
-import { MobileLayout } from './components/MobileLayout';
-import { CalimeroConnectionRequired } from './components/CalimeroConnectionRequired';
+import AgreementsPage from './pages/app/AgreementsPage';
+import AgreementPage from './pages/app/AgreementPage';
+import SignaturesPage from './pages/app/SignaturesPage';
+import ConnectGate from './components/ConnectGate';
+import NotFound from './components/NotFound';
 import LandingPage from './pages/landing/LandingPage';
+import ConnectPopup from './pages/landing/ConnectPopup';
 import InvitationHandlerPopup from './components/InvitationHandlerPopup';
 import { useCalimero } from '@calimero-network/calimero-client';
-import {
-  onInvitation,
-  type CapturedInvitation,
-} from './lib/invitationIntents';
+import { ROUTES, type Screen } from './routes';
+import { onInvitation, type CapturedInvitation } from './lib/invitationIntents';
+
+/**
+ * The single screen renderer.
+ *
+ * `App.tsx` maps the route table in `src/routes.ts` onto this, so the table is
+ * the one description of what the app can show. Nothing here navigates: an
+ * unauthenticated visitor on an app route is shown `ConnectGate` in place of the
+ * page, at the URL they asked for, rather than being sent somewhere else. See
+ * the long note in `src/routes.ts` for why that matters.
+ */
+function Screenful({
+  screen,
+  authed,
+  publicScreen,
+  onConnect,
+}: {
+  screen: Screen;
+  authed: boolean;
+  publicScreen: boolean;
+  onConnect: () => void;
+}) {
+  if (!authed && !publicScreen) {
+    return (
+      <ConnectGate
+        what={
+          screen === 'signatures' ? 'Your signature library' : 'This agreement'
+        }
+      />
+    );
+  }
+
+  switch (screen) {
+    case 'agreements':
+      return <AgreementsPage />;
+    case 'agreement':
+      return <AgreementPage />;
+    case 'signatures':
+      return <SignaturesPage />;
+    case 'notFound':
+      return <NotFound />;
+    case 'landing':
+    default:
+      // Signed in, `/` is the app rather than the pitch — a render decision, not
+      // a redirect, so the URL never changes under anybody. `/landing` keeps
+      // showing the landing page either way, which is what makes it a front
+      // door you can link to rather than a fallback you fall into.
+      return authed && window.location.pathname === '/' ? (
+        <AgreementsPage />
+      ) : (
+        // ⚠️ `onConnect` is load-bearing. The landing template leaves this hook
+        // for apps whose sign-in is not the shared popup, and Mero Sign is one
+        // — it is on `@calimero-network/calimero-client` rather than mero-react,
+        // so `landing:generate` writes it no `loginPopup`. It used to open the
+        // sidebar; the sidebar is gone, so it opens a modal instead. Without
+        // this the CTA does nothing, which is what deleting the sidebar did
+        // until the landing suite caught it.
+        <LandingPage onConnect={onConnect} />
+      );
+  }
+}
 
 function AppContent() {
   const { isAuthenticated } = useCalimero();
-  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [invitation, setInvitation] = useState<CapturedInvitation | null>(null);
+  const [connectOpen, setConnectOpen] = useState(false);
   const navigate = useNavigate();
 
-  // ── Invitations are captured at APP level, not per page ────────────────────
-  //
-  // An invitation link can land anywhere: `/` for a web visitor, the launcher's
-  // rewritten frontend URL on the desktop, or a route this app does not even
-  // have. Subscribing here means the prompt appears wherever it lands.
-  //
-  // Subscribed OUTSIDE the `isAuthenticated` branch, and unconditionally. The
-  // previous version only looked for an invitation once the session existed, and
-  // only ever read `location.search` — so a signed-out visitor opening a link
-  // went through the auth redirect and arrived with the invitation gone. The
-  // platform store now holds the intent across that redirect (capture starts in
-  // main.tsx, before React mounts) and replays it here.
+  // Invitations are captured at APP level, not per page: a link can land on any
+  // route. Subscribed unconditionally, outside any auth branch — capture starts
+  // in main.tsx before React mounts, so an invitation survives the login
+  // redirect. See `lib/invitationIntents.ts`.
   useEffect(() => onInvitation(setInvitation), []);
 
   const handleInvitationSuccess = useCallback(
     (agreement: { contextId: string; name: string }) => {
       invitation?.resolve();
       setInvitation(null);
-      // The dashboard's list comes from the private context, which the redeem
-      // routine has just written to. Navigating with a key forces it to reload
-      // rather than showing the pre-join list.
-      navigate('/', { replace: true, state: { joined: agreement.contextId } });
+      navigate(`/agreements/${agreement.contextId}`, { replace: true });
     },
     [invitation, navigate],
   );
 
   const handleInvitationError = useCallback(() => {
-    // Acked on decline too, or the store replays the same invitation on every
-    // reload and the prompt becomes impossible to dismiss.
+    // Acked on decline too, or the store replays it on every reload and the
+    // prompt becomes impossible to dismiss.
     invitation?.resolve();
     setInvitation(null);
   }, [invitation]);
 
-  // Unauthenticated, `/` is the explainer and every other path is the connect
-  // gate. The app had no landing page at all: an unauthenticated visitor got
-  // `CalimeroConnectionRequired` — a competent gate that says what to click and
-  // never what MeroSign is. That component stays, and stays reachable, because
-  // it is the right screen for losing a connection mid-session; it is just no
-  // longer the front door.
-  //
-  // Rendered OUTSIDE MobileLayout: the landing page carries its own header and
-  // footer, and nesting it in the app's sidebar chrome would show a signed-out
-  // visitor a navigation rail into screens they cannot open.
-  if (!isAuthenticated) {
-    return (
-      <Routes>
-        {/* The landing page is three pages: `/`, `/docs` and `/preview`. They
-            are real URLs so they can be shared and opened cold, which needs a
-            route here — the catch-all below renders this app's connection
-            screen, and would otherwise swallow a shared docs link. */}
-        {['/', '/docs', '/preview'].map((landingPath) => (
-          <Route
-            key={landingPath}
-            path={landingPath}
-            element={<LandingPage onConnect={() => setSidebarOpen(true)} />}
-          />
-        ))}
-        <Route
-          path="*"
-          element={
-            <MobileLayout
-              sidebarOpen={sidebarOpen}
-              onSidebarToggle={setSidebarOpen}
-            >
-              <CalimeroConnectionRequired
-                onOpenSidebar={() => setSidebarOpen(true)}
-              />
-            </MobileLayout>
-          }
-        />
-      </Routes>
-    );
-  }
-
   return (
     <>
-      <MobileLayout sidebarOpen={sidebarOpen} onSidebarToggle={setSidebarOpen}>
-        <Routes>
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/agreement" element={<AgreementPage />} />
-          <Route path="/signatures" element={<SignaturesPage />} />
-          <Route path="*" element={<Dashboard />} />
-        </Routes>
-      </MobileLayout>
-      {invitation && (
+      <Routes>
+        {ROUTES.map((r) => (
+          <Route
+            key={r.path}
+            path={r.path}
+            element={
+              <Screenful
+                screen={r.screen}
+                authed={!!isAuthenticated}
+                publicScreen={r.publicScreen}
+                onConnect={() => setConnectOpen(true)}
+              />
+            }
+          />
+        ))}
+      </Routes>
+      <ConnectPopup
+        isOpen={connectOpen && !isAuthenticated}
+        onClose={() => setConnectOpen(false)}
+      />
+      {invitation && isAuthenticated && (
         <InvitationHandlerPopup
           invitation={invitation.code}
           onSuccess={handleInvitationSuccess}

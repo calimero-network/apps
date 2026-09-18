@@ -63,21 +63,26 @@ test.describe("unauthenticated shell", () => {
     expect(faint, "content parked below full opacity at rest").toEqual([]);
   });
 
-  test("the explainer does not offer the app's nav rail", async ({ page }) => {
-    // It renders outside MobileLayout on purpose: a signed-out visitor must not
-    // be given navigation into screens they cannot open.
+  test("the explainer offers no navigation into screens you cannot open", async ({ page }) => {
+    // ⚠️ There is no nav rail to check for any more — `Sidebar`, `MobileHeader`
+    // and `MobileLayout` are gone, and with them the 280px rail that held two
+    // links and a connect button that only ever appeared once you were already
+    // connected. What must still hold is the property the old test was after.
     await page.goto("/");
     await expect(page.getByRole("link", { name: /^dashboard$/i })).toHaveCount(0);
     await expect(page.getByRole("link", { name: /^signatures$/i })).toHaveCount(0);
   });
 
-  test("an unknown route still renders the connection prompt", async ({ page }) => {
-    // The router only mounts once authenticated, so an unknown path falls
-    // through to the prompt rather than a blank screen — unchanged.
+  test("an unknown route renders a dead end, not a connection prompt", async ({ page }) => {
+    // WAS: "an unknown route still renders the connection prompt" — the
+    // unauthenticated catch-all rendered `CalimeroConnectionRequired` inside
+    // `MobileLayout`, which told somebody who typed a wrong address that their
+    // node was the problem. There is one catch-all now and it says what is
+    // actually true. See `tests/routing.spec.ts` for the redirect-loop guards.
     await page.goto("/does-not-exist");
+    await expect(page.getByTestId("not-found")).toBeVisible();
     await expect(
-      page.getByRole("heading", { name: /calimero connection required/i }),
+      page.getByRole("heading", { name: /that page does not exist/i }),
     ).toBeVisible();
-    await expect(page.getByText(/to access Mero Sign/i)).toBeVisible();
   });
 });

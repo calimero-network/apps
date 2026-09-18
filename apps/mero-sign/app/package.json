@@ -75,7 +75,8 @@
     "lint:src:fix": "eslint . --ext .ts,.tsx --fix src",
     "preview": "vite preview",
     "prettier": "exec prettier . --write",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "shots": "node e2e/shots.mjs"
   },
   "eslintConfig": {
     "extends": [
