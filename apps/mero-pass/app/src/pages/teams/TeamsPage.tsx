@@ -164,10 +164,16 @@ export default function TeamsPage() {
         ) : loading ? (
           <p className={styles.empty}>Loading…</p>
         ) : teams.length === 0 ? (
-          <p className={styles.empty} data-testid="teams-empty">
-            No teams yet. Create one above, or open an invitation link someone
-            sent you.
-          </p>
+          // ⚠️ Only when the load SUCCEEDED and came back empty. A failed list
+          // is not evidence of no teams, and saying "No teams yet" under a 503
+          // tells someone their data is gone when the node merely did not
+          // answer.
+          error ? null : (
+            <p className={styles.empty} data-testid="teams-empty">
+              No teams yet. Create one above, or open an invitation link someone
+              sent you.
+            </p>
+          )
         ) : (
           <div className={styles.grid} data-testid="team-grid">
             {teams.map((team) => (

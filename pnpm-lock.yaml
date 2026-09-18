@@ -1032,6 +1032,9 @@ importers:
 
   apps/mero-pass/app:
     dependencies:
+      '@calimero-network/mero-icons':
+        specifier: 'catalog:'
+        version: 0.0.5(react@19.2.8)
       '@calimero-network/mero-js':
         specifier: 'catalog:'
         version: 18.3.0
