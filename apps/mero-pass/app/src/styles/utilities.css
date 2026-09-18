@@ -45,6 +45,14 @@
   --mp-text-dim: #9aa5a1;
   --mp-text-faint: #77837e;
   --mp-radius: 10px;
+  /* Added with the invitation dialog, which is the app's first CSS module.
+     `--mp-red` is the only destructive colour in the app; it measures 5.1:1 on
+     --mp-bg, which clears AA for body text. The shadow is tuned for the dark
+     ground rather than carried over from a light-theme app, where a 10%-black
+     drop shadow is invisible. */
+  --mp-radius-sm: 8px;
+  --mp-red: #f87171;
+  --mp-shadow: 0 16px 40px rgba(0, 0, 0, 0.55);
 }
 
 /* ── layout ─────────────────────────────────────────────────────────────── */

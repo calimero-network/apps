@@ -68,6 +68,13 @@ steps:
     node: calimero-node-2
     path: dist/com.calimero.mero-pass.mpk
     dev: true
+    # Captured separately rather than reusing node 1's. An application id is
+    # `hash(package, signer)` and a `dev: true` install is signed by the node
+    # doing it, so the two nodes may legitimately hold DIFFERENT ids for the
+    # same bundle. The governance section below needs node 2's own id, because
+    # that is what the frontend resolves there — `lib/appId.ts` asks the node.
+    outputs:
+      app_id_2: applicationId
 
   # ⚠️ The nodes must be UP before the first admin call. merobox waits for
   # container health, which is not the same as ready: on a genuinely cold
@@ -85,11 +92,24 @@ steps:
     outputs:
       namespace_id: namespaceId
 
-  - name: Set default member capabilities
+  # ⚠️ 4, not 15. 4 is CAN_JOIN_OPEN_SUBGROUPS alone — the Member set from
+  # `app/src/lib/roles.ts`, which is exactly what an invited person needs to
+  # open the space's vaults and read and write their secrets.
+  #
+  # It was 15: CAN_CREATE_CONTEXT | CAN_INVITE_MEMBERS | CAN_JOIN_OPEN_SUBGROUPS
+  # | MANAGE_MEMBERS. In a password manager that made everyone you invited a
+  # de-facto admin who could invite further people and demote you, so the role
+  # system was decorative. The governance section at the end of this scenario
+  # is what pins the difference.
+  #
+  # This also proves the tightening does not lock out the space's CREATOR: node
+  # 1 creates a vault further down with no capability grant of its own, because
+  # a namespace's owner holds full capabilities independently of this default.
+  - name: Set what an invited member may do (the Member set)
     type: set_default_capabilities
     node: calimero-node-1
     group_id: "{{namespace_id}}"
-    capabilities: 15
+    capabilities: 4
 
   - name: Generate identity for Node 2
     type: create_identity
@@ -124,13 +144,19 @@ steps:
     type: wait
     seconds: 5
 
-  # ── The vault is a context ──────────────────────────────────────────────────
-  - name: Node 1 creates the vault
+  # ── The vault is a context, and it is created WITH A NAME ───────────────────
+  #
+  # ⚠️ `params` is no longer `'{}'`. `init` takes the vault's name, and this is
+  # the call that puts it into replicated state. It is the whole mechanism
+  # behind "the name the creator typed reaches the other node": a name kept in
+  # the frontend's localStorage, or in a node-local context alias, reaches
+  # nobody. Assertions below prove it on Bob's node, not just Alice's.
+  - name: Node 1 creates the vault, named
     type: create_context
     node: calimero-node-1
     application_id: "{{app_id}}"
     group_id: "{{namespace_id}}"
-    params: '{}'
+    params: '{"name":"Shared credentials"}'
     outputs:
       vault_id: contextId
       alice_key: memberPublicKey
@@ -158,6 +184,63 @@ steps:
     timeout: 60
     check_interval: 2
     trigger_sync: true
+
+  # ── THE NAME CROSSES THE NETWORK ────────────────────────────────────────────
+  #
+  # The assertion this app existed without. Before named vaults every screen
+  # rendered `Vault 3f8a91c2…` from the context id, so the creator and the
+  # invitee saw the same meaningless stub and the name a person typed was worth
+  # nothing. Reading it back on BOB's node is the only proof that matters — on
+  # Alice's node a purely local label would pass just as well.
+  - name: Bob reads the vault's name
+    type: call
+    node: calimero-node-2
+    context_id: "{{vault_id}}"
+    method: vault_name
+    args: {}
+    executor_public_key: "{{bob_key}}"
+    outputs:
+      bob_vault_name: result
+
+  - name: Assert the creator's name reached the invited node
+    type: assert
+    statements:
+      - 'contains({{bob_vault_name}}, "Shared credentials")'
+
+  - name: Bob renames the vault
+    type: call
+    node: calimero-node-2
+    context_id: "{{vault_id}}"
+    method: rename_vault
+    args:
+      name: "Production keys"
+    executor_public_key: "{{bob_key}}"
+
+  - name: Sync the rename
+    type: wait_for_sync
+    context_id: "{{vault_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Alice reads the vault's name back
+    type: call
+    node: calimero-node-1
+    context_id: "{{vault_id}}"
+    method: vault_name
+    args: {}
+    executor_public_key: "{{alice_key}}"
+    outputs:
+      alice_vault_name: result
+
+  - name: Assert the rename converged the other way too
+    type: assert
+    statements:
+      - 'contains({{alice_vault_name}}, "Production keys")'
+      # The superseded name must be GONE, not merged alongside — the register
+      # is last-writer-wins over a single value, not an accumulating set.
+      - 'not_contains({{alice_vault_name}}, "Shared credentials")'
 
   # ── A secret written on node 1 is readable on node 2 ────────────────────────
   - name: Alice adds a secret
@@ -274,6 +357,8 @@ steps:
     statements:
       - 'contains({{alice_audit}}, "secret_added")'
       - 'contains({{alice_audit}}, "secret_updated")'
+      # A rename is a change to shared state, so it is audited like any other.
+      - 'contains({{alice_audit}}, "vault_renamed")'
 
   # ── Deletion converges ──────────────────────────────────────────────────────
   - name: Alice deletes the secret
@@ -307,3 +392,214 @@ steps:
     type: assert
     statements:
       - 'not_contains({{bob_after_delete}}, "GitHub")'
+
+  # ── GOVERNANCE: promote, actually use it, demote ────────────────────────────
+  #
+  # The half a role system usually gets wrong. `update_member_role` writes a
+  # STRING; nothing enforces anything from it. Authorisation is the member's
+  # CAPABILITY BITMASK, set by a different call. So a promotion that writes only
+  # the role produces a roster reading "Admin" beside a person every admin
+  # endpoint refuses — and it looks completely correct from the UI.
+  #
+  # These steps therefore prove three separate things, in order:
+  #
+  #   1. Bob really is a plain Member — his mask is 4, read ON HIS OWN NODE.
+  #   2. A promotion CROSSES THE NETWORK — after it, node 2 reports 431.
+  #   3. The promotion is USABLE — Bob then does, from node 2, the four calls
+  #      `createVault` makes and the invitation mint, none of which his Member
+  #      mask permitted.
+  #
+  # 431 = 1|2|4|8|32|128|256 = CAN_CREATE_CONTEXT | CAN_INVITE_MEMBERS |
+  # CAN_JOIN_OPEN_SUBGROUPS | MANAGE_MEMBERS | CAN_CREATE_SUBGROUP |
+  # CAN_MANAGE_VISIBILITY | CAN_MANAGE_METADATA. Kept in step with
+  # ADMIN_CAPABILITIES in `app/src/lib/roles.ts`, whose unit tests derive the
+  # same number from the named bits.
+
+  # ⚠️ The ACCOUNT, not the device key and not a context executor identity. All
+  # three are 64 hex since rc.27, and member-addressing endpoints take the
+  # first: passing either other one returns 200 and names a principal that
+  # exists nowhere, so a promotion would silently authorise nobody.
+  - name: Who is Node 2, as an account
+    type: node_identity
+    node: calimero-node-2
+    outputs:
+      bob_account: accountId
+
+  - name: Read Bob's capabilities on his OWN node, before any promotion
+    type: get_member_capabilities
+    node: calimero-node-2
+    group_id: "{{namespace_id}}"
+    member_id: "{{bob_account}}"
+    outputs:
+      bob_caps_before: capabilities
+
+  - name: Assert an invited member is a MEMBER, not an admin
+    type: assert
+    statements:
+      # Exactly the Member set. Not "at least" — the whole point is that an
+      # invitee does NOT get MANAGE_MEMBERS (8) or CAN_INVITE_MEMBERS (2).
+      - "{{bob_caps_before}} == 4"
+
+  # ── Promote ────────────────────────────────────────────────────────────────
+  - name: Alice records Bob as an Admin
+    type: update_member_role
+    node: calimero-node-1
+    group_id: "{{namespace_id}}"
+    member_id: "{{bob_account}}"
+    role: Admin
+
+  - name: Alice grants the capabilities that role MEANS
+    type: set_member_capabilities
+    node: calimero-node-1
+    group_id: "{{namespace_id}}"
+    member_id: "{{bob_account}}"
+    capabilities: 431
+
+  - name: Pull the grant to Node 2
+    type: sync_group
+    node: calimero-node-2
+    group_id: "{{namespace_id}}"
+
+  # A grant is published as an op and PROJECTED by the receiving node; it
+  # confers nothing in between. This is that window.
+  - name: Settle while the grant projects on Node 2
+    type: wait
+    seconds: 8
+
+  - name: Read Bob's capabilities on his own node again
+    type: get_member_capabilities
+    node: calimero-node-2
+    group_id: "{{namespace_id}}"
+    member_id: "{{bob_account}}"
+    outputs:
+      bob_caps_after: capabilities
+
+  - name: Assert the promotion reached the other node
+    type: assert
+    statements:
+      - "{{bob_caps_after}} == 431"
+
+  # ── …and that it is USABLE, which is the part a role label never proves ─────
+  - name: Bob creates a vault's subgroup from his own node
+    type: create_group_in_namespace
+    node: calimero-node-2
+    namespace_id: "{{namespace_id}}"
+    group_name: "Bob's vault"
+    outputs:
+      bob_vault_group: groupId
+
+  # ⚠️ `record_name`, not `name`. `name` is the STEP LABEL on every merobox
+  # step, so spelling it `name` here sets no metadata at all and silently
+  # renames the step instead — two `name:` keys in one mapping, last one wins.
+  - name: Bob names it
+    type: set_group_metadata
+    node: calimero-node-2
+    group_id: "{{bob_vault_group}}"
+    record_name: "Bob's vault"
+
+  - name: Bob opens it to the space
+    type: set_subgroup_visibility
+    node: calimero-node-2
+    group_id: "{{bob_vault_group}}"
+    visibility: open
+
+  - name: Bob creates the vault's context
+    type: create_context
+    node: calimero-node-2
+    application_id: "{{app_id_2}}"
+    group_id: "{{bob_vault_group}}"
+    params: '{"name":"Bob''s vault"}'
+    outputs:
+      bob_vault_context: contextId
+      bob_vault_key: memberPublicKey
+
+  - name: Bob mints an invitation, which a Member could not
+    type: create_namespace_invitation
+    node: calimero-node-2
+    group_id: "{{namespace_id}}"
+    outputs:
+      bob_invite: invitation
+
+  - name: Assert the promoted member really could use every capability
+    type: assert
+    statements:
+      # Four calls a Member's mask (4) forbids: CAN_CREATE_SUBGROUP (32),
+      # CAN_MANAGE_METADATA (256), CAN_MANAGE_VISIBILITY (128),
+      # CAN_CREATE_CONTEXT (1) — plus CAN_INVITE_MEMBERS (2).
+      - 'is_set({{bob_vault_group}})'
+      - 'is_set({{bob_vault_context}})'
+      - 'is_set({{bob_invite}})'
+
+  - name: And the vault he made carries the name he typed
+    type: call
+    node: calimero-node-2
+    context_id: "{{bob_vault_context}}"
+    method: vault_name
+    args: {}
+    executor_public_key: "{{bob_vault_key}}"
+    outputs:
+      bob_own_vault_name: result
+
+  - name: Assert it did
+    type: assert
+    statements:
+      - 'contains({{bob_own_vault_name}}, "Bob")'
+
+  # ── Demote ─────────────────────────────────────────────────────────────────
+  - name: Alice demotes Bob back to Member
+    type: update_member_role
+    node: calimero-node-1
+    group_id: "{{namespace_id}}"
+    member_id: "{{bob_account}}"
+    role: Member
+
+  - name: Alice withdraws the admin capabilities
+    type: set_member_capabilities
+    node: calimero-node-1
+    group_id: "{{namespace_id}}"
+    member_id: "{{bob_account}}"
+    capabilities: 4
+
+  - name: Pull the demotion to Node 2
+    type: sync_group
+    node: calimero-node-2
+    group_id: "{{namespace_id}}"
+
+  - name: Settle while the demotion projects
+    type: wait
+    seconds: 8
+
+  - name: Read Bob's capabilities once more
+    type: get_member_capabilities
+    node: calimero-node-2
+    group_id: "{{namespace_id}}"
+    member_id: "{{bob_account}}"
+    outputs:
+      bob_caps_demoted: capabilities
+
+  - name: Assert the demotion took the governance bits away
+    type: assert
+    statements:
+      - "{{bob_caps_demoted}} == 4"
+
+  # ⚠️ AND THAT IT DID NOT TAKE THE SECRETS AWAY. A demoted member keeps
+  # CAN_JOIN_OPEN_SUBGROUPS, stays in every vault they had entered, and their
+  # node still holds the replica it already synced. Demotion stops somebody
+  # GOVERNING the space; it does not un-sync what they have read, and this
+  # scenario says so out loud rather than leaving the reader to assume
+  # otherwise. The only thing that protects an already-shared secret is
+  # rotating it.
+  - name: Bob still reads the vault he was invited to
+    type: call
+    node: calimero-node-2
+    context_id: "{{vault_id}}"
+    method: vault_name
+    args: {}
+    executor_public_key: "{{bob_key}}"
+    outputs:
+      bob_after_demotion: result
+
+  - name: Assert demotion is not revocation
+    type: assert
+    statements:
+      - 'contains({{bob_after_demotion}}, "Production keys")'

@@ -91,6 +91,17 @@
       "kind": "record",
       "fields": [
         {
+          "name": "vault_name",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
           "name": "secrets",
           "type": {
             "kind": "map",
@@ -274,7 +285,14 @@
     },
     {
       "name": "init",
-      "params": [],
+      "params": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
       "returns": {
         "kind": "unit"
       }
@@ -287,6 +305,20 @@
         "items": {
           "$ref": "SecretItem"
         }
+      }
+    },
+    {
+      "name": "rename_vault",
+      "params": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
       }
     },
     {
@@ -339,6 +371,13 @@
       ],
       "returns": {
         "kind": "unit"
+      }
+    },
+    {
+      "name": "vault_name",
+      "params": [],
+      "returns": {
+        "kind": "string"
       }
     }
   ],

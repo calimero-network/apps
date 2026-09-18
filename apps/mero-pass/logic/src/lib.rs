@@ -7,7 +7,7 @@ use calimero_sdk::{app, env, AccountId};
 use calimero_storage::address::Id;
 use calimero_storage::collections::crdt_meta::MergeError;
 use calimero_storage::collections::rekey::RekeyTarget;
-use calimero_storage::collections::{Mergeable as MergeableTrait, UnorderedMap};
+use calimero_storage::collections::{LwwRegister, Mergeable as MergeableTrait, UnorderedMap};
 use thiserror::Error;
 
 #[app::mergeable(id = "mero_pass::SecretItem")]
@@ -131,6 +131,29 @@ pub type Result<T> = std::result::Result<T, AppError>;
 // rather than as a derive written twice.
 #[app::state(emits = for<'a> Event<'a>)]
 pub struct MeroPassApp {
+    /// The vault's human name, as the person who created it typed it.
+    ///
+    /// ⚠️ THIS IS THE ONLY PLACE A VAULT NAME SURVIVES TO ANOTHER NODE.
+    ///
+    /// Before this field the frontend rendered `Vault 3f8a91c2…` — the context
+    /// id, shortened. The creator typed nothing, so there was nothing to lose;
+    /// the fleet's usual next step is a `localStorage` map from context id to
+    /// label, which is worse, because it is per-BROWSER: the creator sees
+    /// "Shared credentials" and everyone they invite sees a hex stub, forever,
+    /// with no way to find out what the vault is.
+    ///
+    /// Replicated contract state is the fix. It is written once at `init` from
+    /// the creation parameters, merges by last-writer-wins on a rename, and is
+    /// readable by every member of the context on every node — which a node's
+    /// local context alias and `createContext`'s optional `name` are not.
+    ///
+    /// The frontend ALSO writes the name to the vault's subgroup metadata
+    /// record, and that is not redundancy for its own sake: contract state can
+    /// only be read by someone who already holds an identity in the context,
+    /// so a namespace member browsing vaults they have not joined yet needs the
+    /// metadata record, and a member inside the vault gets the authoritative
+    /// value from here.
+    vault_name: LwwRegister<String>,
     pub secrets: UnorderedMap<String, SecretItem>,
     pub audit_logs: UnorderedMap<String, AuditLogEntry>,
 }
@@ -170,12 +193,43 @@ impl MeroPassApp {
         format!("{prefix}_{}", hex::encode(buffer))
     }
 
+    /// `name` arrives as the JSON `initializationParams` of `createContext`.
+    ///
+    /// Required rather than optional on purpose: a vault whose name is decided
+    /// later is a vault that is nameless on the one node that matters — the
+    /// one that was invited. An empty string is still accepted (`vault_name`
+    /// falls back to a short id in the UI) so a node created by a script, or
+    /// by a client that predates this field, does not fail to initialise.
     #[app::init]
-    pub fn init() -> MeroPassApp {
+    pub fn init(name: String) -> MeroPassApp {
         MeroPassApp {
+            vault_name: LwwRegister::new(name),
             secrets: UnorderedMap::new(),
             audit_logs: UnorderedMap::new(),
         }
+    }
+
+    /// The vault's name, for any member on any node.
+    pub fn vault_name(&self) -> app::Result<String> {
+        Ok(self.vault_name.get().clone())
+    }
+
+    /// Rename the vault.
+    ///
+    /// Any member may rename, and concurrent renames resolve last-writer-wins
+    /// — the same rule the register already uses to converge. Deliberately not
+    /// owner-gated: a vault is shared by construction here, an owner-only
+    /// rename would need a role registry this contract does not have, and the
+    /// change is recorded in the audit trail either way.
+    pub fn rename_vault(&mut self, name: String) -> app::Result<()> {
+        let previous = self.vault_name.get().clone();
+        self.vault_name.set(name.clone());
+        self.log_audit_event(
+            "vault",
+            "vault_renamed",
+            &format!("Vault renamed from '{previous}' to '{name}'"),
+        )?;
+        Ok(())
     }
 
     pub fn add_secret(
@@ -342,7 +396,7 @@ mod tests {
     const OTHER_DEVICE: [u8; 32] = [0xB1; 32];
 
     fn new_vault() -> TestHost<MeroPassApp> {
-        TestHost::new(MeroPassApp::init)
+        TestHost::new(|| MeroPassApp::init("Shared credentials".to_owned()))
     }
 
     fn add(app: &mut TestHost<MeroPassApp>, name: &str, tags: &[&str]) -> String {
@@ -441,6 +495,66 @@ mod tests {
         assert!(app.call(|s| s.delete_secret(missing.clone())).is_err());
         // A read, by contrast, is a legitimate miss rather than an error.
         assert!(app.view(|s| s.get_secret(missing)).unwrap().is_none());
+    }
+
+    // ── The vault's name ────────────────────────────────────────────────────
+
+    /// The regression test for "name brings no value".
+    ///
+    /// The name a creator types has to be readable from the contract, because
+    /// that is the only copy that reaches the node of the person they invited.
+    /// Anything the frontend keeps beside it — a `localStorage` label, a node
+    /// alias — is per-browser or per-node and is exactly what this replaced.
+    #[test]
+    fn a_vault_remembers_the_name_it_was_created_with() {
+        let app = new_vault();
+        assert_eq!(
+            app.view(|s| s.vault_name()).unwrap(),
+            "Shared credentials",
+            "the name passed to init must be readable back"
+        );
+    }
+
+    #[test]
+    fn an_empty_name_is_accepted_rather_than_failing_init() {
+        // A context created by a script, or by a client that predates the
+        // name, must still initialise — the UI falls back to a short id.
+        let app = TestHost::new(|| MeroPassApp::init(String::new()));
+        assert_eq!(app.view(|s| s.vault_name()).unwrap(), "");
+    }
+
+    #[test]
+    fn renaming_the_vault_is_visible_and_audited() {
+        let mut app = new_vault();
+        app.call(|s| s.rename_vault("Production keys".to_owned()))
+            .unwrap();
+
+        assert_eq!(app.view(|s| s.vault_name()).unwrap(), "Production keys");
+
+        let logs = app.view(|s| s.get_audit_logs()).unwrap();
+        let rename = logs
+            .iter()
+            .find(|l| l.action == "vault_renamed")
+            .expect("a rename must leave an audit entry");
+        assert!(
+            rename.details.contains("Shared credentials")
+                && rename.details.contains("Production keys"),
+            "the audit entry must name both the old and the new value: {}",
+            rename.details
+        );
+    }
+
+    #[test]
+    fn a_rename_by_another_member_wins_over_the_creation_name() {
+        // Any member may rename; the register resolves by last write. The point
+        // here is that a rename is not owner-gated, because a vault has no
+        // owner registry and an invited member correcting a typo must work.
+        let mut app = new_vault();
+        app.call_as_account(OTHER_ACCOUNT, OTHER_DEVICE, |s| {
+            s.rename_vault("Ops".to_owned())
+        })
+        .unwrap();
+        assert_eq!(app.view(|s| s.vault_name()).unwrap(), "Ops");
     }
 
     // ── Search ──────────────────────────────────────────────────────────────

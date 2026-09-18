@@ -5,8 +5,7 @@ Rust-based backend logic compiled to WASM for the MeroPass secret management app
 ## Overview
 
 This module implements the core secret management functionality using the Calimero SDK, providing:
-- Vault creation and management
-- Member invitation and role management
+- A named vault, whose name replicates to every member's node
 - Secret CRUD operations with versioning
 - Search and tagging capabilities
 - Comprehensive audit logging
@@ -15,11 +14,13 @@ This module implements the core secret management functionality using the Calime
 
 ### Data Structures
 
-- **MeroPass**: Main state containing vaults and audit logs
-- **Vault**: Individual vault with members, secrets, and tags
-- **SecretItem**: Individual secret with metadata and versioning
-- **VaultMember**: Member information with role and activity tracking
-- **AuditLogEntry**: Activity logging for compliance
+- **MeroPassApp**: the state of ONE vault — its name, its secrets, its audit log
+- **SecretItem**: an individual secret with metadata and versioning
+- **AuditLogEntry**: activity logging for compliance
+
+There is no `Vault` or `VaultMember` type. A context is a vault, so the vault's
+members are the context's members and there is nothing for the contract to
+store about them.
 
 ### Secret Types
 
@@ -32,7 +33,8 @@ This module implements the core secret management functionality using the Calime
 ### Key Features
 
 - **CRDT Versioning**: Conflict-free editing with automatic versioning
-- **Role-based Access**: Owner, admin, and member permissions
+- **Membership is the context's**: everyone in the vault's context can read and
+  write its secrets. There is no in-contract role registry
 - **Audit Logging**: Complete activity tracking
 - **Search & Tags**: Advanced filtering and organization
 - **Multi-device Sync**: Real-time synchronization via Calimero
@@ -46,48 +48,59 @@ This module implements the core secret management functionality using the Calime
 ### Building
 
 ```bash
-# Build WASM + ABI
-cargo build --target wasm32-unknown-unknown --profile app-release
-
-# Or use the build script
-bash build.sh
+# Build the WASM, emit res/abi.json and res/state-schema.json, and bundle.
+# There is no build.sh: cargo-mero replaced the per-app build scripts.
+cargo mero build -p mero-pass
 ```
 
 ### Testing
 
-The logic is tested through the Calimero workflow system. See `../workflows/workflow-example.yml` for integration tests.
+`cargo test -p mero-pass` drives the contract through `TestHost`. The two-node
+behaviour — including the creator's vault name arriving on the invited node — is
+covered by the merobox scenario in `workflows/e2e.yml`.
 
 ## API Methods
 
-### Vault Management
-- `create_vault(name, description, creator_public_key)` → vault_id
-- `invite_member(vault_id, member_public_key, role, inviter_public_key)`
-- `join_vault(vault_id, member_public_key)`
+⚠️ This section used to list an API that does not exist in this crate and, as
+far as the git history goes, never did — `create_vault`, `invite_member`,
+`join_vault`, and every read taking a `vault_id`. There is no vault record in
+the contract to take an id of: **a Calimero context IS a vault**, membership is
+the context's membership, and inviting someone is an admin-API operation the
+frontend performs, not a contract method. What follows is the real surface, as
+`res/abi.json` records it.
 
-### Secret Management
-- `add_secret(vault_id, name, secret_type, data, tags, member_public_key)` → secret_id
-- `update_secret(vault_id, secret_id, name, data, tags, member_public_key)`
-- `delete_secret(vault_id, secret_id, member_public_key)`
+### The vault itself
+- `init(name)` — the vault's name, taken from `createContext`'s
+  `initializationParams`. This is the only copy of the name that reaches another
+  member's node; a frontend-side label does not.
+- `vault_name()` → `String`
+- `rename_vault(name)` — any member; concurrent renames resolve
+  last-writer-wins, and the change is audited.
 
-### View Functions
-- `get_vault(vault_id)` → Vault
-- `get_vaults_for_member(member_public_key)` → Vec<Vault>
-- `get_secrets_in_vault(vault_id)` → Vec<SecretItem>
-- `search_secrets(vault_id, query)` → Vec<SecretItem>
-- `get_secrets_by_tag(vault_id, tag)` → Vec<SecretItem>
-- `get_audit_logs(vault_id)` → Vec<AuditLogEntry>
+### Secrets
+- `add_secret(name, secret_type, data, tags)` → `secret_id`
+- `update_secret(secret_id, name, data, tags)`
+- `delete_secret(secret_id)`
+- `get_secret(secret_id)` → `Option<SecretItem>`
+- `list_secrets()` → `Vec<SecretItem>`
+- `search_secrets(query)` → `Vec<SecretItem>` — name and tags, case-insensitive
+- `get_secrets_by_tag(tag)` → `Vec<SecretItem>` — exact tag, not substring
+
+### Audit
+- `get_audit_logs()` → `Vec<AuditLogEntry>`, newest first
 
 ## Security
 
 - **Context-level Isolation**: Each vault is isolated in its own Calimero context
-- **Role-based Permissions**: Granular access control
+- **Membership is the context's**: access is granted by joining the vault's
+  context, which is an admin-API operation, not a contract call
 - **Audit Trail**: Complete activity logging
 - **No Plaintext Storage**: All sensitive data is encrypted at the context level
 
 ## Dependencies
 
 - `calimero-sdk`: Core Calimero functionality
-- `calimero-storage`: Storage collections (UnorderedMap)
+- `calimero-storage`: storage collections (`UnorderedMap`, `LwwRegister`)
 - `serde`: Serialization
 - `borsh`: Binary serialization for WASM
 - `thiserror`: Error handling

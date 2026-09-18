@@ -40,6 +40,17 @@
       "kind": "record",
       "fields": [
         {
+          "name": "vault_name",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
           "name": "secrets",
           "type": {
             "kind": "map",
