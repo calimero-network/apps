@@ -55,22 +55,43 @@ export function localMediaUnavailableReason(): string | null {
   if (typeof mediaDevices()?.getUserMedia === "function") return null;
 
   // `isSecureContext` is the spec's own name for the gate, and it is what
-  // separates the two causes. Treat a missing flag as secure: an engine old
-  // enough to lack it is not the case being diagnosed.
-  const secure =
-    typeof window === "undefined" || window.isSecureContext !== false;
+  // separates the two causes.
+  //
+  // ⚠️ `undefined` is NOT "secure". The previous version read
+  // `isSecureContext !== false`, so an engine that does not publish the flag
+  // fell through to the "the webview never published the API" message — which
+  // blames the embedder for what is usually an insecure ORIGIN. That is the
+  // wrong half of the advice: it sends someone to change browsers when the fix
+  // is the URL they opened.
+  const flag = typeof window === "undefined" ? undefined : window.isSecureContext;
+  const origin = typeof location === "undefined" ? "" : location.origin;
 
-  if (!secure) {
+  // Trustworthy origins, per the spec's own list. Computed rather than trusted
+  // so the diagnosis still works where the flag is missing.
+  const host = typeof location === "undefined" ? "" : location.hostname;
+  const looksTrustworthy =
+    /^https:/.test(origin) ||
+    host === "localhost" ||
+    host.endsWith(".localhost") ||
+    host === "127.0.0.1" ||
+    host === "::1";
+
+  if (flag === false || (flag === undefined && !looksTrustworthy)) {
     return (
-      "Camera and microphone need a secure page. This window was opened over " +
-      "plain http:// from a host that is not localhost, and browsers withhold " +
-      "the whole Media Capture API there. Open Mero Meet over https:// (or via " +
-      "http://localhost) and your devices will appear."
+      `Camera and microphone need a secure page, and this window was opened on ${origin || "an insecure origin"}. ` +
+      "Browsers withhold the whole Media Capture API outside https:// and " +
+      "localhost, so no permission prompt can bring it back. Open Mero Meet " +
+      "over https:// (or http://localhost) and your devices will appear."
     );
   }
+
+  // Secure, and the API is still absent: the embedder genuinely does not
+  // publish it. The origin is named because that is the first thing anyone
+  // debugging this will ask, and it was missing from the old message.
   return (
     "This window has no camera or microphone API — navigator.mediaDevices is " +
-    "missing, so the webview never published it. Open Mero Meet in a browser " +
+    `missing on ${origin || "this page"}, which reports itself as a secure ` +
+    "context, so the webview never published it. Open Mero Meet in a browser " +
     "(Chrome or Safari) to join with media."
   );
 }
