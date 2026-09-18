@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useMero, useNodeIdentity } from '@calimero-network/mero-react';
 
-import { myCapabilities } from '../lib/vaults';
+import { myCapabilities, repairCreatorAdmin } from '../lib/vaults';
 
 /**
  * This node's own ACCOUNT and its real capability mask in one team.
@@ -35,7 +35,23 @@ export function useTeamCapabilities(namespaceId: string | null): {
       return;
     }
     setLoading(true);
-    setCapabilities(await myCapabilities(mero.admin, namespaceId, accountId));
+    const mask = await myCapabilities(mero.admin, namespaceId, accountId);
+
+    // A team created before `createTeam` granted its creator anything leaves
+    // that creator holding the Member mask, and the only control that could
+    // raise it is itself behind an Admin gate — so the team is a dead end and
+    // there is nobody to ask. Try once, here, on the way past.
+    //
+    // ⚠️ This grants nothing on our own say-so: it is an ordinary
+    // `setMemberCapabilities`, and a caller who is not the owner is refused by
+    // the node. See `repairCreatorAdmin`.
+    const repaired = await repairCreatorAdmin(
+      mero.admin,
+      namespaceId,
+      accountId,
+      mask,
+    );
+    setCapabilities(repaired ?? mask);
     setLoading(false);
   }, [mero, namespaceId, accountId]);
 
