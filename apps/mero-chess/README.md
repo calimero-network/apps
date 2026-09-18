@@ -17,7 +17,6 @@ apps/mero-chess/
 │   ├── src/game.rs         replaying a move list into a position
 │   ├── src/tests.rs        TestHost tests: who may sit, who may move, what ends a game
 │   ├── tests/perft.rs      the standard perft positions — proof the movegen is right
-│   ├── tests/converge.rs   3-replica convergence, no node, no wasm
 │   ├── res/                abi.json + state-schema.json, emitted by `cargo mero build`
 │   └── workflows/          merobox e2e: two real nodes playing a game
 └── app/                    Vite + React + TypeScript
@@ -61,18 +60,57 @@ move the node would refuse, and a modified client cannot play one.
 **Results are derived, not written.** Checkmate, stalemate, insufficient
 material, fivefold repetition and the seventy-five-move rule are properties of
 the move list, computed on read. Only an ending a *person* causes — a
-resignation, an agreed draw, a claimed one — is stored. So the result can never
-disagree with the moves, and the losing node reaches the verdict itself.
+resignation, an agreed draw, a claimed one — is stored, and even that is
+re-checked before it counts. So the result can never disagree with the moves,
+and the losing node reaches the verdict itself.
 
 Threefold repetition and the fifty-move rule are **claims**, as they are in the
 rules of chess: the table offers a button, and the game goes on until someone
 presses it. Fivefold and seventy-five moves are automatic.
 
+## What holds against a node that does not run this code
+
+A peer's node folds an incoming delta into storage — verify the author's
+signature, authorize them at their causal cut, apply the actions. It does **not**
+execute this contract, and membership is the default write boundary, so a
+patched node can put whatever bytes it likes into any entity it may write. The
+checks inside `play` bind only the node that runs them. Two rules follow, and
+they shape every read in `lib.rs`:
+
+**Nothing is trusted that can be derived.** The position, the SAN, the ply
+ordering, the result and the current game index are all recomputed on read. A
+forged row is inert: it sits in storage and in the root hash, and no honest node
+folds it into a position. That is quarantine at interpretation, not prevention
+at write — the write cannot be prevented, because nothing re-executes at receive
+time.
+
+**Everything else is owned.** Every row a player writes lives in an
+`AuthoredMap`, whose entries carry a `StorageType::User { owner }` stamp. Core
+verifies a per-action signature against that owner inside
+`Interface::apply_action` on every receive path — an unsigned remote `User`
+action is refused outright — so a member cannot author a row as someone else.
+Keys name their author, the reader re-checks the stamp, and a key carries a
+per-write nonce so a row can never be *occupied* against its rightful author
+(without it, any member — a spectator, not even a player — could park a row on
+the key the next move needs and wedge the table permanently).
+
+| attempt | what stops it |
+|---|---|
+| an illegal move | the replay re-validates every move in the position it would be played in |
+| a move authored for the other player | they cannot sign as that account; the key/stamp mismatch drops the row |
+| moving twice, or slotting a row in at any ply | the ply sequence is the reader's arithmetic, and each ply expects one specific author |
+| a forged resignation, draw or result | endings are re-derived: a resignation must lose, an agreement needs the offer it answered, a claimed draw must be available in that position |
+| a rematch that erases a live game | the game index is counted, not read: it advances only past a finished game, claimed by a seat holder |
+| seat theft | claims are per-claimant rows, elected by the reader, and only their author can write one |
+
+What remains is that a player can **stall** — and that is also what walking away
+from a board looks like. Nothing above lets anyone change a result.
+
 ## Test it
 
 | | what it covers | needs a node |
 |---|---|---|
-| `cargo test -p mero-chess` | the rules, the contract, perft, 3-replica convergence | no |
+| `cargo test -p mero-chess` | the rules, the contract, perft, and forged rows written straight into storage | no |
 | `pnpm -F mero-chess test` | the board helpers and the generated client vs the ABI | no |
 | `pnpm -F mero-chess test:e2e` | the UI playing a whole game against a real node | a local `merod` |
 | `merobox bootstrap run workflows/play-a-game.yml` | two real nodes playing to mate | yes (Docker) |
@@ -85,10 +123,19 @@ one move instead of four. Each changes the count by a knowable amount and
 nothing else notices. The expected numbers are the published ones, so a wrong
 generator cannot agree with them by construction.
 
-`tests/converge.rs` covers the other half: two moves racing for the same ply, two
-resignations crossing on the wire, two rematches at once. Each asserts both that
-the replicas agree *and* what the surviving state says — a rule that loses data
-deterministically converges too.
+The byzantine tests at the bottom of `src/tests.rs` cover the other half. They
+write rows directly into the contract's maps under another account — which is
+what a patched node does — and assert no reader is fooled: a move written for
+the player to move by somebody else, a row at a ply the game has not reached, a
+lying SAN, a forged resignation, a rematch claimed by a spectator.
+
+They are in-crate rather than a `converge_app` suite because that harness cannot
+carry authored entries at all — *"`Shared` / `Authored` / `User` / `Frozen`
+storage need the node's signing identity … test those with merobox workflows"* —
+which is why `logic/workflows/play-a-game.yml` now carries the weight of proving
+authored state replicates between real nodes. The forgery path itself (a patched
+node emitting a delta) has no automated coverage here; it is enforced by core's
+`Interface::apply_action`, which core tests directly.
 
 ## The contract's surface
 

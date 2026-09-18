@@ -8,6 +8,7 @@ import {
 
 export interface DrawOffer {
   open: boolean;
+  declined: boolean;
   ply: number;
   at: number;
 }
@@ -16,6 +17,7 @@ export interface Ending {
   result: string;
   reason: string;
   by: string;
+  ply: number;
   at: number;
 }
 
@@ -76,7 +78,7 @@ export interface MeroChess {
   title: string;
   created_at: number;
   players: Record<string, Player>;
-  seats: Record<string, Seat>;
+  seat_claims: Record<string, Seat>;
   games: Record<string, GameRecord>;
   moves: Record<string, MoveRecord>;
   endings: Record<string, Ending>;
