@@ -12,6 +12,15 @@ description: >
   string computed differently on two nodes, or a result derived from a
   divergent move list all fail here.
 
+  It also carries a load the Rust tests structurally cannot. Every row this
+  contract writes is an AuthoredMap entry — `StorageType::User`, signed
+  per-action and verified against its owner at apply — and `converge_app`
+  cannot carry those at all ("need the node's signing identity ... test those
+  with merobox workflows"). So this scenario is the only place where authored
+  state crossing a real network is exercised: if signing or owner verification
+  were wrong for this app's writes, the seats and moves below would not
+  replicate and every assertion after the first sync would fail.
+
 force_pull_image: false
 nuke_on_start: true
 near_devnet: false

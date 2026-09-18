@@ -77,7 +77,3 @@ calimero-storage-macros.workspace = true
 # `TestHost` and `converge_app` drive real CRDT state under `cargo test` with no
 # node and no wasm.
 calimero-storage = { workspace = true, features = ["testing"] }
-# Convergence tests are serial: converge_app clears and repopulates the
-# process-global merge registry per run, so two of them in parallel would
-# deregister each other's merge functions mid-test.
-serial_test = "3"

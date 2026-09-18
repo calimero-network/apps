@@ -21,6 +21,13 @@ use crate::notation::parse_uci;
 pub struct Replay {
     /// The position after the last move that could be applied.
     pub position: Position,
+    /// The SAN of each applied move, in order, **recomputed here**.
+    ///
+    /// Never read from storage. SAN depends on the position ("which knight?"),
+    /// so it is derived state like the board is — and a stored one is a string
+    /// a byzantine writer controls. Deriving it means a forged record cannot
+    /// make the scoresheet say `Qxf7#` while the board says `e4`.
+    pub sans: Vec<String>,
     /// Every position that has occurred, as repetition keys, including the
     /// current one — the input to threefold and fivefold detection.
     pub keys: Vec<String>,
@@ -67,6 +74,7 @@ impl Replay {
 pub fn replay<S: AsRef<str>>(moves: &[S]) -> Replay {
     let mut position = Position::initial();
     let mut keys = vec![position.repetition_key()];
+    let mut sans = Vec::new();
     let mut applied = 0;
 
     for text in moves {
@@ -76,16 +84,24 @@ pub fn replay<S: AsRef<str>>(moves: &[S]) -> Replay {
         // Matched against the generated list rather than validated ad hoc: that
         // is one definition of legality for the whole app, and it also fills in
         // the promotion piece the same way for every caller.
-        if !legal_moves(&position).contains(&mv) {
+        let Some(&chosen) = legal_moves(&position).iter().find(|candidate| {
+            candidate.from == mv.from
+                && candidate.to == mv.to
+                // A promotion with no piece named is a queening, which is what a
+                // board does when you drag a pawn onto the last rank.
+                && (mv.promotion.is_none() || candidate.promotion == mv.promotion)
+        }) else {
             break;
-        }
-        position = position.apply(mv);
+        };
+        sans.push(crate::notation::san(&position, chosen));
+        position = position.apply(chosen);
         keys.push(position.repetition_key());
         applied += 1;
     }
 
     Replay {
         position,
+        sans,
         keys,
         applied,
     }

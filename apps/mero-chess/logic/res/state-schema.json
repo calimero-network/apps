@@ -11,6 +11,12 @@
           }
         },
         {
+          "name": "declined",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
           "name": "ply",
           "type": {
             "kind": "u32"
@@ -43,6 +49,12 @@
           "name": "by",
           "type": {
             "kind": "string"
+          }
+        },
+        {
+          "name": "ply",
+          "type": {
+            "kind": "u32"
           }
         },
         {
@@ -111,11 +123,11 @@
             "value": {
               "$ref": "Player"
             },
-            "crdt_type": "unordered_map"
+            "crdt_type": "authored_map"
           }
         },
         {
-          "name": "seats",
+          "name": "seat_claims",
           "type": {
             "kind": "map",
             "key": {
@@ -124,7 +136,7 @@
             "value": {
               "$ref": "Seat"
             },
-            "crdt_type": "unordered_map"
+            "crdt_type": "authored_map"
           }
         },
         {
@@ -137,7 +149,7 @@
             "value": {
               "$ref": "GameRecord"
             },
-            "crdt_type": "unordered_map"
+            "crdt_type": "authored_map"
           }
         },
         {
@@ -150,7 +162,7 @@
             "value": {
               "$ref": "MoveRecord"
             },
-            "crdt_type": "unordered_map"
+            "crdt_type": "authored_map"
           }
         },
         {
@@ -163,7 +175,7 @@
             "value": {
               "$ref": "Ending"
             },
-            "crdt_type": "unordered_map"
+            "crdt_type": "authored_map"
           }
         },
         {
@@ -176,7 +188,7 @@
             "value": {
               "$ref": "DrawOffer"
             },
-            "crdt_type": "unordered_map"
+            "crdt_type": "authored_map"
           }
         }
       ]
