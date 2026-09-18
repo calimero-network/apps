@@ -43,6 +43,8 @@ import {
 } from '../utils/invitePayload';
 import { IssueTrackerClient } from '../generated/IssueTrackerClient';
 import { useApplicationId } from './useApplicationId';
+import { useMemberRoles, type UseMemberRolesReturn } from './useMemberRoles';
+import { MEMBER_CAPABILITIES } from '../utils/roles';
 import { buildAliasMap } from './useAliases';
 import {
   readActiveNs,
@@ -52,10 +54,6 @@ import {
   writeActiveRepo,
   clearPersistedWorkspace,
 } from './workspacePersistence';
-
-// Members can create per-namespace contexts + invite others. Mirrors core's
-// MemberCapabilities bits (CAN_CREATE_CONTEXT | CAN_INVITE_MEMBERS).
-const DEFAULT_CAPABILITIES = 1 | 2; // = 3
 
 export interface RepoEntry {
   contextId: string;
@@ -100,6 +98,8 @@ export interface UseWorkspaceReturn {
   selfIdentity: string | null;
   members: string[];
   memberNames: Map<string, string>;
+  /** Namespace roles + capabilities, keyed by ACCOUNT. See utils/roles. */
+  roles: UseMemberRolesReturn;
   membersLoading: boolean;
   membersLoaded: boolean;
   setMemberName: (name: string) => Promise<void>;
@@ -386,6 +386,11 @@ export function useWorkspace(): UseWorkspaceReturn {
     [nsMembers],
   );
 
+  // Roles + capabilities for this workspace. Keyed by ACCOUNT throughout —
+  // `nsMembers[].identity` and `selfIdentity` are accounts; `executorPublicKey`
+  // is a context executor key and is NOT interchangeable with them.
+  const roles = useMemberRoles(activeNs, nsMembers, selfIdentity);
+
   const setMemberName = useCallback(
     async (name: string) => {
       if (!activeNs || !selfIdentity) throw new Error('Workspace not ready');
@@ -458,12 +463,20 @@ export function useWorkspace(): UseWorkspaceReturn {
         try {
           await mero.admin.setGroupMetadata(ns.namespaceId, { name: trimmed });
         } catch { /* createNamespace's own name stands */ }
-        // Best-effort: the namespace is usable without it; an admin can re-set.
+        // What every member of this workspace may do: add a repo and invite
+        // people (MEMBER_CAPABILITIES, defined once in utils/roles). This is the
+        // DEFAULT, so it applies to members who join later, not retroactively.
         try {
           await mero.admin.setDefaultCapabilities(ns.namespaceId, {
-            defaultCapabilities: DEFAULT_CAPABILITIES,
+            defaultCapabilities: MEMBER_CAPABILITIES,
           });
-        } catch { /* keep core's built-in default */ }
+        } catch {
+          // Keep core's built-in default. Swallowing this used to be invisible
+          // and permanent: every member invited to the workspace could open it
+          // and do nothing else, forever, with nothing anywhere saying why. The
+          // members page now DETECTS that state and offers to repair it, which
+          // is what makes this catch acceptable rather than a silent failure.
+        }
         await refetchNamespaces();
         selectNamespace(ns.namespaceId);
         return ns.namespaceId;
@@ -608,6 +621,7 @@ export function useWorkspace(): UseWorkspaceReturn {
     selfIdentity,
     members,
     memberNames,
+    roles,
     membersLoading,
     membersLoaded,
     setMemberName,

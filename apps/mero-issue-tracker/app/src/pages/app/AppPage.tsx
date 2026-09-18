@@ -168,6 +168,7 @@ export default function AppPage(): React.ReactElement | null {
     activeRepo: ws.activeRepo,
     onSelectRepo: ws.selectRepo,
     onAddRepo: () => setShowAddRepo(true),
+    canAddRepo: ws.roles.canAddRepo,
   };
 
   // Shared modals rendered regardless of which pane is up, so the empty-state
@@ -250,7 +251,16 @@ export default function AppPage(): React.ReactElement | null {
           <div className="panel">
             <h2>No repository yet</h2>
             <p>Add a repository to this workspace to start tracking its issues.</p>
-            <button className="primary" data-testid="repo-add-cta" onClick={() => setShowAddRepo(true)}>Add a repository</button>
+            {ws.roles.canAddRepo ? (
+              <button className="primary" data-testid="repo-add-cta" onClick={() => setShowAddRepo(true)}>Add a repository</button>
+            ) : (
+              // Honest dead end rather than a button that 403s: the person
+              // cannot fix this themselves, so say who can.
+              <p className="gated" data-testid="repo-add-denied">
+                Ask a workspace admin to add one, or to give you permission to add
+                repositories.
+              </p>
+            )}
           </div>
         </RepoGate>
       )}
@@ -275,6 +285,7 @@ const RepoGate = styled.div`
     background: ${t.color.panel}; border: 1px solid ${t.color.border}; border-radius: 12px;
     h2 { font-size: 18px; font-weight: 600; letter-spacing: -0.02em; margin: 0 0 8px; }
     p { font-size: 13.5px; color: ${t.color.text2}; margin: 0 0 22px; line-height: 1.55; }
+    p.gated { margin: 0; font-style: italic; }
     .primary {
       background: ${t.color.accent}; color: ${t.color.onAccent}; border: 1px solid transparent;
       border-radius: ${t.radius}; font-size: 13px; font-weight: 600; padding: 10px 16px; cursor: pointer;

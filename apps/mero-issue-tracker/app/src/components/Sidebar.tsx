@@ -26,6 +26,10 @@ export interface SidebarProps {
   activeRepo: string | null;
   onSelectRepo: (id: string) => void;
   onAddRepo: () => void;
+  /** False when this member lacks CAN_CREATE_CONTEXT in the workspace. The
+   *  button is disabled rather than hidden, so the reason can be read out of
+   *  the tooltip instead of the feature appearing not to exist. */
+  canAddRepo: boolean;
 }
 
 /**
@@ -47,6 +51,7 @@ export default function Sidebar({
   activeRepo,
   onSelectRepo,
   onAddRepo,
+  canAddRepo,
 }: SidebarProps): React.ReactElement {
   const loc = useLocation();
   const mine = loc.search.includes('assignee=me');
@@ -80,7 +85,14 @@ export default function Sidebar({
       <Repos>
         <div className="repos-head">
           <span className="repos-title" title={activeName || undefined}>Repositories</span>
-          <button className="repo-add" data-testid="repo-add-btn" aria-label="Add repository" onClick={onAddRepo}>+</button>
+          <button
+            className="repo-add"
+            data-testid="repo-add-btn"
+            aria-label="Add repository"
+            onClick={onAddRepo}
+            disabled={!canAddRepo}
+            title={canAddRepo ? 'Add repository' : 'An admin has to give you permission to add repositories.'}
+          >+</button>
         </div>
         <div className="repos-list">
           {repos.length === 0 ? (
