@@ -11,7 +11,7 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { claimAccountWithCloud, findAccountRelays } from './flow.js';
+import { claimAccountWithCloud, findAccountRelays, readInvitation } from './flow.js';
 import type { DeviceIdentity } from './identity.js';
 
 const ROOT_SECRET = '5b6b8a1e9f2c47d3a80e6f14c2b9d75380af4e21c6d3b95f7e08a1c4d2f63b97';
@@ -172,5 +172,71 @@ describe('findAccountRelays', () => {
     expect(headers?.['X-Calimero-Credential']).toBe(IDENTITY.credential);
     expect(headers?.['X-Calimero-Nonce']).toBe('n-1');
     expect(headers?.['X-Calimero-Signature']).toBeTruthy();
+  });
+});
+
+/**
+ * The redesign's load-bearing claim: the namespace id is already in the
+ * invitation, so the page must not ask for it a second time.
+ *
+ * It was two fields for one fact, and the two could disagree — a typed id that
+ * did not match the signed `group_id` produced a join op for a namespace the
+ * invitation does not cover, refused at the admitter with a 403 that reads like
+ * a permissions problem rather than like a typo.
+ */
+describe('readInvitation', () => {
+  const NS = '89ab' + 'cd'.repeat(30);
+
+  it('reads the namespace and the admitters out of the signed body', () => {
+    const parsed = readInvitation(
+      JSON.stringify({
+        invitation: { group_id: NS, admitters: ['aa', 'bb'] },
+        inviter_signature: 'sig',
+        // Unsigned envelope hints. Present in real invitations, and neither is
+        // authorization: whoever relayed the invitation chose them.
+        admitter_addrs: ['/ip4/10.0.0.1/tcp/2528/p2p/12D3KooW'],
+      }),
+    );
+
+    expect(parsed.namespaceId).toBe(NS);
+    expect(parsed.admitters).toEqual(['aa', 'bb']);
+  });
+
+  it('accepts an invitation naming no admitters', () => {
+    // Empty is the legacy path -- any `*Ready` peer may admit -- and is a real
+    // invitation rather than a malformed one.
+    const parsed = readInvitation(JSON.stringify({ invitation: { group_id: NS } }));
+
+    expect(parsed.admitters).toEqual([]);
+  });
+
+  it('lower-cases the namespace so it matches what the cloud is keyed by', () => {
+    const parsed = readInvitation(
+      JSON.stringify({ invitation: { group_id: NS.toUpperCase(), admitters: [] } }),
+    );
+
+    expect(parsed.namespaceId).toBe(NS);
+  });
+
+  it('tells a truncated paste apart from the wrong blob', () => {
+    expect(() => readInvitation('{"invitation":')).toThrow(/not valid JSON/);
+    expect(() => readInvitation(JSON.stringify({ inviter_signature: 'sig' }))).toThrow(
+      /no `invitation` object/,
+    );
+  });
+
+  it('refuses an invitation with no namespace in it', () => {
+    // There is nowhere else to learn one: the cloud lookup deliberately returns
+    // relays and never namespaces, so this cannot be recovered from.
+    expect(() => readInvitation(JSON.stringify({ invitation: { admitters: [] } }))).toThrow(
+      /no `group_id`/,
+    );
+    expect(() =>
+      readInvitation(JSON.stringify({ invitation: { group_id: 'not-hex' } })),
+    ).toThrow(/no `group_id`/);
+  });
+
+  it('asks for an invitation rather than erroring on an empty box', () => {
+    expect(() => readInvitation('   ')).toThrow(/Paste the invitation/);
   });
 });

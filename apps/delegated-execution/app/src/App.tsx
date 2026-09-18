@@ -24,11 +24,33 @@
  * *warrant* — the author's own signature over one context, one method and one
  * exact set of arguments — which the relay spends on their behalf. The relay
  * never gains the ability to write something the author did not sign.
+ *
+ * ## Why the panels are in this order
+ *
+ * They used to be in protocol order, which put the two *optional* things early
+ * (connecting to a cloud login was step 2 of 6) and collapsed four unrelated
+ * values into one panel of four identical text boxes. The order now follows
+ * what a person actually has to establish, and each value sits beside the
+ * question it answers:
+ *
+ * - **1 Identity** — the keys, minted here.
+ * - **2 Reach** — where to send things. Two ways in, and they are genuinely
+ *   different: a *returning* device asks the cloud which relays already hold
+ *   something for its account and needs no invitation at all; a *first* join
+ *   has no such record and needs the invitation, which is also where the
+ *   namespace id comes from. The old page only modelled the second and made
+ *   everyone type a namespace id that was already in the blob beside it.
+ * - **3 Pin** — the node's signing key, alone, because it is the only value on
+ *   the page that must not be told to you.
+ * - **4–6 Session, read, write** — the flow itself.
+ * - **7 Cloud** — last and marked optional, because nothing above it depends on
+ *   a cloud login and the README had to spend a paragraph saying so.
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
-import { Out, Step, type StepState } from './steps/Step.js';
+import { Out, Provenance, Step, type StepState } from './steps/Step.js';
+import { Strip, type Slot } from './steps/Strip.js';
 import type { ClassifiedNode } from './lib/admission.js';
 import { createIdentity, restoreIdentity, type DeviceIdentity } from './lib/identity.js';
 import type { AccountClaimResult, AccountProofResult } from './lib/flow.js';
@@ -39,14 +61,16 @@ import {
   startCloudLink,
   describeRelay,
   discoverAdmitter,
+  findAccountRelays,
   proveAccountToCloud,
+  readInvitation,
   sendJoin,
   openSession,
   readContext,
   writeContext,
 } from './lib/flow.js';
 import { errorText, parseJson, pretty, short } from './lib/format.js';
-import { CloudClient } from '@calimero-network/mero-js';
+import { CloudClient, type CloudAccountRelay } from '@calimero-network/mero-js';
 import {
   DEFAULT_CLOUD_URL,
   DEFAULT_PORTAL_URL,
@@ -126,11 +150,72 @@ export function App() {
   const ready = useMemo(
     () => ({
       identity: identity !== null,
+      reach: settings.nodeUrl.trim() !== '',
+      pinned: settings.nodeKey.trim().length === 64,
       node: settings.nodeUrl.trim() !== '' && settings.nodeKey.trim().length === 64,
       context: settings.contextId.trim().length === 64,
       session: session !== null,
     }),
     [identity, settings, session],
+  );
+
+  /**
+   * The strip's slots, in the order the flow needs them.
+   *
+   * `warn` rather than `none` wherever the value is *expected* to be absent for
+   * a while: a node key nobody has pinned yet is the normal state on first
+   * load, and colouring it like a failure would train people to ignore it.
+   */
+  const slots: readonly Slot[] = useMemo(
+    () => [
+      {
+        label: 'account',
+        value: identity ? short(identity.accountId, 6) : 'none',
+        state: identity ? 'ok' : 'none',
+        title: identity ? identity.accountId : 'Mint or restore one in step 1.',
+      },
+      {
+        label: 'device',
+        value: identity ? short(identity.deviceId, 6) : 'none',
+        state: identity ? 'ok' : 'none',
+        title: identity ? identity.deviceId : 'Certified by the account root in step 1.',
+      },
+      {
+        label: 'relay',
+        value: settings.nodeUrl === '' ? 'none' : new URL(settings.nodeUrl).host,
+        state: ready.reach ? 'ok' : 'none',
+        title:
+          settings.nodeUrl === ''
+            ? 'Step 2 finds one — from your account’s relays, or from an invitation.'
+            : settings.nodeUrl,
+      },
+      {
+        label: 'node key',
+        value: ready.pinned ? short(settings.nodeKey, 5) : 'unpinned',
+        state: ready.pinned ? 'ok' : 'warn',
+        title: ready.pinned
+          ? settings.nodeKey
+          : 'Step 3. The one value on this page nothing may tell you — the session binds to it.',
+      },
+      {
+        label: 'session',
+        value: session ? 'open' : 'closed',
+        state: session ? 'ok' : 'none',
+        title: session ? 'Reads only: context:query, context:intent, context:subscribe.' : 'Step 4.',
+      },
+      {
+        label: 'cloud',
+        value: claim === null ? 'not connected' : claim.linked ? 'linked' : 'proven',
+        state: claim === null ? 'none' : claim.linked ? 'ok' : 'warn',
+        title:
+          claim === null
+            ? 'Optional — step 7. Nothing above it needs a cloud login.'
+            : claim.linked
+              ? `Linked to ${claim.email}`
+              : 'Ownership recorded, but this account is not linked to a cloud login.',
+      },
+    ],
+    [identity, settings.nodeUrl, settings.nodeKey, ready.reach, ready.pinned, session, claim],
   );
 
   return (
@@ -148,6 +233,8 @@ export function App() {
           so the failures are visible too.
         </p>
       </header>
+
+      <Strip slots={slots} />
 
       <IdentityStep
         identity={identity}
@@ -176,23 +263,9 @@ export function App() {
         }}
       />
 
-      <AccountCloudStep
-        identity={identity}
-        settings={settings}
-        onChange={updateSettings}
-        claim={claim}
-        onClaim={(next) => {
-          saveClaim(next);
-          setClaim(next);
-        }}
-      />
+      <ReachStep settings={settings} onChange={updateSettings} identity={identity} />
 
-      <NodeStep
-        settings={settings}
-        onChange={updateSettings}
-        ready={ready.node}
-        identity={identity}
-      />
+      <PinStep settings={settings} onChange={updateSettings} />
 
       <SessionStep
         identity={identity}
@@ -204,6 +277,7 @@ export function App() {
 
       <ReadStep
         settings={settings}
+        onChange={updateSettings}
         session={session}
         enabled={ready.session && ready.context}
       />
@@ -212,6 +286,17 @@ export function App() {
         identity={identity}
         settings={settings}
         enabled={ready.identity && ready.node && ready.context}
+      />
+
+      <AccountCloudStep
+        identity={identity}
+        settings={settings}
+        onChange={updateSettings}
+        claim={claim}
+        onClaim={(next) => {
+          saveClaim(next);
+          setClaim(next);
+        }}
       />
 
       <footer>
@@ -223,6 +308,15 @@ export function App() {
       </footer>
     </div>
   );
+}
+
+/** A URL's host for the strip, or the whole string when it will not parse. */
+function hostOf(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
 }
 
 function IdentityStep({
@@ -326,6 +420,521 @@ function IdentityStep({
       </label>
 
       <Out error={outcome?.error}>{outcome?.text ?? ''}</Out>
+    </Step>
+  );
+}
+
+/**
+ * Where to send things — the panel the redesign is actually about.
+ *
+ * ## Two ways in, and they are not the same way
+ *
+ * A **returning** device holds a key the network already knows: it has joined
+ * something, a relay serving that namespace wrote a recovery record for it, and
+ * the cloud can therefore answer *which relays hold something for this account*
+ * from the distinct writers of those records. No invitation is involved, and
+ * none would help — an invitation is a one-shot thing you are given before you
+ * are a member, and this device already is one.
+ *
+ * A **first** join has no such record, by construction. The account has never
+ * been admitted anywhere, so nothing has ever written for it and the lookup
+ * correctly returns nothing. What it has instead is the invitation, which
+ * carries both the namespace and the accounts allowed to admit a claim of it.
+ *
+ * The old page modelled only the second and put the first through it, so a
+ * returning device had to find an invitation it no longer needed. Discovery is
+ * the default here and the invitation is the fallback, which is the order they
+ * happen in.
+ *
+ * ## What the relay lookup deliberately does not return
+ *
+ * Namespaces. The cloud derives the answer from *who wrote* the recovery
+ * records, never from what they contain, so the response names relays and
+ * nothing else — strictly less than the edge itself discloses. That is also why
+ * the namespace id below comes from the invitation rather than from this
+ * lookup: for a returning device with no invitation to hand, the authoritative
+ * answer lives at the node, which is a gap this page reports rather than papers
+ * over.
+ */
+function ReachStep({
+  settings,
+  onChange,
+  identity,
+}: {
+  settings: Settings;
+  onChange: (patch: Partial<Settings>) => void;
+  identity: DeviceIdentity | null;
+}) {
+  const [classified, setClassified] = useState<ClassifiedNode[]>([]);
+  const [outcome, setOutcome] = useState<Outcome | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [joined, setJoined] = useState(false);
+  const [proof, setProof] = useState<AccountProofResult | null>(null);
+  const [known, setKnown] = useState<{
+    usable: CloudAccountRelay[];
+    others: CloudAccountRelay[];
+  } | null>(null);
+
+  /**
+   * The namespace, read out of the pasted invitation rather than typed.
+   *
+   * Recomputed on every keystroke rather than stored, so the panel cannot show
+   * a namespace belonging to an invitation that has since been replaced. A
+   * parse failure is not reported here — an empty box is the normal state and
+   * an error under it while someone is still pasting is noise. The buttons
+   * report it, because that is where acting on a bad invitation happens.
+   */
+  const invited = useMemo(() => {
+    if (settings.invitationJson.trim() === '') return null;
+    try {
+      return readInvitation(settings.invitationJson);
+    } catch {
+      return null;
+    }
+  }, [settings.invitationJson]);
+
+  const lookUp = useCallback(async () => {
+    setBusy(true);
+    setOutcome(null);
+    try {
+      if (!identity) throw new Error('Mint or restore an account in step 1 first.');
+      if (settings.cloudUrl.trim() === '') throw new Error('Enter your cloud API URL first.');
+      const found = await findAccountRelays(settings.cloudUrl, identity);
+      setKnown(found);
+      setOutcome({
+        text:
+          found.usable.length > 0
+            ? `${found.usable.length} relay(s) already hold something for this account. Pick ` +
+              'one — no invitation is needed, because you are already a member of whatever ' +
+              'they serve.'
+            : found.others.length > 0
+              ? `The cloud knows ${found.others.length} relay(s) for this account, but none is ` +
+                'usable right now — no address, or no fresh heartbeat. That is "your relay is ' +
+                'down", not "you have no relay": wait rather than re-join.'
+              : 'No relay holds anything for this account yet. That is the normal answer for a ' +
+                'key that has never joined anything — use the invitation below.',
+        error: false,
+      });
+    } catch (error) {
+      setKnown(null);
+      setOutcome({ text: errorText(error), error: true });
+    } finally {
+      setBusy(false);
+    }
+  }, [identity, settings.cloudUrl]);
+
+  /**
+   * Point both legs at one relay.
+   *
+   * `relayUrl` too, not just `nodeUrl`: this lookup cannot say whether a relay
+   * holds `CAN_AUTHOR_ON_BEHALF`, and refusing to set the write leg would leave
+   * the page unable to attempt the thing it exists to demonstrate. The write
+   * panel's "Check first" answers the capability question without signing, so
+   * the honest wiring is to point at it and let that button say no.
+   */
+  const pick = useCallback(
+    (relay: CloudAccountRelay) => {
+      if (!relay.relayUrl) return;
+      onChange({ nodeUrl: relay.relayUrl, relayUrl: relay.relayUrl, admitUrl: '' });
+      setOutcome({
+        text:
+          `Pointed at ${relay.relayUrl}. This lookup cannot tell you whether that node may ` +
+          'author on your behalf — the cloud is not asked, because it does not decide. Step 6’s ' +
+          '“Check first” answers it without spending a warrant nonce.',
+        error: false,
+      });
+    },
+    [onChange],
+  );
+
+  /**
+   * The namespace a routing proof is bound to.
+   *
+   * A pasted invitation wins, because it is what the person is currently
+   * working on. Failing that, the last namespace this tab actually joined —
+   * which is why `settings.namespaceId` is written by the two actions below and
+   * kept: after a successful join the invitation has done its job and gets
+   * cleared or replaced, and a returning device would otherwise have nothing to
+   * bind a proof to.
+   */
+  const provableNamespace = invited?.namespaceId ?? (settings.namespaceId || null);
+
+  const prove = useCallback(async () => {
+    setBusy(true);
+    setOutcome(null);
+    try {
+      if (!identity) throw new Error('Mint or restore an account in step 1 first.');
+      if (!provableNamespace) {
+        throw new Error(
+          'This proof is bound to one namespace, and there is none to hand: paste an invitation, ' +
+            'or join one first.',
+        );
+      }
+      const result = await proveAccountToCloud(settings.cloudUrl, provableNamespace, identity);
+      setProof(result);
+      setOutcome({
+        text:
+          `The cloud served this read as ${short(result.accountId, 10)} rather than anonymously, ` +
+          `and answered with ${result.nodeCount} node(s).`,
+        error: false,
+      });
+    } catch (error) {
+      setProof(null);
+      setOutcome({ text: errorText(error), error: true });
+    } finally {
+      setBusy(false);
+    }
+  }, [identity, settings.cloudUrl, provableNamespace]);
+
+  const discover = useCallback(async () => {
+    setBusy(true);
+    setOutcome(null);
+    try {
+      if (!identity) throw new Error('Mint or restore an account in step 1 first.');
+      const result = await discoverAdmitter(
+        settings.cloudUrl,
+        settings.invitationJson,
+        identity,
+      );
+      setClassified(result.classified);
+      if (result.chosen === null) {
+        setOutcome({ text: result.reason ?? 'No node can take a join right now.', error: true });
+        return;
+      }
+      // Two fields, because they answer two questions. The write leg used to
+      // reuse `nodeUrl` even when the panel had just said this node cannot
+      // execute — it told you the problem and then walked into it.
+      const relayUrl = result.executor?.relayUrl ?? '';
+      onChange({
+        namespaceId: result.namespaceId,
+        nodeUrl: result.chosen.relayUrl ?? '',
+        relayUrl,
+        admitUrl: result.chosen.admitUrl ?? '',
+      });
+
+      const admitLine = `Admitting through ${result.chosen.peerId} at ${result.chosen.relayUrl}.`;
+      const writeLine =
+        result.executor === null
+          ? ` No relay for the write: ${result.executorReason ?? 'none available.'}`
+          : result.executor.peerId === result.chosen.peerId
+            ? ' It also holds the authorship grant, so one node serves both legs.'
+            : ` Writing through ${result.executor.peerId} at ${result.executor.relayUrl}` +
+              ' — a different node, because admission and authorship are different grants.';
+      setOutcome({ text: admitLine + writeLine, error: false });
+    } catch (error) {
+      setOutcome({ text: errorText(error), error: true });
+    } finally {
+      setBusy(false);
+    }
+  }, [settings.cloudUrl, settings.invitationJson, identity, onChange]);
+
+  const join = useCallback(async () => {
+    setBusy(true);
+    setOutcome(null);
+    try {
+      if (!identity) throw new Error('Mint or restore an account in step 1 first.');
+      if (settings.admitUrl === '') throw new Error('Find an admitter first — the button above.');
+      const { published, namespaceId } = await sendJoin(
+        settings.admitUrl,
+        identity,
+        settings.invitationJson,
+      );
+      onChange({ namespaceId });
+      setJoined(published);
+      setOutcome({
+        // `published` is the honest word the endpoint uses, and the distinction
+        // is real: the admitter put the op on the namespace topic and neither
+        // applies it nor waits for anyone who does. Membership lands when peers
+        // fold it, which is why the read is what confirms this worked.
+        text: published
+          ? 'Signed and published. The admitter carried it; membership lands when peers fold ' +
+            'the op, so step 5 is what confirms it — a 403 straight after is usually a race, ' +
+            'not a refusal.'
+          : 'The admitter accepted the call but reported nothing published. Treat that as not ' +
+            'joined and try another admitter.',
+        error: !published,
+      });
+    } catch (error) {
+      setOutcome({ text: errorText(error), error: true });
+    } finally {
+      setBusy(false);
+    }
+  }, [identity, settings.admitUrl, settings.invitationJson, onChange]);
+
+  const reached = settings.nodeUrl !== '';
+
+  return (
+    <Step
+      n={2}
+      title="Find where you can go"
+      state={reached ? 'done' : 'idle'}
+      stateLabel={reached ? hostOf(settings.nodeUrl) : 'nowhere yet'}
+      why={
+        <>
+          Two ways in, and which one applies is decided by whether this account has ever
+          joined anything. A <strong>returning</strong> device asks the cloud which relays
+          already hold something for it — no invitation, because it is already a member. A{' '}
+          <strong>first</strong> join has no such record and uses the invitation, whose
+          signed body carries both the namespace and the accounts allowed to admit a claim
+          of it. The cloud says who is <em>reachable</em>; only the invitation says who is{' '}
+          <em>allowed</em>, so a live, healthy node absent from that signed list still
+          answers 403.
+        </>
+      }
+    >
+      <label>
+        Cloud API URL
+        <input
+          type="text"
+          value={settings.cloudUrl}
+          placeholder={DEFAULT_CLOUD_URL}
+          onChange={(e) => onChange({ cloudUrl: e.target.value.trim() })}
+        />
+      </label>
+
+      <Provenance
+        kind="found"
+        title="Relays that already hold something for this account"
+        note={
+          <>
+            Proven with the device certificate rather than a cloud login, so a tab holding only
+            a key can ask. The cloud derives this from <em>who wrote</em> your recovery records
+            — a relay writes only for namespaces it serves — so the answer names relays and
+            never namespaces, which is strictly less than the fact of the record already
+            discloses.
+          </>
+        }
+      >
+        <div className="row">
+          <button type="button" onClick={() => void lookUp()} disabled={busy || !identity}>
+            {busy ? 'Asking the cloud…' : 'Find my relays'}
+          </button>
+        </div>
+
+        {known !== null && (
+          <ul className="nodes">
+            {known.usable.map((relay) => (
+              <li key={relay.peerId} data-kind="usable">
+                <code>{relay.peerId}</code> — {relay.relayUrl}
+                {' · '}
+                <button type="button" className="link" onClick={() => pick(relay)}>
+                  {settings.nodeUrl === relay.relayUrl ? 'in use' : 'use this one'}
+                </button>
+              </li>
+            ))}
+            {known.others.map((relay) => (
+              <li key={relay.peerId} data-kind="invited-unreachable">
+                <code>{relay.peerId}</code> —{' '}
+                {relay.relayUrl
+                  ? 'known, but no fresh heartbeat — wait rather than re-join'
+                  : 'known, but the cloud has no address for it yet'}
+              </li>
+            ))}
+            {known.usable.length === 0 && known.others.length === 0 && (
+              <li>
+                none — the normal answer for a key that has never joined anything, and the
+                reason the invitation below exists
+              </li>
+            )}
+          </ul>
+        )}
+      </Provenance>
+
+      <Provenance
+        kind="given"
+        title="An invitation, for a first join"
+        note={
+          <>
+            Needed once and never again: it is what makes the account a member, and a returning
+            device uses the lookup above instead. The <strong>namespace id is inside it</strong>,
+            so there is no field for one — a typed id that disagreed with the signed one produced
+            a join for a namespace the invitation does not cover, refused with a 403 that reads
+            like a permissions problem.
+          </>
+        }
+      >
+        <label>
+          Invitation — paste it exactly as the operator&rsquo;s node issued it
+          <textarea
+            rows={4}
+            value={settings.invitationJson}
+            placeholder={'{"invitation": {"group_id": "…", "admitters": ["…"]}, "inviter_signature": "…"}'}
+            onChange={(e) => onChange({ invitationJson: e.target.value })}
+          />
+        </label>
+
+        {!invited && settings.namespaceId !== '' && (
+          <p className="aside">
+            Last joined <code>{short(settings.namespaceId, 10)}</code>. Kept after the invitation
+            is cleared, because a returning device has nothing else to name a namespace with —
+            the node knows, but an <code>account_proof</code> session is not given{' '}
+            <code>namespace:list</code>.
+          </p>
+        )}
+
+        {invited && (
+          <dl className="kv">
+            <dt>namespace</dt>
+            <dd>
+              {invited.namespaceId} <span className="derived">read from the signed body</span>
+            </dd>
+            <dt>admitters</dt>
+            <dd>
+              {invited.admitters.length === 0
+                ? 'none named — the legacy path, where any ready peer may admit you'
+                : invited.admitters.map((a) => short(a, 8)).join(', ')}
+            </dd>
+          </dl>
+        )}
+
+        <div className="row">
+          <button type="button" onClick={() => void discover()} disabled={busy || !identity || !invited}>
+            {busy ? 'Asking the cloud…' : 'Find a node that can admit me'}
+          </button>
+          <button
+            type="button"
+            onClick={() => void join()}
+            disabled={busy || !identity || settings.admitUrl === ''}
+          >
+            {busy ? 'Signing and sending…' : joined ? 'Join sent — send again' : 'Sign and send my join'}
+          </button>
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => void prove()}
+            disabled={busy || !identity || !provableNamespace}
+          >
+            {busy ? 'Proving…' : 'Show me the proof this read makes'}
+          </button>
+        </div>
+        <p className="aside">
+          The second button is the one that makes you a <strong>member</strong>. Your device signs
+          the membership op and the admitter only carries it — every peer checks the signer against
+          the certificate in the op, so the node relaying it cannot admit a different account,
+          change the group or grant itself a role. It can refuse, and that is the whole of its
+          power. Until this succeeds the read answers 403 and the write is refused, because there
+          is nothing to be a member of yet.
+        </p>
+
+        {classified.length > 0 && (
+          <ul className="nodes">
+            {classified.map(({ node, admissibility }) => (
+              <li key={node.peerId} data-kind={admissibility.kind}>
+                <code>{node.peerId}</code> — {node.relayUrl ?? 'no URL yet'}
+                {admissibility.kind === 'usable' && ' · invited and reachable'}
+                {admissibility.kind === 'invited-unreachable' &&
+                  ' · invited, but no fresh heartbeat — wait rather than re-invite'}
+                {admissibility.kind === 'not-invited' &&
+                  ' · healthy, but your invitation does not name it — a claim here is refused'}
+              </li>
+            ))}
+          </ul>
+        )}
+      </Provenance>
+
+      {proof !== null && (
+        <>
+          <dl className="kv">
+            <dt>challenge</dt>
+            <dd>
+              {short(proof.nonce, 12)} — expires{' '}
+              {new Date(proof.expiresAtMs).toLocaleTimeString()}
+            </dd>
+            <dt>signed by</dt>
+            <dd>the device key, {short(proof.signature, 12)}</dd>
+            <dt>read as</dt>
+            <dd>{proof.accountId}</dd>
+          </dl>
+          <p className="aside">
+            Every lookup on this panel already makes this proof; the button only shows it. The
+            cloud minted a sealed challenge, your <strong>device</strong> key signed it, and the
+            read went through naming that account. The certificate alone would prove nothing — it
+            travels in the clear inside every device-link op — so only this signature binds you to
+            the device. Nothing was stored and no session was issued: a challenge expires in about
+            two minutes and every read proves itself again. What it buys is{' '}
+            <em>attribution</em>, not authorization. It does <strong>not</strong> prove you were
+            invited or are a member; the cloud cannot know either, and that check lives at the
+            node, on the signed op.
+          </p>
+        </>
+      )}
+
+      {!identity && (
+        <p className="aside">
+          Disabled until step 1 holds a key. Both paths here ask the cloud to serve a read as an
+          account, and the proof is a challenge signed by your certified device key — so there is
+          nothing to sign with yet.
+        </p>
+      )}
+
+      <Out error={outcome?.error}>{outcome?.text ?? ''}</Out>
+    </Step>
+  );
+}
+
+/**
+ * The node's signing key, alone in its own panel.
+ *
+ * It used to be the fourth of four text boxes and looked exactly like the three
+ * beside it, which was the worst thing about the old layout: the other three
+ * are values somebody hands you and this one is a value that must *not* be
+ * handed to you. A panel of its own is the cheapest way to say that.
+ */
+function PinStep({
+  settings,
+  onChange,
+}: {
+  settings: Settings;
+  onChange: (patch: Partial<Settings>) => void;
+}) {
+  const pinned = settings.nodeKey.trim().length === 64;
+
+  return (
+    <Step
+      n={3}
+      title="Pin the node’s signing key"
+      state={pinned ? 'done' : 'idle'}
+      stateLabel={pinned ? 'pinned' : 'not pinned'}
+      why={
+        <>
+          The one value on this page that nothing may tell you. Your device signs a login
+          statement naming this key, and that binding is what stops a statement signed for one
+          node being replayed to another — so a node that told you its own key would be choosing
+          what you signed about. Neither the invitation nor the cloud carries it, and a cloud
+          serving a node-<em>reported</em> value would move the trust-on-first-use one hop rather
+          than remove it.
+        </>
+      }
+    >
+      <Provenance
+        kind="pinned"
+        title="Established out of band, by you"
+        note={
+          <>
+            From the operator, over a channel you already trust, or read from the node yourself
+            with <code>curl -s &lt;node&gt;/admin-api/identity</code>. Removing this field means
+            binding the key into the attestation quote, which is tracked separately.
+          </>
+        }
+      >
+        <label>
+          Node signing key — 64 hex
+          <input
+            type="text"
+            value={settings.nodeKey}
+            placeholder="0123…"
+            onChange={(e) => onChange({ nodeKey: e.target.value.trim() })}
+          />
+        </label>
+      </Provenance>
+
+      {settings.nodeKey.trim() !== '' && !pinned && (
+        <div className="note">
+          That is {settings.nodeKey.trim().length} characters, and a signing key is 64 hex. A
+          statement signed against the wrong key is refused with the same 401 as a disabled
+          provider, so the length is worth catching here.
+        </div>
+      )}
     </Step>
   );
 }
@@ -511,12 +1120,17 @@ function AccountCloudStep({
 
   return (
     <Step
-      n={2}
+      n={7}
+      optional
       title="Connect this account to your cloud"
       state={claimed ? 'done' : 'idle'}
       stateLabel={claimed ? (claim.linked ? 'connected' : 'proven, unlinked') : 'not yet'}
       why={
         <>
+          <strong>Nothing above this needs it</strong>, which is why it is last: routing reads
+          prove themselves with the device certificate, the node session comes from the device
+          key, and the write is authorised by a warrant. It used to sit at step 2, where being
+          second of six read as required.{' '}
           Two steps, and they answer different questions.{' '}
           <strong>Connect</strong> sends you to the cloud to sign in and agree to link this account
           — the half that needs you to <em>be</em> the cloud customer, which a tab holding only a
@@ -530,15 +1144,6 @@ function AccountCloudStep({
       }
     >
       <label>
-        Cloud API URL
-        <input
-          type="text"
-          value={settings.cloudUrl}
-          placeholder={DEFAULT_CLOUD_URL}
-          onChange={(e) => onChange({ cloudUrl: e.target.value.trim() })}
-        />
-      </label>
-      <label>
         Cloud portal URL — where you sign in
         <input
           type="text"
@@ -548,10 +1153,11 @@ function AccountCloudStep({
         />
       </label>
       <p className="aside">
-        Both are prefilled with the hosted cloud and both are editable — point them at a local or
-        staging cloud and the rest of the page follows. Two fields because they are two hosts: the
-        portal serves the sign-in page and does not proxy <code>/api/*</code>, and the API host has
-        no sign-in page.
+        A second host, not a second spelling of the API URL in step 2: production serves the
+        sign-in page from <code>{settings.portalUrl || DEFAULT_PORTAL_URL}</code>, which does not
+        proxy <code>/api/*</code>, and answers the API from{' '}
+        <code>{settings.cloudUrl || DEFAULT_CLOUD_URL}</code>, which has no sign-in page. Deriving
+        one from the other would work in exactly the deployments where it did not matter.
       </p>
 
       <div className="row">
@@ -641,8 +1247,7 @@ function AccountCloudStep({
           establishes <em>what you are entitled to</em>. Anyone can mint an account root offline,
           so a session on the proof alone would authenticate perfectly and authorize nothing — no
           cloud user, no plan, no namespaces to scope it to. The claim is written down anyway, so
-          linking this account from a signed-in cloud session later needs no second proof. The
-          rest of this page does not need the session: routing reads prove themselves.
+          linking this account from a signed-in cloud session later needs no second proof.
         </p>
       )}
 
@@ -663,274 +1268,6 @@ function AccountCloudStep({
           claim with. Everything else still works — the device key signs sessions, joins and
           warrants. Restore from your phrase to claim the account.
         </p>
-      )}
-
-      <Out error={outcome?.error}>{outcome?.text ?? ''}</Out>
-    </Step>
-  );
-}
-
-function NodeStep({
-  settings,
-  onChange,
-  ready,
-  identity,
-}: {
-  settings: Settings;
-  onChange: (patch: Partial<Settings>) => void;
-  ready: boolean;
-  /**
-   * Needed to *read* routing, not to join with — the cloud asks a caller to
-   * prove which account is asking. So step 3 now depends on step 1, which is
-   * the honest ordering: there was never a point in resolving a node before
-   * holding the key that will sign the join.
-   */
-  identity: DeviceIdentity | null;
-}) {
-  const [classified, setClassified] = useState<ClassifiedNode[]>([]);
-  const [outcome, setOutcome] = useState<Outcome | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [joined, setJoined] = useState(false);
-  const [proof, setProof] = useState<AccountProofResult | null>(null);
-
-  const prove = useCallback(async () => {
-    setBusy(true);
-    setOutcome(null);
-    try {
-      if (!identity) throw new Error('Mint or restore an account in step 1 first.');
-      if (settings.namespaceId.trim() === '') throw new Error('Enter the namespace id first.');
-      const result = await proveAccountToCloud(settings.cloudUrl, settings.namespaceId, identity);
-      setProof(result);
-      setOutcome({
-        text:
-          `The cloud served this read as ${short(result.accountId, 10)} rather than anonymously, ` +
-          `and answered with ${result.nodeCount} node(s).`,
-        error: false,
-      });
-    } catch (error) {
-      setProof(null);
-      setOutcome({ text: error instanceof Error ? error.message : String(error), error: true });
-    } finally {
-      setBusy(false);
-    }
-  }, [identity, settings.cloudUrl, settings.namespaceId]);
-
-  const join = useCallback(async () => {
-    setBusy(true);
-    setOutcome(null);
-    try {
-      if (!identity) throw new Error('Mint or restore an account in step 1 first.');
-      if (settings.admitUrl === '') throw new Error('Find an admitter first — the button above.');
-      const { published } = await sendJoin(
-        settings.admitUrl,
-        identity,
-        settings.namespaceId,
-        settings.invitationJson,
-      );
-      setJoined(published);
-      setOutcome({
-        // `published` is the honest word the endpoint uses, and the distinction
-        // is real: the admitter put the op on the namespace topic and neither
-        // applies it nor waits for anyone who does. Membership lands when peers
-        // fold it, which is why the read is what confirms this worked.
-        text: published
-          ? 'Signed and published. The admitter carried it; membership lands when peers fold ' +
-            'the op, so step 5 is what confirms it — a 403 straight after is usually a race, ' +
-            'not a refusal.'
-          : 'The admitter accepted the call but reported nothing published. Treat that as not ' +
-            'joined and try another admitter.',
-        error: !published,
-      });
-    } catch (error) {
-      setOutcome({ text: error instanceof Error ? error.message : String(error), error: true });
-    } finally {
-      setBusy(false);
-    }
-  }, [identity, settings.admitUrl, settings.namespaceId, settings.invitationJson]);
-
-  const discover = useCallback(async () => {
-    setBusy(true);
-    setOutcome(null);
-    try {
-      if (!identity) throw new Error('Mint or restore an account in step 1 first.');
-      const result = await discoverAdmitter(
-        settings.cloudUrl,
-        settings.namespaceId,
-        settings.invitationJson,
-        identity,
-      );
-      setClassified(result.classified);
-      if (result.chosen === null) {
-        setOutcome({ text: result.reason ?? 'No node can take a join right now.', error: true });
-        return;
-      }
-      // Two fields, because they answer two questions. The write leg used to
-      // reuse `nodeUrl` even when the panel had just said this node cannot
-      // execute — it told you the problem and then walked into it.
-      const relayUrl = result.executor?.relayUrl ?? '';
-      onChange({
-        nodeUrl: result.chosen.relayUrl ?? '',
-        relayUrl,
-        admitUrl: result.chosen.admitUrl ?? '',
-      });
-
-      const admitLine = `Admitting through ${result.chosen.peerId} at ${result.chosen.relayUrl}.`;
-      const writeLine =
-        result.executor === null
-          ? ` No relay for the write: ${result.executorReason ?? 'none available.'}`
-          : result.executor.peerId === result.chosen.peerId
-            ? ' It also holds the authorship grant, so one node serves both legs.'
-            : ` Writing through ${result.executor.peerId} at ${result.executor.relayUrl}` +
-              ' — a different node, because admission and authorship are different grants.';
-      setOutcome({ text: admitLine + writeLine, error: false });
-    } catch (error) {
-      setOutcome({ text: error instanceof Error ? error.message : String(error), error: true });
-    } finally {
-      setBusy(false);
-    }
-  }, [settings.cloudUrl, settings.namespaceId, settings.invitationJson, identity, onChange]);
-
-  return (
-    <Step
-      n={3}
-      title="Prove your account to the cloud, and accept an invitation"
-      state={ready ? 'done' : 'idle'}
-      stateLabel={ready ? 'set' : 'incomplete'}
-      why={
-        <>
-          Two sources, two questions. The invitation&rsquo;s <code>admitters</code> list sits{' '}
-          <em>inside</em> the body the group admin signed, so it says who is <em>allowed</em> to
-          admit you — a node outside it refuses the claim whatever else is true. The cloud says who
-          is <em>reachable</em>: a URL, a fresh heartbeat, and whether the node holds{' '}
-          <code>CAN_AUTHOR_ON_BEHALF</code>. Neither answers both, so the node is the intersection.
-          A node that is live and healthy but absent from your signed list will still answer with
-          403 — the signed list is a snapshot from when the invitation was minted, and says nothing
-          about nodes assigned since.
-        </>
-      }
-    >
-      <label>
-        Namespace id — 64 hex
-        <input
-          type="text"
-          value={settings.namespaceId}
-          placeholder="89ab…"
-          onChange={(e) => onChange({ namespaceId: e.target.value.trim() })}
-        />
-      </label>
-      <label>
-        Invitation — paste it exactly as the operator&rsquo;s node issued it
-        <textarea
-          rows={4}
-          value={settings.invitationJson}
-          placeholder={'{"invitation": {"admitters": ["…"]}, "inviter_signature": "…"}'}
-          onChange={(e) => onChange({ invitationJson: e.target.value })}
-        />
-      </label>
-      <label>
-        Context id — 64 hex
-        <input
-          type="text"
-          value={settings.contextId}
-          placeholder="89ab…"
-          onChange={(e) => onChange({ contextId: e.target.value.trim() })}
-        />
-      </label>
-      <label>
-        Node signing key — 64 hex, still pinned out of band
-        <input
-          type="text"
-          value={settings.nodeKey}
-          placeholder="0123…"
-          onChange={(e) => onChange({ nodeKey: e.target.value.trim() })}
-        />
-      </label>
-      <p className="aside">
-        The one field discovery cannot supply. Your device signs a login statement naming this key,
-        and that binding is what stops a statement signed for one node being replayed to another —
-        so a node that told you its own key could decide what you signed about. The invitation does
-        not carry it and neither does the cloud, and a cloud serving a node-<em>reported</em> value
-        would move the trust-on-first-use one hop rather than remove it. Removing this field means
-        binding the key into the attestation quote, which is tracked separately.
-      </p>
-
-      <div className="row">
-        <button type="button" onClick={() => void prove()} disabled={busy || !identity}>
-          {busy ? 'Proving…' : 'Prove my account to the cloud'}
-        </button>
-        <button type="button" onClick={discover} disabled={busy || !identity}>
-          {busy ? 'Asking the cloud…' : 'Find a node that can admit me'}
-        </button>
-        <button
-          type="button"
-          onClick={() => void join()}
-          disabled={busy || !identity || settings.admitUrl === ''}
-        >
-          {busy ? 'Signing and sending…' : joined ? 'Join sent — send again' : 'Sign and send my join'}
-        </button>
-      </div>
-      <p className="aside">
-        The second button is the one that makes you a <strong>member</strong>. Your device signs
-        the membership op and the admitter only carries it — every peer checks the signer against
-        the certificate in the op, so the node relaying it cannot admit a different account,
-        change the group or grant itself a role. It can refuse, and that is the whole of its
-        power. Until this succeeds the read answers 403 and the write is refused, because there
-        is nothing to be a member of yet.
-      </p>
-      {proof !== null && (
-        <>
-          <dl className="kv">
-            <dt>challenge</dt>
-            <dd>
-              {short(proof.nonce, 12)} — expires{' '}
-              {new Date(proof.expiresAtMs).toLocaleTimeString()}
-            </dd>
-            <dt>signed by</dt>
-            <dd>the device key, {short(proof.signature, 12)}</dd>
-            <dt>read as</dt>
-            <dd>{proof.accountId}</dd>
-          </dl>
-          <p className="aside">
-            Three steps, and the middle one is the one that matters: the cloud minted a sealed
-            challenge bound to this namespace, your <strong>device</strong> key signed it, and the
-            routing read went through naming that account. The certificate alone would prove
-            nothing — it travels in the clear inside every device-link op, so anyone who has seen
-            one could present it. Only this signature binds you to the device.
-          </p>
-          <p className="aside">
-            Nothing was stored and no session was issued. A challenge expires in about two minutes
-            and every routing read proves itself again, which is why this button demonstrates
-            rather than connects. What it buys the cloud is <em>attribution</em>: this read can be
-            rate-limited to an account instead of being anonymous. It does <strong>not</strong>
-            prove you were invited or are a member — the cloud cannot know either, and anyone can
-            mint an account offline. That check lives at the node, on the signed op.
-          </p>
-        </>
-      )}
-
-      {!identity && (
-        <p className="aside">
-          Disabled until step 1 holds a key. The cloud asks this read to name an account, and
-          the proof is a challenge signed by your certified device key — so there is nothing to
-          sign with yet. It proves you hold <em>an</em> account, not that you were invited to this
-          namespace: the cloud cannot know that, because membership lives on the nodes. What it
-          buys is that a routing read is attributable rather than anonymous.
-        </p>
-      )}
-
-      {classified.length > 0 && (
-        <ul className="nodes">
-          {classified.map(({ node, admissibility }) => (
-            <li key={node.peerId} data-kind={admissibility.kind}>
-              <code>{node.peerId}</code> — {node.relayUrl ?? 'no URL yet'}
-              {admissibility.kind === 'usable' && ' · invited and reachable'}
-              {admissibility.kind === 'invited-unreachable' &&
-                ' · invited, but no fresh heartbeat — wait rather than re-invite'}
-              {admissibility.kind === 'not-invited' &&
-                ' · healthy, but your invitation does not name it — a claim here is refused'}
-            </li>
-          ))}
-        </ul>
       )}
 
       <Out error={outcome?.error}>{outcome?.text ?? ''}</Out>
@@ -964,8 +1301,9 @@ function SessionStep({
           The node issues a challenge; the device key signs a statement naming this
           origin, that challenge and a freshly minted session key; the node returns a
           token. The device key never leaves the tab, and the token authorises reads
-          only — <code>context:query</code> and <code>context:intent</code>, which is
-          deliberately the whole delegated surface and nothing above it.
+          only — <code>context:query</code>, <code>context:intent</code> and{' '}
+          <code>context:subscribe</code>, which is deliberately the whole delegated
+          surface and nothing above it.
         </>
       }
     >
@@ -1001,6 +1339,13 @@ function SessionStep({
         ) : null}
       </div>
 
+      {!enabled && (
+        <p className="aside">
+          Needs a relay from step 2 and a pinned key from step 3 — the statement names both, so
+          neither can be filled in later.
+        </p>
+      )}
+
       <Out error={outcome?.error}>{outcome?.text ?? ''}</Out>
 
       {outcome?.error ? (
@@ -1008,7 +1353,7 @@ function SessionStep({
           A 401 here is usually one of three things, and the node cannot tell you which:
           the <strong>audience</strong> (<code>{window.location.origin}</code>) is not in
           the node&rsquo;s <code>allowed_audiences</code>, the{' '}
-          <strong>node key</strong> above is not the one the node signs with, or the
+          <strong>node key</strong> from step 3 is not the one the node signs with, or the
           provider is not enabled at all. The README says how to check each.
         </div>
       ) : null}
@@ -1016,12 +1361,37 @@ function SessionStep({
   );
 }
 
+/**
+ * Read — and the panel that owns the context id, because this is where it is
+ * first used.
+ *
+ * ## Why it is still typed
+ *
+ * Every other identifier on the page became derivable: the namespace comes out
+ * of the invitation, the relay out of the cloud. A context id does not, and the
+ * reason is worth stating rather than leaving as an unexplained text box.
+ *
+ * The invitation does not carry one — it is an invitation to a *group*, and the
+ * contexts under it change after it is minted. The cloud answers
+ * `GET /api/cloud/me/namespaces/{ns}/contexts`, but only for a namespace the
+ * caller *owns*, and a delegated keyholder is a member of somebody else's
+ * namespace by definition. The authoritative answer is the node's own
+ * `GET /admin-api/contexts`, which core already scopes to the calling account
+ * — but that route needs `context:list`, and an `account_proof` session is
+ * minted with `context:query`, `context:intent` and `context:subscribe` and
+ * deliberately nothing else.
+ *
+ * So the value is pasted here and grouped with the invitation as something
+ * handed to you, which is what it is today.
+ */
 function ReadStep({
   settings,
+  onChange,
   session,
   enabled,
 }: {
   settings: Settings;
+  onChange: (patch: Partial<Settings>) => void;
   session: DelegatedSession | null;
   enabled: boolean;
 }) {
@@ -1032,6 +1402,8 @@ function ReadStep({
     <Step
       n={5}
       title="Read the context"
+      state={enabled ? 'idle' : 'blocked'}
+      stateLabel={settings.contextId.trim().length === 64 ? undefined : 'no context yet'}
       why={
         <>
           <code>POST /admin-api/contexts/&lt;id&gt;/query</code> with the session token.
@@ -1042,6 +1414,30 @@ function ReadStep({
         </>
       }
     >
+      <Provenance
+        kind="given"
+        title="The context, handed to you with the invitation"
+        note={
+          <>
+            The last identifier on this page that cannot be discovered. An invitation names a
+            group, not a context; the cloud lists contexts only for a namespace you{' '}
+            <em>own</em>, and a delegated keyholder owns none; and the node&rsquo;s own listing
+            needs <code>context:list</code>, which an <code>account_proof</code> session is
+            deliberately not given. Ask whoever invited you.
+          </>
+        }
+      >
+        <label>
+          Context id — 64 hex
+          <input
+            type="text"
+            value={settings.contextId}
+            placeholder="89ab…"
+            onChange={(e) => onChange({ contextId: e.target.value.trim() })}
+          />
+        </label>
+      </Provenance>
+
       <label>
         Key to read — <code>get(key)</code> on the scaffolding-e2e contract
         <input type="text" value={key} onChange={(e) => setKey(e.target.value)} />
@@ -1088,7 +1484,7 @@ function WriteStep({
   // The relay the cloud resolved, falling back to the admitter. The fallback is
   // for the manual path — settings typed by hand, or restored from a blob
   // written before this field existed — and NOT a default for the discovered
-  // case: step 3 leaves `relayUrl` empty on purpose when no node holds the
+  // case: step 2 leaves `relayUrl` empty on purpose when no node holds the
   // authorship grant, and silently posting to the admitter there is exactly the
   // bug this split fixes. It fails at the relay with a clear refusal instead.
   const writeUrl = settings.relayUrl || settings.nodeUrl;
@@ -1111,7 +1507,7 @@ function WriteStep({
         <dt>relay</dt>
         <dd>
           {writeUrl === '' ? (
-            <em>none resolved — run step 3, or set a node URL by hand</em>
+            <em>none resolved — run step 2, or set a node URL by hand</em>
           ) : (
             <>
               {writeUrl}
