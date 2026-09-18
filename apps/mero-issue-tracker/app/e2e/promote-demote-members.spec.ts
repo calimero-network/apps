@@ -97,33 +97,68 @@ test.describe('promote and demote a workspace member', () => {
       const nsId = await activeNamespace(pageA);
 
       await pageA.getByTestId('nav-members').click();
+      await expect(pageA.getByTestId('member-row').first()).toBeVisible({ timeout: 30_000 });
 
-      // The role SELECT is only rendered for a member who is not you, by a
-      // viewer who may manage members — so finding one is itself the assertion
-      // that the workspace creator is an admin and the joiner is not.
-      const roleSelect = pageA.getByTestId('member-role-select').first();
+      // ── Governance first, UI second ──────────────────────────────────────
+      //
+      // Asserted against the admin API before touching a control, so a failure
+      // says WHICH layer is wrong. The UI only ever reflects this state; if the
+      // roster does not say what we expect, no amount of looking at the page
+      // will explain why the Role control is missing.
+      //
+      // Every assertion carries the whole roster in its message, because the
+      // interesting failures here are "the role is not the string we expected"
+      // and "the member we are looking for is not in the list" — and neither is
+      // diagnosable from a boolean.
+      const roster = await listMembers(0, nsId);
+      const rosterText = JSON.stringify(roster);
+
+      expect(roster.length, `node 0 roster should hold two members: ${rosterText}`)
+        .toBeGreaterThanOrEqual(2);
+
+      // Who we are, taken from the row the app marked "You" — the ACCOUNT, which
+      // is what governance is keyed by (a context executor key is also 64 hex
+      // and names nobody here).
+      const selfAccount = await pageA
+        .locator('[data-testid="member-row"]', { has: pageA.locator('.you-badge') })
+        .getAttribute('data-account');
+      expect(selfAccount, 'the members table marks no row as "You"').toBeTruthy();
+
+      // The workspace CREATOR must be an admin of it, or nobody can ever manage
+      // anybody — this is the precondition the Role control is gated on.
+      const creatorRole = roster.find((m) => m.identity === selfAccount)?.role;
+      expect(
+        creatorRole,
+        `the workspace creator is not an Admin on node 0 — roster: ${rosterText}`,
+      ).toBe('Admin');
+
+      const target = roster.find((m) => m.identity !== selfAccount);
+      expect(target, `no second member in the roster: ${rosterText}`).toBeTruthy();
+      const account = (target as GroupMemberRow).identity;
+
+      // Only now the UI: with an Admin viewer and another member present, the
+      // control has to be there.
+      const roleSelect = pageA
+        .locator(`[data-testid="member-role-select"][data-account="${account}"]`);
       await expect(roleSelect).toBeVisible({ timeout: 30_000 });
-
-      const account = await roleSelect.getAttribute('data-account');
-      expect(account, 'the role control carries no account id').toBeTruthy();
       await expect(roleSelect).toHaveValue('Member');
 
       // Baseline: the per-member override before anything happens. A brand-new
       // member has none, which core reports as 0 — that is "no override", not
       // "no permissions".
-      const overrideBefore = await memberCapabilities(0, nsId, account as string);
+      const overrideBefore = await memberCapabilities(0, nsId, account);
 
       // ── Promote ──────────────────────────────────────────────────────────
       await roleSelect.selectOption('Admin');
 
-      const promoted = await waitForRole(0, nsId, account as string, 'Admin', 30_000);
+      const promoted = await waitForRole(0, nsId, account, 'Admin', 30_000);
       expect(
         promoted?.toLowerCase(),
         `node 0 never recorded the promotion (role is "${promoted}")`,
       ).toBe('admin');
 
       // The invariant: promoting moves the ROLE and must not touch the mask.
-      const overrideAfter = await memberCapabilities(0, nsId, account as string);
+      const overrideAfter = await memberCapabilities(0, nsId, account);
       expect(
         overrideAfter,
         'promoting wrote a capability override; it must set the role only',
@@ -131,7 +166,7 @@ test.describe('promote and demote a workspace member', () => {
 
       // The grant has to reach the promoted person's OWN node, or it confers
       // nothing to them however it looks in the promoter's browser.
-      const onJoinerNode = await waitForRole(1, nsId, account as string, 'Admin', 45_000);
+      const onJoinerNode = await waitForRole(1, nsId, account, 'Admin', 45_000);
       expect(
         onJoinerNode?.toLowerCase(),
         `the promotion never reached node 1 (role there is "${onJoinerNode}")`,
@@ -141,7 +176,7 @@ test.describe('promote and demote a workspace member', () => {
       await expect(roleSelect).toHaveValue('Admin', { timeout: 30_000 });
       await roleSelect.selectOption('Member');
 
-      const demoted = await waitForRole(0, nsId, account as string, 'Member', 30_000);
+      const demoted = await waitForRole(0, nsId, account, 'Member', 30_000);
       expect(
         demoted?.toLowerCase(),
         `node 0 never recorded the demotion (role is "${demoted}")`,
@@ -149,7 +184,7 @@ test.describe('promote and demote a workspace member', () => {
 
       // Still untouched after the round trip — an ex-admin must not keep an
       // admin's bits via a mask the app wrote on the way in.
-      expect(await memberCapabilities(0, nsId, account as string)).toBe(overrideBefore);
+      expect(await memberCapabilities(0, nsId, account)).toBe(overrideBefore);
     } finally {
       await clearAuth(pageA).catch(() => {});
       await clearAuth(pageB).catch(() => {});

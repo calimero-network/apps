@@ -89,6 +89,19 @@ export function useMemberRoles(
         // simply could not read would offer a repair for a problem that is not
         // there.
         mero.admin.getDefaultCapabilities(namespaceId).catch(() => null),
+        // ⚠️ This endpoint 500s for a member the roster lists but the raw
+        // membership store has no row for, and that is not an edge case:
+        // `list_group_members` answers from the ephemeral PROJECTION unioned
+        // with inherited members, while `get_member_capabilities` reads the
+        // live store and bails with "identity is not a member of group" when
+        // `check_path` returns None (verified in core:
+        // crates/context/src/handlers/{list_group_members,
+        // get_member_capabilities}.rs). So a member can be listed and still
+        // have no readable override until the grant is projected.
+        //
+        // Treated as "no override" rather than as an error: the role is the
+        // primary authority anyway (Admin bypasses the mask entirely), and an
+        // unreadable override must not make somebody look powerless.
         Promise.all(
           accounts.map(async (account) => {
             const caps = await mero.admin
