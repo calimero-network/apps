@@ -368,7 +368,8 @@
         "items": {
           "$ref": "BlockEntry"
         }
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "get_players",
@@ -385,7 +386,8 @@
         "items": {
           "$ref": "PlayerView"
         }
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "heartbeat",
@@ -405,7 +407,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "init",
@@ -451,7 +454,8 @@
       ],
       "returns": {
         "$ref": "PlayerView"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "leave",
@@ -465,14 +469,16 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "override_count",
       "params": [],
       "returns": {
         "kind": "u32"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "set_blocks",
@@ -495,14 +501,16 @@
       ],
       "returns": {
         "kind": "u32"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "world_meta",
       "params": [],
       "returns": {
         "$ref": "WorldMeta"
-      }
+      },
+      "intent": "read_only"
     }
   ],
   "events": [

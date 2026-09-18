@@ -1453,7 +1453,8 @@
         "items": {
           "kind": "string"
         }
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "acl_capabilities",
@@ -1469,14 +1470,16 @@
             "kind": "string"
           }
         }
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "acl_doc_get",
       "params": [],
       "returns": {
         "kind": "string"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "acl_doc_set",
@@ -1490,7 +1493,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "acl_grant",
@@ -1510,7 +1514,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "acl_grant_admin",
@@ -1524,7 +1529,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "acl_has_role",
@@ -1544,7 +1550,8 @@
       ],
       "returns": {
         "kind": "bool"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "acl_is_admin",
@@ -1558,7 +1565,8 @@
       ],
       "returns": {
         "kind": "bool"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "acl_members_of",
@@ -1575,7 +1583,8 @@
         "items": {
           "kind": "string"
         }
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "acl_my_roles",
@@ -1585,14 +1594,16 @@
         "items": {
           "kind": "string"
         }
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "acl_project",
       "params": [],
       "returns": {
         "kind": "u32"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "acl_revoke",
@@ -1612,7 +1623,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "acl_revoke_admin",
@@ -1626,7 +1638,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "acl_roles",
@@ -1642,7 +1655,8 @@
             "kind": "string"
           }
         }
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "add_frozen",
@@ -1656,7 +1670,8 @@
       ],
       "returns": {
         "kind": "string"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "add_guess",
@@ -1676,7 +1691,8 @@
       ],
       "returns": {
         "kind": "bool"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "add_secret",
@@ -1696,7 +1712,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "add_tag",
@@ -1716,7 +1733,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "authored_entries",
@@ -1729,7 +1747,8 @@
         "value": {
           "kind": "string"
         }
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "authored_get",
@@ -1743,7 +1762,8 @@
       ],
       "returns": {
         "kind": "string"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "authored_get_owner",
@@ -1757,7 +1777,8 @@
       ],
       "returns": {
         "kind": "string"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "authored_insert",
@@ -1777,14 +1798,16 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "authored_len",
       "params": [],
       "returns": {
         "kind": "u32"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "authored_remove",
@@ -1798,7 +1821,8 @@
       ],
       "returns": {
         "kind": "string"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "authored_update",
@@ -1818,7 +1842,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "authored_vec_entries",
@@ -1828,7 +1853,8 @@
         "items": {
           "kind": "string"
         }
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "authored_vec_get",
@@ -1842,7 +1868,8 @@
       ],
       "returns": {
         "kind": "string"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "authored_vec_get_owner",
@@ -1856,14 +1883,16 @@
       ],
       "returns": {
         "kind": "string"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "authored_vec_len",
       "params": [],
       "returns": {
         "kind": "u32"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "authored_vec_push",
@@ -1877,7 +1906,8 @@
       ],
       "returns": {
         "kind": "u32"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "authored_vec_remove",
@@ -1891,7 +1921,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "authored_vec_update",
@@ -1911,28 +1942,32 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "clear",
       "params": [],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "clear_handler",
       "params": [],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "clear_with_handler",
       "params": [],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "decrement_pn_counter",
@@ -1946,7 +1981,8 @@
       ],
       "returns": {
         "kind": "i64"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "delete_file",
@@ -1960,7 +1996,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "entries",
@@ -1973,7 +2010,8 @@
         "value": {
           "kind": "string"
         }
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "games",
@@ -1986,7 +2024,8 @@
         "value": {
           "kind": "string"
         }
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "get",
@@ -2000,7 +2039,8 @@
       ],
       "returns": {
         "kind": "string"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "get_blob_id_hex",
@@ -2014,7 +2054,8 @@
       ],
       "returns": {
         "kind": "string"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "get_counter",
@@ -2028,7 +2069,8 @@
       ],
       "returns": {
         "kind": "u64"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "get_file",
@@ -2042,7 +2084,8 @@
       ],
       "returns": {
         "$ref": "FileRecord"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "get_frozen",
@@ -2056,7 +2099,8 @@
       ],
       "returns": {
         "kind": "string"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "get_g_counter",
@@ -2070,14 +2114,16 @@
       ],
       "returns": {
         "kind": "u64"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "get_handler_execution_count",
       "params": [],
       "returns": {
         "kind": "u64"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "get_metadata",
@@ -2097,7 +2143,8 @@
       ],
       "returns": {
         "kind": "string"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "get_metric",
@@ -2111,7 +2158,8 @@
       ],
       "returns": {
         "kind": "u64"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "get_pn_counter",
@@ -2125,7 +2173,8 @@
       ],
       "returns": {
         "kind": "i64"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "get_register",
@@ -2139,7 +2188,8 @@
       ],
       "returns": {
         "kind": "string"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "get_result",
@@ -2153,7 +2203,8 @@
       ],
       "returns": {
         "kind": "string"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "get_tag_count",
@@ -2167,7 +2218,8 @@
       ],
       "returns": {
         "kind": "u64"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "get_user_nested",
@@ -2181,14 +2233,16 @@
       ],
       "returns": {
         "kind": "string"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "get_user_simple",
       "params": [],
       "returns": {
         "kind": "string"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "get_user_simple_for",
@@ -2202,7 +2256,8 @@
       ],
       "returns": {
         "kind": "string"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "has_tag",
@@ -2222,7 +2277,8 @@
       ],
       "returns": {
         "kind": "bool"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "increment_counter",
@@ -2236,7 +2292,8 @@
       ],
       "returns": {
         "kind": "u64"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "increment_g_counter",
@@ -2250,7 +2307,8 @@
       ],
       "returns": {
         "kind": "u64"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "increment_pn_counter",
@@ -2264,7 +2322,8 @@
       ],
       "returns": {
         "kind": "i64"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "init",
@@ -2291,14 +2350,16 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "len",
       "params": [],
       "returns": {
         "kind": "u32"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "list_files",
@@ -2308,21 +2369,24 @@
         "items": {
           "$ref": "FileRecord"
         }
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "metrics_len",
       "params": [],
       "returns": {
         "kind": "u32"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "my_account",
       "params": [],
       "returns": {
         "kind": "string"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "my_secrets",
@@ -2335,14 +2399,16 @@
         "value": {
           "kind": "string"
         }
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "owned_get",
       "params": [],
       "returns": {
         "kind": "string"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "owned_is_owner",
@@ -2356,14 +2422,16 @@
       ],
       "returns": {
         "kind": "bool"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "owned_owner",
       "params": [],
       "returns": {
         "kind": "string"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "owned_set",
@@ -2377,7 +2445,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "owned_transfer",
@@ -2391,7 +2460,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "push_metric",
@@ -2405,7 +2475,8 @@
       ],
       "returns": {
         "kind": "u32"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "remove",
@@ -2419,7 +2490,8 @@
       ],
       "returns": {
         "kind": "string"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "remove_handler",
@@ -2433,7 +2505,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "remove_with_handler",
@@ -2447,7 +2520,8 @@
       ],
       "returns": {
         "kind": "string"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "rga_append_text",
@@ -2461,14 +2535,16 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "rga_clear",
       "params": [],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "rga_delete_text",
@@ -2488,28 +2564,32 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "rga_get_length",
       "params": [],
       "returns": {
         "kind": "u32"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "rga_get_text",
       "params": [],
       "returns": {
         "kind": "string"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "rga_get_title",
       "params": [],
       "returns": {
         "kind": "string"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "rga_insert_text",
@@ -2529,14 +2609,16 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "rga_is_empty",
       "params": [],
       "returns": {
         "kind": "bool"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "rga_set_title",
@@ -2550,7 +2632,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "search_files",
@@ -2567,7 +2650,8 @@
         "items": {
           "$ref": "FileRecord"
         }
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "set",
@@ -2587,7 +2671,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "set_metadata",
@@ -2613,7 +2698,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "set_register",
@@ -2633,7 +2719,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "set_user_nested",
@@ -2653,7 +2740,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "set_user_simple",
@@ -2667,7 +2755,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "set_with_handler",
@@ -2687,7 +2776,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "shared_add_writer",
@@ -2701,14 +2791,16 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "shared_get",
       "params": [],
       "returns": {
         "kind": "string"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "shared_get_writers",
@@ -2718,14 +2810,16 @@
         "items": {
           "kind": "string"
         }
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "shared_is_frozen",
       "params": [],
       "returns": {
         "kind": "bool"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "shared_is_writer",
@@ -2739,7 +2833,8 @@
       ],
       "returns": {
         "kind": "bool"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "shared_rotate_writers",
@@ -2756,7 +2851,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "shared_set",
@@ -2770,7 +2866,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "sorted_get",
@@ -2784,7 +2881,8 @@
       ],
       "returns": {
         "kind": "string"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "sorted_keys",
@@ -2794,21 +2892,24 @@
         "items": {
           "kind": "string"
         }
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "sorted_last_key",
       "params": [],
       "returns": {
         "kind": "string"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "sorted_len",
       "params": [],
       "returns": {
         "kind": "u32"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "sorted_range",
@@ -2834,7 +2935,8 @@
         "value": {
           "kind": "string"
         }
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "sorted_remove",
@@ -2848,7 +2950,8 @@
       ],
       "returns": {
         "kind": "bool"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "sorted_set",
@@ -2868,7 +2971,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "sorted_tag_add",
@@ -2882,7 +2986,8 @@
       ],
       "returns": {
         "kind": "bool"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "sorted_tag_contains",
@@ -2896,7 +3001,8 @@
       ],
       "returns": {
         "kind": "bool"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "sorted_tag_remove",
@@ -2910,7 +3016,8 @@
       ],
       "returns": {
         "kind": "bool"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "sorted_tags_all",
@@ -2920,14 +3027,16 @@
         "items": {
           "kind": "string"
         }
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "sorted_tags_last",
       "params": [],
       "returns": {
         "kind": "string"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "sorted_tags_range",
@@ -2950,7 +3059,8 @@
         "items": {
           "kind": "string"
         }
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "tracing_probe",
@@ -2964,7 +3074,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "update_handler",
@@ -2984,7 +3095,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "upload_file",
@@ -3016,21 +3128,24 @@
       ],
       "returns": {
         "kind": "string"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "whoami",
       "params": [],
       "returns": {
         "$ref": "Identity"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "ws_get_info",
       "params": [],
       "returns": {
         "$ref": "WorkspaceInfo"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "ws_get_member_role",
@@ -3044,7 +3159,8 @@
       ],
       "returns": {
         "kind": "string"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "ws_init",
@@ -3058,7 +3174,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "ws_list_channels",
@@ -3068,7 +3185,8 @@
         "items": {
           "$ref": "ChannelRecord"
         }
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "ws_list_groups",
@@ -3078,7 +3196,8 @@
         "items": {
           "$ref": "WsGroupRecord"
         }
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "ws_list_members",
@@ -3088,14 +3207,16 @@
         "items": {
           "$ref": "MemberRecord"
         }
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "ws_my_role",
       "params": [],
       "returns": {
         "kind": "string"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "ws_ping_channel",
@@ -3110,14 +3231,16 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "ws_ping_count",
       "params": [],
       "returns": {
         "kind": "u64"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "ws_pong",
@@ -3133,6 +3256,7 @@
       "returns": {
         "kind": "unit"
       },
+      "intent": "mutating",
       "xcall_callable": true,
       "xcall_callers": "same_app"
     },
@@ -3160,7 +3284,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "ws_register_group",
@@ -3186,7 +3311,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "ws_set_member_role",
@@ -3206,7 +3332,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "ws_unregister_channel",
@@ -3220,7 +3347,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "ws_unregister_group",
@@ -3234,7 +3362,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     }
   ],
   "events": [

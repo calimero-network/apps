@@ -387,14 +387,16 @@
       "params": [],
       "returns": {
         "kind": "string"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "end_call",
       "params": [],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "get_call_participants",
@@ -404,7 +406,8 @@
         "items": {
           "kind": "string"
         }
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "get_lobby",
@@ -418,7 +421,8 @@
       ],
       "returns": {
         "$ref": "LobbyView"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "get_messages",
@@ -435,7 +439,8 @@
         "items": {
           "$ref": "ChatMessage"
         }
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "get_room",
@@ -449,7 +454,8 @@
       ],
       "returns": {
         "$ref": "RoomInfo"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "get_signals",
@@ -466,7 +472,8 @@
         "items": {
           "$ref": "Signal"
         }
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "grant_host",
@@ -480,7 +487,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "heartbeat",
@@ -494,7 +502,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "init",
@@ -522,7 +531,8 @@
       ],
       "returns": {
         "kind": "bool"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "join",
@@ -542,7 +552,8 @@
       ],
       "returns": {
         "$ref": "Presence"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "leave",
@@ -556,7 +567,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "leave_call",
@@ -570,7 +582,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "post_message",
@@ -590,7 +603,8 @@
       ],
       "returns": {
         "kind": "u64"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "post_signal",
@@ -628,7 +642,8 @@
       ],
       "returns": {
         "kind": "u64"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "rename_room",
@@ -642,7 +657,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "revoke_host",
@@ -656,7 +672,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "set_state",
@@ -691,7 +708,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "start_call",
@@ -705,7 +723,8 @@
       ],
       "returns": {
         "kind": "string"
-      }
+      },
+      "intent": "mutating"
     }
   ],
   "events": [

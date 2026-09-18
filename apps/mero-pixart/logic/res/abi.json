@@ -584,7 +584,8 @@
       ],
       "returns": {
         "kind": "string"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "bring_to_front",
@@ -604,21 +605,24 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "can_edit",
       "params": [],
       "returns": {
         "kind": "bool"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "clear_layers",
       "params": [],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "delete_layer",
@@ -632,7 +636,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "get_cursors",
@@ -642,14 +647,16 @@
         "items": {
           "$ref": "CursorState"
         }
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "get_document",
       "params": [],
       "returns": {
         "$ref": "DocumentInfo"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "get_layer",
@@ -664,7 +671,8 @@
       "returns": {
         "$ref": "Layer"
       },
-      "returns_nullable": true
+      "returns_nullable": true,
+      "intent": "read_only"
     },
     {
       "name": "get_layers",
@@ -674,7 +682,8 @@
         "items": {
           "$ref": "Layer"
         }
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "get_members",
@@ -684,7 +693,8 @@
         "items": {
           "$ref": "Member"
         }
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "get_role",
@@ -698,7 +708,8 @@
       ],
       "returns": {
         "kind": "string"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "grant_editor",
@@ -712,7 +723,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "init",
@@ -771,7 +783,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "list_roles",
@@ -781,7 +794,8 @@
         "items": {
           "$ref": "MemberRole"
         }
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "move_layer",
@@ -814,7 +828,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "move_layers",
@@ -845,14 +860,16 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "my_role",
       "params": [],
       "returns": {
         "kind": "string"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "reorder_layers",
@@ -883,7 +900,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "revoke_editor",
@@ -897,7 +915,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "send_to_back",
@@ -917,7 +936,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "transfer_ownership",
@@ -931,7 +951,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "update_adjustments",
@@ -1007,7 +1028,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "update_cursor",
@@ -1033,7 +1055,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "update_document",
@@ -1076,7 +1099,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "update_layer",
@@ -1187,7 +1211,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "update_layer_content",
@@ -1225,7 +1250,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "update_layer_mask",
@@ -1252,7 +1278,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "update_member_username",
@@ -1272,7 +1299,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "update_text",
@@ -1341,7 +1369,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "update_transform",
@@ -1417,7 +1446,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     }
   ],
   "events": [

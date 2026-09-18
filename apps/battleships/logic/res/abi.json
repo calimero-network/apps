@@ -260,7 +260,8 @@
       ],
       "returns": {
         "kind": "string"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "get_history",
@@ -270,7 +271,8 @@
         "items": {
           "$ref": "MatchRecord"
         }
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "get_matches",
@@ -280,7 +282,8 @@
         "items": {
           "$ref": "MatchSummary"
         }
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "get_player_stats",
@@ -294,7 +297,8 @@
       ],
       "returns": {
         "$ref": "PlayerStatsView"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "get_players",
@@ -304,7 +308,8 @@
         "items": {
           "$ref": "PlayerEntry"
         }
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "init",
@@ -338,6 +343,7 @@
       "returns": {
         "kind": "unit"
       },
+      "intent": "mutating",
       "xcall_callable": true,
       "xcall_callers": "same_app"
     },
@@ -346,7 +352,8 @@
       "params": [],
       "returns": {
         "kind": "string"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "set_match_context_id",
@@ -366,7 +373,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     }
   ],
   "events": [

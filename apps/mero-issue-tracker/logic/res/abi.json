@@ -559,7 +559,8 @@
       ],
       "returns": {
         "kind": "string"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "add_label",
@@ -579,7 +580,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "create_issue",
@@ -633,7 +635,8 @@
       ],
       "returns": {
         "kind": "string"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "delete_comment",
@@ -647,7 +650,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "delete_issue",
@@ -661,7 +665,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "edit_comment",
@@ -681,7 +686,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "get_issue",
@@ -695,14 +701,16 @@
       ],
       "returns": {
         "$ref": "IssueDetail"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "get_repo_info",
       "params": [],
       "returns": {
         "$ref": "RepoInfo"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "get_status_counts",
@@ -712,7 +720,8 @@
         "items": {
           "$ref": "StatusCount"
         }
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "init",
@@ -751,7 +760,8 @@
         "items": {
           "$ref": "IssueView"
         }
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "remove_label",
@@ -771,7 +781,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "set_assignee",
@@ -792,7 +803,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "set_impact",
@@ -812,7 +824,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "set_priority",
@@ -832,7 +845,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "set_repo_url",
@@ -846,7 +860,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "set_repro",
@@ -866,7 +881,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "set_resolution_criteria",
@@ -886,7 +902,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "set_status",
@@ -906,7 +923,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "set_summary",
@@ -926,7 +944,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     }
   ],
   "events": [

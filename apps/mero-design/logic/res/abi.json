@@ -696,7 +696,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "add_element",
@@ -710,7 +711,8 @@
       ],
       "returns": {
         "kind": "string"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "add_reply",
@@ -742,7 +744,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "bring_to_front",
@@ -756,28 +759,32 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "can_edit",
       "params": [],
       "returns": {
         "kind": "bool"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "clear_comments",
       "params": [],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "clear_elements",
       "params": [],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "delete_comment",
@@ -791,7 +798,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "delete_element",
@@ -805,7 +813,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "delete_reply",
@@ -825,14 +834,16 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "get_board",
       "params": [],
       "returns": {
         "$ref": "BoardInfo"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "get_comments",
@@ -842,7 +853,8 @@
         "items": {
           "$ref": "Comment"
         }
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "get_cursors",
@@ -852,7 +864,8 @@
         "items": {
           "$ref": "CursorState"
         }
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "get_element",
@@ -867,7 +880,8 @@
       "returns": {
         "$ref": "Element"
       },
-      "returns_nullable": true
+      "returns_nullable": true,
+      "intent": "read_only"
     },
     {
       "name": "get_elements",
@@ -877,7 +891,8 @@
         "items": {
           "$ref": "Element"
         }
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "get_members",
@@ -887,7 +902,8 @@
         "items": {
           "$ref": "Member"
         }
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "get_role",
@@ -901,7 +917,8 @@
       ],
       "returns": {
         "kind": "string"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "grant_editor",
@@ -915,7 +932,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "init",
@@ -962,7 +980,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "list_roles",
@@ -972,14 +991,16 @@
         "items": {
           "$ref": "MemberRole"
         }
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "my_role",
       "params": [],
       "returns": {
         "kind": "string"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "revoke_editor",
@@ -993,7 +1014,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "send_to_back",
@@ -1007,7 +1029,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "set_layer_index",
@@ -1033,7 +1056,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "transfer_ownership",
@@ -1047,7 +1071,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "update_board",
@@ -1069,7 +1094,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "update_cursor",
@@ -1095,7 +1121,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "update_element",
@@ -1185,7 +1212,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "update_element_label",
@@ -1212,7 +1240,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "update_member_username",
@@ -1232,7 +1261,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "update_shadow",
@@ -1280,7 +1310,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "update_text_style",
@@ -1349,7 +1380,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     }
   ],
   "events": [

@@ -226,7 +226,8 @@
       ],
       "returns": {
         "kind": "string"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "delete_secret",
@@ -240,7 +241,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "get_audit_logs",
@@ -250,7 +252,8 @@
         "items": {
           "$ref": "AuditLogEntry"
         }
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "get_secret",
@@ -264,7 +267,8 @@
       ],
       "returns": {
         "$ref": "SecretItem"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "get_secrets_by_tag",
@@ -281,7 +285,8 @@
         "items": {
           "$ref": "SecretItem"
         }
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "init",
@@ -305,7 +310,8 @@
         "items": {
           "$ref": "SecretItem"
         }
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "rename_vault",
@@ -319,7 +325,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "search_secrets",
@@ -336,7 +343,8 @@
         "items": {
           "$ref": "SecretItem"
         }
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "update_secret",
@@ -371,14 +379,16 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "vault_name",
       "params": [],
       "returns": {
         "kind": "string"
-      }
+      },
+      "intent": "read_only"
     }
   ],
   "events": [

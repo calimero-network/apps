@@ -330,7 +330,8 @@
       ],
       "returns": {
         "kind": "string"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "create_private_event",
@@ -350,7 +351,8 @@
       ],
       "returns": {
         "kind": "string"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "delete_event",
@@ -364,7 +366,8 @@
       ],
       "returns": {
         "kind": "string"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "delete_private_event",
@@ -378,7 +381,8 @@
       ],
       "returns": {
         "kind": "string"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "get_events",
@@ -388,7 +392,8 @@
         "items": {
           "$ref": "CalendarEvent"
         }
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "get_members",
@@ -398,7 +403,8 @@
         "items": {
           "$ref": "Member"
         }
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "get_private_events",
@@ -408,7 +414,8 @@
         "items": {
           "$ref": "CalendarEvent"
         }
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "init",
@@ -435,7 +442,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "update_event",
@@ -461,7 +469,8 @@
       ],
       "returns": {
         "kind": "string"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "update_private_event",
@@ -487,7 +496,8 @@
       ],
       "returns": {
         "kind": "string"
-      }
+      },
+      "intent": "mutating"
     }
   ],
   "events": [

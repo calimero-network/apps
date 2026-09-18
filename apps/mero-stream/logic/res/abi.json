@@ -643,7 +643,8 @@
       ],
       "returns": {
         "kind": "u64"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "frame_checksum",
@@ -658,7 +659,8 @@
       "returns": {
         "kind": "u64"
       },
-      "returns_nullable": true
+      "returns_nullable": true,
+      "intent": "read_only"
     },
     {
       "name": "get_chunks",
@@ -678,7 +680,8 @@
         "items": {
           "$ref": "ChunkView"
         }
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "get_frame",
@@ -695,14 +698,16 @@
         "items": {
           "$ref": "DecodedFrame"
         }
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "get_live_stats",
       "params": [],
       "returns": {
         "$ref": "LiveStats"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "get_members",
@@ -712,14 +717,16 @@
         "items": {
           "$ref": "Member"
         }
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "get_stats",
       "params": [],
       "returns": {
         "$ref": "StreamStats"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "init",
@@ -747,7 +754,8 @@
       ],
       "returns": {
         "kind": "bool"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "join",
@@ -767,7 +775,8 @@
       ],
       "returns": {
         "$ref": "Member"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "keyframe_cursors",
@@ -777,7 +786,8 @@
         "items": {
           "$ref": "SenderCursor"
         }
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "post_chunk",
@@ -833,7 +843,8 @@
       ],
       "returns": {
         "kind": "u64"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "prune_chunks",
@@ -847,7 +858,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "prune_frames",
@@ -861,7 +873,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "rename_stream",
@@ -875,7 +888,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     }
   ],
   "events": [

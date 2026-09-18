@@ -733,7 +733,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "create_signature",
@@ -759,7 +760,8 @@
       ],
       "returns": {
         "kind": "u64"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "delete_document",
@@ -773,7 +775,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "delete_signature",
@@ -787,7 +790,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "get_context_details",
@@ -801,7 +805,8 @@
       ],
       "returns": {
         "$ref": "ContextDetails"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "get_context_id",
@@ -809,7 +814,8 @@
       "returns": {
         "kind": "bytes",
         "size": 32
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "get_document_signatures",
@@ -826,7 +832,8 @@
         "items": {
           "$ref": "DocumentSignature"
         }
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "get_identity_mapping",
@@ -840,7 +847,8 @@
       ],
       "returns": {
         "$ref": "IdentityMapping"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "get_shared_identity",
@@ -855,7 +863,8 @@
       "returns": {
         "kind": "bytes",
         "size": 32
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "get_user_permission",
@@ -869,7 +878,8 @@
       ],
       "returns": {
         "$ref": "PermissionLevel"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "has_consented",
@@ -889,7 +899,8 @@
       ],
       "returns": {
         "kind": "bool"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "init",
@@ -916,7 +927,8 @@
       "params": [],
       "returns": {
         "kind": "bool"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "join_shared_context",
@@ -942,7 +954,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "leave_shared_context",
@@ -956,7 +969,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "list_documents",
@@ -966,7 +980,8 @@
         "items": {
           "$ref": "DocumentInfo"
         }
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "list_joined_contexts",
@@ -976,7 +991,8 @@
         "items": {
           "$ref": "ContextMetadata"
         }
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "list_participants",
@@ -987,7 +1003,8 @@
           "kind": "bytes",
           "size": 32
         }
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "list_signatures",
@@ -997,7 +1014,8 @@
         "items": {
           "$ref": "SignatureRecord"
         }
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "mark_participant_signed",
@@ -1011,14 +1029,16 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "register_self_as_participant",
       "params": [],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "remove_participant",
@@ -1032,7 +1052,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "resolve_private_identity",
@@ -1047,7 +1068,8 @@
       "returns": {
         "kind": "bytes",
         "size": 32
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "search_document_by_embedding",
@@ -1070,7 +1092,8 @@
       ],
       "returns": {
         "kind": "string"
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "set_consent",
@@ -1084,7 +1107,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "set_participant_permission",
@@ -1104,7 +1128,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "sign_document",
@@ -1136,7 +1161,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "upload_document",
@@ -1195,7 +1221,8 @@
       ],
       "returns": {
         "kind": "string"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "whoami",
@@ -1203,7 +1230,8 @@
       "returns": {
         "kind": "bytes",
         "size": 32
-      }
+      },
+      "intent": "read_only"
     }
   ],
   "events": [
