@@ -615,7 +615,12 @@ impl MeroChess {
             white: white_seat,
             black: black_seat,
             players: self.player_views(index, replayed.position.side_to_move, now)?,
-            games_played: self.games.len()? as u32,
+            // COUNTED from the current index, not `games.len()`. Game 0 is
+            // implicit — it has no row — so a row count is one short of the
+            // truth from the first game and wrong again for every extra
+            // rematch row a second player writes. `current_game` already walks
+            // exactly the games this table validly reached.
+            games_played: index.saturating_add(1),
         })
     }
 

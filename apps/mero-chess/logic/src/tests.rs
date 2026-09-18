@@ -298,6 +298,11 @@ fn a_rematch_swaps_the_colours_and_needs_a_finished_game() {
     assert_eq!(view.game, 1);
     assert_eq!(view.result, "*");
     assert_eq!(view.moves.len(), 0);
+    // Two games have existed, and the count has to say so: game 0 is implicit,
+    // so counting the rows that record a game is one short of the truth. The
+    // two-node scenario caught exactly this, because a single-node test can sit
+    // at "game 1 of 1" and look plausible.
+    assert_eq!(view.games_played, 2);
     // The chairs are unchanged; the COLOURS moved. Alice held `white` and now
     // plays Black.
     assert_eq!(view.my_color, "black");
@@ -823,6 +828,8 @@ fn a_rematch_nobody_at_the_table_claimed_starts_no_game() {
 
     let view = table_as(&mut app, ALICE, at(4));
     assert_eq!(view.game, 0);
+    // One game, and the forged row has not inflated the count either — it is
+    // derived from the index the reader counted, not from how many rows exist.
     assert_eq!(view.games_played, 1);
     assert_eq!(view.status, "inProgress");
 }
