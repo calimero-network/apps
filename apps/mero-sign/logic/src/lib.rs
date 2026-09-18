@@ -1029,6 +1029,14 @@ impl MeroSignState {
     /// `participants` and `permissions` are keyed by, which is what makes
     /// `mark_participant_signed`'s "has everybody signed?" comparison able to
     /// match at all; see the note there.
+    ///
+    /// ⚠️ `pdf_blob_id_str` must name a blob THIS node holds. The announce below
+    /// fails the whole call otherwise, with
+    /// `blob operations not supported (NodeClient not available)` — a message
+    /// about the host, not about the blob, which reads like a misconfigured node.
+    /// The signer is expected to have uploaded their countersigned copy to their
+    /// own node first, which is what the frontend does; the two-node e2e passes a
+    /// blob uploaded on the signing node for exactly this reason.
     pub fn sign_document(
         &mut self,
         document_id: String,

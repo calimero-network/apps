@@ -287,6 +287,27 @@ steps:
       document_id: "{{document_id}}"
     executor_public_key: "{{bob_key}}"
 
+  # ⚠️ Bob uploads the countersigned PDF to HIS OWN node first, and signs with
+  # THAT blob id — which is what the app does (`documentService.signDocument`
+  # uploads through `blobClient` before calling the contract) and is not
+  # optional. `sign_document` calls `env::blob_announce_to_context`, and
+  # announcing a blob the node does not hold fails the whole call with
+  #
+  #     JSON-RPC Error: FunctionCallError - blob operations not supported
+  #     (NodeClient not available)
+  #
+  # which reads like a node misconfiguration rather than "that blob is not
+  # yours". Passing Node 1's `{{blob_id}}` here is what the first draft of this
+  # step did, and it is the reason this leg is worth having at all: nothing had
+  # ever called `sign_document` from a second node before.
+  - name: Bob uploads his countersigned copy as a blob
+    type: upload_blob
+    node: calimero-node-2
+    context_id: "{{agreement_id}}"
+    file_path: workflows/test-files/sample-agreement.txt
+    outputs:
+      bob_blob_id: blob_id
+
   - name: Bob signs
     type: call
     node: calimero-node-2
@@ -294,7 +315,7 @@ steps:
     method: sign_document
     args:
       document_id: "{{document_id}}"
-      pdf_blob_id_str: "{{blob_id}}"
+      pdf_blob_id_str: "{{bob_blob_id}}"
       file_size: 1024
       new_hash: "1111111111111111111111111111111111111111111111111111111111111111"
     executor_public_key: "{{bob_key}}"
