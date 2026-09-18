@@ -4,15 +4,17 @@ import { CAPABILITIES } from '@calimero-network/mero-js';
 import { decodeInvite } from './inviteCodec';
 import { ADMIN_CAPABILITIES, MEMBER_CAPABILITIES } from './roles';
 import {
-  createSpace,
+  createPersonalVault,
+  createTeam,
   createVault,
   displayName,
   initParamsFor,
-  listSpaces,
+  listTeams,
   listVaults,
-  mintSpaceInvite,
-  listSpaceMembers,
+  mintTeamInvite,
+  listTeamMembers,
   mintVaultInvite,
+  isPersonalRecord,
   myCapabilities,
   setMemberRole,
   unwrapInvitation,
@@ -72,7 +74,7 @@ const argsOf = (calls: { method: string; args: unknown[] }[], m: string) =>
 
 describe('displayName', () => {
   it('prefers the first non-blank candidate', () => {
-    expect(displayName([null, '  ', 'Acme Ltd'], 'abc123def', 'Space')).toBe(
+    expect(displayName([null, '  ', 'Acme Ltd'], 'abc123def', 'Team')).toBe(
       'Acme Ltd',
     );
   });
@@ -119,15 +121,15 @@ describe('unwrapInvitation', () => {
   });
 });
 
-describe('createSpace', () => {
+describe('createTeam', () => {
   it('passes the name ON THE WIRE and records it in metadata too', async () => {
     const { admin, calls } = fakeAdmin();
-    await createSpace(admin, { applicationId: 'app-1', name: 'Acme Ltd' });
+    await createTeam(admin, { applicationId: 'app-1', name: 'Acme Ltd' });
 
     expect(argsOf(calls, 'createNamespace')).toEqual([
       { applicationId: 'app-1', name: 'Acme Ltd' },
     ]);
-    // Belt and braces: `listSpaces` falls back to the metadata record when the
+    // Belt and braces: `listTeams` falls back to the metadata record when the
     // namespace listing answers without a name.
     expect(argsOf(calls, 'setGroupMetadata')).toEqual([
       'ns-1',
@@ -137,7 +139,7 @@ describe('createSpace', () => {
 
   it('opens the namespace so invited members can reach its vaults', async () => {
     const { admin, calls } = fakeAdmin();
-    await createSpace(admin, { applicationId: 'app-1', name: 'Acme' });
+    await createTeam(admin, { applicationId: 'app-1', name: 'Acme' });
     // Lowercase: core rejects "Open" outright, and mero-js types the field as a
     // bare string so nothing catches the casing at compile time.
     expect(argsOf(calls, 'setSubgroupVisibility')).toEqual([
@@ -153,7 +155,7 @@ describe('createSpace', () => {
       setGroupMetadata: () => Promise.reject(new Error('nope')),
     });
     await expect(
-      createSpace(admin, { applicationId: 'app-1', name: 'Acme' }),
+      createTeam(admin, { applicationId: 'app-1', name: 'Acme' }),
     ).resolves.toEqual({ namespaceId: 'ns-1' });
   });
 });
@@ -191,9 +193,9 @@ describe('createVault', () => {
     expect(ctxArgs.initializationParams).toEqual(initParamsFor('Bank logins'));
   });
 
-  it('FAILS if the vault cannot be opened to space members', async () => {
+  it('FAILS if the vault cannot be opened to team members', async () => {
     // Not swallowed, unlike the namespace-root call: a restricted vault
-    // silently cannot be joined by the people invited to the space, so this has
+    // silently cannot be joined by the people invited to the team, so this has
     // to surface where the message can say so.
     const { admin } = fakeAdmin({
       setSubgroupVisibility: () => Promise.reject(new Error('refused')),
@@ -221,8 +223,8 @@ describe('createVault', () => {
   });
 });
 
-describe('listSpaces / listVaults', () => {
-  it('names a space from the listing, falling back to its metadata record', async () => {
+describe('listTeams / listVaults', () => {
+  it('names a team from the listing, falling back to its metadata record', async () => {
     const { admin } = fakeAdmin({
       listNamespacesForApplication: () =>
         Promise.resolve([
@@ -231,7 +233,7 @@ describe('listSpaces / listVaults', () => {
         ]),
       getGroupMetadata: () => Promise.resolve({ name: 'From metadata' }),
     });
-    const rows = await listSpaces(admin, 'app-1');
+    const rows = await listTeams(admin, 'app-1');
     expect(rows.map((r) => r.name)).toEqual(['Acme', 'From metadata']);
     expect(rows[0].vaultCount).toBe(1);
   });
@@ -273,16 +275,16 @@ describe('listSpaces / listVaults', () => {
 });
 
 describe('minting invitations', () => {
-  it("mints a space code carrying the space's NAME", async () => {
+  it("mints a team code carrying the team's NAME", async () => {
     const { admin } = fakeAdmin();
-    const code = await mintSpaceInvite(admin, {
+    const code = await mintTeamInvite(admin, {
       namespaceId: 'ns-1',
-      spaceName: 'Acme Ltd',
+      teamName: 'Acme Ltd',
     });
     const decoded = decodeInvite(code)!;
     expect(decoded.kind).toBe('namespace');
     // The name is what the recipient is shown before they accept. Without it
-    // the prompt reads "You have been invited to a space".
+    // the prompt reads "You have been invited to a team".
     expect(decoded.groupAlias).toBe('Acme Ltd');
   });
 
@@ -292,7 +294,7 @@ describe('minting invitations', () => {
       namespaceId: 'ns-1',
       vaultId: 'sub-1',
       vaultName: 'Bank logins',
-      spaceName: 'Acme Ltd',
+      teamName: 'Acme Ltd',
       contextId: 'ctx-1',
     });
     // Vault access is inherited, so there is no narrower invitation to mint —
@@ -310,7 +312,7 @@ describe('minting invitations', () => {
       createNamespaceInvitation: () => Promise.resolve({ invitation: {} }),
     });
     await expect(
-      mintSpaceInvite(admin, { namespaceId: 'ns-1' }),
+      mintTeamInvite(admin, { namespaceId: 'ns-1' }),
     ).rejects.toThrow(/signature/i);
   });
 
@@ -318,7 +320,7 @@ describe('minting invitations', () => {
     // It is silently ignored by the node and misleads the next reader into
     // thinking the code is scoped to one person.
     const { admin, calls } = fakeAdmin();
-    await mintSpaceInvite(admin, { namespaceId: 'ns-1' });
+    await mintTeamInvite(admin, { namespaceId: 'ns-1' });
     expect(argsOf(calls, 'createNamespaceInvitation')).toEqual(['ns-1', {}]);
   });
 });
@@ -336,10 +338,10 @@ describe('a status sink narrates every step', () => {
   });
 });
 
-describe('createSpace no longer makes every invitee an admin', () => {
+describe('createTeam no longer makes every invitee an admin', () => {
   it('sets the DEFAULT capabilities to the Member set, not 15', async () => {
     const { admin, calls } = fakeAdmin();
-    await createSpace(admin, { applicationId: 'app-1', name: 'Acme' });
+    await createTeam(admin, { applicationId: 'app-1', name: 'Acme' });
     expect(argsOf(calls, 'setDefaultCapabilities')).toEqual([
       'ns-1',
       { defaultCapabilities: MEMBER_CAPABILITIES },
@@ -351,7 +353,7 @@ describe('createSpace no longer makes every invitee an admin', () => {
   });
 });
 
-describe('listSpaceMembers', () => {
+describe('listTeamMembers', () => {
   it('reads the ROLE and the real capability mask for every member', async () => {
     const { admin } = fakeAdmin({
       listGroupMembers: () =>
@@ -368,12 +370,12 @@ describe('listSpaceMembers', () => {
         }),
     });
 
-    const rows = await listSpaceMembers(admin, 'ns-1', 'acct-bob');
+    const rows = await listTeamMembers(admin, 'ns-1', 'acct-bob');
     expect(rows).toEqual([
       {
         accountId: 'acct-alice',
         name: 'Alice',
-        // The namespace owner is an admin — never a plain member of the space
+        // The namespace owner is an admin — never a plain member of the team
         // they created.
         role: 'admin',
         rawRole: 'Owner',
@@ -399,7 +401,7 @@ describe('listSpaceMembers', () => {
         Promise.resolve({ members: [{ identity: 'a', role: 'Member' }] }),
       getMemberCapabilities: () => Promise.reject(new Error('not here yet')),
     });
-    const [row] = await listSpaceMembers(admin, 'ns-1', null);
+    const [row] = await listTeamMembers(admin, 'ns-1', null);
     expect(row.capabilities).toBeNull();
     expect(row.name).toBe('Member a…');
   });
@@ -529,5 +531,162 @@ describe('myCapabilities', () => {
       getMemberCapabilities: () => Promise.reject(new Error('offline')),
     });
     expect(await myCapabilities(admin, 'ns-1', 'acct-a')).toBeNull();
+  });
+});
+
+// ── The personal vault ──────────────────────────────────────────────────────
+//
+// These assert the four properties that make a vault private, INDIVIDUALLY.
+// A single "it is private" test passes as long as one of them holds, and the
+// failure mode here is silent: a personal vault built like a team looks
+// identical on screen and is readable by anyone who joins the namespace.
+
+describe('createPersonalVault', () => {
+  it('never opens the namespace root, the way a team does', async () => {
+    const { admin, calls } = fakeAdmin();
+    await createPersonalVault(admin as unknown as AdminLike, {
+      applicationId: 'app-1',
+    });
+
+    // `createTeam` calls this with the NAMESPACE id to let invitees reach its
+    // vaults by inheritance. Its absence is what leaves nobody a way in.
+    const visibilityTargets = calls
+      .filter((c) => c.method === 'setSubgroupVisibility')
+      .map((c) => c.args[0]);
+    expect(visibilityTargets).not.toContain('ns-1');
+  });
+
+  it('makes the subgroup restricted, explicitly', async () => {
+    const { admin, calls } = fakeAdmin();
+    await createPersonalVault(admin as unknown as AdminLike, {
+      applicationId: 'app-1',
+    });
+    expect(argsOf(calls, 'setSubgroupVisibility')).toEqual([
+      'sub-1',
+      { subgroupVisibility: 'restricted' },
+    ]);
+  });
+
+  it('grants an arriving member nothing', async () => {
+    const { admin, calls } = fakeAdmin();
+    await createPersonalVault(admin as unknown as AdminLike, {
+      applicationId: 'app-1',
+    });
+    expect(argsOf(calls, 'setDefaultCapabilities')).toEqual([
+      'ns-1',
+      { defaultCapabilities: 0 },
+    ]);
+  });
+
+  it('writes the marker and the name in ONE record', async () => {
+    const { admin, calls } = fakeAdmin();
+    await createPersonalVault(admin as unknown as AdminLike, {
+      applicationId: 'app-1',
+      name: 'Personal',
+    });
+    // Metadata writes REPLACE the record, so a name written without the marker
+    // (or a marker written without the name) loses the other one. The first
+    // write is the namespace's and must carry both.
+    const first = calls.find(
+      (c) => c.method === 'setGroupMetadata' && c.args[0] === 'ns-1',
+    );
+    expect(first?.args[1]).toEqual({
+      name: 'Personal',
+      data: { kind: 'personal' },
+    });
+  });
+
+  it('fails rather than shipping a vault that is not private', async () => {
+    const { admin } = fakeAdmin({
+      setSubgroupVisibility: () => Promise.reject(new Error('nope')),
+    });
+    await expect(
+      createPersonalVault(admin as unknown as AdminLike, {
+        applicationId: 'app-1',
+      }),
+    ).rejects.toThrow('nope');
+  });
+});
+
+describe('a personal vault cannot be invited into', () => {
+  const personal = { name: 'Personal', data: { kind: 'personal' } };
+
+  it('refuses a team invite', async () => {
+    const { admin, calls } = fakeAdmin({
+      getGroupMetadata: () => Promise.resolve(personal),
+    });
+    await expect(
+      mintTeamInvite(admin as unknown as AdminLike, { namespaceId: 'ns-1' }),
+    ).rejects.toThrow('private vault');
+    // The point is that nothing was MINTED, not merely that it threw.
+    expect(methodsOf(calls)).not.toContain('createNamespaceInvitation');
+  });
+
+  it('refuses a vault invite', async () => {
+    const { admin, calls } = fakeAdmin({
+      getGroupMetadata: () => Promise.resolve(personal),
+    });
+    await expect(
+      mintVaultInvite(admin as unknown as AdminLike, {
+        namespaceId: 'ns-1',
+        vaultId: 'sub-1',
+      }),
+    ).rejects.toThrow('private vault');
+    expect(methodsOf(calls)).not.toContain('createNamespaceInvitation');
+  });
+
+  it('refuses when it cannot tell, rather than minting anyway', async () => {
+    const { admin, calls } = fakeAdmin({
+      getGroupMetadata: () => Promise.reject(new Error('node down')),
+    });
+    await expect(
+      mintTeamInvite(admin as unknown as AdminLike, { namespaceId: 'ns-1' }),
+    ).rejects.toThrow('Could not confirm');
+    expect(methodsOf(calls)).not.toContain('createNamespaceInvitation');
+  });
+
+  it('still mints for an ordinary team', async () => {
+    const { admin } = fakeAdmin({
+      getGroupMetadata: () => Promise.resolve({ name: 'Acme', data: {} }),
+    });
+    await expect(
+      mintTeamInvite(admin as unknown as AdminLike, { namespaceId: 'ns-1' }),
+    ).resolves.toBeTruthy();
+  });
+});
+
+describe('isPersonalRecord', () => {
+  it('is false for a team, a bare record and nothing at all', () => {
+    expect(isPersonalRecord(null)).toBe(false);
+    expect(isPersonalRecord({ data: {} })).toBe(false);
+    expect(isPersonalRecord({ data: { kind: 'team' } })).toBe(false);
+  });
+
+  it('is true only for the exact marker', () => {
+    expect(isPersonalRecord({ data: { kind: 'personal' } })).toBe(true);
+  });
+});
+
+describe('listTeams', () => {
+  it('reports a namespace as personal from its record, not its size', async () => {
+    const { admin } = fakeAdmin({
+      listNamespacesForApplication: () =>
+        Promise.resolve([
+          { namespaceId: 'ns-p', name: 'Personal', memberCount: 1 },
+          { namespaceId: 'ns-t', name: 'Acme', memberCount: 1 },
+        ]),
+      getGroupMetadata: (id: string) =>
+        Promise.resolve(
+          id === 'ns-p'
+            ? { name: 'Personal', data: { kind: 'personal' } }
+            : { name: 'Acme', data: {} },
+        ),
+    });
+    const rows = await listTeams(admin as unknown as AdminLike, 'app-1');
+    // Both have ONE member. Only the marked one is private.
+    expect(rows.map((r) => [r.namespaceId, r.personal])).toEqual([
+      ['ns-p', true],
+      ['ns-t', false],
+    ]);
   });
 });

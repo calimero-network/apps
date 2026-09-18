@@ -18,7 +18,7 @@ import {
 describe('the capability sets each role is defined as', () => {
   it('gives a Member exactly the bit needed to open vaults, and nothing else', () => {
     // The point of the role system: a Member is invited to USE the vaults, not
-    // to govern the space.
+    // to govern the team.
     expect(MEMBER_CAPABILITIES).toBe(CAPABILITIES.CAN_JOIN_OPEN_SUBGROUPS);
     expect(canEnterVaults(MEMBER_CAPABILITIES)).toBe(true);
     expect(canCreateVault(MEMBER_CAPABILITIES)).toBe(false);
@@ -29,7 +29,7 @@ describe('the capability sets each role is defined as', () => {
   it('is a REDUCTION on the 15 this app shipped with', () => {
     // 15 = CAN_CREATE_CONTEXT | CAN_INVITE_MEMBERS | CAN_JOIN_OPEN_SUBGROUPS |
     // MANAGE_MEMBERS. Ported from mero-stream, it made everyone invited to a
-    // space able to invite further people and to demote the person who made it
+    // team able to invite further people and to demote the person who made it
     // — so there was no role system, only the appearance of one.
     const OLD_DEFAULT = 15;
     expect(canManageMembers(OLD_DEFAULT)).toBe(true);
@@ -87,8 +87,8 @@ describe('normaliseRole', () => {
   });
 
   it('treats the namespace OWNER as an admin', () => {
-    // The creator of a space holds full capabilities independently of the
-    // default, and must never render as a plain member of their own space.
+    // The creator of a team holds full capabilities independently of the
+    // default, and must never render as a plain member of their own team.
     expect(normaliseRole('Owner')).toBe('admin');
     expect(normaliseRole('owner')).toBe('admin');
   });

@@ -79,7 +79,7 @@ export function vaultLabel(contextId: string): string {
  *
  * This is the copy that works on both nodes. `createVault` writes the name
  * three times over (namespace-scoped metadata, the subgroup's metadata record,
- * and `init`'s parameters); the metadata record is what a space member sees
+ * and `init`'s parameters); the metadata record is what a team member sees
  * before they enter a vault, and this — the contract — is the authoritative
  * answer once they are in it.
  *

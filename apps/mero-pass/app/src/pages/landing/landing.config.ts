@@ -17,7 +17,7 @@ import type { LandingConfig } from './landingTypes';
 export const CONFIG: LandingConfig = {
   name: "Mero Pass",
   packageId: "com.calimero.mero-pass",
-  tagline: "A peer-to-peer secret manager: keep credentials in a vault on your own nodes and share them with namespace members.",
+  tagline: "A peer-to-peer password manager. Your team's credentials live in vaults on your own nodes — not in a vendor's database.",
   dir: "mero-pass",
   markSrc: "/favicon.svg",
   iconSrc: '/icon-512.png',
@@ -31,7 +31,7 @@ export const CONFIG: LandingConfig = {
     {
       icon: LockBox,
       title: "Vaults with roles",
-      body: "Owner, admin and member. Reading a vault and controlling its membership are different powers.",
+      body: "Admins create vaults, invite people and change roles. Members open every vault and use it. Reading a secret and governing a team are different powers.",
     },
     {
       icon: LockStar,
@@ -72,7 +72,7 @@ export const CONFIG: LandingConfig = {
       heading: "Getting started",
       steps: [
         { title: "Connect a node", body: "Press Connect to node and choose your node." },
-        { title: "Create a vault", body: "A namespace you own. Nothing in it leaves the members you invite." },
+        { title: "Make a team, then a vault", body: "A team is the people; a vault is the secrets they share. Nothing in it leaves the people you invite." },
         { title: "Add a secret", body: "Pick one of the five types. Logins carry a URL; TOTP entries carry a seed and generate codes on your own machine." },
         { title: "Share with the team", body: "Invite the people who need it. Their node replicates the vault; there is no vendor holding a copy." },
       ],

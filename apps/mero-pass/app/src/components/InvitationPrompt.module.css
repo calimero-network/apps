@@ -24,15 +24,15 @@
   flex-wrap: wrap;
   max-width: 760px;
   padding: 12px 16px;
-  border: 1px solid var(--mp-accent);
-  border-radius: var(--mp-radius);
-  background: var(--mp-surface);
-  box-shadow: var(--mp-shadow);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.14);
   font-size: 0.94rem;
 }
 
 .promptError {
-  border-color: var(--mp-red);
+  border-color: var(--danger);
 }
 
 .text {
@@ -45,14 +45,14 @@
 
 .sub {
   font-size: 0.85rem;
-  color: var(--mp-text-dim);
+  color: var(--ink-dim);
 }
 
 .accept {
-  background: var(--mp-accent);
-  border: 1px solid var(--mp-accent);
-  border-radius: var(--mp-radius-sm);
-  color: var(--mp-bg);
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  color: var(--ink);
   padding: 8px 18px;
   font-size: 0.9rem;
   font-weight: 600;
@@ -61,7 +61,7 @@
   white-space: nowrap;
 }
 .accept:hover:not(:disabled) {
-  background: var(--mp-accent-dim);
+  background: var(--ink-2);
 }
 .accept:disabled {
   opacity: 0.5;
@@ -69,10 +69,10 @@
 }
 
 .ghost {
-  background: var(--mp-surface-2);
-  border: 1px solid var(--mp-border);
-  border-radius: var(--mp-radius-sm);
-  color: var(--mp-text-dim);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--ink-dim);
   padding: 8px 14px;
   font-size: 0.9rem;
   font-family: inherit;
@@ -80,6 +80,6 @@
   white-space: nowrap;
 }
 .ghost:hover:not(:disabled) {
-  background: var(--mp-surface-2);
-  color: var(--mp-text);
+  background: var(--surface-2);
+  color: var(--ink);
 }

@@ -4,7 +4,7 @@ import { useMero, useNodeIdentity } from '@calimero-network/mero-react';
 import { myCapabilities } from '../lib/vaults';
 
 /**
- * This node's own ACCOUNT and its real capability mask in one space.
+ * This node's own ACCOUNT and its real capability mask in one team.
  *
  * ⚠️ `useNodeIdentity().identity.accountId`, never `publicKey` and never a
  * context executor identity. All three are 64 hex since rc.27, so a swap
@@ -15,7 +15,7 @@ import { myCapabilities } from '../lib/vaults';
  * Returns the MASK, not a role string, because the mask is what the node
  * enforces. Every "may I?" in this app is asked of it — see `lib/roles`.
  */
-export function useSpaceCapabilities(namespaceId: string | null): {
+export function useTeamCapabilities(namespaceId: string | null): {
   /** This node's account, 64 hex, or null before the identity has resolved. */
   accountId: string | null;
   capabilities: number | null;

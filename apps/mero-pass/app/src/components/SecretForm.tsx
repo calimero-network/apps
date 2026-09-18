@@ -1,602 +1,317 @@
-import React, { useState } from 'react';
-import type { SecretItem } from '../generated/MeroPassClient';
-import { MeroPassClient } from '../generated/MeroPassClient';
-import {
-  Modal,
-  Button,
-  Input,
-  Textarea,
-  Select,
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  Alert,
-} from '@calimero-network/mero-ui';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
-interface SecretFormProps {
-  api: MeroPassClient;
-  secret?: SecretItem;
-  onSuccess: () => void;
-  trigger?: React.ReactNode;
+import type { MeroPassClient, SecretItem } from '../generated/MeroPassClient';
+import { useDialogOpen } from '../hooks/useDialogOpen';
+import shell from '../styles/shell.module.css';
+import styles from './SecretForm.module.css';
+
+/** The kinds a secret can be, and the fields each one carries. */
+const KINDS = [
+  { id: 'login', label: 'Login' },
+  { id: 'secure_note', label: 'Secure note' },
+  { id: 'totp', label: 'Authenticator (TOTP)' },
+  { id: 'ssh_key', label: 'SSH key' },
+  { id: 'payment_card', label: 'Payment card' },
+] as const;
+
+type Kind = (typeof KINDS)[number]['id'];
+
+interface FieldSpec {
+  key: string;
+  label: string;
+  /** A long value gets a textarea; everything else a single line. */
+  multiline?: boolean;
+  /** Concealed while typing, and never pre-filled into a shared surface. */
+  secret?: boolean;
+  half?: boolean;
 }
 
-interface LoginData {
-  username: string;
-  password: string;
-  url: string;
-  notes?: string;
-}
-
-interface TotpData {
-  secret: string;
-  issuer: string;
-  account: string;
-}
-
-interface SshKeyData {
-  private_key: string;
-  public_key: string;
-  passphrase?: string;
-}
-
-interface PaymentCardData {
-  card_number: string;
-  expiry_date: string;
-  cvv: string;
-  cardholder_name: string;
-  notes?: string;
-}
-
-interface SecureNoteData {
-  content: string;
-  notes?: string;
-}
-
-const SecretForm: React.FC<SecretFormProps> = ({
-  api,
-  secret,
-  onSuccess,
-  trigger,
-}) => {
-  const [isOpen, setIsOpen] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  // Form state
-  const [name, setName] = useState(secret?.name || '');
-  const [secretType, setSecretType] = useState(secret?.secret_type || 'login');
-  const [tags, setTags] = useState(secret?.tags.join(', ') || '');
-
-  // Type-specific data
-  const [loginData, setLoginData] = useState<LoginData>(() => {
-    if (secret?.secret_type === 'login' && secret.data) {
-      try {
-        return JSON.parse(secret.data);
-      } catch {
-        return { username: '', password: '', url: '', notes: '' };
-      }
-    }
-    return { username: '', password: '', url: '', notes: '' };
-  });
-
-  const [totpData, setTotpData] = useState<TotpData>(() => {
-    if (secret?.secret_type === 'totp' && secret.data) {
-      try {
-        return JSON.parse(secret.data);
-      } catch {
-        return { secret: '', issuer: '', account: '' };
-      }
-    }
-    return { secret: '', issuer: '', account: '' };
-  });
-
-  const [sshKeyData, setSshKeyData] = useState<SshKeyData>(() => {
-    if (secret?.secret_type === 'ssh_key' && secret.data) {
-      try {
-        return JSON.parse(secret.data);
-      } catch {
-        return { private_key: '', public_key: '', passphrase: '' };
-      }
-    }
-    return { private_key: '', public_key: '', passphrase: '' };
-  });
-
-  const [paymentCardData, setPaymentCardData] = useState<PaymentCardData>(
-    () => {
-      if (secret?.secret_type === 'payment_card' && secret.data) {
-        try {
-          return JSON.parse(secret.data);
-        } catch {
-          return {
-            card_number: '',
-            expiry_date: '',
-            cvv: '',
-            cardholder_name: '',
-            notes: '',
-          };
-        }
-      }
-      return {
-        card_number: '',
-        expiry_date: '',
-        cvv: '',
-        cardholder_name: '',
-        notes: '',
-      };
-    },
-  );
-
-  const [secureNoteData, setSecureNoteData] = useState<SecureNoteData>(() => {
-    if (secret?.secret_type === 'secure_note' && secret.data) {
-      try {
-        return JSON.parse(secret.data);
-      } catch {
-        return { content: '', notes: '' };
-      }
-    }
-    return { content: '', notes: '' };
-  });
-
-  const getSecretData = (): string => {
-    switch (secretType) {
-      case 'login':
-        return JSON.stringify(loginData);
-      case 'totp':
-        return JSON.stringify(totpData);
-      case 'ssh_key':
-        return JSON.stringify(sshKeyData);
-      case 'payment_card':
-        return JSON.stringify(paymentCardData);
-      case 'secure_note':
-        return JSON.stringify(secureNoteData);
-      default:
-        return '';
-    }
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!name.trim()) {
-      setError('Name is required');
-      return;
-    }
-
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      const secretData = getSecretData();
-      const tagsArray = tags
-        .split(',')
-        .map((tag) => tag.trim())
-        .filter((tag) => tag);
-
-      if (secret) {
-        // Update existing secret
-        // `vault_id` and `member_public_key` are gone: the vault IS the
-        // context the client is bound to, and the caller is the signer of the
-        // call. Passing them was harmless only because the old hand-written
-        // client dropped unknown keys; the contract never took either.
-        await api.updateSecret({
-          secret_id: secret.id,
-          name,
-          data: secretData,
-          tags: tagsArray,
-        });
-      } else {
-        // Create new secret
-        await api.addSecret({
-          name,
-          secret_type: secretType,
-          data: secretData,
-          tags: tagsArray,
-        });
-      }
-
-      onSuccess();
-      setIsOpen(false);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save secret');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const renderTypeSpecificFields = () => {
-    switch (secretType) {
-      case 'login':
-        return (
-          <div className="space-y-4">
-            <div>
-              <label
-                htmlFor="username"
-                className="block text-sm font-medium mb-1"
-              >
-                Username
-              </label>
-              <Input
-                id="username"
-                value={loginData.username}
-                onChange={(e) =>
-                  setLoginData((prev) => ({
-                    ...prev,
-                    username: e.target.value,
-                  }))
-                }
-                placeholder="Enter username"
-              />
-            </div>
-            <div>
-              <label
-                htmlFor="password"
-                className="block text-sm font-medium mb-1"
-              >
-                Password
-              </label>
-              <Input
-                id="password"
-                type="password"
-                value={loginData.password}
-                onChange={(e) =>
-                  setLoginData((prev) => ({
-                    ...prev,
-                    password: e.target.value,
-                  }))
-                }
-                placeholder="Enter password"
-              />
-            </div>
-            <div>
-              <label htmlFor="url" className="block text-sm font-medium mb-1">
-                URL
-              </label>
-              <Input
-                id="url"
-                value={loginData.url}
-                onChange={(e) =>
-                  setLoginData((prev) => ({ ...prev, url: e.target.value }))
-                }
-                placeholder="https://example.com"
-              />
-            </div>
-            <div>
-              <Textarea
-                label="Notes"
-                value={loginData.notes || ''}
-                onChange={(e) =>
-                  setLoginData((prev) => ({ ...prev, notes: e.target.value }))
-                }
-                placeholder="Additional notes"
-              />
-            </div>
-          </div>
-        );
-
-      case 'totp':
-        return (
-          <div className="space-y-4">
-            <div>
-              <label
-                htmlFor="secret"
-                className="block text-sm font-medium mb-1"
-              >
-                Secret Key
-              </label>
-              <Input
-                id="secret"
-                value={totpData.secret}
-                onChange={(e) =>
-                  setTotpData((prev) => ({ ...prev, secret: e.target.value }))
-                }
-                placeholder="Enter TOTP secret"
-              />
-            </div>
-            <div>
-              <label
-                htmlFor="issuer"
-                className="block text-sm font-medium mb-1"
-              >
-                Issuer
-              </label>
-              <Input
-                id="issuer"
-                value={totpData.issuer}
-                onChange={(e) =>
-                  setTotpData((prev) => ({ ...prev, issuer: e.target.value }))
-                }
-                placeholder="e.g., Google, GitHub"
-              />
-            </div>
-            <div>
-              <label
-                htmlFor="account"
-                className="block text-sm font-medium mb-1"
-              >
-                Account
-              </label>
-              <Input
-                id="account"
-                value={totpData.account}
-                onChange={(e) =>
-                  setTotpData((prev) => ({ ...prev, account: e.target.value }))
-                }
-                placeholder="user@example.com"
-              />
-            </div>
-          </div>
-        );
-
-      case 'ssh_key':
-        return (
-          <div className="space-y-4">
-            <div>
-              <Textarea
-                label="Private Key"
-                value={sshKeyData.private_key}
-                onChange={(e) =>
-                  setSshKeyData((prev) => ({
-                    ...prev,
-                    private_key: e.target.value,
-                  }))
-                }
-                placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"
-                rows={6}
-              />
-            </div>
-            <div>
-              <Textarea
-                label="Public Key"
-                value={sshKeyData.public_key}
-                onChange={(e) =>
-                  setSshKeyData((prev) => ({
-                    ...prev,
-                    public_key: e.target.value,
-                  }))
-                }
-                placeholder="ssh-rsa AAAAB3NzaC1yc2E..."
-                rows={3}
-              />
-            </div>
-            <div>
-              <label
-                htmlFor="passphrase"
-                className="block text-sm font-medium mb-1"
-              >
-                Passphrase (optional)
-              </label>
-              <Input
-                id="passphrase"
-                type="password"
-                value={sshKeyData.passphrase || ''}
-                onChange={(e) =>
-                  setSshKeyData((prev) => ({
-                    ...prev,
-                    passphrase: e.target.value,
-                  }))
-                }
-                placeholder="Enter passphrase"
-              />
-            </div>
-          </div>
-        );
-
-      case 'payment_card':
-        return (
-          <div className="space-y-4">
-            <div>
-              <label
-                htmlFor="card-number"
-                className="block text-sm font-medium mb-1"
-              >
-                Card Number
-              </label>
-              <Input
-                id="card-number"
-                value={paymentCardData.card_number}
-                onChange={(e) =>
-                  setPaymentCardData((prev) => ({
-                    ...prev,
-                    card_number: e.target.value,
-                  }))
-                }
-                placeholder="1234 5678 9012 3456"
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label
-                  htmlFor="expiry"
-                  className="block text-sm font-medium mb-1"
-                >
-                  Expiry Date
-                </label>
-                <Input
-                  id="expiry"
-                  value={paymentCardData.expiry_date}
-                  onChange={(e) =>
-                    setPaymentCardData((prev) => ({
-                      ...prev,
-                      expiry_date: e.target.value,
-                    }))
-                  }
-                  placeholder="MM/YY"
-                />
-              </div>
-              <div>
-                <label htmlFor="cvv" className="block text-sm font-medium mb-1">
-                  CVV
-                </label>
-                <Input
-                  id="cvv"
-                  value={paymentCardData.cvv}
-                  onChange={(e) =>
-                    setPaymentCardData((prev) => ({
-                      ...prev,
-                      cvv: e.target.value,
-                    }))
-                  }
-                  placeholder="123"
-                />
-              </div>
-            </div>
-            <div>
-              <label
-                htmlFor="cardholder"
-                className="block text-sm font-medium mb-1"
-              >
-                Cardholder Name
-              </label>
-              <Input
-                id="cardholder"
-                value={paymentCardData.cardholder_name}
-                onChange={(e) =>
-                  setPaymentCardData((prev) => ({
-                    ...prev,
-                    cardholder_name: e.target.value,
-                  }))
-                }
-                placeholder="John Doe"
-              />
-            </div>
-            <div>
-              <Textarea
-                label="Notes"
-                value={paymentCardData.notes || ''}
-                onChange={(e) =>
-                  setPaymentCardData((prev) => ({
-                    ...prev,
-                    notes: e.target.value,
-                  }))
-                }
-                placeholder="Additional notes"
-              />
-            </div>
-          </div>
-        );
-
-      case 'secure_note':
-        return (
-          <div className="space-y-4">
-            <div>
-              <Textarea
-                label="Content"
-                value={secureNoteData.content}
-                onChange={(e) =>
-                  setSecureNoteData((prev) => ({
-                    ...prev,
-                    content: e.target.value,
-                  }))
-                }
-                placeholder="Enter your secure note"
-                rows={6}
-              />
-            </div>
-            <div>
-              <Textarea
-                label="Notes"
-                value={secureNoteData.notes || ''}
-                onChange={(e) =>
-                  setSecureNoteData((prev) => ({
-                    ...prev,
-                    notes: e.target.value,
-                  }))
-                }
-                placeholder="Additional notes"
-              />
-            </div>
-          </div>
-        );
-
-      default:
-        return null;
-    }
-  };
-
-  return (
-    <>
-      {trigger || (
-        <Button onClick={() => setIsOpen(true)}>
-          {secret ? 'Edit Secret' : 'Add Secret'}
-        </Button>
-      )}
-
-      <Modal
-        open={isOpen}
-        onClose={() => setIsOpen(false)}
-        title={secret ? 'Edit Secret' : 'Add New Secret'}
-        className="max-w-2xl max-h-[90vh] overflow-y-auto"
-      >
-        <form onSubmit={handleSubmit} className="space-y-6">
-          {error && <Alert>{error}</Alert>}
-
-          <div className="space-y-4">
-            <div>
-              <label htmlFor="name" className="block text-sm font-medium mb-1">
-                Name *
-              </label>
-              <Input
-                id="name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Enter secret name"
-              />
-            </div>
-
-            <div>
-              <label htmlFor="type" className="block text-sm font-medium mb-1">
-                Type
-              </label>
-              <Select
-                value={secretType}
-                onChange={setSecretType}
-                options={[
-                  { value: 'login', label: '🔐 Login' },
-                  { value: 'secure_note', label: '📝 Secure Note' },
-                  { value: 'totp', label: '⏰ TOTP' },
-                  { value: 'ssh_key', label: '🔑 SSH Key' },
-                  { value: 'payment_card', label: '💳 Payment Card' },
-                ]}
-                placeholder="Select secret type"
-              />
-            </div>
-
-            <div>
-              <label htmlFor="tags" className="block text-sm font-medium mb-1">
-                Tags
-              </label>
-              <Input
-                id="tags"
-                value={tags}
-                onChange={(e) => setTags(e.target.value)}
-                placeholder="Enter tags separated by commas"
-              />
-            </div>
-          </div>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Secret Data</CardTitle>
-            </CardHeader>
-            <CardContent>{renderTypeSpecificFields()}</CardContent>
-          </Card>
-
-          <div className="flex justify-end gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setIsOpen(false)}
-            >
-              Cancel
-            </Button>
-            <Button type="submit" disabled={isLoading}>
-              {isLoading ? 'Saving...' : secret ? 'Update' : 'Create'}
-            </Button>
-          </div>
-        </form>
-      </Modal>
-    </>
-  );
+const FIELDS: Record<Kind, FieldSpec[]> = {
+  login: [
+    { key: 'username', label: 'Username', half: true },
+    { key: 'password', label: 'Password', secret: true, half: true },
+    { key: 'url', label: 'Website' },
+    { key: 'notes', label: 'Notes', multiline: true },
+  ],
+  secure_note: [{ key: 'content', label: 'Note', multiline: true }],
+  totp: [
+    { key: 'secret', label: 'Shared secret', secret: true },
+    { key: 'issuer', label: 'Issuer', half: true },
+    { key: 'account', label: 'Account', half: true },
+  ],
+  ssh_key: [
+    { key: 'private_key', label: 'Private key', multiline: true, secret: true },
+    { key: 'public_key', label: 'Public key', multiline: true },
+    { key: 'passphrase', label: 'Passphrase', secret: true },
+  ],
+  payment_card: [
+    { key: 'cardholder_name', label: 'Cardholder', half: true },
+    { key: 'card_number', label: 'Card number', secret: true, half: true },
+    { key: 'expiry_date', label: 'Expires', half: true },
+    { key: 'cvv', label: 'CVV', secret: true, half: true },
+    { key: 'notes', label: 'Notes', multiline: true },
+  ],
 };
 
-export default SecretForm;
+function readData(raw: string): Record<string, string> {
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return {};
+    return Object.fromEntries(
+      Object.entries(parsed as Record<string, unknown>).map(([k, v]) => [
+        k,
+        String(v ?? ''),
+      ]),
+    );
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Add or edit one secret.
+ *
+ * ── Rewritten, not restyled ─────────────────────────────────────────────────
+ *
+ * The previous version was ~600 lines: five hand-written field groups, five
+ * `useState` records that had to be kept in step with the selected type, and
+ * mero-ui `Modal`/`Input`/`Select`/`Textarea` bringing their own surface into a
+ * light app. The shape of a secret is DATA, so it is data here — one `FIELDS`
+ * table — and the form is derived from it. Adding a kind is one entry.
+ *
+ * Two behaviours worth naming:
+ *
+ *   * It is a CONTROLLED dialog now (`open` + `onClose`). It used to render its
+ *     own trigger button and own its open state, and it accepted a `trigger`
+ *     prop that it rendered WITHOUT wiring to that state — so passing one
+ *     produced a button that did nothing. The caller owns the state instead.
+ *   * A secret field is typed into `type="password"` and is never written to a
+ *     `title`, a `value` on a disabled control, or anywhere it would survive
+ *     the dialog closing. On close the draft is dropped.
+ */
+export default function SecretForm({
+  api,
+  secret,
+  open,
+  onClose,
+  onSuccess,
+}: {
+  api: MeroPassClient;
+  /** Editing an existing secret, rather than adding one. */
+  secret?: SecretItem;
+  open: boolean;
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const dialogRef = useRef<HTMLDialogElement | null>(null);
+  const editing = !!secret;
+
+  const [name, setName] = useState('');
+  const [kind, setKind] = useState<Kind>('login');
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [tags, setTags] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useDialogOpen(dialogRef, open);
+
+  // Seed from the secret being edited, and reset to empty when adding. Keyed on
+  // `open` too, so re-opening Add after an edit does not show the edit's draft.
+  useEffect(() => {
+    if (!open) return;
+    setError(null);
+    setName(secret?.name ?? '');
+    setKind(((secret?.secret_type as Kind) || 'login') as Kind);
+    setValues(secret ? readData(secret.data) : {});
+    setTags(secret?.tags.join(', ') ?? '');
+  }, [open, secret]);
+
+  const fields = useMemo(() => FIELDS[kind] ?? FIELDS.login, [kind]);
+
+  async function save() {
+    const trimmed = name.trim();
+    if (!trimmed) {
+      setError('Give the secret a name.');
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    const data = JSON.stringify(
+      Object.fromEntries(
+        fields.map((f) => [f.key, values[f.key] ?? '']).filter(([, v]) => v),
+      ),
+    );
+    const tagList = tags
+      .split(',')
+      .map((t) => t.trim())
+      .filter(Boolean);
+    try {
+      if (secret) {
+        await api.updateSecret({
+          secret_id: secret.id,
+          name: trimmed,
+          data,
+          tags: tagList,
+        });
+      } else {
+        await api.addSecret({
+          name: trimmed,
+          secret_type: kind,
+          data,
+          tags: tagList,
+        });
+      }
+      // Drop the draft before handing back, so nothing sensitive stays in this
+      // component's state after the dialog closes.
+      setValues({});
+      onSuccess();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not save the secret.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <dialog
+      ref={dialogRef}
+      className={styles.dialog}
+      onClose={onClose}
+      onClick={(e) => {
+        if (e.target === dialogRef.current) onClose();
+      }}
+      data-testid="secret-form"
+    >
+      <div className={styles.body}>
+        <header className={styles.head}>
+          <h2 className={styles.title}>
+            {editing ? 'Edit secret' : 'New secret'}
+          </h2>
+          <button
+            type="button"
+            className={styles.close}
+            onClick={onClose}
+            aria-label="Close"
+          >
+            ✕
+          </button>
+        </header>
+
+        {error && <p className={styles.error}>{error}</p>}
+
+        <div className={styles.field}>
+          <label className={styles.label} htmlFor="sf-name">
+            Name
+          </label>
+          <input
+            id="sf-name"
+            className={styles.input}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="GitHub, Stripe, the office wifi…"
+            data-testid="sf-name"
+          />
+        </div>
+
+        <div className={styles.field}>
+          <label className={styles.label} htmlFor="sf-kind">
+            Kind
+          </label>
+          <select
+            id="sf-kind"
+            className={styles.select}
+            value={kind}
+            onChange={(e) => setKind(e.target.value as Kind)}
+            // Changing kind on an existing secret would orphan its fields, and
+            // the contract has no way to change `secret_type` after creation.
+            disabled={editing}
+            data-testid="sf-kind"
+          >
+            {KINDS.map((k) => (
+              <option key={k.id} value={k.id}>
+                {k.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className={styles.grid}>
+          {fields.map((f) => (
+            <div
+              key={f.key}
+              className={styles.field}
+              style={
+                f.half ? undefined : { gridColumn: '1 / -1' }
+              }
+            >
+              <label className={styles.label} htmlFor={`sf-${f.key}`}>
+                {f.label}
+              </label>
+              {f.multiline ? (
+                <textarea
+                  id={`sf-${f.key}`}
+                  className={styles.textarea}
+                  value={values[f.key] ?? ''}
+                  onChange={(e) =>
+                    setValues((v) => ({ ...v, [f.key]: e.target.value }))
+                  }
+                />
+              ) : (
+                <input
+                  id={`sf-${f.key}`}
+                  className={styles.input}
+                  // Concealed while typing. Not cosmetic: this is the field a
+                  // shoulder-surfer and a screen-share both read.
+                  type={f.secret ? 'password' : 'text'}
+                  autoComplete={f.secret ? 'new-password' : 'off'}
+                  value={values[f.key] ?? ''}
+                  onChange={(e) =>
+                    setValues((v) => ({ ...v, [f.key]: e.target.value }))
+                  }
+                />
+              )}
+            </div>
+          ))}
+        </div>
+
+        <div className={styles.field}>
+          <label className={styles.label} htmlFor="sf-tags">
+            Tags
+          </label>
+          <input
+            id="sf-tags"
+            className={styles.input}
+            value={tags}
+            onChange={(e) => setTags(e.target.value)}
+            placeholder="work, infra — comma separated"
+          />
+        </div>
+
+        <p className={styles.hint}>
+          Everyone in this vault can read and change this secret. It is
+          replicated to their nodes as soon as you save.
+        </p>
+
+        <div className={styles.actions}>
+          <button
+            type="button"
+            className={shell.btnGhost}
+            onClick={onClose}
+            disabled={saving}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            className={shell.btn}
+            onClick={() => void save()}
+            disabled={saving || !name.trim()}
+            data-testid="sf-save"
+          >
+            {saving ? 'Saving…' : editing ? 'Save changes' : 'Add secret'}
+          </button>
+        </div>
+      </div>
+    </dialog>
+  );
+}

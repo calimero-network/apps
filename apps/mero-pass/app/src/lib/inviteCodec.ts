@@ -7,7 +7,7 @@
 // JSON with a signature and a byte-array group id. Raw, it is unusable as
 // something a person pastes into a chat window; deflate+base58 gets it to a
 // single line with no characters that break on copy (no `+`, `/`, `=`, quotes
-// or whitespace).
+// or whiteteam).
 //
 // Base58 rather than base64 for exactly that reason — base64's `+/=` get mangled
 // by URL encoders, chat clients and shell quoting, which is precisely where
@@ -52,14 +52,14 @@ export interface InviteChainEntry {
 
 export interface PassInvitePayload {
   invitation: SignedInvitation;
-  /** Space name. curb calls this groupAlias; kept for cross-app compatibility. */
+  /** Team name. curb calls this groupAlias; kept for cross-app compatibility. */
   groupAlias?: string;
   /** Optional: jump straight into this vault's context after joining. */
   contextId?: string;
   /** The group `invitation` grants — normally the namespace. */
   groupId?: string;
   /**
-   * What this code is FOR: land the joiner in the space, or in one vault of it.
+   * What this code is FOR: land the joiner in the team, or in one vault of it.
    *
    * Note this describes the destination, not the grant. A vault code still
    * grants the NAMESPACE (see `mintVaultInvite`), because vault access is
@@ -70,19 +70,19 @@ export interface PassInvitePayload {
    * The vault (subgroup) to open after joining. A ROUTING HINT and nothing more
    * — it is outside the signature, so it cannot grant anything. Entering the
    * vault still requires the node to admit us, which it only does for a member
-   * of the parent space.
+   * of the parent team.
    */
   vaultId?: string;
   /** Display name of the vault, when this is a vault invite. */
   vaultName?: string;
   /**
-   * A VAULT invite for someone who is not in the space yet needs BOTH joins: a
+   * A VAULT invite for someone who is not in the team yet needs BOTH joins: a
    * subgroup invitation alone is not enough, because membership is inherited
    * from the parent. Core can mint the whole chain in one call
    * (`createNamespaceInvitation(id, {recursive: true})`), and this carries it —
    * outermost (namespace) FIRST, so a joiner can walk it in order.
    *
-   * Absent for a plain space invite, and absent when the recursive mint is
+   * Absent for a plain team invite, and absent when the recursive mint is
    * unavailable, in which case `invitation` alone is all there is.
    */
   chain?: InviteChainEntry[];
@@ -102,7 +102,7 @@ function isSignedInvitation(v: unknown): v is SignedInvitation {
 /**
  * Validate a pasted `chain` entry by entry, dropping anything malformed rather
  * than rejecting the whole code: an unusable chain still leaves `invitation`,
- * which is enough for a joiner who is already a space member.
+ * which is enough for a joiner who is already a team member.
  */
 function parseChain(raw: unknown): InviteChainEntry[] | undefined {
   if (!Array.isArray(raw)) return undefined;
@@ -162,7 +162,7 @@ function parsePayload(json: string): PassInvitePayload | null {
         // Read the sibling apps' spelling too. A code minted by mero-stream is
         // a valid namespace grant here; honouring its `roomId` costs one `??`
         // and means a cross-app code lands on the right subgroup instead of
-        // dumping the joiner at the top of a space.
+        // dumping the joiner at the top of a team.
         vaultId:
           typeof p.vaultId === 'string'
             ? p.vaultId
@@ -223,7 +223,7 @@ export function decodeInvite(input: string): PassInvitePayload | null {
  * The group to join, read out of the SIGNED invitation itself rather than
  * carried alongside it — so a tampered wrapper cannot redirect a join.
  *
- * "Group" is deliberately generic here: for a space invite this is the
+ * "Group" is deliberately generic here: for a team invite this is the
  * namespace, for a vault invite it is the vault's subgroup. Same field either
  * way, because a namespace IS a group in core.
  *

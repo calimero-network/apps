@@ -1,15 +1,18 @@
 .dialog {
-  border: 1px solid var(--mp-border);
-  border-radius: var(--mp-radius);
-  background: var(--mp-surface);
-  color: var(--mp-text);
+  /* ⚠️ The `*` reset in index.css zeroes margin, which kills the UA's
+     `margin: auto` on a modal dialog and pins it to the top-left. */
+  margin: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  color: var(--ink);
   padding: 0;
   width: min(92vw, 520px);
-  box-shadow: var(--mp-shadow);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.14);
 }
 
 .dialog::backdrop {
-  background: rgba(0, 0, 0, 0.6);
+  background: rgba(17, 17, 17, 0.32);
 }
 
 .body {
@@ -30,30 +33,30 @@
   margin: 0;
   font-size: 1.0625rem;
   font-weight: 600;
-  color: var(--mp-text);
+  color: var(--ink);
 }
 
 .close {
   font: inherit;
   font-size: 1rem;
   line-height: 1;
-  color: var(--mp-text-faint);
+  color: var(--ink-faint);
   background: transparent;
   border: none;
   cursor: pointer;
   padding: 4px 6px;
-  border-radius: var(--mp-radius-sm);
+  border-radius: var(--radius);
 }
 
 .close:hover {
-  color: var(--mp-text);
-  background: var(--mp-surface-2);
+  color: var(--ink);
+  background: var(--surface-2);
 }
 
 .scope {
   margin: 0;
   font-size: 0.8125rem;
-  color: var(--mp-text-dim);
+  color: var(--ink-dim);
 }
 
 /* ONE line, ellipsised. The link is ~380 characters of base58 and wrapping it
@@ -69,11 +72,11 @@
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.75rem;
   line-height: 1.5;
-  color: var(--mp-text-dim);
-  background: var(--mp-surface-2);
-  border: 1px solid var(--mp-border);
-  border-left: 3px solid var(--mp-accent);
-  border-radius: var(--mp-radius-sm);
+  color: var(--ink-dim);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius);
   padding: 9px 12px;
   white-space: nowrap;
   overflow: hidden;
@@ -84,28 +87,29 @@
 .link[data-full="true"] {
   white-space: normal;
   overflow-wrap: anywhere;
-  color: var(--mp-text);
+  color: var(--ink);
 }
 
 .primary {
   font: inherit;
   font-weight: 600;
   font-size: 0.875rem;
-  color: var(--mp-accent);
-  background: var(--mp-accent);
-  border: 1px solid var(--mp-accent);
-  border-radius: var(--mp-radius-sm);
+  color: #fff;
+  background: var(--ink);
+  border: 1px solid var(--ink);
+  border-radius: var(--radius);
   padding: 10px 14px;
   cursor: pointer;
   transition: background 120ms ease;
 }
 
 .primary:hover {
-  background: var(--mp-accent-dim);
+  background: var(--ink-2);
+  border-color: var(--ink-2);
 }
 
 .primary:focus-visible {
-  outline: 2px solid var(--mp-bg);
+  outline: 2px solid var(--ink);
   outline-offset: 2px;
 }
 
@@ -113,14 +117,14 @@
   margin: 0;
   font-size: 0.8125rem;
   line-height: 1.5;
-  color: var(--mp-text-dim);
+  color: var(--ink-dim);
 }
 
 .disclosure {
   align-self: flex-start;
   font: inherit;
   font-size: 0.8125rem;
-  color: var(--mp-bg);
+  color: var(--accent-text);
   background: transparent;
   border: none;
   padding: 2px 0;
@@ -133,7 +137,7 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
-  border-top: 1px solid var(--mp-border);
+  border-top: 1px solid var(--border);
   padding-top: 12px;
 }
 
@@ -143,14 +147,14 @@
   gap: 2px;
   font-size: 0.8125rem;
   font-weight: 600;
-  color: var(--mp-text);
+  color: var(--ink);
 }
 
 .moreNote {
   font-weight: 400;
   font-size: 0.75rem;
   line-height: 1.45;
-  color: var(--mp-text-faint);
+  color: var(--ink-faint);
 }
 
 .moreRow {
@@ -164,10 +168,10 @@
   min-width: 0;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.6875rem;
-  color: var(--mp-text-dim);
-  background: var(--mp-surface-2);
-  border: 1px solid var(--mp-border);
-  border-radius: var(--mp-radius-sm);
+  color: var(--ink-dim);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
   padding: 7px 9px;
   white-space: nowrap;
   overflow: hidden;
@@ -177,15 +181,15 @@
 .secondary {
   font: inherit;
   font-size: 0.8125rem;
-  color: var(--mp-text);
-  background: var(--mp-surface-2);
-  border: 1px solid var(--mp-text-faint);
-  border-radius: var(--mp-radius-sm);
+  color: var(--ink-dim);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
   padding: 7px 12px;
   cursor: pointer;
   white-space: nowrap;
 }
 
 .secondary:hover {
-  background: var(--mp-surface-2);
+  background: var(--surface-2);
 }

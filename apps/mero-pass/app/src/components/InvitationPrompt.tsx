@@ -21,7 +21,7 @@ import styles from './InvitationPrompt.module.css';
  *
  * ── Why it asks rather than joins ────────────────────────────────────────────
  *
- * Joining is a state change: it puts you in someone else's space and gives them
+ * Joining is a state change: it puts you in someone else's team and gives them
  * a peer that syncs their secrets. Doing that on page load makes a forwarded
  * link, or a background tab that refreshes, join silently. Decoding is pure and
  * local, so the scope can be shown first and the join needs a click.
@@ -73,8 +73,8 @@ export default function InvitationPrompt() {
       setPending(null);
       if (landed.kind === 'vault') {
         navigate(`/vault/${landed.contextId}`);
-      } else if (landed.kind === 'space') {
-        navigate(`/space/${landed.namespaceId}`);
+      } else if (landed.kind === 'team') {
+        navigate(`/team/${landed.namespaceId}`);
       } else {
         navigate('/home');
       }
@@ -116,7 +116,7 @@ export default function InvitationPrompt() {
   }
 
   const name =
-    pending.payload.vaultName ?? pending.payload.groupAlias ?? 'a space';
+    pending.payload.vaultName ?? pending.payload.groupAlias ?? 'a team';
 
   return (
     <div className={styles.wrap}>
@@ -131,8 +131,8 @@ export default function InvitationPrompt() {
               // inherited, and the person being asked to accept is entitled to
               // know that before they click.
               (pending.payload.vaultName
-                ? 'Joining gives you this vault and the rest of the space it belongs to.'
-                : 'Joining gives you access to the space and every vault in it.')}
+                ? 'Joining gives you this vault and the rest of the team it belongs to.'
+                : 'Joining gives you access to the team and every vault in it.')}
           </span>
         </span>
         <button

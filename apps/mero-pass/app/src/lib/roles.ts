@@ -1,6 +1,6 @@
-// ── Who may do what in a space ───────────────────────────────────────────────
+// ── Who may do what in a team ───────────────────────────────────────────────
 //
-// Two roles, Admin and Member, on the space's NAMESPACE. And the point of this
+// Two roles, Admin and Member, on the team's NAMESPACE. And the point of this
 // module is the gap between them:
 //
 //   ⚠️ A ROLE LABEL GRANTS NOTHING. `updateMemberRole` writes a string. What
@@ -29,7 +29,7 @@
 //   enterVault()    →  joinSubgroupInheritance  CAN_JOIN_OPEN_SUBGROUPS
 //
 // A Member gets the last one and nothing else: they can open every vault in
-// the space and read and write its secrets, which is the whole reason they were
+// the team and read and write its secrets, which is the whole reason they were
 // invited. Governance — making vaults, inviting people, changing roles — is the
 // Admin set.
 //
@@ -37,17 +37,17 @@
 // app set `defaultCapabilities: 15`, ported from mero-stream, which is
 // CAN_CREATE_CONTEXT | CAN_INVITE_MEMBERS | CAN_JOIN_OPEN_SUBGROUPS |
 // MANAGE_MEMBERS. In a video app that is fine. In a password manager it meant
-// every person you invited to a space could invite further people and change
+// every person you invited to a team could invite further people and change
 // anyone's role, including demoting you — so there was no role system to speak
 // of, only the appearance of one. The default is MEMBER_CAPABILITIES now.
 
 import { CAPABILITIES, hasCap } from '@calimero-network/mero-js';
 
-/** The two roles this app offers on a space. */
-export type SpaceRole = 'admin' | 'member';
+/** The two roles this app offers on a team. */
+export type TeamRole = 'admin' | 'member';
 
 /**
- * What a Member may do: enter the space's vaults, and nothing else.
+ * What a Member may do: enter the team's vaults, and nothing else.
  *
  * Note what this does NOT restrict — reading and writing the SECRETS inside a
  * vault. Those are contract calls against the vault's context, and every member
@@ -56,7 +56,7 @@ export type SpaceRole = 'admin' | 'member';
  */
 export const MEMBER_CAPABILITIES = CAPABILITIES.CAN_JOIN_OPEN_SUBGROUPS;
 
-/** What an Admin may do: everything a Member may, plus govern the space. */
+/** What an Admin may do: everything a Member may, plus govern the team. */
 export const ADMIN_CAPABILITIES =
   MEMBER_CAPABILITIES |
   CAPABILITIES.CAN_CREATE_CONTEXT |
@@ -69,7 +69,7 @@ export const ADMIN_CAPABILITIES =
 /**
  * Deliberately NOT granted to either role: `CAN_AUTHOR_ON_BEHALF` (write as
  * somebody else, under a warrant they signed) and `MANAGE_APPLICATION` (change
- * which bundle the space runs). Neither has a call site in this app, and a
+ * which bundle the team runs). Neither has a call site in this app, and a
  * password manager should not hand out a capability nothing uses — least of all
  * one that lets a node publish writes attributed to another person.
  */
@@ -80,7 +80,7 @@ export const DELIBERATELY_UNGRANTED = [
 ] as const;
 
 /** The capability bitmask a role is defined as. */
-export function capabilitiesForRole(role: SpaceRole): number {
+export function capabilitiesForRole(role: TeamRole): number {
   return role === 'admin' ? ADMIN_CAPABILITIES : MEMBER_CAPABILITIES;
 }
 
@@ -95,15 +95,15 @@ export function capabilitiesForRole(role: SpaceRole): number {
  *
  * `owner` maps to admin. The namespace creator is its owner, holds full
  * capabilities independently of the default, and must never be rendered as a
- * plain member of the space they made.
+ * plain member of the team they made.
  */
-export function normaliseRole(raw: string | null | undefined): SpaceRole {
+export function normaliseRole(raw: string | null | undefined): TeamRole {
   const value = (raw ?? '').trim().toLowerCase();
   return value === 'admin' || value === 'owner' ? 'admin' : 'member';
 }
 
 /** How a role reads in the UI. */
-export function roleLabel(role: SpaceRole): string {
+export function roleLabel(role: TeamRole): string {
   return role === 'admin' ? 'Admin' : 'Member';
 }
 
@@ -123,7 +123,7 @@ export function canCreateVault(capabilities: number | null): boolean {
   );
 }
 
-/** Can this member mint an invitation to the space? */
+/** Can this member mint an invitation to the team? */
 export function canInvite(capabilities: number | null): boolean {
   return (
     capabilities !== null &&
@@ -138,7 +138,7 @@ export function canManageMembers(capabilities: number | null): boolean {
   );
 }
 
-/** Can this member open the space's vaults at all? */
+/** Can this member open the team's vaults at all? */
 export function canEnterVaults(capabilities: number | null): boolean {
   return (
     capabilities !== null &&
@@ -157,7 +157,7 @@ export function canEnterVaults(capabilities: number | null): boolean {
  */
 export function missingForRole(
   capabilities: number | null,
-  role: SpaceRole,
+  role: TeamRole,
 ): string[] {
   const wanted = capabilitiesForRole(role);
   const have = capabilities ?? 0;
@@ -169,7 +169,7 @@ export function missingForRole(
 /** True when a mask already satisfies everything the role is defined as. */
 export function satisfiesRole(
   capabilities: number | null,
-  role: SpaceRole,
+  role: TeamRole,
 ): boolean {
   return missingForRole(capabilities, role).length === 0;
 }
