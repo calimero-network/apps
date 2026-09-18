@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
+import { CAPABILITIES } from '@calimero-network/mero-js';
 
 import { decodeInvite } from './inviteCodec';
+import { ADMIN_CAPABILITIES, MEMBER_CAPABILITIES } from './roles';
 import {
   createSpace,
   createVault,
@@ -9,7 +11,10 @@ import {
   listSpaces,
   listVaults,
   mintSpaceInvite,
+  listSpaceMembers,
   mintVaultInvite,
+  myCapabilities,
+  setMemberRole,
   unwrapInvitation,
   type AdminLike,
 } from './vaults';
@@ -50,6 +55,11 @@ function fakeAdmin(over: Partial<Record<string, unknown>> = {}) {
     getGroupMetadata: record('getGroupMetadata', null),
     getContextIdentitiesOwned: record('getContextIdentitiesOwned', {
       identities: [],
+    }),
+    updateMemberRole: record('updateMemberRole'),
+    setMemberCapabilities: record('setMemberCapabilities'),
+    getMemberCapabilities: record('getMemberCapabilities', {
+      capabilities: ADMIN_CAPABILITIES,
     }),
     ...over,
   } as unknown as AdminLike;
@@ -323,5 +333,201 @@ describe('a status sink narrates every step', () => {
       onStatus,
     );
     expect(onStatus.mock.calls.length).toBeGreaterThanOrEqual(4);
+  });
+});
+
+describe('createSpace no longer makes every invitee an admin', () => {
+  it('sets the DEFAULT capabilities to the Member set, not 15', async () => {
+    const { admin, calls } = fakeAdmin();
+    await createSpace(admin, { applicationId: 'app-1', name: 'Acme' });
+    expect(argsOf(calls, 'setDefaultCapabilities')).toEqual([
+      'ns-1',
+      { defaultCapabilities: MEMBER_CAPABILITIES },
+    ]);
+    // Regression guard with the old value written out, because the bug was
+    // invisible: 15 includes MANAGE_MEMBERS, so everyone invited to a password
+    // vault could demote the person who created it.
+    expect(MEMBER_CAPABILITIES).not.toBe(15);
+  });
+});
+
+describe('listSpaceMembers', () => {
+  it('reads the ROLE and the real capability mask for every member', async () => {
+    const { admin } = fakeAdmin({
+      listGroupMembers: () =>
+        Promise.resolve({
+          members: [
+            { identity: 'acct-alice', role: 'Owner', name: 'Alice' },
+            { identity: 'acct-bob', role: 'Member', name: 'Bob' },
+          ],
+        }),
+      getMemberCapabilities: (_g: string, id: string) =>
+        Promise.resolve({
+          capabilities:
+            id === 'acct-alice' ? ADMIN_CAPABILITIES : MEMBER_CAPABILITIES,
+        }),
+    });
+
+    const rows = await listSpaceMembers(admin, 'ns-1', 'acct-bob');
+    expect(rows).toEqual([
+      {
+        accountId: 'acct-alice',
+        name: 'Alice',
+        // The namespace owner is an admin — never a plain member of the space
+        // they created.
+        role: 'admin',
+        rawRole: 'Owner',
+        capabilities: ADMIN_CAPABILITIES,
+        isSelf: false,
+      },
+      {
+        accountId: 'acct-bob',
+        name: 'Bob',
+        role: 'member',
+        rawRole: 'Member',
+        capabilities: MEMBER_CAPABILITIES,
+        // Located by ACCOUNT, which is what `listGroupMembers` rows are keyed
+        // by and what `useNodeIdentity().identity.accountId` returns.
+        isSelf: true,
+      },
+    ]);
+  });
+
+  it('degrades one row to a null mask rather than emptying the list', async () => {
+    const { admin } = fakeAdmin({
+      listGroupMembers: () =>
+        Promise.resolve({ members: [{ identity: 'a', role: 'Member' }] }),
+      getMemberCapabilities: () => Promise.reject(new Error('not here yet')),
+    });
+    const [row] = await listSpaceMembers(admin, 'ns-1', null);
+    expect(row.capabilities).toBeNull();
+    expect(row.name).toBe('Member a…');
+  });
+});
+
+describe('setMemberRole', () => {
+  it('writes the role AND the capabilities, in that order', async () => {
+    // ⚠️ The bug this exists to prevent: `updateMemberRole` sets a STRING.
+    // Writing only that produces a roster saying "Admin" beside a person every
+    // admin endpoint refuses — the UI and the node disagreeing, with the UI
+    // looking correct.
+    const { admin, calls } = fakeAdmin();
+    await setMemberRole(admin, {
+      namespaceId: 'ns-1',
+      accountId: 'acct-bob',
+      role: 'admin',
+    });
+
+    expect(argsOf(calls, 'updateMemberRole')).toEqual([
+      'ns-1',
+      'acct-bob',
+      { role: 'Admin' },
+    ]);
+    expect(argsOf(calls, 'setMemberCapabilities')).toEqual([
+      'ns-1',
+      'acct-bob',
+      { capabilities: ADMIN_CAPABILITIES },
+    ]);
+    const order = methodsOf(calls);
+    expect(order.indexOf('updateMemberRole')).toBeLessThan(
+      order.indexOf('setMemberCapabilities'),
+    );
+  });
+
+  it('READS THE MASK BACK and reports that the change took effect', async () => {
+    const { admin, calls } = fakeAdmin();
+    const result = await setMemberRole(admin, {
+      namespaceId: 'ns-1',
+      accountId: 'acct-bob',
+      role: 'admin',
+    });
+    expect(methodsOf(calls)).toContain('getMemberCapabilities');
+    expect(result.effective).toBe(true);
+    expect(result.missing).toEqual([]);
+    expect(result.capabilities).toBe(ADMIN_CAPABILITIES);
+  });
+
+  it('names the bits a promotion is still short of, rather than claiming success', async () => {
+    // A grant is published as an op and PROJECTED a moment later, so a mask
+    // read right after a promotion can legitimately be incomplete. The honest
+    // answer is which bits are missing.
+    const { admin } = fakeAdmin({
+      getMemberCapabilities: () =>
+        Promise.resolve({
+          capabilities: ADMIN_CAPABILITIES & ~CAPABILITIES.MANAGE_MEMBERS,
+        }),
+    });
+    const result = await setMemberRole(admin, {
+      namespaceId: 'ns-1',
+      accountId: 'acct-bob',
+      role: 'admin',
+    });
+    expect(result.effective).toBe(false);
+    expect(result.missing).toEqual(['MANAGE_MEMBERS']);
+  });
+
+  it('demotes by writing the Member mask', async () => {
+    const { admin, calls } = fakeAdmin({
+      getMemberCapabilities: () =>
+        Promise.resolve({ capabilities: MEMBER_CAPABILITIES }),
+    });
+    const result = await setMemberRole(admin, {
+      namespaceId: 'ns-1',
+      accountId: 'acct-bob',
+      role: 'member',
+    });
+    expect(argsOf(calls, 'updateMemberRole')).toEqual([
+      'ns-1',
+      'acct-bob',
+      { role: 'Member' },
+    ]);
+    expect(argsOf(calls, 'setMemberCapabilities')).toEqual([
+      'ns-1',
+      'acct-bob',
+      { capabilities: MEMBER_CAPABILITIES },
+    ]);
+    expect(result.effective).toBe(true);
+  });
+
+  it('DOES NOT swallow a failed capability write', async () => {
+    // Swallowing it is how you get the role-without-capabilities row. The
+    // caller has to hear about it rather than show a promotion that did
+    // nothing.
+    const { admin } = fakeAdmin({
+      setMemberCapabilities: () => Promise.reject(new Error('refused')),
+    });
+    await expect(
+      setMemberRole(admin, {
+        namespaceId: 'ns-1',
+        accountId: 'acct-bob',
+        role: 'admin',
+      }),
+    ).rejects.toThrow('refused');
+  });
+
+  it('reports an unreadable mask as "nothing applied", not as success', async () => {
+    const { admin } = fakeAdmin({
+      getMemberCapabilities: () => Promise.reject(new Error('unreachable')),
+    });
+    const result = await setMemberRole(admin, {
+      namespaceId: 'ns-1',
+      accountId: 'acct-bob',
+      role: 'admin',
+    });
+    expect(result.capabilities).toBeNull();
+    expect(result.effective).toBe(false);
+    expect(result.missing.length).toBeGreaterThan(0);
+  });
+});
+
+describe('myCapabilities', () => {
+  it('answers null rather than 0 when the node cannot be asked', async () => {
+    // 0 would read as "definitely no permissions" and is indistinguishable
+    // from a real answer; null lets the UI say "unknown" and keep its gates
+    // closed without asserting the member has nothing.
+    const { admin } = fakeAdmin({
+      getMemberCapabilities: () => Promise.reject(new Error('offline')),
+    });
+    expect(await myCapabilities(admin, 'ns-1', 'acct-a')).toBeNull();
   });
 });

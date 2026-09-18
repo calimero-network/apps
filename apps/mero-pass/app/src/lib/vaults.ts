@@ -53,6 +53,14 @@
 
 import type { MeroJs } from '@calimero-network/mero-js';
 import {
+  MEMBER_CAPABILITIES,
+  capabilitiesForRole,
+  missingForRole,
+  normaliseRole,
+  roleLabel,
+  type SpaceRole,
+} from './roles';
+import {
   encodeInvite,
   groupIdOfInvite,
   type InviteChainEntry,
@@ -70,9 +78,6 @@ export type AdminLike = MeroJs['admin'];
  */
 export type StatusFn = (message: string) => void;
 const noop: StatusFn = () => {};
-
-/** All base capabilities. A member who cannot write is of no use in a vault. */
-const ALL_BASE_CAPABILITIES = 15;
 
 /** How long to wait for a joined context's identity to land, and how often to look. */
 const IDENTITY_TIMEOUT_MS = 60_000;
@@ -231,12 +236,24 @@ export async function createSpace(
     .setGroupMetadata(ns.namespaceId, { name: opts.name })
     .catch(() => {});
 
-  onStatus('Granting member capabilities…');
-  // Non-fatal: the creator already holds full caps, so a failure here costs
-  // invitees their permissions rather than breaking the space.
+  onStatus('Setting what an invited member may do…');
+  // ⚠️ MEMBER_CAPABILITIES, not 15. The first cut of this app set 15 —
+  // CAN_CREATE_CONTEXT | CAN_INVITE_MEMBERS | CAN_JOIN_OPEN_SUBGROUPS |
+  // MANAGE_MEMBERS — ported from mero-stream. In a video app that is fine; in
+  // a password manager it made everyone you invited a de-facto admin, able to
+  // invite further people and to demote you. See `lib/roles`.
+  //
+  // This sets the default for FUTURE members. It does not touch anyone already
+  // in the space, and it does not touch the creator: a namespace's owner holds
+  // full capabilities independently of this value, which is why lowering it
+  // does not lock you out of the space you just made. The merobox scenario
+  // pins exactly that — node 1 creates a vault after this call.
+  //
+  // Non-fatal: a failure here costs invitees their permissions rather than
+  // breaking the space.
   await admin
     .setDefaultCapabilities(ns.namespaceId, {
-      defaultCapabilities: ALL_BASE_CAPABILITIES,
+      defaultCapabilities: MEMBER_CAPABILITIES,
     })
     .catch(() => {});
 
@@ -779,4 +796,167 @@ export async function findVaultByContext(
     }
   }
   return null;
+}
+
+// ── People, and what they may do ─────────────────────────────────────────────
+//
+// ⚠️ EVERYTHING HERE IS KEYED BY AN **ACCOUNT**, NEVER BY A SIGNING KEY AND
+// NEVER BY A CONTEXT EXECUTOR IDENTITY.
+//
+// Since rc.27 an account id, a device key and a context executor identity are
+// all 64 hex characters. Passing the wrong one type-checks, sends, returns
+// 200, and names a principal that exists nowhere — so a promotion silently
+// authorises nobody and the roster still shows the old role. The three places
+// this app holds a 64-hex string, and which is which:
+//
+//   useNodeIdentity().identity.accountId     ← ACCOUNT. Used here.
+//   useNodeIdentity().identity.publicKey     ← the DEVICE's signing key.
+//   getContextIdentitiesOwned(ctx).identities[0]
+//                                            ← the CONTEXT EXECUTOR, used by
+//                                              `lib/vault.ts` to sign RPC.
+//
+// `listGroupMembers` rows are keyed by the first. `ownedIdentity` above returns
+// the third. They are not interchangeable and there is no runtime check that
+// would catch a swap.
+
+/** One person in a space, with what the node says they may actually do. */
+export interface SpaceMember {
+  /** The member's ACCOUNT, 64 hex. What every call in this section takes. */
+  accountId: string;
+  name: string;
+  role: SpaceRole;
+  /** The role string exactly as the node spells it, for display when it is unusual. */
+  rawRole: string;
+  /** The enforced capability bitmask, or null when it could not be read. */
+  capabilities: number | null;
+  isSelf: boolean;
+}
+
+/**
+ * The people in a space, each with their ROLE and their real CAPABILITIES.
+ *
+ * Both, because they can disagree and the disagreement is the bug worth
+ * surfacing: a row that says "Admin" next to a mask missing MANAGE_MEMBERS is
+ * somebody who was promoted by label only, and the UI should be able to say so
+ * rather than offering them controls that 403.
+ *
+ * A capability read that fails degrades that one row to `null` rather than
+ * emptying the list.
+ */
+export async function listSpaceMembers(
+  admin: AdminLike,
+  namespaceId: string,
+  selfAccountId: string | null,
+): Promise<SpaceMember[]> {
+  const res = await admin.listGroupMembers(namespaceId);
+  const members = res.members ?? [];
+  return Promise.all(
+    members.map(async (m) => {
+      const capabilities = await admin
+        .getMemberCapabilities(namespaceId, m.identity)
+        .then((r) => r?.capabilities ?? null)
+        .catch(() => null);
+      return {
+        accountId: m.identity,
+        name: displayName([m.name], m.identity, 'Member'),
+        role: normaliseRole(m.role),
+        rawRole: m.role ?? '',
+        capabilities,
+        isSelf: !!selfAccountId && m.identity === selfAccountId,
+      };
+    }),
+  );
+}
+
+/** This node's own capabilities in a space, or null when they cannot be read. */
+export async function myCapabilities(
+  admin: AdminLike,
+  namespaceId: string,
+  accountId: string,
+): Promise<number | null> {
+  return admin
+    .getMemberCapabilities(namespaceId, accountId)
+    .then((r) => r?.capabilities ?? null)
+    .catch(() => null);
+}
+
+/** What `setMemberRole` managed to do, reported honestly. */
+export interface RoleChange {
+  role: SpaceRole;
+  /** The mask the node reports AFTER the change, or null if it could not be read. */
+  capabilities: number | null;
+  /** Capabilities the new role wants that have not landed yet. Empty on success. */
+  missing: string[];
+  /** True when the node's mask satisfies the role in full. */
+  effective: boolean;
+}
+
+/**
+ * Promote or demote a member of a space.
+ *
+ * ── Why this is two writes and a read, not one write ─────────────────────────
+ *
+ * `updateMemberRole` sets a STRING. Nothing in the node enforces anything from
+ * it; authorisation is the capability bitmask, set separately by
+ * `setMemberCapabilities`. Writing only the role produces a roster that says
+ * "Admin" beside a person who is refused by every admin endpoint — the UI and
+ * the node disagreeing, with the UI looking correct. So both are written, in
+ * that order, and then the mask is READ BACK so the caller can report what
+ * actually took effect rather than assuming.
+ *
+ * ── Why a short read-back is not a failure ───────────────────────────────────
+ *
+ * A grant is published as an op and PROJECTED by each node a moment later; it
+ * confers nothing until it is. The read-back here is against the node that
+ * issued the change, so it is normally immediate, but the person being promoted
+ * is on a different node and their grant arrives over gossip. `missing` names
+ * whichever bits are not there yet instead of claiming success or failure.
+ *
+ * ── What a DEMOTION does and does not do ─────────────────────────────────────
+ *
+ * ⚠️ Demotion removes the governance bits. It does NOT remove the person from
+ * the space, it does NOT close the vaults to them — a Member keeps
+ * CAN_JOIN_OPEN_SUBGROUPS and can still read and write every secret — and,
+ * most importantly, it CANNOT un-sync what their node already holds. Every
+ * vault they had entered is replicated on their machine. Demoting somebody
+ * stops them governing the space from this moment on; the only thing that
+ * actually protects a secret they have already seen is rotating that secret.
+ * The UI says this in the confirmation, and it is said here so that the next
+ * person reading this function is not the one who has to discover it.
+ */
+export async function setMemberRole(
+  admin: AdminLike,
+  opts: { namespaceId: string; accountId: string; role: SpaceRole },
+  onStatus: StatusFn = noop,
+): Promise<RoleChange> {
+  const wanted = capabilitiesForRole(opts.role);
+
+  onStatus(`Setting the role to ${roleLabel(opts.role)}…`);
+  // Capitalised: core's `MemberRole` accepts several spellings, and this is the
+  // one its own enum serialises to.
+  await admin.updateMemberRole(opts.namespaceId, opts.accountId, {
+    role: roleLabel(opts.role),
+  });
+
+  onStatus('Granting the capabilities that role means…');
+  // NOT swallowed. A role without its capabilities is the exact failure this
+  // whole function exists to prevent, so if this throws the caller must hear
+  // about it rather than show a promotion that did nothing.
+  await admin.setMemberCapabilities(opts.namespaceId, opts.accountId, {
+    capabilities: wanted,
+  });
+
+  onStatus('Checking what the node actually applied…');
+  const capabilities = await myCapabilities(
+    admin,
+    opts.namespaceId,
+    opts.accountId,
+  );
+  const missing = missingForRole(capabilities, opts.role);
+  return {
+    role: opts.role,
+    capabilities,
+    missing,
+    effective: missing.length === 0,
+  };
 }

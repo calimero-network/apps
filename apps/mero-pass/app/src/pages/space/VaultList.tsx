@@ -12,7 +12,10 @@ import {
 } from '@calimero-network/mero-ui';
 
 import InviteModal from '../../components/InviteModal';
+import MembersPanel from '../../components/MembersPanel';
 import { useApplicationId } from '../../hooks/useApplicationId';
+import { useSpaceCapabilities } from '../../hooks/useSpaceCapabilities';
+import { canCreateVault, canInvite } from '../../lib/roles';
 import {
   createVault,
   displayName,
@@ -43,6 +46,18 @@ export default function VaultList() {
   const { mero } = useMero();
   const navigate = useNavigate();
   const { appId, notInstalled } = useApplicationId();
+  // What THIS node may actually do here, as the node enforces it — not a role
+  // string, and not an assumption that whoever opened the page is an admin.
+  // Every control below is gated on it, so the UI cannot offer an action that
+  // comes back 403.
+  const {
+    accountId,
+    capabilities,
+    loading: capabilitiesLoading,
+    refetch: refetchCapabilities,
+  } = useSpaceCapabilities(spaceId ?? null);
+  const mayCreateVault = canCreateVault(capabilities);
+  const mayInvite = canInvite(capabilities);
 
   const [spaceName, setSpaceName] = useState('');
   const [vaults, setVaults] = useState<VaultRow[]>([]);
@@ -207,45 +222,64 @@ export default function VaultList() {
             Every vault below is shared with everyone in this space.
           </p>
         </div>
-        <Button
-          variant="secondary"
-          onClick={() => void inviteToSpace()}
-          disabled={!!busy}
-        >
-          Invite to space
-        </Button>
+        {mayInvite && (
+          <Button
+            variant="secondary"
+            onClick={() => void inviteToSpace()}
+            disabled={!!busy}
+          >
+            Invite to space
+          </Button>
+        )}
       </div>
 
       {error && <Alert description={error} />}
       {busy && <p className="text-sm text-gray-500">{busy}</p>}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>New vault</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex gap-2 items-center">
-            <Input
-              placeholder="Name it — “Bank logins”, “Production keys”"
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              className="flex-1"
-              data-testid="vault-name"
-            />
-            <Button
-              onClick={() => void create()}
-              disabled={!mero || !appId || !newName.trim() || !!busy}
-              data-testid="vault-create"
-            >
-              Create vault
-            </Button>
-          </div>
-          <p className="text-xs text-gray-600 mt-2">
-            The name is written into the vault itself, so it reads the same on
-            every member&rsquo;s node.
-          </p>
-        </CardContent>
-      </Card>
+      {/* Gated on the real capability mask, not on a role string and not on
+          "am I the one who opened this page". A Member sees the explanation
+          instead of a button that would 403. */}
+      {mayCreateVault ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>New vault</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex gap-2 items-center">
+              <Input
+                placeholder="Name it — “Bank logins”, “Production keys”"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                className="flex-1"
+                data-testid="vault-name"
+              />
+              <Button
+                onClick={() => void create()}
+                disabled={!mero || !appId || !newName.trim() || !!busy}
+                data-testid="vault-create"
+              >
+                Create vault
+              </Button>
+            </div>
+            <p className="text-xs text-gray-600 mt-2">
+              The name is written into the vault itself, so it reads the same on
+              every member&rsquo;s node.
+            </p>
+          </CardContent>
+        </Card>
+      ) : (
+        !capabilitiesLoading && (
+          <Card>
+            <CardContent className="p-4">
+              <p className="text-sm text-gray-600">
+                You are a Member of this space, so you can open every vault
+                below but cannot create new ones. An Admin can promote you under{' '}
+                <strong>People in {heading}</strong>.
+              </p>
+            </CardContent>
+          </Card>
+        )
+      )}
 
       {loading ? (
         <div className="flex items-center justify-center h-64">
@@ -288,19 +322,33 @@ export default function VaultList() {
                     >
                       {vault.joined ? 'Open vault' : 'Join vault'}
                     </Button>
-                    <Button
-                      variant="secondary"
-                      onClick={() => void inviteToVault(vault)}
-                      disabled={!!busy}
-                    >
-                      Invite
-                    </Button>
+                    {mayInvite && (
+                      <Button
+                        variant="secondary"
+                        onClick={() => void inviteToVault(vault)}
+                        disabled={!!busy}
+                      >
+                        Invite
+                      </Button>
+                    )}
                   </div>
                 </div>
               </CardContent>
             </Card>
           ))}
         </div>
+      )}
+
+      {spaceId && (
+        <MembersPanel
+          namespaceId={spaceId}
+          spaceName={heading}
+          myAccountId={accountId}
+          myCapabilities={capabilities}
+          // Demoting yourself is allowed and immediately changes what you may
+          // do on this page, so the page's own gates have to be re-read.
+          onRolesChanged={() => void refetchCapabilities()}
+        />
       )}
 
       <InviteModal

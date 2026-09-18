@@ -43,6 +43,8 @@ const VaultDashboard: React.FC = () => {
   } | null>(null);
   const [inviteError, setInviteError] = useState<string | null>(null);
   const [minting, setMinting] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
   const [secrets, setSecrets] = useState<SecretItem[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -123,6 +125,38 @@ const VaultDashboard: React.FC = () => {
       setMinting(false);
     }
   }, [mero, appId, vaultId]);
+
+  /**
+   * Delete a secret, behind a confirmation.
+   *
+   * ⚠️ Both this and Edit were INERT — `<Button variant="error">Delete</Button>`
+   * with no handler, on a password manager's main screen, next to a View
+   * button that worked. The contract has had `delete_secret` and
+   * `update_secret` (audited, versioned) all along; nothing called them.
+   *
+   * Two-step rather than a `window.confirm`: a delete here is replicated to
+   * every member of the vault and there is no undo, so the confirmation names
+   * the secret and says what it costs.
+   */
+  const removeSecret = useCallback(
+    async (secret: SecretItem) => {
+      if (!client) return;
+      setDeleting(secret.id);
+      setError(null);
+      try {
+        await client.deleteSecret({ secret_id: secret.id });
+        setConfirmDelete(null);
+        await loadVaultData();
+      } catch (err) {
+        setError(
+          err instanceof Error ? err.message : 'Failed to delete the secret',
+        );
+      } finally {
+        setDeleting(null);
+      }
+    },
+    [client, loadVaultData],
+  );
 
   // Filter secrets based on search and tag
   const filteredSecrets = secrets.filter((secret) => {
@@ -395,8 +429,47 @@ const VaultDashboard: React.FC = () => {
                           >
                             View
                           </Button>
-                          <Button variant="secondary">Edit</Button>
-                          <Button variant="error">Delete</Button>
+                          {/* SecretForm already supports editing — it takes
+                              an optional `secret` and calls `updateSecret`.
+                              Nothing had ever rendered it in that mode.
+                              Deliberately NOT passed a `trigger`: the
+                              component renders a custom trigger without
+                              wiring it to its own open state, so a `trigger`
+                              would be another dead button. */}
+                          {client && (
+                            <SecretForm
+                              api={client}
+                              secret={secret}
+                              onSuccess={loadVaultData}
+                            />
+                          )}
+                          {confirmDelete === secret.id ? (
+                            <>
+                              <Button
+                                variant="error"
+                                onClick={() => void removeSecret(secret)}
+                                disabled={deleting === secret.id}
+                              >
+                                {deleting === secret.id
+                                  ? 'Deleting…'
+                                  : 'Delete for everyone'}
+                              </Button>
+                              <Button
+                                variant="secondary"
+                                onClick={() => setConfirmDelete(null)}
+                                disabled={deleting === secret.id}
+                              >
+                                Cancel
+                              </Button>
+                            </>
+                          ) : (
+                            <Button
+                              variant="error"
+                              onClick={() => setConfirmDelete(secret.id)}
+                            >
+                              Delete
+                            </Button>
+                          )}
                         </div>
                       </CardContent>
                     </Card>
