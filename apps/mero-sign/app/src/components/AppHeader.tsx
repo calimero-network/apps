@@ -1,9 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import {
-  getAppEndpointKey,
-  useCalimero,
-} from '@calimero-network/calimero-client';
+import { getAppEndpointKey, useCalimero } from '../lib/node';
 import styles from '../pages/app/AgreementsPage.module.css';
 
 // ── The application shell ────────────────────────────────────────────────────

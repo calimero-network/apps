@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { useCalimero } from '@calimero-network/calimero-client';
+import { useCalimero } from '../lib/useCalimero';
 import { ClientApiDataSource } from '../api/dataSource/ClientApiDataSource';
 import { useTheme } from '../contexts/ThemeContext';
 import {

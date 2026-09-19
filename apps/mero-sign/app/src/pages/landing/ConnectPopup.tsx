@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { useCalimero } from '@calimero-network/calimero-client';
+import { useCalimero } from '../../lib/useCalimero';
 import type { LoginPopupProps } from './landingTypes';
 
 /**

@@ -54,25 +54,26 @@ describe('bootstrapDesktopSession', () => {
     bootstrapDesktopSession();
     // The SDK reads this key, and reads `application_id` from the fragment —
     // which is why the hyphenated spelling has to be handled here.
-    expect(localStorage.getItem('calimero-application-id')).toBe('app-abc');
+    expect(localStorage.getItem('mero:application_id')).toBe('app-abc');
   });
 
   it('accepts the other two spellings too', () => {
     setHash('#application_id=app-snake');
     bootstrapDesktopSession();
-    expect(localStorage.getItem('calimero-application-id')).toBe('app-snake');
+    expect(localStorage.getItem('mero:application_id')).toBe('app-snake');
   });
 
-  it('stores the node under `app-url`, JSON-encoded', () => {
+  it('stores the node under `mero:node_url`, as a bare string', () => {
     setHash('#node_url=https://node-7.calimero.network');
     bootstrapDesktopSession();
-    const raw = localStorage.getItem('app-url');
-    // JSON, not a bare string: the SDK does `JSON.parse` on this value and a
-    // bare URL throws there, which reads as "no node configured".
-    expect(raw).toBe(JSON.stringify('https://node-7.calimero.network'));
-    expect(JSON.parse(raw!)).toBe('https://node-7.calimero.network');
-    // The key nothing reads. Writing here is the bug this replaced.
+    const raw = localStorage.getItem('mero:node_url');
+    // A BARE string. The old SDK JSON-encoded this; mero-react does not, and a
+    // quoted URL never matches the origin its trust check compares.
+    expect(raw).toBe('https://node-7.calimero.network');
+    // The two keys nothing reads any more. Writing to either is the bug this
+    // file exists to prevent, and the SDK swap reintroduced it once already.
     expect(localStorage.getItem('node-url')).toBeNull();
+    expect(localStorage.getItem('app-url')).toBeNull();
   });
 
   it('leaves the tokens and the hash alone', () => {
@@ -87,21 +88,17 @@ describe('bootstrapDesktopSession', () => {
   });
 
   it('never overwrites an existing session', () => {
-    localStorage.setItem('calimero-application-id', 'already-here');
-    localStorage.setItem('app-url', JSON.stringify('https://mine.example'));
+    localStorage.setItem('mero:application_id', 'already-here');
+    localStorage.setItem('mero:node_url', 'https://mine.example');
     setHash('#app-id=app-abc&node_url=https://other.example');
     bootstrapDesktopSession();
-    expect(localStorage.getItem('calimero-application-id')).toBe(
-      'already-here',
-    );
-    expect(JSON.parse(localStorage.getItem('app-url')!)).toBe(
-      'https://mine.example',
-    );
+    expect(localStorage.getItem('mero:application_id')).toBe('already-here');
+    expect(localStorage.getItem('mero:node_url')).toBe('https://mine.example');
   });
 
   it('does nothing without a hash', () => {
     bootstrapDesktopSession();
-    expect(localStorage.getItem('calimero-application-id')).toBeNull();
+    expect(localStorage.getItem('mero:application_id')).toBeNull();
     expect(localStorage.getItem('app-url')).toBeNull();
   });
 });

@@ -2,10 +2,17 @@ import React, { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import './index.css';
 import App from './App';
-import { AppMode, CalimeroProvider } from '@calimero-network/calimero-client';
+// ⚠️ MeroProvider, not CalimeroProvider. `calimero-client` ships its own
+// hardcoded connect screen ("Select your Calimero node type to continue… Using
+// default local node: http://node1.127.0.0.1.nip.io") with no prop that removes
+// it, and that screen is what `useCalimero().login()` opened. Mero Sign was the
+// last app in this repo still on it. See `lib/useCalimero`.
+import { AppMode, MeroProvider } from '@calimero-network/mero-react';
+import { LoginGate } from './lib/loginGate';
+import { MeroBridge } from './lib/MeroBridge';
 import { PACKAGE_NAME, REGISTRY_URL } from './constants/config';
 import { startInvitationCapture } from './lib/invitationIntents';
-import { bootstrapDesktopSession } from './auth/desktopBootstrap';
+import { bootstrapDesktopSession, hashNodeUrl } from './auth/desktopBootstrap';
 
 // Disable StrictMode in production to avoid double-rendering
 // which can cause 429 errors from CalimeroProvider's auth checks
@@ -24,6 +31,10 @@ const AppWrapper = import.meta.env.DEV ? StrictMode : React.Fragment;
 // nothing reads, the application id was never seeded at all, and the desktop
 // "skip" silently degraded to the ordinary connect screen.
 bootstrapDesktopSession();
+
+// Read before React mounts — `MeroProvider` consumes the prop on its first
+// render and strips the fragment itself. See `hashNodeUrl`.
+const trustedNodeUrl = hashNodeUrl();
 
 // ── Invitations, captured before anything renders ─────────────────────────────
 //
@@ -65,12 +76,19 @@ createRoot(document.getElementById('root')!).render(
          `mero_sign_test_v1.wasm` on a dev S3 bucket — not the published bundle,
          and not something this repo builds. The registry serves the real one.
     */}
-    <CalimeroProvider
+    <MeroProvider
       packageName={PACKAGE_NAME}
       registryUrl={REGISTRY_URL}
       mode={AppMode.MultiContext}
+      // ⚠️ Node trust is DEFAULT-DENY in mero-react. Without this a cold
+      // desktop open rejects the session it was just handed and drops the
+      // tokens with only a console error.
+      allowedNodeUrls={trustedNodeUrl ? [trustedNodeUrl] : undefined}
     >
-      <App />
-    </CalimeroProvider>
+      <MeroBridge />
+      <LoginGate>
+        <App />
+      </LoginGate>
+    </MeroProvider>
   </AppWrapper>,
 );

@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { useCalimero } from '@calimero-network/calimero-client';
+import { useCalimero } from '../lib/useCalimero';
 import {
   DefaultContextService,
   DefaultContextInfo,

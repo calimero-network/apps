@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { useCalimero } from '@calimero-network/calimero-client';
+import { useCalimero } from '../lib/useCalimero';
 import styles from '../pages/app/AgreementsPage.module.css';
 
 // ── What a signed-out visitor sees on an app route ───────────────────────────

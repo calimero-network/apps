@@ -23,12 +23,12 @@ import {
   setContextId,
   setExecutorPublicKey,
   type ResponseData,
-} from '@calimero-network/calimero-client';
+} from '../lib/node';
 import type {
   JoinContextResponse,
   NodeIdentity,
   SignedOpenInvitation,
-} from '@calimero-network/calimero-client/lib/api/nodeApi';
+} from '../lib/node';
 import { ClientApiDataSource } from './dataSource/ClientApiDataSource';
 import { ContextApiDataSource } from './dataSource/nodeApiDataSource';
 import { DefaultContextService } from './defaultContextService';

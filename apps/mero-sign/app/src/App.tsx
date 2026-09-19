@@ -9,7 +9,7 @@ import NotFound from './components/NotFound';
 import LandingPage from './pages/landing/LandingPage';
 import ConnectPopup from './pages/landing/ConnectPopup';
 import InvitationHandlerPopup from './components/InvitationHandlerPopup';
-import { useCalimero } from '@calimero-network/calimero-client';
+import { useCalimero } from './lib/useCalimero';
 import { ROUTES, type Screen } from './routes';
 import { onInvitation, type CapturedInvitation } from './lib/invitationIntents';
 

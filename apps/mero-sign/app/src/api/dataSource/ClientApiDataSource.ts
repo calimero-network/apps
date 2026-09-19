@@ -7,7 +7,7 @@ import {
   getExecutorPublicKey,
   setExecutorPublicKey,
   getContextId,
-} from '@calimero-network/calimero-client';
+} from '../../lib/node';
 import {
   ClientApi,
   ClientMethod,
@@ -389,7 +389,10 @@ export class ClientApiDataSource implements ClientApi {
       return { data: response.result?.output ?? response.result, error: null };
     } catch (error: any) {
       console.error(`ClientApiDataSource: Error in ${method}:`, error);
-      return { data: null, error: { code: 500, message: getErrorMessage(error) } };
+      return {
+        data: null,
+        error: { code: 500, message: getErrorMessage(error) },
+      };
     }
   }
 
