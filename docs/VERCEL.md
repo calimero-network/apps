@@ -1,6 +1,6 @@
 # Deploying the apps on Vercel
 
-One Vercel project per app, all sixteen configured identically. Everything a
+One Vercel project per app, all seventeen configured identically. Everything a
 project needs is committed — there is **nothing to set in the dashboard beyond
 the Root Directory**, and in particular **no environment variables**.
 
@@ -65,8 +65,8 @@ callback, and it is matched by **exact origin**. If a project is re-linked and
 lands on a different domain (a `-git-` preview URL, a renamed project, a custom
 domain), login breaks with the app looking fine. Repo metadata
 (`[package.metadata.calimero.links] frontend` in `logic/Cargo.toml`) and the
-published registry value currently agree for all sixteen — keep them that way,
-and republish the bundle if a domain changes.
+published registry value currently agree for every app that has a project —
+keep them that way, and republish the bundle if a domain changes.
 
 ## Per-app settings
 
@@ -76,6 +76,7 @@ and republish the bundle if a domain changes.
 | `kv-store` | `mero-kv-store` | `apps/kv-store/app` | `dist` | https://mero-kv-store.vercel.app |
 | `mero-blocks` | `mero-blocks` | `apps/mero-blocks/app` | `dist` | https://mero-blocks.vercel.app/ |
 | `mero-calendar` | `mero-calendar` | `apps/mero-calendar/app` | `dist` | https://mero-calendar.vercel.app |
+| `mero-chess` | `mero-chess` | `apps/mero-chess/app` | `dist` | https://mero-chess.vercel.app ⚠️ not created yet |
 | `mero-drive` | `mero-drive` | `apps/mero-drive/app` | `dist` | https://mero-drive.vercel.app |
 | `mero-forum` | `mero-forum` | `apps/mero-forum/app` | `dist` | https://mero-forum.vercel.app |
 | `mero-issue-tracker` | `mero-issue-tracker-app` | `apps/mero-issue-tracker/app` | `dist` | https://mero-issue-tracker-app.vercel.app |
@@ -108,6 +109,31 @@ origins (`meropass.vercel.app`, `p2p-sheets.vercel.app`) already returned
 `DEPLOYMENT_NOT_FOUND`, so no project existed to rename. mero-forum is in the
 same position.
 
+### ⚠️ mero-chess has no project yet
+
+It is the first app written in this repo rather than migrated into it, so
+nothing was ever linked for it. The repo side is complete and CI-checked —
+`apps/mero-chess/app/vercel.json` carries the framework, the `dist` output, the
+SPA rewrite and the cache headers, and the app commits both `packageName` and
+`registryUrl` defaults, so there is nothing to set beyond the two dashboard
+fields every app needs:
+
+1. **New Project** → import `calimero-network/apps`.
+2. **Project Name** `mero-chess` — the name decides the domain, and the domain
+   is the redirect URI (see below), so anything else silently breaks hosted
+   login.
+3. **Root Directory** `apps/mero-chess/app`, with **Include files outside the
+   Root Directory** ON. Leave the build, install and output settings empty:
+   `vercel.json` carries them.
+4. Node ≥ 20 (the root `package.json` `engines`), pnpm from the root
+   `packageManager` field.
+
+**Create it before the bundle is published, not after.** `release.yml` publishes
+on a push to `main` touching `apps/*/logic/**`, and the published bundle carries
+`frontend = "https://mero-chess.vercel.app"` as the origin that authorizes the
+login callback. Publishing first would authorize a `vercel.app` subdomain nobody
+has claimed — and those are first-come.
+
 ## Package ids
 
 The registry package id is what the frontend sends at login. Since the `mero-`
@@ -120,6 +146,7 @@ exception, noted below:
 | `kv-store` | `com.calimero.kv-store` |
 | `mero-blocks` | `com.calimero.mero-blocks` |
 | `mero-calendar` | `com.calimero.mero-calendar` |
+| `mero-chess` | `com.calimero.mero-chess` |
 | `mero-drive` | `com.calimero.mero-drive-docs` ⚠️ |
 | `mero-forum` | `com.calimero.mero-forum` |
 | `mero-issue-tracker` | `com.calimero.mero-issue-tracker` |

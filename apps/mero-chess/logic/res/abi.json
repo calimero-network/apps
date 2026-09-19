@@ -1,0 +1,974 @@
+{
+  "schema_version": "wasm-abi/1",
+  "types": {
+    "DrawOffer": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "open",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "declined",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "ply",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "Ending": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "result",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "reason",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "by",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "ply",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "Event_DrawDeclined": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "game",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "by",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_DrawOffered": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "game",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "by",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_GameEnded": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "game",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "result",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "reason",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_GameStarted": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "game",
+          "type": {
+            "kind": "u32"
+          }
+        }
+      ]
+    },
+    "Event_Moved": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "game",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "ply",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "san",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "by",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_Seated": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "seat",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "member",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_Vacated": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "seat",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "member",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "GameRecord": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "index",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "started_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "started_by",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "GameSummary": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "index",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "started_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "result",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "reason",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "plies",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "white",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "black",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "MeroChess": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "title",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "u64"
+            }
+          }
+        },
+        {
+          "name": "players",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Player"
+            },
+            "crdt_type": "authored_map"
+          }
+        },
+        {
+          "name": "seat_claims",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Seat"
+            },
+            "crdt_type": "authored_map"
+          }
+        },
+        {
+          "name": "games",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "GameRecord"
+            },
+            "crdt_type": "authored_map"
+          }
+        },
+        {
+          "name": "moves",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "MoveRecord"
+            },
+            "crdt_type": "authored_map"
+          }
+        },
+        {
+          "name": "endings",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Ending"
+            },
+            "crdt_type": "authored_map"
+          }
+        },
+        {
+          "name": "draw_offers",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "DrawOffer"
+            },
+            "crdt_type": "authored_map"
+          }
+        }
+      ]
+    },
+    "MoveRecord": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "game",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "ply",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "uci",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "san",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "by",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "MoveView": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "ply",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "uci",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "san",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "by",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "Player": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "joined_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "PlayerView": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "online",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "color",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Seat": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "member",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "claimed_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "SeatView": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "seat",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "member",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "online",
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ]
+    },
+    "TableView": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "title",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "game",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "fen",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "side_to_move",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "moves",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "MoveView"
+            }
+          }
+        },
+        {
+          "name": "legal_moves",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "status",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "result",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "reason",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "check",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "claimable_draw",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "white",
+          "type": {
+            "$ref": "SeatView"
+          }
+        },
+        {
+          "name": "black",
+          "type": {
+            "$ref": "SeatView"
+          }
+        },
+        {
+          "name": "me",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "my_color",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "my_turn",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "draw_offer_from",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "players",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "PlayerView"
+            }
+          }
+        },
+        {
+          "name": "games_played",
+          "type": {
+            "kind": "u32"
+          }
+        }
+      ]
+    }
+  },
+  "methods": [
+    {
+      "name": "accept_draw",
+      "params": [
+        {
+          "name": "now",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "claim_draw",
+      "params": [
+        {
+          "name": "now",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "decline_draw",
+      "params": [
+        {
+          "name": "now",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "heartbeat",
+      "params": [
+        {
+          "name": "now",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "history",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "GameSummary"
+        }
+      }
+    },
+    {
+      "name": "init",
+      "params": [
+        {
+          "name": "title",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "now",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "join",
+      "params": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "now",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "offer_draw",
+      "params": [
+        {
+          "name": "now",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "play",
+      "params": [
+        {
+          "name": "uci",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "now",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      }
+    },
+    {
+      "name": "rematch",
+      "params": [
+        {
+          "name": "now",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "u32"
+      }
+    },
+    {
+      "name": "resign",
+      "params": [
+        {
+          "name": "now",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "sit",
+      "params": [
+        {
+          "name": "seat",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "now",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "stand",
+      "params": [
+        {
+          "name": "now",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "table",
+      "params": [
+        {
+          "name": "now",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "TableView"
+      }
+    }
+  ],
+  "events": [
+    {
+      "name": "DrawDeclined",
+      "payload": {
+        "$ref": "Event_DrawDeclined"
+      }
+    },
+    {
+      "name": "DrawOffered",
+      "payload": {
+        "$ref": "Event_DrawOffered"
+      }
+    },
+    {
+      "name": "GameEnded",
+      "payload": {
+        "$ref": "Event_GameEnded"
+      }
+    },
+    {
+      "name": "GameStarted",
+      "payload": {
+        "$ref": "Event_GameStarted"
+      }
+    },
+    {
+      "name": "Initialized"
+    },
+    {
+      "name": "Moved",
+      "payload": {
+        "$ref": "Event_Moved"
+      }
+    },
+    {
+      "name": "PlayerJoined",
+      "payload": {
+        "kind": "string"
+      }
+    },
+    {
+      "name": "Seated",
+      "payload": {
+        "$ref": "Event_Seated"
+      }
+    },
+    {
+      "name": "Vacated",
+      "payload": {
+        "$ref": "Event_Vacated"
+      }
+    }
+  ],
+  "state_root": "MeroChess",
+  "state_version": 1
+}

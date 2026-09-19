@@ -1,0 +1,554 @@
+name: Mero Chess E2E
+description: >
+  Two nodes play a real game of chess through the contract and converge on it.
+
+  Covers the whole loop a player actually walks: take a seat, see the opponent
+  take theirs, alternate moves that each node validates locally, reach a
+  checkmate the CONTRACT derives (nobody writes "1-0" anywhere), and start a
+  rematch with the colours swapped.
+
+  The assertions are the ones a single node cannot make: after every move the
+  OTHER node is asked for the table, so a move that never replicated, a SAN
+  string computed differently on two nodes, or a result derived from a
+  divergent move list all fail here.
+
+  It also carries a load the Rust tests structurally cannot. Every row this
+  contract writes is an AuthoredMap entry — `StorageType::User`, signed
+  per-action and verified against its owner at apply — and `converge_app`
+  cannot carry those at all ("need the node's signing identity ... test those
+  with merobox workflows"). So this scenario is the only place where authored
+  state crossing a real network is exercised: if signing or owner verification
+  were wrong for this app's writes, the seats and moves below would not
+  replicate and every assertion after the first sync would fail.
+
+force_pull_image: false
+nuke_on_start: true
+near_devnet: false
+
+# ⚠️ REQUIRED, and its absence is why namespace joins keep dying on
+# `KeyDelivery timed out`. Without it, `merod init`'s default `bootstrap.nodes`
+# survives — the PUBLIC calimero devnet boot-node — and every container spends
+# its startup dialing unreachable public addresses until the join gives up. The
+# peers never found each other; it was never a timing race. `e2e_mode` clears
+# `bootstrap.nodes`, gives the workflow its own rendezvous namespace, turns
+# multicast discovery on and tightens the sync intervals.
+e2e_mode: true
+
+nodes:
+  count: 2
+  # Matched to the calimero-sdk tag in the root Cargo.toml, and asserted equal
+  # to it by scripts/check-app-metadata.sh. The wasm imports host functions that
+  # only exist from that release on; an older node installs it happily and then
+  # dies at context creation with `link error: unknown import`.
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.37
+  prefix: chess-node
+  # Stated, not inherited. core 0.11.0-rc.26 made mDNS opt-in (core#3620), so
+  # `merod init` now writes `discovery.mdns = false` where every earlier release
+  # left it on, and merobox does not pass the flag.
+  mdns: true
+
+steps:
+  - name: Install application on chess-node-1
+    type: install_application
+    node: chess-node-1
+    path: dist/com.calimero.mero-chess.mpk
+    dev: true
+    outputs:
+      app_id: applicationId
+
+  # ⚠️ Installed on EVERY node, not just the first. Since core 0.11.0-rc.31 a
+  # node does NOT serve bytecode to its peers: a joiner finds the blob in the
+  # DHT, is told which peers hold it, and every fetch still comes back
+  # `Blob not found on peer`.
+  - name: Install application on chess-node-2
+    type: install_application
+    node: chess-node-2
+    path: dist/com.calimero.mero-chess.mpk
+    dev: true
+
+  - name: Assert application installed
+    type: assert
+    statements:
+      - "is_set({{app_id}})"
+
+  # ⚠️ `create_mesh` JOINS INTERNALLY, so it races the KeyDelivery window the
+  # same way an explicit `join_namespace` does, and it has no step boundary to
+  # retry at — the whole scenario is lost when it loses that race. 12s matches
+  # apps/scaffolding-e2e/logic/workflows/group-late-joiner.yml, which documents
+  # why 5s is not enough.
+  - name: Settle before the mesh joins
+    type: wait
+    seconds: 12
+
+  - name: Create mesh with node-2
+    type: create_mesh
+    context_node: chess-node-1
+    application_id: "{{app_id}}"
+    nodes:
+      - chess-node-2
+    # `init(title, now)` takes arguments, so the context cannot be created
+    # without them: merobox passes this JSON string as the initialization
+    # params, and omitting it fails at context creation with a bare 500 (core
+    # reports a contract-side init failure without a body).
+    params: '{"title": "Two nodes", "now": 1700000000000}'
+    outputs:
+      context_id: contextId
+      node1_key: memberPublicKey
+
+  - name: Verify mesh keys are populated
+    type: assert
+    statements:
+      - "is_set({{context_id}})"
+      - "is_set({{node1_key}})"
+      - "is_set({{public_key_chess-node-2}})"
+
+  # ─── taking seats ─────────────────────────────────────────────────────────
+
+  - name: node-1 sits down as White
+    type: call
+    node: chess-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: sit
+    args:
+      seat: "white"
+      name: "Node One"
+      now: 1700000001000
+
+  - name: node-2 sits down as Black
+    type: call
+    node: chess-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_chess-node-2}}"
+    method: sit
+    args:
+      seat: "black"
+      name: "Node Two"
+      now: 1700000002000
+
+  - name: Wait for both seats to converge
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - chess-node-1
+      - chess-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: node-1 reads the table
+    type: call
+    node: chess-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: table
+    args:
+      now: 1700000003000
+    outputs:
+      n1_ready: result
+
+  # node-1 sees its own seat AND node-2's, which is the first thing that could
+  # only be true if the other node's write replicated.
+  - name: Assert node-1 sees a playable table
+    type: json_assert
+    statements:
+      - 'json_subset({{n1_ready}}, {"output": {"status": "inProgress", "game": 0, "side_to_move": "white", "my_turn": true, "my_color": "white"}})'
+      - 'json_subset({{n1_ready}}, {"output": {"white": {"name": "Node One"}, "black": {"name": "Node Two"}}})'
+
+  - name: node-2 reads the table
+    type: call
+    node: chess-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_chess-node-2}}"
+    method: table
+    args:
+      now: 1700000003000
+    outputs:
+      n2_ready: result
+
+  # The same table, from the other side: same game, opposite colour, not its
+  # turn. A client that mixed up the seats would pass on one node and fail here.
+  - name: Assert node-2 sees itself as Black and waiting
+    type: json_assert
+    statements:
+      - 'json_subset({{n2_ready}}, {"output": {"status": "inProgress", "my_color": "black", "my_turn": false}})'
+
+  # A seat that is taken is taken, on the other node too — this is the
+  # first-write-wins merge, observed across the wire rather than in a unit test.
+  - name: node-2 tries to take the seat node-1 is in
+    type: call
+    node: chess-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_chess-node-2}}"
+    method: sit
+    args:
+      seat: "white"
+      name: "Node Two"
+      now: 1700000004000
+    # `expected_failure`, not `expect_failure`: the latter is not a merobox
+    # field at all, so a recent merobox rejects it and an older one IGNORED it —
+    # which means the step asserted nothing while looking like it did.
+    #
+    # And the flag alone is NOT enough: on a `call` step it only marks the step
+    # allowed-to-fail, so a call that unexpectedly SUCCEEDS — a second node
+    # taking an occupied seat, which is the regression this guards — would still
+    # pass. The error has to be captured and asserted.
+    expected_failure: true
+    outputs:
+      seat_taken_error: error
+
+  - name: Assert the second claim really was refused
+    type: assert
+    statements:
+      # `is_set`, not a comparison against the message: the point is that the
+      # call FAILED, and merobox splits an assert on every comma, so asserting
+      # on wording would silently become several statements.
+      - "is_set({{seat_taken_error}})"
+
+  - name: node-1 confirms it still holds White
+    type: call
+    node: chess-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: table
+    args:
+      now: 1700000005000
+    outputs:
+      n1_still_white: result
+
+  - name: Assert the seat did not move
+    type: json_assert
+    statements:
+      - 'json_subset({{n1_still_white}}, {"output": {"white": {"name": "Node One"}}})'
+
+  # ─── the game ─────────────────────────────────────────────────────────────
+  #
+  # Scholar's mate. Seven plies is enough to exercise a pawn move, a piece
+  # development, a capture-free queen sortie and a mating capture — and the SAN
+  # the contract returns is asserted on the way, because SAN is the one thing
+  # two clients could word differently if it were computed client-side.
+
+  - name: White plays e4
+    type: call
+    node: chess-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: play
+    args:
+      uci: "e2e4"
+      now: 1700000010000
+    outputs:
+      san_e4: result
+
+  - name: Assert the contract named the move
+    type: json_assert
+    statements:
+      - 'json_equal({{san_e4}}, {"output": "e4"})'
+
+  - name: Wait for e4 to reach node-2
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - chess-node-1
+      - chess-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  # The move has to be VISIBLE on the other node before that node can answer it:
+  # `play` is refused unless it is your turn, so a missing delta fails here.
+  - name: Black plays e5
+    type: call
+    node: chess-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_chess-node-2}}"
+    method: play
+    args:
+      uci: "e7e5"
+      now: 1700000011000
+    outputs:
+      san_e5: result
+
+  - name: Assert Black's reply
+    type: json_assert
+    statements:
+      - 'json_equal({{san_e5}}, {"output": "e5"})'
+
+  - name: Wait for e5 to reach node-1
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - chess-node-1
+      - chess-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: White plays Bc4
+    type: call
+    node: chess-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: play
+    args:
+      uci: "f1c4"
+      now: 1700000012000
+    outputs:
+      san_bc4: result
+
+  - name: Assert the bishop move
+    type: json_assert
+    statements:
+      - 'json_equal({{san_bc4}}, {"output": "Bc4"})'
+
+  - name: Wait for Bc4 to reach node-2
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - chess-node-1
+      - chess-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Black plays Nc6
+    type: call
+    node: chess-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_chess-node-2}}"
+    method: play
+    args:
+      uci: "b8c6"
+      now: 1700000013000
+
+  - name: Wait for Nc6 to reach node-1
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - chess-node-1
+      - chess-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: White plays Qh5
+    type: call
+    node: chess-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: play
+    args:
+      uci: "d1h5"
+      now: 1700000014000
+
+  - name: Wait for Qh5 to reach node-2
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - chess-node-1
+      - chess-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Black plays Nf6, missing the mate
+    type: call
+    node: chess-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_chess-node-2}}"
+    method: play
+    args:
+      uci: "g8f6"
+      now: 1700000015000
+
+  - name: Wait for Nf6 to reach node-1
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - chess-node-1
+      - chess-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  # Out of turn, from the node that just moved. The refusal is the rule the
+  # whole app rests on, and it is enforced by the CONTRACT rather than by a
+  # disabled button in someone's browser.
+  - name: Black tries to move twice in a row
+    type: call
+    node: chess-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_chess-node-2}}"
+    method: play
+    args:
+      uci: "d7d6"
+      now: 1700000016000
+    expected_failure: true
+    outputs:
+      out_of_turn_error: error
+
+  - name: Assert moving out of turn was refused
+    type: assert
+    statements:
+      - "is_set({{out_of_turn_error}})"
+
+  - name: White mates on f7
+    type: call
+    node: chess-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: play
+    args:
+      uci: "h5f7"
+      now: 1700000017000
+    outputs:
+      san_mate: result
+
+  # `#`, not `+`: the contract worked out that this is mate, from the position.
+  - name: Assert the contract wrote the mate into the notation
+    type: json_assert
+    statements:
+      - 'json_equal({{san_mate}}, {"output": "Qxf7#"})'
+
+  - name: Wait for the mate to reach node-2
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - chess-node-1
+      - chess-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: node-2 reads the finished game
+    type: call
+    node: chess-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_chess-node-2}}"
+    method: table
+    args:
+      now: 1700000018000
+    outputs:
+      n2_final: result
+
+  # The losing node derives the loss ITSELF. Nothing wrote "1-0" into state:
+  # both nodes replay the same move list and reach the same verdict, which is
+  # the property that makes a result trustworthy without a referee.
+  - name: Assert node-2 sees the checkmate it walked into
+    type: json_assert
+    statements:
+      - 'json_subset({{n2_final}}, {"output": {"status": "finished", "result": "1-0", "reason": "checkmate", "check": true}})'
+      - 'json_subset({{n2_final}}, {"output": {"fen": "r1bqkb1r/pppp1Qpp/2n2n2/4p3/2B1P3/8/PPPP1PPP/RNB1K1NR b KQkq - 0 4"}})'
+
+  - name: node-2 tries to play on into a finished game
+    type: call
+    node: chess-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_chess-node-2}}"
+    method: play
+    args:
+      uci: "e8f7"
+      now: 1700000019000
+    expected_failure: true
+    outputs:
+      finished_game_error: error
+
+  - name: Assert a finished game takes no more moves
+    type: assert
+    statements:
+      - "is_set({{finished_game_error}})"
+
+  # ─── the rematch ──────────────────────────────────────────────────────────
+
+  - name: node-2 starts a rematch
+    type: call
+    node: chess-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_chess-node-2}}"
+    method: rematch
+    args:
+      now: 1700000020000
+    outputs:
+      next_game: result
+
+  - name: Assert the rematch is game 1
+    type: json_assert
+    statements:
+      - 'json_equal({{next_game}}, {"output": 1})'
+
+  - name: Wait for the rematch to reach node-1
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - chess-node-1
+      - chess-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: node-1 reads the new game
+    type: call
+    node: chess-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: table
+    args:
+      now: 1700000021000
+    outputs:
+      n1_rematch: result
+
+  # The chairs did not move; the colours did. node-1 held White in game 0 and
+  # has Black in game 1, so it is node-2's move.
+  - name: Assert the colours swapped
+    type: json_assert
+    statements:
+      - 'json_subset({{n1_rematch}}, {"output": {"game": 1, "result": "*", "my_color": "black", "my_turn": false}})'
+      - 'json_subset({{n1_rematch}}, {"output": {"white": {"name": "Node Two"}, "black": {"name": "Node One"}}})'
+
+  - name: node-1 reads the history
+    type: call
+    node: chess-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: history
+    args: {}
+    outputs:
+      history: result
+
+  # The finished game keeps its result while a new one is being played — the
+  # two live under different keys, so a rematch cannot overwrite the record of
+  # what happened.
+  #
+  # ⚠️ `contains`, not `json_subset`. json_subset compares list ELEMENTS by
+  # exact dict equality and does not recurse into a dict nested inside a list,
+  # so a partial match on a game row is not expressible — and an exact one
+  # cannot be written either, because the rows carry the two nodes' member keys.
+  # `contains` splits its arguments on every comma, so each assertion here has
+  # to be a single comma-free substring.
+  - name: Assert the finished game is still on the record
+    type: assert
+    statements:
+      - 'contains({{history}}, "checkmate")'
+      - 'contains({{history}}, "1-0")'
+
+  - name: node-1 reads the table again
+    type: call
+    node: chess-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: table
+    args:
+      now: 1700000022000
+    outputs:
+      n1_two_games: result
+
+  # Two games at this table, and the CURRENT one is the empty second — which is
+  # the half of "the record survived" that a substring check cannot show.
+  - name: Assert the table holds two games and is playing the new one
+    type: json_assert
+    statements:
+      - 'json_subset({{n1_two_games}}, {"output": {"games_played": 2, "game": 1, "result": "*"}})'
+
+stop_all_nodes: false
+restart: false
+wait_timeout: 180
