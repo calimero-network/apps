@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
+import { CAPABILITIES } from '@calimero-network/mero-js';
 import {
+  DEFAULT_CAPABILITIES,
+  ensureNamespace,
   acceptInvite,
   enterSpreadsheet,
   isAlreadyMember,
@@ -241,5 +244,73 @@ describe('enterSpreadsheet', () => {
       'ctx1',
     );
     expect(id).toBe('joined');
+  });
+});
+
+// ── rc.41: the namespace default mask is load-bearing ───────────────────────
+//
+// 0.11.0-rc.41 seeds a new namespace root with
+// `CAN_JOIN_OPEN_SUBGROUPS | CAN_AUTHOR_ON_BEHALF` (core's
+// `initial_default_capabilities`, #3969) and publishes it as a governance op so
+// it replicates to every peer (#3974). `CAN_AUTHOR_ON_BEHALF` is "write as
+// somebody else", which in a shared spreadsheet means edits attributed to a
+// collaborator who did not make them.
+//
+// `ensureNamespace` overwrites that seed. It had no test at all before this.
+
+describe('ensureNamespace — the rc.41 default mask', () => {
+  /** Records every call, so the MASK can be asserted and not just the outcome. */
+  function recording(over: Record<string, () => unknown> = {}) {
+    const calls: { method: string; args: unknown[] }[] = [];
+    const rec =
+      (method: string, impl?: () => unknown) =>
+      (...args: unknown[]) => {
+        calls.push({ method, args });
+        // `Promise.resolve().then(...)` so an override that throws produces a
+        // REJECTED PROMISE rather than a synchronous throw. A synchronous throw
+        // bypasses `.catch()` at the call site — which made the first draft of
+        // this suite pass against the very bug it exists to catch.
+        return Promise.resolve().then(() => (over[method] ?? impl)?.());
+      };
+    return {
+      calls,
+      client: {
+        createNamespace: rec('createNamespace', () => ({
+          namespaceId: 'ns-1',
+        })),
+        setGroupMetadata: rec('setGroupMetadata'),
+        setDefaultCapabilities: rec('setDefaultCapabilities'),
+        setSubgroupVisibility: rec('setSubgroupVisibility'),
+      } as unknown as AdminLike,
+    };
+  }
+
+  it('never sends CAN_AUTHOR_ON_BEHALF', async () => {
+    const { client, calls } = recording();
+    await ensureNamespace(client, {
+      applicationId: 'app-1',
+      existingNamespaceId: null,
+      name: 'Books',
+    });
+    const call = calls.find((c) => c.method === 'setDefaultCapabilities');
+    const sent = (call?.args[1] as { defaultCapabilities: number })
+      .defaultCapabilities;
+    expect(sent & CAPABILITIES.CAN_AUTHOR_ON_BEHALF).toBe(0);
+    expect(sent).toBe(DEFAULT_CAPABILITIES);
+  });
+
+  it('fails the whole call when the node refuses the write', async () => {
+    const { client } = recording({
+      setDefaultCapabilities: () => {
+        throw new Error('503');
+      },
+    });
+    await expect(
+      ensureNamespace(client, {
+        applicationId: 'app-1',
+        existingNamespaceId: null,
+        name: 'Books',
+      }),
+    ).rejects.toThrow('503');
   });
 });

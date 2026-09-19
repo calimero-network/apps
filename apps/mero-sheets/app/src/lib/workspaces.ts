@@ -131,13 +131,28 @@ export async function ensureNamespace(
   });
 
   onStatus('Granting member capabilities…');
-  // Non-fatal: the creator already holds full capabilities, so a failure here
-  // costs invitees their permissions rather than breaking the workspace.
-  await admin
-    .setDefaultCapabilities(ns.namespaceId, {
-      defaultCapabilities: DEFAULT_CAPABILITIES,
-    })
-    .catch(() => {});
+  // ⚠️ NOT SWALLOWED, AND THAT CHANGED AT rc.41.
+  //
+  // This call used to end `.catch(() => {})`, with the note "a failure here
+  // costs invitees their permissions rather than breaking the workspace". That
+  // was true while core seeded a new namespace with `CAN_JOIN_OPEN_SUBGROUPS`
+  // and nothing else.
+  //
+  // 0.11.0-rc.41 changed the seed. `initial_default_capabilities` in core's
+  // `crates/context/src/handlers/create_group.rs` now returns
+  //
+  //     CAN_JOIN_OPEN_SUBGROUPS | CAN_AUTHOR_ON_BEHALF
+  //
+  // for a namespace root (#3969), and rc.41 also publishes it as a governance
+  // op so it REPLICATES to every peer (#3974). `CAN_AUTHOR_ON_BEHALF` is write
+  // as somebody else — in a shared spreadsheet, edits attributed to a
+  // collaborator who did not make them.
+  //
+  // So the cost of losing this write inverted: it no longer withholds a
+  // capability, it GRANTS one, to everyone invited, silently and permanently.
+  await admin.setDefaultCapabilities(ns.namespaceId, {
+    defaultCapabilities: DEFAULT_CAPABILITIES,
+  });
 
   return ns.namespaceId;
 }

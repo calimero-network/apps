@@ -153,14 +153,30 @@ describe('createTeam', () => {
     ]);
   });
 
-  it('survives a node that refuses the optional hardening calls', async () => {
+  // ⚠️ `setDefaultCapabilities` USED TO BE IN THIS LIST, and is not any more.
+  //
+  // At rc.37 all three were genuinely optional: losing the metadata write cost
+  // a label, losing the visibility write cost invitees a vault they could
+  // re-reach, and losing the capability write left them with
+  // `CAN_JOIN_OPEN_SUBGROUPS`, which is what they were being given anyway.
+  //
+  // rc.41 seeds a namespace with `CAN_AUTHOR_ON_BEHALF` too (#3969), so losing
+  // that write now GRANTS a capability instead of withholding one. It has its
+  // own test below, asserting it is fatal. The other two are still optional and
+  // this still pins that they are.
+  it('survives a node that refuses the genuinely optional calls', async () => {
     const { admin } = fakeAdmin({
-      setDefaultCapabilities: () => Promise.reject(new Error('nope')),
       setSubgroupVisibility: () => Promise.reject(new Error('nope')),
       setGroupMetadata: () => Promise.reject(new Error('nope')),
+      getMemberCapabilities: () =>
+        Promise.resolve({ capabilities: ADMIN_CAPABILITIES }),
     });
     await expect(
-      createTeam(admin, { applicationId: 'app-1', name: 'Acme' }),
+      createTeam(admin, {
+        applicationId: 'app-1',
+        name: 'Acme',
+        accountId: 'a'.repeat(64),
+      }),
     ).resolves.toEqual({ namespaceId: 'ns-1' });
   });
 });
@@ -812,5 +828,80 @@ describe('repairCreatorAdmin', () => {
         MEMBER_CAPABILITIES,
       ),
     ).resolves.toBeNull();
+  });
+});
+
+// ── rc.41: the namespace default mask is load-bearing ───────────────────────
+//
+// 0.11.0-rc.41 seeds a new namespace root with
+// `CAN_JOIN_OPEN_SUBGROUPS | CAN_AUTHOR_ON_BEHALF` (core's
+// `initial_default_capabilities`, #3969) and publishes it as a governance op so
+// it replicates to every peer (#3974). `CAN_AUTHOR_ON_BEHALF` is "write as
+// somebody else, under a warrant they signed" — and `lib/roles` lists it in
+// DELIBERATELY_UNGRANTED, because a password manager must not hand out the
+// capability to publish writes attributed to another person.
+//
+// This app overwrites that seed immediately. These assert the two halves of
+// that being TRUE rather than merely attempted.
+
+describe('the rc.41 default mask', () => {
+  it('a team never hands an invitee CAN_AUTHOR_ON_BEHALF', async () => {
+    const { admin, calls } = fakeAdmin({
+      getMemberCapabilities: () =>
+        Promise.resolve({ capabilities: ADMIN_CAPABILITIES }),
+    });
+    await createTeam(admin as unknown as AdminLike, {
+      applicationId: 'app-1',
+      name: 'Acme',
+      accountId: 'a'.repeat(64),
+    });
+    const sent = (
+      argsOf(calls, 'setDefaultCapabilities') as [
+        string,
+        { defaultCapabilities: number },
+      ]
+    )[1].defaultCapabilities;
+    expect(sent & CAPABILITIES.CAN_AUTHOR_ON_BEHALF).toBe(0);
+    expect(sent).toBe(MEMBER_CAPABILITIES);
+  });
+
+  it('a private vault grants an arriving member nothing at all', async () => {
+    const { admin, calls } = fakeAdmin();
+    await createPersonalVault(admin as unknown as AdminLike, {
+      applicationId: 'app-1',
+    });
+    const sent = (
+      argsOf(calls, 'setDefaultCapabilities') as [
+        string,
+        { defaultCapabilities: number },
+      ]
+    )[1].defaultCapabilities;
+    expect(sent).toBe(0);
+  });
+
+  it('a node that refuses the write fails createTeam', async () => {
+    // Was `.catch(() => {})`. At rc.41 swallowing it leaves every invited
+    // member holding CAN_AUTHOR_ON_BEHALF, reported nowhere.
+    const { admin } = fakeAdmin({
+      setDefaultCapabilities: () => Promise.reject(new Error('503')),
+    });
+    await expect(
+      createTeam(admin as unknown as AdminLike, {
+        applicationId: 'app-1',
+        name: 'Acme',
+        accountId: 'a'.repeat(64),
+      }),
+    ).rejects.toThrow('503');
+  });
+
+  it('a node that refuses the write fails createPersonalVault', async () => {
+    const { admin } = fakeAdmin({
+      setDefaultCapabilities: () => Promise.reject(new Error('503')),
+    });
+    await expect(
+      createPersonalVault(admin as unknown as AdminLike, {
+        applicationId: 'app-1',
+      }),
+    ).rejects.toThrow('503');
   });
 });

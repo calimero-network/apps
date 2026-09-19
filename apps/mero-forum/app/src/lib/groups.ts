@@ -211,13 +211,31 @@ export async function createSpaceNamespace(
   });
 
   onStatus("Granting member capabilities…");
-  // Non-fatal: the creator already holds full caps, so a failure here costs
-  // invitees their permissions rather than breaking the namespace.
-  await admin
-    .setDefaultCapabilities(ns.namespaceId, {
-      defaultCapabilities: MEMBER_CAPABILITIES,
-    })
-    .catch(() => {});
+  // ⚠️ NOT SWALLOWED, AND THAT CHANGED AT rc.41.
+  //
+  // This call used to end `.catch(() => {})`, with the note "a failure here
+  // costs invitees their permissions rather than breaking the namespace". That
+  // was true while core seeded a new namespace with `CAN_JOIN_OPEN_SUBGROUPS`
+  // and nothing else: losing this write left invitees with the ability to enter
+  // open subgroups, which is what they were being given anyway.
+  //
+  // 0.11.0-rc.41 changed the seed. `initial_default_capabilities` in core's
+  // `crates/context/src/handlers/create_group.rs` now returns
+  //
+  //     CAN_JOIN_OPEN_SUBGROUPS | CAN_AUTHOR_ON_BEHALF
+  //
+  // for a namespace root (#3969), and rc.41 also publishes it as a governance
+  // op so it REPLICATES to every peer (#3974). `CAN_AUTHOR_ON_BEHALF` is write
+  // as somebody else, under a warrant they signed.
+  //
+  // So the cost of losing this write inverted: it no longer withholds a
+  // capability, it GRANTS one, to everyone invited, permanently, and silently.
+  // A swallowed failure is now a privilege escalation with no error anywhere.
+  // Failing loudly while the creator is still looking at the screen is the only
+  // honest option.
+  await admin.setDefaultCapabilities(ns.namespaceId, {
+    defaultCapabilities: MEMBER_CAPABILITIES,
+  });
 
   onStatus("Opening the namespace to invited members…");
   await admin
@@ -375,8 +393,6 @@ export async function createForum(
   // readable — the metadata record, which is also where `Namespace.name` comes
   // from. Without this every forum renders as "Forum 69aab2".
   //
-  // Non-fatal: a nameless forum still works, and losing the label is not worth
-  // failing a created forum over.
   onStatus("Naming the forum…");
   await admin.setGroupMetadata(sg.groupId, { name: opts.name }).catch(() => {});
 

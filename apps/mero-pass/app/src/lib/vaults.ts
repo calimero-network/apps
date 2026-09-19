@@ -353,14 +353,31 @@ export async function createTeam(
   // full capabilities independently of this value, which is why lowering it
   // does not lock you out of the team you just made. The merobox scenario
   // pins exactly that — node 1 creates a vault after this call.
+  // ⚠️ NOT SWALLOWED, AND THAT CHANGED AT rc.41.
   //
-  // Non-fatal: a failure here costs invitees their permissions rather than
-  // breaking the team.
-  await admin
-    .setDefaultCapabilities(ns.namespaceId, {
-      defaultCapabilities: MEMBER_CAPABILITIES,
-    })
-    .catch(() => {});
+  // This call used to end `.catch(() => {})`, with the note "a failure here
+  // costs invitees their permissions rather than breaking the namespace". That
+  // was true while core seeded a new namespace with `CAN_JOIN_OPEN_SUBGROUPS`
+  // and nothing else: losing this write left invitees with the ability to enter
+  // open subgroups, which is what they were being given anyway.
+  //
+  // 0.11.0-rc.41 changed the seed. `initial_default_capabilities` in core's
+  // `crates/context/src/handlers/create_group.rs` now returns
+  //
+  //     CAN_JOIN_OPEN_SUBGROUPS | CAN_AUTHOR_ON_BEHALF
+  //
+  // for a namespace root (#3969), and rc.41 also publishes it as a governance
+  // op so it REPLICATES to every peer (#3974). `CAN_AUTHOR_ON_BEHALF` is write
+  // as somebody else, under a warrant they signed.
+  //
+  // So the cost of losing this write inverted: it no longer withholds a
+  // capability, it GRANTS one, to everyone invited, permanently, and silently.
+  // A swallowed failure is now a privilege escalation with no error anywhere.
+  // Failing loudly while the creator is still looking at the screen is the only
+  // honest option.
+  await admin.setDefaultCapabilities(ns.namespaceId, {
+    defaultCapabilities: MEMBER_CAPABILITIES,
+  });
 
   // ⚠️ AND NOW GRANT THE CREATOR ADMIN, EXPLICITLY.
   //
@@ -573,9 +590,13 @@ export async function createPersonalVault(
 
   onStatus('Closing it to everyone else…');
   // Nobody should ever be a member here, so anyone who somehow is gets nothing.
-  await admin
-    .setDefaultCapabilities(ns.namespaceId, { defaultCapabilities: 0 })
-    .catch(() => {});
+  // Not swallowed, for the reason spelled out in `createTeam` — and it matters
+  // more here. A private vault's namespace must grant an arriving member
+  // NOTHING; rc.41's seed would give them `CAN_AUTHOR_ON_BEHALF`, which is the
+  // capability to write as the vault's owner.
+  await admin.setDefaultCapabilities(ns.namespaceId, {
+    defaultCapabilities: 0,
+  });
 
   // NOTE: no `setSubgroupVisibility(ns.namespaceId, 'open')`. `createTeam` makes
   // that call so invited members can reach the team's vaults; its ABSENCE is
