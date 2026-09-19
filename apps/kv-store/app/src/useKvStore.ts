@@ -27,6 +27,6 @@ export function useKvStore(contextId: string): KvStoreClient | null {
     // node derives the caller from the bearer token. The generated constructor
     // still requires it, so pass what the session has and expect it to be
     // ignored.
-    return new KvStoreClient(mero, contextId, contextIdentity ?? "");
+    return new KvStoreClient(mero, contextId);
   }, [mero, contextId, contextIdentity]);
 }

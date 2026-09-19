@@ -79,7 +79,7 @@ export function useForumClient(): ForumClient | null {
   return useMemo(
     () =>
       mero && contextId && executor
-        ? new ForumClient(mero, contextId, executor)
+        ? new ForumClient(mero, contextId)
         : null,
     [mero, contextId, executor],
   );

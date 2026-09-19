@@ -6,7 +6,8 @@ import {
 
 // Generated types
 
-export type ContextId = string;
+export type ContextId = string & { readonly __brand: 'ContextId' };
+export const ContextId = (value: string): ContextId => value as ContextId;
 
 export interface Event_FolderAliasChanged {
   id: string;
@@ -67,7 +68,8 @@ export interface FolderDto {
   visibility: Visibility;
 }
 
-export type FolderId = string;
+export type FolderId = string & { readonly __brand: 'FolderId' };
+export const FolderId = (value: string): FolderId => value as FolderId;
 
 export interface FolderRecord {
   parent_id: string;
@@ -125,19 +127,17 @@ export type AbiEvent =
 export class RegistryClient {
   private _mero: MeroJs;
   private _contextId: string;
-  private _executorPublicKey: string;
 
-  constructor(mero: MeroJs, contextId: string, executorPublicKey: string) {
+  constructor(mero: MeroJs, contextId: string) {
     this._mero = mero;
     this._contextId = contextId;
-    this._executorPublicKey = executorPublicKey;
   }
 
   /**
    * add_manager
    */
   public async addManager(params: { member: string }): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'add_manager', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'add_manager', argsJson: params });
     return response as void;
   }
 
@@ -145,7 +145,7 @@ export class RegistryClient {
    * bind_folder_context
    */
   public async bindFolderContext(params: { folder_id: FolderId; context_id: ContextId }): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'bind_folder_context', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'bind_folder_context', argsJson: params });
     return response as void;
   }
 
@@ -153,7 +153,7 @@ export class RegistryClient {
    * claim_owner
    */
   public async claimOwner(): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'claim_owner', argsJson: {}, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'claim_owner', argsJson: {} });
     return response as void;
   }
 
@@ -161,7 +161,7 @@ export class RegistryClient {
    * clear_folder_role
    */
   public async clearFolderRole(params: { folder_id: FolderId; member: string }): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'clear_folder_role', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'clear_folder_role', argsJson: params });
     return response as void;
   }
 
@@ -171,7 +171,7 @@ export class RegistryClient {
    * @intent read_only
    */
   public async getFolder(params: { id: FolderId }): Promise<FolderDto> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_folder', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_folder', argsJson: params });
     return response as FolderDto;
   }
 
@@ -181,7 +181,7 @@ export class RegistryClient {
    * @intent read_only
    */
   public async getFolderContext(params: { folder_id: FolderId }): Promise<ContextId> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_folder_context', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_folder_context', argsJson: params });
     return response as ContextId;
   }
 
@@ -191,7 +191,7 @@ export class RegistryClient {
    * @intent read_only
    */
   public async getFolderRole(params: { folder_id: FolderId; member: string }): Promise<Role> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_folder_role', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_folder_role', argsJson: params });
     return response as Role;
   }
 
@@ -201,7 +201,7 @@ export class RegistryClient {
    * @intent read_only
    */
   public async getFolders(): Promise<FolderDto[]> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_folders', argsJson: {}, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_folders', argsJson: {} });
     return response as FolderDto[];
   }
 
@@ -211,7 +211,7 @@ export class RegistryClient {
    * @intent read_only
    */
   public async getOwner(): Promise<string> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_owner', argsJson: {}, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_owner', argsJson: {} });
     return response as string;
   }
 
@@ -221,7 +221,7 @@ export class RegistryClient {
    * @intent read_only
    */
   public async getSortOrder(params: { parent_id: FolderId | null }): Promise<FolderId[]> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_sort_order', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_sort_order', argsJson: params });
     return response as FolderId[];
   }
 
@@ -229,7 +229,7 @@ export class RegistryClient {
    * init
    */
   public async init(): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'init', argsJson: {}, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'init', argsJson: {} });
     return response as void;
   }
 
@@ -239,7 +239,7 @@ export class RegistryClient {
    * @intent read_only
    */
   public async listFolderRoles(params: { folder_id: FolderId }): Promise<FolderRoleEntry[]> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'list_folder_roles', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'list_folder_roles', argsJson: params });
     return response as FolderRoleEntry[];
   }
 
@@ -249,7 +249,7 @@ export class RegistryClient {
    * @intent read_only
    */
   public async listManagers(): Promise<string[]> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'list_managers', argsJson: {}, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'list_managers', argsJson: {} });
     return response as string[];
   }
 
@@ -257,7 +257,7 @@ export class RegistryClient {
    * move_folder
    */
   public async moveFolder(params: { id: FolderId; new_parent: FolderId | null }): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'move_folder', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'move_folder', argsJson: params });
     return response as void;
   }
 
@@ -265,7 +265,7 @@ export class RegistryClient {
    * register_folder
    */
   public async registerFolder(params: { id: FolderId; parent_id: FolderId | null; color: string | null; alias: string | null }): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'register_folder', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'register_folder', argsJson: params });
     return response as void;
   }
 
@@ -273,7 +273,7 @@ export class RegistryClient {
    * remove_manager
    */
   public async removeManager(params: { member: string }): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'remove_manager', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'remove_manager', argsJson: params });
     return response as void;
   }
 
@@ -281,7 +281,7 @@ export class RegistryClient {
    * reorder
    */
   public async reorder(params: { parent_id: FolderId | null; folder_ids: FolderId[] }): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'reorder', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'reorder', argsJson: params });
     return response as void;
   }
 
@@ -289,7 +289,7 @@ export class RegistryClient {
    * set_color
    */
   public async setColor(params: { id: FolderId; color: string }): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_color', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_color', argsJson: params });
     return response as void;
   }
 
@@ -297,7 +297,7 @@ export class RegistryClient {
    * set_folder_alias
    */
   public async setFolderAlias(params: { id: FolderId; alias: string }): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_folder_alias', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_folder_alias', argsJson: params });
     return response as void;
   }
 
@@ -305,7 +305,7 @@ export class RegistryClient {
    * set_folder_role
    */
   public async setFolderRole(params: { folder_id: FolderId; member: string; role: Role }): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_folder_role', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_folder_role', argsJson: params });
     return response as void;
   }
 
@@ -313,7 +313,7 @@ export class RegistryClient {
    * set_visibility
    */
   public async setVisibility(params: { id: FolderId; visibility: Visibility }): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_visibility', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_visibility', argsJson: params });
     return response as void;
   }
 
@@ -321,7 +321,7 @@ export class RegistryClient {
    * unregister_folder
    */
   public async unregisterFolder(params: { id: FolderId }): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'unregister_folder', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'unregister_folder', argsJson: params });
     return response as void;
   }
 

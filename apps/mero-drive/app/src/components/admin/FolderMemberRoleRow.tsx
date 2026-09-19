@@ -26,6 +26,11 @@ import {
   FolderRoleSelect,
   type FolderRolePreset,
 } from './FolderRoleSelect';
+// `FolderId`/`ContextId` are BRANDED at abi-codegen 2: `string & {__brand}`.
+// The generated constructor is the only way to make one, which is the point —
+// this fleet has had folder ids, context ids and account ids all be bare 64-hex
+// strings that type-check in each other's slots.
+import { FolderId } from '@/generated/registry/RegistryClient';
 import type { Role } from '@/generated/registry/RegistryClient';
 
 interface Props {
@@ -92,7 +97,7 @@ export function FolderMemberRoleRow({
     setUpdateError(null);
     try {
       await registryClient.setFolderRole({
-        folder_id: folderId,
+        folder_id: FolderId(folderId),
         member: identity,
         role: preset.role,
       });

@@ -426,7 +426,7 @@ export function useBattleshipsLobby(): UseBattleshipsLobbyReturn {
   const refetchPlayerMap = useCallback(async () => {
     if (!mero || !lobbyContextId || !executorPublicKey) { setPlayerByAccount({}); return; }
     try {
-      const client = new LobbyClient(mero, lobbyContextId, executorPublicKey);
+      const client = new LobbyClient(mero, lobbyContextId);
       const entries = await client.getPlayers();
       const next: Record<string, string> = {};
       for (const e of entries ?? []) {
@@ -453,7 +453,7 @@ export function useBattleshipsLobby(): UseBattleshipsLobbyReturn {
     let cancelled = false;
     (async () => {
       try {
-        const client = new LobbyClient(mero, lobbyContextId, executorPublicKey);
+        const client = new LobbyClient(mero, lobbyContextId);
         await client.registerPlayer();
         if (!cancelled) await refetchPlayerMap();
       } catch {

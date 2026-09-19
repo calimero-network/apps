@@ -22,6 +22,14 @@ import {
   useAddGroupMembers,
   useMero,
 } from '@calimero-network/mero-react';
+// `FolderId`/`ContextId` are BRANDED at abi-codegen 2: `string & {__brand}`.
+// The generated constructor is the only way to make one, which is the point —
+// this fleet has had folder ids, context ids and account ids all be bare
+// 64-hex strings that type-check in each other's slots.
+import {
+  ContextId,
+  FolderId,
+} from '../generated/registry/RegistryClient';
 import type { RegistryClient } from '../generated/registry/RegistryClient';
 import { DOCS_SERVICE_ID } from '../constants/config';
 import { reparentGroup } from '../api/reparentGroup';
@@ -155,8 +163,11 @@ export function useFolderOperations(
         createdContextId = ctx.contextId;
 
         await registryClient.registerFolder({
-          id: newId,
-          parent_id: input.parentGroupId === rootGroupId ? null : input.parentGroupId,
+          id: FolderId(newId),
+          parent_id:
+            input.parentGroupId === rootGroupId
+              ? null
+              : FolderId(input.parentGroupId),
           color: input.color ?? null,
           // Folder names come from core group metadata's `name` (list
           // rows carry it as of #2338); the registry's `alias` field
@@ -167,8 +178,8 @@ export function useFolderOperations(
         registryEntryCreated = true;
 
         await registryClient.bindFolderContext({
-          folder_id: newId,
-          context_id: ctx.contextId,
+          folder_id: FolderId(newId),
+          context_id: ContextId(ctx.contextId),
         });
         folderReady = true;
       } catch (err) {
@@ -180,7 +191,7 @@ export function useFolderOperations(
         // cause via the outer rethrow.
         if (registryEntryCreated && createdGroupId) {
           await registryClient
-            .unregisterFolder({ id: createdGroupId })
+            .unregisterFolder({ id: FolderId(createdGroupId) })
             .catch((e) => console.warn('rollback: unregisterFolder failed', e));
         }
         if (createdContextId) {
@@ -285,9 +296,9 @@ export function useFolderOperations(
         // happen after Phase 7's create path but tolerated during
         // migration) return null and skip the context delete.
         const boundContextId = await registryClient
-          .getFolderContext({ folder_id: id })
+          .getFolderContext({ folder_id: FolderId(id) })
           .catch(() => null);
-        await registryClient.unregisterFolder({ id });
+        await registryClient.unregisterFolder({ id: FolderId(id) });
         // Delete the docs context BEFORE the group that contains it.
         // The context is the resource living inside the group; if the
         // group is removed first, core may cascade-delete (or refuse

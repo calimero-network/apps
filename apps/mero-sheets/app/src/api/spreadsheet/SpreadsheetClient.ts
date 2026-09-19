@@ -207,99 +207,119 @@ export type AbiEvent =
 export class SpreadsheetClient {
   private _mero: MeroJs;
   private _contextId: string;
-  private _executorPublicKey: string;
 
-  constructor(mero: MeroJs, contextId: string, executorPublicKey: string) {
+  constructor(mero: MeroJs, contextId: string) {
     this._mero = mero;
     this._contextId = contextId;
-    this._executorPublicKey = executorPublicKey;
   }
 
   /**
    * apply_cell_ops
+   *
+   * @intent mutating
    */
   public async applyCellOps(params: { sheet_id: string; ops: CellOpPayload[] }): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'apply_cell_ops', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'apply_cell_ops', argsJson: params });
     return response as void;
   }
 
   /**
    * clear_cell
+   *
+   * @intent mutating
    */
   public async clearCell(params: { sheet_id: string; row: number; col: number }): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'clear_cell', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'clear_cell', argsJson: params });
     return response as void;
   }
 
   /**
    * create_sheet
+   *
+   * @intent mutating
    */
   public async createSheet(params: { name: string }): Promise<string> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'create_sheet', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'create_sheet', argsJson: params });
     return response as string;
   }
 
   /**
    * delete_sheet
+   *
+   * @intent mutating
    */
   public async deleteSheet(params: { sheet_id: string }): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'delete_sheet', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'delete_sheet', argsJson: params });
     return response as void;
   }
 
   /**
    * export_all
+   *
+   * @intent read_only
    */
   public async exportAll(): Promise<Sheet[]> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'export_all', argsJson: {}, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'export_all', argsJson: {} });
     return response as Sheet[];
   }
 
   /**
    * get_all_cells
+   *
+   * @intent read_only
    */
   public async getAllCells(): Promise<Cell[]> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_all_cells', argsJson: {}, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_all_cells', argsJson: {} });
     return response as Cell[];
   }
 
   /**
    * get_cells
+   *
+   * @intent read_only
    */
   public async getCells(params: { sheet_id: string }): Promise<Cell[]> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_cells', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_cells', argsJson: params });
     return response as Cell[];
   }
 
   /**
    * get_cursors
+   *
+   * @intent read_only
    */
   public async getCursors(): Promise<Cursor[]> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_cursors', argsJson: {}, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_cursors', argsJson: {} });
     return response as Cursor[];
   }
 
   /**
    * get_functions
+   *
+   * @intent read_only
    */
   public async getFunctions(): Promise<FunctionDef[]> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_functions', argsJson: {}, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_functions', argsJson: {} });
     return response as FunctionDef[];
   }
 
   /**
    * get_members
+   *
+   * @intent read_only
    */
   public async getMembers(): Promise<Member[]> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_members', argsJson: {}, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_members', argsJson: {} });
     return response as Member[];
   }
 
   /**
    * get_project
+   *
+   * @intent read_only
    */
   public async getProject(): Promise<Project> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_project', argsJson: {}, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_project', argsJson: {} });
     return response as Project;
   }
 
@@ -307,95 +327,117 @@ export class SpreadsheetClient {
    * init
    */
   public async init(): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'init', argsJson: {}, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'init', argsJson: {} });
     return response as void;
   }
 
   /**
    * init_project
+   *
+   * @intent mutating
    */
   public async initProject(params: { name: string }): Promise<string> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'init_project', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'init_project', argsJson: params });
     return response as string;
   }
 
   /**
    * join
+   *
+   * @intent mutating
    */
   public async join(params: { nickname: string }): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'join', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'join', argsJson: params });
     return response as void;
   }
 
   /**
    * list_sheets
+   *
+   * @intent read_only
    */
   public async listSheets(): Promise<Sheet[]> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'list_sheets', argsJson: {}, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'list_sheets', argsJson: {} });
     return response as Sheet[];
   }
 
   /**
    * remove_cursor
+   *
+   * @intent mutating
    */
   public async removeCursor(): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'remove_cursor', argsJson: {}, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'remove_cursor', argsJson: {} });
     return response as void;
   }
 
   /**
    * rename_sheet
+   *
+   * @intent mutating
    */
   public async renameSheet(params: { sheet_id: string; new_name: string }): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'rename_sheet', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'rename_sheet', argsJson: params });
     return response as void;
   }
 
   /**
    * search_functions
+   *
+   * @intent read_only
    */
   public async searchFunctions(params: { prefix: string }): Promise<FunctionDef[]> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'search_functions', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'search_functions', argsJson: params });
     return response as FunctionDef[];
   }
 
   /**
    * set_cell
+   *
+   * @intent mutating
    */
   public async setCell(params: { sheet_id: string; row: number; col: number; raw_value: string }): Promise<string> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_cell', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_cell', argsJson: params });
     return response as string;
   }
 
   /**
    * set_cell_format
+   *
+   * @intent mutating
    */
   public async setCellFormat(params: { sheet_id: string; row: number; col: number; format: string }): Promise<string> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_cell_format', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_cell_format', argsJson: params });
     return response as string;
   }
 
   /**
    * set_cell_formula
+   *
+   * @intent mutating
    */
   public async setCellFormula(params: { sheet_id: string; row: number; col: number; formula: string }): Promise<string> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_cell_formula', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_cell_formula', argsJson: params });
     return response as string;
   }
 
   /**
    * update_cursor
+   *
+   * @intent mutating
    */
   public async updateCursor(params: { sheet_id: string; row: number; col: number }): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'update_cursor', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'update_cursor', argsJson: params });
     return response as void;
   }
 
   /**
    * whoami
+   *
+   * @intent read_only
    */
   public async whoami(): Promise<string> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'whoami', argsJson: {}, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'whoami', argsJson: {} });
     return response as string;
   }
 

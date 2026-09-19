@@ -176,7 +176,7 @@ export function useSpreadsheet({
   const client = useMemo(
     () =>
       mero && contextId && executorPublicKey
-        ? new SpreadsheetClient(mero, contextId, executorPublicKey)
+        ? new SpreadsheetClient(mero, contextId)
         : null,
     [mero, contextId, executorPublicKey],
   );

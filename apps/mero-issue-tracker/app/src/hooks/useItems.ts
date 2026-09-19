@@ -103,7 +103,7 @@ export function useIssues({
   const client = useMemo(
     () =>
       mero && contextId && executorPublicKey
-        ? new IssueTrackerClient(mero, contextId, executorPublicKey)
+        ? new IssueTrackerClient(mero, contextId)
         : null,
     [mero, contextId, executorPublicKey],
   );

@@ -60,51 +60,59 @@ export type AbiEvent =
 export class MeroPassClient {
   private _mero: MeroJs;
   private _contextId: string;
-  private _executorPublicKey: string;
 
-  constructor(mero: MeroJs, contextId: string, executorPublicKey: string) {
+  constructor(mero: MeroJs, contextId: string) {
     this._mero = mero;
     this._contextId = contextId;
-    this._executorPublicKey = executorPublicKey;
   }
 
   /**
    * add_secret
+   *
+   * @intent mutating
    */
   public async addSecret(params: { name: string; secret_type: string; data: string; tags: string[] }): Promise<string> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'add_secret', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'add_secret', argsJson: params });
     return response as string;
   }
 
   /**
    * delete_secret
+   *
+   * @intent mutating
    */
   public async deleteSecret(params: { secret_id: string }): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'delete_secret', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'delete_secret', argsJson: params });
     return response as void;
   }
 
   /**
    * get_audit_logs
+   *
+   * @intent read_only
    */
   public async getAuditLogs(): Promise<AuditLogEntry[]> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_audit_logs', argsJson: {}, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_audit_logs', argsJson: {} });
     return response as AuditLogEntry[];
   }
 
   /**
    * get_secret
+   *
+   * @intent read_only
    */
   public async getSecret(params: { secret_id: string }): Promise<SecretItem> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_secret', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_secret', argsJson: params });
     return response as SecretItem;
   }
 
   /**
    * get_secrets_by_tag
+   *
+   * @intent read_only
    */
   public async getSecretsByTag(params: { tag: string }): Promise<SecretItem[]> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_secrets_by_tag', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_secrets_by_tag', argsJson: params });
     return response as SecretItem[];
   }
 
@@ -112,47 +120,57 @@ export class MeroPassClient {
    * init
    */
   public async init(params: { name: string }): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'init', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'init', argsJson: params });
     return response as void;
   }
 
   /**
    * list_secrets
+   *
+   * @intent read_only
    */
   public async listSecrets(): Promise<SecretItem[]> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'list_secrets', argsJson: {}, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'list_secrets', argsJson: {} });
     return response as SecretItem[];
   }
 
   /**
    * rename_vault
+   *
+   * @intent mutating
    */
   public async renameVault(params: { name: string }): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'rename_vault', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'rename_vault', argsJson: params });
     return response as void;
   }
 
   /**
    * search_secrets
+   *
+   * @intent read_only
    */
   public async searchSecrets(params: { query: string }): Promise<SecretItem[]> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'search_secrets', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'search_secrets', argsJson: params });
     return response as SecretItem[];
   }
 
   /**
    * update_secret
+   *
+   * @intent mutating
    */
   public async updateSecret(params: { secret_id: string; name: string; data: string; tags: string[] }): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'update_secret', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'update_secret', argsJson: params });
     return response as void;
   }
 
   /**
    * vault_name
+   *
+   * @intent read_only
    */
   public async vaultName(): Promise<string> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'vault_name', argsJson: {}, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'vault_name', argsJson: {} });
     return response as string;
   }
 
