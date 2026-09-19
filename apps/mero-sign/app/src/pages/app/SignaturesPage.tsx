@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { blobClient } from '@calimero-network/calimero-client';
+import { blobClient } from '../../lib/node';
 import { useCalimero } from '../../lib/useCalimero';
 import bs58 from 'bs58';
 import { ClientApiDataSource } from '../../api/dataSource/ClientApiDataSource';

@@ -86,3 +86,29 @@ export function bootstrapDesktopSession(): void {
        reason to fail to boot: the app falls back to asking for a node. */
   }
 }
+
+/**
+ * The node URL the desktop handed over, for `allowedNodeUrls`.
+ *
+ * ⚠️ mero-react's node-trust check is DEFAULT-DENY. An app that mounts
+ * `MeroProvider` without anchoring trust rejects the SSO callback the desktop
+ * gives it and drops the tokens with nothing but a console error — the person
+ * lands on the connect screen having just signed in. `scripts/check-desktop-sso.py`
+ * fails the build for exactly this, and it failed for Mero Sign the moment the
+ * provider swap landed.
+ *
+ * Read at MODULE SCOPE, before React mounts: `MeroProvider` reads the prop on
+ * its first render, and the provider itself strips the fragment.
+ */
+export function hashNodeUrl(): string | undefined {
+  if (typeof window === 'undefined') return undefined;
+  try {
+    const p = new URLSearchParams(window.location.hash.slice(1));
+    const raw = (p.get('node_url') ?? p.get('nodeUrl') ?? '').trim();
+    // The ORIGIN, not the whole URL: trust is compared by origin, and a value
+    // carrying a path never matches.
+    return raw ? new URL(raw).origin : undefined;
+  } catch {
+    return undefined;
+  }
+}

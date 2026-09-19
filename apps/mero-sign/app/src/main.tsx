@@ -9,9 +9,10 @@ import App from './App';
 // last app in this repo still on it. See `lib/useCalimero`.
 import { AppMode, MeroProvider } from '@calimero-network/mero-react';
 import { LoginGate } from './lib/loginGate';
+import { MeroBridge } from './lib/MeroBridge';
 import { PACKAGE_NAME, REGISTRY_URL } from './constants/config';
 import { startInvitationCapture } from './lib/invitationIntents';
-import { bootstrapDesktopSession } from './auth/desktopBootstrap';
+import { bootstrapDesktopSession, hashNodeUrl } from './auth/desktopBootstrap';
 
 // Disable StrictMode in production to avoid double-rendering
 // which can cause 429 errors from CalimeroProvider's auth checks
@@ -30,6 +31,10 @@ const AppWrapper = import.meta.env.DEV ? StrictMode : React.Fragment;
 // nothing reads, the application id was never seeded at all, and the desktop
 // "skip" silently degraded to the ordinary connect screen.
 bootstrapDesktopSession();
+
+// Read before React mounts — `MeroProvider` consumes the prop on its first
+// render and strips the fragment itself. See `hashNodeUrl`.
+const trustedNodeUrl = hashNodeUrl();
 
 // ── Invitations, captured before anything renders ─────────────────────────────
 //
@@ -75,7 +80,12 @@ createRoot(document.getElementById('root')!).render(
       packageName={PACKAGE_NAME}
       registryUrl={REGISTRY_URL}
       mode={AppMode.MultiContext}
+      // ⚠️ Node trust is DEFAULT-DENY in mero-react. Without this a cold
+      // desktop open rejects the session it was just handed and drops the
+      // tokens with only a console error.
+      allowedNodeUrls={trustedNodeUrl ? [trustedNodeUrl] : undefined}
     >
+      <MeroBridge />
       <LoginGate>
         <App />
       </LoginGate>

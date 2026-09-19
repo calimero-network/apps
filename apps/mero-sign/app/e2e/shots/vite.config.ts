@@ -21,8 +21,9 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: [
+      // The old SDK is gone; `lib/node` is what reaches a node now.
       {
-        find: '@calimero-network/calimero-client',
+        find: /.*\/lib\/node$/,
         replacement: here('./calimeroClient.mock.ts'),
       },
       // `useCalimero` moved out of the SDK and into `lib/useCalimero` when the

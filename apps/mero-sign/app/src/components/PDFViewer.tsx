@@ -44,7 +44,7 @@ import './PDFViewer.css';
 import { useTheme } from '../contexts/ThemeContext';
 import { DocumentService } from '../api/documentService';
 import { ClientApiDataSource } from '../api/dataSource/ClientApiDataSource';
-import { blobClient } from '@calimero-network/calimero-client';
+import { blobClient } from '../lib/node';
 import { useCalimero } from '../lib/useCalimero';
 import ConsentModal from './ConsentModal';
 import LegalChatbot from './LegalChatbot';

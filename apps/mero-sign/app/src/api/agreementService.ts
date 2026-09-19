@@ -4,7 +4,7 @@ import {
   getExecutorPublicKey,
   setContextId,
   setExecutorPublicKey,
-} from '@calimero-network/calimero-client';
+} from '../lib/node';
 import { ContextApiDataSource } from './dataSource/nodeApiDataSource';
 import { ClientApiDataSource } from './dataSource/ClientApiDataSource';
 import { Agreement } from './clientApi';
@@ -156,11 +156,14 @@ export class AgreementService {
               contextId,
             }),
             contextId: contextId,
-            memberPublicKey: context.executorId || toBase58String(context.shared_identity),
+            memberPublicKey:
+              context.executorId || toBase58String(context.shared_identity),
             role: context.role || ' ',
             joinedAt: context.joinedAt || context.joined_at || ' ',
-            privateIdentity: context.executorId || toBase58String(context.private_identity),
-            sharedIdentity: context.executorId || toBase58String(context.shared_identity),
+            privateIdentity:
+              context.executorId || toBase58String(context.private_identity),
+            sharedIdentity:
+              context.executorId || toBase58String(context.shared_identity),
           };
         }
 

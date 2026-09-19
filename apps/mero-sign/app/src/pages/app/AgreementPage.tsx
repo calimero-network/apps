@@ -8,8 +8,8 @@ import {
   setExecutorPublicKey,
   useCalimero,
   type ResponseData,
-} from '@calimero-network/calimero-client';
-import type { ContextInviteByOpenInvitationResponse } from '@calimero-network/calimero-client/lib/api/nodeApi';
+} from '../../lib/node';
+import type { ContextInviteByOpenInvitationResponse } from '../../lib/node';
 import { ClientApiDataSource } from '../../api/dataSource/ClientApiDataSource';
 import { ContextApiDataSource } from '../../api/dataSource/nodeApiDataSource';
 import { DocumentService } from '../../api/documentService';
