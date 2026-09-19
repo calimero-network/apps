@@ -299,6 +299,53 @@ steps:
     statements:
       - 'contains({{bob_search}}, "GitHub")'
 
+  # ── get_secrets_by_tag: an EXACT tag, where search is a substring ───────────
+  #
+  # Both read the same `tags` vector and they are not the same query, which is
+  # why covering one did not cover the other. `search_secrets` lowercases and
+  # matches a SUBSTRING across name and tags; `get_secrets_by_tag` matches a
+  # whole tag. Asserting both on the same fixture is what pins the difference:
+  # "wor" finds the secret by search and must NOT find it by tag.
+  - name: Bob fetches by exact tag
+    type: call
+    node: calimero-node-2
+    context_id: "{{vault_id}}"
+    method: get_secrets_by_tag
+    args:
+      tag: "work"
+    executor_public_key: "{{bob_key}}"
+    outputs:
+      bob_by_tag: result
+
+  - name: Assert the exact tag matched on the replica
+    type: assert
+    statements:
+      - 'contains({{bob_by_tag}}, "GitHub")'
+
+  - name: Bob fetches by a tag PREFIX, which is not a tag
+    type: call
+    node: calimero-node-2
+    context_id: "{{vault_id}}"
+    method: get_secrets_by_tag
+    args:
+      tag: "wor"
+    executor_public_key: "{{bob_key}}"
+    outputs:
+      bob_by_prefix: result
+
+  # The negative half. Without it this step passes against an implementation
+  # that ignores `tag` entirely and returns every secret.
+  #
+  # ⚠️ `not_contains`, with the underscore — merobox's predicate name. An
+  # unrecognised statement evaluates to False and fails the run
+  # (`return False, "(unrecognized statement)"`), so a typo here reds the
+  # scenario rather than passing vacuously. That is the safe direction, but it
+  # is worth knowing which way it falls.
+  - name: Assert a prefix is not a tag
+    type: assert
+    statements:
+      - 'not_contains({{bob_by_prefix}}, "GitHub")'
+
   # ── An edit on node 2 converges back to node 1 ──────────────────────────────
   - name: Bob rotates the password
     type: call

@@ -1,0 +1,121 @@
+{
+  "battleships": [
+    "get_history",
+    "get_players",
+    "register_player"
+  ],
+  "mero-blocks": [
+    "heartbeat",
+    "leave"
+  ],
+  "mero-design": [
+    "add_comment",
+    "add_reply",
+    "can_edit",
+    "clear_comments",
+    "clear_elements",
+    "delete_comment",
+    "delete_reply",
+    "get_comments",
+    "get_cursors",
+    "get_role",
+    "grant_editor",
+    "list_roles",
+    "my_role",
+    "revoke_editor",
+    "set_layer_index",
+    "transfer_ownership",
+    "update_cursor",
+    "update_element_label",
+    "update_member_username",
+    "update_shadow"
+  ],
+  "mero-drive": [
+    "comment_schema_version",
+    "delete_comment",
+    "edit_comment",
+    "list_comments"
+  ],
+  "mero-forum": [
+    "delete_comment",
+    "get_nickname",
+    "set_nickname",
+    "vote_comment"
+  ],
+  "mero-issue-tracker": [
+    "delete_issue",
+    "get_repo_info",
+    "get_status_counts",
+    "set_impact",
+    "set_repo_url",
+    "set_repro",
+    "set_resolution_criteria",
+    "set_summary"
+  ],
+  "mero-meet": [
+    "active_call_id",
+    "end_call",
+    "get_call_participants",
+    "get_messages",
+    "get_room",
+    "grant_host",
+    "heartbeat",
+    "is_member_host",
+    "leave",
+    "leave_call",
+    "post_message",
+    "rename_room",
+    "revoke_host",
+    "set_state"
+  ],
+  "mero-pixart": [
+    "can_edit",
+    "clear_layers",
+    "get_cursors",
+    "get_role",
+    "grant_editor",
+    "list_roles",
+    "move_layer",
+    "move_layers",
+    "reorder_layers",
+    "revoke_editor",
+    "transfer_ownership",
+    "update_cursor",
+    "update_layer_content",
+    "update_layer_mask",
+    "update_member_username",
+    "update_text",
+    "update_transform"
+  ],
+  "mero-sheets": [
+    "apply_cell_ops",
+    "get_all_cells",
+    "get_members",
+    "get_project",
+    "set_cell_format",
+    "whoami"
+  ],
+  "mero-sign": [
+    "get_identity_mapping",
+    "get_shared_identity",
+    "join_shared_context",
+    "leave_shared_context",
+    "list_joined_contexts",
+    "remove_participant",
+    "resolve_private_identity",
+    "search_document_by_embedding",
+    "set_participant_permission"
+  ],
+  "mero-stream": [
+    "is_member_admin",
+    "prune_frames",
+    "rename_stream"
+  ],
+  "merraria": [
+    "leave"
+  ],
+  "scaffolding-e2e": [
+    "get_counter",
+    "increment_counter"
+  ]
+}
