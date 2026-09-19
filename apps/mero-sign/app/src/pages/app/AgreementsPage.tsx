@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { useCalimero } from '@calimero-network/calimero-client';
+import { useCalimero } from '../../lib/useCalimero';
 import { AgreementService } from '../../api/agreementService';
 import { redeemInvitation } from '../../api/invitationJoin';
 import type { Agreement } from '../../api/clientApi';

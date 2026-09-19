@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { styled } from 'styled-components';
-import { useCalimero } from '@calimero-network/calimero-client';
+import { useCalimero } from '../lib/useCalimero';
 import { Button, colors } from '@calimero-network/mero-ui';
 import {
   parseInvitation,
