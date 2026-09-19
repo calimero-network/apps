@@ -26,6 +26,8 @@
  */
 import type { MeroJs } from '@calimero-network/mero-js';
 
+import { createAgreement } from './agreements';
+
 /** The six methods `ClientApiDataSource` / `NodeApiDataSource` actually call. */
 export interface MeroAppLike {
   execute(
@@ -50,6 +52,8 @@ export interface MeroAppLike {
 export function meroApp(
   mero: MeroJs,
   applicationId: string | null,
+  /** The workspace new agreements are created in. Null outside one. */
+  workspaceId: string | null,
 ): MeroAppLike {
   return {
     async execute(contextId, method, args) {
@@ -60,31 +64,43 @@ export function meroApp(
       return mero.rpc.execute({ contextId, method, argsJson: args });
     },
 
-    async createContext() {
-      // ⚠️ DELIBERATELY NOT IMPLEMENTED, AND THIS IS NOT A REGRESSION.
+    async createContext(_applicationId, initParams) {
+      // ⚠️ AN AGREEMENT IS A SUBGROUP AND ITS CONTEXT, NOT A BARE CONTEXT.
       //
-      // Core requires a group binding. `CreateContextRequest` in
+      // Core requires the binding: `CreateContextRequest` in
       // `crates/server/primitives/src/admin/mod.rs` declares
       //
       //     pub group_id: String,
       //
-      // with no `Option` and no `#[serde(default)]` — a context belongs to a
-      // namespace or a subgroup, always.
+      // with no `Option` and no `#[serde(default)]`. The path this replaces
+      // posted `{applicationId, initializationParams, protocol}` — no group at
+      // all, plus `protocol`, which core removed — and every admin body is
+      // `deny_unknown_fields`, so it was refused twice over. Mero Sign could
+      // not create an agreement on an rc.41 node.
       //
-      // The path this replaces sent `{ applicationId, initializationParams,
-      // protocol }`: no `group_id` at all, plus `protocol`, which core removed.
-      // Every admin body is `deny_unknown_fields`, so that request is rejected
-      // twice over. Mero Sign has not been able to create an agreement on an
-      // rc.41 node since the fleet bump, and this adapter cannot paper over it
-      // — the app has no namespace to bind a context to, because it was built
-      // on "one agreement is one context, no namespaces".
-      //
-      // Giving it one is a change to this app's context and invitation model,
-      // not to its login, so it does not belong in this PR.
-      throw new Error(
-        'Creating an agreement needs a namespace to bind the context to. ' +
-          'Mero Sign has no namespace model yet — see the note in lib/meroApp.',
-      );
+      // `createAgreement` supplies the binding and everything that has to come
+      // with it: a named subgroup, OPEN visibility so invited signers can reach
+      // it, and `init`'s real two parameters. See `lib/agreements`.
+      if (!applicationId) {
+        throw new Error(
+          'Cannot create an agreement: no application id resolved for Mero Sign on this node.',
+        );
+      }
+      if (!workspaceId) {
+        throw new Error(
+          'Cannot create an agreement outside a workspace. Open or create one first.',
+        );
+      }
+      const params = (initParams ?? {}) as {
+        context_name?: string;
+        is_private?: boolean;
+      };
+      return createAgreement(mero.admin, {
+        applicationId,
+        namespaceId: workspaceId,
+        name: (params.context_name ?? '').trim() || 'Agreement',
+        isPrivate: params.is_private ?? false,
+      });
     },
 
     async fetchContexts() {

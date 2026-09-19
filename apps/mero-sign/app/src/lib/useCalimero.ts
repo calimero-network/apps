@@ -33,15 +33,17 @@ export interface CalimeroLike {
   logout: () => void;
 }
 
-export function useCalimero(): CalimeroLike {
+export function useCalimero(workspaceId?: string | null): CalimeroLike {
   const { mero, isAuthenticated, logout } = useMero();
-  // Resolved lazily by the adapter; see `meroApp`.
+  // Resolved lazily; see `meroApp`. Both are supplied by the screen that knows
+  // them — the workspace a new agreement belongs to is a property of where you
+  // are in the app, not of the session.
   const appId: string | null = null;
   const login = useOpenLogin();
 
   const app = useMemo(
-    () => (mero ? meroApp(mero, appId ?? null) : null),
-    [mero, appId],
+    () => (mero ? meroApp(mero, appId ?? null, workspaceId ?? null) : null),
+    [mero, appId, workspaceId],
   );
 
   return { app, isAuthenticated, login, logout };

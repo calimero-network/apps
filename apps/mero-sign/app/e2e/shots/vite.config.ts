@@ -25,6 +25,21 @@ export default defineConfig({
         find: '@calimero-network/calimero-client',
         replacement: here('./calimeroClient.mock.ts'),
       },
+      // `useCalimero` moved out of the SDK and into `lib/useCalimero` when the
+      // app left `calimero-client` (its provider ships a hardcoded connect
+      // screen). Aliasing the SDK alone stopped intercepting the session, and
+      // seven scenarios photographed a signed-out app instead of the UI they
+      // name — which the harness caught, because every scenario waits for the
+      // landmark it is about rather than for a timer.
+      {
+        find: /.*\/lib\/useCalimero$/,
+        replacement: here('./calimeroClient.mock.ts'),
+      },
+      // `MeroProvider`/`LoginModal` reach a node the moment they mount.
+      {
+        find: '@calimero-network/mero-react',
+        replacement: here('./meroReact.mock.ts'),
+      },
       {
         find: /.*\/api\/agreementService$/,
         replacement: here('./services.mock.ts'),
