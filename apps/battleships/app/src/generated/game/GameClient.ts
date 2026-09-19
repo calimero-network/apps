@@ -216,49 +216,20 @@ function convertCalimeroBytesForWasm(obj: any): any {
   return obj;
 }
 
-/**
- * Convert arrays back to CalimeroBytes instances from WASM responses
- */
-function convertWasmResultToCalimeroBytes(obj: any): any {
-  if (obj === null || obj === undefined) {
-    return obj;
-  }
-
-  if (Array.isArray(obj) && obj.every(item => typeof item === "number")) {
-    return new CalimeroBytes(obj);
-  }
-
-  if (Array.isArray(obj)) {
-    return obj.map(item => convertWasmResultToCalimeroBytes(item));
-  }
-
-  if (typeof obj === "object") {
-    const result: any = {};
-    for (const [key, value] of Object.entries(obj)) {
-      result[key] = convertWasmResultToCalimeroBytes(value);
-    }
-    return result;
-  }
-
-  return obj;
-}
-
 export class GameClient {
   private _mero: MeroJs;
   private _contextId: string;
-  private _executorPublicKey: string;
 
-  constructor(mero: MeroJs, contextId: string, executorPublicKey: string) {
+  constructor(mero: MeroJs, contextId: string) {
     this._mero = mero;
     this._contextId = contextId;
-    this._executorPublicKey = executorPublicKey;
   }
 
   /**
    * init
    */
   public async init(params: { player1: string; player2: string; lobby_context_id: string | null; match_id: string }): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'init', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'init', argsJson: params });
     return response as void;
   }
 
@@ -266,7 +237,7 @@ export class GameClient {
    * place_ships
    */
   public async placeShips(params: { match_id: string; ships: string[] }): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'place_ships', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'place_ships', argsJson: params });
     return response as void;
   }
 
@@ -274,7 +245,7 @@ export class GameClient {
    * propose_shot
    */
   public async proposeShot(params: { match_id: string; x: number; y: number }): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'propose_shot', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'propose_shot', argsJson: params });
     return response as void;
   }
 
@@ -282,7 +253,7 @@ export class GameClient {
    * acknowledge_shot
    */
   public async acknowledgeShot(params: { match_id: string }): Promise<string> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'acknowledge_shot', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'acknowledge_shot', argsJson: params });
     return response as string;
   }
 
@@ -290,7 +261,7 @@ export class GameClient {
    * reveal_board
    */
   public async revealBoard(params: { match_id: string }): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'reveal_board', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'reveal_board', argsJson: params });
     return response as void;
   }
 
@@ -298,15 +269,15 @@ export class GameClient {
    * export_board_seed
    */
   public async exportBoardSeed(params: { match_id: string }): Promise<ExportedSeed> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'export_board_seed', argsJson: params, executorPublicKey: this._executorPublicKey });
-    return convertWasmResultToCalimeroBytes(response) as ExportedSeed;
+    const response: any = await this._mero.rpc.execute({ contextId: this._contextId, method: 'export_board_seed', argsJson: params });
+    return (response == null ? null : ({ ...response, board_bytes: new CalimeroBytes(response['board_bytes']), salt: new CalimeroBytes(response['salt']) })) as ExportedSeed;
   }
 
   /**
    * import_board_seed
    */
   public async importBoardSeed(params: { match_id: string; board_bytes: CalimeroBytes; salt: CalimeroBytes }): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'import_board_seed', argsJson: convertCalimeroBytesForWasm(params), executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'import_board_seed', argsJson: convertCalimeroBytesForWasm(params) });
     return response as void;
   }
 
@@ -314,23 +285,23 @@ export class GameClient {
    * get_own_board
    */
   public async getOwnBoard(params: { match_id: string }): Promise<OwnBoardView> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_own_board', argsJson: params, executorPublicKey: this._executorPublicKey });
-    return convertWasmResultToCalimeroBytes(response) as OwnBoardView;
+    const response: any = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_own_board', argsJson: params });
+    return (response == null ? null : ({ ...response, board: new CalimeroBytes(response['board']) })) as OwnBoardView;
   }
 
   /**
    * get_shots
    */
   public async getShots(params: { match_id: string }): Promise<ShotsView> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_shots', argsJson: params, executorPublicKey: this._executorPublicKey });
-    return convertWasmResultToCalimeroBytes(response) as ShotsView;
+    const response: any = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_shots', argsJson: params });
+    return (response == null ? null : ({ ...response, shots: new CalimeroBytes(response['shots']) })) as ShotsView;
   }
 
   /**
    * get_active_match_id
    */
   public async getActiveMatchId(): Promise<string> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_active_match_id', argsJson: {}, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_active_match_id', argsJson: {} });
     return response as string;
   }
 
@@ -338,7 +309,7 @@ export class GameClient {
    * get_current_turn
    */
   public async getCurrentTurn(): Promise<string> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_current_turn', argsJson: {}, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_current_turn', argsJson: {} });
     return response as string;
   }
 
@@ -346,7 +317,7 @@ export class GameClient {
    * get_current_user
    */
   public async getCurrentUser(): Promise<string> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_current_user', argsJson: {}, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_current_user', argsJson: {} });
     return response as string;
   }
 
@@ -354,7 +325,7 @@ export class GameClient {
    * acknowledge_shot_handler
    */
   public async acknowledgeShotHandler(params: { id: string; x: number; y: number }): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'acknowledge_shot_handler', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'acknowledge_shot_handler', argsJson: params });
     return response as void;
   }
 

@@ -404,7 +404,7 @@ export function useWorkspace(): UseWorkspaceReturn {
   const repoClient = useMemo(
     () =>
       mero && activeRepo && executorPublicKey
-        ? new IssueTrackerClient(mero, activeRepo, executorPublicKey)
+        ? new IssueTrackerClient(mero, activeRepo)
         : null,
     [mero, activeRepo, executorPublicKey],
   );
@@ -513,7 +513,7 @@ export function useWorkspace(): UseWorkspaceReturn {
         });
         if (!ctx?.contextId) throw new Error('createContext returned no contextId');
         // Save the repo URL into shared state (hard-fail: it's the whole point).
-        await new IssueTrackerClient(mero, ctx.contextId, ctx.memberPublicKey).setRepoUrl({
+        await new IssueTrackerClient(mero, ctx.contextId).setRepoUrl({
           url: trimmedUrl,
         });
         // Publish the name where every OTHER node can read it. `createContext`'s

@@ -154,75 +154,89 @@ export type AbiEvent =
 export class ForumClient {
   private _mero: MeroJs;
   private _contextId: string;
-  private _executorPublicKey: string;
 
-  constructor(mero: MeroJs, contextId: string, executorPublicKey: string) {
+  constructor(mero: MeroJs, contextId: string) {
     this._mero = mero;
     this._contextId = contextId;
-    this._executorPublicKey = executorPublicKey;
   }
 
   /**
    * create_comment
+   *
+   * @intent mutating
    */
   public async createComment(params: { post_id: string; body: string }): Promise<string> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'create_comment', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'create_comment', argsJson: params });
     return response as string;
   }
 
   /**
    * create_post
+   *
+   * @intent mutating
    */
   public async createPost(params: { title: string; body: string }): Promise<string> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'create_post', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'create_post', argsJson: params });
     return response as string;
   }
 
   /**
    * delete_comment
+   *
+   * @intent mutating
    */
   public async deleteComment(params: { comment_id: string }): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'delete_comment', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'delete_comment', argsJson: params });
     return response as void;
   }
 
   /**
    * delete_post
+   *
+   * @intent mutating
    */
   public async deletePost(params: { post_id: string }): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'delete_post', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'delete_post', argsJson: params });
     return response as void;
   }
 
   /**
    * edit_comment
+   *
+   * @intent mutating
    */
   public async editComment(params: { comment_id: string; body: string }): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'edit_comment', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'edit_comment', argsJson: params });
     return response as void;
   }
 
   /**
    * edit_post
+   *
+   * @intent mutating
    */
   public async editPost(params: { post_id: string; title: string; body: string }): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'edit_post', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'edit_post', argsJson: params });
     return response as void;
   }
 
   /**
    * get_nickname
+   *
+   * @intent read_only
    */
   public async getNickname(params: { account: string }): Promise<string> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_nickname', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_nickname', argsJson: params });
     return response as string;
   }
 
   /**
    * get_post
+   *
+   * @intent read_only
    */
   public async getPost(params: { post_id: string }): Promise<PostView> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_post', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_post', argsJson: params });
     return response as PostView;
   }
 
@@ -230,47 +244,57 @@ export class ForumClient {
    * init
    */
   public async init(): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'init', argsJson: {}, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'init', argsJson: {} });
     return response as void;
   }
 
   /**
    * list_comments
+   *
+   * @intent read_only
    */
   public async listComments(params: { post_id: string; cursor: string | null; limit: number }): Promise<CommentPage> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'list_comments', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'list_comments', argsJson: params });
     return response as CommentPage;
   }
 
   /**
    * list_posts
+   *
+   * @intent read_only
    */
   public async listPosts(params: { sort: string | null; cursor: string | null; limit: number }): Promise<PostPage> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'list_posts', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'list_posts', argsJson: params });
     return response as PostPage;
   }
 
   /**
    * set_nickname
+   *
+   * @intent mutating
    */
   public async setNickname(params: { name: string }): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_nickname', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_nickname', argsJson: params });
     return response as void;
   }
 
   /**
    * vote
+   *
+   * @intent mutating
    */
   public async vote(params: { post_id: string; value: number }): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'vote', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'vote', argsJson: params });
     return response as void;
   }
 
   /**
    * vote_comment
+   *
+   * @intent mutating
    */
   public async voteComment(params: { comment_id: string; value: number }): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'vote_comment', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'vote_comment', argsJson: params });
     return response as void;
   }
 

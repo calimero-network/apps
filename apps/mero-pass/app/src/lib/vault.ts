@@ -16,7 +16,7 @@ export async function clientForContext(
 ): Promise<MeroPassClient | null> {
   const { identities } = await mero.admin.getContextIdentitiesOwned(contextId);
   if (identities.length === 0) return null;
-  return new MeroPassClient(mero, contextId, identities[0]);
+  return new MeroPassClient(mero, contextId);
 }
 
 /**
@@ -56,7 +56,7 @@ export function useVaultClient(
   return useMemo(
     () =>
       mero && contextId && executor
-        ? new MeroPassClient(mero, contextId, executor)
+        ? new MeroPassClient(mero, contextId)
         : null,
     [mero, contextId, executor],
   );

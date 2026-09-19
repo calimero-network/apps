@@ -45,6 +45,11 @@ import {
 } from '@calimero-network/mero-react';
 import { Button } from '@/components/ui/button';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
+// `FolderId`/`ContextId` are BRANDED at abi-codegen 2: `string & {__brand}`.
+// The generated constructor is the only way to make one, which is the point —
+// this fleet has had folder ids, context ids and account ids all be bare
+// 64-hex strings that type-check in each other's slots.
+import { FolderId } from '../../generated/registry/RegistryClient';
 
 interface Props {
   /** Folder subgroup id — the join target. */
@@ -123,7 +128,7 @@ export function RestrictedFolderCard({
         throw new Error('Workspace registry not ready — try again.');
       }
       const docsContextId = await registryClient.getFolderContext({
-        folder_id: folderId,
+        folder_id: FolderId(folderId),
       });
       await joinContext(docsContextId);
 

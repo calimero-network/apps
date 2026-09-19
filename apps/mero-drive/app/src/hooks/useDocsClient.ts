@@ -14,6 +14,6 @@ export function useDocsClient(
   const { mero } = useMero();
   return useMemo(() => {
     if (!mero || !docsContextId || !executorPublicKey) return null;
-    return new DocsClient(mero, docsContextId, executorPublicKey);
+    return new DocsClient(mero, docsContextId);
   }, [mero, docsContextId, executorPublicKey]);
 }

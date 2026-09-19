@@ -39,7 +39,7 @@ export async function createLobbyClient(
   const context = await resolveAppContext(mero, resolveOptions);
 
   return {
-    client: new LobbyClient(mero, context.contextId, context.executorPublicKey),
+    client: new LobbyClient(mero, context.contextId),
     context,
   };
 }
@@ -58,7 +58,7 @@ export async function createGameClient(
   const context = await resolveAppContext(mero, resolveOptions);
 
   return {
-    client: new GameClient(mero, context.contextId, context.executorPublicKey),
+    client: new GameClient(mero, context.contextId),
     context,
   };
 }

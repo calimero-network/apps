@@ -180,73 +180,52 @@ function convertCalimeroBytesForWasm(obj: any): any {
   return obj;
 }
 
-/**
- * Convert arrays back to CalimeroBytes instances from WASM responses
- */
-function convertWasmResultToCalimeroBytes(obj: any): any {
-  if (obj === null || obj === undefined) {
-    return obj;
-  }
-
-  if (Array.isArray(obj) && obj.every(item => typeof item === "number")) {
-    return new CalimeroBytes(obj);
-  }
-
-  if (Array.isArray(obj)) {
-    return obj.map(item => convertWasmResultToCalimeroBytes(item));
-  }
-
-  if (typeof obj === "object") {
-    const result: any = {};
-    for (const [key, value] of Object.entries(obj)) {
-      result[key] = convertWasmResultToCalimeroBytes(value);
-    }
-    return result;
-  }
-
-  return obj;
-}
-
 export class DocsClient {
   private _mero: MeroJs;
   private _contextId: string;
-  private _executorPublicKey: string;
 
-  constructor(mero: MeroJs, contextId: string, executorPublicKey: string) {
+  constructor(mero: MeroJs, contextId: string) {
     this._mero = mero;
     this._contextId = contextId;
-    this._executorPublicKey = executorPublicKey;
   }
 
   /**
    * add_comment
+   *
+   * @intent mutating
    */
   public async addComment(params: { doc_id: string; body: string }): Promise<string> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'add_comment', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'add_comment', argsJson: params });
     return response as string;
   }
 
   /**
    * add_tag
+   *
+   * @intent mutating
    */
   public async addTag(params: { id: string; tag: string }): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'add_tag', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'add_tag', argsJson: params });
     return response as void;
   }
 
   /**
    * append_doc_update
+   *
+   * @intent mutating
    */
   public async appendDocUpdate(params: { id: string; update: CalimeroBytes }): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'append_doc_update', argsJson: convertCalimeroBytesForWasm(params), executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'append_doc_update', argsJson: convertCalimeroBytesForWasm(params) });
     return response as void;
   }
 
   /**
    * archive_doc
+   *
+   * @intent mutating
    */
   public async archiveDoc(params: { id: string }): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'archive_doc', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'archive_doc', argsJson: params });
     return response as void;
   }
 
@@ -256,7 +235,7 @@ export class DocsClient {
    * @intent read_only
    */
   public async commentCount(): Promise<number> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'comment_count', argsJson: {}, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'comment_count', argsJson: {} });
     return response as number;
   }
 
@@ -266,15 +245,17 @@ export class DocsClient {
    * @intent read_only
    */
   public async commentSchemaVersion(params: { id: string }): Promise<number> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'comment_schema_version', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'comment_schema_version', argsJson: params });
     return response as number;
   }
 
   /**
    * create_doc
+   *
+   * @intent mutating
    */
   public async createDoc(params: { title: string; content: string }): Promise<string> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'create_doc', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'create_doc', argsJson: params });
     return response as string;
   }
 
@@ -284,39 +265,47 @@ export class DocsClient {
    * @intent read_only
    */
   public async defaultSortOrder(): Promise<string> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'default_sort_order', argsJson: {}, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'default_sort_order', argsJson: {} });
     return response as string;
   }
 
   /**
    * delete_comment
+   *
+   * @intent mutating
    */
   public async deleteComment(params: { id: string }): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'delete_comment', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'delete_comment', argsJson: params });
     return response as void;
   }
 
   /**
    * delete_doc
+   *
+   * @intent mutating
    */
   public async deleteDoc(params: { id: string }): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'delete_doc', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'delete_doc', argsJson: params });
     return response as void;
   }
 
   /**
    * edit_comment
+   *
+   * @intent mutating
    */
   public async editComment(params: { id: string; body: string }): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'edit_comment', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'edit_comment', argsJson: params });
     return response as void;
   }
 
   /**
    * edit_doc
+   *
+   * @intent mutating
    */
   public async editDoc(params: { id: string; title: string | null; content: string | null }): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'edit_doc', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'edit_doc', argsJson: params });
     return response as void;
   }
 
@@ -326,7 +315,7 @@ export class DocsClient {
    * @intent read_only
    */
   public async getComment(params: { id: string }): Promise<CommentDto> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_comment', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_comment', argsJson: params });
     return response as CommentDto;
   }
 
@@ -336,7 +325,7 @@ export class DocsClient {
    * @intent read_only
    */
   public async getDoc(params: { id: string }): Promise<DocDto> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_doc', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_doc', argsJson: params });
     return response as DocDto;
   }
 
@@ -346,15 +335,15 @@ export class DocsClient {
    * @intent read_only
    */
   public async getDocUpdates(params: { id: string }): Promise<CalimeroBytes[]> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_doc_updates', argsJson: params, executorPublicKey: this._executorPublicKey });
-    return convertWasmResultToCalimeroBytes(response) as CalimeroBytes[];
+    const response: any = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_doc_updates', argsJson: params });
+    return (response == null ? null : response.map((item: any) => new CalimeroBytes(item))) as CalimeroBytes[];
   }
 
   /**
    * init
    */
   public async init(): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'init', argsJson: {}, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'init', argsJson: {} });
     return response as void;
   }
 
@@ -364,7 +353,7 @@ export class DocsClient {
    * @intent read_only
    */
   public async listComments(params: { doc_id: string }): Promise<CommentDto[]> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'list_comments', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'list_comments', argsJson: params });
     return response as CommentDto[];
   }
 
@@ -374,23 +363,27 @@ export class DocsClient {
    * @intent read_only
    */
   public async listDocs(params: { include_archived: boolean }): Promise<DocDto[]> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'list_docs', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'list_docs', argsJson: params });
     return response as DocDto[];
   }
 
   /**
    * remove_tag
+   *
+   * @intent mutating
    */
   public async removeTag(params: { id: string; tag: string }): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'remove_tag', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'remove_tag', argsJson: params });
     return response as void;
   }
 
   /**
    * unarchive_doc
+   *
+   * @intent mutating
    */
   public async unarchiveDoc(params: { id: string }): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'unarchive_doc', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'unarchive_doc', argsJson: params });
     return response as void;
   }
 

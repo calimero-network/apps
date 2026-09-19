@@ -25,6 +25,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useContextEvents } from './useContextEvents';
 import { useDriveWorkspace } from './useDriveWorkspace';
+// `FolderId`/`ContextId` are BRANDED at abi-codegen 2: `string & {__brand}`.
+// The generated constructor is the only way to make one, which is the point —
+// this fleet has had folder ids, context ids and account ids all be bare
+// 64-hex strings that type-check in each other's slots.
+import { FolderId } from '../generated/registry/RegistryClient';
 import type { Role, FolderRoleEntry } from '../generated/registry/RegistryClient';
 
 export interface FolderRoleState {
@@ -111,7 +116,7 @@ export function useFolderRole(folderId: string | null): FolderRoleState {
     lastFolderIdRef.current = folder;
     let cancelled = false;
     client
-      .getFolderRole({ folder_id: folder, member })
+      .getFolderRole({ folder_id: FolderId(folder), member })
       .then((r) => {
         if (cancelled) return;
         const fetchedRole = (r as Role) ?? 'Editor';
@@ -142,7 +147,7 @@ export function useFolderRole(folderId: string | null): FolderRoleState {
       const m = member ?? selfIdentity;
       if (!m) return;
       await registryClient.setFolderRole({
-        folder_id: folderId,
+        folder_id: FolderId(folderId),
         member: m,
         role: r,
       });
@@ -156,7 +161,10 @@ export function useFolderRole(folderId: string | null): FolderRoleState {
       if (!registryClient || !folderId) return;
       const m = member ?? selfIdentity;
       if (!m) return;
-      await registryClient.clearFolderRole({ folder_id: folderId, member: m });
+      await registryClient.clearFolderRole({
+        folder_id: FolderId(folderId),
+        member: m,
+      });
       setTick((t) => t + 1);
     },
     [registryClient, folderId, selfIdentity],
@@ -221,7 +229,7 @@ export function useFolderRoles(folderId: string | null): FolderRolesState {
     setLoading(true);
     setError(null);
     registryClient
-      .listFolderRoles({ folder_id: folderId })
+      .listFolderRoles({ folder_id: FolderId(folderId) })
       .then((rows) => {
         if (!cancelled) setEntries(rows ?? []);
       })

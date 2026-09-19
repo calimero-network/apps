@@ -450,9 +450,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
           try {
             const rows = await new RegistryClient(
               mero,
-              id,
-              selfIdentity,
-            ).getFolders();
+              id).getFolders();
             counts[id] = Array.isArray(rows) ? rows.length : 0;
           } catch {
             // A context we cannot read contributes no evidence. Counting it as
@@ -699,7 +697,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
           // so claiming is safe. `claim_owner` has no authz gate of its own —
           // it takes the owner slot for whoever calls it first — which is why
           // the admin check has to happen on this side.
-          await new RegistryClient(mero, reg.contextId, callerIdentity)
+          await new RegistryClient(mero, reg.contextId)
             .claimOwner()
             .catch(() => {});
           // Pin it immediately. This is what stops any OTHER node reaching the
@@ -752,7 +750,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
     // therefore both inert on the wire and the honest description of who is
     // calling — do not "fix" it to a signing key on the strength of the
     // parameter's name.
-    return new RegistryClient(mero, registryContextId, selfIdentity);
+    return new RegistryClient(mero, registryContextId);
   }, [mero, registryContextId, selfIdentity]);
 
   // --- Registry owner/managers (fetched ONCE here) ---
@@ -1212,9 +1210,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
           try {
             await new RegistryClient(
               mero,
-              reg.contextId,
-              reg.memberPublicKey,
-            ).claimOwner();
+              reg.contextId).claimOwner();
           } catch (e) {
             console.warn(
               '[useDriveWorkspace] claimOwner failed during ' +

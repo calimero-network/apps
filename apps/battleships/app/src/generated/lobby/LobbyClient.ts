@@ -74,51 +74,59 @@ export type AbiEvent =
 export class LobbyClient {
   private _mero: MeroJs;
   private _contextId: string;
-  private _executorPublicKey: string;
 
-  constructor(mero: MeroJs, contextId: string, executorPublicKey: string) {
+  constructor(mero: MeroJs, contextId: string) {
     this._mero = mero;
     this._contextId = contextId;
-    this._executorPublicKey = executorPublicKey;
   }
 
   /**
    * create_match
+   *
+   * @intent mutating
    */
   public async createMatch(params: { player2: string }): Promise<string> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'create_match', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'create_match', argsJson: params });
     return response as string;
   }
 
   /**
    * get_history
+   *
+   * @intent read_only
    */
   public async getHistory(): Promise<MatchRecord[]> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_history', argsJson: {}, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_history', argsJson: {} });
     return response as MatchRecord[];
   }
 
   /**
    * get_matches
+   *
+   * @intent read_only
    */
   public async getMatches(): Promise<MatchSummary[]> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_matches', argsJson: {}, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_matches', argsJson: {} });
     return response as MatchSummary[];
   }
 
   /**
    * get_player_stats
+   *
+   * @intent read_only
    */
   public async getPlayerStats(params: { player: string }): Promise<PlayerStatsView> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_player_stats', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_player_stats', argsJson: params });
     return response as PlayerStatsView;
   }
 
   /**
    * get_players
+   *
+   * @intent read_only
    */
   public async getPlayers(): Promise<PlayerEntry[]> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_players', argsJson: {}, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_players', argsJson: {} });
     return response as PlayerEntry[];
   }
 
@@ -126,31 +134,39 @@ export class LobbyClient {
    * init
    */
   public async init(): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'init', argsJson: {}, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'init', argsJson: {} });
     return response as void;
   }
 
   /**
    * on_match_finished
+   *
+   * @intent mutating
+   *
+   * @xcall same_app (callers must run the same application id)
    */
   public async onMatchFinished(params: { match_id: string; winner: string; loser: string }): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'on_match_finished', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'on_match_finished', argsJson: params });
     return response as void;
   }
 
   /**
    * register_player
+   *
+   * @intent mutating
    */
   public async registerPlayer(): Promise<string> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'register_player', argsJson: {}, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'register_player', argsJson: {} });
     return response as string;
   }
 
   /**
    * set_match_context_id
+   *
+   * @intent mutating
    */
   public async setMatchContextId(params: { match_id: string; context_id: string }): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_match_context_id', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_match_context_id', argsJson: params });
     return response as void;
   }
 

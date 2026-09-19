@@ -22,6 +22,11 @@ import { useDriveWorkspace } from '../hooks/useDriveWorkspace';
 import { useSelfIdentity } from './useSelfIdentity';
 import { useDocsClient } from './useDocsClient';
 import { useDocEvents } from './useDocEvents';
+// `FolderId`/`ContextId` are BRANDED at abi-codegen 2: `string & {__brand}`.
+// The generated constructor is the only way to make one, which is the point —
+// this fleet has had folder ids, context ids and account ids all be bare
+// 64-hex strings that type-check in each other's slots.
+import { FolderId } from '../generated/registry/RegistryClient';
 
 export interface UseDocsState {
   /** The docs context id bound to this folder (null until resolved). */
@@ -149,7 +154,7 @@ export function useDocs(folderId: string | null): UseDocsState {
     setResolveError(null);
     setContextResolving(true);
     registryClient
-      .getFolderContext({ folder_id: folderId })
+      .getFolderContext({ folder_id: FolderId(folderId) })
       .then((ctxId) => {
         if (alive) setContextId(ctxId ?? null);
       })

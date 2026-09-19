@@ -39,59 +39,69 @@ export type AbiEvent =
 export class KvStoreClient {
   private _mero: MeroJs;
   private _contextId: string;
-  private _executorPublicKey: string;
 
-  constructor(mero: MeroJs, contextId: string, executorPublicKey: string) {
+  constructor(mero: MeroJs, contextId: string) {
     this._mero = mero;
     this._contextId = contextId;
-    this._executorPublicKey = executorPublicKey;
   }
 
   /**
    * clear
+   *
+   * @intent mutating
    */
   public async clear(): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'clear', argsJson: {}, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'clear', argsJson: {} });
     return response as void;
   }
 
   /**
    * entries
+   *
+   * @intent read_only
    */
   public async entries(): Promise<Record<string, string>> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'entries', argsJson: {}, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'entries', argsJson: {} });
     return response as Record<string, string>;
   }
 
   /**
    * get
+   *
+   * @intent read_only
    */
   public async get(params: { key: string }): Promise<string> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get', argsJson: params });
     return response as string;
   }
 
   /**
    * get_or_insert
+   *
+   * @intent mutating
    */
   public async getOrInsert(params: { key: string; value: string }): Promise<string> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_or_insert', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_or_insert', argsJson: params });
     return response as string;
   }
 
   /**
    * get_result
+   *
+   * @intent read_only
    */
   public async getResult(params: { key: string }): Promise<string> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_result', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_result', argsJson: params });
     return response as string;
   }
 
   /**
    * get_unchecked
+   *
+   * @intent read_only
    */
   public async getUnchecked(params: { key: string }): Promise<string> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_unchecked', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_unchecked', argsJson: params });
     return response as string;
   }
 
@@ -99,39 +109,47 @@ export class KvStoreClient {
    * init
    */
   public async init(): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'init', argsJson: {}, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'init', argsJson: {} });
     return response as void;
   }
 
   /**
    * len
+   *
+   * @intent read_only
    */
   public async len(): Promise<number> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'len', argsJson: {}, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'len', argsJson: {} });
     return response as number;
   }
 
   /**
    * remove
+   *
+   * @intent mutating
    */
   public async remove(params: { key: string }): Promise<string> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'remove', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'remove', argsJson: params });
     return response as string;
   }
 
   /**
    * set
+   *
+   * @intent mutating
    */
   public async set(params: { key: string; value: string }): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set', argsJson: params });
     return response as void;
   }
 
   /**
    * update_if_exists
+   *
+   * @intent mutating
    */
   public async updateIfExists(params: { key: string; value: string }): Promise<boolean> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'update_if_exists', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'update_if_exists', argsJson: params });
     return response as boolean;
   }
 

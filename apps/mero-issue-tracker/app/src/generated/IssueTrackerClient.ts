@@ -151,83 +151,99 @@ export type AbiEvent =
 export class IssueTrackerClient {
   private _mero: MeroJs;
   private _contextId: string;
-  private _executorPublicKey: string;
 
-  constructor(mero: MeroJs, contextId: string, executorPublicKey: string) {
+  constructor(mero: MeroJs, contextId: string) {
     this._mero = mero;
     this._contextId = contextId;
-    this._executorPublicKey = executorPublicKey;
   }
 
   /**
    * add_comment
+   *
+   * @intent mutating
    */
   public async addComment(params: { issue_id: string; body: string }): Promise<string> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'add_comment', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'add_comment', argsJson: params });
     return response as string;
   }
 
   /**
    * add_label
+   *
+   * @intent mutating
    */
   public async addLabel(params: { issue_id: string; label: string }): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'add_label', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'add_label', argsJson: params });
     return response as void;
   }
 
   /**
    * create_issue
+   *
+   * @intent mutating
    */
   public async createIssue(params: { title: string; summary: string; impact: string; repro: string; resolution_criteria: string; priority: string; labels: string[] | null }): Promise<string> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'create_issue', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'create_issue', argsJson: params });
     return response as string;
   }
 
   /**
    * delete_comment
+   *
+   * @intent mutating
    */
   public async deleteComment(params: { comment_id: string }): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'delete_comment', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'delete_comment', argsJson: params });
     return response as void;
   }
 
   /**
    * delete_issue
+   *
+   * @intent mutating
    */
   public async deleteIssue(params: { issue_id: string }): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'delete_issue', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'delete_issue', argsJson: params });
     return response as void;
   }
 
   /**
    * edit_comment
+   *
+   * @intent mutating
    */
   public async editComment(params: { comment_id: string; new_body: string }): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'edit_comment', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'edit_comment', argsJson: params });
     return response as void;
   }
 
   /**
    * get_issue
+   *
+   * @intent read_only
    */
   public async getIssue(params: { issue_id: string }): Promise<IssueDetail> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_issue', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_issue', argsJson: params });
     return response as IssueDetail;
   }
 
   /**
    * get_repo_info
+   *
+   * @intent read_only
    */
   public async getRepoInfo(): Promise<RepoInfo> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_repo_info', argsJson: {}, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_repo_info', argsJson: {} });
     return response as RepoInfo;
   }
 
   /**
    * get_status_counts
+   *
+   * @intent read_only
    */
   public async getStatusCounts(): Promise<StatusCount[]> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_status_counts', argsJson: {}, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_status_counts', argsJson: {} });
     return response as StatusCount[];
   }
 
@@ -235,87 +251,107 @@ export class IssueTrackerClient {
    * init
    */
   public async init(): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'init', argsJson: {}, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'init', argsJson: {} });
     return response as void;
   }
 
   /**
    * list_issues
+   *
+   * @intent read_only
    */
   public async listIssues(params: { status: string | null; assignee: string | null; label: string | null }): Promise<IssueView[]> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'list_issues', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'list_issues', argsJson: params });
     return response as IssueView[];
   }
 
   /**
    * remove_label
+   *
+   * @intent mutating
    */
   public async removeLabel(params: { issue_id: string; label: string }): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'remove_label', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'remove_label', argsJson: params });
     return response as void;
   }
 
   /**
    * set_assignee
+   *
+   * @intent mutating
    */
   public async setAssignee(params: { issue_id: string; assignee: string | null }): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_assignee', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_assignee', argsJson: params });
     return response as void;
   }
 
   /**
    * set_impact
+   *
+   * @intent mutating
    */
   public async setImpact(params: { issue_id: string; impact: string }): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_impact', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_impact', argsJson: params });
     return response as void;
   }
 
   /**
    * set_priority
+   *
+   * @intent mutating
    */
   public async setPriority(params: { issue_id: string; priority: string }): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_priority', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_priority', argsJson: params });
     return response as void;
   }
 
   /**
    * set_repo_url
+   *
+   * @intent mutating
    */
   public async setRepoUrl(params: { url: string }): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_repo_url', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_repo_url', argsJson: params });
     return response as void;
   }
 
   /**
    * set_repro
+   *
+   * @intent mutating
    */
   public async setRepro(params: { issue_id: string; repro: string }): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_repro', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_repro', argsJson: params });
     return response as void;
   }
 
   /**
    * set_resolution_criteria
+   *
+   * @intent mutating
    */
   public async setResolutionCriteria(params: { issue_id: string; resolution_criteria: string }): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_resolution_criteria', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_resolution_criteria', argsJson: params });
     return response as void;
   }
 
   /**
    * set_status
+   *
+   * @intent mutating
    */
   public async setStatus(params: { issue_id: string; status: string }): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_status', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_status', argsJson: params });
     return response as void;
   }
 
   /**
    * set_summary
+   *
+   * @intent mutating
    */
   public async setSummary(params: { issue_id: string; summary: string }): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_summary', argsJson: params, executorPublicKey: this._executorPublicKey });
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_summary', argsJson: params });
     return response as void;
   }
 

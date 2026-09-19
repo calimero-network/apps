@@ -18,6 +18,6 @@ export function useRegistryClient(
   const { mero } = useMero();
   return useMemo(() => {
     if (!mero || !contextId || !executorPublicKey) return null;
-    return new RegistryClient(mero, contextId, executorPublicKey);
+    return new RegistryClient(mero, contextId);
   }, [mero, contextId, executorPublicKey]);
 }
