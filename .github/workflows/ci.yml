@@ -299,6 +299,18 @@ jobs:
       - name: Assert no app sends a body key the node refuses
         run: python3 scripts/check-admin-wire.py
 
+      # `Build WASM` proves a contract compiles; `Rust (fmt, clippy, test)`
+      # proves its unit tests pass in-process with no node, no peer and no
+      # replication. merobox is the only tier here that calls a method over the
+      # wire against a real merod — so a method no scenario names has never been
+      # executed against a node at all.
+      #
+      # Cheap, Docker-free, and baselined: the 93 methods that were already
+      # uncovered when this landed are recorded, so the gap can shrink and can
+      # never grow.
+      - name: Assert every contract method is exercised by merobox
+        run: python3 scripts/check-merobox-coverage.py
+
       # The checker's own tests. Its first version matched routes as LITERAL
       # strings, so every `` `/namespaces/${id}/groups` `` call site was
       # invisible to it and four apps sent `groupAlias` there under a green
