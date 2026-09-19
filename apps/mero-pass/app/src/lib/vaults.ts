@@ -53,6 +53,7 @@
 
 import type { MeroJs } from '@calimero-network/mero-js';
 import {
+  ADMIN_CAPABILITIES,
   MEMBER_CAPABILITIES,
   capabilitiesForRole,
   missingForRole,
@@ -251,6 +252,68 @@ export async function listTeams(
 }
 
 /**
+ * Give this account the Admin mask on a namespace, and confirm it landed.
+ *
+ * Reads back rather than trusting the write, for the reason `lib/roles` opens
+ * with: a role and a capability mask are different server fields, and a write
+ * that reports 200 while the mask stays where it was is exactly the failure this
+ * app is most vulnerable to — the UI and the node disagree and the UI looks
+ * right.
+ */
+async function grantAdmin(
+  admin: AdminLike,
+  namespaceId: string,
+  accountId: string,
+): Promise<number | null> {
+  await admin.setMemberCapabilities(namespaceId, accountId, {
+    capabilities: ADMIN_CAPABILITIES,
+  });
+  const after = await admin
+    .getMemberCapabilities(namespaceId, accountId)
+    .then((r) => r?.capabilities ?? null)
+    .catch(() => null);
+  if (after !== null && (after & ADMIN_CAPABILITIES) !== ADMIN_CAPABILITIES) {
+    throw new Error(
+      `The node accepted the permission change but did not apply it ` +
+        `(asked for ${ADMIN_CAPABILITIES}, it reports ${after}).`,
+    );
+  }
+  return after;
+}
+
+/**
+ * Repair a team whose creator was never granted Admin. Best-effort, silent.
+ *
+ * Teams made before `createTeam` granted the creator anything are stuck: the
+ * only member holds the Member mask, and the one control that could raise it is
+ * itself behind an Admin gate. This is how they get unstuck — the team screen
+ * tries once on load, and a success re-reads the mask.
+ *
+ * ⚠️ IT CANNOT ESCALATE ANYONE. The attempt is an ordinary
+ * `setMemberCapabilities` call and the NODE decides: a member who is not the
+ * owner is refused, and we swallow that refusal because for them it is the
+ * expected answer, not an error worth a toast. Nothing here grants anything on
+ * its own say-so — being able to ask is not being allowed.
+ *
+ * @returns the mask afterwards when it changed, or null when it did not.
+ */
+export async function repairCreatorAdmin(
+  admin: AdminLike,
+  namespaceId: string,
+  accountId: string,
+  current: number | null,
+): Promise<number | null> {
+  if (current === null) return null;
+  if ((current & ADMIN_CAPABILITIES) === ADMIN_CAPABILITIES) return null;
+  try {
+    const after = await grantAdmin(admin, namespaceId, accountId);
+    return after === current ? null : after;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Create the team that holds vaults.
  *
  * No context is created here — that is a vault's job. A team with no vault is
@@ -258,7 +321,7 @@ export async function listTeams(
  */
 export async function createTeam(
   admin: AdminLike,
-  opts: { applicationId: string; name: string },
+  opts: { applicationId: string; name: string; accountId?: string | null },
   onStatus: StatusFn = noop,
 ): Promise<{ namespaceId: string }> {
   onStatus('Creating the team…');
@@ -298,6 +361,34 @@ export async function createTeam(
       defaultCapabilities: MEMBER_CAPABILITIES,
     })
     .catch(() => {});
+
+  // ⚠️ AND NOW GRANT THE CREATOR ADMIN, EXPLICITLY.
+  //
+  // The comment above used to end "it does not touch the creator: a namespace's
+  // owner holds full capabilities independently of this value". That was wrong,
+  // and it produced the worst symptom this app has had. You create a team, open
+  // it, and it says:
+  //
+  //     "You are a Member of this team, so you can open every vault below but
+  //      not create new ones. An Admin can change that under People."
+  //
+  //     "No vaults in this team yet. An Admin can create the first one."
+  //
+  // You are the only person in the team. There is no Admin to ask, and no way
+  // to become one — so the team is a dead end from the moment it is made.
+  //
+  // Every gate in this app asks `getMemberCapabilities(namespace, myAccount)`,
+  // because the MASK is what the node enforces (see `lib/roles`). For the
+  // creator that call returns the DEFAULT mask — which the line above had just
+  // set to Member. Whatever the node does with owner authority internally is
+  // not what that endpoint reports, so the UI read Member and was right to.
+  //
+  // Not swallowed. A team whose creator cannot put a vault in it is not a team,
+  // and failing here says so while the name is still on screen.
+  if (opts.accountId) {
+    onStatus('Making you an admin of it…');
+    await grantAdmin(admin, ns.namespaceId, opts.accountId);
+  }
 
   onStatus('Opening the team to invited members…');
   await admin

@@ -2,7 +2,11 @@ import { describe, expect, it, vi } from 'vitest';
 import { CAPABILITIES } from '@calimero-network/mero-js';
 
 import { decodeInvite } from './inviteCodec';
-import { ADMIN_CAPABILITIES, MEMBER_CAPABILITIES } from './roles';
+import {
+  ADMIN_CAPABILITIES,
+  MEMBER_CAPABILITIES,
+  canCreateVault,
+} from './roles';
 import {
   createPersonalVault,
   createTeam,
@@ -16,6 +20,7 @@ import {
   mintVaultInvite,
   isPersonalRecord,
   myCapabilities,
+  repairCreatorAdmin,
   setMemberRole,
   unwrapInvitation,
   type AdminLike,
@@ -688,5 +693,124 @@ describe('listTeams', () => {
       ['ns-p', true],
       ['ns-t', false],
     ]);
+  });
+});
+
+// ── The creator is an Admin of the team they just made ──────────────────────
+//
+// The bug: `createTeam` set the team's DEFAULT capabilities to Member and
+// granted the creator nothing, so `getMemberCapabilities(ns, me)` — which every
+// gate in this app asks — returned the Member mask. You made a team and it told
+// you only an Admin could put a vault in it, with no Admin in existence.
+
+describe('createTeam grants the creator Admin', () => {
+  it('sets the creator mask to ADMIN_CAPABILITIES', async () => {
+    const { admin, calls } = fakeAdmin({
+      getMemberCapabilities: () =>
+        Promise.resolve({ capabilities: ADMIN_CAPABILITIES }),
+    });
+    await createTeam(admin as unknown as AdminLike, {
+      applicationId: 'app-1',
+      name: 'Acme',
+      accountId: 'a'.repeat(64),
+    });
+    expect(argsOf(calls, 'setMemberCapabilities')).toEqual([
+      'ns-1',
+      'a'.repeat(64),
+      { capabilities: ADMIN_CAPABILITIES },
+    ]);
+  });
+
+  it('grants the creator MORE than the team default, or they cannot make a vault', async () => {
+    const { admin, calls } = fakeAdmin({
+      getMemberCapabilities: () =>
+        Promise.resolve({ capabilities: ADMIN_CAPABILITIES }),
+    });
+    await createTeam(admin as unknown as AdminLike, {
+      applicationId: 'app-1',
+      name: 'Acme',
+      accountId: 'a'.repeat(64),
+    });
+    const mine = (
+      argsOf(calls, 'setMemberCapabilities') as [
+        string,
+        string,
+        { capabilities: number },
+      ]
+    )[2].capabilities;
+    const theirs = (
+      argsOf(calls, 'setDefaultCapabilities') as [
+        string,
+        { defaultCapabilities: number },
+      ]
+    )[1].defaultCapabilities;
+    // This is the assertion that names the bug: the creator's mask and the
+    // invited-member default were the SAME value, and that value cannot create
+    // a vault.
+    expect(mine).not.toBe(theirs);
+    expect(canCreateVault(mine)).toBe(true);
+    expect(canCreateVault(theirs)).toBe(false);
+  });
+
+  it('fails when the node reports the grant did not land', async () => {
+    // 200 on the write, old mask on the read — the exact shape `lib/roles`
+    // warns about, and one a write-only assertion cannot see.
+    const { admin } = fakeAdmin({
+      getMemberCapabilities: () =>
+        Promise.resolve({ capabilities: MEMBER_CAPABILITIES }),
+    });
+    await expect(
+      createTeam(admin as unknown as AdminLike, {
+        applicationId: 'app-1',
+        name: 'Acme',
+        accountId: 'a'.repeat(64),
+      }),
+    ).rejects.toThrow('did not apply it');
+  });
+});
+
+describe('repairCreatorAdmin', () => {
+  it('raises a stranded creator and reports the new mask', async () => {
+    const { admin, calls } = fakeAdmin({
+      getMemberCapabilities: () =>
+        Promise.resolve({ capabilities: ADMIN_CAPABILITIES }),
+    });
+    const after = await repairCreatorAdmin(
+      admin as unknown as AdminLike,
+      'ns-1',
+      'a'.repeat(64),
+      MEMBER_CAPABILITIES,
+    );
+    expect(after).toBe(ADMIN_CAPABILITIES);
+    expect(methodsOf(calls)).toContain('setMemberCapabilities');
+  });
+
+  it('does nothing when the caller is already an Admin', async () => {
+    const { admin, calls } = fakeAdmin();
+    const after = await repairCreatorAdmin(
+      admin as unknown as AdminLike,
+      'ns-1',
+      'a'.repeat(64),
+      ADMIN_CAPABILITIES,
+    );
+    expect(after).toBeNull();
+    // No pointless write on every visit to every team.
+    expect(methodsOf(calls)).not.toContain('setMemberCapabilities');
+  });
+
+  it('swallows the refusal an ordinary member gets', async () => {
+    // The node decides. For a non-owner the 403 IS the correct answer, so it
+    // must not surface as an error on a screen they can legitimately open.
+    const { admin } = fakeAdmin({
+      setMemberCapabilities: () => Promise.reject(new Error('403 forbidden')),
+    });
+    await expect(
+      repairCreatorAdmin(
+        admin as unknown as AdminLike,
+        'ns-1',
+        'b'.repeat(64),
+        MEMBER_CAPABILITIES,
+      ),
+    ).resolves.toBeNull();
   });
 });

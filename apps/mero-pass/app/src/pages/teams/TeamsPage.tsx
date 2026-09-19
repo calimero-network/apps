@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useMero } from '@calimero-network/mero-react';
+import { useMero, useNodeIdentity } from '@calimero-network/mero-react';
 
 import AppHeader from '../../components/AppHeader';
 import InviteModal from '../../components/InviteModal';
@@ -37,6 +37,10 @@ import styles from '../../styles/shell.module.css';
  */
 export default function TeamsPage() {
   const { mero } = useMero();
+  // ⚠️ `accountId`, never `publicKey` and never a context executor identity —
+  // all three are 64 hex since rc.27, so a swap type-checks, returns 200, and
+  // grants a principal that exists nowhere. See `useTeamCapabilities`.
+  const { identity } = useNodeIdentity();
   const navigate = useNavigate();
   const { appId, resolving, notInstalled } = useApplicationId();
 
@@ -107,7 +111,7 @@ export default function TeamsPage() {
     try {
       const { namespaceId } = await createTeam(
         mero.admin,
-        { applicationId: appId, name },
+        { applicationId: appId, name, accountId: identity?.accountId ?? null },
         setBusy,
       );
       setNewName('');
@@ -118,7 +122,7 @@ export default function TeamsPage() {
     } finally {
       setBusy(null);
     }
-  }, [mero, appId, newName, load, navigate]);
+  }, [mero, appId, newName, load, navigate, identity?.accountId]);
 
   const createPersonal = useCallback(async () => {
     if (!mero || !appId) return;
