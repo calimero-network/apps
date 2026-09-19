@@ -1,7 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { decodeInvite } from "./inviteCodec";
+import { CAPABILITIES } from "@calimero-network/mero-js";
 import {
+  MEMBER_CAPABILITIES,
   acceptInvite,
+  createTeamNamespace,
   createRoom,
   enterRoomContext,
   listRooms,
@@ -508,5 +511,51 @@ describe("listRooms", () => {
         identity: null,
       },
     ]);
+  });
+});
+
+// ── rc.41: the namespace default mask is load-bearing ───────────────────────
+//
+// 0.11.0-rc.41 seeds a new namespace root with
+// `CAN_JOIN_OPEN_SUBGROUPS | CAN_AUTHOR_ON_BEHALF` (core's
+// `initial_default_capabilities`, #3969) and publishes it as a governance op so
+// it replicates (#3974). `CAN_AUTHOR_ON_BEHALF` is "write as somebody else".
+//
+// This app overwrites that seed immediately. These assert the two halves of
+// that being TRUE rather than merely attempted:
+//
+//   1. the mask we send does not contain CAN_AUTHOR_ON_BEHALF;
+//   2. a node that refuses the write fails the whole call.
+//
+// (2) is the one worth having. The call used to end `.catch(() => {})`, which
+// at rc.37 cost an invitee a capability and at rc.41 GRANTS them one, silently
+// and permanently.
+
+describe("createTeamNamespace — the rc.41 default mask", () => {
+  it("never sends CAN_AUTHOR_ON_BEHALF", async () => {
+    const admin = fakeAdmin();
+    await createTeamNamespace(admin as unknown as AdminLike, {
+      applicationId: "app-1",
+      name: "Team",
+    });
+    const call = admin.calls.find((c) => c.method === "setDefaultCapabilities");
+    const sent = (call?.args[1] as { defaultCapabilities: number })
+      .defaultCapabilities;
+    expect(sent & CAPABILITIES.CAN_AUTHOR_ON_BEHALF).toBe(0);
+    expect(sent).toBe(MEMBER_CAPABILITIES);
+  });
+
+  it("fails the whole call when the node refuses the write", async () => {
+    // Was `.catch(() => {})`. At rc.41 swallowing this leaves every invited
+    // member holding CAN_AUTHOR_ON_BEHALF, with nothing reported anywhere.
+    const admin = fakeAdmin({
+      setDefaultCapabilities: () => Promise.reject(new Error("503")),
+    });
+    await expect(
+      createTeamNamespace(admin as unknown as AdminLike, {
+        applicationId: "app-1",
+        name: "Team",
+      }),
+    ).rejects.toThrow("503");
   });
 });
