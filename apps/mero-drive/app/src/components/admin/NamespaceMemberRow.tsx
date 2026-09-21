@@ -260,18 +260,18 @@ export function NamespaceMemberRow({
   return (
     <li className="px-4 py-2 text-sm">
       <div className="flex items-center justify-between gap-3">
+        <span
+          role="img"
+          aria-label={isPresent ? 'Here now' : 'Away'}
+          title={isPresent ? 'Here now' : 'Away'}
+          className={`h-2 w-2 shrink-0 rounded-full border ${
+            isPresent
+              ? 'border-[hsl(var(--synced))] bg-[hsl(var(--synced))]'
+              : 'border-muted-foreground/60 bg-transparent'
+          }`}
+        />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <span
-              role="img"
-              aria-label={isPresent ? 'Here now' : 'Away'}
-              title={isPresent ? 'Here now' : 'Away'}
-              className={`h-2 w-2 shrink-0 rounded-full border ${
-                isPresent
-                  ? 'border-[hsl(var(--synced))] bg-[hsl(var(--synced))]'
-                  : 'border-muted-foreground/60 bg-transparent'
-              }`}
-            />
             {renaming ? (
               <>
                 <input

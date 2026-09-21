@@ -3,6 +3,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useEphemeral, useMero } from '@calimero-network/mero-react';
+import { useWarnOnError } from './useWarnOnError';
 
 const BEAT_MS = 10_000; // how often an open workspace changes its slice
 const STALE_MS = 25_000; // a closed tab's node keeps replaying its last slice, so age it out here
@@ -29,18 +30,29 @@ export function usePublishWorkspacePresence(
   useEffect(() => {
     if (!ephemeral || !contextId || !selfAccount) return;
     let n = 0;
+    let timer: ReturnType<typeof setInterval> | undefined;
     const beat = () =>
       ephemeral
         .set(contextId, { a: selfAccount, n: n++ })
         .catch((err: unknown) =>
           console.warn('[useWorkspacePresence] presence off', err),
         );
-    void beat();
-    const timer = setInterval(beat, BEAT_MS);
-    return () => {
-      clearInterval(timer);
-      // The node heartbeats the last slice until it leaves the context, so say so.
+    // The node heartbeats the last slice until it leaves the context, so say so.
+    const leave = () =>
       void ephemeral.set(contextId, LEAVE_SLICE).catch(() => {});
+    // A hidden tab's timers can be throttled past STALE_MS, so it leaves instead.
+    const onVisibility = () => {
+      clearInterval(timer);
+      if (document.visibilityState === 'hidden') return leave();
+      void beat();
+      timer = setInterval(beat, BEAT_MS);
+    };
+    onVisibility();
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility);
+      clearInterval(timer);
+      leave();
     };
   }, [ephemeral, contextId, selfAccount]);
 }
@@ -54,7 +66,9 @@ export function useWorkspacePresence(
   selfAccount: string | null,
   members: readonly string[],
 ): Set<string> {
-  const { peers, ageOf } = useEphemeral<WorkspacePresenceSlice>(contextId);
+  const { peers, ageOf, error } =
+    useEphemeral<WorkspacePresenceSlice>(contextId);
+  useWarnOnError('[useWorkspacePresence] presence off', error);
   // Ages grow without any event, so re-read them on the beat.
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
