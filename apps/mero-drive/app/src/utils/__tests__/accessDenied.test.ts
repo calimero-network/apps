@@ -61,19 +61,34 @@ describe('isGroupAccessDenied', () => {
 
 describe('lacksFolderAccess', () => {
   it('treats a 403 refusal as no access', () => {
-    expect(lacksFolderAccess({ isMember: false, error: denied })).toBe(true);
+    expect(
+      lacksFolderAccess({ isMember: false, error: denied, denied: false }),
+    ).toBe(true);
+  });
+
+  it('treats a 500 the caps hook classified as membership lag, then exhausted, as no access', () => {
+    const error = httpError(500, '{"error":"identity is not a member"}');
+    expect(lacksFolderAccess({ isMember: false, error, denied: true })).toBe(
+      true,
+    );
   });
 
   it('shows a 500 as an error even when its body reads like a denial', () => {
     const error = httpError(500, '{"error":"forbidden: not a member"}');
-    expect(lacksFolderAccess({ isMember: false, error })).toBe(false);
+    expect(lacksFolderAccess({ isMember: false, error, denied: false })).toBe(
+      false,
+    );
   });
 
   it('treats a settled non-member as no access', () => {
-    expect(lacksFolderAccess({ isMember: false, error: null })).toBe(true);
+    expect(
+      lacksFolderAccess({ isMember: false, error: null, denied: false }),
+    ).toBe(true);
   });
 
   it('grants a member', () => {
-    expect(lacksFolderAccess({ isMember: true, error: null })).toBe(false);
+    expect(
+      lacksFolderAccess({ isMember: true, error: null, denied: false }),
+    ).toBe(false);
   });
 });

@@ -18,8 +18,10 @@ export async function isGroupAccessDenied(
 export function lacksFolderAccess(perms: {
   isMember: boolean;
   error: Error | null;
+  denied: boolean;
 }): boolean {
-  return perms.error ? isForbidden(perms.error) : !perms.isMember;
+  if (!perms.error) return !perms.isMember;
+  return perms.denied || isForbidden(perms.error);
 }
 
 // A revoked session also answers 403, but says nothing about membership.
