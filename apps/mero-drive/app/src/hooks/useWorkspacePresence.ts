@@ -9,11 +9,8 @@ const BEAT_MS = 10_000; // how often an open workspace changes its slice
 const STALE_MS = 25_000; // a closed tab's node keeps replaying its last slice, so age it out here
 const LEAVE_SLICE = {}; // carries no account, so every reader drops the author
 
-/**
- * One device's slice. The ephemeral author is the node's key, not its account,
- * so the slice names the account; `n` changes every beat so a live tab stays
- * fresh. The account is self-asserted: it may light a presence dot, never gate.
- */
+/** The author is the node's key, so `a` names the (self-asserted, never gating)
+ *  account; `n` changes every beat so a live tab stays fresh. */
 interface WorkspacePresenceSlice {
   a: string;
   n: number;
