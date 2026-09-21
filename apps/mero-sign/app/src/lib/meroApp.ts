@@ -117,6 +117,19 @@ export function meroApp(
 
   return {
     async execute(contextId, method, args) {
+      // ⚠️ A CONTEXT ID, NOT A CONTEXT RECORD. Every caller on the private
+      // surface used to hand over the whole `DefaultContextInfo`, and the
+      // node answers that with `ParseError: invalid type: map, expected a hex
+      // encoded hash` — from inside a `catch` that falls back, so the
+      // signature library and the local agreement registry failed in silence.
+      // Caught here so the next one says what it did rather than what the
+      // node made of it.
+      if (typeof contextId !== 'string') {
+        throw new Error(
+          'execute() takes a context id, not a context record — pass ' +
+            '`ctx.contextId`.',
+        );
+      }
       // ⚠️ The executor is NOT passed. mero-js resolves the caller's own
       // identity in the context (core #3960 answers context identities for the
       // CALLER rather than the node), and the old SDK's habit of supplying one
