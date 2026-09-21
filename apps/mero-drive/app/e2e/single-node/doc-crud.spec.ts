@@ -41,8 +41,7 @@ test.describe('Document CRUD (single-node)', () => {
     ).toBeVisible();
   });
 
-  // The confirm dialog renders after deleteDocument() checks for it, so Delete is never confirmed.
-  test.fixme('delete doc removes from list', async ({ alice }) => {
+  test('delete doc removes from list', async ({ alice }) => {
     await alice.createDoc('To Trash');
     await alice.openDoc('To Trash');
     await alice.editor.deleteDocument();
