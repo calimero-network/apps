@@ -114,6 +114,7 @@ vi.mock('@/hooks/useDriveWorkspace', () => ({
     registryUnsynced: false,
     registryClient: {},
     folders: [],
+    allFolderNodes: [],
     registryAdmin: {
       owner: 'pk',
       managers: [],
@@ -280,6 +281,27 @@ describe('permission-gating', () => {
       />,
     );
     expect(screen.getByLabelText('Folder actions')).toBeTruthy();
+  });
+
+  it('FolderContextMenu New subfolder asks the tree to reveal the parent', () => {
+    (useFolderPermissions as ReturnType<typeof vi.fn>).mockReturnValue({
+      ...noFolderPerms,
+      canCreateSubfolder: true,
+    });
+    const onNewSubfolder = vi.fn();
+    render(
+      <FolderContextMenu
+        folderId="f1"
+        currentVisibility="Open"
+        onRename={() => undefined}
+        onNewSubfolder={onNewSubfolder}
+      />,
+    );
+    const trigger = screen.getByLabelText('Folder actions');
+    fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false });
+    fireEvent.click(trigger);
+    fireEvent.click(screen.getByRole('menuitem', { name: /New subfolder/ }));
+    expect(onNewSubfolder).toHaveBeenCalledTimes(1);
   });
 
   it('FolderSharingPanel hides the invite form without canInviteMembers', () => {
