@@ -112,7 +112,23 @@ export function invitationFromRaw(raw: string): string | null {
   if (isPlatformIntent && intent.slug !== APP_SLUG) return null;
 
   const code = intent.params[INVITATION_PARAM]?.trim();
-  return code ? code : null;
+  if (code) return code;
+
+  // ── Not a URL at all: the bare code ─────────────────────────────────────
+  //
+  // Until there was a "paste what you were sent" field this could not happen —
+  // every invitation arrived as a link and every caller had a URL. It does now,
+  // and a code pasted on its own has no params for `parseIntent` to find, so
+  // without this the field rejects the exact string the invite dialog told the
+  // sender to copy.
+  //
+  // The shape test is deliberately narrow. A code is base58 (see
+  // `lib/inviteCodec`), so anything with a slash, a space or a `?` in it is a
+  // URL we failed to parse rather than a code, and handing THAT to the decoder
+  // turns "that link is not for this app" into "that invitation could not be
+  // read".
+  if (/^[A-Za-z0-9]+$/.test(trimmed)) return trimmed;
+  return null;
 }
 
 /**

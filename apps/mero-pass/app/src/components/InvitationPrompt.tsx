@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useMero } from '@calimero-network/mero-react';
-import { redeemInvite } from '../lib/vaults';
 import { decodeInvite, type PassInvitePayload } from '../lib/inviteCodec';
 import {
   onInvitation,
   type CapturedInvitation,
 } from '../lib/invitationIntents';
+import { useRedeemInvitation } from '../hooks/useRedeemInvitation';
 import styles from './InvitationPrompt.module.css';
 
 /**
@@ -34,14 +33,15 @@ import styles from './InvitationPrompt.module.css';
  */
 export default function InvitationPrompt() {
   const { mero } = useMero();
-  const navigate = useNavigate();
   const [pending, setPending] = useState<{
     captured: CapturedInvitation;
     payload: PassInvitePayload;
   } | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [status, setStatus] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  // Shared with the paste field on the teams screen. It also owns WHERE a
+  // redeemed invitation lands, which is what this component used to get wrong:
+  // it navigated to `/team/<id>`, singular, a path with no route. See
+  // `lib/redeemFlow`.
+  const { busy, status, error, setError, redeem } = useRedeemInvitation();
 
   useEffect(
     () =>
@@ -56,44 +56,33 @@ export default function InvitationPrompt() {
         }
         setPending({ captured, payload });
       }),
-    [],
+    // `setError` is a `useState` setter and therefore stable, but it now
+    // arrives through a custom hook, where the linter cannot see that. Listed
+    // rather than silenced: re-subscribing on a value that never changes costs
+    // nothing, and a disable comment here would also hide a real dependency
+    // added later.
+    [setError],
   );
 
   const accept = useCallback(async () => {
-    if (!pending || !mero) return;
+    if (!pending) return;
     const { captured, payload } = pending;
-    setBusy(true);
-    setError(null);
-    try {
-      const landed = await redeemInvite(mero.admin, payload, setStatus);
-      // Acked only once the redeem actually returned. Acking first would drop
-      // the invitation on a transient network failure, leaving nothing to retry
-      // with.
+    // ⚠️ Acked only once the redeem actually SUCCEEDED. Acking first would drop
+    // the invitation on a transient failure (no online member yet, a flaky
+    // node), and the platform store exists precisely so it survives to be
+    // retried on the next load. `redeem` reports false rather than throwing
+    // for exactly this decision.
+    if (await redeem(payload)) {
       captured.resolve();
       setPending(null);
-      if (landed.kind === 'vault') {
-        navigate(`/vault/${landed.contextId}`);
-      } else if (landed.kind === 'team') {
-        navigate(`/team/${landed.namespaceId}`);
-      } else {
-        navigate('/home');
-      }
-    } catch (e) {
-      // NOT acked: a failure here is usually transient (no online member yet, a
-      // flaky node), and the store exists precisely so the invitation survives
-      // to be retried on the next load.
-      setError(e instanceof Error ? e.message : 'Could not accept the invite.');
-    } finally {
-      setBusy(false);
-      setStatus(null);
     }
-  }, [pending, mero, navigate]);
+  }, [pending, redeem]);
 
   const decline = useCallback(() => {
     pending?.captured.resolve();
     setPending(null);
     setError(null);
-  }, [pending]);
+  }, [pending, setError]);
 
   if (!pending) {
     // An undecodable invitation still deserves to be reported, even though
