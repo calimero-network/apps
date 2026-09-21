@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { AuthRevokedError, HTTPError } from '@calimero-network/mero-js';
-import { isGroupAccessDenied } from '../accessDenied';
+import { isGroupAccessDenied, lacksFolderAccess } from '../accessDenied';
 
 const httpError = (status: number, body: string) =>
   new HTTPError(status, '', '/admin-api/groups/g', new Headers(), body);
@@ -56,5 +56,24 @@ describe('isGroupAccessDenied', () => {
     const admin = { listGroupMembers: vi.fn() };
     await expect(isGroupAccessDenied(admin, 'g', denied)).resolves.toBe(true);
     expect(admin.listGroupMembers).not.toHaveBeenCalled();
+  });
+});
+
+describe('lacksFolderAccess', () => {
+  it('treats a 403 refusal as no access', () => {
+    expect(lacksFolderAccess({ isMember: false, error: denied })).toBe(true);
+  });
+
+  it('shows a 500 as an error even when its body reads like a denial', () => {
+    const error = httpError(500, '{"error":"forbidden: not a member"}');
+    expect(lacksFolderAccess({ isMember: false, error })).toBe(false);
+  });
+
+  it('treats a settled non-member as no access', () => {
+    expect(lacksFolderAccess({ isMember: false, error: null })).toBe(true);
+  });
+
+  it('grants a member', () => {
+    expect(lacksFolderAccess({ isMember: true, error: null })).toBe(false);
   });
 });
