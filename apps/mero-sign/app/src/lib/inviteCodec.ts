@@ -109,14 +109,52 @@ function str(v: unknown): string | undefined {
  * here, rather than at one call site, means neither end has to know whether the
  * node of the day wraps or not.
  */
-function unwrapEnvelope(value: unknown): unknown {
+function unwrapEnvelope(
+  value: unknown,
+  /**
+   * Follow an `invitation` key as well as `data`.
+   *
+   * ⚠️ ONLY TRUE FOR THE INNER CALL. At the top level `{invitation, contextId,
+   * contextName}` IS this app's own wrapper — descending it there discards the
+   * name and id hints that sit beside the invitation, which is what the
+   * round-trip tests caught the moment it was done unconditionally.
+   */
+  descendInvitation = false,
+): unknown {
   let cur = value;
-  // Bounded: a legitimately nested `{data: {data: …}}` is not a thing, and an
-  // unbounded loop on adversarial input is a denial of service.
-  for (let i = 0; i < 4; i += 1) {
+  // Bounded: a legitimately nested envelope is not deep, and an unbounded loop
+  // on adversarial input is a denial of service.
+  for (let i = 0; i < 6; i += 1) {
     if (!cur || typeof cur !== 'object') return cur;
     if (isSignedInvitation(cur)) return cur;
-    const inner = (cur as Record<string, unknown>).data;
+    const obj = cur as Record<string, unknown>;
+    // ⚠️ `invitation` AS WELL AS `data`, and this is the whole of the reported
+    // join failure.
+    //
+    // `createNamespaceInvitation` answers
+    //
+    //     { invitation: { invitation, inviter_signature, … }, groupName }
+    //
+    // so the SIGNED object is two levels down, not one. Descending only `data`
+    // left `{invitation, groupName}` — which carries no signature at its own
+    // level — so `isSignedInvitation` was false, `parsePayload` returned null,
+    // and `decodeInvite` fell through to its last resort and classified a
+    // perfectly good open invitation as a legacy TARGETED payload.
+    //
+    // ⚠️ That failure was invisible, because `decodeInvite` still returned a
+    // truthy object. Redemption then took the targeted path — straight to
+    // `joinContext`, which wants a 64-hex context id and answered
+    //
+    //     Invalid context id format: expected 64 hex characters (32 bytes)
+    //
+    // and later, once that was reported honestly, "that invitation cannot be
+    // redeemed". The invitation was fine. The codec was reading it wrong.
+    const inner =
+      obj.data !== undefined
+        ? obj.data
+        : descendInvitation
+          ? obj.invitation
+          : undefined;
     if (inner === undefined) return cur;
     cur = inner;
   }
@@ -135,7 +173,9 @@ function parsePayload(json: string): MeroSignInvitePayload | null {
 
   // Our wrapped form: {invitation, contextId?, contextName?}
   const wrapper = inner as Record<string, unknown>;
-  const maybeInvitation = unwrapEnvelope(wrapper.invitation);
+  // `true`: here the signed object really is further down — the node answers
+  // `{invitation: {invitation, inviter_signature, …}, groupName}`.
+  const maybeInvitation = unwrapEnvelope(wrapper.invitation, true);
   if (isSignedInvitation(maybeInvitation)) {
     return {
       kind: 'open',
