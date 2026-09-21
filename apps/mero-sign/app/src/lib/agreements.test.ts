@@ -6,12 +6,17 @@ import { CAPABILITIES } from '@calimero-network/mero-js';
 import {
   ADMIN_CAPABILITIES,
   MEMBER_CAPABILITIES,
+  PERSONAL_KIND,
   createAgreement,
+  createPersonalContext,
   createWorkspace,
   displayName,
+  ensurePersonalWorkspace,
   initParamsFor,
+  isPersonalRecord,
   listAgreements,
   listWorkspaces,
+  pickInvitedAgreement,
   type AdminLike,
 } from './agreements';
 
@@ -220,9 +225,12 @@ describe('createAgreement', () => {
       name: 'Q3 NDA',
     });
     // `name` here is a 400 for the whole call — the bodies are closed sets.
+    // `visibility` goes with it: a subgroup created without one is born
+    // RESTRICTED, and until the `setSubgroupVisibility` below lands an invited
+    // signer who tries to enter is refused.
     expect(argsOf(calls, 'createGroupInNamespace')).toEqual([
       'ns-1',
-      { groupName: 'Q3 NDA' },
+      { groupName: 'Q3 NDA', visibility: 'open' },
     ]);
   });
 
@@ -290,5 +298,198 @@ describe('displayName', () => {
     expect(displayName([null, '  '], 'abcdef1234', 'Agreement')).toBe(
       'Agreement abcdef12…',
     );
+  });
+});
+
+// ── The personal workspace ──────────────────────────────────────────────────
+//
+// The private context is the signature library. rc.41 needs a group for it
+// like any other context, and getting that wrong is not loud: a second
+// personal namespace means a second, EMPTY signature library, and the app
+// reports nothing at all.
+
+describe('ensurePersonalWorkspace', () => {
+  it('reuses the namespace carrying the marker', async () => {
+    const { admin, calls } = fakeAdmin({
+      listNamespacesForApplication: () => [
+        { namespaceId: 'ns-work', memberCount: 3, subgroupCount: 2 },
+        { namespaceId: 'ns-mine', memberCount: 1, subgroupCount: 1 },
+      ],
+      getGroupMetadata: (id: unknown) =>
+        id === 'ns-mine'
+          ? { name: 'Personal', data: { kind: PERSONAL_KIND } }
+          : { name: 'Acme', data: {} },
+    });
+
+    expect(await ensurePersonalWorkspace(admin, 'app-1')).toBe('ns-mine');
+    // The point of the marker: no second namespace, ever.
+    expect(methodsOf(calls)).not.toContain('createNamespace');
+  });
+
+  it('does not mistake a workspace NAMED "Personal" for the marked one', async () => {
+    // A user can name a workspace anything. If identity turned on the name,
+    // this workspace would become the private store and its members would be
+    // handed somebody's signature library.
+    const { admin, calls } = fakeAdmin({
+      listNamespacesForApplication: () => [
+        { namespaceId: 'ns-decoy', memberCount: 4, subgroupCount: 1 },
+      ],
+      getGroupMetadata: () => ({ name: 'Personal', data: {} }),
+      createNamespace: () => ({ namespaceId: 'ns-new' }),
+    });
+
+    expect(await ensurePersonalWorkspace(admin, 'app-1')).toBe('ns-new');
+    expect(methodsOf(calls)).toContain('createNamespace');
+  });
+
+  it('writes name and marker in ONE record, because the write replaces it', async () => {
+    const { admin, calls } = fakeAdmin({
+      createNamespace: () => ({ namespaceId: 'ns-new' }),
+    });
+    await ensurePersonalWorkspace(admin, 'app-1');
+    // `setGroupMetadata` REPLACES the stored record — sending the name alone
+    // would drop the marker that makes this namespace findable.
+    expect(argsOf(calls, 'setGroupMetadata')).toEqual([
+      'ns-new',
+      { name: 'Personal', data: { kind: PERSONAL_KIND } },
+    ]);
+  });
+
+  it('fails loudly when the marker cannot be written', async () => {
+    // Swallowed, this returns a namespace nothing can find again: the next
+    // call creates another, and the node grows a new empty signature library
+    // on every boot.
+    const { admin } = fakeAdmin({
+      createNamespace: () => ({ namespaceId: 'ns-new' }),
+      setGroupMetadata: () => {
+        throw new Error('metadata refused');
+      },
+    });
+    await expect(ensurePersonalWorkspace(admin, 'app-1')).rejects.toThrow(
+      'metadata refused',
+    );
+  });
+});
+
+describe('isPersonalRecord', () => {
+  it('is false for no record, an empty record and a workspace', () => {
+    expect(isPersonalRecord(null)).toBe(false);
+    expect(isPersonalRecord(undefined)).toBe(false);
+    expect(isPersonalRecord({ data: {} })).toBe(false);
+    expect(isPersonalRecord({ data: { kind: 'something-else' } })).toBe(false);
+  });
+
+  it('is true only for the marker', () => {
+    expect(isPersonalRecord({ data: { kind: PERSONAL_KIND } })).toBe(true);
+  });
+});
+
+describe('createPersonalContext', () => {
+  it('leaves the subgroup RESTRICTED', async () => {
+    // The one place in this app where restricted is the wanted answer: opening
+    // it would make a node's private signature library reachable by anybody
+    // admitted to the namespace.
+    const { admin, calls } = fakeAdmin();
+    await createPersonalContext(admin, {
+      applicationId: 'app-1',
+      namespaceId: 'ns-mine',
+    });
+    expect(methodsOf(calls)).not.toContain('setSubgroupVisibility');
+    expect(argsOf(calls, 'createGroupInNamespace')).toEqual([
+      'ns-mine',
+      { groupName: 'Private' },
+    ]);
+  });
+
+  it('binds the context to that subgroup and marks it private', async () => {
+    const { admin, calls } = fakeAdmin();
+    await createPersonalContext(admin, {
+      applicationId: 'app-1',
+      namespaceId: 'ns-mine',
+      name: 'default',
+    });
+    const req = argsOf(calls, 'createContext')?.[0] as {
+      groupId: string;
+      applicationId: string;
+      initializationParams: number[];
+    };
+    // ⚠️ `group_id` is what rc.41 added and has no default — this is the
+    // binding the old path had nothing to put in.
+    expect(req.groupId).toBe('sg-1');
+    expect(req.applicationId).toBe('app-1');
+    const init = JSON.parse(
+      new TextDecoder().decode(new Uint8Array(req.initializationParams)),
+    );
+    expect(init).toEqual({ is_private: true, context_name: 'default' });
+  });
+});
+
+describe('listWorkspaces', () => {
+  it('hides the personal namespace, which is not a workspace', async () => {
+    // It would otherwise appear as something to invite people into — and
+    // inviting somebody into it shares the signature library.
+    const { admin } = fakeAdmin({
+      listNamespacesForApplication: () => [
+        {
+          namespaceId: 'ns-work',
+          name: 'Acme',
+          memberCount: 2,
+          subgroupCount: 1,
+        },
+        {
+          namespaceId: 'ns-mine',
+          name: 'Personal',
+          memberCount: 1,
+          subgroupCount: 1,
+        },
+      ],
+      getGroupMetadata: (id: unknown) =>
+        id === 'ns-mine'
+          ? { name: 'Personal', data: { kind: PERSONAL_KIND } }
+          : null,
+    });
+    const rows = await listWorkspaces(admin, 'app-1');
+    expect(rows.map((r) => r.namespaceId)).toEqual(['ns-work']);
+  });
+});
+
+// ── Which agreement an invitation lands you in ──────────────────────────────
+//
+// An invitation grants the WORKSPACE. Landing somewhere sensible inside it is
+// a separate decision, and the wrong answers are both bad: opening whichever
+// agreement replicated first is arbitrary, and honouring an unverified hint
+// lets an edited envelope choose.
+
+describe('pickInvitedAgreement', () => {
+  const a = { contextId: 'ctx-a' };
+  const b = { contextId: 'ctx-b' };
+
+  it('opens the only agreement there is', () => {
+    expect(pickInvitedAgreement([a], undefined)).toBe(a);
+  });
+
+  it('returns null for an empty workspace, which is a normal thing to join', () => {
+    // Invite the people first, draw up the document second.
+    expect(pickInvitedAgreement([], undefined)).toBeNull();
+  });
+
+  it('refuses to guess between several', () => {
+    expect(pickInvitedAgreement([a, b], undefined)).toBeNull();
+  });
+
+  it('honours a hint that names one of them', () => {
+    expect(pickInvitedAgreement([a, b], 'ctx-b')).toBe(b);
+  });
+
+  it('IGNORES a hint naming an agreement outside the workspace', () => {
+    // The hint rides outside the signature. Checking it against what the
+    // workspace actually holds means an edited envelope can only ever choose
+    // among agreements the invitation already granted.
+    expect(pickInvitedAgreement([a, b], 'ctx-somewhere-else')).toBeNull();
+  });
+
+  it('skips an agreement that has not replicated a context yet', () => {
+    const pending = { contextId: null };
+    expect(pickInvitedAgreement([pending, a], undefined)).toBe(a);
   });
 });
