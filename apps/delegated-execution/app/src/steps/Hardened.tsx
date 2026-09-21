@@ -2,20 +2,22 @@
  * The same flow, with the account root outside the browser and the device key
  * unreadable by it.
  *
- * The panels above this one are the demo as it shipped: an account root minted
- * in the tab and kept in `localStorage`, next to a device secret in the same
- * place. Both of those files say, in as many words, that a product must not do
- * that. This section is the other half of the sentence — the same four legs,
- * with the two secrets removed:
+ * This is one side of the page's custody switch. The other side is the demo as
+ * it shipped: an account root minted in the tab and kept in `localStorage`, next
+ * to a device secret in the same place. Both of those files say, in as many
+ * words, that a product must not do that. This module is the other half of the
+ * sentence — the same four legs, with the two secrets removed:
  *
- * | | the panels above | here |
+ * | | browser custody | here |
  * | --- | --- | --- |
  * | account root | generated in the tab, kept in `localStorage` | never in the browser; a CLI holding it signs the certificate |
  * | device key | a hex secret in `localStorage` | a non-extractable `CryptoKey` in IndexedDB |
  * | warrant, login statement | mero-js, from that hex secret | reproduced here against the key |
  *
  * Both paths are kept because the contrast is the subject. Deleting the
- * original would leave a page asserting that the compromise used to exist.
+ * original would leave a page asserting that the compromise used to exist —
+ * which is also why they are a toggle rather than two lists of steps: the
+ * numbering would imply a sequence, and these are alternatives.
  *
  * ## What this still does not fix
  *
@@ -44,7 +46,7 @@ import { readContext } from '../lib/flow.js';
 import { errorText, parseJson, pretty, short } from '../lib/format.js';
 import type { Settings } from '../lib/storage.js';
 
-/** The same three-state reporting the panels above use. */
+/** The same three-state reporting the browser-custody panels use. */
 function useOutcome() {
   const [outcome, setOutcome] = useState<{ text: string; error: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -66,10 +68,16 @@ function useOutcome() {
 
 export function HardenedPath({
   settings,
-  onChange,
+  startAt,
 }: {
   settings: Settings;
-  onChange: (patch: Partial<Settings>) => void;
+  /**
+   * The number of this path's first panel. Passed in rather than hardcoded so
+   * the two custody paths can both start from 2, under a shared step 1 — the
+   * numbering describes a position on the page, which is not this module's to
+   * decide.
+   */
+  startAt: number;
 }) {
   const [handle, setHandle] = useState<DeviceHandle | null>(null);
   const [device, setDevice] = useState<EnrolledDevice | null>(null);
@@ -77,7 +85,7 @@ export function HardenedPath({
 
   // IndexedDB is async and unavailable during SSR, so the handle is loaded in
   // an effect rather than in a `useState` initialiser — the same reason the
-  // panels above load `localStorage` that way.
+  // browser-custody panels load `localStorage` that way.
   useEffect(() => {
     void enrolled().then(setDevice);
   }, []);
@@ -85,6 +93,7 @@ export function HardenedPath({
   return (
     <>
       <EnrollStep
+        n={startAt}
         handle={handle}
         device={device}
         onHandle={setHandle}
@@ -102,16 +111,22 @@ export function HardenedPath({
         }}
       />
       <HardenedSessionStep
+        n={startAt + 1}
         settings={settings}
-        onChange={onChange}
         device={device}
         handle={handle}
         session={session}
         onSession={setSession}
         onHandle={setHandle}
       />
-      <HardenedReadStep settings={settings} session={session} />
-      <HardenedWriteStep settings={settings} device={device} handle={handle} onHandle={setHandle} />
+      <HardenedReadStep n={startAt + 2} settings={settings} session={session} />
+      <HardenedWriteStep
+        n={startAt + 3}
+        settings={settings}
+        device={device}
+        handle={handle}
+        onHandle={setHandle}
+      />
     </>
   );
 }
@@ -126,12 +141,14 @@ export function HardenedPath({
  * public by construction.
  */
 function EnrollStep({
+  n,
   handle,
   device,
   onHandle,
   onDevice,
   onForget,
 }: {
+  n: number;
   handle: DeviceHandle | null;
   device: EnrolledDevice | null;
   onHandle: (handle: DeviceHandle) => void;
@@ -145,7 +162,7 @@ function EnrollStep({
 
   return (
     <Step
-      n={7}
+      n={n}
       title="Enrol a device key this page cannot read"
       state={device ? 'done' : 'idle'}
       stateLabel={device ? 'enrolled' : handle ? 'key held, uncertified' : 'none yet'}
@@ -155,7 +172,7 @@ function EnrollStep({
           as a <code>CryptoKey</code>, so it never exists as bytes in script memory and
           cannot be exported — by this page or by anything injected into it. What leaves is
           a <strong>public</strong> key. The account root that certifies it lives in a CLI,
-          not here, which is the difference between this panel and step&nbsp;1.
+          not here, which is what this panel does differently.
         </>
       }
     >
@@ -265,16 +282,16 @@ function EnrollStep({
 }
 
 function HardenedSessionStep({
+  n,
   settings,
-  onChange,
   device,
   handle,
   session,
   onSession,
   onHandle,
 }: {
+  n: number;
   settings: Settings;
-  onChange: (patch: Partial<Settings>) => void;
   device: EnrolledDevice | null;
   handle: DeviceHandle | null;
   session: DelegatedSession | null;
@@ -285,13 +302,13 @@ function HardenedSessionStep({
 
   return (
     <Step
-      n={8}
+      n={n}
       title="Obtain a session — signed by a key nothing can export"
       state={session ? 'done' : 'idle'}
       stateLabel={session ? 'open' : 'closed'}
       why={
         <>
-          The same three legs as step&nbsp;4 — challenge, statement, token — with the
+          The same three legs as browser custody — challenge, statement, token — with the
           statement signed by the <code>CryptoKey</code> rather than by a hex secret.
           mero-js cannot do this: every entry point it exposes takes the secret as 32 hex
           bytes, so the statement is reproduced in <code>lib/login.ts</code> and pinned to
@@ -310,30 +327,12 @@ function HardenedSessionStep({
         </dl>
       ) : null}
 
-      {/*
-        Typed here rather than resolved from the cloud, unlike step 3.
-        Discovery answers "which node may admit me and which may write for me",
-        and both questions presuppose a cloud that knows this account. This path
-        has no cloud in it at all — the root is offline and the account was added
-        by an operator — so the node is something you say, not something you look
-        up. Without this field the panel silently posted to an empty URL.
-      */}
-      <label>
-        Node URL
-        <input
-          type="text"
-          value={settings.nodeUrl}
-          placeholder="http://localhost:2428"
-          onChange={(e) => onChange({ nodeUrl: e.target.value.trim() })}
-        />
-      </label>
-
       <div className="row">
         <button
           disabled={busy || !device}
           onClick={() =>
             void run(async () => {
-              if (!device) throw new Error('enrol a device in step 7 first');
+              if (!device) throw new Error('enrol a device first');
               // The handle may not be in state on a returning visit: the device
               // record loads from IndexedDB on mount, the key itself does not.
               const key = handle ?? (await deviceHandle());
@@ -357,7 +356,7 @@ function HardenedSessionStep({
 
       {outcome?.error ? (
         <div className="note">
-          A 401 is the same three things as step&nbsp;4 — the audience (
+          A 401 is the same three things as under browser custody — the audience (
           <code>{window.location.origin}</code>) missing from{' '}
           <code>allowed_audiences</code>, the wrong node key, or the provider off — plus one
           more that is specific to this path: a credential signed by a root whose account is
@@ -369,9 +368,11 @@ function HardenedSessionStep({
 }
 
 function HardenedReadStep({
+  n,
   settings,
   session,
 }: {
+  n: number;
   settings: Settings;
   session: DelegatedSession | null;
 }) {
@@ -380,11 +381,11 @@ function HardenedReadStep({
 
   return (
     <Step
-      n={9}
+      n={n}
       title="Read with that session"
       why={
         <>
-          Identical to step&nbsp;5 — the token is an ordinary bearer token whatever key
+          Identical under either custody — the token is an ordinary bearer token whatever key
           signed for it. That is the point worth seeing: the node's read path is unchanged,
           so hardening the client costs the server nothing.
         </>
@@ -400,7 +401,7 @@ function HardenedReadStep({
           disabled={busy || !session}
           onClick={() =>
             void run(async () => {
-              if (!session) throw new Error('open a session in step 8 first');
+              if (!session) throw new Error('open a session first');
               const result = await readContext(
                 settings.nodeUrl,
                 session,
@@ -422,11 +423,13 @@ function HardenedReadStep({
 }
 
 function HardenedWriteStep({
+  n,
   settings,
   device,
   handle,
   onHandle,
 }: {
+  n: number;
   settings: Settings;
   device: EnrolledDevice | null;
   handle: DeviceHandle | null;
@@ -439,7 +442,7 @@ function HardenedWriteStep({
 
   return (
     <Step
-      n={10}
+      n={n}
       title="Write a warrant signed by the unexportable key"
       why={
         <>
@@ -453,7 +456,7 @@ function HardenedWriteStep({
     >
       <dl className="kv">
         <dt>relay</dt>
-        <dd>{writeUrl === '' ? <em>none resolved — set a node URL, or run step 3</em> : writeUrl}</dd>
+        <dd>{writeUrl === '' ? <em>none resolved — set a node URL at the top</em> : writeUrl}</dd>
       </dl>
 
       <label>
@@ -481,7 +484,7 @@ function HardenedWriteStep({
           disabled={busy || !device || writeUrl === ''}
           onClick={() =>
             void run(async () => {
-              if (!device) throw new Error('enrol a device in step 7 first');
+              if (!device) throw new Error('enrol a device first');
               const parsed = parseJson(args, 'arguments');
               if (parsed.error !== null) throw new Error(parsed.error);
               const key = handle ?? (await deviceHandle());

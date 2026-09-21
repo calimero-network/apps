@@ -50,6 +50,26 @@ const IDENTITY_KEY = 'calimero.delegated-demo.identity';
 const SETTINGS_KEY = 'calimero.delegated-demo.settings';
 const CLAIM_KEY = 'calimero.delegated-demo.account-claim';
 const PENDING_LINK_KEY = 'calimero.delegated-demo.pending-link';
+const CUSTODY_KEY = 'calimero.delegated-demo.custody';
+
+/**
+ * Where this page keeps the keys it signs with — the one choice the whole demo
+ * is about.
+ *
+ * `browser` is what a demo does: an account root and a device secret as hex in
+ * `localStorage`, which is one XSS away from being someone else's account
+ * forever. `offline` is what a product does: the root never enters the browser
+ * at all, and the device key is a non-extractable `CryptoKey`.
+ *
+ * Kept OUT of {@link Settings} deliberately. Settings are a flat bag of strings
+ * describing *where* to point — a node, a context, a cloud. This is not a
+ * coordinate; it selects which half of the page exists, and folding it in would
+ * mean every consumer of `Settings` carries a field none of them read.
+ */
+export type Custody = 'browser' | 'offline';
+
+/** What a first visit gets: the path a product should actually use. */
+export const DEFAULT_CUSTODY: Custody = 'offline';
 
 /** Where this tab is pointed, and at what. */
 export interface Settings {
@@ -315,6 +335,31 @@ export function loadClaim(): AccountClaim | null {
 
 export function saveClaim(claim: AccountClaim): void {
   write(CLAIM_KEY, claim);
+}
+
+/**
+ * Which custody the page is showing, remembered across reloads.
+ *
+ * Read defensively: anything that is not one of the two known values loads as
+ * the default rather than throwing, so a key written by an older shape (or by
+ * hand) cannot leave the page rendering neither half.
+ */
+export function loadCustody(): Custody {
+  try {
+    const raw = localStorage.getItem(CUSTODY_KEY);
+    return raw === 'browser' || raw === 'offline' ? raw : DEFAULT_CUSTODY;
+  } catch {
+    return DEFAULT_CUSTODY;
+  }
+}
+
+export function saveCustody(custody: Custody): void {
+  try {
+    localStorage.setItem(CUSTODY_KEY, custody);
+  } catch {
+    // A private window, or blocked site data. The choice still applies to this
+    // session; only the reload forgets it.
+  }
 }
 
 /**

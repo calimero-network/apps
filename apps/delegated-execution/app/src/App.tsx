@@ -55,14 +55,17 @@ import {
   clearPendingLink,
   clearStored,
   loadClaim,
+  loadCustody,
   loadPendingLink,
   savePendingLink,
   loadIdentity,
   loadSettings,
   saveClaim,
+  saveCustody,
   saveIdentity,
   saveSettings,
   type AccountClaim,
+  type Custody,
   type Settings,
 } from './lib/storage.js';
 import type { DelegatedSession } from '@calimero-network/mero-js';
@@ -105,6 +108,7 @@ export function App() {
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [session, setSession] = useState<DelegatedSession | null>(null);
   const [claim, setClaim] = useState<AccountClaim | null>(null);
+  const [custody, setCustody] = useState<Custody>('offline');
 
   // Loaded in an effect rather than in `useState`'s initialiser because
   // `localStorage` is unavailable during SSR and throws in a private window —
@@ -114,6 +118,16 @@ export function App() {
     setIdentity(loadIdentity());
     setSettings(loadSettings());
     setClaim(loadClaim());
+    setCustody(loadCustody());
+  }, []);
+
+  const chooseCustody = useCallback((next: Custody) => {
+    setCustody(next);
+    saveCustody(next);
+    // The session names a device from the half being left behind, so it cannot
+    // survive the switch. Keeping it would leave the other path showing an open
+    // session it never opened — the single most misleading thing here.
+    setSession(null);
   }, []);
 
   const updateSettings = useCallback((patch: Partial<Settings>) => {
@@ -148,9 +162,23 @@ export function App() {
           flow runs headless in CI as <code>delegated-session.yml</code>; this page exists
           so the failures are visible too.
         </p>
+        <p className="lede">
+          The steps below are the same either way. What the switch changes is{' '}
+          <strong>where the keys live</strong> — and that is the only thing that differs,
+          which is why it is one control rather than two copies of the page.
+        </p>
       </header>
 
+      <WhereStep n={1} settings={settings} onChange={updateSettings} />
+
+      <CustodyToggle custody={custody} onChoose={chooseCustody} />
+
+      {custody === 'offline' ? (
+        <HardenedPath startAt={2} settings={settings} />
+      ) : (
+        <>
       <IdentityStep
+        n={2}
         identity={identity}
         phrase={phrase}
         restoreFrom={restoreFrom}
@@ -178,6 +206,7 @@ export function App() {
       />
 
       <AccountCloudStep
+        n={3}
         identity={identity}
         settings={settings}
         onChange={updateSettings}
@@ -189,6 +218,7 @@ export function App() {
       />
 
       <NodeStep
+        n={4}
         settings={settings}
         onChange={updateSettings}
         ready={ready.node}
@@ -196,6 +226,7 @@ export function App() {
       />
 
       <SessionStep
+        n={5}
         identity={identity}
         settings={settings}
         session={session}
@@ -204,18 +235,20 @@ export function App() {
       />
 
       <ReadStep
+        n={6}
         settings={settings}
         session={session}
         enabled={ready.session && ready.context}
       />
 
       <WriteStep
+        n={7}
         identity={identity}
         settings={settings}
         enabled={ready.identity && ready.node && ready.context}
       />
-
-      <HardenedPath settings={settings} onChange={updateSettings} />
+        </>
+      )}
 
       <footer>
         <p>
@@ -228,7 +261,153 @@ export function App() {
   );
 }
 
+/**
+ * Where to point, asked once for both paths.
+ *
+ * These three are properties of the *node and context*, not of whoever is
+ * signing, so they sat wrongly inside the legacy admission panel: the hardened
+ * path needs the same three and had no way to say them. Lifting them above the
+ * switch is what lets the two halves differ only in custody.
+ *
+ * `nodeUrl` is typed here and also *written* by step 4's discovery in the
+ * browser-custody path — deliberately the same field, so a resolved node is
+ * visible rather than hidden in storage.
+ */
+function WhereStep({
+  n,
+  settings,
+  onChange,
+}: {
+  n: number;
+  settings: Settings;
+  onChange: (patch: Partial<Settings>) => void;
+}) {
+  const ready =
+    settings.nodeUrl.trim() !== '' &&
+    settings.nodeKey.trim().length === 64 &&
+    settings.contextId.trim().length === 64;
+
+  return (
+    <Step
+      n={n}
+      title="Point at a node and a context"
+      state={ready ? 'done' : 'idle'}
+      stateLabel={ready ? 'set' : 'incomplete'}
+      why={
+        <>
+          The same three values whichever way you hold your keys. The{' '}
+          <strong>node signing key</strong> is the one field nothing can resolve for you:
+          your device signs a login statement naming it, and that binding is what stops a
+          statement minted for one node being replayed to another — so a node that told you
+          its own key could decide what you signed about.
+        </>
+      }
+    >
+      <label>
+        Node URL
+        <input
+          type="text"
+          value={settings.nodeUrl}
+          placeholder="http://localhost:2428"
+          onChange={(e) => onChange({ nodeUrl: e.target.value.trim() })}
+        />
+      </label>
+      <label>
+        Node signing key — 64 hex, pinned out of band
+        <input
+          type="text"
+          value={settings.nodeKey}
+          placeholder="0123…"
+          onChange={(e) => onChange({ nodeKey: e.target.value.trim() })}
+        />
+      </label>
+      <label>
+        Context id — 64 hex
+        <input
+          type="text"
+          value={settings.contextId}
+          placeholder="89ab…"
+          onChange={(e) => onChange({ contextId: e.target.value.trim() })}
+        />
+      </label>
+      <p className="aside">
+        Read the node key from the operator, not from the node:{' '}
+        <code>merod … init</code> prints it as <em>Provisioned the node&rsquo;s signing
+        identity</em>. A cloud serving a node-<em>reported</em> value would move the
+        trust-on-first-use one hop rather than remove it; closing this properly means
+        binding the key into the attestation quote, which is tracked separately.
+      </p>
+    </Step>
+  );
+}
+
+/**
+ * The one choice this page exists to make visible.
+ *
+ * Not a numbered step, because it is not something you *do* once — it is the
+ * variable the rest of the page reads. Flipping it re-renders the same four
+ * legs against a different signer, which is the entire argument: nothing about
+ * the node, the routes or the protocol changes.
+ */
+function CustodyToggle({
+  custody,
+  onChoose,
+}: {
+  custody: Custody;
+  onChoose: (custody: Custody) => void;
+}) {
+  return (
+    <section className="step">
+      <h2>Where do your keys live?</h2>
+      <div className="row">
+        <button
+          type="button"
+          className={custody === 'offline' ? undefined : 'secondary'}
+          aria-pressed={custody === 'offline'}
+          onClick={() => onChoose('offline')}
+        >
+          In a key this page cannot read
+        </button>
+        <button
+          type="button"
+          className={custody === 'browser' ? undefined : 'secondary'}
+          aria-pressed={custody === 'browser'}
+          onClick={() => onChoose('browser')}
+        >
+          In <code>localStorage</code>
+        </button>
+      </div>
+
+      {custody === 'offline' ? (
+        <p className="aside">
+          <strong>What a product does.</strong> The device key is generated{' '}
+          <code>extractable: false</code> and lives in IndexedDB as a{' '}
+          <code>CryptoKey</code>: it signs, and neither this page nor anything injected
+          into it can export it. The account root is never here at all — a CLI (or an Auth
+          app, or a hardware key) signs the device&rsquo;s certificate somewhere else.
+          Script on this origin can still <em>spend</em> warrants while the page is open;
+          what it cannot do is walk away with the identity.
+        </p>
+      ) : (
+        <p className="aside">
+          <strong>What a demo does, and a product must not.</strong> An account root and a
+          device secret, both as hex in <code>localStorage</code>. One XSS is the account,
+          permanently — a stolen device key is revocable, a stolen root is not. This half
+          also does the two things the other cannot: claim the account with a cloud (a{' '}
+          <em>root</em> signature) and sign its own membership op.
+        </p>
+      )}
+
+      <p className="aside">
+        Each side keeps its own identity, so switching does not carry one across — they are
+        different accounts that happen to share a node.
+      </p>
+    </section>
+  );
+}
+
 function IdentityStep({
+  n,
   identity,
   phrase,
   restoreFrom,
@@ -236,6 +415,7 @@ function IdentityStep({
   onIdentity,
   onForget,
 }: {
+  n: number;
   identity: DeviceIdentity | null;
   phrase: string | null;
   restoreFrom: string;
@@ -247,7 +427,7 @@ function IdentityStep({
 
   return (
     <Step
-      n={1}
+      n={n}
       title="Mint an account and a device"
       state={identity ? 'done' : 'idle'}
       stateLabel={identity ? 'held' : 'none yet'}
@@ -344,12 +524,14 @@ function IdentityStep({
  * both would hide exactly the distinction worth showing.
  */
 function AccountCloudStep({
+  n,
   identity,
   settings,
   onChange,
   claim,
   onClaim,
 }: {
+  n: number;
   identity: DeviceIdentity | null;
   settings: Settings;
   onChange: (patch: Partial<Settings>) => void;
@@ -514,7 +696,7 @@ function AccountCloudStep({
 
   return (
     <Step
-      n={2}
+      n={n}
       title="Connect this account to your cloud"
       state={claimed ? 'done' : 'idle'}
       stateLabel={claimed ? (claim.linked ? 'connected' : 'proven, unlinked') : 'not yet'}
@@ -674,11 +856,13 @@ function AccountCloudStep({
 }
 
 function NodeStep({
+  n,
   settings,
   onChange,
   ready,
   identity,
 }: {
+  n: number;
   settings: Settings;
   onChange: (patch: Partial<Settings>) => void;
   ready: boolean;
@@ -795,7 +979,7 @@ function NodeStep({
 
   return (
     <Step
-      n={3}
+      n={n}
       title="Prove your account to the cloud, and accept an invitation"
       state={ready ? 'done' : 'idle'}
       stateLabel={ready ? 'set' : 'incomplete'}
@@ -830,31 +1014,10 @@ function NodeStep({
           onChange={(e) => onChange({ invitationJson: e.target.value })}
         />
       </label>
-      <label>
-        Context id — 64 hex
-        <input
-          type="text"
-          value={settings.contextId}
-          placeholder="89ab…"
-          onChange={(e) => onChange({ contextId: e.target.value.trim() })}
-        />
-      </label>
-      <label>
-        Node signing key — 64 hex, still pinned out of band
-        <input
-          type="text"
-          value={settings.nodeKey}
-          placeholder="0123…"
-          onChange={(e) => onChange({ nodeKey: e.target.value.trim() })}
-        />
-      </label>
       <p className="aside">
-        The one field discovery cannot supply. Your device signs a login statement naming this key,
-        and that binding is what stops a statement signed for one node being replayed to another —
-        so a node that told you its own key could decide what you signed about. The invitation does
-        not carry it and neither does the cloud, and a cloud serving a node-<em>reported</em> value
-        would move the trust-on-first-use one hop rather than remove it. Removing this field means
-        binding the key into the attestation quote, which is tracked separately.
+        The node URL, its signing key and the context id are asked once at the top — they
+        describe the node, not whoever is signing, so both custody paths need the same three.
+        Discovery below <em>writes</em> the node URL when it resolves one.
       </p>
 
       <div className="row">
@@ -942,12 +1105,14 @@ function NodeStep({
 }
 
 function SessionStep({
+  n,
   identity,
   settings,
   session,
   enabled,
   onSession,
 }: {
+  n: number;
   identity: DeviceIdentity | null;
   settings: Settings;
   session: DelegatedSession | null;
@@ -958,7 +1123,7 @@ function SessionStep({
 
   return (
     <Step
-      n={4}
+      n={n}
       title="Obtain a session — no password"
       state={session ? 'done' : 'idle'}
       stateLabel={session ? 'open' : 'closed'}
@@ -1020,10 +1185,12 @@ function SessionStep({
 }
 
 function ReadStep({
+  n,
   settings,
   session,
   enabled,
 }: {
+  n: number;
   settings: Settings;
   session: DelegatedSession | null;
   enabled: boolean;
@@ -1033,7 +1200,7 @@ function ReadStep({
 
   return (
     <Step
-      n={5}
+      n={n}
       title="Read the context"
       why={
         <>
@@ -1077,10 +1244,12 @@ function ReadStep({
 }
 
 function WriteStep({
+  n,
   identity,
   settings,
   enabled,
 }: {
+  n: number;
   identity: DeviceIdentity | null;
   settings: Settings;
   enabled: boolean;
@@ -1098,7 +1267,7 @@ function WriteStep({
 
   return (
     <Step
-      n={6}
+      n={n}
       title="Write through the relay"
       why={
         <>
