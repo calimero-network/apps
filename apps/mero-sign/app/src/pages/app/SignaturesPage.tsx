@@ -57,36 +57,40 @@ export default function SignaturesPage() {
     try {
       setLoading(true);
       const response = await api.listSignatures();
-
-      let rows: unknown[] = [];
-      const data = response.data as unknown;
-      if (Array.isArray(data)) rows = data;
-      else if (data && typeof data === 'object') {
-        const obj = data as { output?: unknown; result?: unknown };
-        if (Array.isArray(obj.output)) rows = obj.output;
-        else if (Array.isArray(obj.result)) rows = obj.result;
+      if (response.error) {
+        // ⚠️ REPORTED, not swallowed into an empty list. "No signatures yet"
+        // under a failed read tells somebody their signatures are gone.
+        setError(response.error.message);
+        setSignatures([]);
+        return;
       }
 
+      // ⚠️ NO ENVELOPE, NO CASTS. This used to probe `.output` then `.result`
+      // and then re-declare the row shape by hand — including
+      // `blob_id: string | number[]`, which is how the encoding bug got in.
+      // The generated client returns `SignatureRecord[]` straight from the
+      // ABI, so the shape is the contract's, not this file's guess.
+      const rows = response.data ?? [];
       if (rows.length === 0) {
         setSignatures([]);
         return;
       }
 
       const withImages = await Promise.all(
-        rows.map(async (raw) => {
-          const sig = raw as {
-            id: number | string;
-            name: string;
-            blob_id: string | number[];
-            created_at: number | string;
-          };
+        rows.map(async (sig) => {
           let dataURL = '';
           // ⚠️ HEX. This was `bs58.encode`, and the node answers a base58
           // blob id with "Failed to decode blob ID (expected hex) … Odd
           // number of digits" — which the empty catch below then swallowed.
           // That is the whole of "my signature saved but is never displayed":
           // the row listed, the image 500'd, and nothing said so.
-          const blobId = toBlobIdHex(sig.blob_id);
+          // `blob_id` is BYTES per the ABI — `CalimeroBytes`, not a string.
+          // That divergence was the bug; the type carries it now.
+          const blobId = toBlobIdHex(
+            typeof sig.blob_id === 'string'
+              ? sig.blob_id
+              : sig.blob_id.toArray(),
+          );
           try {
             const contextId = localStorage.getItem('defaultContextId') || '';
             const blob = blobId
