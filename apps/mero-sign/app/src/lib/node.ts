@@ -343,111 +343,25 @@ export const getExecutorPublicKey = (): string | null => read(EXECUTOR_KEY);
 export const setExecutorPublicKey = (key: string): void =>
   write(EXECUTOR_KEY, key);
 
-// ── JSON-RPC ────────────────────────────────────────────────────────────────
+// ── There is no JSON-RPC shim here any more ─────────────────────────────────
 //
-// `ClientApiDataSource` is ~1,500 lines and calls `rpcClient.execute` in a
-// dozen places, several of them the primary path rather than a fallback. It is
-// also the file that signs documents. Rewriting those call sites to reach
-// `mero.rpc` directly would be a large mechanical diff through exactly the code
-// that must not be disturbed to change an SDK — so the shape is preserved and
-// the implementation underneath it is mero-js.
+// This block held `rpcClient`, `RpcQueryParams`, `RpcResult`, `RpcConfig`,
+// `getAuthConfig`, `getContextSpecificAuthConfig` and `getAppEndpointKey` — a
+// reimplementation of the OLD SDK's surface on top of mero-js, kept so that
+// `ClientApiDataSource`'s ~1,500 lines of hand-written RPC did not have to
+// change when the SDK did.
 //
-// ⚠️ `executorPublicKey` IS ACCEPTED AND DROPPED. Core removed it from the
-// JSON-RPC body (#2116) and every admin body is `deny_unknown_fields`, so
-// forwarding it is
+// It has no callers left. Every contract call goes through the generated
+// `MeroSignClient`, which is where the method names and argument shapes come
+// from the ABI rather than from strings in this repo. The shim's own comments
+// recorded what it was papering over — `executorPublicKey` accepted and
+// silently dropped, an envelope re-wrapped as `{result:{output}}` because the
+// call sites unwrapped it that way — and all of that goes with it.
 //
-//     rpc <method>: unknown field `executorPublicKey`, expected one of
-//     `contextId`, `method`, `argsJson`
-//
-// — a 400 for the whole call. The node resolves the caller's own identity now
-// (#3960). Keeping the field in the type and ignoring it is deliberate: it
-// lets the call sites stay as they are while guaranteeing the key never
-// reaches the wire. `scripts/check-admin-wire.py` asserts that for the fleet.
-
-export interface RpcQueryParams<A = Record<string, unknown>> {
-  contextId: string;
-  method: string;
-  argsJson: A;
-  /** Ignored — see the warning above. */
-  executorPublicKey?: string;
-}
-
-export interface RpcConfig {
-  contextId?: string;
-  executorPublicKey?: string;
-  appEndpointKey?: string;
-  jwtToken?: string;
-  /** Request options the old client forwarded to axios. Accepted, unused. */
-  headers?: Record<string, string>;
-  timeout?: number;
-}
-
-/**
- * The JSON-RPC envelope the call sites read — `response.result?.output ??
- * response.result` — NOT the `{data, error}` shape the REST helpers return.
- * The two are different on purpose in the old SDK and the call sites depend on
- * which one they are holding.
- */
-export interface RpcResult<T> {
-  // `{ output?: T } & Partial<T>` rather than a union: the call sites read
-  // `response.result?.output ?? response.result`, so both halves must be
-  // readable without narrowing, exactly as they were against the old SDK's
-  // loosely-typed envelope.
-  result?: { output?: T } & Partial<Record<keyof T & string, unknown>>;
-  error?: ErrorResponse | null;
-}
-
-export const rpcClient = {
-  // Two type parameters: one call site writes `execute<Args, Output>`, which
-  // is how the old client was shaped. `A` is the argument type and is not used
-  // here — `argsJson` is already typed by the caller's object.
-  async execute<A = unknown, T = unknown>(
-    params: RpcQueryParams,
-    _config?: RpcConfig,
-  ): Promise<RpcResult<T>> {
-    try {
-      const output = (await required().rpc.execute({
-        contextId: params.contextId,
-        method: params.method,
-        argsJson: params.argsJson,
-      })) as T;
-      // Wrapped as `{result: {output}}` because that is what the call sites
-      // unwrap. Returning the bare value would read as `undefined` at every
-      // `response.result?.output` and the method would silently do nothing.
-      return { result: { output } as RpcResult<T>['result'], error: null };
-    } catch (e) {
-      return {
-        error: { message: e instanceof Error ? e.message : String(e) },
-      };
-    }
-  },
-};
-
-/**
- * The old SDK's per-call auth bundle.
- *
- * mero-js carries the session itself, so the only field still worth anything
- * is the context the caller wants to act in — the rest is read and discarded
- * by `rpcClient.execute` above.
- */
-export function getAuthConfig(): RpcConfig {
-  return {
-    contextId: getContextId() ?? undefined,
-    executorPublicKey: getExecutorPublicKey() ?? undefined,
-  };
-}
-
-export function getContextSpecificAuthConfig(
-  contextId: string,
-  executorPublicKey: string,
-): RpcConfig {
-  return { contextId, executorPublicKey };
-}
-
-/** The node URL. mero-js owns it now; kept so call sites still compile. */
-export function getAppEndpointKey(): string | null {
-  return null;
-}
+// ⚠️ `getAppEndpointKey` went too, and it was not merely unused: it had been
+// reduced to `return null`, and `AppHeader` still called it to show which node
+// the session was on. That readout had been blank ever since. The URL lives on
+// `useMero().nodeUrl`.
 
 /**
  * Re-exported so the two components that imported `useCalimero` from the SDK

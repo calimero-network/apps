@@ -2,33 +2,6 @@ import { type ApiResponse } from '../lib/node';
 
 export type UserId = string;
 
-export enum ClientMethod {
-  CREATE_SIGNATURE = 'create_signature',
-  DELETE_SIGNATURE = 'delete_signature',
-  LIST_SIGNATURES = 'list_signatures',
-  GET_SIGNATURE_DATA = 'get_signature_data',
-  JOIN_SHARED_CONTEXT = 'join_shared_context',
-  LIST_JOINED_CONTEXTS = 'list_joined_contexts',
-  LEAVE_SHARED_CONTEXT = 'leave_shared_context',
-  UPLOAD_DOCUMENT = 'upload_document',
-  DELETE_DOCUMENT = 'delete_document',
-  LIST_DOCUMENTS = 'list_documents',
-  SIGN_DOCUMENT = 'sign_document',
-  GET_DOCUMENT_SIGNATURES = 'get_document_signatures',
-  MARK_DOCUMENT_FULLY_SIGNED = 'mark_document_fully_signed',
-  GET_CONTEXT_DETAILS = 'get_context_details',
-  ADD_PARTICIPANT = 'add_participant',
-  REGISTER_SELF_AS_PARTICIPANT = 'register_self_as_participant',
-  REMOVE_PARTICIPANT = 'remove_participant',
-  SET_PARTICIPANT_PERMISSION = 'set_participant_permission',
-  WHOAMI = 'whoami',
-  MARK_PARTICIPANT_SIGNED = 'mark_participant_signed',
-  SET_CONSENT = 'set_consent',
-  HAS_CONSENTED = 'has_consented',
-  IS_DEFAULT_PRIVATE_CONTEXT = 'is_default_private_context',
-  SEARCH_DOCUMENT_BY_EMBEDDING = 'search_document_by_embedding',
-}
-
 /**
  * ⚠️ RE-EXPORTED FROM THE GENERATED CLIENT, not declared here.
  *
@@ -39,9 +12,12 @@ export enum ClientMethod {
  * blob ID (expected hex)" at runtime. Sourcing the type from the ABI makes
  * that a compile error instead.
  */
-import type { SignatureRecord } from '../generated/MeroSignClient';
+import type {
+  DocumentChunk,
+  SignatureRecord,
+} from '../generated/MeroSignClient';
 
-export type { SignatureRecord };
+export type { DocumentChunk, SignatureRecord };
 
 export interface SavedSignature {
   id: number;
@@ -157,12 +133,15 @@ export interface ClientApi {
     fileSize: number,
     embeddings?: number[],
     extractedText?: string,
-    chunks?: any[],
+    chunks?: DocumentChunk[],
     agreementContextID?: string,
     agreementContextUserID?: string,
   ): ApiResponse<string>;
+  // ⚠️ `documentId` FIRST. This used to declare a leading `contextId` that the
+  // implementation never had; both are strings, so the disagreement
+  // type-checked and a second caller written from this line would have passed
+  // a document id where a context id was read.
   deleteDocument(
-    contextId: string,
     documentId: string,
     agreementContextID?: string,
     agreementContextUserID?: string,
