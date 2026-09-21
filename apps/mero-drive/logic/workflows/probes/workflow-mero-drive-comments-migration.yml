@@ -90,13 +90,6 @@ steps:
     outputs:
       namespace_id: namespaceId
 
-  - name: Capture admin key
-    type: get_namespace_identity
-    node: calimero-node-1
-    namespace_id: '{{namespace_id}}'
-    outputs:
-      admin_key: publicKey
-
   - name: Alice creates the folder group
     type: create_group_in_namespace
     node: calimero-node-1
@@ -254,12 +247,6 @@ steps:
     node: calimero-node-2
     path: dist/com.calimero.mero-drive-docs-v2-9.4.0.mpk
     dev: true
-
-  - name: Set upgrade policy to lazy-on-access
-    type: update_group_settings
-    node: calimero-node-1
-    group_id: '{{namespace_id}}'
-    upgrade_policy: lazy_on_access
 
   - name: Cascade namespace v1 → v2
     type: upgrade_group
@@ -424,12 +411,10 @@ steps:
     type: delete_context
     node: calimero-node-1
     context_id: '{{docs_ctx}}'
-    requester: '{{admin_key}}'
 
   - name: Delete namespace
     type: delete_namespace
     node: calimero-node-1
     namespace_id: '{{namespace_id}}'
-    requester: '{{admin_key}}'
 
 stop_all_nodes: false

@@ -165,9 +165,8 @@ steps:
   # =================================================================
   # C. Alice sets her OWN display name (self-edit; no cap needed).
   # The registry context creation is the standard mero-drive bootstrap
-  # shape (matches workflow-mero-drive-open-restricted-collab.yml) and
-  # also gives us Alice's namespace-member public key for the
-  # member_id arg below.
+  # shape (matches workflow-mero-drive-open-restricted-collab.yml).
+  # member_id takes the ACCOUNT, not create_context's device signing key.
   # =================================================================
   - name: Alice creates the per-namespace Registry context
     type: create_context
@@ -177,20 +176,25 @@ steps:
     service_name: registry
     outputs:
       reg_ctx: contextId
-      alice_key: memberPublicKey
+
+  - name: Read Alice's account
+    type: node_identity
+    node: calimero-node-1
+    outputs:
+      alice_account: accountId
 
   - name: Alice sets her own display name
     type: set_member_metadata
     node: calimero-node-1
     group_id: '{{namespace_id}}'
-    member_id: '{{alice_key}}'
+    member_id: '{{alice_account}}'
     record_name: Alice Anderson
 
   - name: Alice reads her own display name
     type: get_member_metadata
     node: calimero-node-1
     group_id: '{{namespace_id}}'
-    member_id: '{{alice_key}}'
+    member_id: '{{alice_account}}'
     outputs:
       alice_name: name
 
@@ -220,7 +224,7 @@ steps:
     namespace_id: '{{namespace_id}}'
     invitation: '{{ns_invite}}'
     outputs:
-      bob_identity: memberIdentity
+      bob_account: memberAccount
 
   - name: Wait for metadata + group rows to propagate to Bob
     type: wait
@@ -255,7 +259,7 @@ steps:
     type: get_member_metadata
     node: calimero-node-2
     group_id: '{{namespace_id}}'
-    member_id: '{{alice_key}}'
+    member_id: '{{alice_account}}'
     outputs:
       alice_name_bob: name
 
@@ -271,7 +275,7 @@ steps:
     type: set_member_metadata
     node: calimero-node-2
     group_id: '{{namespace_id}}'
-    member_id: '{{bob_identity}}'
+    member_id: '{{bob_account}}'
     record_name: Bob Brown
 
   - name: Wait for member-metadata gossip
@@ -282,7 +286,7 @@ steps:
     type: get_member_metadata
     node: calimero-node-1
     group_id: '{{namespace_id}}'
-    member_id: '{{bob_identity}}'
+    member_id: '{{bob_account}}'
     outputs:
       bob_name_alice: name
 
@@ -299,7 +303,7 @@ steps:
     type: set_member_metadata
     node: calimero-node-2
     group_id: '{{namespace_id}}'
-    member_id: '{{alice_key}}'
+    member_id: '{{alice_account}}'
     record_name: AliceHax0r
     expected_failure: true
 
@@ -309,7 +313,7 @@ steps:
     type: set_member_capabilities
     node: calimero-node-1
     group_id: '{{namespace_id}}'
-    member_id: '{{bob_identity}}'
+    member_id: '{{bob_account}}'
     capabilities: 293
 
   - name: Wait for cap propagation
@@ -320,7 +324,7 @@ steps:
     type: set_member_metadata
     node: calimero-node-2
     group_id: '{{namespace_id}}'
-    member_id: '{{alice_key}}'
+    member_id: '{{alice_account}}'
     record_name: Alice (renamed by admin)
 
   - name: Wait for the cross-node rename to gossip
@@ -331,7 +335,7 @@ steps:
     type: get_member_metadata
     node: calimero-node-1
     group_id: '{{namespace_id}}'
-    member_id: '{{alice_key}}'
+    member_id: '{{alice_account}}'
     outputs:
       alice_renamed: name
 
@@ -364,7 +368,7 @@ steps:
     type: set_member_metadata
     node: calimero-node-1
     group_id: '{{namespace_id}}'
-    member_id: '{{alice_key}}'
+    member_id: '{{alice_account}}'
     record_name: Alice (back to default)
 
   - name: Wait for renames to gossip
@@ -389,7 +393,7 @@ steps:
     type: get_member_metadata
     node: calimero-node-2
     group_id: '{{namespace_id}}'
-    member_id: '{{alice_key}}'
+    member_id: '{{alice_account}}'
     outputs:
       alice_renamed_bob: name
 

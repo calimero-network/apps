@@ -19,7 +19,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useJoinContext } from '@calimero-network/mero-react';
 import { CalimeroBytes, type DocDto } from '../generated/docs/DocsClient';
 import { useDriveWorkspace } from '../hooks/useDriveWorkspace';
-import { useSelfIdentity } from './useSelfIdentity';
 import { useDocsClient } from './useDocsClient';
 import { useDocEvents } from './useDocEvents';
 // `FolderId`/`ContextId` are BRANDED at abi-codegen 2: `string & {__brand}`.
@@ -110,8 +109,7 @@ function isMissingOwnedIdentityError(err: unknown): boolean {
 }
 
 export function useDocs(folderId: string | null): UseDocsState {
-  const { namespaceId, registryClient } = useDriveWorkspace();
-  const { identity } = useSelfIdentity(namespaceId);
+  const { registryClient, selfIdentity: identity } = useDriveWorkspace();
   const { joinContext } = useJoinContext();
   // Ref-captured so it isn't a `refetch` dependency — useJoinContext's
   // returned fn isn't guaranteed stable, and `refetch` feeds an effect.

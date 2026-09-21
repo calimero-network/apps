@@ -104,7 +104,7 @@ steps:
     namespace_id: '{{namespace_id}}'
     invitation: '{{ns_invite}}'
     outputs:
-      bob_identity: memberIdentity
+      bob_account: memberAccount
 
   # =================================================================
   # Phase B: List members — baseline shape
@@ -140,7 +140,7 @@ steps:
     node: calimero-node-1
     group_id: '{{folder_group}}'
     members:
-      - identity: '{{bob_identity}}'
+      - identity: '{{bob_account}}'
         role: Member
 
   - name: list_group_members on the subgroup — Bob is in
@@ -168,7 +168,7 @@ steps:
     type: get_member_capabilities
     node: calimero-node-1
     group_id: '{{folder_group}}'
-    member_id: '{{bob_identity}}'
+    member_id: '{{bob_account}}'
     outputs:
       initial_member_caps: capabilities
 
@@ -194,14 +194,14 @@ steps:
     type: update_member_role
     node: calimero-node-1
     group_id: '{{folder_group}}'
-    member_id: '{{bob_identity}}'
+    member_id: '{{bob_account}}'
     role: Admin
 
   - name: Capture Bob's override after role promote
     type: get_member_capabilities
     node: calimero-node-1
     group_id: '{{folder_group}}'
-    member_id: '{{bob_identity}}'
+    member_id: '{{bob_account}}'
     outputs:
       promoted_override_caps: capabilities
 
@@ -214,14 +214,14 @@ steps:
     type: update_member_role
     node: calimero-node-1
     group_id: '{{folder_group}}'
-    member_id: '{{bob_identity}}'
+    member_id: '{{bob_account}}'
     role: Member
 
   - name: Capture Bob's override after role demote
     type: get_member_capabilities
     node: calimero-node-1
     group_id: '{{folder_group}}'
-    member_id: '{{bob_identity}}'
+    member_id: '{{bob_account}}'
     outputs:
       demoted_override_caps: capabilities
 
@@ -258,14 +258,14 @@ steps:
     type: set_member_capabilities
     node: calimero-node-1
     group_id: '{{folder_group}}'
-    member_id: '{{bob_identity}}'
+    member_id: '{{bob_account}}'
     capabilities: 4
 
   - name: Verify Viewer bitmask — capture
     type: get_member_capabilities
     node: calimero-node-1
     group_id: '{{folder_group}}'
-    member_id: '{{bob_identity}}'
+    member_id: '{{bob_account}}'
     outputs:
       viewer_caps: capabilities
 
@@ -282,14 +282,14 @@ steps:
     type: set_member_capabilities
     node: calimero-node-1
     group_id: '{{folder_group}}'
-    member_id: '{{bob_identity}}'
+    member_id: '{{bob_account}}'
     capabilities: 37
 
   - name: Verify Editor bitmask — capture
     type: get_member_capabilities
     node: calimero-node-1
     group_id: '{{folder_group}}'
-    member_id: '{{bob_identity}}'
+    member_id: '{{bob_account}}'
     outputs:
       editor_caps: capabilities
 
@@ -302,14 +302,14 @@ steps:
     type: set_member_capabilities
     node: calimero-node-1
     group_id: '{{folder_group}}'
-    member_id: '{{bob_identity}}'
+    member_id: '{{bob_account}}'
     capabilities: 495
 
   - name: Verify Manager bitmask — capture
     type: get_member_capabilities
     node: calimero-node-1
     group_id: '{{folder_group}}'
-    member_id: '{{bob_identity}}'
+    member_id: '{{bob_account}}'
     outputs:
       manager_caps: capabilities
 
@@ -326,14 +326,14 @@ steps:
     type: set_member_capabilities
     node: calimero-node-1
     group_id: '{{folder_group}}'
-    member_id: '{{bob_identity}}'
+    member_id: '{{bob_account}}'
     capabilities: 256
 
   - name: Verify the non-preset bitmask — capture
     type: get_member_capabilities
     node: calimero-node-1
     group_id: '{{folder_group}}'
-    member_id: '{{bob_identity}}'
+    member_id: '{{bob_account}}'
     outputs:
       custom_caps: capabilities
 
@@ -365,7 +365,7 @@ steps:
     type: get_member_capabilities
     node: calimero-node-2
     group_id: '{{folder_group}}'
-    member_id: '{{bob_identity}}'
+    member_id: '{{bob_account}}'
     outputs:
       bob_view_caps: capabilities
 
@@ -413,7 +413,7 @@ steps:
     node: calimero-node-1
     group_id: '{{folder_group}}'
     members:
-      - '{{bob_identity}}'
+      - '{{bob_account}}'
 
   - name: list_group_members — Bob no longer in the subgroup
     type: list_group_members
