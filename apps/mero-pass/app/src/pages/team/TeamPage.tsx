@@ -129,7 +129,14 @@ export default function TeamPage() {
       try {
         await enterVaultContext(
           mero.admin,
-          { vaultId: vault.vaultId, contextId: vault.contextId },
+          {
+            vaultId: vault.vaultId,
+            contextId: vault.contextId,
+            // The team this vault belongs to. Inheritance eligibility is
+            // decided against the PARENT, so this is the group whose state
+            // the retry has to wait for — see `joinVaultWithRetry`.
+            namespaceId: teamId,
+          },
           setBusy,
         );
         navigate(`/vault/${vault.contextId}`);
@@ -139,7 +146,7 @@ export default function TeamPage() {
         setBusy(null);
       }
     },
-    [mero, navigate],
+    [mero, navigate, teamId],
   );
 
   const inviteToTeam = useCallback(async () => {

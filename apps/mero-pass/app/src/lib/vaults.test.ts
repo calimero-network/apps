@@ -197,9 +197,17 @@ describe('createVault', () => {
     });
     // ⚠️ `groupName`, not `name` — every core request body is
     // deny_unknown_fields, so the wrong spelling is a 400 for the whole call.
+    //
+    // ⚠️ AND `visibility` AT BIRTH. A subgroup created without it is born
+    // RESTRICTED, and the `setSubgroupVisibility` that follows is a SECOND
+    // governance write which a member who joined the team after the vault
+    // existed never received. Measured from their node: `vis=500`,
+    // `join=403`, for sixty seconds, through explicit syncs of both groups.
+    // The vault was restricted from where they stood, permanently. Born open
+    // it is admitted in 1ms. See `createVault`.
     expect(argsOf(calls, 'createGroupInNamespace')).toEqual([
       'ns-1',
-      { groupName: 'Bank logins' },
+      { groupName: 'Bank logins', visibility: 'open' },
     ]);
     // The value does not persist, so the readable copy is the metadata record.
     expect(argsOf(calls, 'setGroupMetadata')).toEqual([

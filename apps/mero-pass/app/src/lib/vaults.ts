@@ -84,8 +84,21 @@ const noop: StatusFn = () => {};
 const IDENTITY_TIMEOUT_MS = 60_000;
 const IDENTITY_POLL_MS = 1_500;
 
-/** How long to keep asking a vault to admit us while the grant projects. */
-const ADMISSION_TIMEOUT_MS = 20_000;
+/**
+ * How long to keep asking a vault to admit us while the grant projects.
+ *
+ * ⚠️ THIS WINDOW WAS NEVER THE BUG, and it is worth saying so because the
+ * symptom looked exactly like a timeout. "The vault did not admit you after
+ * 20s" was a subgroup born RESTRICTED whose later opening never reached the
+ * joining node — see the note in `createVault`. Retrying for sixty seconds,
+ * with explicit `syncGroup` on both the namespace and the subgroup, never
+ * once helped: the refusal was correct and permanent.
+ *
+ * Raised to the identity wait's window anyway, as defence for a genuinely
+ * slow network rather than as the fix. Waiting longer costs a spinner; giving
+ * up early costs the join, and the person cannot tell which happened.
+ */
+const ADMISSION_TIMEOUT_MS = 60_000;
 const ADMISSION_POLL_MS = 1_200;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -516,8 +529,23 @@ export async function createVault(
   // so the old spelling is a 400 for the whole call rather than a silently
   // ignored key. (The value still does not persist — hence the metadata write
   // below — but the request has to be well-formed either way.)
+  // ⚠️ `visibility` AT BIRTH, not only afterwards.
+  //
+  // A subgroup created without it is born RESTRICTED, and the
+  // `setSubgroupVisibility` below is a SECOND governance write that a peer has
+  // to receive separately. Measured on two nodes: a member who joined the team
+  // after the vault existed saw `nsMembers=2`, its own mask, and the
+  // subgroup's id — but `getGroupInfo(vaultId)` answered 500 indefinitely and
+  // `joinSubgroupInheritance` answered 403 forever, through sixty seconds of
+  // retries and explicit `syncGroup` on both the namespace and the subgroup.
+  // From that node the vault was restricted, permanently.
+  //
+  // Born open, the visibility is part of the record that creates the subgroup
+  // rather than an amendment to it. `createAgreement` in mero-sign carries the
+  // same fix for the same reason.
   const sg = await admin.createGroupInNamespace(opts.namespaceId, {
     groupName: opts.name,
+    visibility: 'open',
   });
 
   onStatus('Naming the vault…');
@@ -880,7 +908,14 @@ export async function redeemInvite(
   if (accepted.vaultId && accepted.contextId) {
     const identity = await enterVaultContext(
       admin,
-      { vaultId: accepted.vaultId, contextId: accepted.contextId },
+      {
+        vaultId: accepted.vaultId,
+        contextId: accepted.contextId,
+        // Known here, and this is the path where it matters most: a joiner is
+        // entering a vault seconds after the grant, so the namespace state is
+        // exactly what has not arrived yet.
+        namespaceId: accepted.namespaceId ?? undefined,
+      },
       onStatus,
     );
     return {
@@ -948,8 +983,10 @@ async function joinVaultWithRetry(
   admin: AdminLike,
   vaultId: string,
   onStatus: StatusFn,
+  namespaceId?: string,
 ): Promise<void> {
-  const deadline = Date.now() + ADMISSION_TIMEOUT_MS;
+  const started = Date.now();
+  const deadline = started + ADMISSION_TIMEOUT_MS;
   let lastError: unknown = null;
   let attempt = 0;
 
@@ -966,11 +1003,22 @@ async function joinVaultWithRetry(
       // message by the length of the window.
       if (!isForbidden(e)) throw e;
       lastError = e;
-      if (attempt === 1) {
-        onStatus('Waiting for your membership to reach this node…');
-      }
-      // Nudge the team along rather than only sleeping: the thing being waited
-      // for is a projection of state that arrives over gossip.
+      // ⚠️ SAY HOW LONG, every time — not once on the first attempt. This can
+      // legitimately take most of a minute, and a message that never changes
+      // is indistinguishable from a hang. It is the difference between
+      // "working" and "broken" to the person watching it.
+      const waited = Math.round((Date.now() - started) / 1000);
+      onStatus(
+        attempt === 1
+          ? 'Waiting for your membership to reach this node…'
+          : `Waiting for your membership to reach this node… ${waited}s`,
+      );
+      // Both groups. Inheritance eligibility is decided against the PARENT,
+      // so the namespace is worth nudging; the subgroup's own record is what
+      // carries its visibility. Measured: neither sync rescues a subgroup
+      // that was born restricted, so this is opportunism rather than a
+      // mechanism to rely on.
+      if (namespaceId) await admin.syncGroup(namespaceId).catch(() => {});
       await admin.syncGroup(vaultId).catch(() => {});
       await sleep(ADMISSION_POLL_MS);
     }
@@ -1050,7 +1098,7 @@ async function diagnoseAdmission(
  */
 export async function enterVaultContext(
   admin: AdminLike,
-  opts: { vaultId: string; contextId: string },
+  opts: { vaultId: string; contextId: string; namespaceId?: string },
   onStatus: StatusFn = noop,
 ): Promise<string> {
   onStatus('Checking your membership…');
@@ -1058,7 +1106,10 @@ export async function enterVaultContext(
   if (existing) return existing;
 
   onStatus('Joining the vault…');
-  await joinVaultWithRetry(admin, opts.vaultId, onStatus);
+  // `namespaceId` is optional because two callers reach here from a context id
+  // alone. Supplying it is what lets the retry sync the group whose membership
+  // is actually propagating — see `joinVaultWithRetry`.
+  await joinVaultWithRetry(admin, opts.vaultId, onStatus, opts.namespaceId);
 
   onStatus('Waiting for your identity in the vault…');
   const deadline = Date.now() + IDENTITY_TIMEOUT_MS;
