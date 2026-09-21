@@ -15,11 +15,6 @@ dist/com.calimero.mero-drive-docs-v2-9.4.0.mpk
 CI builds only the current bundle, and neither of these is in the tree.
 Build them from the matching tags before running it.
 
-## `workflow-mero-drive-playwright-*-setup.yml`
-
-Node bootstraps for a Playwright harness, not scenarios: they install the bundle and leave the nodes running behind the auth service.
-The browser suites now start their own nodes in `app/e2e/global-setup.ts`, so nothing uses these.
-
 ## Running one by hand
 
 ```sh
