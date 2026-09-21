@@ -787,31 +787,53 @@ export default function AgreementPage() {
             className={styles.modal}
             style={{ maxWidth: 980, padding: 0, maxHeight: '92vh' }}
           >
-            {viewingError && (
-              <p
-                className={styles.error}
-                style={{ margin: 16 }}
-                data-testid="document-error"
-              >
-                {viewingError}
-              </p>
+            {/* ⚠️ THE VIEWER IS NOT MOUNTED UNTIL THERE ARE BYTES.
+                `PDFViewer` renders "No PDF selected. Please upload a PDF to
+                get started." for a null `file` — the exact copy this change
+                exists to stop showing. Mounting it while the blob is still
+                downloading flashes that message on every open, and mounting
+                it after a failure leaves it sitting under the real error,
+                contradicting it. So: fetching says fetching, a failure says
+                what failed, and the viewer appears when it has something to
+                view. */}
+            {viewingError ? (
+              <div style={{ padding: 24 }}>
+                <p className={styles.error} data-testid="document-error">
+                  {viewingError}
+                </p>
+                <div className={styles.modalRow}>
+                  <button
+                    className={styles.btnGhost}
+                    onClick={() => setViewing(null)}
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            ) : !viewingFile ? (
+              <div style={{ padding: 24 }}>
+                <p className={styles.empty} data-testid="document-loading">
+                  Loading {viewing.name}…
+                </p>
+              </div>
+            ) : (
+              <PDFViewer
+                file={viewingFile}
+                onClose={() => setViewing(null)}
+                title={viewing.name}
+                showDownload
+                showClose
+                maxHeight="86vh"
+                contextId={contextId}
+                documentId={viewing.id}
+                documentHash={viewing.hash}
+                showSaveToContext
+                onDocumentSaved={() => {
+                  setViewing(null);
+                  void loadDocuments();
+                }}
+              />
             )}
-            <PDFViewer
-              file={viewingFile}
-              onClose={() => setViewing(null)}
-              title={viewing.name}
-              showDownload
-              showClose
-              maxHeight="86vh"
-              contextId={contextId}
-              documentId={viewing.id}
-              documentHash={viewing.hash}
-              showSaveToContext
-              onDocumentSaved={() => {
-                setViewing(null);
-                void loadDocuments();
-              }}
-            />
           </div>
         </div>
       )}
