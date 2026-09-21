@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom';
+import BrandMark from './BrandMark';
 import { useMero } from '@calimero-network/mero-react';
 
 import styles from '../styles/shell.module.css';
@@ -52,9 +53,11 @@ export default function AppHeader({
         onClick={() => navigate('/teams')}
         data-testid="brand"
       >
-        {/* Green as a FILL with near-black ink — the one mark on the screen. */}
+        {/* Green as a FILL with near-black ink — the one mark on the screen.
+            The glyph is the PADLOCK from `public/favicon.svg`; it used to be a
+            `●`, so the tab and the header showed different products. */}
         <span className={styles.mark} aria-hidden="true">
-          ●
+          <BrandMark />
         </span>
         Mero Pass
       </button>

@@ -24,7 +24,8 @@
     "preview": "vite preview",
     "prettier": "prettier --check 'src/**/*.{js,jsx,ts,tsx,json}'",
     "prettier:write": "prettier --write 'src/**/*.{js,jsx,ts,tsx,json}'",
-    "shots": "node e2e/shots.mjs"
+    "shots": "node e2e/shots.mjs",
+    "test:live": "vitest run --config e2e/live/vitest.config.ts"
   },
   "dependencies": {
     "@calimero-network/mero-icons": "catalog:",
