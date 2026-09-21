@@ -223,17 +223,22 @@ export function shouldAdoptPin(resolution: RegistryResolution): boolean {
 }
 
 /**
- * The `data` map to send when pinning.
+ * The metadata record to send when pinning.
  *
- * ⚠️ `SetMetadataRequest` WHOLLY REPLACES the record: the server defaults
- * `data` to `{}` and stores that, so sending `{data: {pin}}` alone would delete
- * every other key the group carries. Merge onto what is already there.
+ * ⚠️ `SetMetadataRequest` WHOLLY REPLACES the record: an omitted `name` clears
+ * the workspace name and an omitted key is deleted. Merge onto what is there.
  */
-export function pinnedMetadataData(
-  existing: Readonly<Record<string, string>> | null | undefined,
+export function pinnedMetadata(
+  existing:
+    | { name?: string | null; data?: Readonly<Record<string, string>> | null }
+    | null
+    | undefined,
   contextId: string,
-): Record<string, string> {
-  return { ...(existing ?? {}), [REGISTRY_PIN_KEY]: contextId };
+): { name?: string; data: Record<string, string> } {
+  return {
+    ...(existing?.name ? { name: existing.name } : {}),
+    data: { ...(existing?.data ?? {}), [REGISTRY_PIN_KEY]: contextId },
+  };
 }
 
 /** Read the pin out of a group metadata record, tolerating every absent shape. */

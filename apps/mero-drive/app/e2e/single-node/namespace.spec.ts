@@ -14,8 +14,7 @@ test.describe('Namespace (single-node)', () => {
     ).toContainText('Phoenix Alpha');
   });
 
-  // The switcher labels options by namespace id, not name, so selectOption({ label }) finds nothing.
-  test.fixme('switch between namespaces', async ({ alice }) => {
+  test('switch between namespaces', async ({ alice }) => {
     await alice.goToWorkspace();
     await alice.createNamespace('Phoenix A');
     await alice.createNamespace('Phoenix B');
