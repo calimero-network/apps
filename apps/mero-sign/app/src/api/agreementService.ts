@@ -10,24 +10,11 @@ import { ClientApiDataSource } from './dataSource/ClientApiDataSource';
 import { Agreement } from './clientApi';
 import { CreateContextProps, CreateContextResponse } from './nodeApi';
 import { resolveAgreementName } from '../lib/agreementName';
-import bs58 from 'bs58';
 
 /**
  * Convert a value to base58 string.
  * Handles byte arrays from the contract and passes through strings.
  */
-function toBase58String(value: string | number[] | Uint8Array): string {
-  if (typeof value === 'string') {
-    return value;
-  }
-  if (Array.isArray(value)) {
-    return bs58.encode(new Uint8Array(value));
-  }
-  if (value instanceof Uint8Array) {
-    return bs58.encode(value);
-  }
-  return String(value);
-}
 
 export class AgreementService {
   private contextApi: ContextApiDataSource;
@@ -115,77 +102,33 @@ export class AgreementService {
         };
       }
 
-      let contextsArray: any[] = [];
-      const responseData = contextsResponse.data;
-
-      if (Array.isArray(responseData)) {
-        contextsArray = responseData;
-      } else if (responseData && Array.isArray(responseData.output)) {
-        contextsArray = responseData.output;
-      } else if (responseData && Array.isArray(responseData.result)) {
-        contextsArray = responseData.result;
-      } else {
-        console.error(
-          'AgreementService: Invalid contexts data, expected array but got:',
-          typeof responseData,
-          responseData,
-        );
-        return {
-          data: [],
-          error: null,
-        };
-      }
-
-      const agreements: Agreement[] = contextsArray.map((context: any) => {
-        // Convert context_id from byte array to base58 string if needed
-        const contextId = context.contextId
-          ? typeof context.contextId === 'string'
-            ? context.contextId
-            : toBase58String(context.contextId)
-          : context.context_id
-            ? typeof context.context_id === 'string'
-              ? context.context_id
-              : toBase58String(context.context_id)
-            : '';
-
-        if (context.contextId || context.context_id) {
-          return {
-            id: contextId,
-            name: resolveAgreementName({
-              stored: context.context_name,
-              contextId,
-            }),
-            contextId: contextId,
-            memberPublicKey:
-              context.executorId || toBase58String(context.shared_identity),
-            role: context.role || ' ',
-            joinedAt: context.joinedAt || context.joined_at || ' ',
-            privateIdentity:
-              context.executorId || toBase58String(context.private_identity),
-            sharedIdentity:
-              context.executorId || toBase58String(context.shared_identity),
-          };
-        }
-
-        // Handle old API structure (fallback)
-        // Convert byte arrays to base58 strings
-        const sharedIdentity = toBase58String(context.shared_identity);
-        const privateIdentity = toBase58String(context.private_identity);
-
-        return {
-          id: contextId,
+      // ⚠️ NO ENVELOPE GUESSING, AND NO BASE58.
+      //
+      // What was here read `responseData.output`, then `responseData.result`,
+      // then gave up — three guesses at a JSON-RPC envelope that the data
+      // source used to hand through raw. It returns typed `ContextMetadata[]`
+      // now, so the guesses are unreachable and the compiler says so.
+      //
+      // The mapping below also ran every id through `bs58.encode`. Core
+      // 0.11.0-rc.27 removed base58 from the wire — ids are hex — so each of
+      // those was an id in an encoding the contract rejects, rendered into the
+      // UI and copied out of it by hand. `ClientApiDataSource` now hands back
+      // hex, and there is nothing left here to convert.
+      const agreements: Agreement[] = (contextsResponse.data ?? []).map(
+        (context) => ({
+          id: context.context_id,
           name: resolveAgreementName({
             stored: context.context_name,
-            contextId,
+            contextId: context.context_id,
           }),
-          contextId: contextId,
-          memberPublicKey: sharedIdentity,
+          contextId: context.context_id,
+          memberPublicKey: context.shared_identity,
           role: context.role,
           joinedAt: context.joined_at,
-          privateIdentity: privateIdentity,
-          sharedIdentity: sharedIdentity,
-        };
-      });
+          privateIdentity: context.private_identity,
+          sharedIdentity: context.shared_identity,
+        }),
+      );
 
       return {
         data: agreements,

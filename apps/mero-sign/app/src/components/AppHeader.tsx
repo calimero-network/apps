@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getAppEndpointKey, useCalimero } from '../lib/node';
+import { useMero } from '@calimero-network/mero-react';
+import { useCalimero } from '../lib/node';
 import styles from '../pages/app/AgreementsPage.module.css';
 
 // ── The application shell ────────────────────────────────────────────────────
@@ -23,18 +23,24 @@ import styles from '../pages/app/AgreementsPage.module.css';
 // "which node am I on" is the one thing the connect chrome displayed that was
 // worth displaying — but as a diagnostic, not as a control.
 
-/** The node this session is talking to, shortened to its host. */
+/**
+ * The node this session is talking to, shortened to its host.
+ *
+ * ⚠️ THIS READOUT WAS PERMANENTLY BLANK. It read `getAppEndpointKey()`, which
+ * had been reduced to `return null` when this app moved to mero-js — the SDK
+ * owns the node URL now — so the one diagnostic the old connect chrome was
+ * kept for displayed nothing, and the `try/catch` around it meant it did so
+ * silently. `useMero().nodeUrl` is where the URL actually lives.
+ */
 function useNodeHost(): string {
-  const [host, setHost] = useState('');
-  useEffect(() => {
-    try {
-      const url = getAppEndpointKey();
-      setHost(url ? new URL(url).host : '');
-    } catch {
-      setHost('');
-    }
-  }, []);
-  return host;
+  const { nodeUrl } = useMero();
+  if (!nodeUrl) return '';
+  try {
+    return new URL(nodeUrl).host;
+  } catch {
+    // A stored value that is not a URL: show nothing rather than a raw string.
+    return '';
+  }
 }
 
 export function AppHeader({ back }: { back?: { label: string; to: string } }) {
