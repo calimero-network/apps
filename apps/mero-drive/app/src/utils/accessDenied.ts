@@ -1,12 +1,7 @@
-// Classify errors coming out of admin-api / RPC calls into "you
-// don't have access to this resource" vs everything else.
-//
-// The node surfaces membership-gated endpoints with 500 + a body
-// like `identity is not a member of group '...'`. Other 500s (real
-// node errors, bad payloads, transient network) have different
-// bodies. Treating the membership-denial as its own category lets
-// the UI show a friendly "Restricted folder" card rather than a
-// scary red error message.
+import { AuthRevokedError, HTTPError } from '@calimero-network/mero-js';
+
+// Membership-refusal checks for admin-api / RPC errors, so the UI can show a
+// restricted state instead of a red error.
 
 function extractErrorText(err: unknown): string {
   if (!err) return '';
@@ -48,12 +43,21 @@ export function isAccessDeniedError(err: unknown): boolean {
 }
 
 // get_group_info refuses a non-member with an untyped 500, so a failed probe is
-// confirmed against list_group_members, which refuses it with a typed 403.
+// confirmed against list_group_members, which refuses it with a 403.
 export async function isGroupAccessDenied(
   admin: { listGroupMembers(groupId: string): Promise<unknown> },
   groupId: string,
   probeError: unknown,
 ): Promise<boolean> {
-  if (isAccessDeniedError(probeError)) return true;
-  return admin.listGroupMembers(groupId).then(() => false, isAccessDeniedError);
+  if (isForbidden(probeError)) return true;
+  return admin.listGroupMembers(groupId).then(() => false, isForbidden);
+}
+
+// A revoked session also answers 403, but says nothing about membership.
+function isForbidden(err: unknown): boolean {
+  return (
+    err instanceof HTTPError &&
+    !(err instanceof AuthRevokedError) &&
+    err.status === 403
+  );
 }

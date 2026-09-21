@@ -1,32 +1,60 @@
 import { describe, it, expect, vi } from 'vitest';
+import { AuthRevokedError, HTTPError } from '@calimero-network/mero-js';
 import { isGroupAccessDenied } from '../accessDenied';
 
-const internal = { status: 500, bodyText: '{"error":"Internal server error"}' };
-const notMember = {
-  status: 403,
-  bodyText: `{"error":"node is not a member of group 'x'"}`,
-};
+const httpError = (status: number, body: string) =>
+  new HTTPError(status, '', '/admin-api/groups/g', new Headers(), body);
+
+const internal = httpError(500, '{"error":"Internal server error"}');
+const denied = httpError(403, '{"error":"refused"}');
 
 describe('isGroupAccessDenied', () => {
-  it('confirms a generic probe failure as a denial via the member list', async () => {
-    const admin = { listGroupMembers: vi.fn().mockRejectedValue(notMember) };
+  it('confirms a failed probe as a denial when the member list answers 403', async () => {
+    const admin = { listGroupMembers: vi.fn().mockRejectedValue(denied) };
     await expect(isGroupAccessDenied(admin, 'g', internal)).resolves.toBe(true);
     expect(admin.listGroupMembers).toHaveBeenCalledWith('g');
   });
 
   it('keeps a folder visible when the member list answers', async () => {
-    const admin = { listGroupMembers: vi.fn().mockResolvedValue({ members: [] }) };
-    await expect(isGroupAccessDenied(admin, 'g', internal)).resolves.toBe(false);
+    const admin = {
+      listGroupMembers: vi.fn().mockResolvedValue({ members: [] }),
+    };
+    await expect(isGroupAccessDenied(admin, 'g', internal)).resolves.toBe(
+      false,
+    );
   });
 
-  it('keeps a folder visible when both calls fail for another reason', async () => {
-    const admin = { listGroupMembers: vi.fn().mockRejectedValue(internal) };
-    await expect(isGroupAccessDenied(admin, 'g', internal)).resolves.toBe(false);
+  it('keeps a folder visible on a 500 whose body reads like a denial', async () => {
+    const admin = {
+      listGroupMembers: vi
+        .fn()
+        .mockRejectedValue(
+          httpError(500, '{"error":"forbidden: not a member"}'),
+        ),
+    };
+    await expect(isGroupAccessDenied(admin, 'g', internal)).resolves.toBe(
+      false,
+    );
   });
 
-  it('trusts a probe failure that already names the denial', async () => {
+  it('keeps a folder visible when the 403 is a revoked session', async () => {
+    const revoked = new AuthRevokedError(
+      'token_revoked',
+      403,
+      '',
+      '/',
+      new Headers(),
+      '',
+    );
+    const admin = { listGroupMembers: vi.fn().mockRejectedValue(revoked) };
+    await expect(isGroupAccessDenied(admin, 'g', internal)).resolves.toBe(
+      false,
+    );
+  });
+
+  it('trusts a probe that is itself refused with 403', async () => {
     const admin = { listGroupMembers: vi.fn() };
-    await expect(isGroupAccessDenied(admin, 'g', notMember)).resolves.toBe(true);
+    await expect(isGroupAccessDenied(admin, 'g', denied)).resolves.toBe(true);
     expect(admin.listGroupMembers).not.toHaveBeenCalled();
   });
 });
