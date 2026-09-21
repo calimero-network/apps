@@ -1,5 +1,58 @@
 import { ContextApiDataSource } from './dataSource/nodeApiDataSource';
-import { apiClient } from '../lib/node';
+import { adminApi, apiClient } from '../lib/node';
+
+/**
+ * The context rows, out of whatever the listing answered with.
+ *
+ * ⚠️ `getContexts()` RESOLVES TO `{contexts: [...]}`, NOT AN ARRAY, and the
+ * rows are keyed `id`, not `contextId`. The discovery loop here used to do
+ *
+ *     for (const context of contexts)  // contexts = {contexts: [...]}
+ *
+ * which throws `contexts is not iterable` on the first iteration, into the
+ * outer catch — so `ensureDefaultContext` returned `{success: false}` every
+ * single time and the private context was NEVER found. That is the whole of
+ * the reported
+ *
+ *     Default context not found. Please ensure you are connected to Calimero
+ *     and have a default context initialized.
+ *
+ * on `createSignature`, `listSignatures` and `joinSharedContext` — one cause,
+ * three screens. And even had it iterated, `context.contextId` is `undefined`
+ * on every row, so each candidate would have been looked up by nothing.
+ *
+ * Both spellings are accepted because this listing has had both.
+ */
+export function contextRows(
+  listed: unknown,
+): { contextId: string; applicationId: string }[] {
+  const raw =
+    listed && typeof listed === 'object' && 'contexts' in listed
+      ? (listed as { contexts: unknown }).contexts
+      : listed;
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((r) => {
+      const row = (r ?? {}) as Record<string, unknown>;
+      const contextId = (row.id ?? row.contextId) as string | undefined;
+      return {
+        contextId: typeof contextId === 'string' ? contextId : '',
+        applicationId:
+          typeof row.applicationId === 'string' ? row.applicationId : '',
+      };
+    })
+    .filter((r) => !!r.contextId);
+}
+
+/** This node's member identity in a context, or null if it holds none. */
+async function ownedIdentity(contextId: string): Promise<string | null> {
+  try {
+    const res = await adminApi().getContextIdentitiesOwned(contextId);
+    return res?.identities?.[0] ?? null;
+  } catch {
+    return null;
+  }
+}
 
 export interface DefaultContextInfo {
   contextId: string;
@@ -203,10 +256,10 @@ export class DefaultContextService {
         this.isCreatingContext = true;
       }
 
-      let contexts;
+      let listed: unknown;
       try {
         if (this.app && this.app.fetchContexts) {
-          contexts = await this.app.fetchContexts();
+          listed = await this.app.fetchContexts();
         }
       } catch (error) {
         console.warn(
@@ -215,30 +268,39 @@ export class DefaultContextService {
         );
       }
 
-      if (!contexts) {
+      if (listed === undefined) {
         try {
           const result = await apiClient.node().getContexts();
-          contexts = (result.data as unknown as any[]) || [];
+          listed = result.data;
         } catch (error) {
           console.error('Error fetching contexts via API client:', error);
-          contexts = [];
+          listed = [];
         }
       }
 
-      for (const context of contexts) {
+      const contexts = contextRows(listed);
+
+      for (const row of contexts) {
         const contextInfo: DefaultContextInfo = {
-          contextId: context.contextId,
-          memberPublicKey: context.memberPublicKey || context.executorId,
-          executorId: context.executorId,
-          applicationId: context.applicationId,
-          context_name: context.context_name || 'default',
-          is_private: context.is_private || false,
+          contextId: row.contextId,
+          memberPublicKey: '',
+          executorId: '',
+          applicationId: row.applicationId,
+          context_name: 'default',
+          is_private: true,
         };
 
         const isDefaultPrivate =
           await this.isDefaultPrivateContextViaApi(contextInfo);
 
         if (isDefaultPrivate) {
+          // The member identity is not in the listing either — it is per
+          // context and per caller, so it has to be asked for. Without it
+          // every signature call runs with `memberPublicKey: undefined`.
+          contextInfo.memberPublicKey =
+            (await ownedIdentity(contextInfo.contextId)) ??
+            contextInfo.memberPublicKey;
+          contextInfo.executorId = contextInfo.memberPublicKey;
           this.storeDefaultContext(contextInfo);
 
           if (DefaultContextService.globalCreatingFlag) {
