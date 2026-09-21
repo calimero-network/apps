@@ -487,5 +487,25 @@ HTTP 409  method 'get' is not declared read-only; a session authorizes reads onl
 
 That is the gate working, not a client bug — and it applies to step 5 exactly as it does to
 step 9. If your `dist/*.mpk` predates 2026-09-15, rebuild it (`cargo mero build
---manifest-path apps/scaffolding-e2e/Cargo.toml` in core) or the read cannot succeed however
-correct the session is.
+--manifest-path apps/scaffolding-e2e/Cargo.toml`, then `cargo mero bundle --dev --no-icon`
+from the app's directory) or the read cannot succeed however correct the session is.
+
+**Reinstalling is not enough, and this is the part that will waste your afternoon.** The
+application id is derived from package + version, so a rebuilt bundle installs over the same
+id — but a **namespace pins a bytecode blob at creation** (`appKey`, the `bytecodeId` that
+`namespace create` defaults to "latest installed"). Every context in that namespace keeps
+executing the pinned blob, so a namespace created before the rebuild still runs the old wasm
+and still answers 409, even for a context created after it. The admin ABI endpoint will
+cheerfully report `intent: read_only` the whole time, because it reads the *application's*
+current blob rather than the one your context executes.
+
+Compare them before debugging anything else:
+
+```bash
+curl -s localhost:2428/admin-api/namespaces/<namespace-id> -H "Authorization: Bearer $TOKEN"   # appKey
+curl -s localhost:2428/admin-api/applications -H "Authorization: Bearer $TOKEN"                # blob.bytecode
+```
+
+Different values mean the namespace is pinned to an older build. Create a **new namespace**
+after installing the rebuilt bundle (and re-add members and the `CAN_AUTHOR_ON_BEHALF` grant
+there — both are per-namespace).
