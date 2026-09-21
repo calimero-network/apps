@@ -28,6 +28,14 @@ interface CanvasState {
   collapsedGroups: Record<string, boolean>;
 
   setTool: (tool: Tool) => void;
+  /**
+   * Hand control back to the pointer with `id` selected — what should happen
+   * the moment an item is put down, and the moment an existing item is clicked
+   * with a creation tool still held. `setTool` alone cannot express it: it
+   * clears the selection, so calling it after `selectElement` would drop the
+   * very item the user is now meant to be holding.
+   */
+  selectWithPointer: (id: string) => void;
   selectElement: (id: string | null) => void;
   selectElements: (ids: string[]) => void;
   toggleSelected: (id: string) => void;
@@ -66,6 +74,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   collapsedGroups: {},
 
   setTool: (tool) => set({ activeTool: tool, selectedElementId: null, selectedElementIds: [] }),
+  selectWithPointer: (id) => set({ activeTool: "select", selectedElementId: id, selectedElementIds: [id] }),
   selectElement: (id) => set({ selectedElementId: id, selectedElementIds: id ? [id] : [] }),
   selectElements: (ids) => set({ selectedElementIds: ids, selectedElementId: ids[0] ?? null }),
   toggleSelected: (id) =>

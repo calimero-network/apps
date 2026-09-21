@@ -34,13 +34,14 @@ export default function CanvasPage() {
   // so selecting a shape — which touches nothing this page renders — used to
   // re-render CanvasPage and, through it, the canvas, the toolbar and the whole
   // layers tree. Measured at 300 elements: 309ms p95 for a click. See e2e/perf/.
-  const { setElements, upsertElement, removeElement, cacheImage, elements, imageCache, previewMode, setPreviewMode } =
+  const { setElements, upsertElement, removeElement, cacheImage, selectWithPointer, elements, imageCache, previewMode, setPreviewMode } =
     useCanvasStore(
       useShallow((s) => ({
         setElements: s.setElements,
         upsertElement: s.upsertElement,
         removeElement: s.removeElement,
         cacheImage: s.cacheImage,
+        selectWithPointer: s.selectWithPointer,
         elements: s.elements,
         imageCache: s.imageCache,
         previewMode: s.previewMode,
@@ -550,6 +551,10 @@ export default function CanvasPage() {
     };
     cacheImage(id, dataUrl);
     upsertElement(el);
+    // The image is placed; the image tool has nothing left to do and would only
+    // sit lit in the toolbar. Hand back the pointer with the new image selected,
+    // the same way a drawn shape does.
+    selectWithPointer(id);
     await rpcCall(projectId, "add_element", { element: el }).catch(() => {});
   }
 
