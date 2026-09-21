@@ -248,6 +248,7 @@ describe('permission-gating', () => {
         folderId="f1"
         currentVisibility="Open"
         onRename={() => undefined}
+        onNewSubfolder={() => undefined}
       />,
     );
     // Trigger always renders so read-only members can open Info.
@@ -275,6 +276,7 @@ describe('permission-gating', () => {
         folderId="f1"
         currentVisibility="Open"
         onRename={() => undefined}
+        onNewSubfolder={() => undefined}
       />,
     );
     expect(screen.getByLabelText('Folder actions')).toBeTruthy();

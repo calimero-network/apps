@@ -7,7 +7,7 @@
 import { test } from '../fixtures/two-user';
 
 test.describe('Folder tree propagation (two-node)', () => {
-  // The folder actions menu's 'New subfolder' item never opens the create dialog, so nesting fails.
+  // The tree remounts on every workspace refetch, so the actions menu and New subfolder dialog detach mid-flow.
   test.fixme('Nested folders created on Alice appear on Bob with same shape',
     async ({ alice, bob }) => {
       await alice.goToWorkspace();
@@ -22,9 +22,12 @@ test.describe('Folder tree propagation (two-node)', () => {
       const inviteUrl = await alice.settings.copyNamespaceInvite();
       await alice.closeSettings();
 
+      // The tree starts collapsed; a child row only renders once its parent is expanded.
       await bob.joinNamespace(inviteUrl);
       await bob.tree.expectFolderVisible('A', { timeout: 60_000 });
+      await bob.tree.expandFolder('A');
       await bob.tree.expectFolderVisible('B', { timeout: 60_000 });
+      await bob.tree.expandFolder('B');
       await bob.tree.expectFolderVisible('C', { timeout: 60_000 });
     });
 
@@ -36,7 +39,7 @@ test.describe('Folder tree propagation (two-node)', () => {
       void bob;
     });
 
-  // The folder actions menu's 'New subfolder' item never opens the create dialog, so nesting fails.
+  // The tree remounts on every workspace refetch, so the actions menu and New subfolder dialog detach mid-flow.
   test.fixme("Deleting A/B/C drops it from Bob's tree", async ({ alice, bob }) => {
     await alice.goToWorkspace();
     await alice.createNamespace('Delete Prop WS');
@@ -49,6 +52,10 @@ test.describe('Folder tree propagation (two-node)', () => {
     await alice.closeSettings();
 
     await bob.joinNamespace(inviteUrl);
+    await bob.tree.expectFolderVisible('A', { timeout: 60_000 });
+    await bob.tree.expandFolder('A');
+    await bob.tree.expectFolderVisible('B', { timeout: 60_000 });
+    await bob.tree.expandFolder('B');
     await bob.tree.expectFolderVisible('C', { timeout: 60_000 });
 
     await alice.deleteFolder('C');
