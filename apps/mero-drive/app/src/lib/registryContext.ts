@@ -222,12 +222,8 @@ export function shouldAdoptPin(resolution: RegistryResolution): boolean {
   return resolution.status === 'resolved' && resolution.source !== 'pin';
 }
 
-/**
- * The metadata record to send when pinning.
- *
- * `SetMetadataRequest` WHOLLY REPLACES the record: an omitted `name` clears
- * the workspace name and an omitted key is deleted. Merge onto what is there.
- */
+/** The record to pin. `SetMetadataRequest` replaces it whole, so an omitted
+ *  `name` or key would be cleared: merge onto what is there. */
 export function pinnedMetadata(
   existing:
     | { name?: string | null; data?: Readonly<Record<string, string>> | null }
