@@ -512,12 +512,8 @@ jobs:
             --app-version 0.0.0 \
             --output "dist/dry-run-${{ matrix.app }}.mpk"
 
-      # The ABI is resolved from the compiled `__calimero_abi()`, so this is the
-      # authoritative copy. A stale committed ABI would let the generated-client
-      # check validate against a snapshot of a contract that no longer exists and
-      # report success. It runs after the bundle, not the build: `cargo mero build`
-      # rebuilds only the primary crate, while the bundle rebuilds every service the
-      # manifest lists and rewrites each one's res/, including logic/crates/<name>/.
+      # After the bundle, not the build: only the bundle rebuilds every service the
+      # manifest lists, so only then is each logic/crates/<name>/res/ ABI current.
       - name: Assert the committed ABIs match the built contracts
         env:
           ABI: ":(glob)apps/*/logic/**/res/abi.json"
@@ -528,9 +524,9 @@ jobs:
           # the gate that exists to notice exactly that.
           git add --intent-to-add -- "$ABI" "$SCHEMA" 2>/dev/null || true
           if ! git diff --quiet -- "$ABI" "$SCHEMA"; then
-            echo "::error::a committed ABI is stale. Run 'cargo mero bundle --manifest-path apps/${{ matrix.app }}/logic/Cargo.toml --dev --app-version 0.0.0 --output /tmp/dry-run.mpk' and 'pnpm -F ${{ matrix.app }} codegen', then commit."
+            echo "::error::a committed ABI is stale. Run '${RUSTFLAGS:+RUSTFLAGS=\"$RUSTFLAGS\" }cargo mero bundle --manifest-path apps/${{ matrix.app }}/logic/Cargo.toml --dev --app-version 0.0.0 --output /tmp/dry-run.mpk' and 'pnpm -F ${{ matrix.app }} codegen', then commit."
             git --no-pager diff --stat -- "$ABI" "$SCHEMA"
-            git --no-pager diff -- "$ABI" | head -200
+            git --no-pager diff -- "$ABI" "$SCHEMA" | head -200
             exit 1
           fi
           echo "committed ABIs match the built contracts"
