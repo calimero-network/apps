@@ -282,18 +282,34 @@ async function grantAdmin(
 }
 
 /**
- * Repair a team whose creator was never granted Admin. Best-effort, silent.
+ * Repair a team whose creator was never granted the Admin MASK.
  *
  * Teams made before `createTeam` granted the creator anything are stuck: the
- * only member holds the Member mask, and the one control that could raise it is
+ * creator holds the Admin ROLE (they made it) but only the Member mask, every
+ * gate in this app asks the mask, and the one control that could raise it is
  * itself behind an Admin gate. This is how they get unstuck — the team screen
  * tries once on load, and a success re-reads the mask.
  *
- * ⚠️ IT CANNOT ESCALATE ANYONE. The attempt is an ordinary
- * `setMemberCapabilities` call and the NODE decides: a member who is not the
- * owner is refused, and we swallow that refusal because for them it is the
- * expected answer, not an error worth a toast. Nothing here grants anything on
- * its own say-so — being able to ask is not being allowed.
+ * ⚠️ IT ONLY ASKS WHEN IT CAN PLAUSIBLY SUCCEED, and that is not fussiness.
+ *
+ * It used to attempt the write whenever the mask was below Admin, on the
+ * reasoning that "the NODE decides" and a refusal is harmless. The node does
+ * decide, and it refuses correctly — with an HTTP 403:
+ *
+ *     identity AccountId([...]) is not an admin of group ContextGroupId([...])
+ *
+ * But that is EVERY INVITED MEMBER, on EVERY team-page load, forever: their
+ * mask is Member by design and will never rise on its own, so the attempt can
+ * never succeed and is retried for the life of the team. Swallowed, so the UI
+ * says nothing — and the console and network tab fill with 403s that look
+ * exactly like a broken app, which is how this was reported.
+ *
+ * ROLE is the deciding question, because role is what core's
+ * `require_namespace_admin` actually checks (`MembershipRepository::is_admin`)
+ * — the mask is a separate field, which is the whole reason a creator can be
+ * Admin-by-role and Member-by-mask at the same time. So: ask for the role
+ * first, and only reach for the write when this account really is an Admin
+ * whose mask has fallen behind.
  *
  * @returns the mask afterwards when it changed, or null when it did not.
  */
@@ -305,6 +321,19 @@ export async function repairCreatorAdmin(
 ): Promise<number | null> {
   if (current === null) return null;
   if ((current & ADMIN_CAPABILITIES) === ADMIN_CAPABILITIES) return null;
+
+  // A read, and a cheap one — `listGroupMembers` is already fetched by the
+  // People tab. A Member gets no further, so no 403 is ever provoked.
+  const isAdminByRole = await admin
+    .listGroupMembers(namespaceId)
+    .then((r) =>
+      (r.members ?? []).some(
+        (m) => m.identity === accountId && m.role === 'Admin',
+      ),
+    )
+    .catch(() => false);
+  if (!isAdminByRole) return null;
+
   try {
     const after = await grantAdmin(admin, namespaceId, accountId);
     return after === current ? null : after;

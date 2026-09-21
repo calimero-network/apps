@@ -60,6 +60,14 @@
   flex-shrink: 0;
 }
 
+/* The keyhole is knocked OUT of the padlock body, so it has to be painted in
+   the tile's fill rather than left transparent — an SVG child cannot punch a
+   hole through its own sibling. */
+.mark :global(.keyhole) {
+  fill: var(--accent);
+  stroke: none;
+}
+
 .back {
   background: none;
   border: none;

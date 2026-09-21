@@ -786,19 +786,68 @@ describe('createTeam grants the creator Admin', () => {
 });
 
 describe('repairCreatorAdmin', () => {
+  const CREATOR = 'a'.repeat(64);
+  const MEMBER = 'b'.repeat(64);
+  /** The roster the node answers with: the creator is Admin BY ROLE. */
+  const roster = {
+    members: [
+      { identity: CREATOR, role: 'Admin' },
+      { identity: MEMBER, role: 'Member' },
+    ],
+  };
+
   it('raises a stranded creator and reports the new mask', async () => {
     const { admin, calls } = fakeAdmin({
+      listGroupMembers: () => Promise.resolve(roster),
       getMemberCapabilities: () =>
         Promise.resolve({ capabilities: ADMIN_CAPABILITIES }),
     });
     const after = await repairCreatorAdmin(
       admin as unknown as AdminLike,
       'ns-1',
-      'a'.repeat(64),
+      CREATOR,
       MEMBER_CAPABILITIES,
     );
     expect(after).toBe(ADMIN_CAPABILITIES);
     expect(methodsOf(calls)).toContain('setMemberCapabilities');
+  });
+
+  // ⚠️ THE REPORTED BUG. This ran on every team-page load for every member,
+  // and an invited member's mask is Member by design and never rises — so the
+  // write could never succeed and was retried forever. The node refused it
+  // correctly, with an HTTP 403 naming the account and the group, and the
+  // catch swallowed it: the UI said nothing while the network tab filled with
+  // 403s that read as a broken app.
+  //
+  // ROLE is the deciding question because role is what core's
+  // `require_namespace_admin` checks; the mask is a different field, which is
+  // exactly why a creator can be Admin-by-role and Member-by-mask at once.
+  it('asks NOTHING of the node for a plain Member', async () => {
+    const { admin, calls } = fakeAdmin({
+      listGroupMembers: () => Promise.resolve(roster),
+    });
+    const after = await repairCreatorAdmin(
+      admin as unknown as AdminLike,
+      'ns-1',
+      MEMBER,
+      MEMBER_CAPABILITIES,
+    );
+    expect(after).toBeNull();
+    expect(methodsOf(calls)).not.toContain('setMemberCapabilities');
+  });
+
+  it('asks nothing when the roster cannot be read, rather than guessing', async () => {
+    const { admin, calls } = fakeAdmin({
+      listGroupMembers: () => Promise.reject(new Error('not synced yet')),
+    });
+    const after = await repairCreatorAdmin(
+      admin as unknown as AdminLike,
+      'ns-1',
+      CREATOR,
+      MEMBER_CAPABILITIES,
+    );
+    expect(after).toBeNull();
+    expect(methodsOf(calls)).not.toContain('setMemberCapabilities');
   });
 
   it('does nothing when the caller is already an Admin', async () => {
@@ -814,17 +863,20 @@ describe('repairCreatorAdmin', () => {
     expect(methodsOf(calls)).not.toContain('setMemberCapabilities');
   });
 
-  it('swallows the refusal an ordinary member gets', async () => {
-    // The node decides. For a non-owner the 403 IS the correct answer, so it
-    // must not surface as an error on a screen they can legitimately open.
+  it('still swallows a refusal, for the Admin whose write races a demotion', async () => {
+    // Narrower than it was: the roster says Admin, so the attempt is
+    // legitimate — but authority can change between the read and the write,
+    // and a refusal there is not an error worth a toast on a screen the
+    // person can legitimately open.
     const { admin } = fakeAdmin({
+      listGroupMembers: () => Promise.resolve(roster),
       setMemberCapabilities: () => Promise.reject(new Error('403 forbidden')),
     });
     await expect(
       repairCreatorAdmin(
         admin as unknown as AdminLike,
         'ns-1',
-        'b'.repeat(64),
+        CREATOR,
         MEMBER_CAPABILITIES,
       ),
     ).resolves.toBeNull();
