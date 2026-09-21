@@ -122,8 +122,7 @@ describe('useMemberCaps', () => {
     12000,
   );
 
-  // Caps change by governance, which no context event reports; the registry
-  // context's sync runs are the tick that picks it up, and nothing else is.
+  // Caps change without a context event, so the registry's sync run is the only tick.
   it('refetches on the registry sync, not on another context ending first', async () => {
     const { result } = renderHook(() => useMemberCaps('ns', 'g1'));
     await waitFor(() => expect(result.current.caps).not.toBeNull());

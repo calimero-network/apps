@@ -57,8 +57,7 @@ export function useMemberDisplayName(
   );
   const { setMemberMetadata } = useSetMemberMetadata();
 
-  // Live-refresh when a remote setMemberMetadata lands. Governance has no
-  // event of its own, so the registry context's sync runs are the tick.
+  // Metadata changes without a context event; the registry's sync run is the tick.
   const onMetadataEvent = useCallback(() => {
     void refetch();
   }, [refetch]);

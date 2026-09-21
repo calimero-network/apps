@@ -73,9 +73,7 @@ export function FolderMemberRoleRow({
   const caps = useGroupCapabilities(folderId, identity);
   const [updating, setUpdating] = useState(false);
   const [updateError, setUpdateError] = useState<string | null>(null);
-  // Live-refresh this row's capability bitmask when an admin elsewhere
-  // changes this member's caps; the registry context's sync runs are the
-  // tick for governance changes.
+  // Caps change without a context event; the registry's sync run is the tick.
   //
   // Depend on `caps.refetch` (the stable useCallback inside
   // mero-react's useGroupCapabilities), NOT the whole `caps`

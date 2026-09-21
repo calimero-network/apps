@@ -83,9 +83,8 @@ export function useFolderMembership(folderId: string | null): FolderMembershipSt
     void refetch();
   }, [refetch]);
 
-  // Live-refresh when remote membership ops land. Governance has no event
-  // of its own, so the registry context's sync runs are the tick; the
-  // sequence guard in `refetch` handles overlapping fetches.
+  // Membership events are group-keyed, not context events; the registry's
+  // sync run is the tick, and `refetch`'s sequence guard drops stale replies.
   const onMembershipEvent = useCallback(() => {
     void refetch();
   }, [refetch]);

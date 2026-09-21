@@ -97,9 +97,7 @@ export function NamespaceMemberRow({
   const [updating, setUpdating] = useState(false);
   const [updateError, setUpdateError] = useState<string | null>(null);
   const [removing, setRemoving] = useState(false);
-  // Live-refresh this row's capability bitmask when an admin elsewhere
-  // edits the same member; the registry context's sync runs are the tick
-  // for governance changes.
+  // Caps change without a context event; the registry's sync run is the tick.
   //
   // Depend on `caps.refetch` (stable useCallback inside mero-react)
   // rather than the whole `caps` object — the object is a fresh

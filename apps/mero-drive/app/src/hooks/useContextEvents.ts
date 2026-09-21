@@ -79,9 +79,8 @@ export interface UseContextEventsOptions {
    * dings from an open editor (otherwise every autosave triggers a full
    * workspace refetch + getGroupInfo fan-out).
    *
-   * Governance state (membership, caps, member metadata) has no event of
-   * its own: its consumers subscribe strictly to the registry context,
-   * whose sync runs are the tick that picks it up.
+   * Caps and metadata change without a context event; their consumers
+   * subscribe strictly to the registry context, whose sync run is the tick.
    */
   strict?: boolean;
   /**

@@ -107,9 +107,7 @@ export function useMemberCaps(
   });
   const [tick, setTick] = useState(0);
   const refetch = useCallback(() => setTick((t) => t + 1), []);
-  // Live-refresh caller's own caps (someone promoted/demoted us, or our
-  // membership was just materialised via auto-follow). Governance has no
-  // event of its own, so the registry context's sync runs are the tick.
+  // Caps change without a context event; the registry's sync run is the tick.
   useContextEvents(registryContextId, refetch, {
     strict: true,
     debounceMs: 400,
