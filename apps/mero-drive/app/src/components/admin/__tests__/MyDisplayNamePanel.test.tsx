@@ -1,8 +1,5 @@
-// Regression for the "Your display name shows 'Not set yet' even though the
-// name is set (and shown in the members list)" bug: useMemberDisplayName can
-// return null on a fresh load (mero-react rehydration gap #42), so the panel
-// falls back to namespaceMemberNames (the namespace GroupMember rows the
-// members list reads), keyed by selfIdentity.
+// useMemberDisplayName can read null while the member rows carry the name, so
+// the panel falls back to namespaceMemberNames, keyed by selfIdentity.
 
 import { describe, it, expect, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
@@ -31,7 +28,7 @@ vi.mock('@/hooks/useMemberDisplayName', () => ({
 
 describe('MyDisplayNamePanel', () => {
   it('falls back to namespaceMemberNames when the metadata hook returns null', () => {
-    memberName.name = null; // #42: hook null even though name is set
+    memberName.name = null; // the hook reads null although the name is set
     driveState.namespaceMemberNames = { me: 'ronit' };
     render(<MyDisplayNamePanel />);
     // The input is pre-filled with the fallback name (not blank / "Not set yet").

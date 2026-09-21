@@ -1,8 +1,5 @@
-// "Your display name" — small settings panel where the current user
-// can set/update their own per-namespace display name. Backed by
-// core's setMemberMetadata (PR #2338); self-edit is always allowed
-// so no permission gating is needed here. Admin override (renaming
-// other members) is deferred — see PR description for follow-ups.
+// The caller's own per-namespace display name, via setMemberMetadata; self-edit
+// is always allowed, so nothing here is permission-gated.
 
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -18,12 +15,8 @@ export function MyDisplayNamePanel() {
     error,
     setName,
   } = useMemberDisplayName(namespaceId, selfIdentity);
-  // `useMemberDisplayName` (useMemberMetadata under the hood) can return
-  // null even when the name IS set server-side — a mero-react rehydration
-  // gap (mero-drive#42) that strands this panel on "Not set yet" while the
-  // members list shows the real name. Fall back to the namespace
-  // GroupMember rows (`namespaceMemberNames`, keyed by identity) that the
-  // members list reads, so the two surfaces agree.
+  // The metadata hook can read null while the member rows already carry the
+  // name; fall back to those rows so this panel and the members list agree.
   const name =
     hookName ??
     (selfIdentity ? namespaceMemberNames[selfIdentity] ?? null : null);
