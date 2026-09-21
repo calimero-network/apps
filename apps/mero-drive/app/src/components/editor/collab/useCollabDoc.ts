@@ -9,6 +9,7 @@ import * as Y from 'yjs';
 import { useContextEvents } from '@/hooks/useContextEvents';
 import { useDocs } from '@/hooks/useDocs';
 import { CalimeroYjsProvider } from './CalimeroYjsProvider';
+import { seedEmptyDoc } from './blocknote-seed';
 
 export interface UseCollabDocResult {
   /** The collaborative Y.Doc, or null until the doc is hydrated (or on error). */
@@ -79,6 +80,9 @@ export function useCollabDoc(
       .pullRemote()
       .then(() => {
         if (cancelled) return;
+        // Seed before exposing the doc so both replicas of a new doc share one
+        // root; a doc with content in the log is left as it is.
+        seedEmptyDoc(doc, prov);
         setYdoc(doc);
         setProvider(prov);
         setReady(true);

@@ -85,8 +85,7 @@ test.describe('Document collab (two-node)', () => {
   //
   // The two-node project's dev server is built with `VITE_COLLAB_YJS=true`
   // (playwright.config.ts), so the collaborative editor is what mounts here.
-  // Bob's concurrent edit is lost on both nodes; each editor ends with only Alice's text.
-  test.fixme('Concurrent edits MERGE (both writers survive) — Yjs collab path', async ({
+  test('Concurrent edits MERGE (both writers survive) — Yjs collab path', async ({
     alice,
     bob,
   }) => {
