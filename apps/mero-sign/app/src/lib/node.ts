@@ -81,7 +81,7 @@ export interface NodeApi {
   joinFromInvitation(
     namespaceId: string,
     invitation: unknown,
-  ): ApiResponse<unknown>;
+  ): ApiResponse<JoinNamespaceResult>;
   /**
    * Mint an open invitation. Kept under its old name and argument order so the
    * pages compile unchanged.
@@ -97,11 +97,19 @@ export interface NodeApi {
     executorPublicKey?: string,
     validForBlocks?: number,
   ): ApiResponse<ContextInviteByOpenInvitationResponse>;
-  /** Redeem one. Invitation first, matching the old argument order. */
+  /**
+   * Redeem one.
+   *
+   * ⚠️ NAMESPACE FIRST. The old signature was `(invitation, publicKey?)`,
+   * from when an invitation named a context and the node worked out the rest.
+   * `joinNamespace` takes the namespace in the PATH, so it has to be supplied
+   * — and it is not optional: the previous code sent `''` and the node has no
+   * namespace by that name.
+   */
   joinContextByOpenInvitation(
+    namespaceId: string,
     invitation: unknown,
-    publicKey?: string,
-  ): ApiResponse<JoinContextResponse>;
+  ): ApiResponse<JoinNamespaceResult>;
   /** This node's identity. */
   createNewIdentity(): ApiResponse<NodeIdentity>;
 }
@@ -125,6 +133,25 @@ export interface JoinContextResponse {
   memberPublicKey?: string;
 }
 
+/**
+ * What `joinNamespace` ACTUALLY answers.
+ *
+ * ⚠️ THERE IS NO `contextId` IN IT, and that is the shape of the whole
+ * invitation flow. Joining a namespace makes you a member of the workspace; it
+ * does not put you in any of its agreements — those are subgroups, and you
+ * enter one by inheritance afterwards (`enterAgreement` in `lib/agreements`).
+ * Code that reads `contextId` off this response gets `undefined` and reports
+ * "the node accepted the invitation but did not say which context it joined",
+ * which is true and is not the node's fault.
+ */
+export interface JoinNamespaceResult {
+  namespaceId: string;
+  groupId?: string;
+  memberIdentity: string;
+  memberAccount: string;
+  groupName?: string;
+}
+
 /** What the old `contextInviteByOpenInvitation` resolved to. */
 export interface ContextInviteByOpenInvitationResponse {
   contextId?: string;
@@ -142,14 +169,8 @@ export function nodeApi(mero: MeroJs): NodeApi {
         const res = await mero.admin.createNamespaceInvitation(namespaceId, {});
         return res as ContextInviteByOpenInvitationResponse;
       }),
-    joinContextByOpenInvitation: (invitation) =>
-      wrap(async () => {
-        const res = await mero.admin.joinNamespace(
-          '',
-          invitation as Parameters<MeroJs['admin']['joinNamespace']>[1],
-        );
-        return res as JoinContextResponse;
-      }),
+    joinContextByOpenInvitation: (namespaceId, invitation) =>
+      wrap(async () => join_(namespaceId, invitation)),
     createNewIdentity: () =>
       wrap(async () => {
         const id = await mero.admin.getNodeIdentity();
@@ -158,12 +179,28 @@ export function nodeApi(mero: MeroJs): NodeApi {
   };
 
   function join(namespaceId: string, invitation: unknown) {
-    return wrap(() =>
-      mero.admin.joinNamespace(
-        namespaceId,
-        invitation as Parameters<MeroJs['admin']['joinNamespace']>[1],
-      ),
-    );
+    return wrap(() => join_(namespaceId, invitation));
+  }
+
+  /**
+   * ⚠️ THE INVITATION IS A FIELD, NOT THE BODY. `JoinNamespaceRequest` is
+   * `{invitation, groupName?}`, and every core request body is
+   * `deny_unknown_fields` — so posting the bare `SignedGroupOpenInvitation`
+   * sends `{invitation: {...}, inviter_signature: ...}` at the top level, which
+   * is a 400 naming `inviter_signature` for the whole call. The two are easy to
+   * confuse because the signed object has a field of its own called
+   * `invitation`.
+   */
+  async function join_(
+    namespaceId: string,
+    invitation: unknown,
+  ): Promise<JoinNamespaceResult> {
+    const res = await mero.admin.joinNamespace(namespaceId, {
+      invitation: invitation as Parameters<
+        MeroJs['admin']['joinNamespace']
+      >[1]['invitation'],
+    });
+    return res as JoinNamespaceResult;
   }
 }
 
@@ -241,6 +278,18 @@ function required(): MeroJs {
 export const apiClient = {
   node: (): NodeApi => nodeApi(required()),
 };
+
+/**
+ * `mero.admin`, for the code that needs the real namespace/subgroup surface
+ * rather than the six-method shim above.
+ *
+ * The shim exists so ~20 call sites through the signing path did not have to
+ * change when the SDK did. The workspace model is new code and has no such
+ * debt, so it calls the SDK directly — see the note at the top of this file.
+ */
+export function adminApi(): MeroJs['admin'] {
+  return required().admin;
+}
 
 export const blobClient: BlobApi = {
   uploadBlob: (file, onProgress, contextId) =>

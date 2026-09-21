@@ -50,6 +50,7 @@
 /** Which screen a path shows. `landing` and `notFound` render signed-out too. */
 export type Screen =
   | 'landing'
+  | 'workspaces'
   | 'agreements'
   | 'agreement'
   | 'signatures'
@@ -81,6 +82,15 @@ export const ROUTES: readonly RouteDef[] = [
   { path: '/landing', screen: 'landing', publicScreen: true },
   { path: '/docs', screen: 'landing', publicScreen: true },
   { path: '/preview', screen: 'landing', publicScreen: true },
+  { path: '/workspaces', screen: 'workspaces', publicScreen: false },
+  // The agreements inside one workspace. `/agreements` below shows the same
+  // screen for whichever workspace is active, so a link to a workspace and the
+  // app's own navigation land in the same place.
+  {
+    path: '/workspaces/:workspaceId',
+    screen: 'agreements',
+    publicScreen: false,
+  },
   { path: '/agreements', screen: 'agreements', publicScreen: false },
   {
     path: '/agreements/:agreementId',
@@ -98,8 +108,13 @@ export const CATCH_ALL = '*';
  * What a signed-in visitor sees at `/`.
  *
  * Expressed as a RENDER decision in `App.tsx`, not a redirect: a signed-in
- * person at `/` is shown their agreements without the URL changing underneath
+ * person at `/` is shown their workspaces without the URL changing underneath
  * them. The landing page stays reachable at `/landing` whether or not you are
  * signed in, which is what makes it a front door rather than a fallback.
+ *
+ * The workspace picker rather than the agreements list, because an agreement
+ * cannot exist outside a workspace: rc.41 binds every context to a group, so
+ * "your agreements" with no workspace chosen is a screen whose only button
+ * cannot work. See `lib/agreements`.
  */
-export const HOME_SCREEN_WHEN_SIGNED_IN: Screen = 'agreements';
+export const HOME_SCREEN_WHEN_SIGNED_IN: Screen = 'workspaces';

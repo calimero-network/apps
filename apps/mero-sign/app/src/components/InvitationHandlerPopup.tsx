@@ -67,8 +67,12 @@ const Message = styled.div<{ type?: 'success' | 'error' | 'info' }>`
 
 const STAGE_COPY: Record<RedeemStage, { title: string; body: string }> = {
   joining: {
-    title: 'Joining the agreement…',
+    title: 'Joining the workspace…',
     body: 'Asking your node to accept the invitation.',
+  },
+  entering: {
+    title: 'Opening the agreement…',
+    body: 'An invitation is to a workspace; this is finding the agreement inside it.',
   },
   syncing: {
     title: 'Syncing the agreement…',
@@ -93,7 +97,17 @@ const ButtonGroup = styled.div`
 interface InvitationHandlerPopupProps {
   /** The captured invitation — a link, a code, or a pasted payload. */
   invitation: string;
-  onSuccess: (agreement: { contextId: string; name: string }) => void;
+  /**
+   * ⚠️ `contextId` IS NULLABLE. An invitation grants membership of a workspace,
+   * and a workspace with no agreement yet — or with several — resolves to no
+   * single agreement to open. That is a success, not an error, and the caller
+   * routes to the workspace instead.
+   */
+  onSuccess: (agreement: {
+    contextId: string | null;
+    namespaceId: string | null;
+    name: string;
+  }) => void;
   onError: () => void;
 }
 
@@ -120,7 +134,11 @@ export default function InvitationHandlerPopup({
 
     try {
       const result = await redeemInvitation(invitation, app, setStage);
-      onSuccess({ contextId: result.contextId, name: result.name });
+      onSuccess({
+        contextId: result.contextId,
+        namespaceId: result.namespaceId,
+        name: result.name || result.workspaceName,
+      });
     } catch (error) {
       attempted.current = false;
       setErrorMessage(

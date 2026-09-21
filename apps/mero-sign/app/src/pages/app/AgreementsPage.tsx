@@ -1,92 +1,111 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
+
+import { AppHeader } from '../../components/AppHeader';
+import {
+  useActiveWorkspace,
+  setActiveWorkspace,
+} from '../../lib/activeWorkspace';
+import {
+  displayName,
+  enterAgreement,
+  listAgreements,
+  type AgreementRow,
+} from '../../lib/agreements';
+import { adminApi } from '../../lib/node';
 import { useCalimero } from '../../lib/useCalimero';
 import { AgreementService } from '../../api/agreementService';
-import { redeemInvitation } from '../../api/invitationJoin';
-import type { Agreement } from '../../api/clientApi';
-import { AppHeader } from '../../components/AppHeader';
 import styles from './AgreementsPage.module.css';
 
-// ── The agreements list ──────────────────────────────────────────────────────
+// ── The agreements in one workspace ─────────────────────────────────────────
 //
-// mero-design's Teams screen, in its own CSS (copied verbatim — see the note at
-// the foot of the stylesheet).
+// ── On the nouns ────────────────────────────────────────────────────────────
 //
-// ── On the noun ─────────────────────────────────────────────────────────────
+//   WORKSPACE  — the people. You invite people there. The previous screen.
+//   AGREEMENT  — one document set, inside a workspace. This screen.
+//   DOCUMENT   — the thing that gets signed, inside an agreement. The next one.
 //
-// "Spaces" is gone and was never going to fit here. The brief suggested
-// Teams/Projects; this app has no room for that pair, and inventing it would
-// have meant naming a level that does not exist.
+// Which is also how a person describes it: you are invited to work with
+// someone, you draw up an agreement with them, and you sign the documents in
+// it.
 //
-// MeroSign's SDK (`@calimero-network/calimero-client`) has no namespace surface
-// at all — no `createNamespace`, no subgroups. One AGREEMENT is one context, and
-// the context is what you invite people to. So the two nouns are:
+// ── Where this list comes from, and where it used to ────────────────────────
 //
-//   AGREEMENT — the thing you invite people to. This screen.
-//   DOCUMENT  — the thing that gets signed, inside one. The next screen.
+// The node, via `listNamespaceGroups` — the subgroups of this workspace, each
+// with its context. It used to come from `listJoinedContexts`, which reads a
+// registry this node writes into its own PRIVATE context at join time. That
+// registry is a per-node snapshot: an agreement created on another node and
+// replicated here was never written into it, so it did not appear until
+// somebody re-joined it by link. The node's own listing cannot drift from what
+// the node actually holds, and it is one call rather than one per agreement.
 //
-// Which is also how a person describes it: you are invited to an agreement, and
-// you sign the documents in it.
+// The private registry is still written (see `settleIntoAgreement`) because
+// four other call sites read it, but it is no longer what the list believes.
 
 export default function AgreementsPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { app } = useCalimero();
+  const params = useParams<{ workspaceId?: string }>();
+  const stored = useActiveWorkspace();
 
-  const [agreements, setAgreements] = useState<Agreement[]>([]);
+  // The route is the source of truth when there is one — `/workspaces/:id` is
+  // a shareable URL and it must win over whatever was last opened. `/agreements`
+  // carries no id and falls back to the active workspace.
+  const workspaceId = params.workspaceId ?? stored;
+
+  // ⚠️ Passed EXPLICITLY, not left to the store. The store is updated in an
+  // effect below, so on the first render after following a link to another
+  // workspace it still holds the previous one — and `app.createContext` binds
+  // a new agreement to whatever the handle was built with.
+  const { app } = useCalimero(workspaceId);
+
+  const [rows, setRows] = useState<AgreementRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const [newName, setNewName] = useState('');
   const [creating, setCreating] = useState(false);
-
-  const [joinCode, setJoinCode] = useState('');
-  const [joining, setJoining] = useState(false);
-  const [joinError, setJoinError] = useState('');
+  const [opening, setOpening] = useState<string | null>(null);
 
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
   const service = useMemo(() => new AgreementService(app), [app]);
 
-  const load = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const res = await service.listAgreements();
-      if (res.error) {
-        setError(res.error.message);
-        setAgreements([]);
-        return;
-      }
-      const rows = res.data || [];
-      setAgreements(rows);
+  // Keep the store in step with the URL, so a reload and the rest of the app
+  // agree about which workspace is open.
+  useEffect(() => {
+    if (params.workspaceId && params.workspaceId !== stored) {
+      setActiveWorkspace(params.workspaceId);
+    }
+  }, [params.workspaceId, stored]);
 
-      // Then replace the locally-recorded names with the ones the agreements'
-      // own contracts hold. Those are the replicated values, so they are the
-      // same string on every node — this is what makes the creator's "NDA with
-      // Acme" show up as "NDA with Acme" for the people they invited.
-      try {
-        const named = await service.resolveSharedNames(rows);
-        setAgreements((cur) => (cur === rows ? named : cur));
-      } catch {
-        /* the painted list stands */
-      }
-    } catch {
-      setError('Could not load your agreements.');
-      setAgreements([]);
+  const load = useCallback(async () => {
+    if (!workspaceId) {
+      setRows([]);
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      setRows(await listAgreements(adminApi(), workspaceId));
+    } catch (e) {
+      setRows([]);
+      setError(
+        e instanceof Error ? e.message : 'Could not load your agreements.',
+      );
     } finally {
       setLoading(false);
     }
-  }, [service]);
+  }, [workspaceId]);
 
   useEffect(() => {
     if (app) void load();
-    // `location.key` so returning here after a join reloads the list without a
-    // full page reload, which is what the old flow used.
+    // `location.key` so returning here after opening an agreement reloads the
+    // list without a full page reload, which is what the old flow used.
   }, [app, load, location.key]);
 
-  // Close the card menu on an outside click, as mero-design does.
   useEffect(() => {
     function onOutside(e: MouseEvent) {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
@@ -113,46 +132,73 @@ export default function AgreementsPage() {
     } finally {
       setCreating(false);
     }
-  }, [newName, service, load]);
-
-  const join = useCallback(async () => {
-    const raw = joinCode.trim();
-    if (!raw) return;
-    setJoining(true);
-    setJoinError('');
-    try {
-      const result = await redeemInvitation(raw, app);
-      setJoinCode('');
-      navigate(`/agreements/${result.contextId}`);
-    } catch (err) {
-      setJoinError(
-        err instanceof Error ? err.message : 'Could not join that agreement.',
-      );
-    } finally {
-      setJoining(false);
-    }
-  }, [joinCode, app, navigate]);
+  }, [load, newName, service]);
 
   const open = useCallback(
-    (a: Agreement) => {
-      // The agreement screens still read these two out of storage; the route
-      // param is the source of truth and this keeps them in step.
-      localStorage.setItem('agreementContextID', a.contextId);
-      localStorage.setItem('agreementContextUserID', a.sharedIdentity);
-      navigate(`/agreements/${a.contextId}`);
+    async (row: AgreementRow) => {
+      if (!row.contextId || !workspaceId) return;
+      setOpening(row.agreementId);
+      setError(null);
+      try {
+        // ⚠️ ENTERING IS A STEP. Being in the workspace does not put you in its
+        // agreements — a subgroup is joined by inheritance, and until that has
+        // happened this node holds no identity in the agreement's context and
+        // every contract call from the next screen is refused. `enterAgreement`
+        // is a no-op once you are in, so opening a second time costs one read.
+        const identity = await enterAgreement(adminApi(), {
+          namespaceId: workspaceId,
+          agreementId: row.agreementId,
+          contextId: row.contextId,
+        });
+        // The agreement screens still read these two out of storage; the route
+        // param is the source of truth and this keeps them in step.
+        localStorage.setItem('agreementContextID', row.contextId);
+        localStorage.setItem('agreementContextUserID', identity);
+        navigate(`/agreements/${row.contextId}`);
+      } catch (e) {
+        setError(
+          e instanceof Error ? e.message : 'Could not open that agreement.',
+        );
+      } finally {
+        setOpening(null);
+      }
     },
-    [navigate],
+    [navigate, workspaceId],
   );
+
+  if (!workspaceId) {
+    return (
+      <div className={styles.root}>
+        <AppHeader />
+        <main className={styles.main}>
+          <h1 className={styles.title}>Your agreements</h1>
+          <p className={styles.subtitle}>
+            An agreement lives in a workspace — the group of people who sign it.
+            Open or create one to get started.
+          </p>
+          <div className={styles.joinRow}>
+            <button
+              className={styles.btn}
+              onClick={() => navigate('/workspaces')}
+              data-testid="go-workspaces"
+            >
+              Choose a workspace
+            </button>
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className={styles.root}>
-      <AppHeader />
+      <AppHeader back={{ label: 'Workspaces', to: '/workspaces' }} />
 
       <main className={styles.main}>
-        <h1 className={styles.title}>Your agreements</h1>
+        <h1 className={styles.title}>Agreements</h1>
         <p className={styles.subtitle}>
           An agreement holds the documents a group of people sign. Everything in
-          one lives on the nodes of the people invited to it.
+          one lives on the nodes of the people invited to this workspace.
         </p>
 
         {error && (
@@ -185,23 +231,35 @@ export default function AgreementsPage() {
           <p className={styles.empty}>Loading…</p>
         ) : error ? null /* the error above already says why the list is empty;
                             "No agreements yet. Create one above" underneath it
-                            contradicts it */ : agreements.length === 0 ? (
+                            contradicts it */ : rows.length === 0 ? (
           <p className={styles.empty} data-testid="agreements-empty">
-            No agreements yet. Create one above, or paste an invitation below.
+            No agreements yet. Create one above.
           </p>
         ) : (
           <div className={styles.grid} data-testid="agreements-grid">
-            {agreements.map((a) => (
+            {rows.map((row) => (
               <div
-                key={a.contextId}
+                key={row.agreementId}
                 className={styles.cardWrap}
-                ref={menuOpenId === a.contextId ? menuRef : null}
+                ref={menuOpenId === row.agreementId ? menuRef : null}
                 data-testid="agreement-card"
               >
-                <button className={styles.card} onClick={() => open(a)}>
-                  <span className={styles.cardName}>{a.name}</span>
+                <button
+                  className={styles.card}
+                  disabled={!row.contextId || opening === row.agreementId}
+                  onClick={() => void open(row)}
+                >
+                  <span className={styles.cardName}>
+                    {displayName([row.name], row.agreementId, 'Agreement')}
+                  </span>
                   <span className={styles.cardSub}>
-                    {a.role?.trim() ? a.role : 'Agreement'}
+                    {!row.contextId
+                      ? 'Still replicating…'
+                      : opening === row.agreementId
+                        ? 'Opening…'
+                        : row.joined
+                          ? `${row.memberCount === 1 ? '1 person' : `${row.memberCount} people`}`
+                          : 'Not joined yet'}
                   </span>
                 </button>
                 <button
@@ -210,19 +268,20 @@ export default function AgreementsPage() {
                   onClick={(e) => {
                     e.stopPropagation();
                     setMenuOpenId(
-                      menuOpenId === a.contextId ? null : a.contextId,
+                      menuOpenId === row.agreementId ? null : row.agreementId,
                     );
                   }}
                 >
                   ⋯
                 </button>
-                {menuOpenId === a.contextId && (
+                {menuOpenId === row.agreementId && (
                   <div className={styles.dropdown}>
                     <button
                       className={styles.dropdownItem}
+                      disabled={!row.contextId}
                       onClick={() => {
                         setMenuOpenId(null);
-                        open(a);
+                        void open(row);
                       }}
                     >
                       Open
@@ -231,7 +290,9 @@ export default function AgreementsPage() {
                       className={styles.dropdownItem}
                       onClick={() => {
                         setMenuOpenId(null);
-                        void navigator.clipboard.writeText(a.contextId);
+                        void navigator.clipboard.writeText(
+                          row.contextId ?? row.agreementId,
+                        );
                       }}
                     >
                       Copy id
@@ -245,45 +306,21 @@ export default function AgreementsPage() {
 
         <div className={styles.joinSection}>
           <p className={styles.joinLabel}>
-            Got an invitation? Join an agreement.
+            Inviting someone? Invitations are to the workspace.
           </p>
-          <div className={styles.joinRow}>
-            <input
-              className={styles.input}
-              placeholder="Paste the link or code you were sent…"
-              value={joinCode}
-              onChange={(e) => setJoinCode(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && void join()}
-              data-testid="join-code"
-            />
-            <button
-              className={styles.btn}
-              onClick={() => void join()}
-              disabled={joining || !joinCode.trim()}
-              data-testid="join-agreement"
-            >
-              {joining ? <span className={styles.spinner} /> : null}
-              {joining ? 'Joining…' : 'Join'}
-            </button>
-          </div>
-          <p className={styles.hint}>
-            Opening the link works too — you only need this if it arrived as
-            text. The agreement keeps the name its creator gave it.
-          </p>
-          {joinError && <p className={styles.joinError}>{joinError}</p>}
-        </div>
-
-        <div className={styles.joinSection}>
-          <p className={styles.joinLabel}>Your signatures</p>
           <div className={styles.joinRow}>
             <button
               className={styles.btnGhost}
-              onClick={() => navigate('/signatures')}
-              data-testid="go-signatures"
+              onClick={() => navigate('/workspaces')}
+              data-testid="go-workspaces"
             >
-              Open signature library
+              Manage workspaces
             </button>
           </div>
+          <p className={styles.hint}>
+            One link covers the workspace and every agreement in it, so a signer
+            you already work with does not need a new one for each document.
+          </p>
         </div>
       </main>
     </div>

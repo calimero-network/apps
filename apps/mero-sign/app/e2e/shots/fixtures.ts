@@ -9,6 +9,8 @@ export const CARE = 'c0'.repeat(32);
 
 export type ScenarioId =
   | 'landing'
+  | 'workspaces'
+  | 'workspaces-empty'
   | 'agreements'
   | 'agreements-empty'
   | 'agreements-error'
@@ -34,7 +36,9 @@ export interface Scenario {
   /** Whose eyes: an admin sees the role controls, a signer does not. */
   me: 'admin' | 'member';
   /** A modal or minted state to force open. */
-  open?: 'upload' | 'delete-signature' | 'invite';
+  open?: 'upload' | 'delete-signature' | 'invite' | 'invite-workspace';
+  /** How many workspaces the picker has. */
+  workspaces?: 'some' | 'none';
   signatures: 'some' | 'none';
   tab?: 'documents' | 'people' | 'invite';
 }
@@ -45,13 +49,30 @@ const base: Omit<Scenario, 'id' | 'path'> = {
   documents: 'mixed',
   me: 'admin',
   signatures: 'some',
+  workspaces: 'some',
 };
 
 export const SCENARIOS: Scenario[] = [
   { ...base, id: 'landing', path: '/landing', authed: false },
-  { ...base, id: 'agreements', path: '/agreements' },
-  { ...base, id: 'agreements-empty', path: '/agreements', agreements: 'none' },
-  { ...base, id: 'agreements-error', path: '/agreements', agreements: 'error' },
+  // ⚠️ The agreements screen is SCOPED to a workspace now — an agreement is a
+  // subgroup of one, because rc.41 binds every context to a group. `/agreements`
+  // with nothing selected renders the "choose a workspace" state, which is a
+  // real screen but not the one these three are about.
+  { ...base, id: 'workspaces', path: '/workspaces' },
+  { ...base, id: 'workspaces-empty', path: '/workspaces', workspaces: 'none' },
+  { ...base, id: 'agreements', path: '/workspaces/ns-1' },
+  {
+    ...base,
+    id: 'agreements-empty',
+    path: '/workspaces/ns-1',
+    agreements: 'none',
+  },
+  {
+    ...base,
+    id: 'agreements-error',
+    path: '/workspaces/ns-1',
+    agreements: 'error',
+  },
   { ...base, id: 'documents', path: '/agreements/ctx-1', tab: 'documents' },
   {
     ...base,
@@ -223,3 +244,33 @@ export const SIGNATURE_ROWS = [
 ];
 
 export const SIGNATURE_PNG = PIXEL;
+
+// ── Workspaces ──────────────────────────────────────────────────────────────
+//
+// A workspace is a NAMESPACE; an agreement is a SUBGROUP of one, with its own
+// context. See `src/lib/agreements.ts`. The harness serves both through the
+// fake `adminApi` in `calimeroClient.mock.ts`, because the screens read the
+// node's own listing rather than the per-node private registry.
+
+export const WORKSPACES = [
+  { namespaceId: 'ns-1', name: 'Acme Legal', memberCount: 4, subgroupCount: 3 },
+  {
+    namespaceId: 'ns-2',
+    name: 'Fundraising',
+    memberCount: 2,
+    subgroupCount: 1,
+  },
+  {
+    namespaceId: 'ns-3',
+    name: 'Contractors',
+    memberCount: 7,
+    subgroupCount: 5,
+  },
+];
+
+/** The subgroups of `ns-1`, one per agreement, paired with its context. */
+export const SUBGROUPS = AGREEMENTS.map((a, i) => ({
+  groupId: `sg-${i + 1}`,
+  name: a.name,
+  contextId: a.contextId,
+}));

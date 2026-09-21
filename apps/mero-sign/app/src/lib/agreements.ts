@@ -131,7 +131,7 @@ export async function listWorkspaces(
   applicationId: string,
 ): Promise<WorkspaceRow[]> {
   const namespaces = await admin.listNamespacesForApplication(applicationId);
-  return Promise.all(
+  const rows = await Promise.all(
     (namespaces ?? []).map(async (n) => {
       const meta = await admin
         .getGroupMetadata(n.namespaceId)
@@ -141,9 +141,21 @@ export async function listWorkspaces(
         name: displayName([n.name, meta?.name], n.namespaceId, 'Workspace'),
         memberCount: n.memberCount ?? 0,
         agreementCount: n.subgroupCount ?? 0,
+        // ⚠️ The personal namespace is NOT a workspace and must not be offered
+        // as one. It holds this node's private signature library, it has no
+        // other member and inviting somebody into it would share that library.
+        personal: isPersonalRecord(meta),
       };
     }),
   );
+  return rows
+    .filter((r) => !r.personal)
+    .map((r) => ({
+      namespaceId: r.namespaceId,
+      name: r.name,
+      memberCount: r.memberCount,
+      agreementCount: r.agreementCount,
+    }));
 }
 
 /**
@@ -203,6 +215,117 @@ export async function createWorkspace(
     .catch(() => {});
 
   return { namespaceId: ns.namespaceId };
+}
+
+// ── The personal workspace ──────────────────────────────────────────────────
+//
+// Mero Sign keeps a PRIVATE context per node: the signature library, plus the
+// bookkeeping `ClientApiDataSource` reads at four other call sites. It is
+// created by `DefaultContextService` with `{is_private: true, context_name:
+// 'default'}` and it is not shared with anybody, ever.
+//
+// ⚠️ IT IS A CONTEXT, so rc.41 requires a group for it exactly as it does for
+// an agreement — `CreateContextRequest.group_id` has no `Option` and no
+// `#[serde(default)]`. "Private" is a property of the CONTRACT (`is_private`),
+// not an exemption from the binding. So the private context needs a namespace
+// too, and it must not be one of the user's workspaces: a workspace is a thing
+// you invite people into, and this is the one context that must never have a
+// second member.
+//
+// Hence a namespace of its own, found by a MARKER rather than by its name. A
+// name is what a user can rename; if "which namespace is my private one" turned
+// on the string "Personal", renaming it would strand the signature library and
+// silently start a second one.
+
+/** The marker that says "this namespace is this node's private store". */
+export const PERSONAL_KIND = 'mero-sign:personal';
+
+/** The name shown if a personal namespace is ever surfaced in a listing. */
+export const PERSONAL_WORKSPACE_NAME = 'Personal';
+
+/** The subgroup the private context is bound to, inside that namespace. */
+export const PERSONAL_GROUP_NAME = 'Private';
+
+/** Does this metadata record mark a personal namespace? */
+export function isPersonalRecord(
+  meta: { data?: Record<string, string> | null } | null | undefined,
+): boolean {
+  return meta?.data?.kind === PERSONAL_KIND;
+}
+
+/**
+ * Find this node's personal namespace, or make one.
+ *
+ * Idempotent, and deliberately so: it runs on a timer from
+ * `useDefaultContext`, from `redeemInvitation`, and from four lazy call sites
+ * in the data source, so it will be called concurrently and repeatedly. The
+ * marker read is what makes a second call cheap and a second NAMESPACE
+ * impossible.
+ */
+export async function ensurePersonalWorkspace(
+  admin: AdminLike,
+  applicationId: string,
+  onStatus: StatusFn = noop,
+): Promise<string> {
+  const namespaces = await admin
+    .listNamespacesForApplication(applicationId)
+    .catch(() => []);
+
+  for (const n of namespaces ?? []) {
+    const meta = await admin.getGroupMetadata(n.namespaceId).catch(() => null);
+    if (isPersonalRecord(meta)) return n.namespaceId;
+  }
+
+  onStatus('Setting up your private store…');
+  const ns = await admin.createNamespace({
+    applicationId,
+    name: PERSONAL_WORKSPACE_NAME,
+  });
+
+  // ⚠️ NOT swallowed, unlike the cosmetic metadata writes elsewhere in this
+  // file. The marker IS the identity of this namespace. If the write is lost,
+  // the next call does not find it, creates another, and the node accumulates
+  // a new "personal" namespace — and a new empty signature library — on every
+  // boot. `setGroupMetadata` REPLACES the record, so name and data go together.
+  await admin.setGroupMetadata(ns.namespaceId, {
+    name: PERSONAL_WORKSPACE_NAME,
+    data: { kind: PERSONAL_KIND },
+  });
+
+  return ns.namespaceId;
+}
+
+/**
+ * The private context itself: its subgroup, then the context bound to it.
+ *
+ * ⚠️ VISIBILITY IS LEFT AT THE DEFAULT, which is RESTRICTED — the one place in
+ * this app where that is the wanted answer. `createAgreement` opens its
+ * subgroup so invited signers can enter; opening this one would make a node's
+ * private signature library reachable by anybody admitted to the namespace.
+ */
+export async function createPersonalContext(
+  admin: AdminLike,
+  opts: { applicationId: string; namespaceId: string; name?: string },
+  onStatus: StatusFn = noop,
+): Promise<{ groupId: string; contextId: string; memberPublicKey: string }> {
+  onStatus('Creating your private store…');
+  const sg = await admin.createGroupInNamespace(opts.namespaceId, {
+    groupName: PERSONAL_GROUP_NAME,
+  });
+
+  const ctx = await admin.createContext({
+    applicationId: opts.applicationId,
+    groupId: sg.groupId,
+    // `is_private: true` — the contract's own flag, and the thing
+    // `is_default_private_context` answers on.
+    initializationParams: initParamsFor(opts.name ?? 'default', true),
+  });
+
+  return {
+    groupId: sg.groupId,
+    contextId: ctx.contextId,
+    memberPublicKey: ctx.memberPublicKey,
+  };
 }
 
 // ── Agreements (subgroup + context) ─────────────────────────────────────────
@@ -281,8 +404,16 @@ export async function createAgreement(
   onStatus('Creating the agreement…');
   // ⚠️ `groupName`, not `name`: every core request body is
   // `deny_unknown_fields`, so the old spelling is a 400 for the whole call.
+  //
+  // ⚠️ `visibility` AT BIRTH, not only afterwards. A subgroup with no
+  // `visibility` is created RESTRICTED, and between that call and the
+  // `setSubgroupVisibility` below there is a window in which an invited signer
+  // who tries to enter is refused. Setting it here closes the window; the
+  // explicit call is kept because the field is optional in this SDK's request
+  // type and a node that ignores it must still end up open.
   const sg = await admin.createGroupInNamespace(opts.namespaceId, {
     groupName: opts.name,
+    visibility: 'open',
   });
 
   onStatus('Naming it…');
@@ -333,4 +464,30 @@ export async function enterAgreement(
     );
   }
   return identity;
+}
+
+/**
+ * Which agreement an invitation should land you in, out of everything the
+ * workspace holds.
+ *
+ * The invitation may name one — `contextId` in the envelope, which the inviter
+ * put there when they shared a specific agreement. It is a HINT and is treated
+ * as one: it is only honoured when it matches an agreement that is actually in
+ * the workspace, so an edited envelope cannot send a joiner anywhere the
+ * invitation did not already grant.
+ *
+ * With no usable hint, one agreement is unambiguous and is opened. Several is
+ * genuinely ambiguous — the workspace screen lists them and the person picks,
+ * which is better than opening whichever replicated first.
+ */
+export function pickInvitedAgreement<T extends { contextId: string | null }>(
+  agreements: T[],
+  hintedContextId: string | undefined,
+): T | null {
+  const joinable = agreements.filter((a) => !!a.contextId);
+  if (hintedContextId) {
+    const hinted = joinable.find((a) => a.contextId === hintedContextId);
+    if (hinted) return hinted;
+  }
+  return joinable.length === 1 ? joinable[0] : null;
 }

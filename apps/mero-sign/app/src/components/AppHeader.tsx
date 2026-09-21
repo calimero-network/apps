@@ -56,7 +56,7 @@ export function AppHeader({ back }: { back?: { label: string; to: string } }) {
       )}
       <button
         className={styles.logo}
-        onClick={() => navigate('/agreements')}
+        onClick={() => navigate('/workspaces')}
         style={{
           background: 'none',
           border: 'none',

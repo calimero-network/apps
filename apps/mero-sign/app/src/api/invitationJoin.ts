@@ -19,6 +19,7 @@
 //   contract's own replicated `context_name`.
 
 import {
+  adminApi,
   apiClient,
   setContextId,
   setExecutorPublicKey,
@@ -26,7 +27,7 @@ import {
 } from '../lib/node';
 import type {
   JoinContextResponse,
-  NodeIdentity,
+  JoinNamespaceResult,
   SignedOpenInvitation,
 } from '../lib/node';
 import { ClientApiDataSource } from './dataSource/ClientApiDataSource';
@@ -35,10 +36,17 @@ import { DefaultContextService } from './defaultContextService';
 import {
   contextIdOfInvite,
   decodeInvite,
+  namespaceIdOfInvite,
   type MeroSignInvitePayload,
 } from '../lib/inviteCodec';
 import { invitationFromRaw } from '../lib/inviteLink';
 import { resolveAgreementName } from '../lib/agreementName';
+import {
+  enterAgreement,
+  listAgreements,
+  pickInvitedAgreement,
+} from '../lib/agreements';
+import { setActiveWorkspace } from '../lib/activeWorkspace';
 
 /**
  * The `app` handle `useCalimero()` returns.
@@ -51,13 +59,33 @@ import { resolveAgreementName } from '../lib/agreementName';
 export type CalimeroAppLike = any;
 
 /** Coarse progress, so the popup can say which slow step it is on. */
-export type RedeemStage = 'joining' | 'syncing' | 'registering' | 'naming';
+export type RedeemStage =
+  | 'joining'
+  | 'entering'
+  | 'syncing'
+  | 'registering'
+  | 'naming';
 
 export interface RedeemResult {
-  contextId: string;
-  memberPublicKey: string;
-  /** The agreement name as every node will see it. */
+  /** The workspace that was joined. Null for a legacy targeted invitation. */
+  namespaceId: string | null;
+  /**
+   * The agreement that was entered, when the invitation resolved to exactly
+   * one.
+   *
+   * ⚠️ NULLABLE, AND ROUTINELY NULL. An invitation grants membership of a
+   * WORKSPACE; the agreements inside it are subgroups you enter afterwards. A
+   * workspace with no agreement yet — invite the people first, draw up the
+   * document second — is a valid thing to be invited to, and so is one with
+   * several. Callers route to the workspace when this is null rather than to
+   * `/agreements/undefined`.
+   */
+  contextId: string | null;
+  memberPublicKey: string | null;
+  /** The agreement name as every node will see it. Empty with no agreement. */
   name: string;
+  /** The workspace's name, for the screen that lands on it. */
+  workspaceName: string;
 }
 
 const UNINITIALIZED = 'Uninitialized';
@@ -161,34 +189,27 @@ async function registerSelf(
   }
 }
 
-async function joinByOpenInvitation(
+/**
+ * Join the WORKSPACE an open invitation grants.
+ *
+ * ⚠️ NO IDENTITY IS MINTED FIRST. The previous version called
+ * `createNewIdentity()` and passed the key as a second argument, which is how
+ * the context-era API worked. `joinNamespace` mints the member identity itself
+ * and returns it as `memberIdentity`; supplying one is at best ignored and the
+ * pre-call was a round trip whose failure aborted a join that would have
+ * succeeded.
+ */
+async function joinWorkspaceByInvitation(
+  namespaceId: string,
   invitation: SignedOpenInvitation,
-): Promise<JoinContextResponse> {
-  const identity: ResponseData<NodeIdentity> = await apiClient
+): Promise<JoinNamespaceResult> {
+  const joined: ResponseData<JoinNamespaceResult> = await apiClient
     .node()
-    .createNewIdentity();
-  if (identity.error || !identity.data) {
-    throw new Error(
-      identity.error?.message || 'Failed to create an identity for this node',
-    );
-  }
-
-  const joined: ResponseData<JoinContextResponse> = await apiClient
-    .node()
-    .joinContextByOpenInvitation(invitation, identity.data.publicKey);
+    .joinContextByOpenInvitation(namespaceId, invitation);
 
   if (joined.error || !joined.data) {
-    throw new Error(joined.error?.message || 'Failed to join the agreement');
+    throw new Error(joined.error?.message || 'Failed to join the workspace');
   }
-
-  // Kept for the screens that still read the joining identity back out of
-  // storage; the join response is the source of truth for everything here.
-  try {
-    localStorage.setItem('new-context-identity', JSON.stringify(identity.data));
-  } catch {
-    /* storage blocked — not fatal, the join already happened */
-  }
-
   return joined.data;
 }
 
@@ -204,12 +225,25 @@ async function joinByTargetedPayload(
 }
 
 /**
- * Redeem an invitation end to end and return the agreement as this node will
- * now show it.
+ * Redeem an invitation end to end and return where this node now stands.
  *
  * Throws with a message fit for a user on any step that cannot be recovered
  * from; the recoverable steps (participant registration, the private-context
  * bookkeeping) log and continue.
+ *
+ * ── The shape of this, since the workspace model ────────────────────────────
+ *
+ * An invitation grants membership of a WORKSPACE. That is one call, and it is
+ * the only one that can fail in a way the person can do something about. What
+ * follows — find the agreements, enter one, wait for it to sync, register as a
+ * participant — is entering a subgroup, and every step of it is allowed to
+ * come back empty without that being an error:
+ *
+ *   * no agreements yet → you are in the workspace, there is nothing to sign
+ *   * several agreements → you are in the workspace, pick one
+ *
+ * Both land on the workspace screen. Only "the node refused the invitation" is
+ * a failure.
  */
 export async function redeemInvitation(
   raw: string,
@@ -227,33 +261,120 @@ export async function redeemInvitation(
   const nodeApi = new ContextApiDataSource(app);
 
   onStage?.('joining');
-  const joined =
-    parsed.kind === 'open'
-      ? await joinByOpenInvitation(
-          parsed.invitation as unknown as SignedOpenInvitation,
-        )
-      : await joinByTargetedPayload(nodeApi, parsed.targetedPayload as string);
 
-  const contextId = joined.contextId;
-  const memberPublicKey = joined.memberPublicKey;
-  if (!contextId || !memberPublicKey) {
+  // ── A legacy targeted invitation ──────────────────────────────────────────
+  //
+  // Minted for one named key against a single context, by a build of this app
+  // that predates workspaces. It still resolves to a context directly, so it
+  // keeps its own short path rather than being forced through a workspace it
+  // never had.
+  if (parsed.kind !== 'open') {
+    const joined = await joinByTargetedPayload(
+      nodeApi,
+      parsed.targetedPayload as string,
+    );
+    if (!joined.contextId || !joined.memberPublicKey) {
+      throw new Error(
+        'The node accepted the invitation but did not say which agreement it joined.',
+      );
+    }
+    const name = await settleIntoAgreement(
+      clientApi,
+      app,
+      joined.contextId,
+      joined.memberPublicKey,
+      parsed.contextName,
+      onStage,
+    );
+    return {
+      namespaceId: null,
+      contextId: joined.contextId,
+      memberPublicKey: joined.memberPublicKey,
+      name,
+      workspaceName: '',
+    };
+  }
+
+  // ── An open invitation: the workspace, then an agreement in it ────────────
+  //
+  // ⚠️ The namespace comes out of the SIGNED body, never the envelope beside
+  // it. `joinNamespace` takes it in the path, so a namespace id a sharer could
+  // edit would be a namespace id that decides which workspace you are put in.
+  const namespaceId = namespaceIdOfInvite(parsed);
+  if (!namespaceId) {
     throw new Error(
-      'The node accepted the invitation but did not say which context it joined.',
+      'This invitation does not name a workspace. It may have been minted by ' +
+        'a version of Mero Sign from before workspaces — ask for a new link.',
     );
   }
 
-  // An open invitation names its context inside the SIGNED body. If the node
-  // joined a different one, something is wrong with either the node or the code
-  // and we would rather say so than quietly open a stranger's agreement.
-  if (parsed.kind === 'open') {
-    const signedContextId = contextIdOfInvite(parsed);
-    if (signedContextId && signedContextId !== contextId) {
-      throw new Error(
-        'This invitation is for a different agreement than the one that was joined.',
-      );
-    }
+  const joined = await joinWorkspaceByInvitation(
+    namespaceId,
+    parsed.invitation as unknown as SignedOpenInvitation,
+  );
+
+  // The node's own answer, not the id we asked with: if they ever disagree the
+  // node is right about what it joined.
+  const workspaceId = joined.namespaceId || namespaceId;
+  setActiveWorkspace(workspaceId);
+  const workspaceName = (joined.groupName || parsed.workspaceName || '').trim();
+
+  onStage?.('entering');
+  const admin = adminApi();
+  const agreements = await listAgreements(admin, workspaceId).catch(() => []);
+  const target = pickInvitedAgreement(agreements, contextIdOfInvite(parsed));
+
+  if (!target || !target.contextId) {
+    // In the workspace, not in an agreement. A real and unremarkable state.
+    return {
+      namespaceId: workspaceId,
+      contextId: null,
+      memberPublicKey: null,
+      name: '',
+      workspaceName,
+    };
   }
 
+  const identity = await enterAgreement(admin, {
+    namespaceId: workspaceId,
+    agreementId: target.agreementId,
+    contextId: target.contextId,
+  });
+
+  const name = await settleIntoAgreement(
+    clientApi,
+    app,
+    target.contextId,
+    identity,
+    parsed.contextName ?? target.name,
+    onStage,
+  );
+
+  return {
+    namespaceId: workspaceId,
+    contextId: target.contextId,
+    memberPublicKey: identity,
+    name,
+    workspaceName,
+  };
+}
+
+/**
+ * Everything that happens once this node holds an identity in an agreement:
+ * make it the current one, wait for state, register as a participant, settle
+ * on the name, and record it locally.
+ *
+ * Extracted because the open and targeted paths reach this point by different
+ * routes and used to carry two copies of it, which is how they drifted before.
+ */
+async function settleIntoAgreement(
+  clientApi: ClientApiDataSource,
+  app: CalimeroAppLike,
+  contextId: string,
+  memberPublicKey: string,
+  nameHint: string | undefined,
+  onStage?: (stage: RedeemStage) => void,
+): Promise<string> {
   localStorage.setItem('agreementContextID', contextId);
   localStorage.setItem('agreementContextUserID', memberPublicKey);
   setContextId(contextId);
@@ -275,7 +396,7 @@ export async function redeemInvitation(
   // context is still catching up.
   const name = resolveAgreementName({
     fromContract: contractName,
-    fromInvitation: parsed.contextName,
+    fromInvitation: nameHint,
     contextId,
   });
 
@@ -304,5 +425,5 @@ export async function redeemInvitation(
     console.warn('Failed to record the agreement locally:', error);
   }
 
-  return { contextId, memberPublicKey, name };
+  return name;
 }
