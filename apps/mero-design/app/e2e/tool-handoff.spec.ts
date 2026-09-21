@@ -138,6 +138,58 @@ test.describe("the pointer comes back once an item is down", () => {
   });
 });
 
+test.describe("the image hand-off waits its turn", () => {
+  // A 1x1 red PNG, enough for getImageDimensions to resolve.
+  const PNG = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+    "base64",
+  );
+
+  /** Hold every blob upload open for `ms`, so a spec can act mid-flight. */
+  async function slowBlobUpload(page: Page, ms: number): Promise<void> {
+    await page.route("**/admin-api/blobs**", async (route) => {
+      if (route.request().method() === "PUT") {
+        await new Promise((r) => setTimeout(r, ms));
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ data: { blob_id: "blob-1", size: 1 } }),
+        });
+      }
+      return route.fulfill({ status: 200, contentType: "image/png", body: PNG });
+    });
+  }
+
+  test("a placed image re-arms the pointer", async ({ page }) => {
+    await openBoard(page, { serveBlob: true });
+    await page.getByTestId("image-file-input").setInputFiles({
+      name: "a.png", mimeType: "image/png", buffer: PNG,
+    });
+    await page.waitForTimeout(1200);
+
+    expect((await toolState(page)).tool).toBe("select");
+  });
+
+  test("a tool picked while the upload is in flight survives", async ({ page }) => {
+    // The blob upload is the only await a shape or a text does not have, and it
+    // can run for seconds on a real image. The hand-off must not reach back
+    // through that window and undo a tool the user has since chosen.
+    await openBoard(page);
+    await slowBlobUpload(page, 1500);
+
+    await page.getByTestId("image-file-input").setInputFiles({
+      name: "a.png", mimeType: "image/png", buffer: PNG,
+    });
+    await page.waitForTimeout(300);
+    await page.getByTestId("tool-rect").click();
+    expect((await toolState(page)).tool).toBe("rect");
+
+    // Let the upload land. The image still arrives; the toolbar stays put.
+    await page.waitForTimeout(2000);
+    expect((await toolState(page)).tool).toBe("rect");
+  });
+});
+
 test.describe("clicking an item is about that item", () => {
   const seeded = [element({ id: "seed", x: 200, y: 200, width: 160, height: 120, fill: "#FF00FF" })];
 
