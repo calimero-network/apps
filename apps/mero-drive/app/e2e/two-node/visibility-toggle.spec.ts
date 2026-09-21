@@ -6,7 +6,7 @@
 import { test, expect } from '../fixtures/two-user';
 
 test.describe('Visibility toggle (two-node)', () => {
-  // Bob now inherits an Open folder with no join card, so expectJoinCTA/clickJoin finds nothing.
+  // toggleVisibility's Info dialog re-renders and detaches its Close button mid-click.
   test.fixme("Open → Restricted revokes Bob's inherited access", async ({
     alice,
     bob,
@@ -24,8 +24,7 @@ test.describe('Visibility toggle (two-node)', () => {
     await bob.joinNamespace(inviteUrl);
     await bob.tree.expectFolderVisible('Mutable', { timeout: 60_000 });
     await bob.tree.openFolder('Mutable');
-    await bob.restrictedCard.expectJoinCTA();
-    await bob.restrictedCard.clickJoin();
+    await bob.restrictedCard.joinIfPrompted();
     await bob.docs.expectDocVisible('Visible Doc');
 
     // Alice: flip to Restricted.
@@ -55,10 +54,8 @@ test.describe('Visibility toggle (two-node)', () => {
     // Alice flips to Open.
     await alice.toggleVisibility('Liberating');
 
-    // Bob's card swaps to the Join CTA; one click materializes
-    // membership via inheritance.
-    await bob.restrictedCard.expectJoinCTA({ timeout: 60_000 });
-    await bob.restrictedCard.clickJoin();
+    // Bob inherits the now-Open folder (auto-follow, or the Join CTA).
+    await bob.restrictedCard.joinIfPrompted();
     await bob.docs.expectDocVisible('Future Public');
   });
 
