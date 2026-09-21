@@ -46,3 +46,14 @@ export function isAccessDeniedError(err: unknown): boolean {
       (lower.includes('permission') || lower.includes('not a member')))
   );
 }
+
+// get_group_info refuses a non-member with an untyped 500, so a failed probe is
+// confirmed against list_group_members, which refuses it with a typed 403.
+export async function isGroupAccessDenied(
+  admin: { listGroupMembers(groupId: string): Promise<unknown> },
+  groupId: string,
+  probeError: unknown,
+): Promise<boolean> {
+  if (isAccessDeniedError(probeError)) return true;
+  return admin.listGroupMembers(groupId).then(() => false, isAccessDeniedError);
+}
