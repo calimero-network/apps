@@ -1,33 +1,10 @@
 import { ClientApiDataSource } from './dataSource/ClientApiDataSource';
 import { DocumentInfo, Document } from './clientApi';
 import { blobClient } from '../lib/node';
-import bs58 from 'bs58';
+import { toBlobIdHex } from '../lib/blobIds';
+import { toHexId } from '../lib/participants';
 // TODO: Re-enable when AI chatbot is re-implemented
 // import { processPDFAndGenerateEmbeddings } from '../services/embeddingService';
-
-/**
- * Normalize blob ID to base58 format for the contract.
- * The blob API may return hex-encoded IDs (64 chars) or base58 IDs.
- * The contract expects base58-encoded 32-byte blob IDs.
- */
-function normalizeBlobIdToBase58(blobId: string): string {
-  // Remove any '0x' prefix if present
-  const cleanId = blobId.startsWith('0x') ? blobId.slice(2) : blobId;
-
-  // Check if it's a 64-character hex string (32 bytes in hex)
-  const isHex = /^[0-9a-fA-F]{64}$/.test(cleanId);
-
-  if (isHex) {
-    // Convert hex to bytes, then encode to base58
-    const bytes = new Uint8Array(
-      cleanId.match(/.{1,2}/g)?.map((byte) => parseInt(byte, 16)) || [],
-    );
-    return bs58.encode(bytes);
-  }
-
-  // Already in base58 or another format - return as-is
-  return cleanId;
-}
 
 export class DocumentService {
   private clientApi: ClientApiDataSource;
@@ -47,10 +24,15 @@ export class DocumentService {
     onStorageProgress?: () => void,
   ): Promise<{ data?: string; error?: any }> {
     try {
+      // ⚠️ THE CONTEXT IS NOT OPTIONAL. A blob uploaded without one is
+      // stored only on the node that took it and is never announced to the
+      // agreement's peers — so the upload succeeds, the document appears in
+      // the list for everyone, and every other signer gets nothing when they
+      // open it. `''` is not "no context", it is a context id of zero length.
       const blobResponse = await blobClient.uploadBlob(
         file,
         onBlobProgress,
-        '',
+        contextId,
       );
 
       if (blobResponse.error) {
@@ -106,14 +88,22 @@ export class DocumentService {
       const extractedText: string | undefined = undefined;
       const chunks: any[] | undefined = undefined;
 
-      // Normalize blob ID to base58 for the contract
-      const base58BlobId = normalizeBlobIdToBase58(blobResponse.data.blobId);
+      // ⚠️ HEX, verbatim from the node. This used to convert to base58,
+      // which is what the node later refused to decode. See `lib/blobIds`.
+      const blobId = toBlobIdHex(blobResponse.data.blobId);
+      if (!blobId) {
+        return {
+          error: {
+            message: `The node returned a blob id this app cannot use: ${blobResponse.data.blobId}`,
+          },
+        };
+      }
 
       const response = await this.clientApi.uploadDocument(
         contextId,
         name,
         hash,
-        base58BlobId,
+        blobId,
         file.size,
         embeddings,
         extractedText,
@@ -180,10 +170,12 @@ export class DocumentService {
   ): Promise<{ data?: void; error?: any }> {
     try {
       // Upload the new signed PDF via blob API
+      // Announced to the agreement, as above — a signed PDF nobody else can
+      // fetch is the failure this app exists to avoid.
       const blobResponse = await blobClient.uploadBlob(
         updatedPdfFile,
         onProgress,
-        '',
+        contextId,
       );
 
       if (blobResponse.error) {
@@ -204,14 +196,21 @@ export class DocumentService {
       const updatedPdfData = new Uint8Array(arrayBuffer);
       const newHash = await this.calculateFileHash(updatedPdfData);
 
-      // Normalize blob ID to base58 for the contract
-      const base58BlobId = normalizeBlobIdToBase58(blobResponse.data.blobId);
+      // HEX, as above.
+      const blobId = toBlobIdHex(blobResponse.data.blobId);
+      if (!blobId) {
+        return {
+          error: {
+            message: `The node returned a blob id this app cannot use: ${blobResponse.data.blobId}`,
+          },
+        };
+      }
 
       // Call the backend signDocument API with updated PDF data and hash
       const response = await this.clientApi.signDocument(
         contextId,
         documentId,
-        base58BlobId,
+        blobId,
         updatedPdfFile.size,
         newHash,
         agreementContextID,
@@ -282,27 +281,18 @@ export class DocumentService {
       hour12: true,
     });
 
-    // Convert pdf_blob_id from byte array to base58 string if needed
-    let pdfBlobId: string;
-    if (typeof documentInfo.pdf_blob_id === 'string') {
-      pdfBlobId = documentInfo.pdf_blob_id;
-    } else if (Array.isArray(documentInfo.pdf_blob_id)) {
-      // pdf_blob_id is a byte array from the contract, convert to base58
-      pdfBlobId = bs58.encode(new Uint8Array(documentInfo.pdf_blob_id));
-    } else {
-      // Fallback - try to use as-is
-      pdfBlobId = String(documentInfo.pdf_blob_id);
-    }
+    // ⚠️ HEX, both of them. These were `bs58.encode`, which is the read half
+    // of the same defect: the id came back from the contract in the encoding
+    // the NODE refuses, so the blob fetch that follows fails with "expected
+    // hex". `toBlobIdHex` also accepts a legacy base58 id, so documents
+    // recorded by the previous build still open. See `lib/blobIds`.
+    const pdfBlobId = toBlobIdHex(
+      documentInfo.pdf_blob_id as string | number[],
+    );
 
-    // Convert uploaded_by from byte array to base58 string if needed
-    let uploadedBy: string;
-    if (typeof documentInfo.uploaded_by === 'string') {
-      uploadedBy = documentInfo.uploaded_by;
-    } else if (Array.isArray(documentInfo.uploaded_by)) {
-      uploadedBy = bs58.encode(new Uint8Array(documentInfo.uploaded_by));
-    } else {
-      uploadedBy = String(documentInfo.uploaded_by);
-    }
+    // An account id, and hex for the same reason since rc.27 — see the note
+    // at the top of `lib/participants`.
+    const uploadedBy = toHexId(documentInfo.uploaded_by as string | number[]);
 
     return {
       id: documentInfo.id,

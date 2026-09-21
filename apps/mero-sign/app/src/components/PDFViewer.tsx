@@ -48,7 +48,7 @@ import { blobClient } from '../lib/node';
 import { useCalimero } from '../lib/useCalimero';
 import ConsentModal from './ConsentModal';
 import LegalChatbot from './LegalChatbot';
-import bs58 from 'bs58';
+import { toBlobIdHex } from '../lib/blobIds';
 
 interface SavedSignature {
   id: string;
@@ -381,11 +381,12 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
           signaturesArray.map(async (sig: any) => {
             let dataURL = '';
             try {
-              // Convert blob_id from byte array to base58 string if needed
-              const blobId =
-                typeof sig.blob_id === 'string'
-                  ? sig.blob_id
-                  : bs58.encode(new Uint8Array(sig.blob_id));
+              // ⚠️ HEX. `bs58.encode` here produced an id the node refuses
+              // with "Failed to decode blob ID (expected hex)", so the
+              // signature picker in the PDF viewer showed named rows with no
+              // images — the same defect as the signature library. Legacy
+              // base58 ids still resolve; see `lib/blobIds`.
+              const blobId = toBlobIdHex(sig.blob_id);
               const contextId =
                 localStorage.getItem('agreementContextID') || '';
               const blob = await blobClient.downloadBlob(blobId, contextId);

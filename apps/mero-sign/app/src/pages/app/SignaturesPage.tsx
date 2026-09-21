@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { blobClient } from '../../lib/node';
 import { useCalimero } from '../../lib/useCalimero';
-import bs58 from 'bs58';
+import { toBlobIdHex } from '../../lib/blobIds';
 import { ClientApiDataSource } from '../../api/dataSource/ClientApiDataSource';
 import SignaturePadComponent from '../../components/SignaturePad';
 import { AppHeader } from '../../components/AppHeader';
@@ -14,23 +14,6 @@ import styles from './AgreementsPage.module.css';
 // to make obvious, and previously said nowhere.
 //
 // The data flow is unchanged from the screen this replaces; only the markup is.
-
-/**
- * Normalize a blob id to base58 for the contract.
- *
- * The blob API returns hex (64 chars) or base58; `create_signature` takes
- * base58. Unchanged from the previous screen — moved, not rewritten.
- */
-function normalizeBlobIdToBase58(blobId: string): string {
-  const cleanId = blobId.startsWith('0x') ? blobId.slice(2) : blobId;
-  if (/^[0-9a-fA-F]{64}$/.test(cleanId)) {
-    const bytes = new Uint8Array(
-      cleanId.match(/.{1,2}/g)?.map((byte) => parseInt(byte, 16)) || [],
-    );
-    return bs58.encode(bytes);
-  }
-  return cleanId;
-}
 
 function dataURLToBlob(dataURL: string): Blob {
   const arr = dataURL.split(',');
@@ -64,6 +47,10 @@ export default function SignaturesPage() {
     null,
   );
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
+  // A failed save used to be swallowed whole: the pad closed, the list was
+  // unchanged, and that is indistinguishable from a save that worked and
+  // produced nothing.
+  const [error, setError] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
   const fetchSignatures = useCallback(async () => {
@@ -94,13 +81,17 @@ export default function SignaturesPage() {
             created_at: number | string;
           };
           let dataURL = '';
+          // ⚠️ HEX. This was `bs58.encode`, and the node answers a base58
+          // blob id with "Failed to decode blob ID (expected hex) … Odd
+          // number of digits" — which the empty catch below then swallowed.
+          // That is the whole of "my signature saved but is never displayed":
+          // the row listed, the image 500'd, and nothing said so.
+          const blobId = toBlobIdHex(sig.blob_id);
           try {
-            const blobId =
-              typeof sig.blob_id === 'string'
-                ? sig.blob_id
-                : bs58.encode(new Uint8Array(sig.blob_id));
             const contextId = localStorage.getItem('defaultContextId') || '';
-            const blob = await blobClient.downloadBlob(blobId, contextId);
+            const blob = blobId
+              ? await blobClient.downloadBlob(blobId, contextId)
+              : null;
             if (blob) {
               dataURL = await new Promise<string>((resolve) => {
                 const reader = new FileReader();
@@ -108,8 +99,11 @@ export default function SignaturesPage() {
                 reader.readAsDataURL(blob);
               });
             }
-          } catch {
-            /* a signature with no image still lists, as a named row */
+          } catch (e) {
+            // Still lists as a named row — a library that hides a signature
+            // because its image would not load is worse. But it is REPORTED
+            // now: silence here is what let the encoding bug live.
+            console.error(`Could not load signature image ${blobId}:`, e);
           }
           return {
             id: String(sig.id),
@@ -146,21 +140,39 @@ export default function SignaturesPage() {
   const save = useCallback(
     async (signatureData: string) => {
       setSaving(true);
+      setError(null);
       try {
         const blob = dataURLToBlob(signatureData);
         const file = new File([blob], 'signature.png', { type: blob.type });
-        const uploaded = await blobClient.uploadBlob(file, () => {}, '');
+        // The PRIVATE context: a signature is yours and is announced
+        // nowhere else. `''` would store it on this node with no context at
+        // all, which is a different thing from "my own context".
+        const contextId = localStorage.getItem('defaultContextId') || '';
+        const uploaded = await blobClient.uploadBlob(file, () => {}, contextId);
         if (uploaded.error || !uploaded.data?.blobId) {
           throw new Error(uploaded.error?.message ?? 'Upload failed');
         }
+        // ⚠️ HEX, verbatim. This was converted to base58, which is what made
+        // every saved signature unreadable on the way back out.
+        const blobId = toBlobIdHex(uploaded.data.blobId);
+        if (!blobId) {
+          throw new Error(
+            `The node returned a blob id this app cannot use: ${uploaded.data.blobId}`,
+          );
+        }
         await api.createSignature(
           `Signature ${signatures.length + 1}`,
-          normalizeBlobIdToBase58(uploaded.data.blobId),
+          blobId,
           file.size,
         );
         await fetchSignatures();
-      } catch {
-        /* the pad stays closed; the list is unchanged */
+      } catch (e) {
+        // Was swallowed entirely: a failed save closed the pad and left the
+        // list unchanged, which is indistinguishable from a save that worked
+        // and produced nothing.
+        setError(
+          e instanceof Error ? e.message : 'Could not save that signature.',
+        );
       } finally {
         setSaving(false);
         setPadOpen(false);
@@ -201,6 +213,12 @@ export default function SignaturesPage() {
             {saving ? 'Saving…' : 'Draw a new signature'}
           </button>
         </div>
+
+        {error && (
+          <p className={styles.error} data-testid="signature-error">
+            {error}
+          </p>
+        )}
 
         {loading ? (
           <p className={styles.empty}>Loading…</p>

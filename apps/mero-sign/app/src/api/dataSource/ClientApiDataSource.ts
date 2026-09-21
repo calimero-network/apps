@@ -456,7 +456,15 @@ export class ClientApiDataSource implements ClientApi {
         }
 
         const result = await this.app.execute(
-          defaultContext,
+          // ⚠️ `.contextId`, not the record. `execute` takes a CONTEXT ID;
+          // handing it the whole `DefaultContextInfo` sends a JSON object
+          // where the node wants a hash, and it answers
+          // `ParseError: invalid type: map, expected a hex encoded hash`.
+          // Every call on this private-context surface did it, and every one
+          // of them is inside a `try/catch` that falls back or returns empty
+          // — so the signature library and the local agreement registry
+          // failed silently rather than reporting anything.
+          defaultContext.contextId,
           ClientMethod.IS_DEFAULT_PRIVATE_CONTEXT,
           {},
         );
@@ -729,7 +737,15 @@ export class ClientApiDataSource implements ClientApi {
         };
 
         const result = await this.app.execute(
-          defaultContext,
+          // ⚠️ `.contextId`, not the record. `execute` takes a CONTEXT ID;
+          // handing it the whole `DefaultContextInfo` sends a JSON object
+          // where the node wants a hash, and it answers
+          // `ParseError: invalid type: map, expected a hex encoded hash`.
+          // Every call on this private-context surface did it, and every one
+          // of them is inside a `try/catch` that falls back or returns empty
+          // — so the signature library and the local agreement registry
+          // failed silently rather than reporting anything.
+          defaultContext.contextId,
           ClientMethod.CREATE_SIGNATURE,
           params,
         );
@@ -821,7 +837,15 @@ export class ClientApiDataSource implements ClientApi {
         };
 
         const result = await this.app.execute(
-          defaultContext,
+          // ⚠️ `.contextId`, not the record. `execute` takes a CONTEXT ID;
+          // handing it the whole `DefaultContextInfo` sends a JSON object
+          // where the node wants a hash, and it answers
+          // `ParseError: invalid type: map, expected a hex encoded hash`.
+          // Every call on this private-context surface did it, and every one
+          // of them is inside a `try/catch` that falls back or returns empty
+          // — so the signature library and the local agreement registry
+          // failed silently rather than reporting anything.
+          defaultContext.contextId,
           ClientMethod.DELETE_SIGNATURE,
           params,
         );
@@ -898,7 +922,15 @@ export class ClientApiDataSource implements ClientApi {
         }
 
         const result = await this.app.execute(
-          defaultContext,
+          // ⚠️ `.contextId`, not the record. `execute` takes a CONTEXT ID;
+          // handing it the whole `DefaultContextInfo` sends a JSON object
+          // where the node wants a hash, and it answers
+          // `ParseError: invalid type: map, expected a hex encoded hash`.
+          // Every call on this private-context surface did it, and every one
+          // of them is inside a `try/catch` that falls back or returns empty
+          // — so the signature library and the local agreement registry
+          // failed silently rather than reporting anything.
+          defaultContext.contextId,
           ClientMethod.LIST_SIGNATURES,
           {},
         );
@@ -1016,7 +1048,15 @@ export class ClientApiDataSource implements ClientApi {
         };
 
         const result = await this.app.execute(
-          defaultContext,
+          // ⚠️ `.contextId`, not the record. `execute` takes a CONTEXT ID;
+          // handing it the whole `DefaultContextInfo` sends a JSON object
+          // where the node wants a hash, and it answers
+          // `ParseError: invalid type: map, expected a hex encoded hash`.
+          // Every call on this private-context surface did it, and every one
+          // of them is inside a `try/catch` that falls back or returns empty
+          // — so the signature library and the local agreement registry
+          // failed silently rather than reporting anything.
+          defaultContext.contextId,
           ClientMethod.JOIN_SHARED_CONTEXT,
           params,
         );
@@ -1082,7 +1122,15 @@ export class ClientApiDataSource implements ClientApi {
         }
 
         const result = await this.app.execute(
-          defaultContext,
+          // ⚠️ `.contextId`, not the record. `execute` takes a CONTEXT ID;
+          // handing it the whole `DefaultContextInfo` sends a JSON object
+          // where the node wants a hash, and it answers
+          // `ParseError: invalid type: map, expected a hex encoded hash`.
+          // Every call on this private-context surface did it, and every one
+          // of them is inside a `try/catch` that falls back or returns empty
+          // — so the signature library and the local agreement registry
+          // failed silently rather than reporting anything.
+          defaultContext.contextId,
           ClientMethod.LIST_JOINED_CONTEXTS,
           {},
         );

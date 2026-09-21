@@ -73,7 +73,11 @@ export class DefaultContextService {
     try {
       if (this.app) {
         const result = await this.app.execute(
-          contextInfo,
+          // `.contextId`, not the record — see the note in
+          // `ClientApiDataSource`. This one mattered most: it decides whether
+          // a stored default context is still valid, so failing it threw the
+          // record away and re-created the private context on every boot.
+          contextInfo.contextId,
           'is_default_private_context',
           {},
         );

@@ -117,6 +117,19 @@ export function meroApp(
 
   return {
     async execute(contextId, method, args) {
+      // ⚠️ A CONTEXT ID, NOT A CONTEXT RECORD. Every caller on the private
+      // surface used to hand over the whole `DefaultContextInfo`, and the
+      // node answers that with `ParseError: invalid type: map, expected a hex
+      // encoded hash` — from inside a `catch` that falls back, so the
+      // signature library and the local agreement registry failed in silence.
+      // Caught here so the next one says what it did rather than what the
+      // node made of it.
+      if (typeof contextId !== 'string') {
+        throw new Error(
+          'execute() takes a context id, not a context record — pass ' +
+            '`ctx.contextId`.',
+        );
+      }
       // ⚠️ The executor is NOT passed. mero-js resolves the caller's own
       // identity in the context (core #3960 answers context identities for the
       // CALLER rather than the node), and the old SDK's habit of supplying one
@@ -199,7 +212,23 @@ export function meroApp(
     },
 
     async inviteToContext(props) {
-      return mero.admin.createGroupInvitation(props.contextId, {});
+      // ⚠️ THERE IS NO TARGETED PER-CONTEXT INVITATION AT rc.41, and this call
+      // was wrong twice over. `createGroupInvitation` takes a GROUP id — it
+      // was handed a CONTEXT id, which the node cannot resolve and answers as
+      // a bare 500. And it has no invitee field at all
+      // (`{expirationTimestamp, recursive, admitters}`), so even with the
+      // right id it would have minted an OPEN invitation while the screen
+      // above it promised "a payload only they can redeem".
+      //
+      // Failing in words rather than as a 500: the workspace link is the
+      // invitation model, and `addParticipant` is how a known identity is
+      // given a role once they are in.
+      void props;
+      throw new Error(
+        'Per-person invitations are not available. Share the workspace ' +
+          'invitation link instead — it admits them to the workspace, and ' +
+          'every agreement in it.',
+      );
     },
 
     async verifyContext(props) {

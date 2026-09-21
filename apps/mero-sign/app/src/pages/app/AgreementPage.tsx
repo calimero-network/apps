@@ -18,6 +18,7 @@ import {
   type ContextDetails,
   type Document as DocumentRow,
 } from '../../api/clientApi';
+import { useActiveWorkspace } from '../../lib/activeWorkspace';
 import { encodeInvite } from '../../lib/inviteCodec';
 import { shareableInvitation } from '../../lib/inviteLink';
 import {
@@ -113,6 +114,8 @@ export default function AgreementPage() {
     code: string;
   } | null>(null);
   const [mintingInvite, setMintingInvite] = useState(false);
+  // ⚠️ An invitation is to the WORKSPACE, not to this agreement. See below.
+  const workspaceId = useActiveWorkspace();
   const [inviteeId, setInviteeId] = useState('');
   const [targetedPayload, setTargetedPayload] = useState('');
 
@@ -250,13 +253,33 @@ export default function AgreementPage() {
       setError('This agreement is not open on your node yet.');
       return;
     }
+    // ⚠️ THE NAMESPACE, NOT THE CONTEXT — this is the reported
+    // `{"error":"Internal server error"}` on Create invitation.
+    //
+    // `contextInviteByOpenInvitation` is a kept NAME, not a kept meaning:
+    // since the workspace model it posts to
+    // `POST /admin-api/namespaces/<id>/invite`. This call site still handed it
+    // `getContextId() || contextId`, so the node was asked to mint an
+    // invitation for a namespace whose id is actually a context's — it has no
+    // such namespace, and the lookup fails as a bare 500 that names nothing.
+    //
+    // The grant was never per-agreement anyway: an invitation admits someone
+    // to the workspace, and the agreements inside it are reached by
+    // inheritance from there. See `lib/agreements`.
+    if (!workspaceId) {
+      setError(
+        'Open this agreement from its workspace first — an invitation is to ' +
+          'the workspace, and this page does not know which one you came from.',
+      );
+      return;
+    }
     setMintingInvite(true);
     try {
       setContextId(contextId);
       setExecutorPublicKey(executorKey);
       const res: ResponseData<ContextInviteByOpenInvitationResponse> =
         await apiClient.node().contextInviteByOpenInvitation(
-          getContextId() || contextId,
+          workspaceId,
           getExecutorPublicKey() || executorKey,
           // `validForBlocks`. Core clamps an open invitation to 24 hours
           // whatever is asked for, so this is "as long as it will allow".
@@ -287,7 +310,7 @@ export default function AgreementPage() {
     } finally {
       setMintingInvite(false);
     }
-  }, [contextId, executorKey, details]);
+  }, [contextId, executorKey, details, workspaceId]);
 
   const mintTargeted = useCallback(async () => {
     const id = inviteeId.trim();
