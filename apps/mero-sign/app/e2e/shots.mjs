@@ -46,7 +46,13 @@ const OUT = resolve(argOf('--out') ?? resolve(APP, '../data/shots'));
 // blank screenshot on a timer cannot pass.
 const SCENARIOS = [
   ['landing', 'The front door, signed out', 'h1'],
-  ['agreements', 'Your agreements', '[data-testid="agreement-card"]'],
+  ['workspaces', 'Your workspaces', '[data-testid="workspace-card"]'],
+  ['workspaces-empty', 'No workspaces yet', '[data-testid="workspaces-empty"]'],
+  [
+    'agreements',
+    'Agreements in one workspace',
+    '[data-testid="agreement-card"]',
+  ],
   ['agreements-empty', 'No agreements yet', '[data-testid="agreements-empty"]'],
   [
     'agreements-error',

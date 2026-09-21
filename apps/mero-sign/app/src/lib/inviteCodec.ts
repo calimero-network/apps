@@ -72,6 +72,13 @@ export interface MeroSignInvitePayload {
    * join is still in flight, and the fallback if the contract has not synced.
    */
   contextName?: string;
+  /**
+   * The workspace name the inviter typed, for the same reason as
+   * {@link contextName} and with the same caveat: a display hint outside the
+   * signature. The namespace actually joined is read from the SIGNED body by
+   * {@link namespaceIdOfInvite}.
+   */
+  workspaceName?: string;
 }
 
 function isSignedInvitation(v: unknown): v is SignedOpenInvitationLike {
@@ -141,6 +148,8 @@ function parsePayload(json: string): MeroSignInvitePayload | null {
         str(wrapper.context_name) ??
         str(wrapper.groupAlias) ??
         str(wrapper.groupName),
+      workspaceName:
+        str(wrapper.workspaceName) ?? str(wrapper.namespaceName) ?? undefined,
     };
   }
 
@@ -157,10 +166,12 @@ export function encodeInvite(payload: {
   invitation: SignedOpenInvitationLike;
   contextId?: string;
   contextName?: string;
+  workspaceName?: string;
 }): string {
   const body: Record<string, unknown> = { invitation: payload.invitation };
   if (payload.contextId) body.contextId = payload.contextId;
   if (payload.contextName) body.contextName = payload.contextName;
+  if (payload.workspaceName) body.workspaceName = payload.workspaceName;
   const bytes = new TextEncoder().encode(JSON.stringify(body));
   return bs58.encode(deflateSync(bytes, { level: 9 }));
 }
@@ -231,15 +242,41 @@ export function decodeInvite(input: string): MeroSignInvitePayload | null {
 export function contextIdOfInvite(
   payload: MeroSignInvitePayload | SignedOpenInvitationLike,
 ): string {
+  return signedField(payload, ['contextId', 'context_id']);
+}
+
+/**
+ * The WORKSPACE an open invitation grants, read out of the signed body.
+ *
+ * This is the one value the join flow cannot do without: `joinNamespace` takes
+ * the namespace in the path, and a namespace id read from the envelope beside
+ * the signature could be edited to point a joiner at a different workspace.
+ * Core spells it `group_id` in the signed invitation — a namespace IS a root
+ * group — and ships it as a byte array, which is hex-encoded here.
+ */
+export function namespaceIdOfInvite(
+  payload: MeroSignInvitePayload | SignedOpenInvitationLike,
+): string {
+  return signedField(payload, ['group_id', 'groupId', 'namespaceId']);
+}
+
+/** Read one id out of the SIGNED body, hex-encoding a byte array. */
+function signedField(
+  payload: MeroSignInvitePayload | SignedOpenInvitationLike,
+  keys: string[],
+): string {
   const signed = isSignedInvitation(payload)
     ? payload
     : (payload as MeroSignInvitePayload).invitation;
   const body = signed?.invitation as Record<string, unknown> | undefined;
-  const raw = body?.contextId ?? body?.context_id;
-  if (Array.isArray(raw)) {
-    return (raw as number[])
-      .map((b) => Number(b).toString(16).padStart(2, '0'))
-      .join('');
+  for (const key of keys) {
+    const raw = body?.[key];
+    if (Array.isArray(raw)) {
+      return (raw as number[])
+        .map((b) => Number(b).toString(16).padStart(2, '0'))
+        .join('');
+    }
+    if (typeof raw === 'string' && raw.trim()) return raw.trim();
   }
-  return typeof raw === 'string' ? raw : '';
+  return '';
 }

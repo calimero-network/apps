@@ -79,7 +79,16 @@ export class DocumentService {
 }
 
 export async function redeemInvitation() {
-  return { contextId: 'ctx-1', memberPublicKey: BOB, name: 'NDA with Acme' };
+  // ⚠️ `namespaceId` and a nullable `contextId`: an invitation grants a
+  // WORKSPACE, and only resolves to one agreement when the workspace holds
+  // exactly one. See `api/invitationJoin`.
+  return {
+    namespaceId: 'ns-1',
+    contextId: 'ctx-1',
+    memberPublicKey: BOB,
+    name: 'NDA with Acme',
+    workspaceName: 'Acme Legal',
+  };
 }
 export function parseInvitation() {
   return null;

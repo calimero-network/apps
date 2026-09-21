@@ -129,14 +129,24 @@ export class ContextApiDataSource implements NodeApi {
     }
 
     try {
-      const result = await apiClient.node().joinContextByOpenInvitation(
-        // The namespace the invitation names. `JoinContextProps` predates
-        // the workspace model and carries only the payload, so it is read
-        // off the payload rather than added to every caller's props.
-        (props as { namespaceId?: string }).namespaceId ?? '',
-        props.invitationPayload,
+      // ⚠️ THIS FALLBACK CANNOT ANSWER WITH A CONTEXT, and must not pretend to.
+      //
+      // It used to post the payload to `joinContextByOpenInvitation` and cast
+      // the reply to `{contextId, memberPublicKey}`. Since the workspace model
+      // that call joins a NAMESPACE and answers `{namespaceId, memberIdentity,
+      // memberAccount}` — no context, because membership of a workspace is not
+      // membership of the agreements inside it. The cast compiled and produced
+      // `contextId: undefined`, which the caller reported as "the node accepted
+      // the invitation but did not say which context it joined".
+      //
+      // An OPEN invitation belongs to `redeemInvitation`, which knows how to
+      // enter a subgroup afterwards. What is left here is the TARGETED path,
+      // and it only reaches this line when `this.app` is absent — i.e. before
+      // the node connection exists.
+      throw new Error(
+        'No node connection yet, so this invitation cannot be redeemed. ' +
+          'Reconnect and try again.',
       );
-      return { data: result.data as JoinContextResponse, error: null };
     } catch (error) {
       console.error('joinContext failed:', error);
       let errorMessage = 'An unexpected error occurred during joinContext';
