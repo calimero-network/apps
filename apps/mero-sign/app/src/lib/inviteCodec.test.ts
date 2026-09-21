@@ -4,6 +4,7 @@ import {
   contextIdOfInvite,
   decodeInvite,
   encodeInvite,
+  namespaceIdOfInvite,
   type SignedOpenInvitationLike,
 } from './inviteCodec';
 
@@ -140,5 +141,73 @@ describe('contextIdOfInvite', () => {
       JSON.stringify({ invitation: {}, inviterSignature: 'aa' }),
     )!;
     expect(contextIdOfInvite(decoded)).toBe('');
+  });
+});
+
+// ── The workspace an invitation grants ──────────────────────────────────────
+//
+// `joinNamespace` takes the namespace in the PATH, so the join flow cannot
+// proceed without it — and it must come from the signed body, because a
+// namespace id read from the envelope beside the signature is a namespace id
+// a sharer could edit to put a joiner somewhere else. Core spells it
+// `group_id` in the signed invitation: a namespace IS a root group.
+
+const NAMESPACE_ID = '0f1e2d3c4b5a69788796a5b4c3d2e1f0';
+
+function signedWithGroup(groupId: unknown): SignedOpenInvitationLike {
+  return {
+    invitation: {
+      group_id: groupId,
+      inviter_identity: '11'.repeat(32),
+      expiration_timestamp: 4242,
+      secret_salt: [1, 2, 3],
+      invited_role: 0,
+    },
+    inviter_signature: 'ff'.repeat(64),
+  };
+}
+
+describe('namespaceIdOfInvite', () => {
+  it('reads group_id out of the signed body', () => {
+    expect(namespaceIdOfInvite(signedWithGroup(NAMESPACE_ID))).toBe(
+      NAMESPACE_ID,
+    );
+  });
+
+  it('hex-encodes the byte-array spelling core actually ships', () => {
+    const bytes = [0x0f, 0x1e, 0x2d, 0x3c];
+    expect(namespaceIdOfInvite(signedWithGroup(bytes))).toBe('0f1e2d3c');
+  });
+
+  it('survives a round trip through the shareable code', () => {
+    const code = encodeInvite({
+      invitation: signedWithGroup(NAMESPACE_ID),
+      workspaceName: 'Acme',
+    });
+    const decoded = decodeInvite(code);
+    expect(decoded).not.toBeNull();
+    expect(decoded?.workspaceName).toBe('Acme');
+    expect(namespaceIdOfInvite(decoded!)).toBe(NAMESPACE_ID);
+  });
+
+  it('IGNORES a namespace id planted in the envelope', () => {
+    // The whole point. If the envelope could name the namespace, editing a
+    // shared link would redirect a joiner into a workspace the invitation
+    // never granted.
+    const code = encodeInvite({
+      invitation: signedWithGroup(NAMESPACE_ID),
+      workspaceName: 'Acme',
+    });
+    const decoded = decodeInvite(code)!;
+    (decoded as unknown as Record<string, unknown>).namespaceId = 'ff'.repeat(
+      16,
+    );
+    expect(namespaceIdOfInvite(decoded)).toBe(NAMESPACE_ID);
+  });
+
+  it('is empty for an invitation with no group in it, rather than guessing', () => {
+    // An older, context-era invitation. The caller turns this into "ask for a
+    // new link", which is true and actionable.
+    expect(namespaceIdOfInvite(signed())).toBe('');
   });
 });
