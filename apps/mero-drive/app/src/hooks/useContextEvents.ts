@@ -25,6 +25,8 @@ import {
 } from '@calimero-network/mero-react';
 import { parseSyncStatusEvent } from './useSyncStatus';
 
+const SYNC_TICK_MS = 5_000; // under core's 10 s sync tick: one refetch per tick, however its runs end
+
 /**
  * Narrow a subscription event to the CONTEXT family.
  *
@@ -119,6 +121,7 @@ export function useContextEvents(
   const idsKey = ids.join(',');
 
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastSyncRef = useRef(-Infinity);
   // Clear any pending debounced fire on unmount so a settled timer can't
   // call onChange after the consumer is gone.
   useEffect(
@@ -135,10 +138,16 @@ export function useContextEvents(
         const allowed = idsKey.length > 0 ? idsKey.split(',') : [];
         if (!allowed.includes(event.contextId)) return;
       }
-      // Each interval sync reports `syncing` then `idle`; only its completion can
-      // have delivered peer state, so the rest would double every refetch.
+      // A sync run reports an in-progress phase, then one terminal phase; only the
+      // terminal one counts, even a failed run, since governance arrives by gossip.
       const sync = parseSyncStatusEvent(event);
-      if (sync && sync.phase !== 'idle') return;
+      if (sync?.phase === 'syncing' || sync?.phase === 'receivingSnapshot')
+        return;
+      if (sync) {
+        const now = Date.now();
+        if (now - lastSyncRef.current < SYNC_TICK_MS) return;
+        lastSyncRef.current = now;
+      }
       if (debounceMs <= 0) {
         onChange();
         return;
