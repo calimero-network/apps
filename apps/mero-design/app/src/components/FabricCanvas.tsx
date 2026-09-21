@@ -146,6 +146,7 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
       imageCache,
       selectElement,
       selectElements,
+      selectWithPointer,
       upsertElement,
       removeElement,
       cacheImage,
@@ -164,6 +165,7 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
         imageCache: s.imageCache,
         selectElement: s.selectElement,
         selectElements: s.selectElements,
+        selectWithPointer: s.selectWithPointer,
         upsertElement: s.upsertElement,
         removeElement: s.removeElement,
         cacheImage: s.cacheImage,
@@ -300,8 +302,8 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
       let panLastX = 0;
       let panLastY = 0;
 
-      fc.on("mouse:down", (opt) => {
-        const e = opt.e as MouseEvent;
+      const onPanDown = (opt: { e: MouseEvent }) => {
+        const e = opt.e;
         if (spaceHeldRef.current || e.altKey || e.button === 1) {
           panning = true;
           panLastX = e.clientX;
@@ -309,10 +311,10 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
           fc.setCursor("grabbing");
           fc.selection = false;
         }
-      });
-      fc.on("mouse:move", (opt) => {
+      };
+      const onPanMove = (opt: { e: MouseEvent }) => {
         if (!panning) return;
-        const e = opt.e as MouseEvent;
+        const e = opt.e;
         const dx = e.clientX - panLastX;
         const dy = e.clientY - panLastY;
         panLastX = e.clientX;
@@ -320,14 +322,17 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
         fc.relativePan(new Point(dx, dy));
         const vpt = fc.viewportTransform;
         if (vpt) onViewportChangeRef.current?.(fc.getZoom(), vpt[4], vpt[5]);
-      });
-      fc.on("mouse:up", () => {
+      };
+      const onPanUp = () => {
         if (panning) {
           panning = false;
           fc.selection = useCanvasStore.getState().activeTool === "select";
           fc.setCursor("default");
         }
-      });
+      };
+      fc.on("mouse:down", onPanDown as (e: unknown) => void);
+      fc.on("mouse:move", onPanMove as (e: unknown) => void);
+      fc.on("mouse:up", onPanUp);
 
       return () => {
         window.removeEventListener("resize", resize);
@@ -581,8 +586,12 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
       }
 
       let startX = 0, startY = 0, drawing = false;
+      // Screen-space origin of the gesture. The scene-space one moves with the
+      // zoom, so "did they drag or just click?" can only be asked here: at 8x
+      // zoom a 2px twitch is 16 scene px and would pass a scene-space test.
+      let startClientX = 0, startClientY = 0;
 
-      const onMouseDown = async (opt: { e: MouseEvent }) => {
+      const onMouseDown = async (opt: { e: MouseEvent; target?: FabricObject & { data?: Element } }) => {
         const e = opt.e;
 
         // Hand tool: start panning
@@ -595,6 +604,20 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
 
         if (spaceHeldRef.current || e.altKey || e.button === 1) return;
         if (activeTool === "select" || activeTool === "path" || activeTool === "image") return;
+
+        // A click that lands on an existing item is about THAT item — select it
+        // and hand the tool back to the pointer. Without this, a creation tool
+        // did both at once: Fabric had already made the item active and set up a
+        // move transform, while this handler started drawing a second shape on
+        // top of it. Dragging an item therefore smeared a new rect across it,
+        // and clicking a text to edit dropped a fresh "Text" over the old one.
+        const hit = opt.target;
+        if (hit?.data?.id && !readOnlyRef.current) {
+          selectWithPointer(hit.data.id);
+          fc.selection = true;
+          return;
+        }
+
         // Viewers may pan/select to inspect, but never create.
         if (readOnlyRef.current) return;
 
@@ -620,12 +643,17 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
           itext.enterEditing();
           itext.selectAll();
           fc.renderAll();
+          // Selected, not cleared: `setTool` on its own would empty the selection,
+          // and the selection->canvas effect would then discard the active object
+          // out from under the caret, ending the edit before it began.
+          selectWithPointer(el.id);
           await rpcCall(contextId, "add_element", { element: el }).catch((e) => reportFailure.current("add_element", e));
           return;
         }
 
         const p = fc.getScenePoint(e);
         startX = p.x; startY = p.y; drawing = true;
+        startClientX = e.clientX; startClientY = e.clientY;
       };
 
       const onMouseMove = (opt: { e: MouseEvent }) => {
@@ -703,6 +731,18 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
           previewObjRef.current = null;
         }
 
+        // A click is not a drag. Below the threshold the gesture produced no
+        // shape to speak of — a zero-length line, or a rect the 20px floor below
+        // invents out of nothing — so create nothing at all and leave the tool
+        // armed for a real drag.
+        if (
+          Math.abs(e.clientX - startClientX) < MIN_DRAG_PX &&
+          Math.abs(e.clientY - startClientY) < MIN_DRAG_PX
+        ) {
+          fc.renderAll();
+          return;
+        }
+
         const p = fc.getScenePoint(e);
         const segment = activeTool === "line" || activeTool === "arrow";
         // A horizontal line is legitimately 0 tall — only area shapes get a floor.
@@ -740,6 +780,9 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
         };
         snapshot();
         upsertElement(el);
+        // The shape is down; the next gesture is almost always about moving or
+        // resizing it, so give the pointer back rather than arming another draw.
+        selectWithPointer(el.id);
         await rpcCall(contextId, "add_element", { element: el }).catch((e) => reportFailure.current("add_element", e));
       };
 
@@ -982,21 +1025,30 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
       fc.on("text:editing:exited", onTextEditingExited as (e: unknown) => void);
       fc.on("selection:created", onSelectionCreated as (e: unknown) => void);
       fc.on("selection:updated", onSelectionCreated as (e: unknown) => void);
-      fc.on("selection:cleared", () => selectElement(null));
+      const onSelectionCleared = () => selectElement(null);
+      fc.on("selection:cleared", onSelectionCleared);
       window.addEventListener("keydown", onKeyDown);
       window.addEventListener("keyup", onKeyUp);
 
       return () => {
-        fc.off("mouse:down"); fc.off("mouse:move"); fc.off("mouse:up");
-        fc.off("object:modified");
-        fc.off("path:created");
-        fc.off("text:editing:exited"); fc.off("selection:created");
-        fc.off("selection:updated"); fc.off("selection:cleared");
+        // By handler, never by name: `fc.off("mouse:down")` drops every listener
+        // for the event, and this effect re-runs on each tool change — so the
+        // space/alt-drag pan handlers registered once at mount were torn down
+        // the first time anyone picked a tool, and never came back.
+        fc.off("mouse:down", onMouseDown as (e: unknown) => void);
+        fc.off("mouse:move", onMouseMove as (e: unknown) => void);
+        fc.off("mouse:up", onMouseUp as (e: unknown) => void);
+        fc.off("object:modified", onObjectModified as (e: unknown) => void);
+        fc.off("path:created", onPathCreated as (e: unknown) => void);
+        fc.off("text:editing:exited", onTextEditingExited as (e: unknown) => void);
+        fc.off("selection:created", onSelectionCreated as (e: unknown) => void);
+        fc.off("selection:updated", onSelectionCreated as (e: unknown) => void);
+        fc.off("selection:cleared", onSelectionCleared);
         window.removeEventListener("keydown", onKeyDown);
         window.removeEventListener("keyup", onKeyUp);
         if (previewObjRef.current) { fc.remove(previewObjRef.current); previewObjRef.current = null; }
       };
-    }, [activeTool, readOnly, contextId, elements.length, selectElement, selectElements, upsertElement, removeElement, snapshot, undo, redo, copyElement, getPasted]);
+    }, [activeTool, readOnly, contextId, elements.length, selectElement, selectElements, selectWithPointer, upsertElement, removeElement, snapshot, undo, redo, copyElement, getPasted]);
 
     useEffect(() => {
       (canvasElRef.current as (HTMLCanvasElement & { _cacheImage?: typeof cacheImage }) | null)!._cacheImage = cacheImage;
@@ -1059,6 +1111,12 @@ function nextLayerIndex(elements: Element[]): number {
 
 const LINE_STROKE = "#111111";
 const LINE_WIDTH = 2;
+/**
+ * How far, in screen pixels, a press must travel before it counts as drawing a
+ * shape rather than clicking. Small enough that a deliberate small shape still
+ * lands, large enough to absorb the hand tremor in a click.
+ */
+const MIN_DRAG_PX = 4;
 
 /**
  * Line/arrow endpoints, absolute. `points` is "x1,y1 x2,y2" in element-local
