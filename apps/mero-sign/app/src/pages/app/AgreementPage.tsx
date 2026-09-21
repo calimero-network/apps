@@ -19,6 +19,8 @@ import {
   type Document as DocumentRow,
 } from '../../api/clientApi';
 import { useActiveWorkspace } from '../../lib/activeWorkspace';
+import { blobClient } from '../../lib/node';
+import { toBlobIdHex } from '../../lib/blobIds';
 import { encodeInvite } from '../../lib/inviteCodec';
 import { shareableInvitation } from '../../lib/inviteLink';
 import {
@@ -106,6 +108,52 @@ export default function AgreementPage() {
   const [uploading, setUploading] = useState(false);
 
   const [viewing, setViewing] = useState<DocumentRow | null>(null);
+  // ⚠️ THE VIEWER WAS PASSED `file={null}`, HARDCODED. Nothing ever fetched
+  // the document's bytes, so opening any document — however healthy —
+  // rendered "No PDF selected. Please upload a PDF to get started.", forever,
+  // for everyone. The blob id was sitting on the row the whole time.
+  const [viewingFile, setViewingFile] = useState<File | null>(null);
+  const [viewingError, setViewingError] = useState<string | null>(null);
+
+  // Fetch the bytes whenever a document is opened, and drop them when it is
+  // closed so a second open cannot show the first one's pages.
+  useEffect(() => {
+    if (!viewing) {
+      setViewingFile(null);
+      setViewingError(null);
+      return;
+    }
+    let cancelled = false;
+    setViewingFile(null);
+    setViewingError(null);
+    void (async () => {
+      try {
+        // Hex — and `toBlobIdHex` also accepts the base58 ids written before
+        // that was fixed, so documents uploaded by an older build still open.
+        const blobId = toBlobIdHex(viewing.pdfBlobId);
+        if (!blobId) {
+          throw new Error(
+            'This document has no readable blob id recorded against it.',
+          );
+        }
+        const blob = await blobClient.downloadBlob(blobId, contextId);
+        if (cancelled) return;
+        setViewingFile(
+          new File([blob], viewing.name || 'document.pdf', {
+            type: 'application/pdf',
+          }),
+        );
+      } catch (e) {
+        if (cancelled) return;
+        setViewingError(
+          e instanceof Error ? e.message : 'Could not load that document.',
+        );
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [viewing, contextId]);
   const [roleBusyFor, setRoleBusyFor] = useState<string | null>(null);
 
   const [invite, setInvite] = useState<{
@@ -739,22 +787,53 @@ export default function AgreementPage() {
             className={styles.modal}
             style={{ maxWidth: 980, padding: 0, maxHeight: '92vh' }}
           >
-            <PDFViewer
-              file={null}
-              onClose={() => setViewing(null)}
-              title={viewing.name}
-              showDownload
-              showClose
-              maxHeight="86vh"
-              contextId={contextId}
-              documentId={viewing.id}
-              documentHash={viewing.hash}
-              showSaveToContext
-              onDocumentSaved={() => {
-                setViewing(null);
-                void loadDocuments();
-              }}
-            />
+            {/* ⚠️ THE VIEWER IS NOT MOUNTED UNTIL THERE ARE BYTES.
+                `PDFViewer` renders "No PDF selected. Please upload a PDF to
+                get started." for a null `file` — the exact copy this change
+                exists to stop showing. Mounting it while the blob is still
+                downloading flashes that message on every open, and mounting
+                it after a failure leaves it sitting under the real error,
+                contradicting it. So: fetching says fetching, a failure says
+                what failed, and the viewer appears when it has something to
+                view. */}
+            {viewingError ? (
+              <div style={{ padding: 24 }}>
+                <p className={styles.error} data-testid="document-error">
+                  {viewingError}
+                </p>
+                <div className={styles.modalRow}>
+                  <button
+                    className={styles.btnGhost}
+                    onClick={() => setViewing(null)}
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            ) : !viewingFile ? (
+              <div style={{ padding: 24 }}>
+                <p className={styles.empty} data-testid="document-loading">
+                  Loading {viewing.name}…
+                </p>
+              </div>
+            ) : (
+              <PDFViewer
+                file={viewingFile}
+                onClose={() => setViewing(null)}
+                title={viewing.name}
+                showDownload
+                showClose
+                maxHeight="86vh"
+                contextId={contextId}
+                documentId={viewing.id}
+                documentHash={viewing.hash}
+                showSaveToContext
+                onDocumentSaved={() => {
+                  setViewing(null);
+                  void loadDocuments();
+                }}
+              />
+            )}
           </div>
         </div>
       )}
