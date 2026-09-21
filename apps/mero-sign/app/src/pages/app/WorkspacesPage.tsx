@@ -398,18 +398,17 @@ export default function WorkspacesPage() {
           </p>
         </div>
 
-        <div className={styles.joinSection}>
-          <p className={styles.joinLabel}>Your signatures</p>
-          <div className={styles.joinRow}>
-            <button
-              className={styles.btnGhost}
-              onClick={() => navigate('/signatures')}
-              data-testid="go-signatures"
-            >
-              Open signature library
-            </button>
-          </div>
-        </div>
+        {/* ⚠️ NO SIGNATURE LIBRARY HERE. It used to sit on this screen, which
+            is the app's ROOT — the list of workspaces you belong to. Your
+            signatures are not a peer of your workspaces; they are a tool you
+            reach for while working inside one. It lives on the agreements
+            screen now, where a document is about to be signed.
+
+            The DATA is unchanged and deliberately so: a signature is stored
+            in this node's own private context and is the same drawing in
+            every workspace. Scoping the store per workspace would mean
+            re-drawing your signature for each team, which is not what a
+            signature is. Only the way in moved. */}
       </main>
 
       {inviteFor && (

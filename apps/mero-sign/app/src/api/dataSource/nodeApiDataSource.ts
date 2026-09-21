@@ -33,7 +33,28 @@ export class ContextApiDataSource implements NodeApi {
         return { data: result, error: null };
       }
     } catch (error) {
-      console.warn('App createContext failed, falling back to API:', error);
+      // ⚠️ THE REAL ERROR IS THE ANSWER. This used to `console.warn` and fall
+      // through to the branch below, which can only ever throw "Creating an
+      // agreement requires a workspace. See lib/agreements." — so whatever
+      // actually went wrong was replaced by a sentence naming a source file,
+      // and the cause was only in the console.
+      //
+      // That is how a stale stored workspace — a namespace the node no longer
+      // has, which is ordinary after a node reset — came out as a message
+      // about lib/agreements rather than "that workspace no longer exists".
+      //
+      // The fallback cannot succeed (see below), so there is nothing to fall
+      // back TO. Report what happened.
+      return {
+        data: undefined,
+        error: {
+          code: 500,
+          message:
+            error instanceof Error
+              ? error.message
+              : 'Could not create the agreement.',
+        },
+      };
     }
 
     try {
@@ -56,10 +77,15 @@ export class ContextApiDataSource implements NodeApi {
       // ⚠️ THE LEGACY FALLBACK IS GONE, and it could not have worked.
       // It posted `protocol: 'near'` — a field core removed — and no
       // `group_id`, which `CreateContextRequest` requires. Against
-      // `deny_unknown_fields` that is a 400 for the whole call, so this branch
-      // could only ever turn a real error into a confusing one.
+      // `deny_unknown_fields` that is a 400 for the whole call.
+      //
+      // So this line is only reachable with NO node connection at all — the
+      // `if (this.app)` above returns or reports in every other case. It says
+      // that, rather than naming a source file at somebody trying to click a
+      // button.
       throw new Error(
-        'Creating an agreement requires a workspace. See lib/agreements.',
+        'No node connection yet, so there is nothing to create an agreement ' +
+          'on. Reconnect and try again.',
       );
     } catch (error) {
       let errorMessage = 'An unexpected error occurred during createContext';

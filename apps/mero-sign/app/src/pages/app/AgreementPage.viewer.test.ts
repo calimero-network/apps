@@ -70,3 +70,67 @@ describe('the viewer modal can always be dismissed', () => {
     expect(page).toMatch(/e\.stopPropagation\(\)/);
   });
 });
+
+// ── Where the signature library is reached from ────────────────────────────
+//
+// It used to sit on `/workspaces` — the app's ROOT, the list of workspaces you
+// belong to — beside "Join a workspace". Your signatures are not a peer of
+// your workspaces; they are a tool you reach for while working inside one.
+// Reported as "signatures should be inside when we select workspace not added
+// in the main application".
+//
+// ⚠️ The DATA did not move and deliberately so: a signature lives in this
+// node's own private context and is the same drawing in every workspace.
+// Scoping the store per workspace would mean re-drawing your signature for
+// each team, which is not what a signature is.
+describe('the signature library', () => {
+  const agreements = readFileSync(
+    resolve(__dirname, 'AgreementsPage.tsx'),
+    'utf8',
+  );
+  const workspaces = readFileSync(
+    resolve(__dirname, 'WorkspacesPage.tsx'),
+    'utf8',
+  );
+
+  it('is reachable from inside a workspace', () => {
+    expect(agreements).toMatch(/data-testid="go-signatures"/);
+    expect(agreements).toMatch(/navigate\('\/signatures'\)/);
+  });
+
+  it('is NOT on the root workspaces screen', () => {
+    expect(workspaces).not.toMatch(/data-testid="go-signatures"/);
+    expect(workspaces).not.toMatch(/navigate\('\/signatures'\)/);
+  });
+});
+
+// ── A stored workspace the node no longer has ──────────────────────────────
+//
+// The active workspace is remembered in `localStorage` so a reload lands you
+// back where you were. A node reset — or a deleted workspace — leaves that id
+// pointing at nothing, and it is still a string, so nothing treated it as
+// absent: the screen rendered its create box and every action failed against
+// a namespace the node does not have. Pressing Create answered with a
+// sentence naming `lib/agreements`.
+describe('a workspace that is gone', () => {
+  const agreements = readFileSync(
+    resolve(__dirname, 'AgreementsPage.tsx'),
+    'utf8',
+  );
+
+  it('is detected from the failed listing, with no extra round trip', () => {
+    expect(agreements).toMatch(/setGone\(true\)/);
+  });
+
+  it('drops the stored selection rather than reporting it forever', () => {
+    expect(agreements).toMatch(/setActiveWorkspace\(null\)/);
+  });
+
+  it('offers the picker instead of a create box that cannot work', () => {
+    const gone = agreements.indexOf('if (gone)');
+    const create = agreements.indexOf('data-testid="create-agreement"');
+    expect(gone).toBeGreaterThan(-1);
+    // The dead-workspace return comes FIRST, so the create box is unreachable.
+    expect(gone).toBeLessThan(create);
+  });
+});

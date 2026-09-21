@@ -62,6 +62,8 @@ export default function AgreementsPage() {
   const [rows, setRows] = useState<AgreementRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // The stored workspace is not on this node. See `load`.
+  const [gone, setGone] = useState(false);
 
   const [newName, setNewName] = useState('');
   const [creating, setCreating] = useState(false);
@@ -90,15 +92,30 @@ export default function AgreementsPage() {
     setError(null);
     try {
       setRows(await listAgreements(adminApi(), workspaceId));
+      setGone(false);
     } catch (e) {
       setRows([]);
+      // ⚠️ A STORED WORKSPACE OUTLIVES THE NODE THAT HELD IT. The active
+      // workspace is remembered in `localStorage` so a reload lands you back
+      // where you were — but a node that has been reset, or a workspace
+      // someone deleted, leaves that id pointing at nothing. It is still a
+      // string, so nothing upstream treats it as absent: this screen rendered
+      // its create box as usual and every action failed against a namespace
+      // the node does not have.
+      //
+      // That is how pressing Create answered with a sentence naming
+      // `lib/agreements`. Failing to list a workspace's subgroups IS the
+      // evidence — there is nothing more to ask the node — so the selection
+      // is dropped rather than reported, and the picker is offered instead.
+      setGone(true);
+      if (!params.workspaceId) setActiveWorkspace(null);
       setError(
         e instanceof Error ? e.message : 'Could not load your agreements.',
       );
     } finally {
       setLoading(false);
     }
-  }, [workspaceId]);
+  }, [workspaceId, params.workspaceId]);
 
   useEffect(() => {
     if (app) void load();
@@ -165,6 +182,36 @@ export default function AgreementsPage() {
     },
     [navigate, workspaceId],
   );
+
+  if (gone) {
+    return (
+      <div className={styles.root}>
+        <AppHeader />
+        <main className={styles.main}>
+          <h1 className={styles.title}>That workspace is not on this node</h1>
+          <p className={styles.subtitle}>
+            It was remembered from a previous session, but this node does not
+            have it — it may have been reset, or the workspace deleted. Nothing
+            of yours is lost; pick a workspace to carry on.
+          </p>
+          {error && (
+            <p className={styles.error} data-testid="list-error">
+              {error}
+            </p>
+          )}
+          <div className={styles.joinRow}>
+            <button
+              className={styles.btn}
+              onClick={() => navigate('/workspaces')}
+              data-testid="go-workspaces"
+            >
+              Choose a workspace
+            </button>
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   if (!workspaceId) {
     return (
@@ -303,6 +350,26 @@ export default function AgreementsPage() {
             ))}
           </div>
         )}
+
+        {/* Inside the workspace, next to the agreements it will be used on —
+            not on the root screen beside the workspace list. See the note in
+            `WorkspacesPage`. */}
+        <div className={styles.joinSection}>
+          <p className={styles.joinLabel}>Your signatures</p>
+          <div className={styles.joinRow}>
+            <button
+              className={styles.btnGhost}
+              onClick={() => navigate('/signatures')}
+              data-testid="go-signatures"
+            >
+              Open signature library
+            </button>
+          </div>
+          <p className={styles.hint}>
+            The drawings you sign with. They stay in your own private context
+            and never leave your node, so they are the same in every workspace.
+          </p>
+        </div>
 
         <div className={styles.joinSection}>
           <p className={styles.joinLabel}>
