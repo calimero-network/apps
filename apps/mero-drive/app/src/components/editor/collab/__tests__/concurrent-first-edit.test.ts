@@ -1,6 +1,5 @@
-// Two headless BlockNote editors, two providers, one shared log: both replicas
-// make their first edit before seeing the other's, which is the case that
-// produced two roots and lost one writer's text.
+// Two headless editors on one shared log both make their first edit before
+// seeing the other's: the case that produced two roots and lost a writer's text.
 
 import {
   assert,
