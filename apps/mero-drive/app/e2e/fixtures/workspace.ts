@@ -490,6 +490,13 @@ export class EditorDriver {
     );
   }
 
+  // Our own cursor is never rendered, so exactly one label means one peer.
+  async expectPeerCursor(opts: { timeout?: number } = {}) {
+    const label = this.page.locator('.bn-collaboration-cursor__label');
+    await expect(label).toHaveCount(1, { timeout: opts.timeout ?? 30_000 });
+    await expect(label).toHaveText(/\S/);
+  }
+
   async close(): Promise<void> {
     await this.page.getByRole('button', { name: /^Documents$/ }).click();
   }

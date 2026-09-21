@@ -127,5 +127,33 @@ test.describe('Document collab (two-node)', () => {
     await bob.editor.expectContent('AAA-from-alice', { timeout: 60_000 });
     await bob.editor.expectContent('BBB-from-bob', { timeout: 60_000 });
   });
-});
 
+  // merod rc.41 keys presence off the folder subgroup's own keyring, which an Open folder does not use, so set_ephemeral fails "no current group key".
+  test.fixme("Each sees the other's named cursor - Yjs collab path", async ({
+    alice,
+    bob,
+  }) => {
+    await alice.goToWorkspace();
+    await alice.createNamespace('Cursor Setup');
+    await alice.createFolder({ name: 'Desk', visibility: 'Open' });
+    await alice.tree.openFolder('Desk');
+    await alice.createDoc('Pointer');
+    await alice.openSettings();
+    const inviteUrl = await alice.settings.copyNamespaceInvite();
+    await alice.closeSettings();
+
+    await bob.joinNamespace(inviteUrl);
+    await bob.tree.openFolder('Desk');
+    await bob.restrictedCard.joinIfPrompted();
+    await bob.docs.expectDocVisible('Pointer');
+
+    await alice.openDoc('Pointer');
+    await bob.openDoc('Pointer');
+    await alice.editor.type('here');
+    await bob.editor.expectContent('here', { timeout: 60_000 });
+    await bob.editor.type('!');
+
+    await bob.editor.expectPeerCursor();
+    await alice.editor.expectPeerCursor();
+  });
+});
