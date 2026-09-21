@@ -68,15 +68,14 @@ export function FolderMemberRoleRow({
   onRemove,
   removing,
 }: Props) {
-  const { registryClient, namespaceId } = useDriveWorkspace();
+  const { registryClient, registryContextId, namespaceId } =
+    useDriveWorkspace();
   const caps = useGroupCapabilities(folderId, identity);
   const [updating, setUpdating] = useState(false);
   const [updateError, setUpdateError] = useState<string | null>(null);
-  // Live-refresh this row's capability bitmask when remote admin
-  // ops land on the folder (an admin elsewhere changing this
-  // member's caps). Same SSE connection that
-  // FolderSharingPanel already opens — mero-react dedupes by
-  // contextId set, so this is a free piggyback.
+  // Live-refresh this row's capability bitmask when an admin elsewhere
+  // changes this member's caps; the registry context's sync runs are the
+  // tick for governance changes.
   //
   // Depend on `caps.refetch` (the stable useCallback inside
   // mero-react's useGroupCapabilities), NOT the whole `caps`
@@ -86,7 +85,7 @@ export function FolderMemberRoleRow({
   const onCapsEvent = useCallback(() => {
     void capsRefetch();
   }, [capsRefetch]);
-  useContextEvents(folderId, onCapsEvent);
+  useContextEvents(registryContextId, onCapsEvent, { strict: true });
 
   const onPreset = async (preset: FolderRolePreset) => {
     if (!registryClient) {

@@ -97,7 +97,7 @@ export function useMemberCaps(
   groupId: string,
 ): MemberCapsState {
   const { mero } = useMero();
-  const { selfIdentity } = useDriveWorkspace();
+  const { selfIdentity, registryContextId } = useDriveWorkspace();
   const memberId = selfIdentity ?? '';
 
   const [state, setState] = useState<Omit<MemberCapsState, 'refetch'>>({
@@ -107,15 +107,13 @@ export function useMemberCaps(
   });
   const [tick, setTick] = useState(0);
   const refetch = useCallback(() => setTick((t) => t + 1), []);
-  // Live-refresh caller's own caps when the group emits events
-  // (someone promoted/demoted us, or our membership was just
-  // materialised via auto-follow). Without this we'd keep showing
-  // the stale "loading retry exhausted" state until manual remount.
-  // Debounced: a doc autosave fans rapid events across the shared socket;
-  // coalesce them so we refetch caps once per settled burst, not per event
-  // (this hook is intentionally non-strict to catch membership changes that
-  // don't ding its own context).
-  useContextEvents(groupId, refetch, { debounceMs: 400 });
+  // Live-refresh caller's own caps (someone promoted/demoted us, or our
+  // membership was just materialised via auto-follow). Governance has no
+  // event of its own, so the registry context's sync runs are the tick.
+  useContextEvents(registryContextId, refetch, {
+    strict: true,
+    debounceMs: 400,
+  });
 
   // Track the last (groupId, memberId) we kicked off a fetch for.
   // When those genuinely change, the previous caps are stale and we

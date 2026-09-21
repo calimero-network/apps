@@ -17,6 +17,7 @@ import {
   type GroupMember,
 } from '@calimero-network/mero-react';
 import { useContextEvents } from './useContextEvents';
+import { useDriveWorkspace } from './useDriveWorkspace';
 
 export interface FolderMembershipState {
   members: GroupMember[];
@@ -33,6 +34,7 @@ export function useFolderMembership(folderId: string | null): FolderMembershipSt
   const { mero } = useMero();
   const { addGroupMembers } = useAddGroupMembers();
   const { removeGroupMembers } = useRemoveGroupMembers();
+  const { registryContextId } = useDriveWorkspace();
 
   const [members, setMembers] = useState<GroupMember[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
@@ -81,13 +83,13 @@ export function useFolderMembership(folderId: string | null): FolderMembershipSt
     void refetch();
   }, [refetch]);
 
-  // Live-refresh when remote membership ops land. The same group
-  // context the row data comes from also emits the events; the
+  // Live-refresh when remote membership ops land. Governance has no event
+  // of its own, so the registry context's sync runs are the tick; the
   // sequence guard in `refetch` handles overlapping fetches.
   const onMembershipEvent = useCallback(() => {
     void refetch();
   }, [refetch]);
-  useContextEvents(folderId, onMembershipEvent);
+  useContextEvents(registryContextId, onMembershipEvent, { strict: true });
 
   // Bump the sequence on unmount so any still-in-flight response
   // becomes a no-op (its captured seq won't match anymore). React 18+

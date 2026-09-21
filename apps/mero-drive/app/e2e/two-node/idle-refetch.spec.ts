@@ -5,7 +5,7 @@ import type { Page, Request } from '@playwright/test';
 import { test, expect } from '../fixtures/two-user';
 
 const IDLE_MS = 60_000; // about six of core's 10 s interval syncs
-const MAX_REQUESTS_PER_SYNC = 38; // between 31-35 per sync (one refetch per sync tick) and 42+ (one per sync phase)
+const MAX_REQUESTS_PER_SYNC = 36; // midway between 31 per sync (one refetch per run) and 42 (one per sync phase)
 const MIN_SYNCS = 3; // the window must hold whole sync runs, or the ratio proves nothing
 
 /** The app method of a JSON-RPC `execute` call, or null for any other request. */

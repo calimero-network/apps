@@ -25,8 +25,6 @@ import {
 } from '@calimero-network/mero-react';
 import { parseSyncStatusEvent } from './useSyncStatus';
 
-const SYNC_TICK_MS = 5_000; // under core's 10 s sync tick: one refetch per tick, however its runs end
-
 /**
  * Narrow a subscription event to the CONTEXT family.
  *
@@ -81,19 +79,16 @@ export interface UseContextEventsOptions {
    * dings from an open editor (otherwise every autosave triggers a full
    * workspace refetch + getGroupInfo fan-out).
    *
-   * Do NOT enable this for consumers that rely on reacting to *any*
-   * event because the signal they need (e.g. a governance membership
-   * change) never dings a box they subscribe to — see useMemberCaps.
+   * Governance state (membership, caps, member metadata) has no event of
+   * its own: its consumers subscribe strictly to the registry context,
+   * whose sync runs are the tick that picks it up.
    */
   strict?: boolean;
   /**
    * Coalesce bursts: when > 0, `onChange` fires once `debounceMs` after the
-   * LAST event in a burst, instead of once per event. A doc autosave fans
-   * rapid state-DAG events across the shared socket; without this, every
-   * non-strict subscriber (each folder row's caps/role hook) re-fetches per
-   * event — an N-row RPC storm on every keystroke-batch. Debouncing keeps the
-   * "react to any event" semantics while collapsing the storm to one refetch.
-   * Trailing-edge only (a settled burst still triggers exactly one refetch).
+   * LAST event in a burst, instead of once per event, so a batch of
+   * registry ops costs one refetch. Trailing-edge only (a settled burst
+   * still triggers exactly one refetch).
    */
   debounceMs?: number;
 }
@@ -121,7 +116,6 @@ export function useContextEvents(
   const idsKey = ids.join(',');
 
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastSyncRef = useRef(-Infinity);
   // Clear any pending debounced fire on unmount so a settled timer can't
   // call onChange after the consumer is gone.
   useEffect(
@@ -143,11 +137,6 @@ export function useContextEvents(
       const sync = parseSyncStatusEvent(event);
       if (sync?.phase === 'syncing' || sync?.phase === 'receivingSnapshot')
         return;
-      if (sync) {
-        const now = Date.now();
-        if (now - lastSyncRef.current < SYNC_TICK_MS) return;
-        lastSyncRef.current = now;
-      }
       if (debounceMs <= 0) {
         onChange();
         return;

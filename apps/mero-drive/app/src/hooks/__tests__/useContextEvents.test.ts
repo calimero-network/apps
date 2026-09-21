@@ -146,22 +146,6 @@ describe('useContextEvents', () => {
       expect(onChange).toHaveBeenCalledTimes(1);
     });
 
-    // The node syncs all its contexts on one 10 s tick, but their runs can end
-    // a second or more apart; a subscriber hearing them all refetches once.
-    it('runs of several contexts on one tick trigger one onChange', () => {
-      const onChange = vi.fn();
-      renderHook(() => useContextEvents(['ctx-a', 'ctx-b'], onChange));
-      fireSync('ctx-a', 'idle');
-      vi.advanceTimersByTime(1_000);
-      fireSync('ctx-b', 'waitingForPeers');
-      vi.advanceTimersByTime(1_000);
-      expect(onChange).toHaveBeenCalledTimes(1);
-      vi.advanceTimersByTime(8_000);
-      fireSync('ctx-a', 'idle');
-      vi.advanceTimersByTime(1_000);
-      expect(onChange).toHaveBeenCalledTimes(2);
-    });
-
     it('a mutation right after a run still triggers its own onChange', () => {
       const onChange = vi.fn();
       renderHook(() => useContextEvents(['ctx-a'], onChange));

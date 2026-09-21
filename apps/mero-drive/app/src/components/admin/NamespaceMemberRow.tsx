@@ -25,6 +25,7 @@ import {
   MAX_DISPLAY_NAME_LEN,
 } from '@/hooks/useAdminRenameMember';
 import { useContextEvents } from '@/hooks/useContextEvents';
+import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useMemberDisplayName } from '@/hooks/useMemberDisplayName';
 import { MemberRoleSelect } from './MemberRoleSelect';
 import { GroupRoleSelect } from './GroupRoleSelect';
@@ -91,14 +92,14 @@ export function NamespaceMemberRow({
   onRemove,
 }: Props) {
   const caps = useGroupCapabilities(groupId, identity);
+  const { registryContextId } = useDriveWorkspace();
   const confirm = useConfirm();
   const [updating, setUpdating] = useState(false);
   const [updateError, setUpdateError] = useState<string | null>(null);
   const [removing, setRemoving] = useState(false);
-  // Live-refresh this row's capability bitmask + display name when
-  // remote ops land for this namespace (an admin elsewhere editing
-  // the same member). The display-name refetch is wrapped below
-  // because `refetchName` is captured later.
+  // Live-refresh this row's capability bitmask when an admin elsewhere
+  // edits the same member; the registry context's sync runs are the tick
+  // for governance changes.
   //
   // Depend on `caps.refetch` (stable useCallback inside mero-react)
   // rather than the whole `caps` object — the object is a fresh
@@ -107,14 +108,12 @@ export function NamespaceMemberRow({
   const onMemberEvent = useCallback(() => {
     void capsRefetch();
   }, [capsRefetch]);
-  useContextEvents(groupId, onMemberEvent);
+  useContextEvents(registryContextId, onMemberEvent, { strict: true });
 
   // Admin-rename plumbing. In mero-drive a namespace's id IS its root
   // group id, and `groupId` is exactly that root for the namespace
-  // members panel — so reuse it directly instead of re-deriving via
-  // useDriveWorkspace (avoids a redundant context subscription and
-  // keeps the row's data flow purely prop-driven so it stays
-  // testable in isolation).
+  // members panel, so reuse it directly instead of re-deriving the
+  // namespace id via useDriveWorkspace.
   const { canRename, renameTo } = useAdminRenameMember(groupId, identity);
   const { name: currentName, refetch: refetchName } = useMemberDisplayName(
     groupId,

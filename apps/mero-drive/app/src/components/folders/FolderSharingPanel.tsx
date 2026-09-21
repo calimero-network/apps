@@ -48,7 +48,8 @@ interface Props {
 // (64-hex, client-only UX check).
 
 export function FolderSharingPanel({ folderId }: Props) {
-  const { namespaceId, folders, selfIdentity } = useDriveWorkspace();
+  const { namespaceId, folders, selfIdentity, registryContextId } =
+    useDriveWorkspace();
   const perms = useFolderPermissions(namespaceId ?? '', folderId);
   const { members, loading, error, add, remove, refetch } =
     useFolderMembership(folderId);
@@ -62,7 +63,7 @@ export function FolderSharingPanel({ folderId }: Props) {
     void refetch();
     void refetchRoles();
   }, [refetch, refetchRoles]);
-  useContextEvents(folderId, onFolderEvent);
+  useContextEvents(registryContextId, onFolderEvent, { strict: true });
   const confirm = useConfirm();
   const [inviteLinkOpen, setInviteLinkOpen] = useState(false);
 

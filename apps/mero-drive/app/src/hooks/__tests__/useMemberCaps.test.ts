@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor, act } from '@testing-library/react';
+import type { SseEventData } from '@calimero-network/mero-react';
 import { useMemberCaps } from '../useMemberCaps';
 
 // useMemberCaps fetches members + capabilities straight off
@@ -21,15 +22,31 @@ const MERO_STUB = {
     },
   },
 };
+let sseHandler: ((e: SseEventData) => void) | null = null;
 vi.mock('@calimero-network/mero-react', () => ({
-  useSubscription: vi.fn(),
+  useSubscription: (_ids: unknown, handler: (e: SseEventData) => void) => {
+    sseHandler = handler;
+  },
   useMero: () => MERO_STUB,
 }));
 
 const identity: { value: string | null } = { value: 'bob' };
 vi.mock('../useDriveWorkspace', () => ({
-  useDriveWorkspace: () => ({ selfIdentity: identity.value }),
+  useDriveWorkspace: () => ({
+    selfIdentity: identity.value,
+    registryContextId: 'registry-ctx',
+  }),
 }));
+
+function syncEnded(contextId: string, state: string) {
+  act(() =>
+    sseHandler?.({
+      contextId,
+      type: 'SyncStatus',
+      data: { syncState: { state }, failureCount: 0 },
+    }),
+  );
+}
 
 // A u32 with every bit set — what the hook reports as `caps` for a
 // group-admin (mirrors ADMIN_CAPS_BITMASK in the hook).
@@ -104,4 +121,21 @@ describe('useMemberCaps', () => {
     },
     12000,
   );
+
+  // Caps change by governance, which no context event reports; the registry
+  // context's sync runs are the tick that picks it up, and nothing else is.
+  it('refetches on the registry sync, not on another context ending first', async () => {
+    const { result } = renderHook(() => useMemberCaps('ns', 'g1'));
+    await waitFor(() => expect(result.current.caps).not.toBeNull());
+    const before = listMembers.mock.calls.length;
+
+    syncEnded('docs-ctx', 'waitingForPeers');
+    await new Promise((r) => setTimeout(r, 600));
+    expect(listMembers.mock.calls.length).toBe(before);
+
+    syncEnded('registry-ctx', 'idle');
+    await waitFor(() =>
+      expect(listMembers.mock.calls.length).toBe(before + 1),
+    );
+  });
 });

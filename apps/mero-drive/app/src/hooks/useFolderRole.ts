@@ -69,10 +69,12 @@ export function useFolderRole(folderId: string | null): FolderRoleState {
   // registry event. Coarse (re-runs for unrelated registry ops) but
   // cheap (single getFolderRole call).
   const refetch = useCallback(() => setTick((t) => t + 1), []);
-  // Debounced: coalesce bursts of registry events so a rapid sequence
-  // (e.g. autosave churn on the shared socket) triggers one refetch per
+  // Debounced: a burst of registry events triggers one refetch per
   // settled burst instead of one per event across every folder row.
-  useContextEvents(registryContextId, refetch, { debounceMs: 400 });
+  useContextEvents(registryContextId, refetch, {
+    strict: true,
+    debounceMs: 400,
+  });
 
   // Last folder id we kicked a fetch off for. When `folderId` changes
   // (genuinely different folder), we DO want to clear the previous
@@ -204,10 +206,12 @@ export function useFolderRoles(folderId: string | null): FolderRolesState {
   // the tick on any registry event so the next read picks up the
   // updated FolderRoleEntry rows.
   const refetch = useCallback(() => setTick((t) => t + 1), []);
-  // Debounced: coalesce bursts of registry events so a rapid sequence
-  // (e.g. autosave churn on the shared socket) triggers one refetch per
+  // Debounced: a burst of registry events triggers one refetch per
   // settled burst instead of one per event across every folder row.
-  useContextEvents(registryContextId, refetch, { debounceMs: 400 });
+  useContextEvents(registryContextId, refetch, {
+    strict: true,
+    debounceMs: 400,
+  });
 
   // Same flicker-prevention as useFolderRole: keep the previous
   // entries visible across registryClient re-memos / tick refetches;
