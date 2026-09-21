@@ -225,7 +225,7 @@ export function shouldAdoptPin(resolution: RegistryResolution): boolean {
 /**
  * The metadata record to send when pinning.
  *
- * ⚠️ `SetMetadataRequest` WHOLLY REPLACES the record: an omitted `name` clears
+ * `SetMetadataRequest` WHOLLY REPLACES the record: an omitted `name` clears
  * the workspace name and an omitted key is deleted. Merge onto what is there.
  */
 export function pinnedMetadata(
