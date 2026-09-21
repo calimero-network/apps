@@ -23,6 +23,7 @@ import {
   type SseEventData,
   type SubscriptionEventData,
 } from '@calimero-network/mero-react';
+import { parseSyncStatusEvent } from './useSyncStatus';
 
 /**
  * Narrow a subscription event to the CONTEXT family.
@@ -134,6 +135,10 @@ export function useContextEvents(
         const allowed = idsKey.length > 0 ? idsKey.split(',') : [];
         if (!allowed.includes(event.contextId)) return;
       }
+      // Each interval sync reports `syncing` then `idle`; only its completion can
+      // have delivered peer state, so the rest would double every refetch.
+      const sync = parseSyncStatusEvent(event);
+      if (sync && sync.phase !== 'idle') return;
       if (debounceMs <= 0) {
         onChange();
         return;

@@ -18,6 +18,14 @@ function fire(contextId: string) {
   lastHandler?.({ contextId, data: {} } as SseEventData);
 }
 
+function fireSync(contextId: string, state: string) {
+  lastHandler?.({
+    contextId,
+    type: 'SyncStatus',
+    data: { syncState: { state }, failureCount: 0 },
+  });
+}
+
 beforeEach(() => {
   lastHandler = null;
   lastIds = [];
@@ -82,7 +90,10 @@ describe('useContextEvents', () => {
     try {
       const onChange = vi.fn();
       renderHook(() =>
-        useContextEvents(['ctx-a'], onChange, { strict: true, debounceMs: 400 }),
+        useContextEvents(['ctx-a'], onChange, {
+          strict: true,
+          debounceMs: 400,
+        }),
       );
       fire('other-ctx'); // filtered out — must not arm the timer
       vi.advanceTimersByTime(400);
@@ -93,5 +104,32 @@ describe('useContextEvents', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  // Core runs an interval sync every 10 s and reports each run as `syncing`
+  // then `idle`; only the completion can have delivered peer state.
+  it('one sync run triggers one onChange, on its completion', () => {
+    const onChange = vi.fn();
+    renderHook(() => useContextEvents(['ctx-a'], onChange));
+    fireSync('ctx-a', 'syncing');
+    expect(onChange).not.toHaveBeenCalled();
+    fireSync('ctx-a', 'idle');
+    expect(onChange).toHaveBeenCalledTimes(1);
+  });
+
+  it('a failed or peerless sync run triggers nothing', () => {
+    const onChange = vi.fn();
+    renderHook(() => useContextEvents(['ctx-a'], onChange));
+    fireSync('ctx-a', 'receivingSnapshot');
+    fireSync('ctx-a', 'backingOff');
+    fireSync('ctx-a', 'waitingForPeers');
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('an unparseable SyncStatus event still counts as a change', () => {
+    const onChange = vi.fn();
+    renderHook(() => useContextEvents(['ctx-a'], onChange));
+    fireSync('ctx-a', 'someFuturePhase');
+    expect(onChange).toHaveBeenCalledTimes(1);
   });
 });
