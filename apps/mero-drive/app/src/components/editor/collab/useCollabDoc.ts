@@ -9,7 +9,7 @@ import * as Y from 'yjs';
 import { useContextEvents } from '@/hooks/useContextEvents';
 import { useDocs } from '@/hooks/useDocs';
 import { CalimeroYjsProvider } from './CalimeroYjsProvider';
-import { seedEmptyDoc } from './blocknote-seed';
+import { EMPTY_DOC_SEED, seedEmptyDoc } from './blocknote-seed';
 
 export interface UseCollabDocResult {
   /** The collaborative Y.Doc, or null until the doc is hydrated (or on error). */
@@ -64,8 +64,17 @@ export function useCollabDoc(
     let cancelled = false;
 
     const doc = new Y.Doc();
+    // A locally applied seed is written ahead of the first local edit, so the
+    // log stays self-contained; identical seed bytes dedupe to one entry.
+    let persistSeed = false;
     const prov = new CalimeroYjsProvider(doc, {
-      appendDocUpdate: (update) => transportRef.current.appendUpdate(docId, update),
+      appendDocUpdate: async (update) => {
+        if (persistSeed) {
+          await transportRef.current.appendUpdate(docId, EMPTY_DOC_SEED);
+          persistSeed = false;
+        }
+        await transportRef.current.appendUpdate(docId, update);
+      },
       getDocUpdates: () => transportRef.current.getUpdates(docId),
     });
     providerRef.current = prov;
@@ -82,7 +91,7 @@ export function useCollabDoc(
         if (cancelled) return;
         // Seed before exposing the doc so both replicas of a new doc share one
         // root; a doc with content in the log is left as it is.
-        seedEmptyDoc(doc, prov);
+        persistSeed = seedEmptyDoc(doc, prov);
         setYdoc(doc);
         setProvider(prov);
         setReady(true);
