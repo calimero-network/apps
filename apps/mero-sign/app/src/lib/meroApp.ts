@@ -199,7 +199,23 @@ export function meroApp(
     },
 
     async inviteToContext(props) {
-      return mero.admin.createGroupInvitation(props.contextId, {});
+      // ⚠️ THERE IS NO TARGETED PER-CONTEXT INVITATION AT rc.41, and this call
+      // was wrong twice over. `createGroupInvitation` takes a GROUP id — it
+      // was handed a CONTEXT id, which the node cannot resolve and answers as
+      // a bare 500. And it has no invitee field at all
+      // (`{expirationTimestamp, recursive, admitters}`), so even with the
+      // right id it would have minted an OPEN invitation while the screen
+      // above it promised "a payload only they can redeem".
+      //
+      // Failing in words rather than as a 500: the workspace link is the
+      // invitation model, and `addParticipant` is how a known identity is
+      // given a role once they are in.
+      void props;
+      throw new Error(
+        'Per-person invitations are not available. Share the workspace ' +
+          'invitation link instead — it admits them to the workspace, and ' +
+          'every agreement in it.',
+      );
     },
 
     async verifyContext(props) {

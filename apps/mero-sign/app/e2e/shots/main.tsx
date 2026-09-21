@@ -12,6 +12,7 @@ import NotFound from '../../src/components/NotFound';
 import LandingPage from '../../src/pages/landing/LandingPage';
 import { ThemeProvider } from '../../src/contexts/ThemeContext';
 import { ALICE, current } from './fixtures';
+import { setActiveWorkspace } from '../../src/lib/activeWorkspace';
 
 // The agreement screens read the open agreement and the executor key out of
 // storage — the route param is the source of truth for WHICH agreement, but the
@@ -20,6 +21,16 @@ import { ALICE, current } from './fixtures';
 try {
   localStorage.setItem('agreementContextID', 'ctx-1');
   localStorage.setItem('agreementContextUserID', ALICE);
+  // ⚠️ THROUGH THE SETTER, not `localStorage.setItem`. `lib/activeWorkspace`
+  // reads storage ONCE, at module scope — and ES imports are hoisted, so by
+  // the time this block runs the store has already initialised to null.
+  // Writing the key here would seed storage that nothing reads again.
+  //
+  // The workspace itself is needed because an invitation is minted against
+  // the NAMESPACE, not the context: handing over a context id is the bare 500
+  // this branch fixes, so a page with no workspace now refuses to mint and
+  // the `invite-minted` scenario would photograph that refusal.
+  setActiveWorkspace('ns-1');
 } catch {
   /* a blocked localStorage just means those scenarios show their empty state */
 }
