@@ -354,6 +354,16 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
       try {
         const response = await api.listSignatures();
 
+        // ⚠️ A FAILED READ IS NOT AN EMPTY LIBRARY. `response.data ?? []`
+        // alone turns a refusal into "no saved signatures", which is the
+        // silence this whole change exists to remove — and it would have hidden
+        // the very bug that started it.
+        if (response.error) {
+          setError(response.error.message);
+          setSavedSignatures([]);
+          return;
+        }
+
         // ⚠️ NO ENVELOPE TO UNWRAP any more. This used to probe `.output` and
         // `.result` because the hand-written RPC shim returned whichever the
         // node of the day produced. The generated client returns the typed

@@ -10,8 +10,10 @@ import {
   displayName,
   enterAgreement,
   listAgreements,
+  listWorkspaces,
   type AgreementRow,
 } from '../../lib/agreements';
+import { useApplicationId } from '../../hooks/useApplicationId';
 import { adminApi } from '../../lib/node';
 import { useCalimero } from '../../lib/useCalimero';
 import { AgreementService } from '../../api/agreementService';
@@ -47,6 +49,8 @@ export default function AgreementsPage() {
   const location = useLocation();
   const params = useParams<{ workspaceId?: string }>();
   const stored = useActiveWorkspace();
+  // Needed to ask the node which workspaces it actually has — see `load`.
+  const { applicationId } = useApplicationId();
 
   // The route is the source of truth when there is one — `/workspaces/:id` is
   // a shareable URL and it must win over whatever was last opened. `/agreements`
@@ -95,27 +99,35 @@ export default function AgreementsPage() {
       setGone(false);
     } catch (e) {
       setRows([]);
-      // ⚠️ A STORED WORKSPACE OUTLIVES THE NODE THAT HELD IT. The active
-      // workspace is remembered in `localStorage` so a reload lands you back
-      // where you were — but a node that has been reset, or a workspace
-      // someone deleted, leaves that id pointing at nothing. It is still a
-      // string, so nothing upstream treats it as absent: this screen rendered
-      // its create box as usual and every action failed against a namespace
-      // the node does not have.
-      //
-      // That is how pressing Create answered with a sentence naming
-      // `lib/agreements`. Failing to list a workspace's subgroups IS the
-      // evidence — there is nothing more to ask the node — so the selection
-      // is dropped rather than reported, and the picker is offered instead.
-      setGone(true);
-      if (!params.workspaceId) setActiveWorkspace(null);
       setError(
         e instanceof Error ? e.message : 'Could not load your agreements.',
       );
+
+      // ⚠️ A FAILED LISTING IS NOT EVIDENCE THE WORKSPACE IS GONE, and the
+      // first version of this treated it as exactly that. A dropped
+      // connection, a 500, a timeout — every one of them wiped the remembered
+      // workspace and replaced the screen with "not on this node" for a
+      // workspace that was perfectly fine. Worst on the reconnect where you
+      // would most want it back.
+      //
+      // So ASK. `listNamespacesForApplication` answering WITHOUT this
+      // workspace in it is the node saying it does not have it. Anything else
+      // — including the check itself failing — is transient, and the
+      // selection stays.
+      if (!applicationId) return;
+      const known = await listWorkspaces(adminApi(), applicationId).catch(
+        () => null,
+      );
+      if (!known) return;
+      if (known.some((w) => w.namespaceId === workspaceId)) return;
+      setGone(true);
+      // Only a selection WE remembered. An id in the URL is the person's
+      // own instruction and is not ours to forget.
+      if (!params.workspaceId) setActiveWorkspace(null);
     } finally {
       setLoading(false);
     }
-  }, [workspaceId, params.workspaceId]);
+  }, [workspaceId, params.workspaceId, applicationId]);
 
   useEffect(() => {
     if (app) void load();

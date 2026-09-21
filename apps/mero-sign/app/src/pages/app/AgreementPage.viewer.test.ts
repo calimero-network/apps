@@ -134,3 +134,45 @@ describe('a workspace that is gone', () => {
     expect(gone).toBeLessThan(create);
   });
 });
+
+// ── A transient failure is not a dead workspace ────────────────────────────
+//
+// ⚠️ THE FIRST VERSION OF THIS GOT IT WRONG, and Cursor Bugbot caught it: any
+// `listAgreements` failure set `gone` and wiped the remembered workspace. A
+// dropped connection, a 500 or a timeout therefore deleted a perfectly good
+// selection and showed "That workspace is not on this node" — worst on the
+// reconnect where you would most want it back.
+//
+// Being GONE has to come from the node, not from a failure.
+describe('declaring a workspace gone', () => {
+  const page = readFileSync(resolve(__dirname, 'AgreementsPage.tsx'), 'utf8');
+
+  it('asks the node which workspaces it has, before deciding', () => {
+    expect(page).toMatch(/listWorkspaces\(adminApi\(\), applicationId\)/);
+  });
+
+  it('keeps the selection when the check itself cannot run', () => {
+    // No app id, or the check throwing, must both bail BEFORE `setGone`.
+    const guardA = page.indexOf('if (!applicationId) return;');
+    const guardB = page.indexOf('if (!known) return;');
+    const present = page.indexOf(
+      'known.some((w) => w.namespaceId === workspaceId)',
+    );
+    const gone = page.indexOf('setGone(true)');
+    for (const [name, at] of [
+      ['applicationId guard', guardA],
+      ['failed-check guard', guardB],
+      ['present guard', present],
+    ] as const) {
+      expect(at, `${name} missing`).toBeGreaterThan(-1);
+      expect(at, `${name} must precede setGone`).toBeLessThan(gone);
+    }
+  });
+
+  it('never forgets a workspace the URL asked for', () => {
+    // An id in the route is the person's instruction, not our cache.
+    expect(page).toMatch(
+      /if \(!params\.workspaceId\) setActiveWorkspace\(null\);/,
+    );
+  });
+});

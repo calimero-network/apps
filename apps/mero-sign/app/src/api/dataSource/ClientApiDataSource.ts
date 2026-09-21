@@ -92,16 +92,29 @@ function noPrivateContext(): { data: null; error: ErrorResponse } {
   };
 }
 
-/** The node's own words, not a generic sentence about this repo's files. */
+/**
+ * The node's own words, not a generic sentence about this repo's files.
+ *
+ * ⚠️ VIA `getErrorMessage`, not `instanceof Error`. A rejected RPC arrives as
+ * a plain object or a string as often as an `Error`, and an `instanceof` test
+ * turns those into "Could not …" — losing exactly the reason this change
+ * exists to surface. `getErrorMessage` already unpacks every shape this file
+ * has met, including core's "Uninitialized", which means "retry" rather than
+ * "failed".
+ */
 function failed(
   what: string,
   error: unknown,
 ): { data: null; error: ErrorResponse } {
+  const message = getErrorMessage(error);
   return {
     data: null,
     error: {
       code: 500,
-      message: error instanceof Error ? error.message : `Could not ${what}.`,
+      message:
+        message && message !== 'An unexpected error occurred'
+          ? message
+          : `Could not ${what}.`,
     },
   };
 }
