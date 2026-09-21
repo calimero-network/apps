@@ -205,30 +205,6 @@ export const APPS = {
     ],
   },
 
-  'mero-meet': {
-    e2eDir: 'tests',
-    // This app ships its own light/dark switch; the landing toggle writes the
-    // same key so the choice carries through sign-in instead of resetting.
-    themeStorageKey: 'mm-theme',
-    availability: 'desktop',
-    trust: ['Media stays peer-to-peer', 'No signalling server', 'Rooms are namespaces'],
-    explainer: [
-      'Peer-to-peer video calling, split across two planes. A Calimero context is the room and carries the signalling; the audio and video go directly between participants over WebRTC and never touch a server at all.',
-      'The signalling is the part other "peer-to-peer" calling apps still centralise — someone has to introduce the peers to each other, and that someone usually gets to see who called whom and when. Here the introduction rides your own nodes.',
-    ],
-    features: [
-      { icon: 'Wifi', title: 'Media stays peer-to-peer', body: 'WebRTC between participants. Your camera and microphone never reach a server.' },
-      { icon: 'Shield', title: 'Signalling rides your nodes', body: 'The room is a context you own, not a service you rent. Nobody logs the call graph.' },
-      { icon: 'CloudX', title: 'No signalling server', body: 'The piece almost every other p2p calling app still centralises, removed.' },
-      { icon: 'ExternalLink', title: 'Invite by link', body: 'The room is a namespace. Share an invitation, and membership is the access control.' },
-    ],
-    faq: [
-      {
-        q: 'Why does this need the desktop app?',
-        a: 'Mero Meet uses the Calimero desktop app for its node, its sign-in, and the media bridge that connects WebRTC to the room. On the plain web there is no node to talk to, so this page is the front door rather than the app itself.',
-      },
-    ],
-  },
 
   'mero-pass': {
     displayName: 'Mero Pass',

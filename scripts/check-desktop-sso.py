@@ -35,7 +35,7 @@ case it existed for — while its index.tsx advertised "desktop auth-skip".
 The two accepted anchors, both in use in the fleet:
 
   (a) pass `allowedNodeUrls={[hashNodeUrl]}` to MeroProvider, read from the
-      hash at module scope (mero-calendar, mero-design, mero-forum, mero-meet,
+      hash at module scope (mero-calendar, mero-design, mero-forum,
       mero-pass, mero-pixart, mero-stream)
   (b) seed the initiated node with `setNodeUrl(...)` from the hash before React
       mounts, so `initiated` == the callback's node and the same-origin branch
@@ -78,8 +78,8 @@ def source_files(app: str) -> dict[str, str]:
         for name in files:
             if not name.endswith((".ts", ".tsx")):
                 continue
-            # A test may legitimately assert the BROKEN shape (mero-meet's
-            # boot.test.tsx does), so tests never count as evidence either way.
+            # A test may legitimately assert the BROKEN shape, so tests never
+            # count as evidence either way.
             if ".test." in name or ".spec." in name:
                 continue
             path = os.path.join(root, name)

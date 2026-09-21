@@ -38,7 +38,6 @@ reimplements one gets its own behaviour, and nothing notices.
 | mero-drive | MeroProvider | ✅ | ✅ | ✅ | also mounts `LoginModal` directly |
 | mero-forum | MeroProvider | ✅ | ✅ | ✅ | |
 | mero-issue-tracker | MeroProvider | ✅ | ✅ | ✅ | |
-| mero-meet | MeroProvider | ❌ | ✅ | ✅ | own sign-in page, `connectToNode()` |
 | mero-pass | MeroProvider | ✅ | ✅ | ✅ | |
 | mero-pixart | MeroProvider | ✅ | ✅ | ✅ | |
 | mero-sheets | MeroProvider | ✅ | ✅ | ✅ | |
@@ -47,10 +46,9 @@ reimplements one gets its own behaviour, and nothing notices.
 | merraria | *none* | — | — | — | vanilla TS; reimplements the modal |
 | scaffolding-e2e | MeroProvider | ❌ | ✅ | ✅ | test harness; drives `discoverLocalNodes` itself |
 
-**Eleven of the fourteen React apps present the identical flow** —
-`ConnectButton` into `LoginModal`, nothing hand-rolled. The three that do not
-(mero-meet, mero-sign, scaffolding-e2e), plus the two non-React games, each have
-a reason; one of them is a real gap:
+**Eleven of the thirteen React apps present the identical flow** —
+`ConnectButton` into `LoginModal`, nothing hand-rolled. The two that do not
+(mero-sign, scaffolding-e2e), plus the two non-React games, each have a reason:
 
 - **mero-blocks / merraria** reimplement the modal in plain DOM, but on the *same
   primitives* — `DEFAULT_LOCAL_NODE_PORTS`, `localNodeUrl`, `probeNodeHealth`,
@@ -59,13 +57,6 @@ a reason; one of them is a real gap:
   that, not a divergence in behaviour.
 - **scaffolding-e2e** deliberately drives discovery itself — exercising the SDK
   surface is the point of that app.
-- **mero-meet** renders its own `DesktopSignInPage` and calls
-  `connectToNode(nodeUrl)` on a node it already has, so **there is no node
-  picker**. In the desktop that is right: the node came from the shell. Its
-  docstring explains the history — the auth guard used to render the *web*
-  landing page there, telling a user who had just opened the app from the
-  desktop to go download the desktop app. Worth confirming a plain web visitor
-  to mero-meet still gets a way in, which this audit did not test.
 
 ### kv-store passes `packageName` without `registryUrl`
 
@@ -158,7 +149,6 @@ node calls** and **the link format**.
 | mero-drive | `createNamespaceInvitation`, `joinNamespace`, `joinGroup` | — | own `useNamespaceInvitation` |
 | mero-forum | **none** | — | **none** |
 | mero-issue-tracker | `createNamespaceInvitation` + `joinNamespace` | mero-platform | `encodeInvitationPayload` |
-| mero-meet | `createNamespaceInvitation` + `joinNamespace` | mero-platform | `encodeInvitation` |
 | mero-pass | **none** | — | **none** |
 | mero-pixart | app-local `generateInvite` | mero-platform | `encodeInvitation` |
 | mero-sheets | `createNamespaceInvitation` + `joinNamespace` | — | `encodeInvitation` (2.3 KB stub) |
@@ -173,15 +163,15 @@ Same purpose, five different exported surfaces:
 
 | family | exports | apps |
 |---|---|---|
-| `encodeInvitation` | `encodeInvitation` / `decodeInvitation` / `invitationLink` / `invitationFromRaw` / `urlWithoutInvitation` | mero-calendar, mero-design, mero-meet, mero-pixart |
+| `encodeInvitation` | `encodeInvitation` / `decodeInvitation` / `invitationLink` / `invitationFromRaw` / `urlWithoutInvitation` | mero-calendar, mero-design, mero-pixart |
 | `encodeInvite` | `encodeInvite` / `decodeInvite` / `inviteLink` / `inviteFromRaw` / `urlWithoutInvite` | mero-blocks, merraria, mero-stream |
 | `encodeInvitationPayload` | `encodeInvitationPayload` / `decodeInvitationPayload` / `generateInvitationUrl` / `generateInvitationDeepLink` | kv-store, mero-issue-tracker |
 | stub | `encodeInvitation` / `decodeInvitation` only | mero-sheets |
 | legacy | `saveInvitationToStorage` / `generateInvitationUrl` / `extractInvitationFromUrl` | mero-sign |
 
 They are copy-paste descendants that have drifted, and the byte counts show it —
-`invitation.ts` is 7552 B in mero-calendar, 7494 in mero-design, 7548 in
-mero-pixart and 9233 in mero-meet; `invitationIntents.ts` is 5877 / 5873 / 5873 /
+`invitation.ts` is 7552 B in mero-calendar, 7494 in mero-design and 7548 in
+mero-pixart; `invitationIntents.ts` is 5877 / 5873 / 5873 /
 5870 / 5816 / 5810 / 5743 B across seven apps. Nothing keeps them in step, and no test
 crosses an app boundary.
 
