@@ -83,12 +83,6 @@ Start here. These exist to be read, not shipped.
 | [mero-pass](apps/mero-pass) | [↗](https://mero-pass.vercel.app) | Secret manager — a vault is a context. Credentials stay on member nodes, versioned and attributed, with no master password to phish. | `com.calimero.mero-pass` |
 | [mero-sign](apps/mero-sign) | [↗](https://mero-sign.vercel.app) | Document signing — upload a PDF, collect signatures from namespace members, verify them peer-to-peer. | `com.calimero.mero-sign` |
 
-### Communication
-
-| App | Live | What it is | Package |
-| --- | --- | --- | --- |
-| [mero-meet](apps/mero-meet) | [↗](https://mero-meet.vercel.app) | Video calling — a context is the room and the contract carries signaling. Media flows direct over WebRTC; no SFU, no signaling server. | `com.calimero.mero-meet` |
-
 ### Games
 
 | App | Live | What it is | Package |

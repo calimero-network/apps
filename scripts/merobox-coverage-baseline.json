@@ -52,22 +52,6 @@
     "set_resolution_criteria",
     "set_summary"
   ],
-  "mero-meet": [
-    "active_call_id",
-    "end_call",
-    "get_call_participants",
-    "get_messages",
-    "get_room",
-    "grant_host",
-    "heartbeat",
-    "is_member_host",
-    "leave",
-    "leave_call",
-    "post_message",
-    "rename_room",
-    "revoke_host",
-    "set_state"
-  ],
   "mero-pixart": [
     "can_edit",
     "clear_layers",

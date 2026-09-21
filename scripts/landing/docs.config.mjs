@@ -461,68 +461,6 @@ export const DOCS = {
     ],
   },
 
-  'mero-meet': {
-    docs: [
-      {
-        id: 'concepts',
-        heading: 'The words, and what they mean here',
-        paragraphs: [
-          'Mero Meet splits a call across two planes. A Calimero context is the room and carries the signalling; the audio and video go directly peer-to-peer over WebRTC. No signalling server is the part every other "p2p" calling app still centralises.',
-        ],
-        concepts: [
-          { term: 'Namespace', def: 'A room you own and invite people into.' },
-          { term: 'Context', def: 'The room’s membership, lobby, chat and — crucially — the signalling messages.' },
-          { term: 'Signal', def: 'A WebRTC offer, answer or ICE candidate, posted into the context and read by the other participant. This is the job a signalling server normally does.' },
-          { term: 'Media', def: 'The audio and video. It never enters the context and never touches a server: once signalling has done its work, the streams are a direct connection between the two browsers.' },
-          { term: 'Host', def: 'A grantable role. The room name is owner-gated, so a rename from a non-owner is rejected at merge.' },
-        ],
-      },
-      {
-        id: 'start',
-        heading: 'Getting started',
-        steps: [
-          { title: 'Install the desktop app', body: 'Mero Meet needs the Calimero desktop app for its node, sign-in and media bridge. This web page is the front door, not the product.' },
-          { title: 'Create a room', body: 'A namespace you own. Name it; you are its host.' },
-          { title: 'Invite people', body: 'Share the link. Joining puts them in the lobby.' },
-          { title: 'Start the call', body: 'Signalling flows through the context, then the media connects directly between participants.' },
-        ],
-      },
-      {
-        id: 'sharing',
-        heading: 'Who can join',
-        paragraphs: [
-          'Only members of the room’s namespace. An invitation is a link scoped to that room; there is no dial-in number and no public URL that anyone can open.',
-          'Host is a role you grant and revoke. Leaving a call is separate from leaving the room, so stepping out does not remove you from the membership.',
-        ],
-      },
-      {
-        id: 'storage',
-        heading: 'What is stored, and where',
-        bullets: [
-          'Members, their presence, and the lobby.',
-          'Signalling messages, which are what the room exists to carry.',
-          'Chat messages posted during a call.',
-          'No media, ever. Audio and video are not written to the context and are not recorded.',
-        ],
-      },
-      OFFLINE,
-      {
-        id: 'trouble',
-        heading: 'When something looks wrong',
-        concepts: [
-          { term: '"Connect to node" is not offered on the web', def: 'Deliberate. This app needs the desktop app’s node and media bridge, so offering a connection it cannot use would be a dead end.' },
-          { term: 'Someone joined but has no video', def: 'Signalling succeeded and the media connection did not. That is a WebRTC path problem between the two networks, not a Calimero one.' },
-          { term: 'A rename reverted', def: 'The room name is owner-gated and a non-owner’s rename is refused when it merges.' },
-        ],
-      },
-    ],
-    previewSteps: [
-      { title: 'A room, in a context', body: 'Membership and the lobby live in a Calimero context you own.' },
-      { title: 'Participants join', body: 'Each arrival is a member of the namespace — there is no public join link for strangers.' },
-      { title: 'Signalling rides the context', body: 'Offers, answers and ICE candidates are posted into the room. This is the piece normally rented from a server.' },
-      { title: 'Media goes direct', body: 'Audio and video connect browser to browser and are never written down anywhere.' },
-    ],
-  },
 
   'mero-pass': {
     docs: [
