@@ -15,7 +15,7 @@ export interface TwoUserFixtures {
 
 export const test = base.extend<TwoUserFixtures>({
   alice: async ({ browser }, use, testInfo) => {
-    if (!envAvailable({ twoNode: true })) {
+    if (!process.env.CI && !envAvailable({ twoNode: true })) {
       testInfo.skip(true, 'two-node integration env not available');
       // Unreachable, but TS needs a value.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -35,7 +35,7 @@ export const test = base.extend<TwoUserFixtures>({
     await ctx.close();
   },
   bob: async ({ browser }, use, testInfo) => {
-    if (!envAvailable({ twoNode: true })) {
+    if (!process.env.CI && !envAvailable({ twoNode: true })) {
       testInfo.skip(true, 'two-node integration env not available');
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await use(undefined as any);

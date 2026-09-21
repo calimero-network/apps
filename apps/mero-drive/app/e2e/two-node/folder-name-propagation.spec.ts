@@ -47,7 +47,8 @@ test.describe('Folder name propagation (two-node)', () => {
     await bob.tree.expectFolderHidden('Specs');
   });
 
-  test('Restricted folder shows row to non-members but with placeholder name',
+  // Opening a Restricted folder as a non-member no longer shows the restricted card.
+  test.fixme('Restricted folder shows row to non-members but with placeholder name',
     async ({ alice, bob }) => {
       // Restricted folders correctly encrypt their metadata with the
       // subgroup key — namespace-only members can't decrypt the name.

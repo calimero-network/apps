@@ -1,7 +1,5 @@
-// Reads the integration env that ci (and `pnpm e2e:up`) writes to
-// app/.env.integration. Specs use envAvailable() to skip gracefully
-// when the file is absent — i.e. when running outside a live-merod
-// session.
+// Reads the integration env that e2e/global-setup.ts exports after starting
+// the nodes. Locally, fixtures skip when it is absent; in CI getEnv() throws.
 
 export interface IntegrationEnv {
   applicationId: string;

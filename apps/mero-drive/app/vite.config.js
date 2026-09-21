@@ -33,6 +33,12 @@ export default defineConfig({
     port: Number(process.env.PW_PORT) || 5179,
     strictPort: true,
   },
+  // Playwright runs a collab dev server beside the default one; a shared
+  // optimizer cache makes each re-hash the other's deps and load Yjs twice.
+  cacheDir:
+    process.env.VITE_COLLAB_YJS === 'true'
+      ? 'node_modules/.vite-collab'
+      : 'node_modules/.vite',
   base: '/',
   build: {
     // Match battleships (apps/battleships/app/vite.config.js): outDir

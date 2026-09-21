@@ -13,7 +13,7 @@ export interface SingleUserFixtures {
 
 export const test = base.extend<SingleUserFixtures>({
   alice: async ({ browser }, use, testInfo) => {
-    if (!envAvailable()) {
+    if (!process.env.CI && !envAvailable()) {
       testInfo.skip(true, 'integration env not available');
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await use(undefined as any);
