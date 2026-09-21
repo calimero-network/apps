@@ -105,7 +105,7 @@ export function BlobStorage() {
     setDownloadingId(file.id);
     setDownloadError(null);
     try {
-      const blobRes = await api.getBlobIdB58(file.id);
+      const blobRes = await api.getBlobIdHex(file.id);
       const blobId = (blobRes as { result?: { output?: string } })?.result?.output;
       if (!blobId) throw new Error("Could not get blob ID");
       const nodeUrl = getNodeUrl();
@@ -321,7 +321,7 @@ export function BlobStorage() {
             <button
               className="btn-calimero-outline"
               disabled={getBlobCall.loading}
-              onClick={() => getBlobCall.run(() => api.getBlobIdB58(fileId))}
+              onClick={() => getBlobCall.run(() => api.getBlobIdHex(fileId))}
             >
               {getBlobCall.loading ? "..." : "get_blob_id"}
             </button>

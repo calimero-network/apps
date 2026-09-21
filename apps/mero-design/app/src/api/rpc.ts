@@ -200,6 +200,15 @@ export async function adminPut<T>(
   return res.data.data ?? (res.data as T);
 }
 
+/**
+ * Core's blob discovery sweep runs to a **30 s deadline before the transfer
+ * starts** (probe-based discovery, rc.39 / core#3831). A client budget under
+ * that aborts a fetch that was about to succeed, in exactly the case discovery
+ * exists for: a blob a peer holds and we do not. No budget at all is wrong too
+ * — a stalled node should fail, just not before core has finished looking.
+ */
+const BLOB_READ_TIMEOUT_MS = 35_000;
+
 export async function adminUploadBlob(data: ArrayBuffer, contextId?: string): Promise<{ blobId: string }> {
   const nodeUrl = nodeBase();
   const accessToken = getJwt();
@@ -233,7 +242,11 @@ export async function adminGetBlob(blobId: string, contextId?: string): Promise<
   const t0 = performance.now();
   const res = await axios.get<ArrayBuffer>(
     url,
-    { headers: { Authorization: `Bearer ${accessToken}` }, responseType: "arraybuffer" },
+    {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      responseType: "arraybuffer",
+      timeout: BLOB_READ_TIMEOUT_MS,
+    },
   );
   const ms = Math.round(performance.now() - t0);
   const kb = Math.round(res.data.byteLength / 1024);

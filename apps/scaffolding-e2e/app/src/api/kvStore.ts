@@ -169,7 +169,11 @@ export const listFiles = () =>
 export const getFile = (file_id: string) =>
   call<{ file_id: string }, FileRecord>("get_file", { file_id });
 
-export const getBlobIdB58 = (file_id: string) =>
+// A BlobId has been 64 hex characters since rc.27. The contract method was
+// already `get_blob_id_hex`; only this client-side name still said base58, and
+// a name that lies about an encoding is exactly how mero-sign shipped a
+// base58-encoded blob id into a contract (apps#143).
+export const getBlobIdHex = (file_id: string) =>
   call<{ file_id: string }, string>("get_blob_id_hex", { file_id });
 
 export const searchFiles = (query: string) =>
