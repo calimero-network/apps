@@ -21,6 +21,7 @@
 import { useMemo } from 'react';
 import { useMero } from '@calimero-network/mero-react';
 
+import { useActiveWorkspace } from './activeWorkspace';
 import { useOpenLogin } from './loginGate';
 import { meroApp, type MeroAppLike } from './meroApp';
 
@@ -33,17 +34,27 @@ export interface CalimeroLike {
   logout: () => void;
 }
 
+/**
+ * @param workspaceId overrides the active workspace for this caller. Only the
+ *   agreements screen passes one — it is routed by `/workspaces/:workspaceId`
+ *   and therefore knows its workspace a render before the store does. Everyone
+ *   else gets whatever workspace the app is currently in.
+ */
 export function useCalimero(workspaceId?: string | null): CalimeroLike {
   const { mero, isAuthenticated, logout } = useMero();
-  // Resolved lazily; see `meroApp`. Both are supplied by the screen that knows
-  // them — the workspace a new agreement belongs to is a property of where you
-  // are in the app, not of the session.
-  const appId: string | null = null;
+  const activeWorkspace = useActiveWorkspace();
   const login = useOpenLogin();
 
+  // ⚠️ `undefined` and `null` MEAN DIFFERENT THINGS here. Omitting the argument
+  // is "use the app's current workspace"; passing `null` is "deliberately
+  // outside one", which is what the landing and signature screens want. `??`
+  // keeps that distinction — `||` would silently turn the second into the
+  // first.
+  const effective = workspaceId === undefined ? activeWorkspace : workspaceId;
+
   const app = useMemo(
-    () => (mero ? meroApp(mero, appId ?? null, workspaceId ?? null) : null),
-    [mero, appId, workspaceId],
+    () => (mero ? meroApp(mero, effective) : null),
+    [mero, effective],
   );
 
   return { app, isAuthenticated, login, logout };

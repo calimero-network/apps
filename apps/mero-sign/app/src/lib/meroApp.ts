@@ -26,7 +26,12 @@
  */
 import type { MeroJs } from '@calimero-network/mero-js';
 
-import { createAgreement } from './agreements';
+import {
+  createAgreement,
+  createPersonalContext,
+  ensurePersonalWorkspace,
+} from './agreements';
+import { APP_PACKAGE, resolveApplicationId } from './appId';
 
 /** The six methods `ClientApiDataSource` / `NodeApiDataSource` actually call. */
 export interface MeroAppLike {
@@ -38,7 +43,7 @@ export interface MeroAppLike {
   createContext(
     applicationId: string | undefined,
     initParams: Record<string, unknown>,
-  ): Promise<unknown>;
+  ): Promise<CreatedContext>;
   fetchContexts(): Promise<unknown>;
   joinContext(props: { invitationPayload: string }): Promise<unknown>;
   inviteToContext(props: {
@@ -49,12 +54,67 @@ export interface MeroAppLike {
   verifyContext(props: { contextId: string }): Promise<{ joined: boolean }>;
 }
 
+/**
+ * What `createContext` resolves to.
+ *
+ * ⚠️ `executorId` IS NOT DECORATION. `AgreementService.createAgreement` reads
+ * `contextData.executorId` and writes it into the agreement's `memberPublicKey`,
+ * `privateIdentity` and `sharedIdentity` — so omitting it does not fail, it
+ * produces an agreement row whose every identity field is `undefined` and whose
+ * card opens a screen that cannot say who you are. mero-js calls the same value
+ * `memberPublicKey`; both spellings are returned because the two layers each
+ * have their own.
+ */
+export interface CreatedContext {
+  contextId: string;
+  memberPublicKey: string;
+  executorId: string;
+  applicationId: string;
+}
+
 export function meroApp(
   mero: MeroJs,
-  applicationId: string | null,
   /** The workspace new agreements are created in. Null outside one. */
   workspaceId: string | null,
 ): MeroAppLike {
+  /**
+   * This app's id on THIS node, resolved lazily and cached by `lib/appId`.
+   *
+   * ⚠️ Lazy, not a parameter. An ApplicationId is `hash(package, signer)` and
+   * therefore per-install, so the only thing that can answer "which installed
+   * application is Mero Sign" is the node — and it can only be asked once
+   * there is a connection, which is after `useCalimero()` has already had to
+   * return an `app`. Taking it as an argument is what left it hardcoded to
+   * `null`, and a null id meant every `createContext` threw before it reached
+   * the wire.
+   *
+   * `mero.admin.listApplications()` is called directly rather than through
+   * `lib/node`'s `apiClient`: that module re-exports `useCalimero`, which
+   * imports this one, and the cycle is avoidable for the cost of adapting one
+   * result shape.
+   */
+  async function requireApplicationId(): Promise<string> {
+    const id = await resolveApplicationId(async () => {
+      try {
+        return { data: await mero.admin.listApplications() };
+      } catch (error) {
+        return {
+          error: {
+            message: error instanceof Error ? error.message : String(error),
+          },
+        };
+      }
+    });
+    if (!id) {
+      throw new Error(
+        `${APP_PACKAGE} is not installed on this node, so there is no ` +
+          'application to create a context for. Install it from the registry ' +
+          'and try again.',
+      );
+    }
+    return id;
+  }
+
   return {
     async execute(contextId, method, args) {
       // ⚠️ The executor is NOT passed. mero-js resolves the caller's own
@@ -81,26 +141,53 @@ export function meroApp(
       // `createAgreement` supplies the binding and everything that has to come
       // with it: a named subgroup, OPEN visibility so invited signers can reach
       // it, and `init`'s real two parameters. See `lib/agreements`.
-      if (!applicationId) {
-        throw new Error(
-          'Cannot create an agreement: no application id resolved for Mero Sign on this node.',
+      const params = (initParams ?? {}) as {
+        context_name?: string;
+        is_private?: boolean;
+      };
+      const applicationId = await requireApplicationId();
+
+      // ⚠️ THE PRIVATE CONTEXT NEEDS A GROUP TOO. `is_private` is a flag on the
+      // CONTRACT, not an exemption from `group_id`, and this app creates one
+      // per node for the signature library. It goes in a namespace of its own —
+      // never a workspace, which is a thing you invite people into. See the
+      // personal-workspace note in `lib/agreements`.
+      if (params.is_private) {
+        const namespaceId = await ensurePersonalWorkspace(
+          mero.admin,
+          applicationId,
         );
+        const created = await createPersonalContext(mero.admin, {
+          applicationId,
+          namespaceId,
+          name: params.context_name,
+        });
+        return {
+          contextId: created.contextId,
+          memberPublicKey: created.memberPublicKey,
+          executorId: created.memberPublicKey,
+          applicationId,
+        };
       }
+
       if (!workspaceId) {
         throw new Error(
           'Cannot create an agreement outside a workspace. Open or create one first.',
         );
       }
-      const params = (initParams ?? {}) as {
-        context_name?: string;
-        is_private?: boolean;
-      };
-      return createAgreement(mero.admin, {
+
+      const created = await createAgreement(mero.admin, {
         applicationId,
         namespaceId: workspaceId,
         name: (params.context_name ?? '').trim() || 'Agreement',
-        isPrivate: params.is_private ?? false,
+        isPrivate: false,
       });
+      return {
+        contextId: created.contextId,
+        memberPublicKey: created.memberPublicKey,
+        executorId: created.memberPublicKey,
+        applicationId,
+      };
     },
 
     async fetchContexts() {

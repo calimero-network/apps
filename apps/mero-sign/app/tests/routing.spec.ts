@@ -23,6 +23,7 @@ const PATHS = [
   "/",
   "/docs",
   "/preview",
+  "/workspaces",
   "/agreements",
   "/signatures",
   "/nope",

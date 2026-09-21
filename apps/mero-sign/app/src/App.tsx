@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Routes, Route, BrowserRouter, useNavigate } from 'react-router-dom';
 import { ThemeProvider } from './contexts/ThemeContext';
 import AgreementsPage from './pages/app/AgreementsPage';
+import WorkspacesPage from './pages/app/WorkspacesPage';
 import AgreementPage from './pages/app/AgreementPage';
 import SignaturesPage from './pages/app/SignaturesPage';
 import ConnectGate from './components/ConnectGate';
@@ -37,13 +38,19 @@ function Screenful({
     return (
       <ConnectGate
         what={
-          screen === 'signatures' ? 'Your signature library' : 'This agreement'
+          screen === 'signatures'
+            ? 'Your signature library'
+            : screen === 'workspaces'
+              ? 'Your workspaces'
+              : 'This agreement'
         }
       />
     );
   }
 
   switch (screen) {
+    case 'workspaces':
+      return <WorkspacesPage />;
     case 'agreements':
       return <AgreementsPage />;
     case 'agreement':
@@ -59,7 +66,10 @@ function Screenful({
       // showing the landing page either way, which is what makes it a front
       // door you can link to rather than a fallback you fall into.
       return authed && window.location.pathname === '/' ? (
-        <AgreementsPage />
+        // Signed in at `/`, the app's home is the workspace picker: an
+        // agreement cannot exist outside a workspace since rc.41 bound every
+        // context to a group, so the agreements list is not a place to start.
+        <WorkspacesPage />
       ) : (
         // ⚠️ `onConnect` is load-bearing. The landing template leaves this hook
         // for apps whose sign-in is not the shared popup, and Mero Sign is one
@@ -86,10 +96,25 @@ function AppContent() {
   useEffect(() => onInvitation(setInvitation), []);
 
   const handleInvitationSuccess = useCallback(
-    (agreement: { contextId: string; name: string }) => {
+    (agreement: {
+      contextId: string | null;
+      namespaceId: string | null;
+      name: string;
+    }) => {
       invitation?.resolve();
       setInvitation(null);
-      navigate(`/agreements/${agreement.contextId}`, { replace: true });
+      // ⚠️ An invitation grants membership of a WORKSPACE. It resolves to a
+      // single agreement only when the workspace holds exactly one, or when
+      // the link named one that is in it. With none or several — both ordinary
+      // — the workspace is where the person belongs, and
+      // `/agreements/undefined` is where they used to end up.
+      if (agreement.contextId) {
+        navigate(`/agreements/${agreement.contextId}`, { replace: true });
+      } else if (agreement.namespaceId) {
+        navigate(`/workspaces/${agreement.namespaceId}`, { replace: true });
+      } else {
+        navigate('/workspaces', { replace: true });
+      }
     },
     [invitation, navigate],
   );

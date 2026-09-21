@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import AgreementsPage from '../../src/pages/app/AgreementsPage';
+import WorkspacesPage from '../../src/pages/app/WorkspacesPage';
 import AgreementPage from '../../src/pages/app/AgreementPage';
 import SignaturesPage from '../../src/pages/app/SignaturesPage';
 import ConnectGate from '../../src/components/ConnectGate';
@@ -105,6 +106,30 @@ createRoot(document.getElementById('root')!).render(
       <Driver />
       <Routes>
         <Route path="/landing" element={<LandingPage />} />
+        <Route
+          path="/workspaces"
+          element={
+            current.authed ? (
+              <WorkspacesPage />
+            ) : (
+              <ConnectGate what="Your workspaces" />
+            )
+          }
+        />
+        {/* The agreements screen is scoped to a workspace: an agreement is a
+            subgroup of one. `/agreements` still renders it — with nothing
+            selected it shows the "choose a workspace" state, which is what
+            the `connect` scenario photographs behind the gate. */}
+        <Route
+          path="/workspaces/:workspaceId"
+          element={
+            current.authed ? (
+              <AgreementsPage />
+            ) : (
+              <ConnectGate what="This agreement" />
+            )
+          }
+        />
         <Route
           path="/agreements"
           element={

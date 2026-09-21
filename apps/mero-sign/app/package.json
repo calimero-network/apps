@@ -77,7 +77,8 @@
     "preview": "vite preview",
     "prettier": "exec prettier . --write",
     "test:e2e": "playwright test",
-    "shots": "node e2e/shots.mjs"
+    "shots": "node e2e/shots.mjs",
+    "test:live": "vitest run --config e2e/live/vitest.config.ts"
   },
   "eslintConfig": {
     "extends": [
