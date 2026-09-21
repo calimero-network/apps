@@ -50,12 +50,17 @@
   width: 22px;
   height: 22px;
   border-radius: 6px;
-  background: var(--accent);
+  /* The tile's colour is set inline from `lib/brandMark` — one source, and a
+     test pins it to `scripts/gen-icons.mjs`. This is only the fallback for a
+     render with no inline style. */
+  background: #090b10;
   display: flex;
   align-items: center;
   justify-content: center;
-  /* Near-black ON the green. Never white — this fill is ~1.2:1 against it. */
-  color: var(--accent-ink);
+  /* The padlock is the gradient; this is only the fallback for a renderer
+     that drops the <linearGradient>. The LIGHT end, because the tile is
+     near-black — the UI's `--accent-ink` on it would be invisible. */
+  color: #34d399;
   font-size: 12px;
   flex-shrink: 0;
 }
@@ -64,7 +69,7 @@
    the tile's fill rather than left transparent — an SVG child cannot punch a
    hole through its own sibling. */
 .mark :global(.keyhole) {
-  fill: var(--accent);
+  fill: #090b10;
   stroke: none;
 }
 
