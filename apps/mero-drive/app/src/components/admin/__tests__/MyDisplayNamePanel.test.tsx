@@ -5,7 +5,7 @@
 // members list reads), keyed by selfIdentity.
 
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MyDisplayNamePanel } from '../MyDisplayNamePanel';
 
 const driveState = {
@@ -14,6 +14,7 @@ const driveState = {
   namespaceMemberNames: {} as Record<string, string>,
 };
 const memberName = { name: null as string | null };
+const setName = vi.fn();
 
 vi.mock('@/hooks/useDriveWorkspace', () => ({
   useDriveWorkspace: () => driveState,
@@ -24,7 +25,7 @@ vi.mock('@/hooks/useMemberDisplayName', () => ({
     name: memberName.name,
     loading: false,
     error: null,
-    setName: vi.fn(),
+    setName,
   }),
 }));
 
@@ -50,5 +51,33 @@ describe('MyDisplayNamePanel', () => {
     driveState.namespaceMemberNames = { me: 'stale-list-name' };
     render(<MyDisplayNamePanel />);
     expect(screen.getByDisplayValue('hook-name')).toBeTruthy();
+  });
+
+  it('keeps what the user typed when the stored name loads afterwards', () => {
+    memberName.name = null;
+    driveState.namespaceMemberNames = {};
+    const { rerender } = render(<MyDisplayNamePanel />);
+    fireEvent.change(screen.getByRole('textbox'), {
+      target: { value: 'Alice Astra' },
+    });
+    memberName.name = 'alice';
+    rerender(<MyDisplayNamePanel />);
+    expect(screen.getByDisplayValue('Alice Astra')).toBeTruthy();
+    expect(
+      screen.getByRole<HTMLButtonElement>('button', { name: 'Save' }).disabled,
+    ).toBe(false);
+  });
+
+  it('shows the saved name after a successful save', async () => {
+    memberName.name = 'alice';
+    driveState.namespaceMemberNames = {};
+    setName.mockImplementationOnce(async (next: string) => {
+      memberName.name = next;
+    });
+    render(<MyDisplayNamePanel />);
+    const input = screen.getByRole<HTMLInputElement>('textbox');
+    fireEvent.change(input, { target: { value: '  Bob  ' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(input.value).toBe('Bob'));
   });
 });

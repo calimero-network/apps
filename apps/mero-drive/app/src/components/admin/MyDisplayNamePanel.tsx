@@ -4,7 +4,7 @@
 // so no permission gating is needed here. Admin override (renaming
 // other members) is deferred — see PR description for follow-ups.
 
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useMemberDisplayName } from '@/hooks/useMemberDisplayName';
@@ -27,19 +27,16 @@ export function MyDisplayNamePanel() {
   const name =
     hookName ??
     (selfIdentity ? namespaceMemberNames[selfIdentity] ?? null : null);
-  const [draft, setDraft] = useState<string>('');
+  // null until the user types, so the input shows the stored name in the same
+  // render it loads and a late-loading name never overwrites an edit.
+  const [draft, setDraft] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  // Mirror the server name into the input when it (re)loads. Without
-  // this the input stays empty after a refetch on mount.
-  useEffect(() => {
-    setDraft(name ?? '');
-  }, [name]);
-
   if (!namespaceId || !selfIdentity) return null;
 
-  const trimmed = draft.trim();
+  const value = draft ?? name ?? '';
+  const trimmed = value.trim();
   const dirty = trimmed !== (name ?? '') && trimmed.length > 0;
 
   const onSave = async () => {
@@ -47,6 +44,7 @@ export function MyDisplayNamePanel() {
     setSaving(true);
     try {
       await setName(trimmed);
+      setDraft(null);
     } catch (e: unknown) {
       setSaveError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -72,7 +70,7 @@ export function MyDisplayNamePanel() {
         <div className="flex items-center gap-2">
           <input
             type="text"
-            value={draft}
+            value={value}
             onChange={(e) => setDraft(e.target.value)}
             placeholder={name ?? 'Not set yet'}
             maxLength={64}
