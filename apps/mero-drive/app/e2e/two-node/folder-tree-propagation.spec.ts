@@ -7,8 +7,7 @@
 import { test } from '../fixtures/two-user';
 
 test.describe('Folder tree propagation (two-node)', () => {
-  // The tree remounts on every workspace refetch, so the actions menu and New subfolder dialog detach mid-flow.
-  test.fixme('Nested folders created on Alice appear on Bob with same shape',
+  test('Nested folders created on Alice appear on Bob with same shape',
     async ({ alice, bob }) => {
       await alice.goToWorkspace();
       await alice.createNamespace('Tree Prop WS');
@@ -39,8 +38,7 @@ test.describe('Folder tree propagation (two-node)', () => {
       void bob;
     });
 
-  // The tree remounts on every workspace refetch, so the actions menu and New subfolder dialog detach mid-flow.
-  test.fixme("Deleting A/B/C drops it from Bob's tree", async ({ alice, bob }) => {
+  test("Deleting A/B/C drops it from Bob's tree", async ({ alice, bob }) => {
     await alice.goToWorkspace();
     await alice.createNamespace('Delete Prop WS');
     await alice.createFolder({ name: 'A', visibility: 'Open' });
