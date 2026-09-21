@@ -1,5 +1,6 @@
 import { describe, expect, it, beforeAll } from 'vitest';
 import { MeroJs } from '@calimero-network/mero-js';
+import bs58 from 'bs58';
 
 import {
   createAgreement,
@@ -12,6 +13,7 @@ import {
 } from '../../src/lib/agreements';
 import { nodeApi } from '../../src/lib/node';
 import { appsFromResponse, pickApplicationId } from '../../src/lib/appId';
+import { toBlobIdHex } from '../../src/lib/blobIds';
 
 // ── The workspace model, against a REAL node ────────────────────────────────
 //
@@ -170,5 +172,44 @@ describe('the workspace model, on a real rc.41 node', () => {
     const res = await nodeApi(mero).contextInviteByOpenInvitation(namespaceId);
     expect(res.error ?? null).toBeNull();
     expect(res.data).toBeTruthy();
+  }, 60_000);
+});
+
+// ── Blob ids are hex, proved against the node ──────────────────────────────
+//
+// The reported failure, verbatim:
+//
+//   "Failed to decode blob ID (expected hex)
+//    'EV2HzEPbzzmRGyHke9CFbKFfgvWYheS7ZBLkgu1xEo6': Odd number of digits"
+//
+// A mocked test cannot produce that: the node is the only thing that decodes
+// a blob id, and the app's old code round-tripped its own base58 happily.
+
+describe('blob ids, on a real rc.41 node', () => {
+  it('the node mints HEX, and reads back only hex', async () => {
+    const payload = new Blob([new Uint8Array([1, 2, 3, 4, 5])]);
+    const up = await mero.admin.uploadBlob({ data: payload });
+    expect(up.blobId).toMatch(/^[0-9a-f]{64}$/);
+
+    // `toBlobIdHex` leaves it alone, and the node hands the bytes back.
+    expect(toBlobIdHex(up.blobId)).toBe(up.blobId);
+    const back = await mero.admin.getBlob(up.blobId);
+    expect(new Uint8Array(back).length).toBe(5);
+  }, 60_000);
+
+  it('REPRODUCES the reported error with the base58 the old code wrote', async () => {
+    const payload = new Blob([new Uint8Array([9, 9, 9])]);
+    const up = await mero.admin.uploadBlob({ data: payload });
+
+    // Exactly what `normalizeBlobIdToBase58` used to store in the contract.
+    const asBase58 = bs58.encode(Buffer.from(up.blobId, 'hex'));
+    await expect(mero.admin.getBlob(asBase58)).rejects.toThrow();
+
+    // And the fix: the legacy id still resolves, because it decodes back to
+    // the hex the blob was stored under. Documents and signatures recorded by
+    // the old build keep working.
+    expect(toBlobIdHex(asBase58)).toBe(up.blobId);
+    const back = await mero.admin.getBlob(toBlobIdHex(asBase58));
+    expect(new Uint8Array(back).length).toBe(3);
   }, 60_000);
 });
