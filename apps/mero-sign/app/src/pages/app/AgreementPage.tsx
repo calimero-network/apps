@@ -115,6 +115,21 @@ export default function AgreementPage() {
   const [viewingFile, setViewingFile] = useState<File | null>(null);
   const [viewingError, setViewingError] = useState<string | null>(null);
 
+  // ⚠️ A SECOND WAY OUT, that does not depend on the viewer rendering one.
+  // `PDFViewer` early-returns for loading, error and no-file, and none of
+  // those branches used to render its close button — so a document that
+  // failed to load opened a modal with no exit. Those branches are fixed too,
+  // but Escape and a backdrop click are the escapes that cannot be forgotten
+  // by a future branch.
+  useEffect(() => {
+    if (!viewing) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setViewing(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [viewing]);
+
   // Fetch the bytes whenever a document is opened, and drop them when it is
   // closed so a second open cannot show the first one's pages.
   useEffect(() => {
@@ -782,10 +797,16 @@ export default function AgreementPage() {
       )}
 
       {viewing && (
-        <div className={styles.modalBackdrop}>
+        <div
+          className={styles.modalBackdrop}
+          onClick={() => setViewing(null)}
+          data-testid="document-backdrop"
+        >
           <div
             className={styles.modal}
             style={{ maxWidth: 980, padding: 0, maxHeight: '92vh' }}
+            // Clicks inside the panel are not a click on the backdrop.
+            onClick={(e) => e.stopPropagation()}
           >
             {/* ⚠️ THE VIEWER IS NOT MOUNTED UNTIL THERE ARE BYTES.
                 `PDFViewer` renders "No PDF selected. Please upload a PDF to

@@ -57,3 +57,16 @@ describe('the document viewer', () => {
     expect(page).toMatch(/data-testid="document-loading"/);
   });
 });
+
+describe('the viewer modal can always be dismissed', () => {
+  it('closes on Escape', () => {
+    // Independent of whatever the viewer is rendering.
+    expect(page).toMatch(/e\.key === 'Escape'/);
+    expect(page).toMatch(/window\.addEventListener\('keydown'/);
+  });
+
+  it('closes on a backdrop click, and not on a click inside the panel', () => {
+    expect(page).toMatch(/data-testid="document-backdrop"/);
+    expect(page).toMatch(/e\.stopPropagation\(\)/);
+  });
+});
