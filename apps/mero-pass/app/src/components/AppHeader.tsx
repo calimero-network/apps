@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import BrandMark from './BrandMark';
+import { MARK_BG } from '../lib/brandMark';
 import { useMero } from '@calimero-network/mero-react';
 
 import styles from '../styles/shell.module.css';
@@ -56,7 +57,14 @@ export default function AppHeader({
         {/* Green as a FILL with near-black ink — the one mark on the screen.
             The glyph is the PADLOCK from `public/favicon.svg`; it used to be a
             `●`, so the tab and the header showed different products. */}
-        <span className={styles.mark} aria-hidden="true">
+        {/* The tile's colour comes from `lib/brandMark`, which a test pins to
+            `scripts/gen-icons.mjs` — see the note there. The stylesheet keeps
+            the size, radius and centring. */}
+        <span
+          className={styles.mark}
+          style={{ background: MARK_BG }}
+          aria-hidden="true"
+        >
           <BrandMark />
         </span>
         Mero Pass

@@ -1,3 +1,4 @@
+import { MARK_FROM, MARK_TO } from '../lib/brandMark';
 /**
  * The Mero Pass mark: a padlock.
  *
@@ -7,11 +8,12 @@
  * padlock. So the tab, the bookmark, the installed app and the home screen
  * were one product and the page header was another.
  *
- * Drawn as a path rather than an <img> of the favicon: the mark sits on the
- * accent fill and has to be inked in `--accent-ink`, because near-black on
- * that green is the app's contrast rule — white measures ~1.2:1 against it.
- * An <img> would carry the favicon's own dark tile and its teal gradient into
- * a 22px green square, which is how a brand ends up with two greens.
+ * Drawn as a path rather than an <img> so it can inherit the page's own
+ * colour tokens — but those tokens are now the ICON's (`--mark-bg`,
+ * `--mark-from`, `--mark-to`), kept identical to `scripts/gen-icons.mjs`.
+ * It previously painted the padlock near-black on `--accent` (lime) while
+ * every generated icon showed it as a teal→green gradient on near-black:
+ * inverted, and a different green.
  *
  * Shape kept in step with `scripts/gen-icons.mjs`, which generates every other
  * icon in `public/` from the same 64×64 design space.
@@ -24,18 +26,39 @@ export default function BrandMark() {
       height="13"
       aria-hidden="true"
       focusable="false"
-      // `currentColor` so the one ink rule in `.mark` governs this too.
       fill="none"
-      stroke="currentColor"
     >
+      {/* The icon's own gradient, in the icon's own direction. `currentColor`
+          is the fallback if a renderer drops the gradient. */}
+      <defs>
+        <linearGradient
+          id="mero-pass-mark"
+          x1="13"
+          y1="16"
+          x2="51"
+          y2="54"
+          gradientUnits="userSpaceOnUse"
+        >
+          <stop offset="0" stopColor={MARK_FROM} />
+          <stop offset="1" stopColor={MARK_TO} />
+        </linearGradient>
+      </defs>
       {/* The shackle. */}
       <path
         d="M21.5 27a10.5 10.5 0 0 1 21 0"
+        stroke="url(#mero-pass-mark)"
         strokeWidth="6"
         strokeLinecap="round"
       />
       {/* The body, and the keyhole knocked out of it. */}
-      <rect x="13" y="26" width="38" height="28" rx="7" fill="currentColor" />
+      <rect
+        x="13"
+        y="26"
+        width="38"
+        height="28"
+        rx="7"
+        fill="url(#mero-pass-mark)"
+      />
       <circle cx="32" cy="37" r="4.5" className="keyhole" />
       <path d="M29.8 37h4.4l-1.1 10h-2.2z" className="keyhole" />
     </svg>
