@@ -371,20 +371,20 @@ export class RestrictedCardDriver {
     ).toBeVisible({ timeout: opts.timeout ?? 30_000 });
   }
 
-  async clickJoin(opts: { timeout?: number } = {}): Promise<void> {
-    await this.page
-      .getByRole('button', { name: /^(Join folder|Try joining)$/ })
-      .click();
-    // Wait for the card to unmount — useFolderPermissions
-    // re-evaluates after RestrictedFolderCard's
-    // `useJoinSubgroupInheritance` call (core PR #2360 — one HTTP
-    // round-trip that materialises subgroup membership + receives
-    // the subgroup key), then the parent swaps to the real folder UI.
-    await expect(
-      this.page.getByRole('heading', {
-        name: /Join this open folder|Workspace is still syncing|This folder is restricted/i,
-      }),
-    ).toBeHidden({ timeout: opts.timeout ?? 60_000 });
+  // Core auto-follow usually joins an inherited Open folder before this card can
+  // render, so click Join only when the card is up, then wait for the folder view.
+  async joinIfPrompted(opts: { timeout?: number } = {}): Promise<void> {
+    const main = this.page.getByRole('main');
+    const folderView = main.getByRole('heading', {
+      name: /^No document open$/,
+    });
+    const join = main.getByRole('button', {
+      name: /^(Join folder|Try joining)$/,
+    });
+    const timeout = opts.timeout ?? 60_000;
+    await expect(folderView.or(join)).toBeVisible({ timeout });
+    if (await join.isVisible()) await join.click();
+    await expect(folderView).toBeVisible({ timeout });
   }
 
   async clickRefresh(): Promise<void> {
