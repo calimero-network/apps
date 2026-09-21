@@ -196,4 +196,29 @@ describe('NamespaceMemberRow admin-rename affordance', () => {
     // button again, not the input).
     expect(screen.getByLabelText(/^Rename /).tagName).toBe('BUTTON');
   });
+
+  it('labels the presence dot in both states, so colour is not the only signal', () => {
+    useAdminRenameMemberMock.mockReturnValue({
+      canRename: false,
+      renameTo: renameToMock,
+    });
+    const row = (isPresent: boolean) => (
+      <NamespaceMemberRow
+        groupId="ns"
+        identity="bob-id"
+        actorRole="Member"
+        actorCaps={null}
+        adminCount={1}
+        label="bob-id"
+        role="Member"
+        isPresent={isPresent}
+        canManage={false}
+        onRemove={vi.fn().mockResolvedValue(undefined)}
+      />
+    );
+    const { rerender } = render(row(true));
+    expect(screen.getByRole('img', { name: 'Here now' })).toBeTruthy();
+    rerender(row(false));
+    expect(screen.getByRole('img', { name: 'Away' })).toBeTruthy();
+  });
 });
