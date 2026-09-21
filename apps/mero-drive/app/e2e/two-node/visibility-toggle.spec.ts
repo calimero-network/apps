@@ -6,7 +6,8 @@
 import { test, expect } from '../fixtures/two-user';
 
 test.describe('Visibility toggle (two-node)', () => {
-  // toggleVisibility's Info dialog re-renders and detaches its Close button mid-click.
+  // Bob's tree hides the now-Restricted folder and his selection sticks on
+  // "Loading folder..." instead of the ask-admin card.
   test.fixme("Open → Restricted revokes Bob's inherited access", async ({
     alice,
     bob,
