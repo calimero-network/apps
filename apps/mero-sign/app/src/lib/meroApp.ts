@@ -32,6 +32,7 @@ import {
   ensurePersonalWorkspace,
 } from './agreements';
 import { APP_PACKAGE, resolveApplicationId } from './appId';
+import { decodeInvite } from './inviteCodec';
 
 /** The six methods `ClientApiDataSource` / `NodeApiDataSource` actually call. */
 export interface MeroAppLike {
@@ -208,7 +209,36 @@ export function meroApp(
     },
 
     async joinContext(props) {
-      return mero.admin.joinContext(props.invitationPayload);
+      // ⚠️ `joinContext` TAKES A CONTEXT ID, NOT AN INVITATION. Its signature
+      // is `joinContext(contextId: string)` and it was being handed the
+      // invitation payload, so the node answered
+      //
+      //     Invalid context id format: expected 64 hex characters (32 bytes)
+      //
+      // which `ContextApiDataSource` then swallowed and replaced with "No node
+      // connection yet" — a message that was not true and sent people looking
+      // at their node.
+      //
+      // Redeeming an invitation means presenting the SIGNED object, and the
+      // route for that is `joinGroup({invitation})` — same shape as
+      // `joinNamespace`. So decode first: an invitation that decodes is
+      // presented; one that does not is a legacy opaque targeted payload, for
+      // which rc.41 has no route at all, and saying so is the only honest
+      // answer. See `api/invitationJoin`, which is the path an OPEN invitation
+      // should take.
+      const payload = decodeInvite(props.invitationPayload);
+      const invitation = payload?.invitation;
+      if (!invitation) {
+        throw new Error(
+          'That invitation cannot be redeemed: it is not a signed Calimero ' +
+            'invitation. Ask for a new link.',
+        );
+      }
+      return mero.admin.joinGroup({
+        invitation: invitation as unknown as Parameters<
+          MeroJs['admin']['joinGroup']
+        >[0]['invitation'],
+      });
     },
 
     async inviteToContext(props) {
