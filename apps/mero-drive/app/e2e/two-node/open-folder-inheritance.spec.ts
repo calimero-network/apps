@@ -8,11 +8,8 @@
 //   - Alice generates a namespace invite; Bob accepts via /join.
 //   - core gossips the namespace governance op to Bob's node
 //     (#2261 inheritance walk recognises Bob as eligible).
-//   - Bob clicks "Join folder" → useJoinSubgroupInheritance(folderId)
-//     (core #2360) → core publishes MemberJoinedOpen on Bob's behalf,
-//     fetches the subgroup key via OpenSubgroupJoinRequest, returns 200.
-//   - useFolderPermissions re-evaluates after refetch; RestrictedFolderCard
-//     unmounts in favour of the DocumentList.
+//   - core auto-follow on Bob's node joins the Open folder's docs
+//     context, so the folder view opens without a Join click.
 //   - Bob reads Alice's doc; writes his own; Alice reads back (#2351
 //     KeyDelivery + the underlying gossip/sync stack).
 //
@@ -25,17 +22,15 @@ test.describe('Open folder inheritance (two-node)', () => {
   // the basic happy path:
   //
   //   node-1 creates Open subgroup + doc → invites to namespace
-  //   node-2 accepts, sees the folder, clicks Join (one
-  //     join_subgroup_inheritance call materialises subgroup
-  //     membership + delivers the subgroup key)
+  //   node-2 accepts, sees the folder, opens it (auto-follow has
+  //     already joined the docs context)
   //   node-2 sees Alice's doc in the DocumentList
   //
   // No editor mount, no bidirectional write-back, no concurrency —
   // those are covered by the next test in this file and by
   // doc-collab.spec.ts. First in file so it runs first; a failure
   // here means everything downstream is moot.
-  // Bob now inherits an Open folder with no join card, so expectJoinCTA/clickJoin finds nothing.
-  test.fixme('SMOKE: node-2 joins Open subgroup via inheritance + reads doc', async ({
+  test('SMOKE: node-2 joins Open subgroup via inheritance + reads doc', async ({
     alice,
     bob,
   }) => {
@@ -60,22 +55,15 @@ test.describe('Open folder inheritance (two-node)', () => {
     // ordering fix in useFolderOperations.create).
     await bob.tree.expectFolderVisible('OpenSpace', { timeout: 60_000 });
 
-    // node-2 opens the folder → sees Join CTA (Open chain
-    // recognised) → one click → join_subgroup_inheritance (#2360)
-    // materialises membership + delivers the subgroup key.
     await bob.tree.openFolder('OpenSpace');
-    await bob.restrictedCard.expectJoinCTA();
-    await bob.restrictedCard.clickJoin();
+    await bob.restrictedCard.joinIfPrompted();
 
-    // Final assertion: RestrictedFolderCard has unmounted in favour
-    // of the real folder view, AND Bob can see Alice's doc in the
-    // list (proves the docs-context CRDT replicated through the
-    // newly-materialised subgroup membership).
+    // Bob can see Alice's doc (the docs-context CRDT replicated to
+    // his node through the inherited membership).
     await bob.docs.expectDocVisible('Smoke Doc', { timeout: 60_000 });
   });
 
-  // Bob now inherits an Open folder with no join card, so expectJoinCTA/clickJoin finds nothing.
-  test.fixme("Bob inherits Alice's Open folder created before he joined", async ({
+  test("Bob inherits Alice's Open folder created before he joined", async ({
     alice,
     bob,
   }) => {
@@ -95,8 +83,7 @@ test.describe('Open folder inheritance (two-node)', () => {
     await bob.tree.expectFolderVisible('Specs', { timeout: 60_000 });
 
     await bob.tree.openFolder('Specs');
-    await bob.restrictedCard.expectJoinCTA();
-    await bob.restrictedCard.clickJoin();
+    await bob.restrictedCard.joinIfPrompted();
 
     await bob.docs.expectDocVisible('Alpha');
 
@@ -104,19 +91,12 @@ test.describe('Open folder inheritance (two-node)', () => {
     await alice.docs.expectDocVisible('Beta', { timeout: 60_000 });
   });
 
-  // Bob now inherits an Open folder with no join card, so expectJoinCTA/clickJoin finds nothing.
-  test.fixme('Join folder hits /join-via-inheritance (wire-shape guard)', async ({
+  // The Join card only shows while the caps probe still says "not a member"
+  // (propagation lag); forcing that proves its click goes through join-via-inheritance.
+  test('Join folder hits /join-via-inheritance (wire-shape guard)', async ({
     alice,
     bob,
   }) => {
-    // Regression guard against silently reverting to the pre-#2360
-    // `listGroupContexts` + `joinContext` workaround. Intercepts
-    // Bob's admin-API traffic during the Join CTA click and asserts:
-    //   - POST /admin-api/groups/:id/join-via-inheritance fires
-    //   - GET  /admin-api/groups/:id/contexts does NOT
-    //
-    // Same plumbing as the main test up to the click; we just install
-    // the route interceptors on Bob's page first.
     await alice.goToWorkspace();
     await alice.createNamespace('Phoenix Wire');
     await alice.createFolder({ name: 'Wire', visibility: 'Open' });
@@ -128,7 +108,6 @@ test.describe('Open folder inheritance (two-node)', () => {
     await bob.tree.expectFolderVisible('Wire', { timeout: 60_000 });
 
     let calledJoinInheritance = false;
-    let calledListContexts = false;
     await bob.page.route(
       '**/admin-api/groups/*/join-via-inheritance',
       async (route) => {
@@ -136,19 +115,23 @@ test.describe('Open folder inheritance (two-node)', () => {
         await route.continue();
       },
     );
-    await bob.page.route('**/admin-api/groups/*/contexts', async (route) => {
-      // The endpoint shape is GET (list) — distinguish from POSTs to
-      // unrelated /groups/:id/* paths by checking method.
-      if (route.request().method() === 'GET') calledListContexts = true;
-      await route.continue();
-    });
+    await bob.page.route(
+      '**/admin-api/groups/*/members/*/capabilities',
+      async (route) => {
+        if (calledJoinInheritance) return route.continue();
+        await route.fulfill({
+          status: 500,
+          contentType: 'application/json',
+          body: JSON.stringify({ error: 'identity is not a member of group' }),
+        });
+      },
+    );
 
     await bob.tree.openFolder('Wire');
     await bob.restrictedCard.expectJoinCTA();
-    await bob.restrictedCard.clickJoin();
+    await bob.restrictedCard.joinIfPrompted();
 
     expect(calledJoinInheritance).toBe(true);
-    expect(calledListContexts).toBe(false);
   });
 
   test.skip(

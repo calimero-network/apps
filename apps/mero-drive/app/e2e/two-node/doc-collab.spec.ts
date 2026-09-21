@@ -9,8 +9,7 @@
 import { test } from '../fixtures/two-user';
 
 test.describe('Document collab (two-node)', () => {
-  // Bob now inherits an Open folder with no join card, so expectJoinCTA/clickJoin finds nothing.
-  test.fixme('Both Alice and Bob open the same doc concurrently', async ({
+  test('Both Alice and Bob open the same doc concurrently', async ({
     alice,
     bob,
   }) => {
@@ -27,8 +26,7 @@ test.describe('Document collab (two-node)', () => {
 
     await bob.joinNamespace(inviteUrl);
     await bob.tree.openFolder('Shared');
-    await bob.restrictedCard.expectJoinCTA();
-    await bob.restrictedCard.clickJoin();
+    await bob.restrictedCard.joinIfPrompted();
     await bob.docs.expectDocVisible('Joint');
 
     // Both open the same doc.
@@ -38,8 +36,7 @@ test.describe('Document collab (two-node)', () => {
     await bob.editor.expectMounted();
   });
 
-  // Bob now inherits an Open folder with no join card, so expectJoinCTA/clickJoin finds nothing.
-  test.fixme("Alice's edits become visible to Bob", async ({ alice, bob }) => {
+  test("Alice's edits become visible to Bob", async ({ alice, bob }) => {
     await alice.goToWorkspace();
     await alice.createNamespace('A-writes Setup');
     await alice.createFolder({ name: 'Pad', visibility: 'Open' });
@@ -51,7 +48,7 @@ test.describe('Document collab (two-node)', () => {
 
     await bob.joinNamespace(inviteUrl);
     await bob.tree.openFolder('Pad');
-    await bob.restrictedCard.clickJoin();
+    await bob.restrictedCard.joinIfPrompted();
     await bob.openDoc('A-writes');
 
     await alice.openDoc('A-writes');
@@ -60,8 +57,7 @@ test.describe('Document collab (two-node)', () => {
     await bob.editor.expectContent('hello from alice', { timeout: 60_000 });
   });
 
-  // Bob now inherits an Open folder with no join card, so expectJoinCTA/clickJoin finds nothing.
-  test.fixme("Bob's edits become visible to Alice", async ({ alice, bob }) => {
+  test("Bob's edits become visible to Alice", async ({ alice, bob }) => {
     await alice.goToWorkspace();
     await alice.createNamespace('B-writes Setup');
     await alice.createFolder({ name: 'Pad', visibility: 'Open' });
@@ -73,7 +69,7 @@ test.describe('Document collab (two-node)', () => {
 
     await bob.joinNamespace(inviteUrl);
     await bob.tree.openFolder('Pad');
-    await bob.restrictedCard.clickJoin();
+    await bob.restrictedCard.joinIfPrompted();
     await bob.openDoc('B-writes');
 
     await bob.editor.type('hello from bob');
@@ -89,7 +85,7 @@ test.describe('Document collab (two-node)', () => {
   //
   // The two-node project's dev server is built with `VITE_COLLAB_YJS=true`
   // (playwright.config.ts), so the collaborative editor is what mounts here.
-  // Bob now inherits an Open folder with no join card, so expectJoinCTA/clickJoin finds nothing.
+  // Bob's concurrent edit is lost on both nodes; each editor ends with only Alice's text.
   test.fixme('Concurrent edits MERGE (both writers survive) — Yjs collab path', async ({
     alice,
     bob,
@@ -105,7 +101,7 @@ test.describe('Document collab (two-node)', () => {
 
     await bob.joinNamespace(inviteUrl);
     await bob.tree.openFolder('Pad');
-    await bob.restrictedCard.clickJoin();
+    await bob.restrictedCard.joinIfPrompted();
     await bob.docs.expectDocVisible('Merge');
 
     // Both open the same doc.
