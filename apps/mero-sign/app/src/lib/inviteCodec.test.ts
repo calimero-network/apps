@@ -211,3 +211,72 @@ describe('namespaceIdOfInvite', () => {
     expect(namespaceIdOfInvite(signed())).toBe('');
   });
 });
+
+// ── The shape `createNamespaceInvitation` actually answers with ────────────
+//
+// ⚠️ THE REPORTED JOIN FAILURE, and it was the codec, not the invitation.
+// The node answers
+//
+//     { invitation: { invitation, inviter_signature, … }, groupName }
+//
+// so the SIGNED object is TWO levels down. `unwrapEnvelope` descended only
+// `data`, so it stopped at `{invitation, groupName}` — which carries no
+// signature at its own level. `isSignedInvitation` was false, `parsePayload`
+// returned null, and `decodeInvite` fell through to its last resort and
+// classified a perfectly good OPEN invitation as a legacy TARGETED payload.
+//
+// ⚠️ And that was invisible: `decodeInvite` still returned a truthy object, so
+// "it decodes" looked true. Redemption then took the targeted path straight to
+// `joinContext`, which wants a 64-hex context id:
+//
+//     {"error":"Invalid context id format: expected 64 hex characters"}
+
+const NODE_MINT_RESPONSE = {
+  invitation: {
+    invitation: {
+      inviter_identity: [1, 2, 3],
+      group_id: [4, 5, 6],
+      expiration_timestamp: 1,
+      secret_salt: [7],
+      invited_role: 0,
+    },
+    inviter_signature: 'ff'.repeat(64),
+    inviter_account: 'aa'.repeat(32),
+    application_id: 'bb'.repeat(32),
+    app_key: 'cc'.repeat(32),
+  },
+  groupName: 'Acme',
+};
+
+describe('an invitation minted straight from the node', () => {
+  it('decodes as OPEN, not as a targeted payload', () => {
+    const code = encodeInvite({
+      invitation: NODE_MINT_RESPONSE as never,
+      workspaceName: 'Acme',
+    });
+    const decoded = decodeInvite(code);
+    expect(decoded).not.toBeNull();
+    // ⚠️ THE ASSERTION THAT MATTERS. `targeted` is the bug — and it is truthy,
+    // so a test that only checked "decodes" passed right through it.
+    expect(decoded!.kind).toBe('open');
+    expect(decoded!.invitation).toBeTruthy();
+  });
+
+  it('keeps the wrapper hints that sit BESIDE the invitation', () => {
+    // The first fix descended `invitation` unconditionally, which threw these
+    // away — the outer object is this app's own wrapper.
+    const code = encodeInvite({
+      invitation: NODE_MINT_RESPONSE as never,
+      contextName: 'NDA',
+      workspaceName: 'Acme',
+    });
+    const decoded = decodeInvite(code)!;
+    expect(decoded.contextName).toBe('NDA');
+    expect(decoded.workspaceName).toBe('Acme');
+  });
+
+  it('still reads the group out of the signed body', () => {
+    const code = encodeInvite({ invitation: NODE_MINT_RESPONSE as never });
+    expect(namespaceIdOfInvite(decodeInvite(code)!)).toBe('040506');
+  });
+});

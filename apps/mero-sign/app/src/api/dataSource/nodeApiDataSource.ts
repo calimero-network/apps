@@ -151,7 +151,26 @@ export class ContextApiDataSource implements NodeApi {
         return { data: result, error: null };
       }
     } catch (error) {
-      console.warn('App joinContext failed, falling back to API:', error);
+      // ⚠️ REPORT IT. This used to `console.warn` and fall through to the
+      // branch below, whose only outcome is "No node connection yet, so this
+      // invitation cannot be redeemed" — so a node that was connected fine
+      // got blamed for a 403, or for
+      //
+      //     Invalid context id format: expected 64 hex characters (32 bytes)
+      //
+      // which is what `joinContext` answered when it was handed an invitation
+      // payload instead of a context id. The same swallow-and-replace as
+      // `createContext` above, found the same way: by the message being wrong.
+      return {
+        data: undefined,
+        error: {
+          code: 500,
+          message:
+            error instanceof Error
+              ? error.message
+              : 'Could not redeem that invitation.',
+        },
+      };
     }
 
     try {
