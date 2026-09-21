@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { CATCH_ALL, ROUTES } from './routes';
+import { CATCH_ALL, HOME_SCREEN_WHEN_SIGNED_IN, ROUTES } from './routes';
 
 const here = resolve(__dirname, '..');
 
@@ -42,12 +42,45 @@ describe('the route table', () => {
     // `publicScreen: false` means the connect prompt RENDERS in place of the
     // page — the URL is kept, so signing in lands you where you meant to go.
     for (const path of [
+      '/workspaces',
+      '/workspaces/:workspaceId',
       '/agreements',
       '/agreements/:agreementId',
       '/signatures',
     ]) {
       expect(ROUTES.find((r) => r.path === path)?.publicScreen).toBe(false);
     }
+  });
+
+  // ── The workspace layer ───────────────────────────────────────────────────
+  //
+  // Not a feature: at 0.11.0-rc.41 `CreateContextRequest.group_id` has no
+  // `Option` and no `#[serde(default)]`, so an agreement cannot exist outside
+  // a group. "Your agreements" with no workspace chosen is a screen whose only
+  // button cannot work, which is why home is the picker.
+
+  it('has a workspace picker, and a URL for one workspace', () => {
+    expect(ROUTES.find((r) => r.path === '/workspaces')?.screen).toBe(
+      'workspaces',
+    );
+    // The same screen as `/agreements`, so a shared workspace link and the
+    // app's own navigation land in the same place.
+    expect(
+      ROUTES.find((r) => r.path === '/workspaces/:workspaceId')?.screen,
+    ).toBe('agreements');
+  });
+
+  it('sends a signed-in visitor to the picker, not to an agreements list', () => {
+    expect(HOME_SCREEN_WHEN_SIGNED_IN).toBe('workspaces');
+  });
+
+  it('puts /workspaces before /workspaces/:workspaceId', () => {
+    // react-router v6 ranks rather than orders, so this is about the table
+    // reading the way it resolves rather than about correctness of matching.
+    const i = ROUTES.findIndex((r) => r.path === '/workspaces');
+    const j = ROUTES.findIndex((r) => r.path === '/workspaces/:workspaceId');
+    expect(i).toBeGreaterThan(-1);
+    expect(j).toBeGreaterThan(i);
   });
 
   it('lets an unknown path render something, signed in or out', () => {
