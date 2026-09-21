@@ -19,6 +19,7 @@ import {
 } from '../../lib/vaults';
 import type { VaultRow } from '../../lib/vaults';
 import styles from '../../styles/shell.module.css';
+import { JoinSyncBanner, useJoinSync } from '@calimero-apps/join-sync';
 
 type Tab = 'vaults' | 'people';
 
@@ -53,6 +54,8 @@ export default function TeamPage() {
   const [teamName, setTeamName] = useState('');
   const [vaults, setVaults] = useState<VaultRow[]>([]);
   const [loading, setLoading] = useState(true);
+  /** The team whose vault list has come back at least once. */
+  const [listedForTeam, setListedForTeam] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [newName, setNewName] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
@@ -69,11 +72,21 @@ export default function TeamPage() {
     [teamName, teamId],
   );
 
+  // A team joined this session whose vaults have not replicated yet. Without
+  // this a brand-new member is told "No vaults in this team yet" about a team
+  // whose vaults are still on their way — and invited to create a duplicate.
+  const { isSyncing, dismiss: dismissSyncing } = useJoinSync({
+    namespaceId: teamId ?? null,
+    settled: !!teamId && listedForTeam === teamId,
+  });
+
   const load = useCallback(async () => {
     if (!mero || !teamId) return;
     setLoading(true);
     try {
       setVaults(await listVaults(mero.admin, teamId));
+      // A real answer, empty or not — that is what ends the sync gate.
+      setListedForTeam(teamId);
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -297,6 +310,8 @@ export default function TeamPage() {
               <p className={styles.empty}>
                 Mero Pass is not installed on this node.
               </p>
+            ) : isSyncing ? (
+              <JoinSyncBanner show what="vaults" onDismiss={dismissSyncing} />
             ) : loading ? (
               <p className={styles.empty}>Loading…</p>
             ) : vaults.length === 0 ? (

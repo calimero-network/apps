@@ -46,6 +46,7 @@ import {
   spreadsheetFallbackLabel,
   type SpreadsheetRow,
 } from '../lib/workspaces';
+import { markNamespaceJustJoined, useJoinSync } from '@calimero-apps/join-sync';
 
 export interface Workspace {
   contextId: string;
@@ -56,6 +57,9 @@ export interface Workspace {
 
 export interface UseWorkspaceReturn {
   /** Every spreadsheet in the workspace — the list to pick from. */
+  /** A namespace joined this session whose spreadsheets have not arrived yet. */
+  isSyncing: boolean;
+  dismissSyncing: () => void;
   workspaces: Workspace[];
   /** The namespace holding them, or null before one exists on this node. */
   namespaceId: string | null;
@@ -120,6 +124,8 @@ export function useWorkspace(): UseWorkspaceReturn {
   } = useGroupContexts(namespaceId);
 
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
+  /** The namespace whose spreadsheet list has been read at least once. */
+  const [listedForNs, setListedForNs] = useState<string | null>(null);
   const [contextId, setContextId] = useState<string | null>(callbackContextId);
   const [executorPublicKey, setExecutorPublicKey] = useState<string | null>(
     callbackContextIdentity,
@@ -153,7 +159,11 @@ export function useWorkspace(): UseWorkspaceReturn {
     let cancelled = false;
     void listSpreadsheets(mero.admin, namespaceId, nsContexts).then(
       (rows: SpreadsheetRow[]) => {
-        if (!cancelled) setWorkspaces(rows);
+        if (cancelled) return;
+        setWorkspaces(rows);
+        // Settled means "a real read came back", including an empty one — a
+        // workspace with no spreadsheets yet is an answer, not a pending state.
+        setListedForNs(namespaceId);
       },
     );
     return () => {
@@ -299,6 +309,10 @@ export function useWorkspace(): UseWorkspaceReturn {
       setError(null);
       try {
         const landed = await acceptInvite(mero.admin, payload, setStatus);
+        // The join has returned; the workspace's own state has not arrived yet.
+        // Without this the joiner lands on an empty spreadsheet list that looks
+        // exactly like a workspace with nothing in it.
+        if (landed.namespaceId) markNamespaceJustJoined(landed.namespaceId);
         await refresh();
         // The code can name a spreadsheet to open. It is an unsigned hint, so
         // the node still decides whether to admit us — `openWorkspace` goes
@@ -312,7 +326,14 @@ export function useWorkspace(): UseWorkspaceReturn {
     [mero, refresh, openWorkspace],
   );
 
+  const { isSyncing, dismiss: dismissSyncing } = useJoinSync({
+    namespaceId,
+    settled: listedForNs === namespaceId,
+  });
+
   return {
+    isSyncing,
+    dismissSyncing,
     workspaces,
     namespaceId,
     namespaceName,

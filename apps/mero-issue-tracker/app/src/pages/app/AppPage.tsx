@@ -182,6 +182,8 @@ export default function AppPage(): React.ReactElement | null {
     onNewNamespace: () => setShowCreateNs(true),
     onJoinNamespace: () => setShowJoin(true),
     repos: ws.repos,
+    reposSyncing: ws.isSyncing,
+    onDismissReposSyncing: ws.dismissSyncing,
     activeRepo: ws.activeRepo,
     onSelectRepo: ws.selectRepo,
     onAddRepo: () => setShowAddRepo(true),

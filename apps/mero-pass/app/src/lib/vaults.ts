@@ -68,6 +68,7 @@ import {
   type PassInvitePayload,
   type SignedInvitation,
 } from './inviteCodec';
+import { markNamespaceJustJoined } from '@calimero-apps/join-sync';
 
 /** The admin client, as `useMero().mero.admin` provides it. */
 export type AdminLike = MeroJs['admin'];
@@ -904,6 +905,11 @@ export async function redeemInvite(
   onStatus: StatusFn = noop,
 ): Promise<Redeemed> {
   const accepted = await acceptInvite(admin, payload, onStatus);
+
+  // The grant has landed; the namespace's own state has not. Flag it so the
+  // list this joiner is about to see says "syncing" rather than rendering an
+  // empty view that is indistinguishable from an empty vaults.
+  if (accepted.namespaceId) markNamespaceJustJoined(accepted.namespaceId);
 
   if (accepted.vaultId && accepted.contextId) {
     const identity = await enterVaultContext(
