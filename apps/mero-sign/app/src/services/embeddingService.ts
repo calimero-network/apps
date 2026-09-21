@@ -3,8 +3,10 @@ import * as tf from '@tensorflow/tfjs';
 import * as use from '@tensorflow-models/universal-sentence-encoder';
 import * as pdfjsLib from 'pdfjs-dist';
 
-// Set the worker source for pdfjs-dist (required for browser)
-pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+import { configurePdfWorker } from './pdfWorker';
+
+// The worker version must match the API version exactly; see `./pdfWorker`.
+configurePdfWorker();
 
 const CONFIG = {
   MAX_CHUNK_SIZE: 400,

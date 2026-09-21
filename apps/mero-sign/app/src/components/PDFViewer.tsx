@@ -587,6 +587,24 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
     (sig) => sig.pageNumber === currentPage,
   );
 
+  // ⚠️ EVERY EARLY RETURN NEEDS A WAY OUT. The close button lives in the main
+  // render path, which is reached only once a PDF has loaded — so the
+  // loading, error and no-file branches had NO close control at all. A
+  // document that failed to load (which, with the worker-version mismatch,
+  // was every document) opened a modal that could not be dismissed. Reported
+  // as "when we open up a pdf the popup cant be closed".
+  const escapeHatch = showClose && onClose && (
+    <Button
+      variant="secondary"
+      size="sm"
+      onClick={onClose}
+      style={{ marginTop: spacing[4].value }}
+      data-testid="pdf-close"
+    >
+      <X size={14} /> Close
+    </Button>
+  );
+
   if (loading) {
     return (
       <Box
@@ -614,6 +632,7 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
           >
             Loading PDF...
           </Text>
+          {escapeHatch}
         </Flex>
       </Box>
     );
@@ -657,6 +676,7 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
           >
             Try Again
           </Button>
+          {escapeHatch}
         </Flex>
       </Box>
     );
@@ -695,6 +715,7 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
           >
             No PDF selected. Please upload a PDF to get started.
           </Text>
+          {escapeHatch}
         </Flex>
       </Box>
     );
