@@ -151,6 +151,7 @@ pnpm run app:dev                              # Vite + WASM watcher
 pnpm run app:build                            # production build
 pnpm --dir app lint
 pnpm --dir app test                           # Vitest unit tests
+pnpm --dir app exec playwright test           # browser e2e: starts two merod ($MEROD_BINARY) with the logic:build bundle
 
 # Generated client
 pnpm run app:generate-client                  # regenerate DocsClient/RegistryClient from logic/res/abi.json

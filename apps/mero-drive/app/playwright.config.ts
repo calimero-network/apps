@@ -4,6 +4,22 @@ import { defineConfig, devices } from '@playwright/test';
 // this monorepo already pin. See the note in vite.config.js.
 const APP_PORT = process.env.PW_PORT ?? '5179';
 const APP_URL = process.env.VITE_APP_URL ?? `http://localhost:${APP_PORT}`;
+// Two-node specs run against a second server built with the Yjs collab editor,
+// while single-node keeps testing the default LWW editor that ships.
+const COLLAB_PORT = String(Number(APP_PORT) + 1);
+const COLLAB_URL = `http://localhost:${COLLAB_PORT}`;
+
+function devServer(port: string, env: Record<string, string> = {}) {
+  return {
+    command: `pnpm dev --host 127.0.0.1 --port ${port}`,
+    url: `http://localhost:${port}`,
+    reuseExistingServer: !process.env.CI,
+    timeout: 120_000,
+    stdout: 'pipe' as const,
+    stderr: 'pipe' as const,
+    env,
+  };
+}
 
 export default defineConfig({
   testDir: './e2e',
@@ -27,27 +43,10 @@ export default defineConfig({
   },
   webServer: process.env.SKIP_WEB_SERVER
     ? undefined
-    : {
-        command: `pnpm dev --host 127.0.0.1 --port ${APP_PORT}`,
-        url: APP_URL,
-        reuseExistingServer: !process.env.CI,
-        timeout: 120_000,
-        stdout: 'pipe',
-        stderr: 'pipe',
-        // Forward the collaboration feature flag to the dev server's
-        // environment so Vite actually exposes `import.meta.env.VITE_COLLAB_YJS`
-        // to the served app. Without this the flag set on the Playwright runner
-        // never reaches the built app, so `COLLAB_YJS_ENABLED` stays false and
-        // the collab editor never mounts — the two-node merge test would then
-        // silently exercise the LWW shell. CI sets `VITE_COLLAB_YJS=true` only
-        // on the two-node job (see integration-ci.yml); single-node/fast runs
-        // leave it unset so they keep testing the default LWW path.
-        env: {
-          ...(process.env.VITE_COLLAB_YJS
-            ? { VITE_COLLAB_YJS: process.env.VITE_COLLAB_YJS }
-            : {}),
-        },
-      },
+    : [
+        devServer(APP_PORT),
+        devServer(COLLAB_PORT, { VITE_COLLAB_YJS: 'true' }),
+      ],
   projects: [
     {
       name: 'landing',
@@ -73,6 +72,7 @@ export default defineConfig({
       timeout: 300_000,
       use: {
         ...devices['Desktop Chrome'],
+        baseURL: COLLAB_URL,
         storageState: { cookies: [], origins: [] },
         trace: 'retain-on-failure',
       },
