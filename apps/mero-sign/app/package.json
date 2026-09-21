@@ -38,7 +38,9 @@
     "@calimero-network/mero-react": "catalog:"
   },
   "devDependencies": {
+    "@calimero-network/abi-codegen": "catalog:",
     "@eslint/js": "catalog:",
+    "@playwright/test": "catalog:",
     "@types/bs58": "^4.0.4",
     "@types/eslint__js": "^8.42.3",
     "@types/node": "catalog:",
@@ -62,8 +64,7 @@
     "typescript-eslint": "catalog:",
     "vite": "catalog:",
     "vite-plugin-node-polyfills": "^0.21.0",
-    "vitest": "catalog:",
-    "@playwright/test": "catalog:"
+    "vitest": "catalog:"
   },
   "scripts": {
     "dev": "vite",
@@ -78,7 +79,8 @@
     "prettier": "exec prettier . --write",
     "test:e2e": "playwright test",
     "shots": "node e2e/shots.mjs",
-    "test:live": "vitest run --config e2e/live/vitest.config.ts"
+    "test:live": "vitest run --config e2e/live/vitest.config.ts",
+    "codegen": "calimero-abi-codegen -i ../logic/res/abi.json -o src/generated --client-name MeroSignClient --import-path @calimero-network/mero-js"
   },
   "eslintConfig": {
     "extends": [

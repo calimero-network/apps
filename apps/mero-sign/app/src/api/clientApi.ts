@@ -29,13 +29,19 @@ export enum ClientMethod {
   SEARCH_DOCUMENT_BY_EMBEDDING = 'search_document_by_embedding',
 }
 
-export interface SignatureRecord {
-  id: number;
-  name: string;
-  blob_id: string;
-  size: number;
-  created_at: number;
-}
+/**
+ * ⚠️ RE-EXPORTED FROM THE GENERATED CLIENT, not declared here.
+ *
+ * The hand-written copy said `blob_id: string`. The ABI says BYTES, and the
+ * generated client wraps them as `CalimeroBytes`. That one-word divergence is
+ * the blob-id bug in type form: the app believed it held a string, so
+ * `bs58.encode`-ing it looked correct, and the node answered "Failed to decode
+ * blob ID (expected hex)" at runtime. Sourcing the type from the ABI makes
+ * that a compile error instead.
+ */
+import type { SignatureRecord } from '../generated/MeroSignClient';
+
+export type { SignatureRecord };
 
 export interface SavedSignature {
   id: number;

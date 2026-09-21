@@ -10,8 +10,10 @@ import {
   displayName,
   enterAgreement,
   listAgreements,
+  listWorkspaces,
   type AgreementRow,
 } from '../../lib/agreements';
+import { useApplicationId } from '../../hooks/useApplicationId';
 import { adminApi } from '../../lib/node';
 import { useCalimero } from '../../lib/useCalimero';
 import { AgreementService } from '../../api/agreementService';
@@ -47,6 +49,8 @@ export default function AgreementsPage() {
   const location = useLocation();
   const params = useParams<{ workspaceId?: string }>();
   const stored = useActiveWorkspace();
+  // Needed to ask the node which workspaces it actually has — see `load`.
+  const { applicationId } = useApplicationId();
 
   // The route is the source of truth when there is one — `/workspaces/:id` is
   // a shareable URL and it must win over whatever was last opened. `/agreements`
@@ -62,6 +66,8 @@ export default function AgreementsPage() {
   const [rows, setRows] = useState<AgreementRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // The stored workspace is not on this node. See `load`.
+  const [gone, setGone] = useState(false);
 
   const [newName, setNewName] = useState('');
   const [creating, setCreating] = useState(false);
@@ -90,15 +96,38 @@ export default function AgreementsPage() {
     setError(null);
     try {
       setRows(await listAgreements(adminApi(), workspaceId));
+      setGone(false);
     } catch (e) {
       setRows([]);
       setError(
         e instanceof Error ? e.message : 'Could not load your agreements.',
       );
+
+      // ⚠️ A FAILED LISTING IS NOT EVIDENCE THE WORKSPACE IS GONE, and the
+      // first version of this treated it as exactly that. A dropped
+      // connection, a 500, a timeout — every one of them wiped the remembered
+      // workspace and replaced the screen with "not on this node" for a
+      // workspace that was perfectly fine. Worst on the reconnect where you
+      // would most want it back.
+      //
+      // So ASK. `listNamespacesForApplication` answering WITHOUT this
+      // workspace in it is the node saying it does not have it. Anything else
+      // — including the check itself failing — is transient, and the
+      // selection stays.
+      if (!applicationId) return;
+      const known = await listWorkspaces(adminApi(), applicationId).catch(
+        () => null,
+      );
+      if (!known) return;
+      if (known.some((w) => w.namespaceId === workspaceId)) return;
+      setGone(true);
+      // Only a selection WE remembered. An id in the URL is the person's
+      // own instruction and is not ours to forget.
+      if (!params.workspaceId) setActiveWorkspace(null);
     } finally {
       setLoading(false);
     }
-  }, [workspaceId]);
+  }, [workspaceId, params.workspaceId, applicationId]);
 
   useEffect(() => {
     if (app) void load();
@@ -165,6 +194,36 @@ export default function AgreementsPage() {
     },
     [navigate, workspaceId],
   );
+
+  if (gone) {
+    return (
+      <div className={styles.root}>
+        <AppHeader />
+        <main className={styles.main}>
+          <h1 className={styles.title}>That workspace is not on this node</h1>
+          <p className={styles.subtitle}>
+            It was remembered from a previous session, but this node does not
+            have it — it may have been reset, or the workspace deleted. Nothing
+            of yours is lost; pick a workspace to carry on.
+          </p>
+          {error && (
+            <p className={styles.error} data-testid="list-error">
+              {error}
+            </p>
+          )}
+          <div className={styles.joinRow}>
+            <button
+              className={styles.btn}
+              onClick={() => navigate('/workspaces')}
+              data-testid="go-workspaces"
+            >
+              Choose a workspace
+            </button>
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   if (!workspaceId) {
     return (
@@ -303,6 +362,26 @@ export default function AgreementsPage() {
             ))}
           </div>
         )}
+
+        {/* Inside the workspace, next to the agreements it will be used on —
+            not on the root screen beside the workspace list. See the note in
+            `WorkspacesPage`. */}
+        <div className={styles.joinSection}>
+          <p className={styles.joinLabel}>Your signatures</p>
+          <div className={styles.joinRow}>
+            <button
+              className={styles.btnGhost}
+              onClick={() => navigate('/signatures')}
+              data-testid="go-signatures"
+            >
+              Open signature library
+            </button>
+          </div>
+          <p className={styles.hint}>
+            The drawings you sign with. They stay in your own private context
+            and never leave your node, so they are the same in every workspace.
+          </p>
+        </div>
 
         <div className={styles.joinSection}>
           <p className={styles.joinLabel}>

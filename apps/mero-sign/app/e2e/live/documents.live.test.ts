@@ -153,12 +153,18 @@ describe('saving a drawn signature', () => {
     const data = rows.data as unknown;
     const list = (
       Array.isArray(data) ? data : (data as { output?: unknown })?.output ?? []
-    ) as { blob_id: string | number[] }[];
+    ) as { blob_id: unknown }[];
     expect(list.length).toBeGreaterThan(0);
 
     // The read path the library uses. Before the fix this produced base58 and
     // the fetch below threw, into a catch that showed a blank card.
-    const readBack = toBlobIdHex(list[0].blob_id);
+    //
+    // ⚠️ `blob_id` IS BYTES now, per the ABI — the generated client hands over
+    // a `CalimeroBytes`. Passing that object straight to `toBlobIdHex` yields
+    // "" (it takes a string or a byte array), which is how this test caught
+    // its own staleness after the codegen landed.
+    const raw = list[0].blob_id as unknown as string | { toArray(): number[] };
+    const readBack = toBlobIdHex(typeof raw === 'string' ? raw : raw.toArray());
     expect(readBack).toBe(blobId);
     const bytes = await mero.admin.getBlob(readBack, {
       contextId: privateContext,

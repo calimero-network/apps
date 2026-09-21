@@ -354,23 +354,22 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
       try {
         const response = await api.listSignatures();
 
-        let signaturesArray: any[] = [];
-
-        if (response.data) {
-          if (Array.isArray(response.data)) {
-            signaturesArray = response.data;
-          } else if (
-            response.data.output &&
-            Array.isArray(response.data.output)
-          ) {
-            signaturesArray = response.data.output;
-          } else if (
-            response.data.result &&
-            Array.isArray(response.data.result)
-          ) {
-            signaturesArray = response.data.result;
-          }
+        // ⚠️ A FAILED READ IS NOT AN EMPTY LIBRARY. `response.data ?? []`
+        // alone turns a refusal into "no saved signatures", which is the
+        // silence this whole change exists to remove — and it would have hidden
+        // the very bug that started it.
+        if (response.error) {
+          setError(response.error.message);
+          setSavedSignatures([]);
+          return;
         }
+
+        // ⚠️ NO ENVELOPE TO UNWRAP any more. This used to probe `.output` and
+        // `.result` because the hand-written RPC shim returned whichever the
+        // node of the day produced. The generated client returns the typed
+        // array, so the three-way guess is gone — and it was the kind of
+        // guess that silently yields [] when a shape changes.
+        const signaturesArray = response.data ?? [];
 
         if (!signaturesArray || signaturesArray.length === 0) {
           setSavedSignatures([]);
@@ -381,12 +380,17 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
           signaturesArray.map(async (sig: any) => {
             let dataURL = '';
             try {
-              // ⚠️ HEX. `bs58.encode` here produced an id the node refuses
-              // with "Failed to decode blob ID (expected hex)", so the
-              // signature picker in the PDF viewer showed named rows with no
-              // images — the same defect as the signature library. Legacy
-              // base58 ids still resolve; see `lib/blobIds`.
-              const blobId = toBlobIdHex(sig.blob_id);
+              // ⚠️ `blob_id` IS BYTES, per the ABI — the generated client
+              // hands over a `CalimeroBytes`, not a string. `bs58.encode`
+              // here produced an id the node refuses with "Failed to decode
+              // blob ID (expected hex)", so the picker showed named rows with
+              // no images. `toBlobIdHex` takes the byte array; legacy base58
+              // strings still resolve, for signatures saved before the fix.
+              const blobId = toBlobIdHex(
+                typeof sig.blob_id === 'string'
+                  ? sig.blob_id
+                  : sig.blob_id.toArray(),
+              );
               const contextId =
                 localStorage.getItem('agreementContextID') || '';
               const blob = await blobClient.downloadBlob(blobId, contextId);

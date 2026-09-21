@@ -18,6 +18,9 @@ import {
 import { DefaultContextService } from '../defaultContextService';
 import { toHexId } from '../../lib/participants';
 import bs58 from 'bs58';
+import { clientFor } from '../../lib/signClient';
+import type { ErrorResponse } from '../../lib/node';
+import type { SignatureRecord } from '../../generated/MeroSignClient';
 
 const RequestConfig = {
   headers: {
@@ -57,6 +60,62 @@ function getContextSpecificAuthConfig(
     executorPublicKey: agreementContextUserID,
     jwtToken: baseAuthConfig.jwtToken,
     error: null,
+  };
+}
+
+// ── Helpers for the generated-client methods ────────────────────────────────
+
+/**
+ * This node's private context, which is where signatures live.
+ *
+ * Read from the record `DefaultContextService` stores. Returns "" rather than
+ * throwing so the caller can answer in words — a missing private context is
+ * an ordinary state on a node that has just connected, not an exception.
+ */
+function privateContextId(): string {
+  try {
+    return localStorage.getItem('defaultContextId') ?? '';
+  } catch {
+    return '';
+  }
+}
+
+function noPrivateContext(): { data: null; error: ErrorResponse } {
+  return {
+    data: null,
+    error: {
+      code: 409,
+      message:
+        'Your private signature store is not ready on this node yet. Give it ' +
+        'a moment and try again.',
+    },
+  };
+}
+
+/**
+ * The node's own words, not a generic sentence about this repo's files.
+ *
+ * ⚠️ VIA `getErrorMessage`, not `instanceof Error`. A rejected RPC arrives as
+ * a plain object or a string as often as an `Error`, and an `instanceof` test
+ * turns those into "Could not …" — losing exactly the reason this change
+ * exists to surface. `getErrorMessage` already unpacks every shape this file
+ * has met, including core's "Uninitialized", which means "retry" rather than
+ * "failed".
+ */
+function failed(
+  what: string,
+  error: unknown,
+): { data: null; error: ErrorResponse } {
+  const message = getErrorMessage(error);
+  return {
+    data: null,
+    error: {
+      code: 500,
+      message:
+        message && message !== 'An unexpected error occurred'
+          ? message
+          : `Could not ${what}.`,
+    },
   };
 }
 
@@ -708,312 +767,55 @@ export class ClientApiDataSource implements ClientApi {
   //   return `data:image/png;base64,${base64String}`;
   // }
 
+  /**
+   * ⚠️ THROUGH THE GENERATED CLIENT. What was here read the stored default
+   * context, passed the whole RECORD to `execute` where a context ID belongs,
+   * and caught the node's `ParseError: invalid type: map, expected a hex
+   * encoded hash` into a `console.warn` before trying a second path. The
+   * signature's blob uploaded, the contract call was refused, and the row
+   * never existed — which read as "it saves but is not displayed".
+   *
+   * `MeroSignClient` takes the context ID in its constructor and the ABI's
+   * own argument names, so neither mistake is expressible. It THROWS, and the
+   * envelope below is built from that rather than from a swallowed warning.
+   */
   async createSignature(
     name: string,
     blobIdStr: string,
     dataSize: number,
-    contextId?: string,
-    agreementContextID?: string,
-    agreementContextUserID?: string,
-    signatureContextUserID?: string,
-  ): Promise<any> {
+  ): ApiResponse<number> {
+    const contextId = privateContextId();
+    if (!contextId) return noPrivateContext();
     try {
-      if (this.app) {
-        const defaultContextService = DefaultContextService.getInstance(
-          this.app,
-        );
-        const defaultContext = defaultContextService.getStoredDefaultContext();
-
-        if (!defaultContext) {
-          throw new Error(
-            'Default context not found. Please ensure you are connected to Calimero and have a default context initialized.',
-          );
-        }
-
-        const params = {
-          name,
-          blob_id_str: blobIdStr,
-          data_size: dataSize,
-        };
-
-        const result = await this.app.execute(
-          // ⚠️ `.contextId`, not the record. `execute` takes a CONTEXT ID;
-          // handing it the whole `DefaultContextInfo` sends a JSON object
-          // where the node wants a hash, and it answers
-          // `ParseError: invalid type: map, expected a hex encoded hash`.
-          // Every call on this private-context surface did it, and every one
-          // of them is inside a `try/catch` that falls back or returns empty
-          // — so the signature library and the local agreement registry
-          // failed silently rather than reporting anything.
-          defaultContext.contextId,
-          ClientMethod.CREATE_SIGNATURE,
-          params,
-        );
-
-        return {
-          data: result.data || result,
-        };
-      } else {
-        // Fallback to old API
-
-        let authConfig;
-        if (contextId) {
-          // Use the signature context as the main context
-          const baseAuthConfig = getAuthConfig();
-          authConfig = {
-            ...baseAuthConfig,
-            contextId: contextId,
-          };
-        } else {
-          authConfig =
-            agreementContextID && agreementContextUserID
-              ? getContextSpecificAuthConfig(
-                  agreementContextID,
-                  agreementContextUserID,
-                )
-              : getAuthConfig();
-        }
-
-        const argsJson: any = {
-          name,
-          blob_id_str: blobIdStr,
-          data_size: dataSize,
-        };
-
-        // Ensure executorPublicKey is always set - prioritize signatureContextUserID, then authConfig, then getExecutorPublicKey
-        const executorPublicKey = (signatureContextUserID ||
-          authConfig.executorPublicKey ||
-          getExecutorPublicKey() ||
-          '') as string;
-
-        if (!executorPublicKey) {
-          throw new Error('executorPublicKey is required but was not found');
-        }
-
-        const response = await rpcClient.execute(
-          {
-            contextId:
-              authConfig.contextId || contextId || getContextId() || '',
-            method: ClientMethod.CREATE_SIGNATURE,
-            argsJson,
-            executorPublicKey,
-          },
-          RequestConfig,
-        );
-        return {
-          data: response.result,
-        };
-      }
-    } catch (error: any) {
-      console.error('ClientApiDataSource: Error in createSignature:', error);
-      return {
-        error: error,
-      };
+      const data = await clientFor(contextId).createSignature({
+        name,
+        blob_id_str: blobIdStr,
+        data_size: dataSize,
+      });
+      return { data, error: null };
+    } catch (error) {
+      return failed('create the signature', error);
     }
   }
 
-  async deleteSignature(
-    signatureId: number,
-    contextId?: string,
-    agreementContextID?: string,
-    agreementContextUserID?: string,
-    signatureContextUserID?: string,
-  ): Promise<any> {
+  async deleteSignature(signatureId: number): ApiResponse<void> {
+    const contextId = privateContextId();
+    if (!contextId) return noPrivateContext();
     try {
-      if (this.app) {
-        const defaultContextService = DefaultContextService.getInstance(
-          this.app,
-        );
-        const defaultContext = defaultContextService.getStoredDefaultContext();
-
-        if (!defaultContext) {
-          throw new Error(
-            'Default context not found. Please ensure you are connected to Calimero and have a default context initialized.',
-          );
-        }
-
-        const params = {
-          signature_id: signatureId,
-        };
-
-        const result = await this.app.execute(
-          // ⚠️ `.contextId`, not the record. `execute` takes a CONTEXT ID;
-          // handing it the whole `DefaultContextInfo` sends a JSON object
-          // where the node wants a hash, and it answers
-          // `ParseError: invalid type: map, expected a hex encoded hash`.
-          // Every call on this private-context surface did it, and every one
-          // of them is inside a `try/catch` that falls back or returns empty
-          // — so the signature library and the local agreement registry
-          // failed silently rather than reporting anything.
-          defaultContext.contextId,
-          ClientMethod.DELETE_SIGNATURE,
-          params,
-        );
-
-        return {
-          data: result.data || result,
-        };
-      } else {
-        // Fallback to old API
-        let authConfig;
-        if (contextId) {
-          const baseAuthConfig = getAuthConfig();
-          authConfig = {
-            ...baseAuthConfig,
-            contextId: contextId,
-            executorPublicKey:
-              signatureContextUserID || baseAuthConfig.executorPublicKey,
-          };
-        } else {
-          authConfig =
-            agreementContextID && agreementContextUserID
-              ? getContextSpecificAuthConfig(
-                  agreementContextID,
-                  agreementContextUserID,
-                )
-              : getAuthConfig();
-        }
-
-        const argsJson: any = {
-          signature_id: signatureId,
-        };
-
-        const response = await rpcClient.execute(
-          {
-            contextId:
-              authConfig.contextId || contextId || getContextId() || '',
-            method: ClientMethod.DELETE_SIGNATURE,
-            argsJson,
-            executorPublicKey: (authConfig.executorPublicKey ||
-              getExecutorPublicKey() ||
-              '') as string,
-          },
-          RequestConfig,
-        );
-        return {
-          data: response.result,
-        };
-      }
-    } catch (error: any) {
-      console.error('ClientApiDataSource: Error in deleteSignature:', error);
-      return {
-        error: error,
-      };
+      await clientFor(contextId).deleteSignature({ signature_id: signatureId });
+      return { data: undefined as unknown as void, error: null };
+    } catch (error) {
+      return failed('delete that signature', error);
     }
   }
 
-  async listSignatures(
-    contextId?: string,
-    agreementContextID?: string,
-    agreementContextUserID?: string,
-    signatureContextUserID?: string,
-  ): Promise<any> {
+  async listSignatures(): ApiResponse<SignatureRecord[]> {
+    const contextId = privateContextId();
+    if (!contextId) return noPrivateContext();
     try {
-      if (this.app) {
-        const defaultContextService = DefaultContextService.getInstance(
-          this.app,
-        );
-        const defaultContext = defaultContextService.getStoredDefaultContext();
-
-        if (!defaultContext) {
-          throw new Error(
-            'Default context not found. Please ensure you are connected to Calimero and have a default context initialized.',
-          );
-        }
-
-        const result = await this.app.execute(
-          // ⚠️ `.contextId`, not the record. `execute` takes a CONTEXT ID;
-          // handing it the whole `DefaultContextInfo` sends a JSON object
-          // where the node wants a hash, and it answers
-          // `ParseError: invalid type: map, expected a hex encoded hash`.
-          // Every call on this private-context surface did it, and every one
-          // of them is inside a `try/catch` that falls back or returns empty
-          // — so the signature library and the local agreement registry
-          // failed silently rather than reporting anything.
-          defaultContext.contextId,
-          ClientMethod.LIST_SIGNATURES,
-          {},
-        );
-        const extractedData = result.data || result;
-
-        if (
-          Array.isArray(extractedData) &&
-          extractedData.length > 0 &&
-          typeof extractedData[0] === 'number'
-        ) {
-          return {
-            data: {
-              output: extractedData,
-              isPngData: true,
-            },
-          };
-        }
-
-        return {
-          data: extractedData,
-        };
-      } else {
-        // Fallback to old API
-
-        let authConfig;
-        if (contextId) {
-          const baseAuthConfig = getAuthConfig();
-          authConfig = {
-            ...baseAuthConfig,
-            contextId: contextId,
-            executorPublicKey:
-              signatureContextUserID || baseAuthConfig.executorPublicKey,
-          };
-        } else {
-          authConfig =
-            agreementContextID && agreementContextUserID
-              ? getContextSpecificAuthConfig(
-                  agreementContextID,
-                  agreementContextUserID,
-                )
-              : getAuthConfig();
-        }
-
-        const response = await rpcClient.execute(
-          {
-            contextId:
-              authConfig.contextId || contextId || getContextId() || '',
-            method: ClientMethod.LIST_SIGNATURES,
-            argsJson: {},
-            executorPublicKey: (authConfig.executorPublicKey ||
-              getExecutorPublicKey() ||
-              '') as string,
-          },
-          RequestConfig,
-        );
-
-        const extractedData = response.result?.output || response.result;
-
-        if (
-          Array.isArray(extractedData) &&
-          extractedData.length > 0 &&
-          typeof extractedData[0] === 'number'
-        ) {
-          return {
-            data: {
-              output: extractedData,
-              isPngData: true,
-            },
-          };
-        }
-
-        return {
-          data: extractedData,
-        };
-      }
-    } catch (error: any) {
-      console.error('ClientApiDataSource: Error in listSignatures:', error);
-      return {
-        error: {
-          code: error.code || 500,
-          message: getErrorMessage(error),
-        },
-      };
+      return { data: await clientFor(contextId).listSignatures(), error: null };
+    } catch (error) {
+      return failed('list your signatures', error);
     }
   }
 

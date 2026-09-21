@@ -291,6 +291,18 @@ export function adminApi(): MeroJs['admin'] {
   return required().admin;
 }
 
+/**
+ * The live mero-js instance, for the generated contract client.
+ *
+ * `lib/signClient` needs the whole SDK rather than `admin` alone, because a
+ * generated client issues JSON-RPC. Throws rather than returning null for the
+ * reason at the top of this section: a null client that answers `{error}` is
+ * indistinguishable from a node that refused.
+ */
+export function meroInstance(): MeroJs {
+  return required();
+}
+
 export const blobClient: BlobApi = {
   uploadBlob: (file, onProgress, contextId) =>
     blobApi(required()).uploadBlob(file, onProgress, contextId),
