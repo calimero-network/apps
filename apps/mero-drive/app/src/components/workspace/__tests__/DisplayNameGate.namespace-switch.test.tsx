@@ -14,10 +14,11 @@ const driveState = {
 vi.mock('@/hooks/useDriveWorkspace', () => ({
   useDriveWorkspace: () => driveState,
 }));
-const eventHandlers = new Map<string, () => void>();
+// Whichever context the hook listens on, the last handler is the old workspace's.
+let onContextEvent = () => {};
 vi.mock('@/hooks/useContextEvents', () => ({
-  useContextEvents: (ns: string | null, onChange: () => void) => {
-    if (ns) eventHandlers.set(ns, onChange);
+  useContextEvents: (_contextId: unknown, onChange: () => void) => {
+    onContextEvent = onChange;
   },
 }));
 
@@ -48,7 +49,7 @@ describe('DisplayNameGate across a namespace switch', () => {
 
     // An event on the old workspace starts a refetch, then the user
     // creates a new workspace before that refetch answers.
-    act(() => eventHandlers.get('old-ns')!());
+    act(() => onContextEvent());
     driveState.namespaceId = 'new-ns';
     rerender(ui());
     const gate = await screen.findByRole('dialog', { name: /Set your name/i });
