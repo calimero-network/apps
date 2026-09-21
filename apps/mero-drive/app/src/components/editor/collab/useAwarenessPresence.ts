@@ -10,7 +10,7 @@ import {
   type Awareness,
 } from 'y-protocols/awareness';
 
-const PUBLISH_THROTTLE_MS = 200; // bounds the burst while a selection is dragged
+export const PUBLISH_THROTTLE_MS = 200; // bounds the burst while a selection is dragged
 const REMOTE_ORIGIN = 'calimero-ephemeral'; // origin of the peer changes this hook applies
 const LEAVE_SLICE: PresenceSlice = { d: '', u: [] }; // matches no document
 
@@ -38,18 +38,31 @@ export function useAwarenessPresence(
   });
   const publishRef = useRef({ setPresence, mero, contextId });
   publishRef.current = { setPresence, mero, contextId };
+  const session = `${contextId}\n${docId}`;
+  const sessionRef = useRef(session);
+  sessionRef.current = session;
+  // mero-react latches a fresh error per failed publish, per context not per doc,
+  // so a failure turns publishing off until the next doc session.
+  const offRef = useRef<{ session: string; error: Error } | null>(null);
 
   useEffect(() => {
-    if (error) console.warn('[useAwarenessPresence] live cursors off', error);
-  }, [error]);
+    if (!error || error === offRef.current?.error) return;
+    const alreadyOff = offRef.current?.session === session;
+    offRef.current = { session, error };
+    if (!alreadyOff) {
+      console.warn('[useAwarenessPresence] live cursors off', error);
+    }
+  }, [error, session]);
 
   useEffect(() => {
     if (!awareness) return;
-    const publish = () =>
+    const publish = () => {
+      if (offRef.current?.session === sessionRef.current) return;
       publishRef.current.setPresence({
         d: docId,
         u: Array.from(encodeAwarenessUpdate(awareness, [awareness.clientID])),
       });
+    };
     // Peer slices never carry our client, so a change to it is always local.
     const onUpdate = ({
       added,

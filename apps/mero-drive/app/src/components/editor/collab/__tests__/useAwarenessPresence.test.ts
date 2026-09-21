@@ -10,6 +10,7 @@ import {
   encodeAwarenessUpdate,
 } from 'y-protocols/awareness';
 import {
+  PUBLISH_THROTTLE_MS,
   useAwarenessPresence,
   type PresenceSlice,
 } from '../useAwarenessPresence';
@@ -21,11 +22,17 @@ const setPresence = vi.fn();
 const directSet = vi.fn(async () => {});
 const useEphemeral = vi.fn();
 let peers = new Map<string, unknown>();
+let ephemeralError: Error | null = null;
 
 vi.mock('@calimero-network/mero-react', () => ({
   useEphemeral: (...args: unknown[]) => {
     useEphemeral(...args);
-    return { peers, setPresence, ageOf: () => undefined, error: null };
+    return {
+      peers,
+      setPresence,
+      ageOf: () => undefined,
+      error: ephemeralError,
+    };
   },
   useMero: () => ({ mero: { ephemeral: { set: directSet } } }),
 }));
@@ -66,13 +73,16 @@ beforeEach(() => {
   directSet.mockClear();
   useEphemeral.mockClear();
   peers = new Map();
+  ephemeralError = null;
   awarenesses.splice(0).forEach((aw) => aw.destroy());
 });
 
 describe('useAwarenessPresence', () => {
   it('publishes throttled on the docs context, once on mount', () => {
     const { awareness } = mount();
-    expect(useEphemeral).toHaveBeenCalledWith(CTX, { throttleMs: 200 });
+    expect(useEphemeral).toHaveBeenCalledWith(CTX, {
+      throttleMs: PUBLISH_THROTTLE_MS,
+    });
     expect(setPresence).toHaveBeenCalledTimes(1);
     const sent = setPresence.mock.calls[0][0] as PresenceSlice;
     expect(sent.d).toBe(DOC);
@@ -184,6 +194,38 @@ describe('useAwarenessPresence', () => {
     const { view } = mount();
     view.unmount();
     expect(directSet).toHaveBeenCalledWith(CTX, { d: '', u: [] });
+  });
+
+  it('stops publishing after a publish error and warns once', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { awareness, view } = mount();
+    ephemeralError = new Error('no current group key');
+    view.rerender();
+    setPresence.mockClear();
+    awareness.setLocalStateField('cursor', { anchor: 1, head: 2 });
+    ephemeralError = new Error('no current group key');
+    view.rerender();
+    awareness.setLocalStateField('cursor', { anchor: 3, head: 4 });
+    expect(setPresence).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledTimes(1);
+    warn.mockRestore();
+  });
+
+  it('publishes again once the doc changes, while the old error stays latched', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const awareness = newAwareness();
+    const view = renderHook(
+      ({ docId }) => useAwarenessPresence(CTX, docId, awareness),
+      { initialProps: { docId: DOC } },
+    );
+    ephemeralError = new Error('no current group key');
+    view.rerender({ docId: DOC });
+    setPresence.mockClear();
+    view.rerender({ docId: 'doc-2' });
+    awareness.setLocalStateField('cursor', { anchor: 1, head: 2 });
+    expect(setPresence).toHaveBeenCalledTimes(2);
+    expect((setPresence.mock.calls[1][0] as PresenceSlice).d).toBe('doc-2');
+    warn.mockRestore();
   });
 
   it('is inert without an awareness instance', () => {
