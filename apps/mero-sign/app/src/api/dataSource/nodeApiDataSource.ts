@@ -8,7 +8,7 @@ import type {
   VerifyContextProps,
   VerifyContextResponse,
 } from '../nodeApi';
-import { apiClient } from '@calimero-network/calimero-client';
+import { apiClient } from '../../lib/node';
 import { APP_PACKAGE, resolveApplicationId } from '../../lib/appId';
 
 export class ContextApiDataSource implements NodeApi {
@@ -53,11 +53,14 @@ export class ContextApiDataSource implements NodeApi {
             'and try again.',
         );
       }
-      const result = await apiClient
-        .node()
-        .createContext(applicationId, JSON.stringify(props), 'near');
-
-      return { data: result.data as CreateContextResponse, error: null };
+      // ⚠️ THE LEGACY FALLBACK IS GONE, and it could not have worked.
+      // It posted `protocol: 'near'` — a field core removed — and no
+      // `group_id`, which `CreateContextRequest` requires. Against
+      // `deny_unknown_fields` that is a 400 for the whole call, so this branch
+      // could only ever turn a real error into a confusing one.
+      throw new Error(
+        'Creating an agreement requires a workspace. See lib/agreements.',
+      );
     } catch (error) {
       let errorMessage = 'An unexpected error occurred during createContext';
       if (error instanceof Error) {
@@ -90,10 +93,11 @@ export class ContextApiDataSource implements NodeApi {
     }
 
     try {
-      const result = await apiClient
-        .node()
-        .contextInvite(props.contextId, props.inviter, props.invitee);
-      return { data: result.data || undefined, error: null };
+      // Invitations are minted against the WORKSPACE now, not a context —
+      // see `lib/agreements`. The old per-context route no longer exists.
+      throw new Error(
+        'Invite people to the workspace; the agreement is reached from there.',
+      );
     } catch (error) {
       console.error('inviteToContext failed:', error);
       let errorMessage = 'An unexpected error occurred during inviteToContext';
@@ -125,9 +129,13 @@ export class ContextApiDataSource implements NodeApi {
     }
 
     try {
-      const result = await apiClient
-        .node()
-        .joinContext(props.invitationPayload);
+      const result = await apiClient.node().joinContextByOpenInvitation(
+        // The namespace the invitation names. `JoinContextProps` predates
+        // the workspace model and carries only the payload, so it is read
+        // off the payload rather than added to every caller's props.
+        (props as { namespaceId?: string }).namespaceId ?? '',
+        props.invitationPayload,
+      );
       return { data: result.data as JoinContextResponse, error: null };
     } catch (error) {
       console.error('joinContext failed:', error);

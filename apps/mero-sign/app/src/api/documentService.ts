@@ -1,6 +1,6 @@
 import { ClientApiDataSource } from './dataSource/ClientApiDataSource';
 import { DocumentInfo, Document } from './clientApi';
-import { blobClient } from '@calimero-network/calimero-client';
+import { blobClient } from '../lib/node';
 import bs58 from 'bs58';
 // TODO: Re-enable when AI chatbot is re-implemented
 // import { processPDFAndGenerateEmbeddings } from '../services/embeddingService';

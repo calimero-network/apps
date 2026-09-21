@@ -1,5 +1,5 @@
 import { ContextApiDataSource } from './dataSource/nodeApiDataSource';
-import { apiClient } from '@calimero-network/calimero-client';
+import { apiClient } from '../lib/node';
 
 export interface DefaultContextInfo {
   contextId: string;
