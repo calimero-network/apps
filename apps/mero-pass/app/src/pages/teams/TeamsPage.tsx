@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useMero, useNodeIdentity } from '@calimero-network/mero-react';
 
 import AppHeader from '../../components/AppHeader';
 import InviteModal from '../../components/InviteModal';
 import { useApplicationId } from '../../hooks/useApplicationId';
+import { useRedeemInvitation } from '../../hooks/useRedeemInvitation';
+import { NOT_AN_INVITATION, parseInvitation } from '../../lib/redeemFlow';
 import {
   createPersonalVault,
   createTeam,
@@ -42,6 +44,7 @@ export default function TeamsPage() {
   // grants a principal that exists nowhere. See `useTeamCapabilities`.
   const { identity } = useNodeIdentity();
   const navigate = useNavigate();
+  const location = useLocation();
   const { appId, resolving, notInstalled } = useApplicationId();
 
   const [teams, setTeams] = useState<TeamRow[]>([]);
@@ -58,6 +61,17 @@ export default function TeamsPage() {
     null,
   );
   const menuRef = useRef<HTMLDivElement>(null);
+
+  // ── Joining by paste ──────────────────────────────────────────────────────
+  //
+  // The link path (`components/InvitationPrompt`) only fires when the
+  // invitation is OPENED. An invitation forwarded in a chat message, read off
+  // a phone, or copied with the dialog's "Copy code" button never opens
+  // anything — and until this field there was nowhere to put it. The empty
+  // state said "open an invitation link someone sent you", which was the only
+  // honest instruction and not a usable one.
+  const [joinCode, setJoinCode] = useState('');
+  const redeemer = useRedeemInvitation();
 
   const load = useCallback(async () => {
     if (!mero || !appId) {
@@ -91,6 +105,29 @@ export default function TeamsPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  const join = useCallback(async () => {
+    const raw = joinCode.trim();
+    if (!raw) return;
+    const payload = parseInvitation(raw);
+    if (!payload) {
+      // Not an invitation at all, which is a different failure from one that
+      // was refused — and the only one the person can do something about.
+      redeemer.setError(NOT_AN_INVITATION);
+      return;
+    }
+    const destination = await redeemer.redeem(payload);
+    if (!destination) return;
+    setJoinCode('');
+    // ⚠️ A join that cannot be placed — the team is joined but its vaults
+    // have not replicated here yet — resolves to `/teams`, which is THIS
+    // page. React Router does not remount for a navigation to where you
+    // already are, so `load` (whose deps are the node and the app id, neither
+    // of which changed) never re-runs: the new team is missing from the list,
+    // the field has cleared, and a successful join reads as a no-op until a
+    // full reload.
+    if (destination === location.pathname) await load();
+  }, [joinCode, redeemer, load, location.pathname]);
 
   // A dropdown that does not close on an outside click is a dropdown that
   // covers the next thing you try to press.
@@ -271,8 +308,7 @@ export default function TeamsPage() {
           // answer.
           error ? null : (
             <p className={styles.empty} data-testid="teams-empty">
-              No teams yet. Create one above, or open an invitation link someone
-              sent you.
+              No teams yet. Create one above, or paste an invitation below.
             </p>
           )
         ) : (
@@ -345,6 +381,55 @@ export default function TeamsPage() {
             ))}
           </div>
         )}
+
+        {/* ── Join ────────────────────────────────────────────────────────
+            Below the list rather than beside the create row: creating a team
+            and joining somebody else's are different intents, and a person
+            doing one is not half-doing the other. Same placement as Mero
+            Sign's workspaces screen.
+        */}
+        <div className={styles.section} data-testid="join-section">
+          <p className={styles.sectionLabel}>Got an invitation? Join a team.</p>
+          <div className={styles.createRow}>
+            <input
+              className={styles.input}
+              placeholder="Paste the link or code you were sent…"
+              value={joinCode}
+              onChange={(e) => {
+                setJoinCode(e.target.value);
+                // Clear a previous complaint as soon as they start fixing it;
+                // a stale error under a field they have just edited reads as
+                // the new value being rejected too.
+                if (redeemer.error) redeemer.setError(null);
+              }}
+              onKeyDown={(e) => e.key === 'Enter' && void join()}
+              data-testid="join-code"
+            />
+            <button
+              type="button"
+              className={styles.btn}
+              onClick={() => void join()}
+              disabled={!mero || !joinCode.trim() || redeemer.busy}
+              data-testid="join-submit"
+            >
+              {redeemer.busy ? 'Joining…' : 'Join'}
+            </button>
+          </div>
+          <p className={styles.sectionHint}>
+            Opening the link works too — you only need this if it arrived as
+            text. Joining a team gives you every vault in it.
+          </p>
+          {redeemer.status && (
+            <p className={styles.status} data-testid="join-status">
+              {redeemer.status}
+            </p>
+          )}
+          {redeemer.error && (
+            <p className={styles.error} data-testid="join-error">
+              {redeemer.error}
+            </p>
+          )}
+        </div>
       </main>
 
       <InviteModal

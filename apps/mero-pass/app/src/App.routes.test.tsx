@@ -22,6 +22,7 @@ vi.mock('./pages/landing/LandingPage', () => ({
 }));
 
 import App from './App';
+import { destinationFor } from './lib/redeemFlow';
 
 /** Reports the path the router settled on, after every redirect has run. */
 function Probe() {
@@ -134,5 +135,44 @@ describe('every path the app can be opened at settles', () => {
 
   it('a legacy /space link keeps its id on the way to /teams', () => {
     expect(settleAt('/space/ns-abc')).toBe('/teams/ns-abc');
+  });
+});
+
+// ── Where a redeemed invitation lands ───────────────────────────────────────
+//
+// ⚠️ THE BUG THIS CATCHES. `InvitationPrompt` navigated to `/team/<id>` —
+// SINGULAR. The route table declares `/teams/:teamId` and no `/team/:teamId`,
+// so accepting a team invitation fell through to `*`, which redirects to
+// `/teams`. It looked like it worked: you landed on a real page, just not the
+// team you had joined, and nothing anywhere said why.
+//
+// Asserting the destination against the REAL router — rather than against a
+// copy of the route list — is the only version of this test that cannot drift
+// when a path is renamed.
+describe('a redeemed invitation lands on a route that exists', () => {
+  beforeEach(() => {
+    session.isAuthenticated = true;
+    session.isLoading = false;
+  });
+
+  it('a joined team lands IN the team, not back on the list', () => {
+    const destination = destinationFor({ kind: 'team', namespaceId: 'ns-1' });
+    expect(destination).toBe('/teams/ns-1');
+    // The real assertion: the router does not move it.
+    expect(settleAt(destination)).toBe(destination);
+  });
+
+  it('a joined vault lands in the vault', () => {
+    const destination = destinationFor({
+      kind: 'vault',
+      contextId: 'ctx-1',
+      identity: 'id-1',
+    });
+    expect(settleAt(destination)).toBe(destination);
+  });
+
+  it('an unplaceable join lands on the teams list', () => {
+    const destination = destinationFor({ kind: 'joined' });
+    expect(settleAt(destination)).toBe('/teams');
   });
 });
