@@ -24,27 +24,34 @@ vi.mock('react-router-dom', async (importOriginal) => ({
   useNavigate: () => navigate,
 }));
 
+// ⚠️ STABLE IDENTITIES. `load` is a `useCallback` keyed on the node, the app
+// id and `resolving`; a mock that returns a fresh object literal per render
+// changes that key every render, so the load effect re-fires forever and any
+// "was it fetched again?" assertion counts noise. The same trap the shots
+// harness carries a note about.
+const SESSION = {
+  mero: { admin: {} },
+  isAuthenticated: true,
+  isLoading: false,
+  logout: () => {},
+  nodeUrl: 'http://localhost:2428',
+};
+const IDENTITY = { identity: { accountId: 'a'.repeat(64) } };
+const APP_ID = { appId: 'app-1', resolving: false, notInstalled: false };
+
 vi.mock('@calimero-network/mero-react', () => ({
-  useMero: () => ({
-    mero: { admin: {} },
-    isAuthenticated: true,
-    isLoading: false,
-    logout: () => {},
-    nodeUrl: 'http://localhost:2428',
-  }),
-  useNodeIdentity: () => ({ identity: { accountId: 'a'.repeat(64) } }),
+  useMero: () => SESSION,
+  useNodeIdentity: () => IDENTITY,
 }));
 
 vi.mock('../../hooks/useApplicationId', () => ({
-  useApplicationId: () => ({
-    appId: 'app-1',
-    resolving: false,
-    notInstalled: false,
-  }),
+  useApplicationId: () => APP_ID,
 }));
 
+const listTeams = vi.fn(async () => [] as unknown[]);
+
 vi.mock('../../lib/vaults', () => ({
-  listTeams: vi.fn(async () => []),
+  listTeams: (...a: unknown[]) => listTeams(...(a as [])),
   listVaults: vi.fn(async () => []),
   createTeam: vi.fn(),
   createPersonalVault: vi.fn(),
@@ -78,6 +85,8 @@ function renderPage() {
 beforeEach(() => {
   redeemInvite.mockReset();
   navigate.mockReset();
+  listTeams.mockClear();
+  listTeams.mockResolvedValue([]);
 });
 
 describe('the join field', () => {
@@ -153,5 +162,48 @@ describe('the join field', () => {
     fireEvent.click(screen.getByTestId('join-submit'));
     await screen.findByTestId('join-error');
     expect(field).toHaveValue(CODE);
+  });
+});
+
+// ── A join that cannot be placed ───────────────────────────────────────────
+//
+// ⚠️ THE BUG CURSOR BUGBOT CAUGHT, and it was a real one.
+//
+// `redeemInvite` answers `{kind: 'joined'}` when the team was joined but this
+// node cannot yet place it — its vaults have not replicated. That resolves to
+// `/teams`, which is where the paste field already is. React Router does not
+// remount for a navigation to the current path, and `load`'s dependencies
+// (the node, the app id) have not changed — so the list never reloads. The
+// field clears, the new team is missing, and a successful join is
+// indistinguishable from nothing happening.
+describe('a join with nowhere specific to land', () => {
+  it('reloads the list instead of pretending the navigation did it', async () => {
+    redeemInvite.mockResolvedValue({ kind: 'joined' });
+    renderPage();
+    await waitFor(() => expect(listTeams).toHaveBeenCalledTimes(1));
+
+    fireEvent.change(await screen.findByTestId('join-code'), {
+      target: { value: CODE },
+    });
+    fireEvent.click(screen.getByTestId('join-submit'));
+
+    // The list is fetched AGAIN. Without the fix this stays at 1 forever.
+    await waitFor(() => expect(listTeams).toHaveBeenCalledTimes(2));
+  });
+
+  it('does not re-fetch when it really did go somewhere else', async () => {
+    // The refresh is for the same-page case only; a real navigation unmounts
+    // this screen and reloading it would be a wasted round trip.
+    redeemInvite.mockResolvedValue({ kind: 'team', namespaceId: 'ns-9' });
+    renderPage();
+    await waitFor(() => expect(listTeams).toHaveBeenCalledTimes(1));
+
+    fireEvent.change(await screen.findByTestId('join-code'), {
+      target: { value: CODE },
+    });
+    fireEvent.click(screen.getByTestId('join-submit'));
+
+    await waitFor(() => expect(navigate).toHaveBeenCalledWith('/teams/ns-9'));
+    expect(listTeams).toHaveBeenCalledTimes(1);
   });
 });

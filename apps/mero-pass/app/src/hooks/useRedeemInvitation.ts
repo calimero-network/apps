@@ -27,15 +27,22 @@ export interface RedeemState {
   /**
    * Redeem a decoded invitation and navigate to wherever it landed.
    *
-   * @returns true when the join succeeded and navigation happened.
+   * @returns the destination path on success, `null` on failure.
    *
-   * ⚠️ Returns FALSE rather than throwing on a failed join, because the two
+   * ⚠️ Returns null rather than throwing on a failed join, because the two
    * callers do different things with that. The link prompt must NOT ack the
    * captured intent — a failure there is usually transient (no online member
    * yet, a flaky node) and the platform store exists so the invitation
    * survives to be retried. The paste field has nothing to ack.
+   *
+   * ⚠️ And it returns the DESTINATION, not a boolean, because "navigated" is
+   * not the same as "the screen changed". A join that cannot be placed
+   * resolves to `/teams` — which is where the paste field already is, so
+   * React Router does not remount, the list never reloads, and a successful
+   * join looks like nothing happened. A caller already on the destination has
+   * to refresh itself, and it can only know that if it is told where it went.
    */
-  redeem: (payload: PassInvitePayload) => Promise<boolean>;
+  redeem: (payload: PassInvitePayload) => Promise<string | null>;
 }
 
 export function useRedeemInvitation(): RedeemState {
@@ -46,22 +53,23 @@ export function useRedeemInvitation(): RedeemState {
   const [error, setError] = useState<string | null>(null);
 
   const redeem = useCallback(
-    async (payload: PassInvitePayload): Promise<boolean> => {
+    async (payload: PassInvitePayload): Promise<string | null> => {
       if (!mero) {
         setError('No node connection yet. Reconnect and try again.');
-        return false;
+        return null;
       }
       setBusy(true);
       setError(null);
       try {
         const landed = await redeemInvite(mero.admin, payload, setStatus);
-        navigate(destinationFor(landed));
-        return true;
+        const destination = destinationFor(landed);
+        navigate(destination);
+        return destination;
       } catch (e) {
         setError(
           e instanceof Error ? e.message : 'Could not accept the invitation.',
         );
-        return false;
+        return null;
       } finally {
         setBusy(false);
         setStatus(null);

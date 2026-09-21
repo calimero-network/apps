@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useMero, useNodeIdentity } from '@calimero-network/mero-react';
 
 import AppHeader from '../../components/AppHeader';
@@ -44,6 +44,7 @@ export default function TeamsPage() {
   // grants a principal that exists nowhere. See `useTeamCapabilities`.
   const { identity } = useNodeIdentity();
   const navigate = useNavigate();
+  const location = useLocation();
   const { appId, resolving, notInstalled } = useApplicationId();
 
   const [teams, setTeams] = useState<TeamRow[]>([]);
@@ -71,19 +72,6 @@ export default function TeamsPage() {
   // honest instruction and not a usable one.
   const [joinCode, setJoinCode] = useState('');
   const redeemer = useRedeemInvitation();
-
-  const join = useCallback(async () => {
-    const raw = joinCode.trim();
-    if (!raw) return;
-    const payload = parseInvitation(raw);
-    if (!payload) {
-      // Not an invitation at all, which is a different failure from one that
-      // was refused — and the only one the person can do something about.
-      redeemer.setError(NOT_AN_INVITATION);
-      return;
-    }
-    if (await redeemer.redeem(payload)) setJoinCode('');
-  }, [joinCode, redeemer]);
 
   const load = useCallback(async () => {
     if (!mero || !appId) {
@@ -117,6 +105,29 @@ export default function TeamsPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  const join = useCallback(async () => {
+    const raw = joinCode.trim();
+    if (!raw) return;
+    const payload = parseInvitation(raw);
+    if (!payload) {
+      // Not an invitation at all, which is a different failure from one that
+      // was refused — and the only one the person can do something about.
+      redeemer.setError(NOT_AN_INVITATION);
+      return;
+    }
+    const destination = await redeemer.redeem(payload);
+    if (!destination) return;
+    setJoinCode('');
+    // ⚠️ A join that cannot be placed — the team is joined but its vaults
+    // have not replicated here yet — resolves to `/teams`, which is THIS
+    // page. React Router does not remount for a navigation to where you
+    // already are, so `load` (whose deps are the node and the app id, neither
+    // of which changed) never re-runs: the new team is missing from the list,
+    // the field has cleared, and a successful join reads as a no-op until a
+    // full reload.
+    if (destination === location.pathname) await load();
+  }, [joinCode, redeemer, load, location.pathname]);
 
   // A dropdown that does not close on an outside click is a dropdown that
   // covers the next thing you try to press.
