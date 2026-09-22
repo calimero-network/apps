@@ -25,7 +25,7 @@ import {
   worldNameOf,
 } from "../net/admin";
 import { inviteLink } from "../net/inviteLink";
-import { onInvite } from "../net/invitationIntents";
+import { onInvitation as onInvite } from "@calimero-apps/invite";
 import { beginWebLogin } from "../net/auth";
 import { deleteWorld } from "../state/persistence";
 import { WorldAnim } from "./worldAnim";

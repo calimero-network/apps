@@ -33,7 +33,7 @@
  * Both are best-effort and never throw into the render path.
  */
 import { setNodeUrl, setApplicationId } from '@calimero-network/mero-react';
-import { ensureInvitationCapture } from './invitationIntents';
+import { primeInvitationCapture as ensureInvitationCapture } from "@calimero-apps/invite";
 
 /** True when running inside the Calimero desktop (Tauri) shell. */
 export const IS_DESKTOP =
@@ -43,7 +43,7 @@ export const IS_DESKTOP =
 export function bootstrapSsoAndInvitation(): void {
   if (typeof window === 'undefined') return;
   try { persistAuthHash(); } catch { /* never block boot on a bad hash */ }
-  try { ensureInvitationCapture(); } catch { /* never block boot on a bad query */ }
+  try { ensureInvitationCapture("mero-issue-tracker"); } catch { /* never block boot on a bad query */ }
 }
 
 /**
