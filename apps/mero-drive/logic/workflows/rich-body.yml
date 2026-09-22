@@ -242,7 +242,9 @@ steps:
     statements:
       - 'is_set({{title_redo_token}})'
 
-  - name: Alice anchors the gap at the end of the title
+  # Anchored mid-string, not at the end: an end anchor borsh-encodes to one
+  # byte, whose bs58 token is "2", and YAML reads that back as an integer.
+  - name: Alice anchors the gap before the third character of the title
     type: call
     node: drive-node-1
     context_id: '{{docs_ctx}}'
@@ -250,12 +252,12 @@ steps:
     executor_public_key: '{{alice_key}}'
     args:
       doc: '{{title_doc}}'
-      position: 4
+      position: 2
       before: true
     outputs:
       title_anchor: result.output
 
-  - name: Carol resolves Alice's title anchor in her own replica
+  - name: Resolve Alice's title anchor
     type: call
     node: drive-node-1
     context_id: '{{docs_ctx}}'
@@ -268,10 +270,10 @@ steps:
     outputs:
       title_positions: result
 
-  - name: Assert the anchor resolves to the end of the title
+  - name: Assert the title anchor resolves where it was placed
     type: json_assert
     statements:
-      - 'json_equal({{title_positions}}, {"output": [4]})'
+      - 'json_equal({{title_positions}}, {"output": [2]})'
 
   # ── every body method ────────────────────────────────────────────────────
 
@@ -400,10 +402,12 @@ steps:
     outputs:
       bold_spans: result
 
+  # `true` unquoted: core renders a mark value as the JSON it parses to, so a
+  # client reads a boolean here and not the string the write passed.
   - name: Assert the whole word is one bold span
     type: json_assert
     statements:
-      - 'json_equal({{bold_spans}}, {"output": [{"text": "fox", "attributes": {"bold": "true"}}]})'
+      - 'json_equal({{bold_spans}}, {"output": [{"text": "fox", "attributes": {"bold": true}}]})'
 
   - name: Alice takes the bold back off
     type: call
@@ -618,7 +622,7 @@ steps:
     statements:
       - 'json_equal({{undone_digest}}, {"output": "paragraph/0{:fox};"})'
 
-  - name: Alice anchors the gap after the word
+  - name: Alice anchors the gap before the last character of the word
     type: call
     node: drive-node-1
     context_id: '{{docs_ctx}}'
@@ -627,7 +631,7 @@ steps:
     args:
       doc: '{{body_doc}}'
       block: '{{block}}'
-      position: 3
+      position: 2
       before: true
     outputs:
       body_anchor: result.output
@@ -646,10 +650,10 @@ steps:
     outputs:
       body_positions: result
 
-  - name: Assert the anchor resolves to the end of the word
+  - name: Assert the body anchor resolves where it was placed
     type: json_assert
     statements:
-      - 'json_equal({{body_positions}}, {"output": [3]})'
+      - 'json_equal({{body_positions}}, {"output": [2]})'
 
   - name: Alice adds a list item after the paragraph
     type: call
@@ -740,18 +744,12 @@ steps:
     type: wait
     seconds: 10
 
-  - name: Alice prepends to the title
-    type: call
-    node: drive-node-1
-    context_id: '{{docs_ctx}}'
-    method: title_apply_delta
-    executor_public_key: '{{alice_key}}'
-    args:
-      doc: '{{title_doc}}'
-      ops:
-        - insert: 'the '
+  # The APPEND goes first and the PREPEND second, in both cases. A prepend is
+  # index 0, so it lands the same whether or not the append has arrived yet -
+  # which is what makes one literal true under a real partition and under the
+  # no-op partition_peers leaves outside Docker.
 
-  - name: Bob appends to the same title
+  - name: Bob appends to the title
     type: call
     node: drive-node-2
     context_id: '{{docs_ctx}}'
@@ -763,19 +761,18 @@ steps:
         - retain: 4
         - insert: ' team'
 
-  - name: Alice prepends to the shared block
+  - name: Alice prepends to the same title
     type: call
     node: drive-node-1
     context_id: '{{docs_ctx}}'
-    method: apply_delta
+    method: title_apply_delta
     executor_public_key: '{{alice_key}}'
     args:
-      doc: '{{body_doc}}'
-      block: '{{block}}'
+      doc: '{{title_doc}}'
       ops:
-        - insert: 'The '
+        - insert: 'the '
 
-  - name: Bob appends to the same block
+  - name: Bob appends to the shared block
     type: call
     node: drive-node-2
     context_id: '{{docs_ctx}}'
@@ -787,6 +784,18 @@ steps:
       ops:
         - retain: 3
         - insert: ' jumped.'
+
+  - name: Alice prepends to the same block
+    type: call
+    node: drive-node-1
+    context_id: '{{docs_ctx}}'
+    method: apply_delta
+    executor_public_key: '{{alice_key}}'
+    args:
+      doc: '{{body_doc}}'
+      block: '{{block}}'
+      ops:
+        - insert: 'The '
 
   - name: Bring Node 3 back
     type: start_node
