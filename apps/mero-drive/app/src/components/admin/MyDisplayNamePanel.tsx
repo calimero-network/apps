@@ -1,10 +1,7 @@
-// "Your display name" — small settings panel where the current user
-// can set/update their own per-namespace display name. Backed by
-// core's setMemberMetadata (PR #2338); self-edit is always allowed
-// so no permission gating is needed here. Admin override (renaming
-// other members) is deferred — see PR description for follow-ups.
+// The caller's own per-namespace display name, via setMemberMetadata; self-edit
+// is always allowed, so nothing here is permission-gated.
 
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useMemberDisplayName } from '@/hooks/useMemberDisplayName';
@@ -18,28 +15,21 @@ export function MyDisplayNamePanel() {
     error,
     setName,
   } = useMemberDisplayName(namespaceId, selfIdentity);
-  // `useMemberDisplayName` (useMemberMetadata under the hood) can return
-  // null even when the name IS set server-side — a mero-react rehydration
-  // gap (mero-drive#42) that strands this panel on "Not set yet" while the
-  // members list shows the real name. Fall back to the namespace
-  // GroupMember rows (`namespaceMemberNames`, keyed by identity) that the
-  // members list reads, so the two surfaces agree.
+  // The metadata hook can read null while the member rows already carry the
+  // name; fall back to those rows so this panel and the members list agree.
   const name =
     hookName ??
     (selfIdentity ? namespaceMemberNames[selfIdentity] ?? null : null);
-  const [draft, setDraft] = useState<string>('');
+  // null until the user types, so the input shows the stored name in the same
+  // render it loads and a late-loading name never overwrites an edit.
+  const [draft, setDraft] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  // Mirror the server name into the input when it (re)loads. Without
-  // this the input stays empty after a refetch on mount.
-  useEffect(() => {
-    setDraft(name ?? '');
-  }, [name]);
-
   if (!namespaceId || !selfIdentity) return null;
 
-  const trimmed = draft.trim();
+  const value = draft ?? name ?? '';
+  const trimmed = value.trim();
   const dirty = trimmed !== (name ?? '') && trimmed.length > 0;
 
   const onSave = async () => {
@@ -47,6 +37,7 @@ export function MyDisplayNamePanel() {
     setSaving(true);
     try {
       await setName(trimmed);
+      setDraft(null);
     } catch (e: unknown) {
       setSaveError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -72,7 +63,7 @@ export function MyDisplayNamePanel() {
         <div className="flex items-center gap-2">
           <input
             type="text"
-            value={draft}
+            value={value}
             onChange={(e) => setDraft(e.target.value)}
             placeholder={name ?? 'Not set yet'}
             maxLength={64}
