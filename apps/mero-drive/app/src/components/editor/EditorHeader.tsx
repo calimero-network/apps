@@ -22,6 +22,8 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { MAX_ALIAS_LENGTH } from '@/constants/config';
 
+const MIN_TITLE_CH = 8; // keeps a short or empty title easy to click
+
 /** The live title field's binding; absent renders the title read-only. */
 export interface TitleBinding {
   value: string;
@@ -59,7 +61,7 @@ export const EditorHeader: React.FC<EditorHeaderProps> = ({
 
     <div className="flex-1 flex justify-center px-4">
       {title ? (
-        <div className="relative flex items-center gap-1.5 max-w-xs w-full">
+        <div className="relative flex items-center gap-1.5 max-w-xs min-w-0">
           <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
           <input
             type="text"
@@ -71,7 +73,9 @@ export const EditorHeader: React.FC<EditorHeaderProps> = ({
             onChange={title.onChange}
             onSelect={title.onSelect}
             onKeyDown={title.onKeyDown}
-            className="w-full bg-transparent rounded px-2 py-1 text-center text-sm font-medium border border-transparent hover:border-border focus:border-primary/50 focus:outline-none focus:ring-2 focus:ring-primary/30"
+            // Sized to the text so the icon sits beside a centred title, not beside an empty box.
+            style={{ width: `${Math.max(title.value.length, MIN_TITLE_CH) + 2}ch` }}
+            className="max-w-full bg-transparent rounded px-2 py-1 text-center text-sm font-medium border border-transparent hover:border-border focus:border-primary/50 focus:outline-none focus:ring-2 focus:ring-primary/30"
           />
           <TitleCursors
             carets={title.carets}
