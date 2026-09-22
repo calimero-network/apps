@@ -54,7 +54,7 @@ export default function DevPanel() {
       data-testid="dev-panel"
       className="fixed bottom-4 right-4 z-50 w-64 rounded-lg border border-border bg-background/95 p-3 text-xs shadow-lg backdrop-blur"
     >
-      <p className="mb-2 font-medium text-foreground">
+      <p data-testid="node-label" className="mb-2 font-medium text-foreground">
         Rig - this window is node {selected}
       </p>
       <ul className="space-y-1">

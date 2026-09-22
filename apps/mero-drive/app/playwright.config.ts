@@ -4,12 +4,7 @@ import { defineConfig, devices } from '@playwright/test';
 // this monorepo already pin. See the note in vite.config.js.
 const APP_PORT = process.env.PW_PORT ?? '5179';
 const APP_URL = process.env.VITE_APP_URL ?? `http://localhost:${APP_PORT}`;
-// Two-node specs run against a second server built with the Yjs collab editor,
-// while single-node keeps testing the default LWW editor that ships.
-const COLLAB_PORT = String(Number(APP_PORT) + 1);
-const COLLAB_URL = `http://localhost:${COLLAB_PORT}`;
-
-function devServer(port: string, env: Record<string, string> = {}) {
+function devServer(port: string) {
   return {
     command: `pnpm dev --host 127.0.0.1 --port ${port}`,
     url: `http://localhost:${port}`,
@@ -17,7 +12,6 @@ function devServer(port: string, env: Record<string, string> = {}) {
     timeout: 120_000,
     stdout: 'pipe' as const,
     stderr: 'pipe' as const,
-    env,
   };
 }
 
@@ -41,12 +35,7 @@ export default defineConfig({
     actionTimeout: 15_000,
     navigationTimeout: 30_000,
   },
-  webServer: process.env.SKIP_WEB_SERVER
-    ? undefined
-    : [
-        devServer(APP_PORT),
-        devServer(COLLAB_PORT, { VITE_COLLAB_YJS: 'true' }),
-      ],
+  webServer: process.env.SKIP_WEB_SERVER ? undefined : [devServer(APP_PORT)],
   projects: [
     {
       name: 'landing',
@@ -72,7 +61,18 @@ export default defineConfig({
       timeout: 300_000,
       use: {
         ...devices['Desktop Chrome'],
-        baseURL: COLLAB_URL,
+        storageState: { cookies: [], origins: [] },
+        trace: 'retain-on-failure',
+      },
+    },
+    {
+      // The CRDT document editor over the three-node rig. Each window picks its
+      // own node with `?node=`, so they share the one dev server.
+      name: 'rich',
+      testMatch: ['**/rich/**/*.spec.ts'],
+      timeout: 900_000,
+      use: {
+        ...devices['Desktop Chrome'],
         storageState: { cookies: [], origins: [] },
         trace: 'retain-on-failure',
       },

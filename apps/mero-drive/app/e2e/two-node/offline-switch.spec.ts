@@ -32,8 +32,12 @@ async function switchNode(
 test.skip(!existsSync(RIG_ENV), 'the offline switch needs the local rig (scripts/local-rig.sh up)');
 
 test.describe('Rig offline switch (two-node)', () => {
-  // Restore without asserting: a test that failed mid-way must not also leave
-  // node 2 down for the next spec.
+  // Both hooks are tolerant restores: another suite driving the same rig, or a
+  // test that failed mid-way, must not decide whether this one can start.
+  test.beforeEach(async ({ alice }) => {
+    await alice.page.request.post('/__dev/node/2/online');
+  });
+
   test.afterEach(async ({ alice }) => {
     await alice.page.request.post('/__dev/node/2/online');
   });
@@ -54,6 +58,7 @@ test.describe('Rig offline switch (two-node)', () => {
     await bob.joinNamespace(inviteUrl);
     await bob.tree.openFolder('Pad');
     await bob.restrictedCard.joinIfPrompted();
+    await bob.docs.expectDocVisible('Switch', { timeout: 60_000 });
     await bob.openDoc('Switch');
 
     // Baseline: the pipe works before anything is cut.
@@ -81,6 +86,7 @@ test.describe('Rig offline switch (two-node)', () => {
     // did not survive it.
     await bob.page.reload();
     await bob.tree.openFolder('Pad');
+    await bob.docs.expectDocVisible('Switch', { timeout: 60_000 });
     await bob.openDoc('Switch');
     await bob.editor.expectContent(CONVERGED, { timeout: 180_000 });
   });
