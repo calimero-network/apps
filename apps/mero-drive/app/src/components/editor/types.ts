@@ -3,4 +3,4 @@
 // (consumer — renders the dot + label). Lives in a tiny shared file
 // so the status bar doesn't need to import the shell.
 
-export type SaveStatus = 'saved' | 'saving' | 'unsaved' | 'error';
+export type SaveStatus = 'saved' | 'saving' | 'unsaved' | 'error' | 'offline';

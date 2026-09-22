@@ -6,7 +6,6 @@ set -euo pipefail
 RIG_DIR="${MERODRIVE_RIG_DIR:-/tmp/merodrive-rig}" # wiped by `up`; holds node homes, logs and the pid file
 NODE_COUNT=3                                      # node n listens on 3918+2n (p2p) and 3919+2n (rpc)
 BASE_PORT=3920
-ISOLATED_BASE_PORT=3950 # swarm port an `offline` node is moved to, so peers dialing the old port fail
 NODE_PREFIX=drive-rig-node
 ADMIN_USER="admin"
 ADMIN_PASSWORD=adminadmin # throwaway, loopback only; merod enforces 8 characters
@@ -28,7 +27,24 @@ die() {
 node_name() { echo "$NODE_PREFIX-$1"; }
 p2p_port() { echo $((BASE_PORT + 2 * ($1 - 1))); }
 rpc_port() { echo $((BASE_PORT + 2 * $1 - 1)); }
-isolated_p2p_port() { echo $((ISOLATED_BASE_PORT + 2 * ($1 - 1))); }
+# The swarm port in the node's own config, which is the isolated one once it
+# has been moved, so a second isolation never replaces a port that is not there.
+current_p2p_port() {
+  awk '/^\[swarm\]/ { in_swarm = 1; next } /^\[/ { in_swarm = 0 } in_swarm && /^listen/ { match($0, /tcp\/[0-9]+/); print substr($0, RSTART + 4, RLENGTH - 4); exit }' "$(config_path "$1")"
+}
+
+# A fresh port per isolation: a peer that learned the last one would otherwise
+# dial straight back in, and the node would never actually be alone.
+free_port() {
+  local port
+  while :; do
+    port=$((39000 + RANDOM % 900))
+    if ! lsof -nP -i :"$port" >/dev/null 2>&1; then
+      echo "$port"
+      return
+    fi
+  done
+}
 node_home() { echo "$RIG_DIR/data/$(node_name "$1")/$(node_name "$1")"; }
 config_path() { echo "$(node_home "$1")/$(node_name "$1")/config.toml"; }
 
@@ -411,7 +427,7 @@ restore_config() {
 isolate_config() {
   local index=$1 config
   config="$(config_path "$index")"
-  python3 - "$config" "$(p2p_port "$index")" "$(isolated_p2p_port "$index")" <<'PY'
+  python3 - "$config" "$(current_p2p_port "$index")" "$(free_port)" <<'PY'
 import re
 import sys
 import tomllib
