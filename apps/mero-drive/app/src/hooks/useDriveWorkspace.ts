@@ -64,6 +64,7 @@ import { useSyncStatus, type SyncSnapshot } from './useSyncStatus';
 import { useLocalStorage } from './useLocalStorage';
 import { useNamespaceDisplayNames } from './useNamespaceDisplayNames';
 import { useApplicationId } from './useApplicationId';
+import { useFolderSelection } from './useFolderSelection';
 import {
   deriveDriveStage,
   stageHidesContent,
@@ -1095,17 +1096,11 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
     [regFolders],
   );
 
-  // --- Selected folder (UI-only, not persisted) ---
-  const [selectedFolderId, setSelectedFolderState] = useState<string | null>(null);
-  // Clear selected folder when the active namespace changes — stale
-  // IDs across namespaces leak the wrong folder into the right pane.
-  useEffect(() => {
-    setSelectedFolderState(null);
-  }, [selectedNsId]);
-
-  const setSelectedFolder = useCallback((id: string | null) => {
-    setSelectedFolderState(id);
-  }, []);
+  const [selectedFolderId, setSelectedFolder] = useFolderSelection(
+    selectedNsId,
+    regFolders,
+    hiddenFolderIds,
+  );
 
   // --- Mutations ---
   const [createLoading, setCreateLoading] = useState(false);
