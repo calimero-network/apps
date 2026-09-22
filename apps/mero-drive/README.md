@@ -9,7 +9,7 @@ A private, end-to-end encrypted document workspace on the [Calimero](https://cal
   - `crates/docs` — document CRUD + tags + archive inside a folder context
   - `crates/types` — shared types (`FolderId`, `ContextId`, `Visibility`, `DriveError`) + ABI-stable constants
 - **`app/`** — React + Tiptap web app; talks to a Calimero node via `@calimero-network/mero-react` hooks
-- **`e2e/`** — five merobox workflows exercising the full user surface (see [CI](#ci))
+- **`logic/workflows/`** — the merobox scenarios CI runs (see [CI](#ci))
 
 ## Feature set
 
@@ -25,30 +25,33 @@ A private, end-to-end encrypted document workspace on the [Calimero](https://cal
 
 - Node.js 20+ and [pnpm](https://pnpm.io) 9
 - Rust stable + `wasm32-unknown-unknown` target (`rustup target add wasm32-unknown-unknown`)
-- Docker (for local merobox nodes)
+- A `merod` binary on PATH or in `MEROD_BINARY`
 - [merobox](https://calimero-network.github.io/merobox) for the e2e workflows
 
 ## Quick start
 
 ```bash
-# 1. Install
 pnpm install
-pnpm --dir app install
-
-# 2. Build the WASM bundle (.mpk)
-pnpm run logic:build            # builds both crates + packages logic/dist/com.calimero.mero-drive-docs.mpk
-
-# 3. Bootstrap a local node + install the bundle
-pnpm run network:bootstrap
-
-# 4. Generate the TypeScript client from the ABI
-pnpm run app:generate-client
-
-# 5. Start the dev server
+pnpm run app:generate-client          # TypeScript client from the ABI
+MEROD_BINARY=/path/to/merod scripts/local-rig.sh up
 pnpm run app:dev
 ```
 
-Open the browser, connect to your local node, create a namespace, and you're in.
+`scripts/local-rig.sh up` builds the bundle, starts three merod nodes on ports 3920-3925 under `/tmp/merodrive-rig`, installs the bundle on each, creates the namespace, the folder group and its docs context, joins the other two nodes, waits for them to agree on one context state hash, and writes `app/.env.integration`.
+It stops only the processes it started, recorded in `/tmp/merodrive-rig/rig.pids`.
+
+```bash
+scripts/local-rig.sh status           # per node: URL, pid, online or offline
+scripts/local-rig.sh offline 2        # stop node 2, keeping its home
+scripts/local-rig.sh online 2         # start it again on the same home and ports
+scripts/local-rig.sh down             # stop every node this script started
+```
+
+The dev server serves the rig to the browser under `/__dev` (dev builds only): `GET /__dev/nodes` is the node list, `POST /__dev/node/<n>/offline` and `/online` are the switch.
+The dev panel in the bottom right shows which node this window talks to, toggles any node, and portals an inspector into `#dev-inspector`.
+
+`?node=<n>` points a window at rig node n.
+Two windows need two origins, because one origin is one `localStorage`: open `http://localhost:5179/app?node=1` and `http://127.0.0.1:5179/app?node=2`.
 
 ## Project layout
 
@@ -76,11 +79,8 @@ mero-drive/
 │       │   ├── admin/              # MemberRoleSelect, NamespaceMemberRow, WorkspaceSettingsPanel
 │       │   └── ui/                 # shadcn-style primitives + ConfirmDialog
 │       └── constants/              # app-id, service ids, capability bits
-└── e2e/
-    ├── workflow-mero-drive-e2e.yml                  # main registry+docs integration
-    ├── workflow-mero-drive-docs-lifecycle.yml       # DocsClient full coverage
-    ├── workflow-mero-drive-members.yml              # member lifecycle + bitmask roundtrips
-    └── workflow-mero-drive-namespace-lifecycle.yml  # rename / delete / multi-ns isolation
+└── scripts/
+    └── local-rig.sh                # three local merod nodes + app/.env.integration
 ```
 
 ## Backend surface (WASM service methods)
@@ -164,7 +164,8 @@ pnpm run app:generate-client                  # regenerate DocsClient/RegistryCl
 - **Frontend** — lint + vitest + build
 - **Logic (Rust)** — `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test --workspace`, WASM build for both crates
 - **Bundle** — assembles the `.mpk` artifact and uploads it for reviewers + the e2e job
-- **E2E (matrix)** — five parallel merobox cells (`main`, `reconciliation`, `docs-lifecycle`, `members`, `namespace-lifecycle`), each with 2-attempt retry and per-cell `docker logs` collection
+- **E2E (mero-drive)** — every scenario in `logic/workflows/`, each retried against the cold-join race, with node logs collected per scenario
+- **Browser E2E (mero-drive)** — the Playwright projects; `single-node` and `two-node` run against nodes the suite starts itself, or against the rig when `app/.env.integration` exists
 
 Known upstream merobox gaps that block additional coverage are tracked as [calimero-network/merobox#214](https://github.com/calimero-network/merobox/issues/214) (`expected_failure` not honored by group_management step classes), [#215](https://github.com/calimero-network/merobox/issues/215) (context-alias steps), [#216](https://github.com/calimero-network/merobox/issues/216) (wait-for-SSE-event), and [#217](https://github.com/calimero-network/merobox/issues/217) (generic admin-API HTTP step).
 
@@ -182,7 +183,7 @@ rm -rf app/node_modules/.vite
 
 **Local node + bundle out of sync**
 ```bash
-pnpm run logic:build && pnpm run network:bootstrap
+scripts/local-rig.sh down && scripts/local-rig.sh up
 ```
 
 ## Links
