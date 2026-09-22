@@ -23,6 +23,7 @@ import {
   type SseEventData,
   type SubscriptionEventData,
 } from '@calimero-network/mero-react';
+import { parseSyncStatusEvent } from './useSyncStatus';
 
 /**
  * Narrow a subscription event to the CONTEXT family.
@@ -78,19 +79,15 @@ export interface UseContextEventsOptions {
    * dings from an open editor (otherwise every autosave triggers a full
    * workspace refetch + getGroupInfo fan-out).
    *
-   * Do NOT enable this for consumers that rely on reacting to *any*
-   * event because the signal they need (e.g. a governance membership
-   * change) never dings a box they subscribe to — see useMemberCaps.
+   * Caps and metadata change without a context event; their consumers
+   * subscribe strictly to the registry context, whose sync run is the tick.
    */
   strict?: boolean;
   /**
    * Coalesce bursts: when > 0, `onChange` fires once `debounceMs` after the
-   * LAST event in a burst, instead of once per event. A doc autosave fans
-   * rapid state-DAG events across the shared socket; without this, every
-   * non-strict subscriber (each folder row's caps/role hook) re-fetches per
-   * event — an N-row RPC storm on every keystroke-batch. Debouncing keeps the
-   * "react to any event" semantics while collapsing the storm to one refetch.
-   * Trailing-edge only (a settled burst still triggers exactly one refetch).
+   * LAST event in a burst, instead of once per event, so a batch of
+   * registry ops costs one refetch. Trailing-edge only (a settled burst
+   * still triggers exactly one refetch).
    */
   debounceMs?: number;
 }
@@ -134,6 +131,11 @@ export function useContextEvents(
         const allowed = idsKey.length > 0 ? idsKey.split(',') : [];
         if (!allowed.includes(event.contextId)) return;
       }
+      // A sync run reports an in-progress phase, then one terminal phase; only the
+      // terminal one counts, even a failed run, since governance arrives by gossip.
+      const sync = parseSyncStatusEvent(event);
+      if (sync?.phase === 'syncing' || sync?.phase === 'receivingSnapshot')
+        return;
       if (debounceMs <= 0) {
         onChange();
         return;

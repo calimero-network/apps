@@ -50,20 +50,18 @@ export function useMemberDisplayName(
   namespaceId: string | null | undefined,
   memberId: string | null | undefined,
 ): MemberDisplayName {
-  const { selfIdentity } = useDriveWorkspace();
+  const { selfIdentity, registryContextId } = useDriveWorkspace();
   const { metadata, loading, error, refetch } = useMemberMetadata(
     namespaceId ?? null,
     memberId ?? null,
   );
   const { setMemberMetadata } = useSetMemberMetadata();
 
-  // Live-refresh the cached metadata when a remote setMemberMetadata
-  // lands for this namespace. Coarse (refetches on every namespace
-  // event) but cheap — the call is a single admin-API hit.
+  // Metadata changes without a context event; the registry's sync run is the tick.
   const onMetadataEvent = useCallback(() => {
     void refetch();
   }, [refetch]);
-  useContextEvents(namespaceId ?? null, onMetadataEvent);
+  useContextEvents(registryContextId, onMetadataEvent, { strict: true });
 
   const name = metadata?.name ?? null;
 

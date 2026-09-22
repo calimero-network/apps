@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook } from '@testing-library/react';
 import type { SseEventData } from '@calimero-network/mero-react';
 import { useContextEvents } from '../useContextEvents';
@@ -16,6 +16,14 @@ vi.mock('@calimero-network/mero-react', () => ({
 
 function fire(contextId: string) {
   lastHandler?.({ contextId, data: {} } as SseEventData);
+}
+
+function fireSync(contextId: string, state: string) {
+  lastHandler?.({
+    contextId,
+    type: 'SyncStatus',
+    data: { syncState: { state }, failureCount: 0 },
+  });
 }
 
 beforeEach(() => {
@@ -93,5 +101,64 @@ describe('useContextEvents', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  // Each sync run reports `syncing` (or snapshot pages) and then one terminal
+  // phase: `idle`, `backingOff` after a failure, or `waitingForPeers`.
+  describe('sync runs', () => {
+    beforeEach(() => vi.useFakeTimers());
+    afterEach(() => vi.useRealTimers());
+
+    it('one run triggers one onChange, on its terminal phase', () => {
+      const onChange = vi.fn();
+      renderHook(() => useContextEvents(['ctx-a'], onChange));
+      fireSync('ctx-a', 'syncing');
+      vi.advanceTimersByTime(1_000);
+      expect(onChange).not.toHaveBeenCalled();
+      fireSync('ctx-a', 'idle');
+      vi.advanceTimersByTime(1_000);
+      expect(onChange).toHaveBeenCalledTimes(1);
+    });
+
+    it('a failed run still triggers one onChange', () => {
+      const onChange = vi.fn();
+      renderHook(() => useContextEvents(['ctx-a'], onChange));
+      fireSync('ctx-a', 'syncing');
+      fireSync('ctx-a', 'backingOff');
+      vi.advanceTimersByTime(1_000);
+      expect(onChange).toHaveBeenCalledTimes(1);
+    });
+
+    it('snapshot pages trigger nothing', () => {
+      const onChange = vi.fn();
+      renderHook(() => useContextEvents(['ctx-a'], onChange));
+      fireSync('ctx-a', 'receivingSnapshot');
+      fireSync('ctx-a', 'receivingSnapshot');
+      vi.advanceTimersByTime(1_000);
+      expect(onChange).not.toHaveBeenCalled();
+    });
+
+    it('a run with no peers triggers one onChange', () => {
+      const onChange = vi.fn();
+      renderHook(() => useContextEvents(['ctx-a'], onChange));
+      fireSync('ctx-a', 'waitingForPeers');
+      vi.advanceTimersByTime(1_000);
+      expect(onChange).toHaveBeenCalledTimes(1);
+    });
+
+    it('a mutation right after a run still triggers its own onChange', () => {
+      const onChange = vi.fn();
+      renderHook(() => useContextEvents(['ctx-a'], onChange));
+      fireSync('ctx-a', 'idle');
+      fire('ctx-a');
+      expect(onChange).toHaveBeenCalledTimes(2);
+    });
+
+    it('an unparseable SyncStatus event still counts as a change', () => {
+      const onChange = vi.fn();
+      renderHook(() => useContextEvents(['ctx-a'], onChange));
+      fireSync('ctx-a', 'someFuturePhase');
+      expect(onChange).toHaveBeenCalledTimes(1);
+    });
   });
 });
