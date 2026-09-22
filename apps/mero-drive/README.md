@@ -48,7 +48,7 @@ scripts/local-rig.sh down             # stop every node this script started
 ```
 
 The dev server serves the rig to the browser under `/__dev` (dev builds only): `GET /__dev/nodes` is the node list, `POST /__dev/node/<n>/offline` and `/online` are the switch.
-The dev panel in the bottom right shows which node this window talks to and toggles any node.
+The dev panel in the bottom right shows which node this window talks to, toggles any node, and portals an inspector into `#dev-inspector`.
 
 `?node=<n>` points a window at rig node n.
 Two windows need two origins, because one origin is one `localStorage`: open `http://localhost:5179/app?node=1` and `http://127.0.0.1:5179/app?node=2`.

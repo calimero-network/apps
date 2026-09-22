@@ -29,7 +29,7 @@ import '@blocknote/core/fonts/inter.css';
 import '@blocknote/mantine/style.css';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { EditorStatusBar } from './EditorStatusBar';
-import { EditorHeader } from './EditorHeader';
+import { EditorHeader, type TitleBinding } from './EditorHeader';
 import { useTheme } from '@/components/theme/ThemeProvider';
 import { schema } from './blocknote/schema';
 import {
@@ -43,10 +43,12 @@ import type { SaveStatus } from './types';
 
 export interface EditorShellProps {
   documentName: string;
-  /** Optional — when undefined the title renders as static text in
+  /** Optional - when undefined the title renders as static text in
    *  the header (read-only mode). */
-  onDocumentNameChange?: (name: string) => void;
+  title?: TitleBinding;
   onBack?: () => void;
+  onUndo?: () => void;
+  onRedo?: () => void;
   onDelete?: () => void;
   /** Called with the serialized document (JSON Block[] string) on every
    *  local edit. Caller debounces and persists. NOT called for remote
@@ -66,10 +68,24 @@ export interface EditorShellProps {
   readOnly?: boolean;
 }
 
+// BlockNote renders its own block ids as `data-id`, which are the backend's
+// block tokens here; the browser suites address blocks through a stable testid.
+export function stampBlocks(root: HTMLElement | null): void {
+  if (!root) return;
+  for (const block of root.querySelectorAll<HTMLElement>('[data-id]')) {
+    const id = block.getAttribute('data-id');
+    if (!id || block.dataset.blockId === id) continue;
+    block.dataset.testid = 'doc-block';
+    block.dataset.blockId = id;
+  }
+}
+
 export const EditorShell: React.FC<EditorShellProps> = ({
   documentName,
-  onDocumentNameChange,
+  title,
   onBack,
+  onUndo,
+  onRedo,
   onDelete,
   onContentChange,
   initialContent,
@@ -102,6 +118,7 @@ export const EditorShell: React.FC<EditorShellProps> = ({
   // True only while we are programmatically applying remote content, so
   // the resulting onChange does NOT round-trip back out as a local save.
   const applyingRemoteRef = useRef(false);
+  const editorRootRef = useRef<HTMLDivElement | null>(null);
   // The serialized content the editor is known to hold (last loaded /
   // applied / emitted). Two jobs:
   //   - onChange emits a save ONLY when the document genuinely differs
@@ -123,6 +140,7 @@ export const EditorShell: React.FC<EditorShellProps> = ({
   // wipe the document.
   useEffect(() => {
     if (!editor) return;
+    stampBlocks(editorRootRef.current);
     const text = blocksToPlainText(editor.document);
     setWordCount(countWords(text));
     setCharCount(countCharacters(text));
@@ -138,6 +156,7 @@ export const EditorShell: React.FC<EditorShellProps> = ({
     if (!editor) return;
     const handler = () => {
       const doc = editor.document;
+      stampBlocks(editorRootRef.current);
       const text = blocksToPlainText(doc);
       setWordCount(countWords(text));
       setCharCount(countCharacters(text));
@@ -236,14 +255,20 @@ export const EditorShell: React.FC<EditorShellProps> = ({
       <div className="flex flex-col h-full bg-background">
         <EditorHeader
           documentName={documentName}
-          onDocumentNameChange={readOnly ? undefined : onDocumentNameChange}
+          title={readOnly ? undefined : title}
           onDelete={onDelete}
           onBack={onBack}
+          onUndo={readOnly ? undefined : onUndo}
+          onRedo={readOnly ? undefined : onRedo}
         />
 
         <div className="flex-1 flex flex-col overflow-hidden">
           <div className="flex-1 overflow-y-auto bg-card">
-            <div className="max-w-4xl mx-auto px-8 py-6 md:px-16 lg:px-24">
+            <div
+              ref={editorRootRef}
+              data-testid="doc-editor"
+              className="max-w-4xl mx-auto px-8 py-6 md:px-16 lg:px-24"
+            >
               <BlockNoteView
                 editor={editor}
                 editable={!readOnly}
