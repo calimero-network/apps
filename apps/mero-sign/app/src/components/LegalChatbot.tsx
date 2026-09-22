@@ -13,6 +13,27 @@ import {
 } from '@calimero-network/mero-ui';
 import { useTheme } from '../contexts/ThemeContext';
 
+/**
+ * Whether the Legal Assistant can actually answer a question.
+ *
+ * The retrieval half of this is real and works: a query is embedded in the
+ * browser with TensorFlow's Universal Sentence Encoder, and
+ * `searchDocumentByEmbedding` runs a genuine vector search against the
+ * document. Generation is not. It went with the ICP backend (e4f1b824) and was
+ * never reconnected — `handleSend` below assembles the context, the history and
+ * the size budget, then ends at a TODO that prints a fixed "currently
+ * unavailable" line and throws all of that work away.
+ *
+ * So every question loads a ~25MB model, computes an embedding and hits the
+ * contract, to answer with an apology. Until that TODO is done the entry points
+ * stay hidden: an assistant that cannot answer is worse than no assistant,
+ * because the user pays the wait before finding out.
+ *
+ * Flip this in the same change that wires generation up. `LegalChatbot.enabled.test.ts`
+ * fails if it is enabled while the stub is still there.
+ */
+export const LEGAL_ASSISTANT_ENABLED = false;
+
 // Constants
 const CHAT_CONFIG = {
   DEFAULT_CONTEXT_LIMIT: 800,
