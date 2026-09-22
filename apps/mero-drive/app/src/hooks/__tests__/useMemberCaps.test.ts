@@ -88,7 +88,23 @@ describe('useMemberCaps', () => {
     const { result } = renderHook(() => useMemberCaps('ns', 'g1'));
     await waitFor(() => expect(result.current.error).toBe(boom));
     expect(result.current.caps).toBe(0);
+    expect(result.current.denied).toBe(false);
+    expect(getCaps).not.toHaveBeenCalled();
   });
+
+  it(
+    'reports a denial once the not-a-member retries are exhausted',
+    async () => {
+      getCaps.mockRejectedValue(new Error('identity is not a member'));
+      const { result } = renderHook(() => useMemberCaps('ns', 'g1'));
+      await waitFor(() => expect(result.current.error).not.toBeNull(), {
+        timeout: 9000,
+      });
+      expect(getCaps).toHaveBeenCalledTimes(4);
+      expect(result.current.denied).toBe(true);
+    },
+    12000,
+  );
 
   it('refetch() re-runs the membership probe', async () => {
     getCaps.mockResolvedValue({ capabilities: 1 });

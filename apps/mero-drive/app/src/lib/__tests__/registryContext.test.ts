@@ -9,7 +9,7 @@
 
 import { describe, expect, it } from 'vitest';
 import {
-  pinnedMetadataData,
+  pinnedMetadata,
   readPin,
   REGISTRY_PIN_KEY,
   resolveRegistryContext,
@@ -289,23 +289,35 @@ describe('shouldAdoptPin', () => {
   });
 });
 
-describe('pinnedMetadataData', () => {
+describe('pinnedMetadata', () => {
   // `SetMetadataRequest` wholly replaces the record, so a non-merging write
-  // would delete every other key the group carries.
+  // would delete every other key the group carries, and its name.
   it('merges onto the existing map instead of replacing it', () => {
-    expect(pinnedMetadataData({ keep: 'me' }, A)).toEqual({
+    expect(pinnedMetadata({ data: { keep: 'me' } }, A).data).toEqual({
       keep: 'me',
       [REGISTRY_PIN_KEY]: A,
     });
   });
 
-  it('handles a null or absent existing map', () => {
-    expect(pinnedMetadataData(null, A)).toEqual({ [REGISTRY_PIN_KEY]: A });
-    expect(pinnedMetadataData(undefined, A)).toEqual({ [REGISTRY_PIN_KEY]: A });
+  it('keeps the workspace name', () => {
+    expect(pinnedMetadata({ name: 'Phoenix', data: {} }, A)).toEqual({
+      name: 'Phoenix',
+      data: { [REGISTRY_PIN_KEY]: A },
+    });
+  });
+
+  it('handles a null or absent existing record', () => {
+    expect(pinnedMetadata(null, A)).toEqual({ data: { [REGISTRY_PIN_KEY]: A } });
+    expect(pinnedMetadata(undefined, A)).toEqual({
+      data: { [REGISTRY_PIN_KEY]: A },
+    });
+    expect(pinnedMetadata({ name: null, data: null }, A)).toEqual({
+      data: { [REGISTRY_PIN_KEY]: A },
+    });
   });
 
   it('overwrites a stale pin', () => {
-    expect(pinnedMetadataData({ [REGISTRY_PIN_KEY]: B }, A)).toEqual({
+    expect(pinnedMetadata({ data: { [REGISTRY_PIN_KEY]: B } }, A).data).toEqual({
       [REGISTRY_PIN_KEY]: A,
     });
   });

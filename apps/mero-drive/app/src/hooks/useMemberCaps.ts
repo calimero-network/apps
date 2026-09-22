@@ -33,6 +33,7 @@
 //     just keeps `hasCap(...)` true for everything).
 //   - `caps = 0,    error = Error` → retries exhausted; caller shows
 //     an error affordance rather than silently rendering "all denied".
+//     `denied` is set when every attempt was refused as a non-member.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useMero } from '@calimero-network/mero-react';
@@ -53,6 +54,8 @@ export interface MemberCapsState {
    *  `is_group_admin_or_has_capability`). */
   isAdmin: boolean;
   error: Error | null;
+  /** `error` is the non-member refusal outlasting every retry. */
+  denied: boolean;
   /** Force the underlying fetch (members + capabilities) to re-run.
    *  Needed after an external membership-changing op (e.g. the
    *  RestrictedFolderCard's join-via-inheritance click) — the
@@ -62,6 +65,7 @@ export interface MemberCapsState {
   refetch: () => void;
 }
 
+// Core refuses a non-member with an untyped 500, so only its text tells it apart.
 function isPropagationLagError(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err);
   return msg.includes('not a member');
@@ -104,6 +108,7 @@ export function useMemberCaps(
     caps: null,
     isAdmin: false,
     error: null,
+    denied: false,
   });
   const [tick, setTick] = useState(0);
   const refetch = useCallback(() => setTick((t) => t + 1), []);
@@ -127,7 +132,7 @@ export function useMemberCaps(
   useEffect(() => {
     if (!mero || !groupId || !memberId) {
       lastIdsRef.current = null;
-      setState({ caps: null, isAdmin: false, error: null });
+      setState({ caps: null, isAdmin: false, error: null, denied: false });
       return;
     }
     const signal = { aborted: false };
@@ -137,7 +142,7 @@ export function useMemberCaps(
       lastIdsRef.current.memberId !== memberId;
     lastIdsRef.current = { groupId, memberId };
     if (idsChanged) {
-      setState({ caps: null, isAdmin: false, error: null });
+      setState({ caps: null, isAdmin: false, error: null, denied: false });
     }
 
     (async () => {
@@ -176,7 +181,12 @@ export function useMemberCaps(
                 prev.isAdmin === true &&
                 prev.error === null
                   ? prev
-                  : { caps: ADMIN_CAPS_BITMASK, isAdmin: true, error: null },
+                  : {
+                      caps: ADMIN_CAPS_BITMASK,
+                      isAdmin: true,
+                      error: null,
+                      denied: false,
+                    },
               );
             }
             return;
@@ -207,7 +217,7 @@ export function useMemberCaps(
           setState((prev) =>
             prev.caps === caps && prev.isAdmin === false && prev.error === null
               ? prev
-              : { caps, isAdmin: false, error: null },
+              : { caps, isAdmin: false, error: null, denied: false },
           );
           return;
         } catch (err) {
@@ -219,7 +229,12 @@ export function useMemberCaps(
       if (signal.aborted) return;
       const finalErr =
         lastErr instanceof Error ? lastErr : new Error(String(lastErr));
-      setState({ caps: 0, isAdmin: false, error: finalErr });
+      setState({
+        caps: 0,
+        isAdmin: false,
+        error: finalErr,
+        denied: isPropagationLagError(lastErr),
+      });
     })();
 
     return () => {

@@ -64,13 +64,14 @@ import { useSyncStatus, type SyncSnapshot } from './useSyncStatus';
 import { useLocalStorage } from './useLocalStorage';
 import { useNamespaceDisplayNames } from './useNamespaceDisplayNames';
 import { useApplicationId } from './useApplicationId';
+import { useFolderSelection } from './useFolderSelection';
 import {
   deriveDriveStage,
   stageHidesContent,
   type DriveLoadingStage,
 } from '@/lib/driveStage';
 import {
-  pinnedMetadataData,
+  pinnedMetadata,
   readPin,
   resolveRegistryContext,
   shouldAdoptPin,
@@ -90,7 +91,7 @@ import {
   REGISTRY_CONTEXT_ALIAS,
   REGISTRY_SERVICE_ID,
 } from '@/constants/config';
-import { isAccessDeniedError } from '@/utils/accessDenied';
+import { isGroupAccessDenied } from '@/utils/accessDenied';
 
 /** Shared empty array so the "no duplicates" case keeps a stable identity. */
 const EMPTY_DUPLICATES: string[] = [];
@@ -561,12 +562,10 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
     adoptedRef.current = selectedNsId;
     void (async () => {
       try {
-        // ⚠️ Merge. `SetMetadataRequest` WHOLLY REPLACES the record — sending
-        // `{data: {pin}}` alone would delete the group's other keys, and
-        // omitting `name` is what preserves the workspace's name.
-        await setGroupMetadata(selectedNsId, {
-          data: pinnedMetadataData(nsMetadata?.data, registryContextId),
-        });
+        await setGroupMetadata(
+          selectedNsId,
+          pinnedMetadata(nsMetadata, registryContextId),
+        );
         await refetchNsMetadata();
       } catch {
         // Best-effort: a member without metadata rights simply keeps resolving
@@ -704,9 +703,10 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
           // "absent" branch for this namespace: the pin replicates, and a node
           // that holds a pin it cannot resolve waits instead of minting.
           try {
-            await setGroupMetadata(healingNsId, {
-              data: pinnedMetadataData(nsMetadata?.data, reg.contextId),
-            });
+            await setGroupMetadata(
+              healingNsId,
+              pinnedMetadata(nsMetadata, reg.contextId),
+            );
             await refetchNsMetadata();
           } catch {
             // Non-fatal: resolution still works by the deterministic rule.
@@ -993,7 +993,10 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
                 false, // not access-denied
               ] as const,
           )
-          .catch((e) => [id, null, null, isAccessDeniedError(e)] as const),
+          .catch(async (e) => {
+            const denied = await isGroupAccessDenied(mero.admin, id, e);
+            return [id, null, null, denied] as const;
+          }),
       ),
     ).then((entries) => {
       // Drop the result if this effect was torn down, OR if the active
@@ -1092,17 +1095,11 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
     [regFolders],
   );
 
-  // --- Selected folder (UI-only, not persisted) ---
-  const [selectedFolderId, setSelectedFolderState] = useState<string | null>(null);
-  // Clear selected folder when the active namespace changes — stale
-  // IDs across namespaces leak the wrong folder into the right pane.
-  useEffect(() => {
-    setSelectedFolderState(null);
-  }, [selectedNsId]);
-
-  const setSelectedFolder = useCallback((id: string | null) => {
-    setSelectedFolderState(id);
-  }, []);
+  const [selectedFolderId, setSelectedFolder] = useFolderSelection(
+    selectedNsId,
+    regFolders,
+    hiddenFolderIds,
+  );
 
   // --- Mutations ---
   const [createLoading, setCreateLoading] = useState(false);

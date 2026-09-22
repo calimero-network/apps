@@ -170,6 +170,9 @@ export function FolderTreeItem({
             folderId={node.id}
             currentVisibility={folder.visibility}
             onRename={startRename}
+            onNewSubfolder={() => {
+              if (!isExpanded) onToggleExpanded(node.id);
+            }}
           />
         )}
       </div>

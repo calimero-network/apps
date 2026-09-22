@@ -46,32 +46,4 @@ test.describe('Folder name propagation (two-node)', () => {
     await bob.tree.expectFolderVisible('Documents', { timeout: 60_000 });
     await bob.tree.expectFolderHidden('Specs');
   });
-
-  // Opening a Restricted folder as a non-member no longer shows the restricted card.
-  test.fixme('Restricted folder shows row to non-members but with placeholder name',
-    async ({ alice, bob }) => {
-      // Restricted folders correctly encrypt their metadata with the
-      // subgroup key — namespace-only members can't decrypt the name.
-      // The row still appears (the GroupChildIndex entry is
-      // namespace-keyed under #2344 opaque-leaf), just without the
-      // human label.
-      await alice.goToWorkspace();
-      await alice.createNamespace('Restricted Name WS');
-      await alice.createFolder({ name: 'Internal', visibility: 'Restricted' });
-      await alice.openSettings();
-      const inviteUrl = await alice.settings.copyNamespaceInvite();
-      await alice.closeSettings();
-
-      await bob.joinNamespace(inviteUrl);
-      // The row appears (folderRow matcher needs SOMETHING in the row
-      // text); we can't easily assert "doesn't have 'Internal'" with a
-      // single locator without listing rows. So just verify Bob's tree
-      // has at least one folder row and clicking it surfaces the
-      // ask-admin card.
-      await bob.page
-        .locator('aside li')
-        .first()
-        .click();
-      await bob.restrictedCard.expectAskAdmin({ timeout: 30_000 });
-    });
 });

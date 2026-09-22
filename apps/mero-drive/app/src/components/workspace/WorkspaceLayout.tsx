@@ -34,9 +34,10 @@ import { RestrictedFolderCard } from '@/components/folders/RestrictedFolderCard'
 import { FolderEmptyState } from './FolderEmptyState';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
+import { usePublishWorkspacePresence } from '@/hooks/useWorkspacePresence';
 import type { SyncSnapshot } from '@/hooks/useSyncStatus';
 import { useFolderPermissions } from '@/hooks/useFolderPermissions';
-import { isAccessDeniedError } from '@/utils/accessDenied';
+import { lacksFolderAccess } from '@/utils/accessDenied';
 import { ThemeToggle } from '@/components/theme/ThemeToggle';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { DisplayNameGate } from './DisplayNameGate';
@@ -65,6 +66,7 @@ export function WorkspaceLayout() {
   const { mero, nodeUrl, logout } = useMero();
   // Grace-wrapped so a transient SSE blip doesn't flap the node dot red.
   const isOnline = useOnlineStatus();
+  usePublishWorkspacePresence(registryContextId, selfIdentity);
   const selectedFolder = folders.find((f) => f.id === selectedFolderId);
 
   // Explicit re-trigger for a stalled post-join sync — a real action so a
@@ -280,9 +282,7 @@ export function WorkspaceLayout() {
             <EmptyState title="Loading folder…" body="" />
           ) : selectedFolderPerms.loading ? (
             <EmptyState title="Checking access…" body="" />
-          ) : (selectedFolderPerms.error &&
-              isAccessDeniedError(selectedFolderPerms.error)) ||
-            (!selectedFolderPerms.isMember && !selectedFolderPerms.error) ? (
+          ) : lacksFolderAccess(selectedFolderPerms) ? (
             <div className="flex-1 overflow-y-auto p-6">
               <div className="mx-auto max-w-3xl">
                 <RestrictedFolderCard
