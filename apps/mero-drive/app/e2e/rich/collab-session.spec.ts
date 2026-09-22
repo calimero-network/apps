@@ -4,28 +4,39 @@
 
 import type { Page } from '@playwright/test';
 import { expect, test } from './fixtures/rich';
-import { settle } from './helpers/converge';
+import { expectDigest, settle } from './helpers/converge';
 import { blockText, occurrences, sameCharacterCounts, spanSummary } from './helpers/doc-model';
-import { MOD, applyBold, applyItalic, caretBlockText, caretTo, redo, selectText, undo } from './helpers/editor';
+import { MOD, applyBold, applyItalic, caretBlockText, caretTo, caretToEnd, redo, selectText, undo, titleInput } from './helpers/editor';
 import { switchNode } from './helpers/rig';
-import { blocksOnNode } from './helpers/rpc';
+import { addExplicitMember, blocksOnNode, digestOnNode, ownedIdentity, titleOnNode } from './helpers/rpc';
 
 const NODES = [1, 2];
 const KEY_DELAY_MS = 90; // human typing speed, so keystrokes and sync overlap
-
-async function caretToEnd(page: Page, block: number): Promise<void> {
-  await caretTo(page, block, 0);
-  await page.keyboard.press('End');
-}
+const EMOJI = ` ${String.fromCodePoint(0x1f600)} ${String.fromCodePoint(0x1f468, 0x200d, 0x1f469, 0x200d, 0x1f467)}`;
+const PASTE = 'abcdefghij'.repeat(500); // 5000 characters in one editor change
 
 async function typeLive(page: Page, text: string): Promise<void> {
   await page.keyboard.type(text, { delay: KEY_DELAY_MS });
 }
 
-/** Every block's text on a node, once both nodes hold one identical document. */
-async function settledTexts(doc: Parameters<typeof settle>[0]): Promise<string[]> {
+/** Each rendered line of a window's editor. */
+async function shownLines(page: Page): Promise<string[]> {
+  const text = await page.getByTestId('doc-editor').innerText();
+  return text
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+/** Every block's text once both nodes hold one document and both windows show it. */
+async function settledTexts(doc: Parameters<typeof settle>[0], pages: Page[]): Promise<string[]> {
   await settle(doc, NODES);
-  return (await blocksOnNode(1, doc)).map(blockText);
+  const texts = (await blocksOnNode(1, doc)).map(blockText);
+  const lines = texts.map((text) => text.trim()).filter(Boolean);
+  for (const page of pages) {
+    await expect.poll(() => shownLines(page), { timeout: 30_000 }).toEqual(lines);
+  }
+  return texts;
 }
 
 test('two people edit one document live, formatted, with undo, and apart', async ({ rig }) => {
@@ -38,7 +49,7 @@ test('two people edit one document live, formatted, with undo, and apart', async
       if (index > 0) await a.page.keyboard.press('Enter');
       await a.page.keyboard.type(line);
     }
-    expect(await settledTexts(rig.doc)).toEqual(['The fox.', 'Notes:', 'Alice writes here.', 'Bob writes here.']);
+    expect(await settledTexts(rig.doc, [a.page, b.page])).toEqual(['The fox.', 'Notes:', 'Alice writes here.', 'Bob writes here.']);
   });
 
   await test.step('live: both type into one paragraph at different spots', async () => {
@@ -52,7 +63,7 @@ test('two people edit one document live, formatted, with undo, and apart', async
         await typeLive(b.page, 'Look: ');
       })(),
     ]);
-    const texts = await settledTexts(rig.doc);
+    const texts = await settledTexts(rig.doc, [a.page, b.page]);
     expect.soft(texts[0]).toBe('Look: The fox. It runs.');
   });
 
@@ -67,11 +78,11 @@ test('two people edit one document live, formatted, with undo, and apart', async
         await typeLive(b.page, 'bbbb');
       })(),
     ]);
-    const text = (await settledTexts(rig.doc))[1];
-    // Keystrokes at one caret may alternate live; each one must land exactly once.
-    expect.soft(text.length).toBe('Notes:'.length + 8);
-    expect.soft(text.startsWith('Notes:')).toBe(true);
+    const text = (await settledTexts(rig.doc, [a.page, b.page]))[1];
+    // Each person's caret stays after their own last keystroke, so both runs
+    // stay whole: either order, never alternating.
     expect.soft(sameCharacterCounts(text, 'Notes:aaaabbbb')).toBe(true);
+    expect.soft(['Notes:aaaabbbb', 'Notes:bbbbaaaa']).toContain(text);
   });
 
   await test.step('live: each writes their own paragraph at the same time', async () => {
@@ -85,7 +96,7 @@ test('two people edit one document live, formatted, with undo, and apart', async
         await typeLive(b.page, ' More from Bob.');
       })(),
     ]);
-    const texts = await settledTexts(rig.doc);
+    const texts = await settledTexts(rig.doc, [a.page, b.page]);
     expect.soft(texts[2]).toBe('Alice writes here. More from Alice.');
     expect.soft(texts[3]).toBe('Bob writes here. More from Bob.');
   });
@@ -157,18 +168,95 @@ test('two people edit one document live, formatted, with undo, and apart', async
     await a.page.keyboard.type(' mine');
     await caretToEnd(b.page, 0);
     await b.page.keyboard.type(' theirs');
-    const before = await settledTexts(rig.doc);
+    const before = await settledTexts(rig.doc, [a.page, b.page]);
     expect.soft(before[1].endsWith(' mine')).toBe(true);
     expect.soft(before[0].endsWith(' theirs')).toBe(true);
 
     await undo(a.page);
-    const undone = await settledTexts(rig.doc);
+    const undone = await settledTexts(rig.doc, [a.page, b.page]);
     expect.soft(undone[1]).toBe(before[1].slice(0, -' mine'.length));
     expect.soft(undone[0]).toBe(before[0]);
 
     await redo(a.page);
-    const redone = await settledTexts(rig.doc);
+    const redone = await settledTexts(rig.doc, [a.page, b.page]);
     expect.soft(redone).toEqual(before);
+  });
+
+  await test.step('title: both type into the title at once', async () => {
+    const title = await titleOnNode(1, rig.doc);
+    await Promise.all([
+      (async () => {
+        await titleInput(a.page).click();
+        await titleInput(a.page).press('End');
+        await typeLive(a.page, ' draft');
+      })(),
+      (async () => {
+        await titleInput(b.page).click();
+        await titleInput(b.page).press('Home');
+        await typeLive(b.page, 'Team ');
+      })(),
+    ]);
+    const expected = `Team ${title} draft`;
+    await expect.poll(() => titleOnNode(1, rig.doc), { timeout: 60_000 }).toBe(expected);
+    await expect.poll(() => titleOnNode(2, rig.doc), { timeout: 60_000 }).toBe(expected);
+    for (const page of [a.page, b.page]) {
+      await expect.soft(titleInput(page)).toHaveValue(expected, { timeout: 15_000 });
+    }
+  });
+
+  await test.step('blocks: Enter splits and Backspace merges while the other types', async () => {
+    await caretToEnd(a.page, 3);
+    await a.page.keyboard.press('Enter');
+    await a.page.keyboard.type('Split me here please.');
+    expect.soft((await settledTexts(rig.doc, [a.page, b.page]))[4]).toBe('Split me here please.');
+
+    await Promise.all([
+      (async () => {
+        await caretTo(a.page, 4, 8);
+        await a.page.keyboard.press('Enter');
+      })(),
+      (async () => {
+        await caretToEnd(b.page, 1);
+        await typeLive(b.page, ' live');
+      })(),
+    ]);
+    const split = await settledTexts(rig.doc, [a.page, b.page]);
+    expect.soft(split[4]).toBe('Split me');
+    expect.soft(split[5]).toBe(' here please.');
+    expect.soft(split[1].endsWith(' live')).toBe(true);
+
+    await caretTo(a.page, 5, 0);
+    await a.page.keyboard.press('Backspace');
+    const merged = await settledTexts(rig.doc, [a.page, b.page]);
+    expect.soft(merged[4]).toBe('Split me here please.');
+    expect.soft(merged.length).toBe(5);
+  });
+
+  await test.step('unicode: emoji and a ZWJ family land exactly as typed', async () => {
+    await caretToEnd(b.page, 4);
+    await b.page.keyboard.insertText(EMOJI);
+    expect.soft((await settledTexts(rig.doc, [a.page, b.page]))[4]).toBe(`Split me here please.${EMOJI}`);
+  });
+
+  await test.step('large: a 5000-character paste lands whole in one block', async () => {
+    await caretToEnd(a.page, 4);
+    await a.page.keyboard.press('Enter');
+    await a.page.keyboard.insertText(PASTE);
+    const texts = await settledTexts(rig.doc, [a.page, b.page]);
+    expect.soft(texts[5]).toBe(PASTE);
+    expect.soft(texts.length).toBe(6);
+  });
+
+  await test.step('cursors: each window shows the other caret and selection', async () => {
+    // Presence is sealed with the folder's group key, which an Open folder's
+    // inherited member never receives; setup grants explicit membership.
+    await addExplicitMember(1, rig.doc.contextId, await ownedIdentity(2, rig.doc.contextId));
+    await caretTo(a.page, 0, 4);
+    await expect.soft(b.page.getByTestId('doc-editor').getByTestId('presence-cursor')).toHaveCount(1, { timeout: 90_000 });
+    await selectText(a.page, 0, 'fox');
+    await expect.soft(b.page.getByTestId('doc-editor').getByTestId('presence-selection')).toHaveCount(1, { timeout: 15_000 });
+    await caretTo(b.page, 1, 2);
+    await expect.soft(a.page.getByTestId('doc-editor').getByTestId('presence-cursor')).toHaveCount(1, { timeout: 15_000 });
   });
 
   await test.step('apart: both cut off, each writes, then both rejoin', async () => {
@@ -181,11 +269,18 @@ test('two people edit one document live, formatted, with undo, and apart', async
     await switchNode(1, 'online');
     await switchNode(2, 'online');
 
-    const text = (await settledTexts(rig.doc))[2];
+    const text = (await settledTexts(rig.doc, [a.page, b.page]))[2];
     const tail = text.slice('Alice writes here. More from Alice.'.length);
     // Two runs appended at one spot: either order, never interleaved.
     expect.soft([' Left side. Right side.', ' Right side. Left side.']).toContain(tail);
     expect.soft(occurrences(text, ' Left side.')).toBe(1);
     expect.soft(occurrences(text, ' Right side.')).toBe(1);
+  });
+
+  await test.step('late joiner: a third node opens the document and reads it identically', async () => {
+    const digest = await settle(rig.doc, NODES);
+    await rig.join(3);
+    await expectDigest(rig.doc, [3], digest);
+    expect.soft(await digestOnNode(3, rig.doc)).toBe(digest);
   });
 });

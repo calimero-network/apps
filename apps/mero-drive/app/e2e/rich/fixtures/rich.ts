@@ -94,8 +94,11 @@ export class RichRig {
     await window.ws.tree.expectFolderVisible(this.folder, { timeout: 120_000 });
     await window.ws.tree.openFolder(this.folder);
     await window.ws.restrictedCard.joinIfPrompted();
-    await window.ws.docs.expectDocVisible(this.title, { timeout: 120_000 });
-    await window.ws.openDoc(this.title);
+    // By id, not title: a scenario may have renamed the document by now.
+    const row = window.page.locator(`[data-testid="doc-row"][data-doc-id="${this.doc.docId}"]`);
+    await expect(row).toBeVisible({ timeout: 120_000 });
+    await row.click();
+    await window.ws.editor.expectMounted();
     return window;
   }
 

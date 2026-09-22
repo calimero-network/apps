@@ -15,6 +15,7 @@ export interface DocRef {
 export interface AdminContext {
   id: string;
   serviceName: string;
+  groupId?: string;
 }
 
 export async function execute<T>(
@@ -134,4 +135,18 @@ export async function waitForValue<T>(
     }
     await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
   }
+}
+
+/** Adds `identity` to the group behind `contextId` as an explicit member, from `node`. */
+export async function addExplicitMember(node: number, contextId: string, identity: string): Promise<void> {
+  const context = (await adminContexts(node)).find((candidate) => candidate.id === contextId);
+  if (!context?.groupId) throw new Error(`node ${node} has no group for ${contextId}`);
+  const { url, accessToken } = rigNode(node);
+  const resp = await fetch(`${url}/admin-api/groups/${context.groupId}/members`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ members: [{ identity, role: 'Member' }] }),
+    signal: AbortSignal.timeout(CALL_TIMEOUT_MS),
+  });
+  if (!resp.ok) throw new Error(`node ${node} add member -> ${resp.status}: ${await resp.text()}`);
 }
