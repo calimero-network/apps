@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { onInvitation, type CapturedInvitation } from '../auth/invitationIntents';
+import { onInvitation, type CapturedInvitation } from "@calimero-apps/invite";
 
 /**
  * The invitation captured from a link, if one is waiting.

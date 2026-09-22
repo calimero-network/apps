@@ -12,7 +12,7 @@ import ConnectPopup from './pages/landing/ConnectPopup';
 import InvitationHandlerPopup from './components/InvitationHandlerPopup';
 import { useCalimero } from './lib/useCalimero';
 import { ROUTES, type Screen } from './routes';
-import { onInvitation, type CapturedInvitation } from './lib/invitationIntents';
+import { onInvitation, type CapturedInvitation } from "@calimero-apps/invite";
 
 /**
  * The single screen renderer.
@@ -150,7 +150,7 @@ function AppContent() {
       />
       {invitation && isAuthenticated && (
         <InvitationHandlerPopup
-          invitation={invitation.code}
+          invitation={invitation.token}
           onSuccess={handleInvitationSuccess}
           onError={handleInvitationError}
         />

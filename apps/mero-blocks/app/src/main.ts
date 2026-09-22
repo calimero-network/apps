@@ -16,7 +16,7 @@ import { WorldStore, WORLD_CX, WORLD_CY, WORLD_CZ, chunkKey } from "./engine/wor
 import { arrowLook, pointerLockAvailable } from "./input/look";
 import { WheelSteps } from "./input/wheel";
 import { inviteLink } from "./net/inviteLink";
-import { primeInviteCapture } from "./net/invitationIntents";
+import { primeInvitationCapture as primeInviteCapture } from "@calimero-apps/invite";
 import { createWorldInvite, ownedContextIdentity } from "./net/admin";
 import { GameClient } from "./net/client";
 import { captureSessionFromHash, clearWorld, getSession, hasConnection } from "./net/session";
@@ -37,7 +37,7 @@ import { PauseMenu, WorldMap } from "./ui/overlays";
 // picker can act on it. Until now this app built shareable links but never read
 // one back, so opening one dropped the recipient on the landing page with the
 // code stuck in the address bar.
-primeInviteCapture();
+primeInviteCapture("mero-blocks");
 
 const REACH = 6;
 const EDIT_REPEAT_MS = 250;

@@ -81,7 +81,7 @@ Object.assign(globalThis, {
 
 const { bootstrapSsoAndInvitation } = await import('./ssoBootstrap');
 const { peekInvitation, resetInvitationCaptureForTests } = await import(
-  './invitationIntents'
+  '@calimero-apps/invite'
 );
 
 const NODE = 'http://localhost:2528';
@@ -147,10 +147,10 @@ describe('invitation capture (via bootstrapSsoAndInvitation)', () => {
   it('captures ?invitation= at boot and strips it from the address bar', () => {
     locate('issue-tracker?invitation=PAYLOAD');
     bootstrapSsoAndInvitation();
-    expect(peekInvitation()?.code).toBe('PAYLOAD');
+    expect(peekInvitation()?.token).toBe('PAYLOAD');
     // Sticky: reading it does not consume it, so the route gate and the
     // workspace both see the same capture.
-    expect(peekInvitation()?.code).toBe('PAYLOAD');
+    expect(peekInvitation()?.token).toBe('PAYLOAD');
     expect(location.search).toBe('');
     peekInvitation()!.resolve();
     expect(peekInvitation()).toBeNull();

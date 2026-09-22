@@ -1,0 +1,31 @@
+{
+  "name": "@calimero-apps/invite",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Redeeming an invitation link: capture it however it arrived, join once, and say what happened.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "types": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "peerDependencies": {
+    "react": ">=18"
+  },
+  "dependencies": {
+    "@calimero-network/mero-platform": "catalog:",
+    "@calimero-apps/join-sync": "workspace:*"
+  },
+  "devDependencies": {
+    "@testing-library/react": "catalog:",
+    "@types/react": "^19.2.18",
+    "jsdom": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

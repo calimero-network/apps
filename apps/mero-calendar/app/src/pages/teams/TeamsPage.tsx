@@ -1,5 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import {
+  InviteStatusBanner,
+  redeemInvitation,
+  useInviteRedemption,
+} from "@calimero-apps/invite";
+import { markNamespaceJustJoined } from "@calimero-apps/join-sync";
 import { useMero, setApplicationId } from "@calimero-network/mero-react";
 import {
   adminGet,
@@ -20,7 +26,6 @@ import {
   invitationLink,
   invitationTokenFrom,
 } from "../../utils/invitation";
-import { onInvitation } from "../../utils/invitationIntents";
 import {
   getStoredTeamName,
   setStoredTeamName,
@@ -171,45 +176,96 @@ export default function TeamsPage() {
     setTeams((prev) => prev.filter((t) => t.groupId !== teamId));
   }
 
+  /** Read a raw invitation token into the parts the join needs. */
+  const parseInvitation = useCallback((raw: string) => {
+    const invObj = decodeInvitationObject<Record<string, unknown>>(raw);
+    const outer = (invObj.invitation as Record<string, unknown>) ?? invObj;
+    const inner = (outer?.invitation as Record<string, unknown>) ?? outer;
+    const rawGroupId =
+      inner?.group_id ?? inner?.groupId ?? outer?.group_id ?? outer?.groupId;
+    const namespaceId = Array.isArray(rawGroupId)
+      ? (rawGroupId as number[])
+          .map((b) => b.toString(16).padStart(2, "0"))
+          .join("")
+      : String(rawGroupId ?? "");
+    if (!namespaceId) return null;
+
+    const teamName =
+      typeof invObj.__teamName === "string" ? invObj.__teamName.trim() : "";
+    if (teamName) setStoredTeamName(namespaceId, teamName);
+
+    return { namespaceId, invitation: outer, teamName: teamName || undefined };
+  }, []);
+
+  /** The two calls @calimero-apps/invite needs from this app. */
+  const redeemer = useMemo(
+    () => ({
+      join: async (namespaceId: string, invitation: unknown) => {
+        await adminPost(`/namespaces/${namespaceId}/join`, { invitation });
+      },
+      memberships: async () => {
+        const items = await listNamespaces(await ensureAppId());
+        return (Array.isArray(items) ? items : []).map(
+          (n: NamespaceRaw) => n.namespaceId ?? n.groupId ?? n.id ?? "",
+        );
+      },
+    }),
+    [ensureAppId],
+  );
+
+  const refreshTeams = useCallback(async () => {
+    const items = await listNamespaces(await ensureAppId()).catch(() => null);
+    if (!Array.isArray(items)) return;
+    setTeams(
+      items.map((n: NamespaceRaw) => ({
+        groupId: n.namespaceId ?? n.groupId ?? n.id ?? "",
+        name: (n.alias ?? n.name ?? "").trim(),
+      })),
+    );
+  }, [ensureAppId]);
+
+  // ── An invitation link opened this app ──────────────────────────────────────
+  //
+  // Capture, redemption and the attempt cap all live in @calimero-apps/invite;
+  // this page supplies the codec and the two calls, and renders the result.
+  const invite = useInviteRedemption({
+    parse: parseInvitation,
+    redeemer,
+    onJoined: (namespaceId) => {
+      setJoinCode("");
+      void refreshTeams();
+      navigate(`/teams/${namespaceId}`);
+    },
+  });
+
+  // Keep the manual field in step, so a link that could not be joined
+  // automatically is one click away rather than lost.
+  useEffect(() => {
+    if (invite.token) setJoinCode(invite.token);
+  }, [invite.token]);
+
+  /** The manual "paste a code and press Join" path. */
   async function joinTeam(codeOverride?: string): Promise<boolean> {
-    // Accept either a shared invitation link or the bare token inside it.
     const raw = invitationTokenFrom(codeOverride ?? joinCode);
     if (!raw) return false;
     setJoining(true);
     setJoinError("");
     try {
-      const invObj = decodeInvitationObject<Record<string, unknown>>(raw);
-      const outer = (invObj.invitation as Record<string, unknown>) ?? invObj;
-      const inner = (outer?.invitation as Record<string, unknown>) ?? outer;
-      const rawGroupId =
-        inner?.group_id ?? inner?.groupId ?? outer?.group_id ?? outer?.groupId;
-      const namespaceId = Array.isArray(rawGroupId)
-        ? (rawGroupId as number[])
-            .map((b) => b.toString(16).padStart(2, "0"))
-            .join("")
-        : String(rawGroupId ?? "");
+      const parsed = parseInvitation(raw);
+      if (!parsed) throw new Error("no namespace id in invitation");
 
-      if (!namespaceId) throw new Error("no namespace id in invitation");
+      const outcome = await redeemInvitation(parsed, redeemer);
+      if (outcome.status === "failed") throw new Error(outcome.message);
 
-      const embeddedName =
-        typeof invObj.__teamName === "string" ? invObj.__teamName.trim() : "";
-      if (embeddedName) setStoredTeamName(namespaceId, embeddedName);
-
-      await adminPost(`/namespaces/${namespaceId}/join`, { invitation: outer });
-
-      const items = await listNamespaces(await ensureAppId());
-      const arr = Array.isArray(items) ? items : [];
-      setTeams(
-        arr.map((n) => {
-          const gid = n.namespaceId ?? n.groupId ?? n.id ?? "";
-          const serverName = (n.alias ?? n.name ?? "").trim();
-          if (gid === namespaceId && embeddedName && !serverName)
-            return { groupId: gid, name: embeddedName };
-          return { groupId: gid, name: serverName };
-        }),
-      );
+      markNamespaceJustJoined(outcome.namespaceId);
+      await refreshTeams();
       setJoinCode("");
-      showToast("Joined team. Syncing calendar…", "success");
+      showToast(
+        outcome.status === "already-member"
+          ? "You are already in this team."
+          : "Joined team. Syncing calendar…",
+        "success",
+      );
       return true;
     } catch (err) {
       const msg = extractErrorMessage(
@@ -224,37 +280,6 @@ export default function TeamsPage() {
     }
   }
 
-  // Open a team's ONE shared calendar context. If a context already exists under
-  // the team, join + open it; otherwise create exactly one (subgroup → open
-  // visibility → context with empty init params, since the calendar contract's
-  // init() takes no args).
-  // ── An invitation link opened this app ──────────────────────────────────────
-  //
-  // Fill the join field and try it once, so a shared link actually joins the
-  // team instead of landing the recipient here with the token stuck in the
-  // address bar (which is what happened before capture existed).
-  //
-  // The intent is acked ONLY on a successful join. A failure leaves it in the
-  // durable store, so a transient one (node still starting, no online member)
-  // is retried on the next load rather than lost — no need to guess which error
-  // messages are permanent. `attemptedInvites` stops it retrying in a loop
-  // within this session; the token stays in the field for a manual retry.
-  const attemptedInvites = useRef<Set<string>>(new Set());
-  useEffect(
-    () =>
-      onInvitation(({ token, resolve }) => {
-        setJoinCode(token);
-        if (attemptedInvites.current.has(token)) return;
-        attemptedInvites.current.add(token);
-        void joinTeam(token).then((joined) => {
-          if (joined) resolve();
-        });
-      }),
-    // joinTeam is re-created every render but only reads `joinCode` when no
-    // token is passed, and we always pass one — so the captured closure is safe.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [],
-  );
 
   /**
    * Open a team by showing its calendars, not by guessing one.
@@ -316,6 +341,16 @@ export default function TeamsPage() {
 
       <main className={styles.main}>
         <h1 className={styles.title}>Your Teams</h1>
+
+        {/* Following an invite link used to land here with nothing on screen
+            for as long as the join took. */}
+        <InviteStatusBanner
+          state={invite.state}
+          noun="team"
+          onRetry={invite.retry}
+          onDismiss={invite.dismiss}
+          style={{ marginBottom: "1rem" }}
+        />
         <p className={styles.subtitle}>Teams are shared calendars.</p>
 
         <div className={styles.createRow}>

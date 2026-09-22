@@ -11,7 +11,7 @@ import { AppMode, MeroProvider } from '@calimero-network/mero-react';
 import { LoginGate } from './lib/loginGate';
 import { MeroBridge } from './lib/MeroBridge';
 import { PACKAGE_NAME, REGISTRY_URL } from './constants/config';
-import { startInvitationCapture } from './lib/invitationIntents';
+import { primeInvitationCapture as startInvitationCapture } from "@calimero-apps/invite";
 import { bootstrapDesktopSession, hashNodeUrl } from './auth/desktopBootstrap';
 
 // Disable StrictMode in production to avoid double-rendering
@@ -44,7 +44,7 @@ const trustedNodeUrl = hashNodeUrl();
 // frontend — puts the intent in the platform's durable store first, so it is
 // still there when they come back logged in. `App.tsx` subscribes and shows the
 // prompt; see `lib/invitationIntents.ts`.
-startInvitationCapture();
+startInvitationCapture("mero-sign");
 
 createRoot(document.getElementById('root')!).render(
   <AppWrapper>

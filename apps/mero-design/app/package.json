@@ -20,6 +20,8 @@
     "tasks": "node scripts/task-status.mjs"
   },
   "dependencies": {
+    "@calimero-apps/invite": "workspace:*",
+    "@calimero-apps/join-sync": "workspace:*",
     "@calimero-network/mero-icons": "catalog:",
     "@calimero-network/mero-js": "catalog:",
     "@calimero-network/mero-platform": "catalog:",

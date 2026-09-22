@@ -6,7 +6,7 @@ import { decodeInvite, type ForumInvitePayload } from "../lib/inviteCodec";
 import {
   onInvitation,
   type CapturedInvitation,
-} from "../lib/invitationIntents";
+} from "@calimero-apps/invite";
 import { setActiveForum, setForumName } from "../lib/session";
 import styles from "./InvitationPrompt.module.css";
 
@@ -49,7 +49,7 @@ export default function InvitationPrompt() {
   useEffect(
     () =>
       onInvitation((captured) => {
-        const payload = decodeInvite(captured.code);
+        const payload = decodeInvite(captured.token);
         if (!payload) {
           setError("That invitation could not be read. Ask for a new link.");
           // Acked anyway: a payload that will not decode now will not decode
