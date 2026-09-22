@@ -46,8 +46,8 @@ export interface StageInput {
   regLoading: boolean;
   /**
    * A clean folder load has completed for the ACTIVE namespace at least once.
-   * This is the whole flicker fix: it turns every subsequent `regLoading` /
-   * `subLoading` pulse into a background refresh rather than a teardown.
+   * This is the whole flicker fix: it turns every subsequent `*Loading`
+   * pulse into a background refresh rather than a teardown.
    */
   hasLoadedFoldersForNs: boolean;
   /** Folders exist but none has been resolved by the access fan-out yet. */
@@ -59,23 +59,25 @@ export function deriveDriveStage(i: StageInput): DriveLoadingStage {
   if (i.authLoading) return 'awaiting-auth';
   if (i.appIdResolving) return 'awaiting-auth';
   if (!i.isAuthenticated || !i.hasApplicationId) return 'awaiting-auth';
-  if (i.nsLoading) return 'resolving-namespaces';
+  // Every `*Loading` flag pulses on refetch, so each may only gate the first
+  // load; a missing value (context, identity) still gates at any time.
+  const firstLoad = !i.hasLoadedFoldersForNs;
+  if (i.nsLoading && firstLoad) return 'resolving-namespaces';
   if (!i.hasSelectedNamespace) return 'idle';
   // ⚠️ No `contextsLoading` here. It pulses on every refetch, and the registry
   // id is held sticky across an in-flight read precisely so this branch does
   // not fire for a workspace we have already resolved.
   if (
     !i.hasRegistryContext ||
-    i.membersLoading ||
-    i.identityLoading ||
-    !i.hasSelfIdentity
+    !i.hasSelfIdentity ||
+    (firstLoad && (i.membersLoading || i.identityLoading))
   ) {
     return i.isJustJoined ? 'syncing-from-peers' : 'resolving-registry-context';
   }
-  if (i.subLoading && !i.hasLoadedFoldersForNs) return 'loading-subgroups';
-  if (i.regLoading && !i.hasLoadedFoldersForNs) return 'loading-folders';
+  if (i.subLoading && firstLoad) return 'loading-subgroups';
+  if (i.regLoading && firstLoad) return 'loading-folders';
   if (i.awaitingFirstFolderResolve) return 'loading-folders';
-  if (i.isJustJoined && !i.hasLoadedFoldersForNs) return 'syncing-from-peers';
+  if (i.isJustJoined && firstLoad) return 'syncing-from-peers';
   return 'ready';
 }
 

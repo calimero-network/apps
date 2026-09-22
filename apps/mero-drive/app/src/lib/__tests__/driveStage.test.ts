@@ -52,11 +52,23 @@ describe('a background refresh keeps the content on screen', () => {
     ).toBe('ready');
   });
 
+  // `refetch()` also re-reads the namespace list and its members, so these
+  // pulse on every folder mutation and SSE ding too.
+  it('stays ready while the namespaces or their members refetch', () => {
+    expect(deriveDriveStage({ ...ready, nsLoading: true })).toBe('ready');
+    expect(deriveDriveStage({ ...ready, membersLoading: true })).toBe('ready');
+    expect(deriveDriveStage({ ...ready, identityLoading: true })).toBe('ready');
+  });
+
   it('never hides content during a background refresh', () => {
     for (const patch of [
       { regLoading: true },
       { subLoading: true },
       { regLoading: true, subLoading: true },
+      { nsLoading: true },
+      { membersLoading: true },
+      { identityLoading: true },
+      { nsLoading: true, membersLoading: true, regLoading: true },
     ]) {
       expect(stageHidesContent(deriveDriveStage({ ...ready, ...patch }))).toBe(
         false,
@@ -130,8 +142,10 @@ describe('the earlier stages are unchanged', () => {
     );
   });
 
+  const firstLoad: StageInput = { ...ready, hasLoadedFoldersForNs: false };
+
   it('resolves namespaces before picking one', () => {
-    expect(deriveDriveStage({ ...ready, nsLoading: true })).toBe(
+    expect(deriveDriveStage({ ...firstLoad, nsLoading: true })).toBe(
       'resolving-namespaces',
     );
   });
@@ -146,10 +160,10 @@ describe('the earlier stages are unchanged', () => {
     expect(deriveDriveStage({ ...ready, hasSelfIdentity: false })).toBe(
       'resolving-registry-context',
     );
-    expect(deriveDriveStage({ ...ready, identityLoading: true })).toBe(
+    expect(deriveDriveStage({ ...firstLoad, identityLoading: true })).toBe(
       'resolving-registry-context',
     );
-    expect(deriveDriveStage({ ...ready, membersLoading: true })).toBe(
+    expect(deriveDriveStage({ ...firstLoad, membersLoading: true })).toBe(
       'resolving-registry-context',
     );
   });

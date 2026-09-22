@@ -8,8 +8,7 @@ test.describe('Settings + sharing (single-node)', () => {
     await alice.createNamespace(`Settings WS ${Date.now()}`);
   });
 
-  // The folder actions menu re-renders and detaches the Info item mid-click; the Info dialog never opens.
-  test.fixme('FolderSharingPanel renders member list for Restricted folder', async ({
+  test('FolderSharingPanel renders member list for Restricted folder', async ({
     alice,
   }) => {
     // Sharing controls now live inside the Info modal (⋯ → Info).
@@ -27,8 +26,7 @@ test.describe('Settings + sharing (single-node)', () => {
     await alice.closeFolderInfo();
   });
 
-  // The folder actions menu re-renders and detaches the Info item mid-click; the Info dialog never opens.
-  test.fixme('Visibility toggle available in Info panel', async ({ alice }) => {
+  test('Visibility toggle available in Info panel', async ({ alice }) => {
     // The visibility toggle is now a button inside the Info modal,
     // not a dropdown menuitem.
     await alice.createFolder({ name: 'Toggleable', visibility: 'Open' });
@@ -41,8 +39,7 @@ test.describe('Settings + sharing (single-node)', () => {
     await alice.closeFolderInfo();
   });
 
-  // The folder actions menu re-renders and detaches the Info item mid-click; the Info dialog never opens.
-  test.fixme('Visibility toggle shows exactly one option per state', async ({
+  test('Visibility toggle shows exactly one option per state', async ({
     alice,
   }) => {
     await alice.createFolder({ name: 'Settled', visibility: 'Open' });

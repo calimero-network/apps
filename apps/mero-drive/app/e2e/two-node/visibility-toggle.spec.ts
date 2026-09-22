@@ -59,8 +59,7 @@ test.describe('Visibility toggle (two-node)', () => {
     await bob.docs.expectDocVisible('Future Public');
   });
 
-  // The folder actions menu re-renders and detaches the Info item mid-click; the Info dialog never opens.
-  test.fixme('set_subgroup_visibility wire payload is lowercase', async ({
+  test('set_subgroup_visibility wire payload is lowercase', async ({
     alice,
   }) => {
     // Wire-shape regression guard — single-node, intercepts the
