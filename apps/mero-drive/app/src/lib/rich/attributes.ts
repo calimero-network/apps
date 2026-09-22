@@ -29,12 +29,15 @@ const BOOLEAN_KEYS = new Set(['bold', 'italic', 'underline', 'strike', 'code']);
 
 const KNOWN = new Set<string>(MARK_KEYS);
 
-/** Sorted keys with empty values dropped, so equal sets serialize identically. */
+/** Sorted, non-empty and string-valued: the node renders `bold` back as JSON
+ * `true`, so coercing keeps two equal sets byte-identical. */
 export function canonicalAttrs(attrs: MarkAttrs): MarkAttrs {
   const out: MarkAttrs = {};
   for (const key of Object.keys(attrs).sort()) {
-    const value = attrs[key];
-    if (KNOWN.has(key) && value) out[key] = value;
+    const value: unknown = attrs[key];
+    if (!KNOWN.has(key) || value === null || value === undefined) continue;
+    if (value === false || value === '') continue;
+    out[key] = String(value);
   }
   return out;
 }

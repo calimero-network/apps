@@ -2,7 +2,7 @@
 // that answered and refused it (today's stale-and-reread behavior). Checked
 // against mero-js's real error shapes, never a message string.
 
-import { HTTPError, RpcError } from '@calimero-network/mero-react';
+import { HTTPError, RpcError } from '@calimero-network/mero-js';
 
 // HTTPError(0, 'Network Error', ...) is what web-client.js's catch-all wraps
 // every raw fetch failure into: a thrown TypeError, an AbortError timeout, a

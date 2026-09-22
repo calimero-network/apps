@@ -136,3 +136,10 @@ describe('attrDelta', () => {
     });
   });
 });
+
+describe('canonicalAttrs coercion', () => {
+  it('reads a mark value the node rendered as JSON as the string it was written as', () => {
+    const fromNode = { bold: true, textColor: 'red' } as unknown as Record<string, string>;
+    expect(canonicalAttrs(fromNode)).toEqual({ bold: 'true', textColor: 'red' });
+  });
+});

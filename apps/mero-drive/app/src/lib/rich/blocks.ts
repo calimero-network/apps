@@ -28,7 +28,7 @@ export type BlockCall =
   | { call: 'set_kind'; block: string; kind: string }
   | { call: 'set_depth'; block: string; depth: number }
   | { call: 'set_attr'; block: string; key: string; value: string | null }
-  | { call: 'apply_delta'; block: string; ops: Change[] };
+  | { call: 'apply_delta'; block: string; base: string; ops: Change[] };
 
 const PLACEHOLDER_PREFIX = 'new:';
 
@@ -190,7 +190,12 @@ export function diffBlocks(
     }
     const ops = diffSpans(current.inline, nb.inline);
     if (ops.length > 0) {
-      calls.push({ call: 'apply_delta', block: current.ref, ops });
+      calls.push({
+        call: 'apply_delta',
+        block: current.ref,
+        base: textOf(current.inline),
+        ops,
+      });
     }
   }
   return calls;

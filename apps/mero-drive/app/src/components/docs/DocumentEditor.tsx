@@ -10,7 +10,7 @@ import type { DocDto } from '@/generated/docs/DocsClient';
 import { useDocs } from '@/hooks/useDocs';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useFolderPermissions } from '@/hooks/useFolderPermissions';
-import { useFugueBody } from '@/hooks/useFugueBody';
+import { useFugueBody, type BodyEditor } from '@/hooks/useFugueBody';
 import { useFugueTitle } from '@/hooks/useFugueTitle';
 import { useBodyCursors, type CursorEditor } from '@/hooks/useBodyCursors';
 import { useDocPresence } from '@/hooks/useDocPresence';
@@ -67,12 +67,13 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
     contextId: docsContextId,
     publish,
   });
+  const [editor, setEditor] = useState<DriveEditor | null>(null);
   const body = useFugueBody({
     client,
     docId: openDocId,
     contextId: docsContextId,
+    editor: editor as unknown as BodyEditor | null,
   });
-  const [editor, setEditor] = useState<DriveEditor | null>(null);
   const onEditorReady = useCallback(
     (ready: DriveEditor) => setEditor(ready),
     [],
@@ -84,7 +85,7 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
     editor: editor as CursorEditor | null,
     peers,
     publish,
-    revision: body.content,
+    revision: body.revision,
   });
 
   useEffect(() => {

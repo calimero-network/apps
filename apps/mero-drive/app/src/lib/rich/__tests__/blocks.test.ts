@@ -110,6 +110,7 @@ describe('diffBlocks', () => {
       {
         call: 'apply_delta',
         block: 'a',
+        base: 'hello',
         ops: [{ retain: 5 }, { insert: '!', attributes: {} }],
       },
     ]);
@@ -129,6 +130,7 @@ describe('diffBlocks', () => {
       {
         call: 'apply_delta',
         block: 'new:c',
+        base: '',
         ops: [{ insert: 'world', attributes: {} }],
       },
     ]);
@@ -146,6 +148,7 @@ describe('diffBlocks', () => {
       {
         call: 'apply_delta',
         block: 'new:a',
+        base: '',
         ops: [{ insert: 'hi', attributes: {} }],
       },
     ]);
@@ -183,6 +186,7 @@ describe('diffBlocks', () => {
       {
         call: 'apply_delta',
         block: 'new:b',
+        base: 'world',
         ops: [{ retain: 5, attributes: { bold: 'true' } }],
       },
     ]);
