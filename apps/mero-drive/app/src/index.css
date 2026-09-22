@@ -313,7 +313,9 @@ html .bn-container[data-color-scheme='dark'] {
   pointer-events: none;
 }
 
-.cal-presence-label {
+.cal-presence-cursor::after {
+  content: attr(data-name);
+  background-color: var(--presence-colour);
   position: absolute;
   top: -1.15em;
   left: -1px;

@@ -28,7 +28,8 @@ describe('presence carets', () => {
     const { view, start } = viewOf('The fox.');
     setPresenceDecorations(view, bobAt(start + 1));
     const first = caretNode(view);
-    expect(first?.textContent).toBe('Bob');
+    expect(first?.dataset.name).toBe('Bob');
+    expect(first?.textContent).toBe('');
 
     setPresenceDecorations(view, bobAt(start + 1));
     expect(caretNode(view)).toBe(first);
@@ -36,6 +37,6 @@ describe('presence carets', () => {
     setPresenceDecorations(view, bobAt(start + 4));
     const moved = caretNode(view);
     expect(moved).not.toBe(first);
-    expect(moved?.textContent).toBe('Bob');
+    expect(moved?.dataset.name).toBe('Bob');
   });
 });
