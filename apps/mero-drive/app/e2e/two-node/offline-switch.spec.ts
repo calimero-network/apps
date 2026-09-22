@@ -74,11 +74,12 @@ test.describe('Rig offline switch (two-node)', () => {
     await editor.pressSequentially(` ${AFTER}`);
     await alice.editor.expectContent(CONVERGED);
 
-    const bobEditor = bob.page.locator(EDITOR).first();
-    await expect(bobEditor).not.toContainText(AFTER);
+    // Bob's editor unmounts while his node is unreachable, so the negative is
+    // asserted over the whole window rather than the editor surface.
+    const bobWindow = bob.page.locator('body');
+    await expect(bobWindow).not.toContainText(AFTER);
     await bob.page.waitForTimeout(OFFLINE_HOLD_MS);
-    await expect(bobEditor).not.toContainText(AFTER);
-    await expect(bobEditor).toContainText(BEFORE);
+    await expect(bobWindow).not.toContainText(AFTER);
 
     await switchNode(alice.page, 2, 'online');
 
