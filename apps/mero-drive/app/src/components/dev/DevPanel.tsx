@@ -63,7 +63,7 @@ export default function DevPanel() {
             <span
               className={node.index === selected ? 'text-foreground' : 'text-muted-foreground'}
             >
-              node {node.index} {node.online ? 'online' : 'offline'}
+              node {node.index} {node.state ?? (node.online ? 'online' : 'stopped')}
             </span>
             <Button
               variant="outline"
@@ -72,7 +72,7 @@ export default function DevPanel() {
               data-testid={`dev-node-${node.index}-toggle`}
               onClick={() => void toggle(node)}
             >
-              {node.online ? 'Take offline' : 'Bring online'}
+              {node.online ? 'Cut peers' : 'Rejoin peers'}
             </Button>
           </li>
         ))}

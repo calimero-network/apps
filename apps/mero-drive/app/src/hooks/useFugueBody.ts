@@ -21,12 +21,16 @@ import {
   type BlockNoteBlock,
 } from '@/lib/rich/blocknote';
 import { parseRichEvents } from '@/lib/rich/events';
+import { isTransportFailure } from '@/lib/rich/transport';
 import { UndoHistory } from '@/lib/rich/undo';
 import type { SaveStatus } from '@/components/editor/types';
 import { isContextEvent } from './useContextEvents';
 
 const FLUSH_DEBOUNCE_MS = 300; // one diff per typing pause, not per keystroke
 const REFRESH_DEBOUNCE_MS = 150; // coalesces a typing peer's event burst
+const INITIAL_RETRY_DELAY_MS = 1000; // backoff for a write the node never answered
+const MAX_RETRY_DELAY_MS = 10_000;
+const RECONCILE_MS = 4000; // an event lost while the node restarted still lands
 
 export interface UseFugueBodyOptions {
   client: DocsClient | null;
@@ -82,6 +86,11 @@ export function useFugueBody({
   const loadedRef = useRef(false);
   const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const retryDelayRef = useRef(INITIAL_RETRY_DELAY_MS);
+  // Breaks the flush→scheduleRetry→drain cycle without reordering the
+  // useCallback declarations below.
+  const drainRef = useRef<(() => Promise<void>) | null>(null);
 
   const contextIds = useMemo(() => (contextId ? [contextId] : []), [contextId]);
 
@@ -188,32 +197,57 @@ export function useFugueBody({
     [],
   );
 
-  const flush = useCallback(async () => {
+  const scheduleRetry = useCallback(() => {
+    if (retryTimerRef.current) return; // already scheduled
+    const delay = retryDelayRef.current;
+    retryDelayRef.current = Math.min(delay * 2, MAX_RETRY_DELAY_MS);
+    retryTimerRef.current = setTimeout(() => {
+      retryTimerRef.current = null;
+      void drainRef.current?.();
+    }, delay);
+  }, []);
+
+  // Returns false when the drain loop should stop rather than keep spinning:
+  // a transport failure defers the next attempt to `scheduleRetry` instead.
+  const flush = useCallback(async (): Promise<boolean> => {
     const document = pendingRef.current;
     pendingRef.current = null;
-    if (!document || !client || !docId) return;
+    if (!document || !client || !docId) return true;
     const next = fromBlockNote(document);
     const calls = diffBlocks(
       withBackendIds(appliedRef.current),
       withBackendIds(next),
     );
-    appliedRef.current = next;
     if (calls.length === 0) {
+      appliedRef.current = next;
       setStatus('saved');
-      return;
+      return true;
     }
     setStatus('saving');
     try {
       await runCalls(client, docId, calls);
+      appliedRef.current = next;
       setError(null);
       setStatus('saved');
+      retryDelayRef.current = INITIAL_RETRY_DELAY_MS;
+      return true;
     } catch (cause) {
+      if (isTransportFailure(cause)) {
+        // The node never saw `calls`, so keep diffing from the old
+        // `appliedRef` on retry instead of advancing past a failed write.
+        pendingRef.current ??= document;
+        setStatus('offline');
+        scheduleRetry();
+        return false;
+      }
+      appliedRef.current = next;
       setError(asError(cause));
       setStatus('error');
       // The local model no longer matches the backend, so take its word for it.
       staleRef.current = true;
+      return true;
     }
-  }, [client, docId, runCalls, withBackendIds]);
+  }, [client, docId, runCalls, scheduleRetry, withBackendIds]);
 
   const refresh = useCallback(async () => {
     if (!client || !docId) return;
@@ -251,8 +285,9 @@ export function useFugueBody({
     inFlightRef.current = true;
     try {
       while (pendingRef.current || staleRef.current) {
-        if (pendingRef.current) await flush();
-        else {
+        if (pendingRef.current) {
+          if (!(await flush())) break;
+        } else {
           staleRef.current = false;
           await refresh();
         }
@@ -261,6 +296,7 @@ export function useFugueBody({
       inFlightRef.current = false;
     }
   }, [flush, refresh]);
+  drainRef.current = drain;
 
   useEffect(() => {
     historyRef.current.reset(docId);
@@ -268,16 +304,34 @@ export function useFugueBody({
     appliedRef.current = [];
     pendingRef.current = null;
     loadedRef.current = false;
+    if (retryTimerRef.current) {
+      clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = null;
+    }
+    retryDelayRef.current = INITIAL_RETRY_DELAY_MS;
     setContent(undefined);
     setLoading(true);
     if (!client || !docId) return;
     void refresh();
   }, [client, docId, refresh]);
 
+  // A node restart drops the event stream, so an edit made while it was away
+  // arrives on no event; an idle re-read is what closes that window.
+  useEffect(() => {
+    if (!client || !docId) return;
+    const timer = setInterval(() => {
+      if (pendingRef.current || inFlightRef.current) return;
+      staleRef.current = true;
+      void drainRef.current?.();
+    }, RECONCILE_MS);
+    return () => clearInterval(timer);
+  }, [client, docId]);
+
   useEffect(
     () => () => {
       if (flushTimerRef.current) clearTimeout(flushTimerRef.current);
       if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
+      if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
     },
     [],
   );

@@ -10,13 +10,18 @@ import {
 import { diffText } from '@/lib/rich/delta';
 import { parseRichEvents } from '@/lib/rich/events';
 import { scalarToUtf16, utf16ToScalar } from '@/lib/rich/offsets';
+import { isTransportFailure } from '@/lib/rich/transport';
 import { UndoHistory } from '@/lib/rich/undo';
 import type { CaretSlice } from './useDocPresence';
 import type { ChangePayload, DocsClient } from '@/generated/docs/DocsClient';
+import type { SaveStatus } from '@/components/editor/types';
 import { isContextEvent } from './useContextEvents';
 
 const CARET_DEBOUNCE_MS = 200; // one anchor mint per pause, not per keystroke
 const REFRESH_DEBOUNCE_MS = 150; // coalesces a typing peer's event burst
+const INITIAL_RETRY_DELAY_MS = 1000; // backoff for a write the node never answered
+const MAX_RETRY_DELAY_MS = 10_000;
+const RECONCILE_MS = 4000; // an event lost while the node restarted still lands
 
 export interface UseFugueTitleOptions {
   client: DocsClient | null;
@@ -34,6 +39,7 @@ export interface UseFugueTitleResult {
   undo: () => void;
   redo: () => void;
   error: Error | null;
+  status: SaveStatus;
 }
 
 const asError = (cause: unknown): Error =>
@@ -47,15 +53,26 @@ export function useFugueTitle({
 }: UseFugueTitleOptions): UseFugueTitleResult {
   const [title, showTitle] = useState('');
   const [error, setError] = useState<Error | null>(null);
+  const [status, setStatus] = useState<SaveStatus>('saved');
   const inputRef = useRef<HTMLInputElement | null>(null);
   // What the backend is believed to hold, so a re-read can tell our own write
-  // from a peer's without a round trip per keystroke.
+  // from a peer's without a round trip per keystroke. Advanced the instant a
+  // keystroke lands, so the next keystroke's diff is against the latest text.
   const localRef = useRef('');
+  // What the backend has actually confirmed applying. Only this — not
+  // `localRef` — decides the base of a retried delta, so a failed write's
+  // characters are still in the diff on the next attempt.
+  const confirmedRef = useRef('');
+  const sendingRef = useRef(false);
   const anchorRef = useRef<string | null>(null);
   const caretRef = useRef<number | null>(null);
   const historyRef = useRef(new UndoHistory(docId));
   const caretTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const retryDelayRef = useRef(INITIAL_RETRY_DELAY_MS);
+  // Breaks the sync→scheduleRetry→sync cycle without reordering declarations.
+  const syncRef = useRef<(() => Promise<void>) | null>(null);
 
   const contextIds = useMemo(() => (contextId ? [contextId] : []), [contextId]);
   const publishRef = useRef(publish);
@@ -65,6 +82,13 @@ export function useFugueTitle({
     historyRef.current.reset(docId);
     anchorRef.current = null;
     localRef.current = '';
+    confirmedRef.current = '';
+    if (retryTimerRef.current) {
+      clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = null;
+    }
+    retryDelayRef.current = INITIAL_RETRY_DELAY_MS;
+    setStatus('saved');
     showTitle('');
     if (!client || !docId) return;
     let live = true;
@@ -73,6 +97,7 @@ export function useFugueTitle({
       .then((text) => {
         if (!live) return;
         localRef.current = text;
+        confirmedRef.current = text;
         showTitle(text);
       })
       .catch((cause) => live && setError(asError(cause)));
@@ -85,6 +110,7 @@ export function useFugueTitle({
     () => () => {
       if (caretTimerRef.current) clearTimeout(caretTimerRef.current);
       if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
+      if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
     },
     [],
   );
@@ -124,6 +150,7 @@ export function useFugueTitle({
           resolved[0] == null ? null : scalarToUtf16(text, resolved[0]);
       }
       localRef.current = text;
+      confirmedRef.current = text;
       showTitle(text);
     } catch (cause) {
       setError(asError(cause));
@@ -147,6 +174,17 @@ export function useFugueTitle({
   );
   useSubscription(contextIds, handleEvent);
 
+  // A node restart drops the event stream, so a peer's title edit arrives on
+  // no event; an idle re-read is what closes that window.
+  useEffect(() => {
+    if (!client || !docId) return;
+    const timer = setInterval(() => {
+      if (localRef.current !== confirmedRef.current) return;
+      void refresh();
+    }, RECONCILE_MS);
+    return () => clearInterval(timer);
+  }, [client, docId, refresh]);
+
   // A re-read replaces the whole value, so the caret the anchor resolved to
   // has to be put back once React has rendered it.
   useEffect(() => {
@@ -157,20 +195,68 @@ export function useFugueTitle({
     input.setSelectionRange(caret, caret);
   }, [title]);
 
-  const write = useCallback(
-    (next: string) => {
-      const ops = diffText(localRef.current, next);
-      showTitle(next);
-      if (ops.length === 0 || !client || !docId) return;
-      localRef.current = next;
-      client
+  const scheduleRetry = useCallback(() => {
+    if (retryTimerRef.current) return; // already scheduled
+    const delay = retryDelayRef.current;
+    retryDelayRef.current = Math.min(delay * 2, MAX_RETRY_DELAY_MS);
+    retryTimerRef.current = setTimeout(() => {
+      retryTimerRef.current = null;
+      void syncRef.current?.();
+    }, delay);
+  }, []);
+
+  // Diffs `confirmedRef` (backend truth) against `localRef` (the latest
+  // typed text) and sends the result; a typing burst during an in-flight
+  // or retried send is folded into the next diff, not sent as its own call.
+  const sync = useCallback(async (): Promise<void> => {
+    if (sendingRef.current || !client || !docId) return;
+    const ops = diffText(confirmedRef.current, localRef.current);
+    if (ops.length === 0) {
+      setStatus('saved');
+      return;
+    }
+    sendingRef.current = true;
+    setStatus('saving');
+    const target = localRef.current;
+    let transportFailure = false;
+    try {
+      const token = await client
         // The generated ChangePayload is a tagged union; the contract takes
         // serde's untagged form, which is what `ops` already is.
-        .titleApplyDelta({ doc: docId, ops: ops as unknown as ChangePayload[] })
-        .then((token) => historyRef.current.record(token))
-        .catch((cause) => setError(asError(cause)));
+        .titleApplyDelta({ doc: docId, ops: ops as unknown as ChangePayload[] });
+      confirmedRef.current = target;
+      historyRef.current.record(token);
+      setError(null);
+      retryDelayRef.current = INITIAL_RETRY_DELAY_MS;
+    } catch (cause) {
+      if (isTransportFailure(cause)) {
+        transportFailure = true;
+        setStatus('offline');
+        scheduleRetry();
+      } else {
+        // The node answered and refused the delta; give up on it, matching
+        // the prior no-retry behavior, and leave only the error visible.
+        confirmedRef.current = target;
+        setError(asError(cause));
+        setStatus('error');
+      }
+    } finally {
+      sendingRef.current = false;
+    }
+    if (!transportFailure) {
+      if (localRef.current !== confirmedRef.current) void sync();
+      else setStatus('saved');
+    }
+  }, [client, docId, scheduleRetry]);
+  syncRef.current = sync;
+
+  const write = useCallback(
+    (next: string) => {
+      showTitle(next);
+      localRef.current = next;
+      void sync();
     },
-    [client, docId],
+    [sync],
   );
 
   const onChange = useCallback(
@@ -204,6 +290,7 @@ export function useFugueTitle({
     onSelect: publishCaret,
     undo,
     redo,
+    status,
     error,
   };
 }
