@@ -29,12 +29,9 @@ vi.mock('@calimero-network/mero-react', () => ({
 }));
 vi.mock('../useDriveWorkspace', () => ({
   useDriveWorkspace: () => ({
-    namespaceId: 'ns',
     registryClient: { getFolderContext },
+    selfIdentity: 'me',
   }),
-}));
-vi.mock('../useSelfIdentity', () => ({
-  useSelfIdentity: () => ({ identity: 'me', loading: false, error: null }),
 }));
 // A client only once a context id has resolved — mirrors the real
 // useDocsClient so `refetch` doesn't fire before the context is known.

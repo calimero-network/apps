@@ -26,6 +26,7 @@ import { DriveFormattingToolbar } from '../blocknote/FormattingToolbar';
 import { blocksToPlainText, countWords, countCharacters } from '../blocknote/content';
 import type { SaveStatus } from '../types';
 import type { CalimeroYjsProvider } from './CalimeroYjsProvider';
+import { BLOCKNOTE_FRAGMENT } from './blocknote-seed';
 
 export interface CollabEditorShellProps {
   documentName: string;
@@ -58,7 +59,10 @@ export const CollabEditorShell: React.FC<CollabEditorShellProps> = ({
 
   // The fragment is the doc's single shared BlockNote tree. Memoised on the
   // ydoc identity so the editor isn't recreated on unrelated re-renders.
-  const fragment = useMemo(() => ydoc.getXmlFragment('blocknote'), [ydoc]);
+  const fragment = useMemo(
+    () => ydoc.getXmlFragment(BLOCKNOTE_FRAGMENT),
+    [ydoc],
+  );
 
   const editor = useCreateBlockNote({
     schema,
