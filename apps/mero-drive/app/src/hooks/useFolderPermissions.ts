@@ -164,8 +164,10 @@ export function useFolderPermissions(
   //   - a folder member, NO registry ctx → fall back to membership
   //     (there's no Role to wait on; `registryAvailable` is false and
   //     `role` would be `null` forever).
+  // A refetch keeps the last resolved role, so gate on that role rather than
+  // on a fetch being in flight: registry sync refetches it constantly.
   const roleAllowsEdit = registryAvailable
-    ? !roleLoading && roleError === null && role !== null && role !== 'Viewer'
+    ? roleError === null && role !== null && role !== 'Viewer'
     : true;
   const canEditDocs = isAdmin || (isMember && roleAllowsEdit);
 

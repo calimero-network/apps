@@ -233,6 +233,17 @@ describe('useFolderPermissions', () => {
     expect(result.current.canEditDocs).toBe(false);
   });
 
+  it('a refetch of an already-resolved Editor role keeps canEditDocs true', async () => {
+    // Registry events refetch the role on every sync; flipping read-only for
+    // each one drops the caret and the keystrokes typed meanwhile.
+    folderRoleState.role = 'Editor';
+    folderRoleState.loading = true;
+    folderRoleState.registryAvailable = true;
+    const { result } = renderWithCaps(C.CAN_JOIN_OPEN_SUBGROUPS);
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.canEditDocs).toBe(true);
+  });
+
   it('role-fetch error (registry exists) → canEditDocs false for a member', async () => {
     folderRoleState.role = null;
     folderRoleState.loading = false;
