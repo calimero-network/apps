@@ -53,6 +53,7 @@ crate = "mero-drive-registry"
 
 [dependencies]
 mero-drive-types        = { path = "crates/types" }
+bs58                    = { workspace = true }
 calimero-sdk            = { workspace = true }
 calimero-storage        = { workspace = true }
 calimero-storage-macros = { workspace = true }

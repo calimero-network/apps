@@ -164,7 +164,6 @@ steps:
     executor_public_key: '{{alice_docs_key}}'
     args:
       title: Q3 plan
-      content: 'Open-subgroup inheritance smoke test — Alice wrote this.'
     outputs:
       doc_id: result.output
 
@@ -331,7 +330,6 @@ steps:
     args:
       id: '{{doc_id}}'
       title: 'Q3 plan (edited by Bob)'
-      content: "Bob's edit — proves Open-subgroup inheritance grants WRITE, not just READ."
 
   - name: Sync Bob's edit back to Alice
     type: wait_for_sync
@@ -408,7 +406,6 @@ steps:
     executor_public_key: '{{alice_private_key}}'
     args:
       title: Confidential
-      content: Restricted folder — Bob should not see this until invited.
     outputs:
       private_doc_id: result.output
 

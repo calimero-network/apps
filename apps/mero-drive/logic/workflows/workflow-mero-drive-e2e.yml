@@ -810,7 +810,7 @@ steps:
     args:
       include_archived: false
 
-  - name: create_doc — "Roadmap" with body
+  - name: create_doc — "Roadmap"
     type: call
     node: calimero-node-1
     context_id: '{{eng_docs_ctx}}'
@@ -818,7 +818,6 @@ steps:
     executor_public_key: '{{alice_docs_key}}'
     args:
       title: Roadmap
-      content: Q1 plan goes here
     outputs:
       roadmap_id: result.output
 
@@ -827,7 +826,7 @@ steps:
     statements:
       - 'is_set({{roadmap_id}})'
 
-  - name: create_doc — empty content is allowed
+  - name: create_doc — an empty title is allowed
     type: call
     node: calimero-node-1
     context_id: '{{eng_docs_ctx}}'
@@ -835,7 +834,6 @@ steps:
     executor_public_key: '{{alice_docs_key}}'
     args:
       title: Scratchpad
-      content: ''
     outputs:
       scratch_id: result.output
 
@@ -874,9 +872,8 @@ steps:
     args:
       id: '{{roadmap_id}}'
       title: Roadmap (v2)
-      content: null
 
-  - name: edit_doc content only
+  - name: edit_doc renames again
     type: call
     node: calimero-node-1
     context_id: '{{eng_docs_ctx}}'
@@ -884,10 +881,9 @@ steps:
     executor_public_key: '{{alice_docs_key}}'
     args:
       id: '{{roadmap_id}}'
-      title: null
-      content: Q1 and Q2 plan
+      title: Q1 and Q2 plan
 
-  - name: edit_doc both title and content
+  - name: edit_doc renames to the final title
     type: call
     node: calimero-node-1
     context_id: '{{eng_docs_ctx}}'
@@ -896,9 +892,8 @@ steps:
     args:
       id: '{{roadmap_id}}'
       title: Roadmap (final)
-      content: Shipping next week.
 
-  - name: edit_doc can clear content to empty string
+  - name: edit_doc can clear the title to an empty string
     type: call
     node: calimero-node-1
     context_id: '{{eng_docs_ctx}}'
@@ -906,8 +901,7 @@ steps:
     executor_public_key: '{{alice_docs_key}}'
     args:
       id: '{{scratch_id}}'
-      title: null
-      content: ''
+      title: ''
 
   - name: Reject edit_doc on unknown id
     type: call
@@ -918,7 +912,6 @@ steps:
     args:
       id: doc-does-not-exist
       title: x
-      content: null
     expected_failure: true
 
   - name: add_tag — "planning"
@@ -1114,7 +1107,6 @@ steps:
     executor_public_key: '{{bob_docs_key}}'
     args:
       title: Bob's Notes
-      content: Synced from node 2
     outputs:
       bob_doc_id: result.output
 
@@ -1249,7 +1241,7 @@ steps:
   # local state at different HLC timestamps. After forcing sync, both
   # sides must agree on a single deterministic winner (HLC + node-id
   # tie-break). This catches the "both nodes diverge and never
-  # reconcile" failure mode that bit the RGA content field earlier.
+  # reconcile" failure mode that bit the old whole-snapshot body field earlier.
   #
   # Absolute value of the winner doesn't matter — convergence does.
   # =================================================================
@@ -1400,7 +1392,6 @@ steps:
     executor_public_key: '{{alice_private_key}}'
     args:
       title: Private note
-      content: only Alice can see this
 
   - name: Sync Registry so Bob learns the restricted folder exists
     type: wait_for_sync

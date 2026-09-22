@@ -235,7 +235,6 @@ steps:
     executor_public_key: '{{alice_docs_key}}'
     args:
       title: Shared plan
-      content: 'v0 by alice'
     outputs:
       doc_id: result.output
 
@@ -414,8 +413,7 @@ steps:
     executor_public_key: '{{bob_docs_key}}'
     args:
       id: '{{doc_id}}'
-      title: null
-      content: 'v1 by bob'
+      title: 'v1 by bob'
 
   - name: Round 1 — sync Bob's edit to Alice
     type: wait_for_sync
@@ -440,8 +438,7 @@ steps:
     executor_public_key: '{{bob_docs_key}}'
     args:
       id: '{{doc_id}}'
-      title: null
-      content: 'v2 by bob'
+      title: 'v2 by bob'
 
   - name: Round 2 — sync Bob's edit to Alice
     type: wait_for_sync
@@ -467,7 +464,6 @@ steps:
     args:
       id: '{{doc_id}}'
       title: 'Shared plan (rev 3)'
-      content: 'v3 by alice'
 
   - name: Round 3 — sync Alice's edit to Bob
     type: wait_for_sync
@@ -492,8 +488,7 @@ steps:
     executor_public_key: '{{alice_docs_key}}'
     args:
       id: '{{doc_id}}'
-      title: null
-      content: 'v4 by alice'
+      title: 'v4 by alice'
 
   - name: Round 4 — sync Alice's edit to Bob
     type: wait_for_sync
@@ -570,7 +565,6 @@ steps:
     executor_public_key: '{{bob_own_docs_key}}'
     args:
       title: "Bob's notes"
-      content: 'v0 by bob'
     outputs:
       bob_doc_id: result.output
 
@@ -626,8 +620,7 @@ steps:
     executor_public_key: '{{alice_on_bob_key}}'
     args:
       id: '{{bob_doc_id}}'
-      title: null
-      content: "v1 by alice on bob's folder"
+      title: "v1 by alice on bob's folder"
 
   - name: Sync Alice's edit back to Bob
     type: wait_for_sync
@@ -704,7 +697,6 @@ steps:
     executor_public_key: '{{alice_priv_key}}'
     args:
       title: Confidential
-      content: 's0 by alice'
     outputs:
       priv_doc_id: result.output
 
@@ -789,8 +781,7 @@ steps:
     executor_public_key: '{{bob_priv_key}}'
     args:
       id: '{{priv_doc_id}}'
-      title: null
-      content: 's1 by bob'
+      title: 's1 by bob'
 
   - name: Sync Bob's private edit to Alice
     type: wait_for_sync
@@ -815,8 +806,7 @@ steps:
     executor_public_key: '{{alice_priv_key}}'
     args:
       id: '{{priv_doc_id}}'
-      title: null
-      content: 's2 by alice'
+      title: 's2 by alice'
 
   - name: Sync Alice's private edit to Bob
     type: wait_for_sync

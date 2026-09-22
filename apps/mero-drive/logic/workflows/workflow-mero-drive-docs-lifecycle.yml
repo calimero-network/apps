@@ -9,7 +9,7 @@ description: >
   its own Docs context, invites Bob, Bob joins, and then every public
   DocsClient method is exercised with cross-node sync assertions:
 
-    create_doc / list_docs / get_doc / edit_doc (title, content, both)
+    create_doc / list_docs / get_doc / edit_doc
     archive_doc / unarchive_doc / delete_doc
     add_tag / remove_tag
 
@@ -17,7 +17,7 @@ description: >
   list_docs with / without include_archived.
 
   Matches the user flow in DocumentEditor + DocumentList: a folder
-  with multiple docs, open one, edit content, rename via title, archive
+  with multiple docs, open one, rename via title, archive
   out of view, delete with confirmation. Each DocsClient method the
   app can call is hit here with both happy and error paths.
 
@@ -193,7 +193,6 @@ steps:
     executor_public_key: '{{alice_key}}'
     args:
       title: 'Meeting notes'
-      content: '<p>Initial draft</p>'
     outputs:
       doc_a: result.output
 
@@ -205,7 +204,6 @@ steps:
     executor_public_key: '{{alice_key}}'
     args:
       title: 'Shopping list'
-      content: '<ul><li>Milk</li></ul>'
     outputs:
       doc_b: result.output
 
@@ -217,7 +215,6 @@ steps:
     executor_public_key: '{{alice_key}}'
     args:
       title: 'Old notes'
-      content: '<p>stale</p>'
     outputs:
       doc_c: result.output
 
@@ -283,10 +280,10 @@ steps:
     expected_failure: true
 
   # =================================================================
-  # Phase F: edit_doc — title-only, content-only, both-together
+  # Phase F: edit_doc renames
   # =================================================================
 
-  - name: Alice renames doc_a (title only, content null)
+  - name: Alice renames doc_a
     type: call
     node: calimero-node-1
     context_id: '{{docs_ctx}}'
@@ -295,9 +292,8 @@ steps:
     args:
       id: '{{doc_a}}'
       title: 'Meeting notes (renamed)'
-      content: null
 
-  - name: Alice edits doc_a content (title null, content set)
+  - name: Alice renames doc_a again
     type: call
     node: calimero-node-1
     context_id: '{{docs_ctx}}'
@@ -305,10 +301,9 @@ steps:
     executor_public_key: '{{alice_key}}'
     args:
       id: '{{doc_a}}'
-      title: null
-      content: '<p>Revised draft with more detail</p>'
+      title: Revised draft
 
-  - name: Alice edits doc_b title and content together
+  - name: Alice renames doc_b
     type: call
     node: calimero-node-1
     context_id: '{{docs_ctx}}'
@@ -317,7 +312,6 @@ steps:
     args:
       id: '{{doc_b}}'
       title: 'Groceries'
-      content: '<ul><li>Milk</li><li>Bread</li></ul>'
 
   - name: Sync edits across nodes
     type: wait_for_sync
@@ -343,7 +337,6 @@ steps:
     args:
       id: '00000000000000000000000000000000'
       title: 'Ghost'
-      content: null
     expected_failure: true
 
   # =================================================================
@@ -540,7 +533,7 @@ steps:
   # Phase J: Cross-node write — Bob edits, Alice sees
   # =================================================================
 
-  - name: Bob edits doc_a content
+  - name: Bob renames doc_a
     type: call
     node: calimero-node-2
     context_id: '{{docs_ctx}}'
@@ -548,8 +541,7 @@ steps:
     executor_public_key: '{{bob_key}}'
     args:
       id: '{{doc_a}}'
-      title: null
-      content: '<p>Bob was here</p>'
+      title: Bob was here
 
   - name: Sync Bob's edit back to Alice
     type: wait_for_sync
