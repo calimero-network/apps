@@ -12,8 +12,17 @@ if ('serviceWorker' in navigator) {
   });
 }
 
-ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
-  <StrictMode>
-    <App />
-  </StrictMode>,
-);
+async function main() {
+  // `?node=<n>` points a dev window at one rig node; see scripts/local-rig.sh.
+  if (import.meta.env.DEV) {
+    const { applyDevNodeSelection } = await import('./components/dev/devNode');
+    await applyDevNodeSelection();
+  }
+  ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
+    <StrictMode>
+      <App />
+    </StrictMode>,
+  );
+}
+
+void main();

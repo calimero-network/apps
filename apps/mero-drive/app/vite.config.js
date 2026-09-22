@@ -1,7 +1,80 @@
 import { defineConfig } from 'vite';
 import { nodePolyfills } from 'vite-plugin-node-polyfills';
 import react from '@vitejs/plugin-react';
+import { execFile } from 'child_process';
+import { readFileSync } from 'fs';
 import { resolve } from 'path';
+import { promisify } from 'util';
+
+const run = promisify(execFile);
+const ENV_FILE = resolve(__dirname, '.env.integration');
+const RIG = resolve(__dirname, '..', 'scripts', 'local-rig.sh');
+
+/** The rig's nodes, as scripts/local-rig.sh wrote them. */
+function readRigEnv() {
+  const env = {};
+  for (const line of readFileSync(ENV_FILE, 'utf-8').split('\n')) {
+    const match = /^([A-Z0-9_]+)=(.*)$/.exec(line.trim());
+    if (match) env[match[1]] = match[2];
+  }
+  const nodes = [];
+  for (let index = 1; env[index === 1 ? 'E2E_NODE_URL' : `E2E_NODE_URL_${index}`]; index++) {
+    const suffix = index === 1 ? '' : `_${index}`;
+    nodes.push({
+      index,
+      url: env[`E2E_NODE_URL${suffix}`],
+      accessToken: env[`E2E_ACCESS_TOKEN${suffix}`],
+      refreshToken: env[`E2E_REFRESH_TOKEN${suffix}`],
+    });
+  }
+  return { applicationId: env.E2E_APPLICATION_ID, nodes };
+}
+
+async function online(url) {
+  try {
+    return (await fetch(`${url}/admin-api/health`)).ok;
+  } catch {
+    return false;
+  }
+}
+
+// Dev-only bridge to scripts/local-rig.sh: the node list the `?node=` switch
+// reads, and the offline/online subcommands the dev panel and e2e drive.
+function devRig() {
+  return {
+    name: 'mero-drive-dev-rig',
+    apply: 'serve',
+    configureServer(server) {
+      server.middlewares.use('/__dev', (req, res, next) => {
+        const send = (status, body) => {
+          res.statusCode = status;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify(body));
+        };
+        const toggle = /^\/node\/([0-9]+)\/(offline|online)$/.exec(req.url ?? '');
+        if (req.method === 'GET' && req.url === '/nodes') {
+          Promise.resolve()
+            .then(async () => {
+              const rig = readRigEnv();
+              const nodes = await Promise.all(
+                rig.nodes.map(async (node) => ({ ...node, online: await online(node.url) })),
+              );
+              send(200, { ...rig, nodes });
+            })
+            .catch(() => send(200, { applicationId: '', nodes: [] }));
+          return;
+        }
+        if (req.method === 'POST' && toggle) {
+          run(RIG, [toggle[2], toggle[1]])
+            .then(({ stdout }) => send(200, { ok: true, output: stdout.trim() }))
+            .catch((err) => send(500, { ok: false, output: String(err.stderr ?? err) }));
+          return;
+        }
+        next();
+      });
+    },
+  };
+}
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -97,7 +170,7 @@ export default defineConfig({
       },
     },
   },
-  plugins: [nodePolyfills(), react()],
+  plugins: [nodePolyfills(), react(), devRig()],
   resolve: {
     alias: {
       '@': resolve(__dirname, './src'),

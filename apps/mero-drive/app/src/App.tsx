@@ -36,6 +36,8 @@ import { ThemeProvider } from '@/components/theme/ThemeProvider';
 import { PACKAGE_NAME } from '@/constants/config';
 import { hasInvitePayload } from '@/hooks/useNamespaceInvitation';
 
+import DevPanel from '@/components/dev/DevPanel';
+
 import LandingPage from './pages/landing/LandingPage';
 import WorkspacePage from './pages/workspace';
 import JoinPage from './pages/join';
@@ -204,6 +206,7 @@ export default function App() {
                   <Route path="*" element={<CatchAllRedirect />} />
                 </Routes>
               </BrowserRouter>
+              {import.meta.env.DEV && <DevPanel />}
             </ConfirmProvider>
           </TooltipProvider>
         </ToastProvider>
