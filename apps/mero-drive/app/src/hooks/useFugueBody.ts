@@ -32,11 +32,15 @@ import { parseRichEvents } from '@/lib/rich/events';
 import { scalarToUtf16, utf16ToScalar } from '@/lib/rich/offsets';
 import { applyChanges, transform, transformPosition } from '@/lib/rich/ot';
 import { isTransportFailure } from '@/lib/rich/transport';
-import { UndoHistory } from '@/lib/rich/undo';
 import {
   blockGeometry,
   type DocNode,
 } from '@/components/editor/presence/geometry';
+import {
+  applyRemoteText,
+  flushPendingInput,
+  type RemoteTextEditor,
+} from '@/components/editor/remoteText';
 import type { SaveStatus } from '@/components/editor/types';
 import { isContextEvent } from './useContextEvents';
 
@@ -58,6 +62,10 @@ export interface BodyEditor {
   ): unknown;
   removeBlocks(ids: string[]): unknown;
   replaceBlocks(remove: string[], insert: Record<string, unknown>[]): unknown;
+  readonly pmSchema?: RemoteTextEditor['pmSchema'];
+  transact?: RemoteTextEditor['transact'];
+  undo?(): boolean;
+  redo?(): boolean;
 }
 
 export interface UseFugueBodyOptions {
@@ -80,11 +88,6 @@ export interface UseFugueBodyResult {
   revision: number;
   /** The backend id of a block the editor knows by its own id. */
   backendIdOf: (editorId: string) => string;
-}
-
-interface BodyUndo {
-  block: string;
-  token: string;
 }
 
 interface Caret {
@@ -147,7 +150,6 @@ export function useFugueBody({
   const serverRef = useRef<EditorBlock[]>([]);
   // A block the editor minted keeps its own id; this maps it to the node's.
   const idMapRef = useRef(new Map<string, string>());
-  const historyRef = useRef(new UndoHistory<BodyUndo>(docId));
   const dirtyRef = useRef(false);
   const staleRef = useRef(false);
   const resyncRef = useRef(false);
@@ -199,14 +201,28 @@ export function useFugueBody({
   const serverBlock = (id: string): EditorBlock | undefined =>
     serverRef.current.find((block) => block.id === id);
 
-  /** `spans` into one editor block, the caret carried through `ops`. */
+  /** Runs a peer's block-level change outside the user's undo history. */
+  const asPeer = useCallback((apply: (live: BodyEditor) => void) => {
+    const live = editorRef.current;
+    if (!live) return;
+    if (!live.transact) return apply(live);
+    live.transact((tr) => {
+      tr.setMeta('addToHistory', false);
+      apply(live);
+    });
+  }, []);
+
+  /** `ops` into one editor block as steps; a whole-block replace is the fallback. */
   const replaceInline = useCallback(
     (editorId: string, spans: AttrSpan[], ops: Change[]) => {
       const live = editorRef.current;
       if (!live) return;
+      if (live.pmSchema && live.transact && applyRemoteText(live as RemoteTextEditor, editorId, ops)) {
+        return;
+      }
       const view = live.prosemirrorView;
       const caret = view ? caretIn(view, editorId) : null;
-      live.updateBlock(editorId, { content: spansToInline(spans) });
+      asPeer((peer) => peer.updateBlock(editorId, { content: spansToInline(spans) }));
       if (view && caret) {
         placeCaret(view, editorId, {
           anchor: transformPosition(ops, caret.anchor),
@@ -214,7 +230,7 @@ export function useFugueBody({
         });
       }
     },
-    [],
+    [asPeer],
   );
 
   /** A peer moved one block from `base` to `remote`; carry that into the editor. */
@@ -222,6 +238,8 @@ export function useFugueBody({
     (backendId: string, base: AttrSpan[], remote: AttrSpan[]) => {
       const remoteChange = diffSpans(base, remote);
       if (remoteChange.length === 0) return;
+      // Read pending input before the editor is diffed, or the diff misses it.
+      flushPendingInput(editorRef.current?.prosemirrorView);
       const editorId = editorIdOf(backendId);
       const local = localBlocks().find((block) => block.id === backendId);
       if (!local) return;
@@ -275,11 +293,11 @@ export function useFugueBody({
       }
 
       const gone = [...local.keys()].filter((id) => server.has(id) && !remoteIds.has(id));
-      if (gone.length > 0) live.removeBlocks(gone.map(editorIdOf));
+      if (gone.length > 0) asPeer((peer) => peer.removeBlocks(gone.map(editorIdOf)));
 
       for (let i = 0; i < remote.length; i++) {
         const block = remote[i];
-        if (!server.has(block.id) && !local.has(block.id)) insertRemote(live, remote, i);
+        if (!server.has(block.id) && !local.has(block.id)) asPeer((peer) => insertRemote(peer, remote, i));
       }
 
       for (const block of remote) {
@@ -290,13 +308,13 @@ export function useFugueBody({
         const untouched = now.kind === was.kind && attrsEqual(now.attrs, was.attrs);
         if (changed && untouched) {
           const [node] = toBlockNote([{ ...block, inline: now.inline }]);
-          live.updateBlock(editorIdOf(block.id), { type: node.type, props: node.props });
+          asPeer((peer) => peer.updateBlock(editorIdOf(block.id), { type: node.type, props: node.props }));
         }
       }
       return true;
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps -- insertRemote reads refs only
-    [editorIdOf, localBlocks],
+    [asPeer, editorIdOf, localBlocks],
   );
 
   /** Replaces the whole editor document, keeping the caret's scalar position. */
@@ -312,20 +330,23 @@ export function useFugueBody({
           if (at) caret = { block: backendIdOf(block.id), at };
         }
       }
-      live.replaceBlocks(
-        live.document.map((block) => block.id),
-        toBlockNote(remote) as unknown as Record<string, unknown>[],
+      asPeer((peer) =>
+        peer.replaceBlocks(
+          peer.document.map((block) => block.id),
+          toBlockNote(remote) as unknown as Record<string, unknown>[],
+        ),
       );
       idMapRef.current = new Map();
       if (view && caret) placeCaret(view, caret.block, caret.at);
       setRevision((value) => value + 1);
     },
-    [backendIdOf],
+    [asPeer, backendIdOf],
   );
 
   /** The node's document against the editor: structure first, then text. */
   const reconcile = useCallback(
     (remote: EditorBlock[], touched: Set<string>) => {
+      flushPendingInput(editorRef.current?.prosemirrorView);
       if (!loadedRef.current || !isSynced()) {
         // The editor has not applied the load yet, so hand it the newer one.
         serverRef.current = remote;
@@ -429,7 +450,6 @@ export function useFugueBody({
               base: call.base,
               ops: call.ops as unknown as ChangePayload[],
             });
-            if (result.applied && result.token) historyRef.current.record({ block, token: result.token });
             const was = serverBlock(block);
             if (was && !touched.has(block)) {
               const base = result.applied ? applyChanges(was.inline, call.ops) : was.inline;
@@ -530,7 +550,6 @@ export function useFugueBody({
   drainRef.current = drain;
 
   useEffect(() => {
-    historyRef.current.reset(docId);
     idMapRef.current = new Map();
     serverRef.current = [];
     dirtyRef.current = false;
@@ -609,23 +628,10 @@ export function useFugueBody({
   );
   useSubscription(contextIds, handleEvent);
 
-  const step = useCallback(
-    (direction: 'undo' | 'redo') => {
-      if (!client || !docId) return;
-      const history = historyRef.current;
-      const apply = async ({ block, token }: BodyUndo) => {
-        const inverse = await client.undo({ doc: docId, block, token });
-        staleRef.current = true;
-        void drain();
-        return { block, token: inverse };
-      };
-      const ran = direction === 'undo' ? history.undo(apply) : history.redo(apply);
-      ran.catch((cause) => setError(asError(cause)));
-    },
-    [client, docId, drain],
-  );
-  const undo = useCallback(() => step('undo'), [step]);
-  const redo = useCallback(() => step('redo'), [step]);
+  // One history for the buttons and the keyboard: the editor's own, which
+  // holds only this user's edits and groups a typing burst into one step.
+  const undo = useCallback(() => void editorRef.current?.undo?.(), []);
+  const redo = useCallback(() => void editorRef.current?.redo?.(), []);
 
   return {
     content,

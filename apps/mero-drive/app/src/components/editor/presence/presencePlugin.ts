@@ -5,6 +5,7 @@
 import { Plugin, PluginKey, type EditorState } from 'prosemirror-state';
 import { Decoration, DecorationSet, type EditorView } from 'prosemirror-view';
 import type { CaretDecoration } from '@/lib/rich/cursors';
+import { flushPendingInput } from '../remoteText';
 
 const PRESENCE_META = 'calimero-presence';
 
@@ -75,5 +76,6 @@ export function setPresenceDecorations(
   view: EditorView,
   specs: CaretDecoration[],
 ): void {
+  flushPendingInput(view);
   view.dispatch(view.state.tr.setMeta(presenceKey, specs));
 }

@@ -25,7 +25,7 @@ export const MARK_KEYS = [
 ] as const;
 
 /** The keys BlockNote carries as a boolean rather than a string. */
-const BOOLEAN_KEYS = new Set(['bold', 'italic', 'underline', 'strike', 'code']);
+export const BOOLEAN_KEYS = new Set(['bold', 'italic', 'underline', 'strike', 'code']);
 
 const KNOWN = new Set<string>(MARK_KEYS);
 

@@ -48,6 +48,8 @@ class FakeEditor implements BodyEditor {
   document: BnBlock[] = [];
   readonly prosemirrorView = undefined;
   onChange: () => void = () => {};
+  undo?: () => boolean;
+  redo?: () => boolean;
 
   textOf(id: string): string {
     const block = this.document.find((b) => b.id === id);
@@ -294,18 +296,35 @@ describe('useFugueBody', () => {
     });
   });
 
-  it('undoes with the block and token the write returned', async () => {
-    const client = fakeClient([row('blk-1', 'a')]);
-    client.applyDeltaOn.mockResolvedValue(applied('ab', 'tok-7'));
+  it('replaces the placeholder block when a peer writes the first block of an empty document', async () => {
+    const client = fakeClient([]);
     const editor = new FakeEditor();
+    await mount(client, editor);
+    editor.document = [bn('placeholder', '')];
+
+    client.getDocument.mockResolvedValue([row('blk-1', 'The fox.')]);
+    act(() => deliver?.(peerEvent(DOC)));
+    await settle();
+    await settle();
+
+    expect(editor.document.map((b) => b.id)).toEqual(['blk-1']);
+    expect(editor.textOf('blk-1')).toBe('The fox.');
+    expect(client.insertBlock).not.toHaveBeenCalled();
+  });
+
+  it('undoes and redoes through the editor history, not per write', async () => {
+    const client = fakeClient([row('blk-1', 'a')]);
+    const editor = new FakeEditor();
+    editor.undo = vi.fn().mockReturnValue(true);
+    editor.redo = vi.fn().mockReturnValue(true);
     const { result } = await mount(client, editor);
 
-    editor.type('blk-1', 'ab');
-    await settle();
     act(() => result.current.undo());
-    await settle();
+    act(() => result.current.redo());
 
-    expect(client.undo).toHaveBeenCalledWith({ doc: DOC, block: 'blk-1', token: 'tok-7' });
+    expect(editor.undo).toHaveBeenCalledTimes(1);
+    expect(editor.redo).toHaveBeenCalledTimes(1);
+    expect(client.undo).not.toHaveBeenCalled();
   });
 
   it('ignores an event for another document', async () => {

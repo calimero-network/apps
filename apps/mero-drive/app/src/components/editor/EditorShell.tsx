@@ -234,7 +234,11 @@ export const EditorShell: React.FC<EditorShellProps> = ({
     }
     applyingRemoteRef.current = true;
     try {
-      editor.replaceBlocks(editor.document, blocks);
+      // Loaded content is not an edit the user made, so it is not undoable.
+      editor.transact((tr) => {
+        tr.setMeta('addToHistory', false);
+        editor.replaceBlocks(editor.document, blocks);
+      });
       lastContentRef.current = initialContent; // guard (2): equality drop
       const doc = editor.document;
       if (doc.length > 0) {
