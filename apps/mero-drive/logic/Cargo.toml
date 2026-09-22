@@ -13,10 +13,6 @@ repository.workspace = true
 [lib]
 crate-type = ["cdylib", "rlib"]
 
-[features]
-default   = []
-schema_v2 = []
-
 [package.metadata.calimero]
 package     = "com.calimero.mero-drive-docs"
 name        = "Mero Drive Docs"
