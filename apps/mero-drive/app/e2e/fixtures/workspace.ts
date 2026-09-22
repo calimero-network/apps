@@ -529,10 +529,9 @@ export class EditorDriver {
     await this.page
       .getByRole('menuitem', { name: /Delete Document/i })
       .click();
-    const confirm = this.page.getByRole('dialog');
-    if (await confirm.count()) {
-      await confirm.getByRole('button', { name: /Delete|Confirm/i }).click();
-    }
+    const confirm = this.page.getByRole('dialog', { name: 'Delete document?' });
+    await confirm.getByRole('button', { name: /^Delete$/ }).click();
+    await expect(confirm).toBeHidden();
   }
 }
 

@@ -70,7 +70,7 @@ import {
   type DriveLoadingStage,
 } from '@/lib/driveStage';
 import {
-  pinnedMetadataData,
+  pinnedMetadata,
   readPin,
   resolveRegistryContext,
   shouldAdoptPin,
@@ -561,12 +561,10 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
     adoptedRef.current = selectedNsId;
     void (async () => {
       try {
-        // ⚠️ Merge. `SetMetadataRequest` WHOLLY REPLACES the record — sending
-        // `{data: {pin}}` alone would delete the group's other keys, and
-        // omitting `name` is what preserves the workspace's name.
-        await setGroupMetadata(selectedNsId, {
-          data: pinnedMetadataData(nsMetadata?.data, registryContextId),
-        });
+        await setGroupMetadata(
+          selectedNsId,
+          pinnedMetadata(nsMetadata, registryContextId),
+        );
         await refetchNsMetadata();
       } catch {
         // Best-effort: a member without metadata rights simply keeps resolving
@@ -704,9 +702,10 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
           // "absent" branch for this namespace: the pin replicates, and a node
           // that holds a pin it cannot resolve waits instead of minting.
           try {
-            await setGroupMetadata(healingNsId, {
-              data: pinnedMetadataData(nsMetadata?.data, reg.contextId),
-            });
+            await setGroupMetadata(
+              healingNsId,
+              pinnedMetadata(nsMetadata, reg.contextId),
+            );
             await refetchNsMetadata();
           } catch {
             // Non-fatal: resolution still works by the deterministic rule.
