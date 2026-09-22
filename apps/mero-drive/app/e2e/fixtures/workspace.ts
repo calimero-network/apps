@@ -403,7 +403,9 @@ export class SharingDriver {
     await this.page
       .getByRole('combobox', { name: /identity pubkey/i })
       .fill(name);
+    // Scoped to the picker: the workspace switcher's options can match the name too.
     await this.page
+      .getByRole('listbox')
       .getByRole('option', { name: new RegExp(escapeRegex(name), 'i') })
       .click();
     await this.page.getByRole('button', { name: /^Add$/ }).click();
