@@ -1,6 +1,33 @@
 {
   "schema_version": "wasm-abi/1",
   "types": {
+    "Applied": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "applied",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "token",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "spans",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "Span"
+            }
+          }
+        }
+      ]
+    },
     "Block": {
       "kind": "record",
       "fields": [
@@ -742,6 +769,42 @@
       ],
       "returns": {
         "kind": "string"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "apply_delta_on",
+      "params": [
+        {
+          "name": "doc",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "block",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "base",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "ops",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "Change"
+            }
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "Applied"
       },
       "intent": "mutating"
     },
