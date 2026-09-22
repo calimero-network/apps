@@ -25,6 +25,15 @@ describe("buildLoginUrl", () => {
       expect(PERMISSIONS).toContain(grant);
     }
   });
+
+  // Stated as a property rather than another entry in the list above, because
+  // the list is the thing that was wrong. Core maps /sse, /sse/subscription and
+  // /ws to Context(Subscribe(Global)), so a token minted without this grant is
+  // refused 403 permission_denied on all three and the game never receives an
+  // event — while looking perfectly healthy otherwise. MEASURED on rc.41.
+  it("asks for context:subscribe, without which no event ever arrives", () => {
+    expect(PERMISSIONS).toContain("context:subscribe");
+  });
 });
 
 describe("beginWebLogin", () => {

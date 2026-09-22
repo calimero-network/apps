@@ -9,11 +9,31 @@ export const PACKAGE_NAME = "com.calimero.mero-blocks";
 export const REGISTRY_URL = "https://apps.calimero.network";
 const PENDING_NODE_KEY = "mb-pending-node";
 
-/** mero-react MultiContext grant set — we create/list/execute on contexts */
+/**
+ * mero-react MultiContext grant set — we create/list/execute on contexts.
+ *
+ * This list is a hand-rolled copy of mero-react's `getPermissionsForMode`,
+ * because this app owns its own login (no MeroProvider). That means a fix in
+ * mero-react does NOT reach us: mero-react 9.1.2 (#73) added
+ * `context:subscribe` and this copy had to be corrected by hand.
+ *
+ * `context:subscribe` is not optional for us. Core's `PermissionValidator`
+ * maps `/sse`, `/sse/subscription` AND `/ws` to `Context(Subscribe(Global))`,
+ * so a token minted without it is refused `403` +
+ * `X-Auth-Error: permission_denied` on every one of them. The app still logs
+ * in, lists contexts and executes fine — it simply never receives an event,
+ * and `GameClient.subscribe` retries a stream it will never be allowed to
+ * open. MEASURED on merod 0.11.0-rc.41: without it `GET /sse` is 403, with it
+ * 200.
+ *
+ * ⚠️ The grant set is baked into the client key at MINT time, so anyone
+ * holding a token from before this change must log in again to get a stream.
+ */
 export const PERMISSIONS = [
   "context:create",
   "context:list",
   "context:execute",
+  "context:subscribe",
   "application:list",
   "namespace",
   "group",
