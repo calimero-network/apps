@@ -24,14 +24,7 @@ import {
 // exists (a successful save, or any fetch that returns a real name), and
 // names can't be cleared today, so it never suppresses the gate wrongly.
 const NAME_SET_PREFIX = 'mero-name-set:';
-function nameSetMarkerKey(
-  ns: string | null | undefined,
-  id: string | null | undefined,
-): string | null {
-  return ns && id ? `${NAME_SET_PREFIX}${ns}:${id}` : null;
-}
-function rememberNameSet(key: string | null): void {
-  if (!key) return;
+function rememberNameSet(key: string): void {
   try {
     localStorage.setItem(key, '1');
   } catch {
@@ -40,8 +33,27 @@ function rememberNameSet(key: string | null): void {
 }
 
 export function DisplayNameGate() {
-  const { namespaceId, selfIdentity, namespaceMemberNames } =
-    useDriveWorkspace();
+  const { namespaceId, selfIdentity } = useDriveWorkspace();
+  if (!namespaceId || !selfIdentity) return null;
+  // One instance per namespace: a name fetch still in flight for the previous
+  // workspace resolves into the unmounted instance instead of this one.
+  return (
+    <NameGate
+      key={namespaceId}
+      namespaceId={namespaceId}
+      selfIdentity={selfIdentity}
+    />
+  );
+}
+
+function NameGate({
+  namespaceId,
+  selfIdentity,
+}: {
+  namespaceId: string;
+  selfIdentity: string;
+}) {
+  const { namespaceMemberNames } = useDriveWorkspace();
   const { name, loading, error, setName } = useMemberDisplayName(
     namespaceId,
     selfIdentity,
@@ -53,9 +65,7 @@ export function DisplayNameGate() {
   // list + the settings panel use, so the gate agrees with them. By the
   // time the gate mounts, the workspace stage is past `loading-*` (which
   // gates on membersLoading), so these rows are already populated.
-  const memberRowName = selfIdentity
-    ? namespaceMemberNames[selfIdentity] ?? null
-    : null;
+  const memberRowName = namespaceMemberNames[selfIdentity] ?? null;
   // The effective name from ANY reliable source.
   const effectiveName = name ?? memberRowName;
   const [draft, setDraft] = useState('');
@@ -65,36 +75,23 @@ export function DisplayNameGate() {
   // to flip non-null via refetch (see mero-drive#42 note above).
   const [dismissed, setDismissed] = useState(false);
 
-  const markerKey = nameSetMarkerKey(namespaceId, selfIdentity);
+  const markerKey = `${NAME_SET_PREFIX}${namespaceId}:${selfIdentity}`;
   // Whether we've previously confirmed (and persisted) that this member
   // has a name in this namespace. Seeds the gate's visibility so a flaky
   // post-refresh fetch can't re-show it.
-  const [knownSet, setKnownSet] = useState(false);
-
-  // Re-arm dismissal + (re)read the persisted marker when the active
-  // (namespace, member) changes — a different workspace may legitimately
-  // need a name.
-  useEffect(() => {
-    setDismissed(false);
-    // Clear any in-progress draft so a name typed for one workspace
-    // doesn't carry over when the user switches to another.
-    setDraft('');
-    if (!markerKey) {
-      setKnownSet(false);
-      return;
-    }
+  const [knownSet, setKnownSet] = useState(() => {
     try {
-      setKnownSet(localStorage.getItem(markerKey) === '1');
+      return localStorage.getItem(markerKey) === '1';
     } catch {
-      setKnownSet(false);
+      return false;
     }
-  }, [markerKey]);
+  });
 
   // The moment a real name is observed from ANY reliable source (the
   // metadata hook OR the namespace member rows), persist the marker so
   // future refreshes trust it even if the hook stops returning the name.
   useEffect(() => {
-    if (markerKey && effectiveName !== null) {
+    if (effectiveName !== null) {
       rememberNameSet(markerKey);
       setKnownSet(true);
     }
@@ -106,15 +103,7 @@ export function DisplayNameGate() {
   // localStorage marker is gone (new device, cleared storage) AND the
   // hook returns null (#42), the member rows still show the name, so we
   // must not ask the user to set it again.
-  if (
-    !namespaceId ||
-    !selfIdentity ||
-    loading ||
-    effectiveName !== null ||
-    dismissed ||
-    knownSet
-  )
-    return null;
+  if (loading || effectiveName !== null || dismissed || knownSet) return null;
 
   const trimmed = draft.trim();
   const canSave =
