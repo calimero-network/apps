@@ -9,6 +9,10 @@ export interface InviteStatusBannerProps {
   noun?: string;
   /** Wire to `.retry` — shown only for a failure worth retrying. */
   onRetry?: () => void;
+  /** Wire to `.accept` — shown only while awaiting confirmation. */
+  onAccept?: () => void;
+  /** Wire to `.decline` — shown only while awaiting confirmation. */
+  onDecline?: () => void;
   /** Wire to `.dismiss`. */
   onDismiss?: () => void;
   /** Escape hatches for apps with their own design system. */
@@ -28,6 +32,8 @@ export function InviteStatusBanner({
   state,
   noun = "team",
   onRetry,
+  onAccept,
+  onDecline,
   onDismiss,
   className,
   style,
@@ -41,13 +47,15 @@ export function InviteStatusBanner({
       : `this ${noun}`;
 
   const text =
-    state.stage === "joining"
-      ? `Joining ${named}…`
-      : state.stage === "joined"
-        ? `Joined ${named}. Syncing…`
-        : state.stage === "already-member"
-          ? `You are already in ${named}.`
-          : state.message;
+    state.stage === "awaiting-confirmation"
+      ? `You have been invited to ${named}.`
+      : state.stage === "joining"
+        ? `Joining ${named}…`
+        : state.stage === "joined"
+          ? `Joined ${named}. Syncing…`
+          : state.stage === "already-member"
+            ? `You are already in ${named}.`
+            : state.message;
 
   return (
     <div
@@ -79,15 +87,29 @@ export function InviteStatusBanner({
       {state.stage === "joining" || state.stage === "joined" ? (
         <Spinner />
       ) : (
-        <span aria-hidden="true">{failed ? "⚠" : "✓"}</span>
+        <span aria-hidden="true">
+          {failed ? "⚠" : state.stage === "awaiting-confirmation" ? "✉" : "✓"}
+        </span>
       )}
       <span style={{ flex: 1, minWidth: 0 }}>{text}</span>
+      {state.stage === "awaiting-confirmation" && onAccept ? (
+        <button type="button" onClick={onAccept} style={linkButton}>
+          Join
+        </button>
+      ) : null}
+      {state.stage === "awaiting-confirmation" && onDecline ? (
+        <button type="button" onClick={onDecline} style={linkButton}>
+          Not now
+        </button>
+      ) : null}
       {failed && state.retryable && onRetry ? (
         <button type="button" onClick={onRetry} style={linkButton}>
           Try again
         </button>
       ) : null}
-      {onDismiss && state.stage !== "joining" ? (
+      {onDismiss &&
+      state.stage !== "joining" &&
+      state.stage !== "awaiting-confirmation" ? (
         <button
           type="button"
           onClick={onDismiss}

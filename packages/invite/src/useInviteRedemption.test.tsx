@@ -1,4 +1,4 @@
-import { renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { resetInvitationCaptureForTests } from "./capture";
@@ -167,5 +167,68 @@ describe("useInviteRedemption", () => {
     result.current.retry();
     await waitFor(() => expect(result.current.state.stage).toBe("joined"));
     expect(join).toHaveBeenCalledTimes(2);
+  });
+  // Not a stylistic choice: joining puts you in someone else's namespace and
+  // gives them a peer that syncs their data. mero-pass, mero-sign, mero-forum,
+  // mero-sheets and mero-stream all require a click, and must keep doing so.
+  describe("confirm mode", () => {
+    it("asks before joining, and joins on accept", async () => {
+      openWith("TOK");
+      const join = vi.fn().mockResolvedValue(undefined);
+      const { result } = renderHook(() =>
+        useInviteRedemption({
+          parse,
+          redeemer: redeemer({ join }),
+          confirm: true,
+        }),
+      );
+
+      await waitFor(() =>
+        expect(result.current.state.stage).toBe("awaiting-confirmation"),
+      );
+      expect(join).not.toHaveBeenCalled();
+      // What it names is available for the prompt.
+      expect(result.current.parsed?.teamName).toBe("Design");
+
+      act(() => result.current.accept());
+      await waitFor(() => expect(result.current.state.stage).toBe("joined"));
+      expect(join).toHaveBeenCalledTimes(1);
+    });
+
+    it("acks on decline, so the prompt does not return every load", async () => {
+      openWith("TOK");
+      const join = vi.fn();
+      const { result } = renderHook(() =>
+        useInviteRedemption({
+          parse,
+          redeemer: redeemer({ join }),
+          confirm: true,
+        }),
+      );
+
+      await waitFor(() =>
+        expect(result.current.state.stage).toBe("awaiting-confirmation"),
+      );
+      act(() => result.current.decline());
+
+      expect(result.current.state.stage).toBe("idle");
+      expect(join).not.toHaveBeenCalled();
+      // The platform store keeps an intent until the app says it is handled;
+      // "not now" IS handled.
+      expect(
+        JSON.parse(
+          localStorage.getItem("calimero:invitation-attempts") ?? "{}",
+        ),
+      ).not.toHaveProperty("TOK");
+    });
+
+    it("still refuses an unreadable invitation without asking", async () => {
+      openWith("BAD");
+      const { result } = renderHook(() =>
+        useInviteRedemption({ parse, redeemer: redeemer(), confirm: true }),
+      );
+
+      await waitFor(() => expect(result.current.state.stage).toBe("failed"));
+    });
   });
 });
