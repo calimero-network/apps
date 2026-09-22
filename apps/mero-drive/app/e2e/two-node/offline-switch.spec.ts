@@ -15,6 +15,9 @@ const CONVERGED = `${BEFORE} ${AFTER}`;
 // Long enough that a working sync would have delivered it: Bob saw BEFORE well
 // inside this window.
 const OFFLINE_HOLD_MS = 20_000;
+// Same surface EditorDriver waits for; the negative assertion needs its own
+// locator, so keep the one spelling here.
+const EDITOR = '.ProseMirror';
 
 async function switchNode(
   page: import('@playwright/test').Page,
@@ -60,13 +63,13 @@ test.describe('Rig offline switch (two-node)', () => {
 
     await switchNode(alice.page, 2, 'offline');
 
-    const editor = alice.page.locator('.ProseMirror').first();
+    const editor = alice.page.locator(EDITOR).first();
     await editor.click();
     await alice.page.keyboard.press('End');
     await editor.pressSequentially(` ${AFTER}`);
     await alice.editor.expectContent(CONVERGED);
 
-    const bobEditor = bob.page.locator('.ProseMirror').first();
+    const bobEditor = bob.page.locator(EDITOR).first();
     await expect(bobEditor).not.toContainText(AFTER);
     await bob.page.waitForTimeout(OFFLINE_HOLD_MS);
     await expect(bobEditor).not.toContainText(AFTER);
