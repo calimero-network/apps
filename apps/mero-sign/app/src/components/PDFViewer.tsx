@@ -47,7 +47,7 @@ import { ClientApiDataSource } from '../api/dataSource/ClientApiDataSource';
 import { blobClient } from '../lib/node';
 import { useCalimero } from '../lib/useCalimero';
 import ConsentModal from './ConsentModal';
-import LegalChatbot from './LegalChatbot';
+import LegalChatbot, { LEGAL_ASSISTANT_ENABLED } from './LegalChatbot';
 import { toBlobIdHex } from '../lib/blobIds';
 
 interface SavedSignature {
@@ -852,8 +852,10 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
                 </Button>
               </div>
 
-              {/* Legal Chatbot Button - Desktop Only */}
-              <div className="hidden sm:block">
+              {/* Legal Chatbot Button - Desktop Only.
+                  Hidden while the assistant cannot answer — see
+                  LEGAL_ASSISTANT_ENABLED. */}
+              <div className={LEGAL_ASSISTANT_ENABLED ? 'hidden sm:block' : 'hidden'}>
                 <Button
                   variant="secondary"
                   onClick={() => setShowChatbot(true)}
@@ -1423,7 +1425,9 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
                         </div>
                       </Button>
 
-                      {/* Legal Chatbot */}
+                      {/* Legal Chatbot — hidden while the assistant cannot
+                          answer; see LEGAL_ASSISTANT_ENABLED. */}
+                      {LEGAL_ASSISTANT_ENABLED && (
                       <Button
                         onClick={() => {
                           setShowMobileActions(false);
@@ -1450,6 +1454,7 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
                           </div>
                         </div>
                       </Button>
+                      )}
 
                       {/* Download Signed PDF */}
                       {documentSignatures.length > 0 && (
@@ -1620,6 +1625,7 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
         onClose={handleConsentClose}
       />
 
+      {LEGAL_ASSISTANT_ENABLED && (
       <LegalChatbot
         isOpen={showChatbot}
         onClose={() => setShowChatbot(false)}
@@ -1628,6 +1634,7 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
         agreementContextID={agreementContextID}
         agreementContextUserID={agreementContextUserID}
       />
+      )}
     </>
   );
 };
