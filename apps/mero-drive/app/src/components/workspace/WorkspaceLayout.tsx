@@ -36,7 +36,7 @@ import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import type { SyncSnapshot } from '@/hooks/useSyncStatus';
 import { useFolderPermissions } from '@/hooks/useFolderPermissions';
-import { isAccessDeniedError } from '@/utils/accessDenied';
+import { lacksFolderAccess } from '@/utils/accessDenied';
 import { ThemeToggle } from '@/components/theme/ThemeToggle';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { DisplayNameGate } from './DisplayNameGate';
@@ -280,9 +280,7 @@ export function WorkspaceLayout() {
             <EmptyState title="Loading folder…" body="" />
           ) : selectedFolderPerms.loading ? (
             <EmptyState title="Checking access…" body="" />
-          ) : (selectedFolderPerms.error &&
-              isAccessDeniedError(selectedFolderPerms.error)) ||
-            (!selectedFolderPerms.isMember && !selectedFolderPerms.error) ? (
+          ) : lacksFolderAccess(selectedFolderPerms) ? (
             <div className="flex-1 overflow-y-auto p-6">
               <div className="mx-auto max-w-3xl">
                 <RestrictedFolderCard

@@ -312,6 +312,13 @@ export class FolderTreeDriver {
     });
   }
 
+  // Asserts the exact folder rows the rail renders, in order.
+  async expectFolderList(names: string[], opts: { timeout?: number } = {}) {
+    await expect(this.page.locator('aside li > div')).toHaveText(names, {
+      timeout: opts.timeout ?? 15_000,
+    });
+  }
+
   // Expand a folder so its document leaves render. Selecting (clicking the
   // row) does NOT expand — expansion is the chevron. No-op if already expanded.
   async expandFolder(name: string): Promise<void> {
@@ -386,25 +393,25 @@ export class RestrictedCardDriver {
     if (await join.isVisible()) await join.click();
     await expect(folderView).toBeVisible({ timeout });
   }
-
-  async clickRefresh(): Promise<void> {
-    await this.page.getByRole('button', { name: /^Refresh$/ }).click();
-  }
-
-  async copyIdentity(): Promise<string> {
-    const input = this.page.locator('#restricted-identity-text');
-    return await input.inputValue();
-  }
 }
 
 export class SharingDriver {
   constructor(private page: Page) {}
 
-  async addMember(identity: string): Promise<void> {
-    const input = this.page.getByPlaceholder(/identity pubkey/i);
-    await input.fill(identity);
+  // Picks a namespace member by display name in the folder's member picker.
+  async addMember(name: string): Promise<void> {
+    await this.page
+      .getByRole('combobox', { name: /identity pubkey/i })
+      .fill(name);
+    // Scoped to the picker: the workspace switcher's options can match the name too.
+    await this.page
+      .getByRole('listbox')
+      .getByRole('option', { name: new RegExp(escapeRegex(name), 'i') })
+      .click();
     await this.page.getByRole('button', { name: /^Add$/ }).click();
-    await expect(input).toHaveValue('', { timeout: 10_000 });
+    await expect(this.page.getByText(/^Selected:/)).toBeHidden({
+      timeout: 15_000,
+    });
   }
 
   async removeMember(label: string): Promise<void> {
