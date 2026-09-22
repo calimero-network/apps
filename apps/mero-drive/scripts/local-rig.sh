@@ -335,7 +335,7 @@ cmd_up() {
   echo "rig up: $NODE_COUNT nodes, run dir $RIG_DIR"
   cmd_status
   echo "application: $app_id"
-  echo "contexts:    $(curl -sf "$(node_url 1)/admin-api/contexts" -H "Authorization: Bearer $token" | jq -r '.data.contexts[]? // .data[]? // empty' | tr '\n' ' ')"
+  echo "contexts:    $(curl -sf "$(node_url 1)/admin-api/contexts" -H "Authorization: Bearer $token" | jq -r '(.data.contexts? // .data)[]? | .id' | tr '\n' ' ')"
   echo "env:         $ENV_FILE"
 }
 
