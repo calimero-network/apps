@@ -46,7 +46,8 @@ function build(specs: CaretDecoration[], doc: EditorState['doc']): DecorationSet
     decorations.push(
       Decoration.widget(spec.pos, () => caretElement(spec), {
         side: 1,
-        key: `presence-${spec.author}`,
+        // A new key per position rebuilds the caret on a move, replaying its name flag.
+        key: `presence-${spec.author}-${spec.pos}`,
       }),
     );
   }

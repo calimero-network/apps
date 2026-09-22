@@ -36,8 +36,8 @@ export function TitleCursors({ carets, text, inputRef }: Props) {
       setBoxes(new Map());
       return;
     }
-    // The field centres its text, so an offset is measured from that origin.
-    const origin = Math.max((input.clientWidth - measure(text)) / 2, 0);
+    // The overlay spans the wrapper, icon included; the field centres its text inside itself.
+    const origin = input.offsetLeft + input.clientLeft + Math.max((input.clientWidth - measure(text)) / 2, 0);
     setBoxes(
       new Map(
         carets.map((caret) => [
