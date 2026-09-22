@@ -9,7 +9,7 @@
 // useCreateNamespaceInvitation — surfaced in a future settings
 // view, tracked separately).
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { UserPlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
@@ -20,12 +20,27 @@ import { useMemberCaps } from '@/hooks/useMemberCaps';
 import { countAdmins, parseGroupRole } from '@/lib/roles';
 import { InviteDialog } from './InviteDialog';
 import { useCreateNamespaceInvite } from '@/hooks/useNamespaceInvitation';
+import { useWorkspacePresence } from '@/hooks/useWorkspacePresence';
 
 export function NamespaceMembersPanel() {
-  const { namespaceId, rootGroupId, namespaces, selfIdentity } =
-    useDriveWorkspace();
+  const {
+    namespaceId,
+    rootGroupId,
+    namespaces,
+    selfIdentity,
+    registryContextId,
+  } = useDriveWorkspace();
   const perms = useNamespacePermissions(namespaceId ?? '', rootGroupId ?? '');
   const membership = useFolderMembership(rootGroupId);
+  const memberIds = useMemo(
+    () => membership.members.map((m) => m.identity),
+    [membership.members],
+  );
+  const present = useWorkspacePresence(
+    registryContextId,
+    selfIdentity,
+    memberIds,
+  );
   // The acting user's own role + bitmask on this group. Each row needs both to
   // decide which promotions it may offer, and re-deriving them per row would
   // fan N identical probes across an N-member roster.
@@ -146,6 +161,7 @@ export function NamespaceMembersPanel() {
             actorCaps={selfCaps.caps}
             adminCount={adminCount}
             isSelf={!!selfIdentity && m.identity === selfIdentity}
+            isPresent={present.has(m.identity)}
             canManage={perms.canManageMembers}
             onAfterRoleChange={() => {
               void membership.refetch();
