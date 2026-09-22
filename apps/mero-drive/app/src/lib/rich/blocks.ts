@@ -3,7 +3,6 @@
 // placeholder the caller swaps for the id insert_block or split_block returned.
 
 import { diffSpans, type AttrSpan, type Change } from './delta';
-import { canonicalAttrs } from './attributes';
 
 /** One block as the editor holds it; `id` is the editor's own, not the backend's. */
 export interface EditorBlock {
@@ -189,17 +188,10 @@ export function diffBlocks(
         value: nb.attrs[key] ?? null,
       });
     }
-    const ops = diffSpans(current.inline, normalise(nb.inline));
+    const ops = diffSpans(current.inline, nb.inline);
     if (ops.length > 0) {
       calls.push({ call: 'apply_delta', block: current.ref, ops });
     }
   }
   return calls;
-}
-
-function normalise(inline: AttrSpan[]): AttrSpan[] {
-  return inline.map((span) => ({
-    text: span.text,
-    attributes: canonicalAttrs(span.attributes),
-  }));
 }
