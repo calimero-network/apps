@@ -10,11 +10,11 @@
 //! identities cross JSON-RPC as bs58-encoded borsh, so a client passes them
 //! back verbatim and never parses them.
 //!
-//! - `title` — `FugueText`, plain text that merges character by character
-//! - `body` — `RichDocument<DriveMarks>`, an ordered list of blocks each with
+//! - `title` - `FugueText`, plain text that merges character by character
+//! - `body` - `RichDocument<DriveMarks>`, an ordered list of blocks each with
 //!   its own text, formatting and structure
-//! - `tags` — `LwwRegister<Vec<String>>` (LWW-replaced list)
-//! - `archived` / `created_at` / `updated_at` — `LwwRegister<_>`
+//! - `tags` - `LwwRegister<Vec<String>>` (LWW-replaced list)
+//! - `archived` / `created_at` / `updated_at` - `LwwRegister<_>`
 //!
 //! ## Scope
 //!
@@ -436,8 +436,7 @@ impl DocsState {
 
     /// Where anchors sit in THIS replica's title. `null` is an anchor this
     /// replica cannot place yet.
-    // ponytail: one tree rebuild per anchor; batch it if a cursor list ever
-    // grows past a handful of peers.
+    // One tree rebuild per anchor; batch if cursor lists grow past a few peers.
     #[app::view]
     pub fn title_resolve(
         &self,

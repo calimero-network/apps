@@ -810,7 +810,7 @@ steps:
     args:
       include_archived: false
 
-  - name: create_doc — "Roadmap"
+  - name: create_doc - "Roadmap"
     type: call
     node: calimero-node-1
     context_id: '{{eng_docs_ctx}}'
@@ -826,7 +826,7 @@ steps:
     statements:
       - 'is_set({{roadmap_id}})'
 
-  - name: create_doc — an empty title is allowed
+  - name: create_doc - an empty title is allowed
     type: call
     node: calimero-node-1
     context_id: '{{eng_docs_ctx}}'

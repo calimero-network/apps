@@ -182,7 +182,7 @@ steps:
       include_archived: false
 
   # =================================================================
-  # Phase D: create_doc — multiple docs, cross-node visibility
+  # Phase D: create_doc - multiple docs, cross-node visibility
   # =================================================================
 
   - name: Alice creates the first doc
@@ -559,7 +559,7 @@ steps:
       id: '{{doc_a}}'
 
   # =================================================================
-  # Phase K: Comments — authored, identity-gated annotations
+  # Phase K: Comments - authored, identity-gated annotations
   # =================================================================
 
   - name: Alice comments on doc_a
