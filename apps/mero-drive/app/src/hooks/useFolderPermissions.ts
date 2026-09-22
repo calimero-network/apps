@@ -97,6 +97,8 @@ export interface FolderPermissions {
    *  a retry affordance rather than treating loading:false + all-
    *  booleans-false as legitimate "no permissions." */
   error: Error | null;
+  /** `error` is the caps probe's non-member refusal, not a fault. */
+  denied: boolean;
   /** Re-run the membership probe. Use after an action that may have
    *  changed the caller's membership server-side (e.g. the join-via-
    *  inheritance call on the Open-folder card) — useMemberCaps's deps
@@ -109,7 +111,13 @@ export function useFolderPermissions(
   namespaceId: string,
   folderId: string,
 ): FolderPermissions {
-  const { caps, isAdmin, error, refetch: refetchCaps } = useMemberCaps(
+  const {
+    caps,
+    isAdmin,
+    error,
+    denied,
+    refetch: refetchCaps,
+  } = useMemberCaps(
     namespaceId,
     folderId,
   );
@@ -194,6 +202,7 @@ export function useFolderPermissions(
       canManageMembers,
     loading: caps === null,
     error,
+    denied,
     refetch: refetchCaps,
   };
 }

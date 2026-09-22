@@ -6,7 +6,8 @@
 import { test, expect } from '../fixtures/two-user';
 
 test.describe('Visibility toggle (two-node)', () => {
-  // toggleVisibility's Info dialog re-renders and detaches its Close button mid-click.
+  // Bob's tree hides the now-Restricted folder and his selection sticks on
+  // "Loading folder..." instead of the ask-admin card.
   test.fixme("Open → Restricted revokes Bob's inherited access", async ({
     alice,
     bob,
@@ -36,11 +37,11 @@ test.describe('Visibility toggle (two-node)', () => {
     await bob.restrictedCard.expectAskAdmin({ timeout: 60_000 });
   });
 
-  // A non-member no longer sees a Restricted folder's row and ask-admin card.
-  test.fixme('Restricted → Open lets Bob inherit and join', async ({ alice, bob }) => {
+  test('Restricted -> Open reveals the folder to Bob', async ({ alice, bob }) => {
     await alice.goToWorkspace();
     await alice.createNamespace('Flip Restricted->Open');
     await alice.createFolder({ name: 'Liberating', visibility: 'Restricted' });
+    await alice.createFolder({ name: 'Plaza', visibility: 'Open' });
     await alice.tree.openFolder('Liberating');
     await alice.createDoc('Future Public');
     await alice.openSettings();
@@ -48,15 +49,16 @@ test.describe('Visibility toggle (two-node)', () => {
     await alice.closeSettings();
 
     await bob.joinNamespace(inviteUrl);
-    await bob.tree.openFolder('Liberating');
-    await bob.restrictedCard.expectAskAdmin();
+    await bob.tree.expectFolderVisible('Plaza', { timeout: 60_000 });
+    await bob.tree.expectFolderList(['Plaza']);
 
-    // Alice flips to Open.
     await alice.toggleVisibility('Liberating');
 
-    // Bob inherits the now-Open folder (auto-follow, or the Join CTA).
+    // Bob inherits the now-Open folder, so it and its docs appear.
+    await bob.tree.expectFolderVisible('Liberating', { timeout: 60_000 });
+    await bob.tree.openFolder('Liberating');
     await bob.restrictedCard.joinIfPrompted();
-    await bob.docs.expectDocVisible('Future Public');
+    await bob.docs.expectDocVisible('Future Public', { timeout: 60_000 });
   });
 
   test('set_subgroup_visibility wire payload is lowercase', async ({

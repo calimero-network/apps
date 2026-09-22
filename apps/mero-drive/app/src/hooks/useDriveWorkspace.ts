@@ -90,7 +90,7 @@ import {
   REGISTRY_CONTEXT_ALIAS,
   REGISTRY_SERVICE_ID,
 } from '@/constants/config';
-import { isAccessDeniedError } from '@/utils/accessDenied';
+import { isGroupAccessDenied } from '@/utils/accessDenied';
 
 /** Shared empty array so the "no duplicates" case keeps a stable identity. */
 const EMPTY_DUPLICATES: string[] = [];
@@ -993,7 +993,10 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
                 false, // not access-denied
               ] as const,
           )
-          .catch((e) => [id, null, null, isAccessDeniedError(e)] as const),
+          .catch(async (e) => {
+            const denied = await isGroupAccessDenied(mero.admin, id, e);
+            return [id, null, null, denied] as const;
+          }),
       ),
     ).then((entries) => {
       // Drop the result if this effect was torn down, OR if the active

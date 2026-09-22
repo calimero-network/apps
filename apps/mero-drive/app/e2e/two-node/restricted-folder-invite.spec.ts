@@ -1,79 +1,37 @@
-// Restricted folder gating — tests 30-32 from the design catalog.
-//
-// Complements `open-folder-inheritance.spec.ts`: the Open-path
-// covers self-join via the inheritance walk; this spec covers the
-// explicit-invite path that Restricted folders force you onto.
+// Restricted folder gating: the rail hides a Restricted folder from
+// namespace members outside it until an admin adds them.
 
-import { test, expect } from '../fixtures/two-user';
+import { test } from '../fixtures/two-user';
 
 test.describe('Restricted folder invite (two-node)', () => {
-  // A non-member no longer sees a Restricted folder's row and ask-admin card.
-  test.fixme('Bob sees Restricted folder name but ask-admin card', async ({
-    alice,
-    bob,
-  }) => {
-    await alice.goToWorkspace();
-    await alice.createNamespace('Restricted WS');
-    await alice.createFolder({ name: 'Confidential', visibility: 'Restricted' });
-    await alice.openSettings();
-    const inviteUrl = await alice.settings.copyNamespaceInvite();
-    await alice.closeSettings();
-
-    await bob.joinNamespace(inviteUrl);
-    await bob.tree.expectFolderVisible('Confidential', { timeout: 60_000 });
-
-    await bob.tree.openFolder('Confidential');
-    // Distinct from the syncing-state copy: this is the definitive
-    // "you are not on the member list" state.
-    await bob.restrictedCard.expectAskAdmin();
-  });
-
-  // A non-member no longer sees a Restricted folder's row and ask-admin card.
-  test.fixme("Bob copies identity from restricted card", async ({ alice, bob }) => {
-    await alice.goToWorkspace();
-    await alice.createNamespace('Identity WS');
-    await alice.createFolder({ name: 'Locked', visibility: 'Restricted' });
-    await alice.openSettings();
-    const inviteUrl = await alice.settings.copyNamespaceInvite();
-    await alice.closeSettings();
-
-    await bob.joinNamespace(inviteUrl);
-    await bob.tree.openFolder('Locked');
-    await bob.restrictedCard.expectAskAdmin();
-
-    const identity = await bob.restrictedCard.copyIdentity();
-    expect(identity).toMatch(/^[1-9A-HJ-NP-Za-km-z]{32,64}$/); // base58 pubkey shape
-  });
-
-  // A non-member no longer sees a Restricted folder's row and ask-admin card.
-  test.fixme("Alice adds Bob's identity → Bob's card swaps to folder view", async ({
+  test('Bob sees a Restricted folder only once Alice adds him', async ({
     alice,
     bob,
   }) => {
     await alice.goToWorkspace();
     await alice.createNamespace('Grant WS');
     await alice.createFolder({ name: 'Privileged', visibility: 'Restricted' });
+    // Created after the Restricted one, so seeing it proves Bob's tree
+    // already holds the Restricted folder's registry entry.
+    await alice.createFolder({ name: 'Lobby', visibility: 'Open' });
     await alice.tree.openFolder('Privileged');
     await alice.createDoc('Secret Doc');
     await alice.openSettings();
     const inviteUrl = await alice.settings.copyNamespaceInvite();
     await alice.closeSettings();
 
-    // Bob: join, navigate to the restricted folder, copy identity.
     await bob.joinNamespace(inviteUrl);
-    await bob.tree.expectFolderVisible('Privileged', { timeout: 60_000 });
-    await bob.tree.openFolder('Privileged');
-    const bobIdentity = await bob.restrictedCard.copyIdentity();
+    await bob.tree.expectFolderVisible('Lobby', { timeout: 60_000 });
+    // Exact list: neither the name nor an id placeholder row leaks.
+    await bob.tree.expectFolderList(['Lobby']);
 
-    // Alice: add Bob via the FolderSharingPanel inside the Info modal.
     await alice.openFolderInfo('Privileged');
-    await alice.sharing.addMember(bobIdentity);
-    await alice.sharing.expectMemberVisible(bobIdentity.slice(0, 12));
+    await alice.sharing.addMember('bob');
+    await alice.sharing.expectMemberVisible('bob');
     await alice.closeFolderInfo();
 
-    // Bob: refresh his view → restricted card unmounts, doc list
-    // mounts, can read Alice's doc.
-    await bob.restrictedCard.clickRefresh();
+    await bob.tree.expectFolderVisible('Privileged', { timeout: 60_000 });
+    await bob.tree.openFolder('Privileged');
     await bob.docs.expectDocVisible('Secret Doc', { timeout: 60_000 });
   });
 });
