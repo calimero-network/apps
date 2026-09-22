@@ -167,6 +167,12 @@ export interface Span {
   attributes: Record<string, string>;
 }
 
+export interface TitleApplied {
+  applied: boolean;
+  token: string | null;
+  text: string;
+}
+
 
 
 
@@ -598,6 +604,16 @@ export class DocsClient {
   public async titleApplyDelta(params: { doc: string; ops: ChangePayload[] }): Promise<string> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'title_apply_delta', argsJson: params });
     return response as string;
+  }
+
+  /**
+   * title_apply_delta_on
+   *
+   * @intent mutating
+   */
+  public async titleApplyDeltaOn(params: { doc: string; base: string; ops: ChangePayload[] }): Promise<TitleApplied> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'title_apply_delta_on', argsJson: params });
+    return response as TitleApplied;
   }
 
   /**

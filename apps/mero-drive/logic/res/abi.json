@@ -664,6 +664,30 @@
           }
         }
       ]
+    },
+    "TitleApplied": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "applied",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "token",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "text",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
     }
   },
   "methods": [
@@ -1538,6 +1562,36 @@
       ],
       "returns": {
         "kind": "string"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "title_apply_delta_on",
+      "params": [
+        {
+          "name": "doc",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "base",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "ops",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "Change"
+            }
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "TitleApplied"
       },
       "intent": "mutating"
     },

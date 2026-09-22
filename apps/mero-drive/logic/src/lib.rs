@@ -109,6 +109,15 @@ pub struct Applied {
     pub spans: Vec<Span>,
 }
 
+/// What `title_apply_delta_on` did; the title comes back either way.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, AbiType)]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct TitleApplied {
+    pub applied: bool,
+    pub token: Option<String>,
+    pub text: String,
+}
+
 /// One step of an attributed editor change, mirroring `DeltaOp`, which has no
 /// `AbiType`. Untagged so the YAML stays Quill's: `- retain: 6`.
 #[derive(Clone, Debug, Serialize, Deserialize, AbiType)]
@@ -422,6 +431,26 @@ impl DocsState {
         let steps = self.write(&doc)?.title.apply_delta(&ops)?;
         app::emit!(Event::TitleChanged { doc: &doc });
         encode_token(&steps)
+    }
+
+    /// `title_apply_delta`, but only onto the title the caller diffed against.
+    pub fn title_apply_delta_on(
+        &mut self,
+        doc: String,
+        base: String,
+        ops: Vec<Change>,
+    ) -> app::Result<TitleApplied> {
+        let current = self.read(&doc)?.title.get_text()?;
+        let token = if current == base {
+            Some(self.title_apply_delta(doc.clone(), ops)?)
+        } else {
+            None
+        };
+        Ok(TitleApplied {
+            applied: token.is_some(),
+            token,
+            text: self.read(&doc)?.title.get_text()?,
+        })
     }
 
     /// Takes a whole title transaction back, returning a token that redoes it.
@@ -1257,6 +1286,42 @@ mod tests {
             app.view(|s| s.list_blocks(DOC.to_owned())).unwrap(),
             vec![block]
         );
+    }
+
+    #[test]
+    fn title_apply_delta_on_applies_onto_the_title_it_was_diffed_against() {
+        let mut app = host("core");
+        let applied = app
+            .call(|s| {
+                s.title_apply_delta_on(
+                    DOC.to_owned(),
+                    "core".to_owned(),
+                    vec![retain(4), insert(" team")],
+                )
+            })
+            .unwrap();
+        assert!(applied.applied);
+        assert!(applied.token.is_some());
+        assert_eq!(applied.text, "core team");
+        assert_eq!(title(&app), "core team");
+    }
+
+    #[test]
+    fn title_apply_delta_on_refuses_a_stale_base_and_hands_back_the_title() {
+        let mut app = host("core");
+        let refused = app
+            .call(|s| {
+                s.title_apply_delta_on(
+                    DOC.to_owned(),
+                    "cor".to_owned(),
+                    vec![retain(3), insert("X")],
+                )
+            })
+            .unwrap();
+        assert!(!refused.applied);
+        assert_eq!(refused.token, None);
+        assert_eq!(refused.text, "core");
+        assert_eq!(title(&app), "core");
     }
 
     #[test]
