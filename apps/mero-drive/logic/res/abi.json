@@ -1,6 +1,182 @@
 {
   "schema_version": "wasm-abi/1",
   "types": {
+    "Block": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "kind",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "depth",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "attrs",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "spans",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "Span"
+            }
+          }
+        }
+      ]
+    },
+    "BlockView": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "tuple",
+            "elements": [
+              {
+                "kind": "u64"
+              },
+              {
+                "kind": "u32"
+              }
+            ]
+          }
+        },
+        {
+          "name": "kind",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "depth",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "attrs",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "spans",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "Span"
+            }
+          }
+        }
+      ]
+    },
+    "Change": {
+      "kind": "variant",
+      "variants": [
+        {
+          "name": "Retain",
+          "payload": {
+            "$ref": "Change_Retain"
+          }
+        },
+        {
+          "name": "Insert",
+          "payload": {
+            "$ref": "Change_Insert"
+          }
+        },
+        {
+          "name": "Delete",
+          "payload": {
+            "$ref": "Change_Delete"
+          }
+        }
+      ]
+    },
+    "Change_Delete": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "delete",
+          "type": {
+            "kind": "u32"
+          }
+        }
+      ]
+    },
+    "Change_Insert": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "insert",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "attributes",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "string"
+            }
+          }
+        }
+      ]
+    },
+    "Change_Retain": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "retain",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "attributes",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "string"
+            }
+          }
+        }
+      ]
+    },
     "Comment": {
       "kind": "record",
       "fields": [
@@ -74,12 +250,6 @@
           }
         },
         {
-          "name": "content",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
           "name": "tags",
           "type": {
             "kind": "list",
@@ -116,20 +286,18 @@
           "type": {
             "kind": "record",
             "fields": [],
-            "crdt_type": "lww_register",
-            "inner_type": {
-              "kind": "string"
-            }
+            "crdt_type": "fugue_text"
           }
         },
         {
-          "name": "content",
+          "name": "body",
           "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "lww_register",
-            "inner_type": {
+            "kind": "map",
+            "key": {
               "kind": "string"
+            },
+            "value": {
+              "$ref": "BlockView"
             }
           }
         },
@@ -161,7 +329,12 @@
         {
           "name": "created_at",
           "type": {
-            "kind": "u64"
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "u64"
+            }
           }
         },
         {
@@ -173,16 +346,6 @@
             "inner_type": {
               "kind": "u64"
             }
-          }
-        },
-        {
-          "name": "content_updates",
-          "type": {
-            "kind": "list",
-            "items": {
-              "kind": "bytes"
-            },
-            "crdt_type": "unordered_set"
           }
         }
       ]
@@ -230,6 +393,74 @@
             "kind": "record",
             "fields": [],
             "crdt_type": "counter"
+          }
+        }
+      ]
+    },
+    "Event_BlockChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "doc",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "block",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_BlockDeleted": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "doc",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "block",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_BlockInserted": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "doc",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "block",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_BlockMoved": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "doc",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "block",
+          "type": {
+            "kind": "string"
           }
         }
       ]
@@ -333,19 +564,117 @@
         }
       ]
     },
-    "Event_Migrated": {
+    "Event_MarkApplied": {
       "kind": "record",
       "fields": [
         {
-          "name": "from_version",
+          "name": "doc",
           "type": {
             "kind": "string"
           }
         },
         {
-          "name": "to_version",
+          "name": "block",
           "type": {
             "kind": "string"
+          }
+        },
+        {
+          "name": "mark_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_TextChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "doc",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "block",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "ids",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "Run"
+            }
+          }
+        }
+      ]
+    },
+    "Event_TitleChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "doc",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "ids",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "Run"
+            }
+          }
+        }
+      ]
+    },
+    "Run": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "replica",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "counter",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "len",
+          "type": {
+            "kind": "u32"
+          }
+        }
+      ]
+    },
+    "Span": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "text",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "attributes",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "string"
+            }
           }
         }
       ]
@@ -395,23 +724,65 @@
       "intent": "mutating"
     },
     {
-      "name": "append_doc_update",
+      "name": "anchor_at",
       "params": [
         {
-          "name": "id",
+          "name": "doc",
           "type": {
             "kind": "string"
           }
         },
         {
-          "name": "update",
+          "name": "block",
           "type": {
-            "kind": "bytes"
+            "kind": "string"
+          }
+        },
+        {
+          "name": "position",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "before",
+          "type": {
+            "kind": "bool"
           }
         }
       ],
       "returns": {
-        "kind": "unit"
+        "kind": "string"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "apply_delta",
+      "params": [
+        {
+          "name": "doc",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "block",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "ops",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "Change"
+            }
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
       },
       "intent": "mutating"
     },
@@ -461,12 +832,6 @@
           "type": {
             "kind": "string"
           }
-        },
-        {
-          "name": "content",
-          "type": {
-            "kind": "string"
-          }
         }
       ],
       "returns": {
@@ -475,12 +840,25 @@
       "intent": "mutating"
     },
     {
-      "name": "default_sort_order",
-      "params": [],
+      "name": "delete_block",
+      "params": [
+        {
+          "name": "doc",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "block",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
       "returns": {
-        "kind": "string"
+        "kind": "unit"
       },
-      "intent": "read_only"
+      "intent": "mutating"
     },
     {
       "name": "delete_comment",
@@ -546,21 +924,58 @@
           "name": "title",
           "type": {
             "kind": "string"
-          },
-          "nullable": true
-        },
-        {
-          "name": "content",
-          "type": {
-            "kind": "string"
-          },
-          "nullable": true
+          }
         }
       ],
       "returns": {
         "kind": "unit"
       },
       "intent": "mutating"
+    },
+    {
+      "name": "get_block",
+      "params": [
+        {
+          "name": "doc",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "block",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "Block"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_block_delta",
+      "params": [
+        {
+          "name": "doc",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "block",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "Span"
+        }
+      },
+      "intent": "read_only"
     },
     {
       "name": "get_comment",
@@ -593,10 +1008,10 @@
       "intent": "read_only"
     },
     {
-      "name": "get_doc_updates",
+      "name": "get_document",
       "params": [
         {
-          "name": "id",
+          "name": "doc",
           "type": {
             "kind": "string"
           }
@@ -605,8 +1020,59 @@
       "returns": {
         "kind": "list",
         "items": {
-          "kind": "bytes"
+          "$ref": "Block"
         }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_state_digest",
+      "params": [
+        {
+          "name": "doc",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_text",
+      "params": [
+        {
+          "name": "doc",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "block",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_title",
+      "params": [
+        {
+          "name": "doc",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
       },
       "intent": "read_only"
     },
@@ -616,6 +1082,58 @@
       "returns": {
         "kind": "unit"
       }
+    },
+    {
+      "name": "insert_block",
+      "params": [
+        {
+          "name": "doc",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "after",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "kind",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "depth",
+          "type": {
+            "kind": "u32"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "list_blocks",
+      "params": [
+        {
+          "name": "doc",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "kind": "string"
+        }
+      },
+      "intent": "read_only"
     },
     {
       "name": "list_comments",
@@ -654,6 +1172,134 @@
       "intent": "read_only"
     },
     {
+      "name": "mark",
+      "params": [
+        {
+          "name": "doc",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "block",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "start",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "end",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "key",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "merge_blocks",
+      "params": [
+        {
+          "name": "doc",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "first",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "second",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "move_block",
+      "params": [
+        {
+          "name": "doc",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "block",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "after",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "passage_count",
+      "params": [
+        {
+          "name": "doc",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "block",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "needle",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "u32"
+      },
+      "intent": "read_only"
+    },
+    {
       "name": "remove_tag",
       "params": [
         {
@@ -675,6 +1321,268 @@
       "intent": "mutating"
     },
     {
+      "name": "resolve_ids",
+      "params": [
+        {
+          "name": "doc",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "block",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "anchors",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        }
+      ],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "kind": "u32"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "set_attr",
+      "params": [
+        {
+          "name": "doc",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "block",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "key",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "set_depth",
+      "params": [
+        {
+          "name": "doc",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "block",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "depth",
+          "type": {
+            "kind": "u32"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "set_kind",
+      "params": [
+        {
+          "name": "doc",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "block",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "kind",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "split_block",
+      "params": [
+        {
+          "name": "doc",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "block",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "at",
+          "type": {
+            "kind": "u32"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "title_anchor_at",
+      "params": [
+        {
+          "name": "doc",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "position",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "before",
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "title_apply_delta",
+      "params": [
+        {
+          "name": "doc",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "ops",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "Change"
+            }
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "title_digest",
+      "params": [
+        {
+          "name": "doc",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "title_resolve",
+      "params": [
+        {
+          "name": "doc",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "anchors",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        }
+      ],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "kind": "u32"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "title_undo",
+      "params": [
+        {
+          "name": "doc",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "token",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "mutating"
+    },
+    {
       "name": "unarchive_doc",
       "params": [
         {
@@ -688,9 +1596,99 @@
         "kind": "unit"
       },
       "intent": "mutating"
+    },
+    {
+      "name": "undo",
+      "params": [
+        {
+          "name": "doc",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "block",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "token",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "unmark",
+      "params": [
+        {
+          "name": "doc",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "block",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "start",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "end",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "key",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "mutating"
     }
   ],
   "events": [
+    {
+      "name": "BlockChanged",
+      "payload": {
+        "$ref": "Event_BlockChanged"
+      }
+    },
+    {
+      "name": "BlockDeleted",
+      "payload": {
+        "$ref": "Event_BlockDeleted"
+      }
+    },
+    {
+      "name": "BlockInserted",
+      "payload": {
+        "$ref": "Event_BlockInserted"
+      }
+    },
+    {
+      "name": "BlockMoved",
+      "payload": {
+        "$ref": "Event_BlockMoved"
+      }
+    },
     {
       "name": "CommentAdded",
       "payload": {
@@ -746,9 +1744,21 @@
       }
     },
     {
-      "name": "Migrated",
+      "name": "MarkApplied",
       "payload": {
-        "$ref": "Event_Migrated"
+        "$ref": "Event_MarkApplied"
+      }
+    },
+    {
+      "name": "TextChanged",
+      "payload": {
+        "$ref": "Event_TextChanged"
+      }
+    },
+    {
+      "name": "TitleChanged",
+      "payload": {
+        "$ref": "Event_TitleChanged"
       }
     }
   ],

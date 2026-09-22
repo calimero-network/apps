@@ -558,6 +558,61 @@ steps:
     args:
       id: '{{doc_a}}'
 
+  # =================================================================
+  # Phase K: Comments — authored, identity-gated annotations
+  # =================================================================
+
+  - name: Alice comments on doc_a
+    type: call
+    node: calimero-node-1
+    context_id: '{{docs_ctx}}'
+    method: add_comment
+    executor_public_key: '{{alice_key}}'
+    args:
+      doc_id: '{{doc_a}}'
+      body: Looks good to me.
+    outputs:
+      comment_id: result.output
+
+  - name: Alice reads her comment back
+    type: call
+    node: calimero-node-1
+    context_id: '{{docs_ctx}}'
+    method: get_comment
+    executor_public_key: '{{alice_key}}'
+    args:
+      id: '{{comment_id}}'
+    outputs:
+      comment_doc: result.output.doc_id
+      comment_body: result.output.body
+
+  - name: Assert the comment kept its document and body
+    type: assert
+    statements:
+      - '"{{comment_doc}}" == "{{doc_a}}"'
+      - '"{{comment_body}}" == "Looks good to me."'
+
+  - name: Sync the comment to Bob
+    type: wait_for_sync
+    nodes: [calimero-node-1, calimero-node-2]
+    context_id: '{{docs_ctx}}'
+    timeout: 30
+    trigger_sync: true
+
+  - name: Bob counts the comments
+    type: call
+    node: calimero-node-2
+    context_id: '{{docs_ctx}}'
+    method: comment_count
+    executor_public_key: '{{bob_key}}'
+    outputs:
+      comments_on_node2: result
+
+  - name: Assert the comment reached Bob
+    type: json_assert
+    statements:
+      - 'json_equal({{comments_on_node2}}, {"output": 1})'
+
 # Leave containers up for the CI log-watcher / retry loop. The outer
 # shell in .github/workflows/ci.yml calls `merobox nuke --force` on
 # attempt boundaries; merobox shouldn't stop nodes on workflow success.
