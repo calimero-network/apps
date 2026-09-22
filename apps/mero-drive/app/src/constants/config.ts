@@ -81,10 +81,3 @@ export const COLOR_PRESETS: Array<{ value: string; label: string }> = [
   { value: '#ef4444', label: 'Red' },
   { value: '#8b5cf6', label: 'Purple' },
 ];
-
-// Feature flag: real-time collaborative editing via Yjs + the docs WASM
-// `content_updates` op-log (see components/editor/collab). When OFF (default),
-// the editor uses the legacy debounced LWW whole-snapshot autosave (edit_doc).
-// Opt in with `VITE_COLLAB_YJS=true`; read once at module load.
-export const COLLAB_YJS_ENABLED: boolean =
-  (import.meta.env.VITE_COLLAB_YJS as string | undefined)?.trim() === 'true';

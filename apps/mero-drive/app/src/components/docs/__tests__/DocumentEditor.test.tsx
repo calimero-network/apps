@@ -1,17 +1,36 @@
+// The editor's data-layer bridge, driven with a fake docs client. The trap
+// this file guards is the loading screen: the shell must leave it once the
+// document read resolves, whichever read wins the race.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { act, render, screen } from '@testing-library/react';
 import type { DocDto } from '@/generated/docs/DocsClient';
 import { DocumentEditor } from '../DocumentEditor';
 
 const getDoc = vi.fn();
-let onContextEvent: (() => void) | undefined;
+const getDocument = vi.fn();
+const getTitle = vi.fn();
+let deliver: ((event: unknown) => void) | undefined;
+// Stable identity: useDocs memoizes its client, and a fresh one per render
+// would re-run every hook effect that keys on it.
+const client = { getDocument, getTitle };
 
-vi.mock('@/constants/config', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@/constants/config')>()),
-  COLLAB_YJS_ENABLED: false,
+vi.mock('@calimero-network/mero-react', () => ({
+  useSubscription: (_ids: string[], handler: (event: unknown) => void) => {
+    deliver = handler;
+  },
+  useEphemeral: () => ({
+    peers: new Map(),
+    setPresence: vi.fn(),
+    ageOf: () => undefined,
+    error: null,
+  }),
 }));
 vi.mock('@/hooks/useDriveWorkspace', () => ({
-  useDriveWorkspace: () => ({ namespaceId: 'ns' }),
+  useDriveWorkspace: () => ({
+    namespaceId: 'ns',
+    selfIdentity: 'alice',
+    namespaceMemberNames: {},
+  }),
 }));
 vi.mock('@/hooks/useFolderPermissions', () => ({
   useFolderPermissions: () => ({ canEditDocs: true }),
@@ -21,63 +40,85 @@ vi.mock('@/hooks/useDocs', () => ({
     get: getDoc,
     edit: vi.fn(),
     remove: vi.fn(),
+    refetch: vi.fn(),
     contextId: 'docs-ctx',
+    client,
   }),
-}));
-vi.mock('@/hooks/useContextEvents', () => ({
-  useContextEvents: (_ctx: string | null, cb: () => void) => {
-    onContextEvent = cb;
-  },
 }));
 vi.mock('@/components/ui/confirm-dialog', () => ({
   useConfirm: () => vi.fn(),
 }));
 vi.mock('@/components/editor/EditorShell', () => ({
-  EditorShell: ({ isLoading }: { isLoading: boolean }) => (
-    <div>{isLoading ? 'Loading document...' : 'editor mounted'}</div>
-  ),
+  EditorShell: ({
+    isLoading,
+    documentName,
+  }: {
+    isLoading: boolean;
+    documentName: string;
+  }) => <div>{isLoading ? 'Loading document...' : documentName}</div>,
 }));
 
-const DOC: DocDto = {
+const DOC = {
   id: 'doc-1',
   title: 'Untitled',
-  content: '',
+  tags: [],
+  archived: false,
+  created_at: 1_700_000_000_000_000_000,
   updated_at: 1_700_000_000_000_000_000,
-} as DocDto;
+} satisfies DocDto;
 
 function deferred<T>() {
-  let resolve!: (v: T) => void;
+  let resolve!: (value: T) => void;
   const promise = new Promise<T>((r) => {
     resolve = r;
   });
   return { promise, resolve };
 }
 
-describe('LwwDocumentEditor', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    onContextEvent = undefined;
-  });
+beforeEach(() => {
+  vi.clearAllMocks();
+  deliver = undefined;
+  getDoc.mockResolvedValue(DOC);
+  getTitle.mockResolvedValue('Notes');
+  getDocument.mockResolvedValue([]);
+});
 
-  it('leaves the loading screen when a context event refresh supersedes the initial load', async () => {
-    const initial = deferred<DocDto>();
-    const refresh = deferred<DocDto>();
-    getDoc
-      .mockReturnValueOnce(initial.promise)
-      .mockReturnValueOnce(refresh.promise);
+describe('DocumentEditor', () => {
+  it('shows the loading screen until the document read resolves', async () => {
+    const body = deferred<unknown[]>();
+    getDocument.mockReturnValue(body.promise);
 
     render(<DocumentEditor folderId="f" docId="doc-1" onClose={() => {}} />);
     expect(screen.getByText('Loading document...')).toBeTruthy();
 
-    // create_doc's own event lands while the initial get_doc is in flight.
-    act(() => onContextEvent?.());
-    expect(getDoc).toHaveBeenCalledTimes(2);
-
     await act(async () => {
-      initial.resolve(DOC);
-      refresh.resolve(DOC);
+      body.resolve([]);
     });
+    expect(screen.getByText('Notes')).toBeTruthy();
+  });
 
-    expect(screen.getByText('editor mounted')).toBeTruthy();
+  it('renders the title the title CRDT answered', async () => {
+    render(<DocumentEditor folderId="f" docId="doc-1" onClose={() => {}} />);
+    await screen.findByText('Notes');
+    expect(getTitle).toHaveBeenCalledWith({ doc: 'doc-1' });
+  });
+
+  it('falls back to Untitled when the document has no title yet', async () => {
+    getTitle.mockResolvedValue('');
+    render(<DocumentEditor folderId="f" docId="doc-1" onClose={() => {}} />);
+    await screen.findByText('Untitled');
+  });
+
+  it('subscribes to the docs context so a peer edit can reach it', async () => {
+    render(<DocumentEditor folderId="f" docId="doc-1" onClose={() => {}} />);
+    await screen.findByText('Notes');
+    expect(deliver).toBeTypeOf('function');
+  });
+
+  it('surfaces a failed metadata read instead of an empty editor', async () => {
+    getDoc.mockRejectedValue(new Error('context unreachable'));
+    render(<DocumentEditor folderId="f" docId="doc-1" onClose={() => {}} />);
+    await screen.findByText("Couldn't load document");
+    expect(screen.getByText('context unreachable')).toBeTruthy();
   });
 });

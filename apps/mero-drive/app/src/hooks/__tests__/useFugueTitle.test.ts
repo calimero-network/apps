@@ -4,7 +4,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { Mock } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import type { ChangeEvent } from 'react';
-import { useFugueTitle, type TitleClient } from '../useFugueTitle';
+import type { DocsClient } from '@/generated/docs/DocsClient';
+import { useFugueTitle } from '../useFugueTitle';
 
 const setPresence = vi.fn();
 let peers = new Map<string, unknown>();
@@ -22,11 +23,17 @@ vi.mock('@calimero-network/mero-react', () => ({
   }),
 }));
 
-
 const DOC = 'doc-1';
 const CTX = 'ctx-1';
 
-type FakeClient = { [K in keyof TitleClient]: Mock };
+type FakeClient = Record<
+  | 'getTitle'
+  | 'titleApplyDelta'
+  | 'titleUndo'
+  | 'titleAnchorAt'
+  | 'titleResolve',
+  Mock
+>;
 
 function fakeClient(): FakeClient {
   return {
@@ -59,7 +66,7 @@ const settle = async (ms = 400) => {
 function mount(client: FakeClient, identity?: { id: string; name: string }) {
   return renderHook(() =>
     useFugueTitle({
-      client: client as unknown as TitleClient,
+      client: client as unknown as DocsClient,
       docId: DOC,
       contextId: CTX,
       identity,

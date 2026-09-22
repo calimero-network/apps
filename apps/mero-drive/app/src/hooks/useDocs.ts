@@ -17,7 +17,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useJoinContext } from '@calimero-network/mero-react';
-import { CalimeroBytes, type DocDto } from '../generated/docs/DocsClient';
+import type { DocDto, DocsClient } from '../generated/docs/DocsClient';
 import { useDriveWorkspace } from '../hooks/useDriveWorkspace';
 import { useDocsClient } from './useDocsClient';
 import { useDocEvents } from './useDocEvents';
@@ -40,18 +40,14 @@ export interface UseDocsState {
   loading: boolean;
   error: Error | null;
   refetch: () => Promise<void>;
-  create: (input: { title: string; content?: string }) => Promise<string>;
-  edit: (
-    id: string,
-    patch: { title?: string | null; content?: string | null },
-  ) => Promise<void>;
+  create: (input: { title: string }) => Promise<string>;
+  /** Replace the whole title. An open editor writes deltas through the
+   *  title API instead; this is the rename path for the list. */
+  edit: (id: string, patch: { title: string }) => Promise<void>;
   get: (id: string) => Promise<DocDto>;
   remove: (id: string) => Promise<void>;
-  /** Append one opaque Yjs update blob to a doc's collaborative content log.
-   *  Idempotent (content-addressed in the WASM). Used by the Yjs provider. */
-  appendUpdate: (id: string, update: Uint8Array) => Promise<void>;
-  /** Read the full (unordered) set of Yjs update blobs for a doc. */
-  getUpdates: (id: string) => Promise<Uint8Array[]>;
+  /** The client bound to this folder's docs context, for the CRDT hooks. */
+  client: DocsClient | null;
 }
 
 // Module-level fan-out so every useDocs instance for the same
@@ -307,12 +303,9 @@ export function useDocs(folderId: string | null): UseDocsState {
   }, [contextId, refetch]);
 
   const create = useCallback(
-    async (input: { title: string; content?: string }): Promise<string> => {
+    async (input: { title: string }): Promise<string> => {
       if (!docsClient) throw new Error('docs context not ready');
-      const id = await docsClient.createDoc({
-        title: input.title,
-        content: input.content ?? '',
-      });
+      const id = await docsClient.createDoc({ title: input.title });
       await refetch();
       notifyDocsRefetch(contextId);
       return id;
@@ -321,27 +314,10 @@ export function useDocs(folderId: string | null): UseDocsState {
   );
 
   const edit = useCallback(
-    async (
-      id: string,
-      patch: { title?: string | null; content?: string | null },
-    ): Promise<void> => {
+    async (id: string, patch: { title: string }): Promise<void> => {
       if (!docsClient) throw new Error('docs context not ready');
-      await docsClient.editDoc({
-        id,
-        title: patch.title ?? null,
-        content: patch.content ?? null,
-      });
-      // Only notify siblings when something the list renders actually
-      // changed. The sidebar shows title + timestamp but NOT content —
-      // so content autosaves (by far the most frequent edits) don't
-      // need to fan out. Notifying on every keystroke would trigger a
-      // list_docs refetch per autosave, compounding with other
-      // in-flight requests and starving edit_doc enough to make it
-      // look stuck on "Saving…".
-      const titleChanged = patch.title !== undefined && patch.title !== null;
-      if (titleChanged) {
-        notifyDocsRefetch(contextId);
-      }
+      await docsClient.editDoc({ id, title: patch.title });
+      notifyDocsRefetch(contextId);
     },
     [docsClient, contextId],
   );
@@ -364,36 +340,6 @@ export function useDocs(folderId: string | null): UseDocsState {
     [docsClient, refetch, contextId],
   );
 
-  const appendUpdate = useCallback(
-    async (id: string, update: Uint8Array): Promise<void> => {
-      if (!docsClient) throw new Error('docs context not ready');
-      // Deliberately does NOT notify siblings: the sidebar renders title, not
-      // body, so a list_docs fan-out per update would only add load. Peers
-      // learn of the new blob via the docs-context SSE event (DocEdited) the
-      // collab provider's pullRemote consumes.
-      await docsClient.appendDocUpdate({
-        id,
-        update: CalimeroBytes.fromUint8Array(update),
-      });
-    },
-    [docsClient],
-  );
-
-  const getUpdates = useCallback(
-    async (id: string): Promise<Uint8Array[]> => {
-      if (!docsClient) throw new Error('docs context not ready');
-      const blobs = await docsClient.getDocUpdates({ id });
-      // The generated DocsClient's convertWasmResultToCalimeroBytes tests
-      // `arr.every(isNumber)`, which is VACUOUSLY TRUE for `[]` — so an empty
-      // content_updates (a fresh doc) comes back as a single CalimeroBytes([])
-      // rather than an empty array. A non-array result means "no updates". The
-      // guard lives here because DocsClient is codegen'd (DO NOT EDIT).
-      if (!Array.isArray(blobs)) return [];
-      return blobs.map((b) => b.toUint8Array());
-    },
-    [docsClient],
-  );
-
   return {
     contextId,
     contextResolving,
@@ -405,7 +351,6 @@ export function useDocs(folderId: string | null): UseDocsState {
     edit,
     get,
     remove,
-    appendUpdate,
-    getUpdates,
+    client: docsClient,
   };
 }

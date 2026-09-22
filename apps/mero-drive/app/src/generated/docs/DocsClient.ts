@@ -6,6 +6,47 @@ import {
 
 // Generated types
 
+export interface Block {
+  id: string;
+  kind: string;
+  depth: number;
+  attrs: Record<string, string>;
+  spans: Span[];
+}
+
+export interface BlockView {
+  id: [number, number];
+  kind: string;
+  depth: number;
+  attrs: Record<string, string>;
+  spans: Span[];
+}
+
+export type ChangePayload =
+  | { name: 'Retain'; payload: Change_Retain }
+  | { name: 'Insert'; payload: Change_Insert }
+  | { name: 'Delete'; payload: Change_Delete }
+
+export const Change = {
+  Retain: (retain: Change_Retain): ChangePayload => ({ name: 'Retain', payload: retain }),
+  Insert: (insert: Change_Insert): ChangePayload => ({ name: 'Insert', payload: insert }),
+  Delete: (delete_: Change_Delete): ChangePayload => ({ name: 'Delete', payload: delete_ }),
+} as const;
+
+export interface Change_Delete {
+  delete_: number;
+}
+
+export interface Change_Insert {
+  insert: string;
+  attributes: Record<string, string>;
+}
+
+export interface Change_Retain {
+  retain: number;
+  attributes: Record<string, string>;
+}
+
 export interface Comment {
   doc_id: string;
   body: string;
@@ -22,7 +63,6 @@ export interface CommentDto {
 export interface DocDto {
   id: string;
   title: string;
-  content: string;
   tags: string[];
   archived: boolean;
   created_at: number;
@@ -30,13 +70,12 @@ export interface DocDto {
 }
 
 export interface DocRecord {
-  title: string;
-  content: string;
+  title: {  };
+  body: Record<string, BlockView>;
   tags: string[];
   archived: boolean;
   created_at: number;
   updated_at: number;
-  content_updates: CalimeroBytes[];
 }
 
 export interface DocsState {
@@ -44,6 +83,26 @@ export interface DocsState {
   next_id: {  };
   comments: Record<string, Comment>;
   next_comment_id: {  };
+}
+
+export interface Event_BlockChanged {
+  doc: string;
+  block: string;
+}
+
+export interface Event_BlockDeleted {
+  doc: string;
+  block: string;
+}
+
+export interface Event_BlockInserted {
+  doc: string;
+  block: string;
+}
+
+export interface Event_BlockMoved {
+  doc: string;
+  block: string;
 }
 
 export interface Event_CommentAdded {
@@ -82,10 +141,39 @@ export interface Event_DocUnarchived {
   id: string;
 }
 
-export interface Event_Migrated {
-  from_version: string;
-  to_version: string;
+export interface Event_MarkApplied {
+  doc: string;
+  block: string;
+  mark_id: string;
 }
+
+export interface Event_TextChanged {
+  doc: string;
+  block: string;
+  ids: Run[];
+}
+
+export interface Event_TitleChanged {
+  doc: string;
+  ids: Run[];
+}
+
+export interface Run {
+  replica: string;
+  counter: number;
+  len: number;
+}
+
+export interface Span {
+  text: string;
+  attributes: Record<string, string>;
+}
+
+
+
+
+
+
 
 
 
@@ -98,6 +186,10 @@ export interface Event_Migrated {
 
 
 export type AbiEvent =
+  | { name: "BlockChanged"; payload: Event_BlockChanged }
+  | { name: "BlockDeleted"; payload: Event_BlockDeleted }
+  | { name: "BlockInserted"; payload: Event_BlockInserted }
+  | { name: "BlockMoved"; payload: Event_BlockMoved }
   | { name: "CommentAdded"; payload: Event_CommentAdded }
   | { name: "CommentDeleted"; payload: Event_CommentDeleted }
   | { name: "CommentEdited"; payload: Event_CommentEdited }
@@ -107,78 +199,11 @@ export type AbiEvent =
   | { name: "DocEdited"; payload: Event_DocEdited }
   | { name: "DocTagsChanged"; payload: Event_DocTagsChanged }
   | { name: "DocUnarchived"; payload: Event_DocUnarchived }
-  | { name: "Migrated"; payload: Event_Migrated }
+  | { name: "MarkApplied"; payload: Event_MarkApplied }
+  | { name: "TextChanged"; payload: Event_TextChanged }
+  | { name: "TitleChanged"; payload: Event_TitleChanged }
 ;
 
-
-/**
- * Utility class for handling byte conversions in Calimero
- */
-export class CalimeroBytes {
-  private data: Uint8Array;
-
-  constructor(input: string | number[] | Uint8Array) {
-    if (typeof input === "string") {
-      // Hex string
-      this.data = new Uint8Array(
-        input.match(/.{1,2}/g)?.map((byte) => parseInt(byte, 16)) || []
-      );
-    } else if (Array.isArray(input)) {
-      // Number array
-      this.data = new Uint8Array(input);
-    } else {
-      // Uint8Array
-      this.data = input;
-    }
-  }
-
-  toArray(): number[] {
-    return Array.from(this.data);
-  }
-
-  toUint8Array(): Uint8Array {
-    return this.data;
-  }
-
-  static fromHex(hex: string): CalimeroBytes {
-    return new CalimeroBytes(hex);
-  }
-
-  static fromArray(arr: number[]): CalimeroBytes {
-    return new CalimeroBytes(arr);
-  }
-
-  static fromUint8Array(bytes: Uint8Array): CalimeroBytes {
-    return new CalimeroBytes(bytes);
-  }
-}
-
-/**
- * Convert CalimeroBytes instances to arrays for WASM compatibility
- */
-function convertCalimeroBytesForWasm(obj: any): any {
-  if (obj === null || obj === undefined) {
-    return obj;
-  }
-
-  if (obj instanceof CalimeroBytes) {
-    return obj.toArray();
-  }
-
-  if (Array.isArray(obj)) {
-    return obj.map(item => convertCalimeroBytesForWasm(item));
-  }
-
-  if (typeof obj === "object") {
-    const result: any = {};
-    for (const [key, value] of Object.entries(obj)) {
-      result[key] = convertCalimeroBytesForWasm(value);
-    }
-    return result;
-  }
-
-  return obj;
-}
 
 export class DocsClient {
   private _mero: MeroJs;
@@ -210,13 +235,23 @@ export class DocsClient {
   }
 
   /**
-   * append_doc_update
+   * anchor_at
+   *
+   * @intent read_only
+   */
+  public async anchorAt(params: { doc: string; block: string; position: number; before: boolean }): Promise<string> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'anchor_at', argsJson: params });
+    return response as string;
+  }
+
+  /**
+   * apply_delta
    *
    * @intent mutating
    */
-  public async appendDocUpdate(params: { id: string; update: CalimeroBytes }): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'append_doc_update', argsJson: convertCalimeroBytesForWasm(params) });
-    return response as void;
+  public async applyDelta(params: { doc: string; block: string; ops: ChangePayload[] }): Promise<string> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'apply_delta', argsJson: params });
+    return response as string;
   }
 
   /**
@@ -254,19 +289,19 @@ export class DocsClient {
    *
    * @intent mutating
    */
-  public async createDoc(params: { title: string; content: string }): Promise<string> {
+  public async createDoc(params: { title: string }): Promise<string> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'create_doc', argsJson: params });
     return response as string;
   }
 
   /**
-   * default_sort_order
+   * delete_block
    *
-   * @intent read_only
+   * @intent mutating
    */
-  public async defaultSortOrder(): Promise<string> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'default_sort_order', argsJson: {} });
-    return response as string;
+  public async deleteBlock(params: { doc: string; block: string }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'delete_block', argsJson: params });
+    return response as void;
   }
 
   /**
@@ -304,9 +339,29 @@ export class DocsClient {
    *
    * @intent mutating
    */
-  public async editDoc(params: { id: string; title: string | null; content: string | null }): Promise<void> {
+  public async editDoc(params: { id: string; title: string }): Promise<void> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'edit_doc', argsJson: params });
     return response as void;
+  }
+
+  /**
+   * get_block
+   *
+   * @intent read_only
+   */
+  public async getBlock(params: { doc: string; block: string }): Promise<Block> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_block', argsJson: params });
+    return response as Block;
+  }
+
+  /**
+   * get_block_delta
+   *
+   * @intent read_only
+   */
+  public async getBlockDelta(params: { doc: string; block: string }): Promise<Span[]> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_block_delta', argsJson: params });
+    return response as Span[];
   }
 
   /**
@@ -330,13 +385,43 @@ export class DocsClient {
   }
 
   /**
-   * get_doc_updates
+   * get_document
    *
    * @intent read_only
    */
-  public async getDocUpdates(params: { id: string }): Promise<CalimeroBytes[]> {
-    const response: any = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_doc_updates', argsJson: params });
-    return (response == null ? null : response.map((item: any) => new CalimeroBytes(item))) as CalimeroBytes[];
+  public async getDocument(params: { doc: string }): Promise<Block[]> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_document', argsJson: params });
+    return response as Block[];
+  }
+
+  /**
+   * get_state_digest
+   *
+   * @intent read_only
+   */
+  public async getStateDigest(params: { doc: string }): Promise<string> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_state_digest', argsJson: params });
+    return response as string;
+  }
+
+  /**
+   * get_text
+   *
+   * @intent read_only
+   */
+  public async getText(params: { doc: string; block: string }): Promise<string> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_text', argsJson: params });
+    return response as string;
+  }
+
+  /**
+   * get_title
+   *
+   * @intent read_only
+   */
+  public async getTitle(params: { doc: string }): Promise<string> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_title', argsJson: params });
+    return response as string;
   }
 
   /**
@@ -345,6 +430,26 @@ export class DocsClient {
   public async init(): Promise<void> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'init', argsJson: {} });
     return response as void;
+  }
+
+  /**
+   * insert_block
+   *
+   * @intent mutating
+   */
+  public async insertBlock(params: { doc: string; after: string | null; kind: string; depth: number }): Promise<string> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'insert_block', argsJson: params });
+    return response as string;
+  }
+
+  /**
+   * list_blocks
+   *
+   * @intent read_only
+   */
+  public async listBlocks(params: { doc: string }): Promise<string[]> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'list_blocks', argsJson: params });
+    return response as string[];
   }
 
   /**
@@ -368,6 +473,46 @@ export class DocsClient {
   }
 
   /**
+   * mark
+   *
+   * @intent mutating
+   */
+  public async mark(params: { doc: string; block: string; start: number; end: number; key: string; value: string | null }): Promise<string> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'mark', argsJson: params });
+    return response as string;
+  }
+
+  /**
+   * merge_blocks
+   *
+   * @intent mutating
+   */
+  public async mergeBlocks(params: { doc: string; first: string; second: string }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'merge_blocks', argsJson: params });
+    return response as void;
+  }
+
+  /**
+   * move_block
+   *
+   * @intent mutating
+   */
+  public async moveBlock(params: { doc: string; block: string; after: string | null }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'move_block', argsJson: params });
+    return response as void;
+  }
+
+  /**
+   * passage_count
+   *
+   * @intent read_only
+   */
+  public async passageCount(params: { doc: string; block: string; needle: string }): Promise<number> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'passage_count', argsJson: params });
+    return response as number;
+  }
+
+  /**
    * remove_tag
    *
    * @intent mutating
@@ -378,6 +523,106 @@ export class DocsClient {
   }
 
   /**
+   * resolve_ids
+   *
+   * @intent read_only
+   */
+  public async resolveIds(params: { doc: string; block: string; anchors: string[] }): Promise<number[]> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'resolve_ids', argsJson: params });
+    return response as number[];
+  }
+
+  /**
+   * set_attr
+   *
+   * @intent mutating
+   */
+  public async setAttr(params: { doc: string; block: string; key: string; value: string | null }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_attr', argsJson: params });
+    return response as void;
+  }
+
+  /**
+   * set_depth
+   *
+   * @intent mutating
+   */
+  public async setDepth(params: { doc: string; block: string; depth: number }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_depth', argsJson: params });
+    return response as void;
+  }
+
+  /**
+   * set_kind
+   *
+   * @intent mutating
+   */
+  public async setKind(params: { doc: string; block: string; kind: string }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_kind', argsJson: params });
+    return response as void;
+  }
+
+  /**
+   * split_block
+   *
+   * @intent mutating
+   */
+  public async splitBlock(params: { doc: string; block: string; at: number }): Promise<string> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'split_block', argsJson: params });
+    return response as string;
+  }
+
+  /**
+   * title_anchor_at
+   *
+   * @intent read_only
+   */
+  public async titleAnchorAt(params: { doc: string; position: number; before: boolean }): Promise<string> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'title_anchor_at', argsJson: params });
+    return response as string;
+  }
+
+  /**
+   * title_apply_delta
+   *
+   * @intent mutating
+   */
+  public async titleApplyDelta(params: { doc: string; ops: ChangePayload[] }): Promise<string> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'title_apply_delta', argsJson: params });
+    return response as string;
+  }
+
+  /**
+   * title_digest
+   *
+   * @intent read_only
+   */
+  public async titleDigest(params: { doc: string }): Promise<string> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'title_digest', argsJson: params });
+    return response as string;
+  }
+
+  /**
+   * title_resolve
+   *
+   * @intent read_only
+   */
+  public async titleResolve(params: { doc: string; anchors: string[] }): Promise<number[]> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'title_resolve', argsJson: params });
+    return response as number[];
+  }
+
+  /**
+   * title_undo
+   *
+   * @intent mutating
+   */
+  public async titleUndo(params: { doc: string; token: string }): Promise<string> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'title_undo', argsJson: params });
+    return response as string;
+  }
+
+  /**
    * unarchive_doc
    *
    * @intent mutating
@@ -385,6 +630,26 @@ export class DocsClient {
   public async unarchiveDoc(params: { id: string }): Promise<void> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'unarchive_doc', argsJson: params });
     return response as void;
+  }
+
+  /**
+   * undo
+   *
+   * @intent mutating
+   */
+  public async undo(params: { doc: string; block: string; token: string }): Promise<string> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'undo', argsJson: params });
+    return response as string;
+  }
+
+  /**
+   * unmark
+   *
+   * @intent mutating
+   */
+  public async unmark(params: { doc: string; block: string; start: number; end: number; key: string }): Promise<string> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'unmark', argsJson: params });
+    return response as string;
   }
 
 }

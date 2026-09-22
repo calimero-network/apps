@@ -12,17 +12,29 @@ import {
   countWords,
   countCharacters,
 } from '../content';
-import type { Block } from '@blocknote/core';
+import type { schema } from '../schema';
+
+type Block = typeof schema.Block;
 
 const sampleDoc = [
-  { id: '1', type: 'heading', props: {}, content: [{ type: 'text', text: 'Title' }], children: [] },
+  {
+    id: '1',
+    type: 'heading',
+    props: {},
+    content: [{ type: 'text', text: 'Title' }],
+    children: [],
+  },
   {
     id: '2',
     type: 'paragraph',
     props: {},
     content: [
       { type: 'text', text: 'hello ' },
-      { type: 'link', href: 'https://x.test', content: [{ type: 'text', text: 'world' }] },
+      {
+        type: 'link',
+        href: 'https://x.test',
+        content: [{ type: 'text', text: 'world' }],
+      },
     ],
     children: [],
   },
@@ -37,7 +49,9 @@ describe('parseStoredContent', () => {
   });
 
   it('returns undefined for legacy HTML (nothing to migrate → fresh doc)', () => {
-    expect(parseStoredContent('<h1>Old Tiptap doc</h1><p>body</p>')).toBeUndefined();
+    expect(
+      parseStoredContent('<h1>Old Tiptap doc</h1><p>body</p>'),
+    ).toBeUndefined();
   });
 
   it('returns undefined for malformed JSON', () => {
@@ -78,7 +92,11 @@ describe('blocksToPlainText', () => {
         type: 'bulletListItem',
         content: [{ type: 'text', text: 'parent' }],
         children: [
-          { type: 'bulletListItem', content: [{ type: 'text', text: 'child' }], children: [] },
+          {
+            type: 'bulletListItem',
+            content: [{ type: 'text', text: 'child' }],
+            children: [],
+          },
         ],
       },
     ];
@@ -88,7 +106,11 @@ describe('blocksToPlainText', () => {
   it('skips empty blocks (images / tables) — no stray leading newline', () => {
     const weird = [
       { type: 'image', content: undefined, children: [] },
-      { type: 'paragraph', content: [{ type: 'text', text: 'ok' }], children: [] },
+      {
+        type: 'paragraph',
+        content: [{ type: 'text', text: 'ok' }],
+        children: [],
+      },
     ];
     // The leading image contributes no text and must not inject a "\n".
     expect(blocksToPlainText(weird)).toBe('ok');

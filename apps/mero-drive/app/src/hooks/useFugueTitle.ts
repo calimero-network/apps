@@ -8,7 +8,7 @@ import {
   useSubscription,
   type SubscriptionEventData,
 } from '@calimero-network/mero-react';
-import { diffText, type Change } from '@/lib/rich/delta';
+import { diffText } from '@/lib/rich/delta';
 import { parseRichEvents } from '@/lib/rich/events';
 import { utf16ToScalar } from '@/lib/rich/offsets';
 import {
@@ -18,32 +18,14 @@ import {
 } from '@/lib/rich/presence';
 import { mapScalarSelection } from '@/lib/rich/remote';
 import { UndoHistory } from '@/lib/rich/undo';
+import type { ChangePayload, DocsClient } from '@/generated/docs/DocsClient';
 import { isContextEvent } from './useContextEvents';
 
 const CARET_DEBOUNCE_MS = 200; // one anchor mint per pause, not per keystroke
 const REFRESH_DEBOUNCE_MS = 150; // coalesces a typing peer's event burst
 
-/**
- * The title half of the documents contract. Structurally what the generated
- * client exposes, so the hook takes either.
- */
-export interface TitleClient {
-  getTitle(params: { doc: string }): Promise<string>;
-  titleApplyDelta(params: { doc: string; ops: Change[] }): Promise<string>;
-  titleUndo(params: { doc: string; token: string }): Promise<string>;
-  titleAnchorAt(params: {
-    doc: string;
-    position: number;
-    before: boolean;
-  }): Promise<string>;
-  titleResolve(params: {
-    doc: string;
-    anchors: string[];
-  }): Promise<(number | null)[]>;
-}
-
 export interface UseFugueTitleOptions {
-  client: TitleClient | null;
+  client: DocsClient | null;
   docId: string | null;
   contextId: string | null;
   /** Who peers see on this caret; presence is published only when given. */
@@ -52,6 +34,8 @@ export interface UseFugueTitleOptions {
 
 export interface UseFugueTitleResult {
   title: string;
+  /** Write a new whole title; the diff against the last one is what is sent. */
+  setTitle: (next: string) => void;
   inputRef: React.MutableRefObject<HTMLInputElement | null>;
   onChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
   onSelect: () => void;
@@ -70,7 +54,7 @@ export function useFugueTitle({
   contextId,
   identity,
 }: UseFugueTitleOptions): UseFugueTitleResult {
-  const [title, setTitle] = useState('');
+  const [title, showTitle] = useState('');
   const [error, setError] = useState<Error | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   // What the backend is believed to hold, so a re-read can tell our own write
@@ -93,7 +77,7 @@ export function useFugueTitle({
     historyRef.current.reset(docId);
     anchorRef.current = null;
     localRef.current = '';
-    setTitle('');
+    showTitle('');
     if (!client || !docId) return;
     let live = true;
     client
@@ -101,7 +85,7 @@ export function useFugueTitle({
       .then((text) => {
         if (!live) return;
         localRef.current = text;
-        setTitle(text);
+        showTitle(text);
       })
       .catch((cause) => live && setError(asError(cause)));
     return () => {
@@ -156,10 +140,13 @@ export function useFugueTitle({
           doc: docId,
           anchors: [anchor],
         });
-        caretRef.current = mapScalarSelection(text, resolved)[0];
+        caretRef.current = mapScalarSelection(
+          text,
+          resolved as (number | null)[],
+        )[0];
       }
       localRef.current = text;
-      setTitle(text);
+      showTitle(text);
     } catch (cause) {
       setError(asError(cause));
     }
@@ -192,20 +179,28 @@ export function useFugueTitle({
     input.setSelectionRange(caret, caret);
   }, [title]);
 
-  const onChange = useCallback(
-    (event: React.ChangeEvent<HTMLInputElement>) => {
-      const next = event.target.value;
+  const write = useCallback(
+    (next: string) => {
       const ops = diffText(localRef.current, next);
-      setTitle(next);
-      publishCaret();
+      showTitle(next);
       if (ops.length === 0 || !client || !docId) return;
       localRef.current = next;
       client
-        .titleApplyDelta({ doc: docId, ops })
+        // The generated ChangePayload is a tagged union; the contract takes
+        // serde's untagged form, which is what `ops` already is.
+        .titleApplyDelta({ doc: docId, ops: ops as unknown as ChangePayload[] })
         .then((token) => historyRef.current.record(token))
         .catch((cause) => setError(asError(cause)));
     },
-    [client, docId, publishCaret],
+    [client, docId],
+  );
+
+  const onChange = useCallback(
+    (event: React.ChangeEvent<HTMLInputElement>) => {
+      write(event.target.value);
+      publishCaret();
+    },
+    [write, publishCaret],
   );
 
   const step = useCallback(
@@ -231,6 +226,7 @@ export function useFugueTitle({
 
   return {
     title,
+    setTitle: write,
     inputRef,
     onChange,
     onSelect: publishCaret,
