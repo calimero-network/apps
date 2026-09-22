@@ -2,6 +2,9 @@ import { create } from "zustand";
 import { v4 as uuid } from "uuid";
 import type { Element } from "../types";
 
+/** How far a pasted batch sits from the one it was copied from. */
+const PASTE_OFFSET = 20;
+
 type Tool = "select" | "hand" | "rect" | "circle" | "line" | "arrow" | "path" | "text" | "image";
 export type Background = "#ffffff" | "#808080" | "#111111";
 
@@ -17,7 +20,8 @@ interface CanvasState {
   previewMode: boolean;
   undoStack: Element[][];
   redoStack: Element[][];
-  clipboard: Element | null;
+  /** Every copied element, in layer order. A copy is not one shape. */
+  clipboard: Element[];
   /**
    * Local label overrides, applied on top of the contract's `label` so a rename
    * or a regroup shows instantly instead of after the RPC round-trips. Cleared
@@ -55,8 +59,12 @@ interface CanvasState {
   redo: () => void;
 
   // Clipboard
-  copyElement: (el: Element) => void;
-  getPasted: () => Element | null;
+  copyElements: (els: Element[]) => void;
+  /**
+   * The elements to paste: fresh ids, nudged clear of the originals, stacked on
+   * top in their original relative order. Empty when the clipboard is.
+   */
+  getPasted: () => Element[];
 }
 
 export const useCanvasStore = create<CanvasState>((set, get) => ({
@@ -69,7 +77,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   previewMode: false,
   undoStack: [],
   redoStack: [],
-  clipboard: null,
+  clipboard: [],
   elementLabels: {},
   collapsedGroups: {},
 
@@ -160,20 +168,27 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   toggleGroupCollapsed: (path) =>
     set((s) => ({ collapsedGroups: { ...s.collapsedGroups, [path]: !s.collapsedGroups[path] } })),
 
-  copyElement: (el) => set({ clipboard: { ...el } }),
+  copyElements: (els) =>
+    // Layer order, so a paste rebuilds the stack the way it was copied rather
+    // than in whatever order the selection happened to be assembled.
+    set({ clipboard: [...els].sort((a, b) => a.layerIndex - b.layerIndex).map((e) => ({ ...e })) }),
 
   getPasted: () => {
     const { clipboard, elements } = get();
-    if (!clipboard) return null;
-    return {
-      ...clipboard,
+    if (clipboard.length === 0) return [];
+    const now = Date.now();
+    // One offset for the whole batch, NOT per element: nudging each by 20
+    // independently would preserve their spacing only by accident, and a
+    // relative layout would drift apart on every paste.
+    return clipboard.map((el, i) => ({
+      ...el,
       id: uuid(),
-      x: clipboard.x + 20,
-      y: clipboard.y + 20,
-      layerIndex: elements.length,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    };
+      x: el.x + PASTE_OFFSET,
+      y: el.y + PASTE_OFFSET,
+      layerIndex: elements.length + i,
+      createdAt: now,
+      updatedAt: now,
+    }));
   },
 }));
 

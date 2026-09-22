@@ -32,6 +32,7 @@ import { useToast } from "../contexts/ToastContext";
 import { countRender } from "../utils/renderCount";
 import { useShallow } from "zustand/react/shallow";
 import { useCanvasStore } from "../store/canvasStore";
+import { wheelAction } from "../utils/wheel";
 import { saveDataUrl, saveText } from "../utils/saveFile";
 import type { Element } from "../types";
 import styles from "./FabricCanvas.module.css";
@@ -153,7 +154,7 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
       snapshot,
       undo,
       redo,
-      copyElement,
+      copyElements,
       getPasted,
     } = useCanvasStore(
       useShallow((s) => ({
@@ -172,7 +173,7 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
         snapshot: s.snapshot,
         undo: s.undo,
         redo: s.redo,
-        copyElement: s.copyElement,
+        copyElements: s.copyElements,
         getPasted: s.getPasted,
       })),
     );
@@ -283,18 +284,33 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
       };
       window.addEventListener("resize", resize);
 
-      /* ── zoom (mouse wheel) ──────────────────────────────────── */
+      /* ── wheel: pan, or zoom on pinch / ⌘ ─────────────────────── */
+      // Which of those it is, and how far, lives in utils/wheel — see the note
+      // there for why this used to zoom on everything and crawl while doing it.
+      const MIN_ZOOM = 0.05;
+      const MAX_ZOOM = 40;
+
       fc.on("mouse:wheel", (opt) => {
         const e = opt.e as WheelEvent;
-        let z = fc.getZoom();
-        z *= 0.999 ** e.deltaY;
-        z = Math.max(0.05, Math.min(40, z));
-        fc.zoomToPoint(new Point(e.offsetX, e.offsetY), z);
-        setZoom(z);
-        const vpt = fc.viewportTransform;
-        if (vpt) onViewportChangeRef.current?.(z, vpt[4], vpt[5]);
         e.preventDefault();
         e.stopPropagation();
+
+        const action = wheelAction(e, { width: fc.width ?? 1, height: fc.height ?? 1 });
+        if (action.kind === "none") return;
+
+        if (action.kind === "zoom") {
+          const z = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, fc.getZoom() * action.factor));
+          // Anchored at the pointer, so the thing under the fingers stays put.
+          fc.zoomToPoint(new Point(e.offsetX, e.offsetY), z);
+          setZoom(z);
+          const vpt = fc.viewportTransform;
+          if (vpt) onViewportChangeRef.current?.(z, vpt[4], vpt[5]);
+          return;
+        }
+
+        fc.relativePan(new Point(action.dx, action.dy));
+        const vpt = fc.viewportTransform;
+        if (vpt) onViewportChangeRef.current?.(fc.getZoom(), vpt[4], vpt[5]);
       });
 
       /* ── pan (space + drag or alt + drag) ───────────────────── */
@@ -950,18 +966,47 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
           return;
         }
         if (mod && e.key === "c") {
-          const active = fc.getActiveObject() as (FabricObject & { data?: Element }) | null;
-          if (active?.data) copyElement(active.data);
+          // Every selected element, not just the active object. An
+          // ActiveSelection carries no `.data` of its own, so reading
+          // `getActiveObject().data` saw `undefined` for a multi-selection and
+          // copied NOTHING — the same bug the delete path below was already
+          // fixed for. The store's selection is the source of truth either way.
+          const byId = new Map(
+            useCanvasStore.getState().elements.map((el) => [el.id, el] as const),
+          );
+          const ids = useCanvasStore.getState().selectedElementIds;
+          const picked = ids
+            .map((id) => byId.get(id))
+            .filter((el): el is Element => !!el);
+          if (picked.length > 0) copyElements(picked);
           return;
         }
         if (mod && e.key === "v") {
           if (readOnlyRef.current) return;
-          const newEl = getPasted();
-          if (newEl) {
-            upsertElement(newEl);
-            snapshot();
-            await rpcCall(contextId, "add_element", { element: newEl }).catch((e) => reportFailure.current("add_element", e));
-          }
+          const pasted = getPasted();
+          if (pasted.length === 0) return;
+          e.preventDefault();
+
+          // Drop the current selection BEFORE the elements land. The reconcile
+          // that builds the new shapes bails out while an ActiveSelection is up
+          // (it would otherwise destroy a live multi-selection), so holding one
+          // here means the pasted objects never get created and there is
+          // nothing to select afterwards.
+          fc.discardActiveObject();
+
+          for (const el of pasted) upsertElement(el);
+          snapshot();
+          // Select the copies, not the originals: a paste you cannot
+          // immediately drag is a paste you have to go and find.
+          selectElements(pasted.map((el) => el.id));
+
+          await Promise.all(
+            pasted.map((el) =>
+              rpcCall(contextId, "add_element", { element: el }).catch((err) =>
+                reportFailure.current("add_element", err),
+              ),
+            ),
+          );
           return;
         }
 
@@ -1048,7 +1093,7 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
         window.removeEventListener("keyup", onKeyUp);
         if (previewObjRef.current) { fc.remove(previewObjRef.current); previewObjRef.current = null; }
       };
-    }, [activeTool, readOnly, contextId, elements.length, selectElement, selectElements, selectWithPointer, upsertElement, removeElement, snapshot, undo, redo, copyElement, getPasted]);
+    }, [activeTool, readOnly, contextId, elements.length, selectElement, selectElements, selectWithPointer, upsertElement, removeElement, snapshot, undo, redo, copyElements, getPasted]);
 
     useEffect(() => {
       (canvasElRef.current as (HTMLCanvasElement & { _cacheImage?: typeof cacheImage }) | null)!._cacheImage = cacheImage;

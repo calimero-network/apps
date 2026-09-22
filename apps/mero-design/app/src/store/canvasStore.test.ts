@@ -243,51 +243,89 @@ describe("canvasStore", () => {
     });
   });
 
-  describe("clipboard — copyElement / getPasted", () => {
-    it("getPasted returns null when clipboard is empty", () => {
-      expect(useCanvasStore.getState().getPasted()).toBeNull();
+  describe("clipboard — copyElements / getPasted", () => {
+    it("getPasted returns nothing when the clipboard is empty", () => {
+      expect(useCanvasStore.getState().getPasted()).toEqual([]);
     });
 
-    it("getPasted returns a new element after copyElement", () => {
-      useCanvasStore.getState().copyElement(makeEl("orig"));
-      const pasted = useCanvasStore.getState().getPasted();
-      expect(pasted).not.toBeNull();
+    it("copies and pastes a single element", () => {
+      useCanvasStore.getState().copyElements([makeEl("orig")]);
+      expect(useCanvasStore.getState().getPasted()).toHaveLength(1);
     });
 
-    it("pasted element has a different id than the original", () => {
-      useCanvasStore.getState().copyElement(makeEl("orig"));
-      const pasted = useCanvasStore.getState().getPasted();
-      expect(pasted!.id).not.toBe("orig");
+    it("gives every pasted element a new id", () => {
+      useCanvasStore.getState().copyElements([makeEl("a"), makeEl("b")]);
+      const ids = useCanvasStore.getState().getPasted().map((e) => e.id);
+      expect(ids).not.toContain("a");
+      expect(ids).not.toContain("b");
+      expect(new Set(ids).size).toBe(2);
     });
 
-    it("pasted element is offset by 20px in both axes", () => {
-      useCanvasStore.getState().copyElement(makeEl("orig", { x: 100, y: 50 }));
-      const pasted = useCanvasStore.getState().getPasted();
+    it("offsets a pasted element by 20px in both axes", () => {
+      useCanvasStore.getState().copyElements([makeEl("orig", { x: 100, y: 50 })]);
+      const [pasted] = useCanvasStore.getState().getPasted();
       expect(pasted!.x).toBe(120);
       expect(pasted!.y).toBe(70);
     });
 
-    it("pasted element preserves shape, fill, stroke from original", () => {
+    it("preserves shape, fill and stroke", () => {
       const orig = makeEl("orig", { data: { kind: "circle" }, fill: "#ff0000", stroke: "#00ff00" });
-      useCanvasStore.getState().copyElement(orig);
-      const pasted = useCanvasStore.getState().getPasted();
+      useCanvasStore.getState().copyElements([orig]);
+      const [pasted] = useCanvasStore.getState().getPasted();
       expect(pasted!.data.kind).toBe("circle");
       expect(pasted!.fill).toBe("#ff0000");
       expect(pasted!.stroke).toBe("#00ff00");
     });
 
-    it("getPasted can be called multiple times producing unique ids", () => {
-      useCanvasStore.getState().copyElement(makeEl("orig"));
-      const p1 = useCanvasStore.getState().getPasted();
-      const p2 = useCanvasStore.getState().getPasted();
+    it("produces unique ids on every call", () => {
+      useCanvasStore.getState().copyElements([makeEl("orig")]);
+      const [p1] = useCanvasStore.getState().getPasted();
+      const [p2] = useCanvasStore.getState().getPasted();
       expect(p1!.id).not.toBe(p2!.id);
     });
 
-    it("pasted element gets layerIndex equal to current elements count", () => {
+    it("stacks a pasted element on top of what is already there", () => {
       useCanvasStore.getState().setElements([makeEl("a"), makeEl("b")]);
-      useCanvasStore.getState().copyElement(makeEl("orig"));
-      const pasted = useCanvasStore.getState().getPasted();
+      useCanvasStore.getState().copyElements([makeEl("orig")]);
+      const [pasted] = useCanvasStore.getState().getPasted();
       expect(pasted!.layerIndex).toBe(2);
+    });
+
+    // A copy is not one shape. This is what only worked for a single element.
+    it("copies and pastes a whole multi-selection", () => {
+      useCanvasStore.getState().copyElements([makeEl("a"), makeEl("b"), makeEl("c")]);
+      expect(useCanvasStore.getState().getPasted()).toHaveLength(3);
+    });
+
+    it("keeps a batch's relative layout — one offset, not one per element", () => {
+      useCanvasStore.getState().copyElements([
+        makeEl("a", { x: 0, y: 0 }),
+        makeEl("b", { x: 100, y: 40 }),
+      ]);
+      const [a, b] = useCanvasStore.getState().getPasted();
+      expect([a!.x, a!.y]).toEqual([20, 20]);
+      expect([b!.x, b!.y]).toEqual([120, 60]);
+      // The gap between them is exactly the gap they were copied with.
+      expect(b!.x - a!.x).toBe(100);
+      expect(b!.y - a!.y).toBe(40);
+    });
+
+    it("stacks a pasted batch in layer order, above everything present", () => {
+      useCanvasStore.getState().setElements([makeEl("x"), makeEl("y")]);
+      useCanvasStore.getState().copyElements([
+        makeEl("top", { layerIndex: 9 }),
+        makeEl("bottom", { layerIndex: 1 }),
+      ]);
+      const pasted = useCanvasStore.getState().getPasted();
+      // Sorted on copy, so the one that was underneath is still underneath.
+      expect(pasted.map((e) => e.layerIndex)).toEqual([2, 3]);
+      expect(pasted[0]!.data).toEqual(makeEl("bottom").data);
+    });
+
+    it("replaces the clipboard rather than appending to it", () => {
+      useCanvasStore.getState().copyElements([makeEl("a"), makeEl("b")]);
+      useCanvasStore.getState().copyElements([makeEl("c")]);
+      expect(useCanvasStore.getState().getPasted()).toHaveLength(1);
     });
   });
 
