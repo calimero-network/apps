@@ -10,23 +10,16 @@
 
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { MAX_ALIAS_LENGTH, MAX_FOLDER_DEPTH } from '@/constants/config';
+import {
+  COLOR_PRESETS,
+  MAX_ALIAS_LENGTH,
+  MAX_FOLDER_DEPTH,
+} from '@/constants/config';
 import { depthOf } from '@/utils/ancestry';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useFolderOperations } from '@/hooks/useFolderOperations';
 import { MemberPicker } from '@/components/common/MemberPicker';
 import { MemberLabel } from '@/components/common/MemberLabel';
-
-// Curated preset palette. Tailwind 500-tints — readable against both
-// light and dark surfaces. Keeping this short on purpose: the UX goal
-// is "pick a color in one click", not "express yourself".
-const COLOR_PRESETS: Array<{ value: string; label: string }> = [
-  { value: '#3b82f6', label: 'Blue' },
-  { value: '#10b981', label: 'Green' },
-  { value: '#f59e0b', label: 'Amber' },
-  { value: '#ef4444', label: 'Red' },
-  { value: '#8b5cf6', label: 'Purple' },
-];
 
 interface Props {
   parentFolderId: string | null;

@@ -10,7 +10,9 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { CollabEditorShell } from '@/components/editor/collab/CollabEditorShell';
+import { useAwarenessPresence } from '@/components/editor/collab/useAwarenessPresence';
 import { useCollabDoc } from '@/components/editor/collab/useCollabDoc';
+import { cursorUser } from '@/components/editor/collab/cursorUser';
 import { useConfirm } from '@/components/ui/confirm-dialog';
 import { MAX_ALIAS_LENGTH } from '@/constants/config';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
@@ -24,18 +26,9 @@ interface Props {
   onClose: () => void;
 }
 
-// Deterministic per-identity cursor color (stable across sessions): hash the
-// identity to a hue, fixed saturation/lightness for legibility on both themes.
-function colorForIdentity(identity: string): string {
-  let h = 0;
-  for (let i = 0; i < identity.length; i++) {
-    h = (h * 31 + identity.charCodeAt(i)) % 360;
-  }
-  return `hsl(${h}, 70%, 50%)`;
-}
-
 export function CollabDocumentEditor({ folderId, docId, onClose }: Props) {
-  const { namespaceId, selfIdentity } = useDriveWorkspace();
+  const { namespaceId, selfIdentity, namespaceMemberNames } =
+    useDriveWorkspace();
   const perms = useFolderPermissions(namespaceId ?? '', folderId);
   const canEditDocs = perms.canEditDocs;
   const docs = useDocs(folderId);
@@ -46,6 +39,7 @@ export function CollabDocumentEditor({ folderId, docId, onClose }: Props) {
     folderId,
     docId,
   );
+  useAwarenessPresence(contextId, docId, provider?.awareness ?? null);
 
   const [documentName, setDocumentName] = useState('Untitled');
   const titleSavingRef = useRef(false);
@@ -132,10 +126,7 @@ export function CollabDocumentEditor({ folderId, docId, onClose }: Props) {
     );
   }
 
-  const user = {
-    name: selfIdentity ? `${selfIdentity.slice(0, 6)}…` : 'Anonymous',
-    color: colorForIdentity(selfIdentity ?? 'anon'),
-  };
+  const user = cursorUser(selfIdentity, namespaceMemberNames);
 
   const appReady = !!namespaceId && !!contextId;
 

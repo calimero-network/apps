@@ -11,7 +11,7 @@
 //
 // Convergence correctness lives in `./yjs-update-log` (unit-tested). This class
 // is the wiring: Y.Doc events ⇄ transport, plus batching and teardown. Awareness
-// is stubbed (no live cursors in v1).
+// travels separately, over ephemeral presence (`./useAwarenessPresence`).
 
 import * as Y from 'yjs';
 import { Awareness } from 'y-protocols/awareness';

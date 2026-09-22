@@ -126,7 +126,8 @@ export function useContextEvents(
 
   const handler = useCallback(
     (event: SubscriptionEventData) => {
-      if (!isContextEvent(event)) return;
+      // Presence is transient and changes no state, so it must not trigger refetches.
+      if (!isContextEvent(event) || event.type === 'Ephemeral') return;
       if (strict) {
         const allowed = idsKey.length > 0 ? idsKey.split(',') : [];
         if (!allowed.includes(event.contextId)) return;

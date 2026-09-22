@@ -72,6 +72,16 @@ export const MAX_FOLDER_DEPTH = 8;
 // NewFolderDialog, and FolderTreeItem's inline rename.
 export const MAX_ALIAS_LENGTH = 128;
 
+// Folder color presets and collaborator cursor colors. Tailwind 500 tints:
+// visible on light and dark surfaces, and every one takes a 4.5:1 text color.
+export const COLOR_PRESETS: Array<{ value: string; label: string }> = [
+  { value: '#3b82f6', label: 'Blue' },
+  { value: '#10b981', label: 'Green' },
+  { value: '#f59e0b', label: 'Amber' },
+  { value: '#ef4444', label: 'Red' },
+  { value: '#8b5cf6', label: 'Purple' },
+];
+
 // Feature flag: real-time collaborative editing via Yjs + the docs WASM
 // `content_updates` op-log (see components/editor/collab). When OFF (default),
 // the editor uses the legacy debounced LWW whole-snapshot autosave (edit_doc).

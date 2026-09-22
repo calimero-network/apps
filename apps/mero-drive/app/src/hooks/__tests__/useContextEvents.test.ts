@@ -14,8 +14,8 @@ vi.mock('@calimero-network/mero-react', () => ({
   },
 }));
 
-function fire(contextId: string) {
-  lastHandler?.({ contextId, data: {} } as SseEventData);
+function fire(contextId: string, type?: string) {
+  lastHandler?.({ contextId, type, data: {} } as SseEventData);
 }
 
 function fireSync(contextId: string, state: string) {
@@ -36,6 +36,15 @@ describe('useContextEvents', () => {
     const onChange = vi.fn();
     renderHook(() => useContextEvents(['ctx-a'], onChange));
     fire('some-other-context');
+    expect(onChange).toHaveBeenCalledTimes(1);
+  });
+
+  it('ignores ephemeral presence, which changes no state', () => {
+    const onChange = vi.fn();
+    renderHook(() => useContextEvents(['ctx-a'], onChange));
+    fire('ctx-a', 'Ephemeral');
+    expect(onChange).not.toHaveBeenCalled();
+    fire('ctx-a', 'StateMutation');
     expect(onChange).toHaveBeenCalledTimes(1);
   });
 
