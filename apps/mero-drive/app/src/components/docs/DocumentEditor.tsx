@@ -94,11 +94,10 @@ function LwwDocumentEditor({ folderId, docId, onClose }: Props) {
   const { edit: docsEdit, remove: docsRemove, contextId: docsContextId } = docs;
   const confirm = useConfirm();
 
-  // The loaded doc. `null` while fetching; `null + not loading`
-  // when the doc has been deleted remotely.
+  // The loaded doc; `null` until the initial load or an SSE refresh
+  // lands, so a refresh that supersedes the initial load still ends loading.
   const [doc, setDoc] = useState<DocDto | null>(null);
   const [loadError, setLoadError] = useState<Error | null>(null);
-  const [loading, setLoading] = useState(true);
 
   // Working copies of name/content owned by the editor. EditorShell
   // renders from `doc` on first mount (via initialContent), then the
@@ -242,7 +241,6 @@ function LwwDocumentEditor({ folderId, docId, onClose }: Props) {
     //     fresh, but cleaner to drop the leftover flag.
     serverUpdatedAtHighWaterRef.current = 0;
     pendingRefreshRef.current = false;
-    setLoading(true);
     setLoadError(null);
     setDoc(null);
     docsGet(docId)
@@ -263,7 +261,6 @@ function LwwDocumentEditor({ folderId, docId, onClose }: Props) {
         const serverUpdatedMs = d.updated_at / 1_000_000;
         serverUpdatedAtHighWaterRef.current = serverUpdatedMs;
         setLastSavedAt(new Date(serverUpdatedMs));
-        setLoading(false);
       })
       .catch((e: unknown) => {
         if (!alive) return;
@@ -271,7 +268,6 @@ function LwwDocumentEditor({ folderId, docId, onClose }: Props) {
         if (requestedDocId !== docIdRef.current) return;
         const err = e instanceof Error ? e : new Error(String(e));
         setLoadError(err);
-        setLoading(false);
       });
     return () => {
       alive = false;
@@ -675,7 +671,7 @@ function LwwDocumentEditor({ folderId, docId, onClose }: Props) {
       saveStatus={saveStatus}
       lastSavedAt={lastSavedAt}
       isAppReady={!!namespaceId && !!docsContextId}
-      isLoading={loading}
+      isLoading={doc === null}
     />
   );
 }
