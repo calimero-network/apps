@@ -6,15 +6,6 @@ import {
 
 // Generated types
 
-export type Board = CalimeroBytes;
-
-export type Cell = 'Empty' | 'Ship' | 'Hit' | 'Miss' | 'Pending';
-
-export interface Coordinate {
-  x: number;
-  y: number;
-}
-
 export interface Event_AuditFailed {
   id: string;
   player: string;
@@ -67,17 +58,13 @@ export interface ExportedSeed {
   salt: CalimeroBytes;
 }
 
-export interface Fleet {
-  ships: Ship[];
-}
-
 export interface GameState {
   lobby_context_id: string;
   match_id: string;
-  player1: CalimeroBytes;
-  player2: CalimeroBytes;
-  turn: CalimeroBytes;
-  winner: CalimeroBytes;
+  player1: PublicKey;
+  player2: PublicKey;
+  turn: PublicKey;
+  winner: PublicKey;
   placed_p1: boolean;
   placed_p2: boolean;
   pending: PendingShot;
@@ -94,35 +81,15 @@ export interface OwnBoardView {
 export interface PendingShot {
   x: number;
   y: number;
-  shooter: CalimeroBytes;
-  target: CalimeroBytes;
+  shooter: PublicKey;
+  target: PublicKey;
 }
 
-export interface PlayerBoard {
-  own: Board;
-  ships: number;
-  placed: boolean;
-  salt: CalimeroBytes;
-  pristine: CalimeroBytes;
-}
-
-export interface Ship {
-  coordinates: Coordinate[];
-  length: number;
-}
+export type PublicKey = CalimeroBytes;
 
 export interface ShotsView {
   size: number;
   shots: CalimeroBytes;
-}
-
-export interface ValidationInput {
-  board: Board | null;
-  coordinates: Coordinate[] | null;
-  size: number | null;
-  ship_length: number | null;
-  fleet_composition: number[] | null;
-  ships: Coordinate[][] | null;
 }
 
 
@@ -135,15 +102,15 @@ export interface ValidationInput {
 
 
 export type AbiEvent =
-  | { name: "ShipsPlaced"; payload: Event_ShipsPlaced }
+  | { name: "AuditFailed"; payload: Event_AuditFailed }
+  | { name: "AuditPassed"; payload: Event_AuditPassed }
   | { name: "BoardCommitted"; payload: Event_BoardCommitted }
   | { name: "BoardRevealed"; payload: Event_BoardRevealed }
-  | { name: "AuditPassed"; payload: Event_AuditPassed }
-  | { name: "AuditFailed"; payload: Event_AuditFailed }
-  | { name: "ShotProposed"; payload: Event_ShotProposed }
-  | { name: "ShotFired"; payload: Event_ShotFired }
-  | { name: "Winner"; payload: Event_Winner }
   | { name: "MatchEnded"; payload: Event_MatchEnded }
+  | { name: "ShipsPlaced"; payload: Event_ShipsPlaced }
+  | { name: "ShotFired"; payload: Event_ShotFired }
+  | { name: "ShotProposed"; payload: Event_ShotProposed }
+  | { name: "Winner"; payload: Event_Winner }
 ;
 
 
@@ -226,6 +193,96 @@ export class GameClient {
   }
 
   /**
+   * acknowledge_shot
+   *
+   * @intent mutating
+   */
+  public async acknowledgeShot(params: { match_id: string }): Promise<string> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'acknowledge_shot', argsJson: params });
+    return response as string;
+  }
+
+  /**
+   * acknowledge_shot_handler
+   *
+   * @intent mutating
+   */
+  public async acknowledgeShotHandler(params: { id: string; x: number; y: number }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'acknowledge_shot_handler', argsJson: params });
+    return response as void;
+  }
+
+  /**
+   * export_board_seed
+   *
+   * @intent read_only
+   */
+  public async exportBoardSeed(params: { match_id: string }): Promise<ExportedSeed> {
+    const response: any = await this._mero.rpc.execute({ contextId: this._contextId, method: 'export_board_seed', argsJson: params });
+    return (response == null ? null : ({ ...response, board_bytes: new CalimeroBytes(response['board_bytes']), salt: new CalimeroBytes(response['salt']) })) as ExportedSeed;
+  }
+
+  /**
+   * get_active_match_id
+   *
+   * @intent read_only
+   */
+  public async getActiveMatchId(): Promise<string> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_active_match_id', argsJson: {} });
+    return response as string;
+  }
+
+  /**
+   * get_current_turn
+   *
+   * @intent read_only
+   */
+  public async getCurrentTurn(): Promise<string> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_current_turn', argsJson: {} });
+    return response as string;
+  }
+
+  /**
+   * get_current_user
+   *
+   * @intent read_only
+   */
+  public async getCurrentUser(): Promise<string> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_current_user', argsJson: {} });
+    return response as string;
+  }
+
+  /**
+   * get_own_board
+   *
+   * @intent read_only
+   */
+  public async getOwnBoard(params: { match_id: string }): Promise<OwnBoardView> {
+    const response: any = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_own_board', argsJson: params });
+    return (response == null ? null : ({ ...response, board: new CalimeroBytes(response['board']) })) as OwnBoardView;
+  }
+
+  /**
+   * get_shots
+   *
+   * @intent read_only
+   */
+  public async getShots(params: { match_id: string }): Promise<ShotsView> {
+    const response: any = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_shots', argsJson: params });
+    return (response == null ? null : ({ ...response, shots: new CalimeroBytes(response['shots']) })) as ShotsView;
+  }
+
+  /**
+   * import_board_seed
+   *
+   * @intent mutating
+   */
+  public async importBoardSeed(params: { match_id: string; board_bytes: CalimeroBytes; salt: CalimeroBytes }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'import_board_seed', argsJson: convertCalimeroBytesForWasm(params) });
+    return response as void;
+  }
+
+  /**
    * init
    */
   public async init(params: { player1: string; player2: string; lobby_context_id: string | null; match_id: string }): Promise<void> {
@@ -235,6 +292,8 @@ export class GameClient {
 
   /**
    * place_ships
+   *
+   * @intent mutating
    */
   public async placeShips(params: { match_id: string; ships: string[] }): Promise<void> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'place_ships', argsJson: params });
@@ -243,6 +302,8 @@ export class GameClient {
 
   /**
    * propose_shot
+   *
+   * @intent mutating
    */
   public async proposeShot(params: { match_id: string; x: number; y: number }): Promise<void> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'propose_shot', argsJson: params });
@@ -250,82 +311,12 @@ export class GameClient {
   }
 
   /**
-   * acknowledge_shot
-   */
-  public async acknowledgeShot(params: { match_id: string }): Promise<string> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'acknowledge_shot', argsJson: params });
-    return response as string;
-  }
-
-  /**
    * reveal_board
+   *
+   * @intent read_only
    */
   public async revealBoard(params: { match_id: string }): Promise<void> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'reveal_board', argsJson: params });
-    return response as void;
-  }
-
-  /**
-   * export_board_seed
-   */
-  public async exportBoardSeed(params: { match_id: string }): Promise<ExportedSeed> {
-    const response: any = await this._mero.rpc.execute({ contextId: this._contextId, method: 'export_board_seed', argsJson: params });
-    return (response == null ? null : ({ ...response, board_bytes: new CalimeroBytes(response['board_bytes']), salt: new CalimeroBytes(response['salt']) })) as ExportedSeed;
-  }
-
-  /**
-   * import_board_seed
-   */
-  public async importBoardSeed(params: { match_id: string; board_bytes: CalimeroBytes; salt: CalimeroBytes }): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'import_board_seed', argsJson: convertCalimeroBytesForWasm(params) });
-    return response as void;
-  }
-
-  /**
-   * get_own_board
-   */
-  public async getOwnBoard(params: { match_id: string }): Promise<OwnBoardView> {
-    const response: any = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_own_board', argsJson: params });
-    return (response == null ? null : ({ ...response, board: new CalimeroBytes(response['board']) })) as OwnBoardView;
-  }
-
-  /**
-   * get_shots
-   */
-  public async getShots(params: { match_id: string }): Promise<ShotsView> {
-    const response: any = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_shots', argsJson: params });
-    return (response == null ? null : ({ ...response, shots: new CalimeroBytes(response['shots']) })) as ShotsView;
-  }
-
-  /**
-   * get_active_match_id
-   */
-  public async getActiveMatchId(): Promise<string> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_active_match_id', argsJson: {} });
-    return response as string;
-  }
-
-  /**
-   * get_current_turn
-   */
-  public async getCurrentTurn(): Promise<string> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_current_turn', argsJson: {} });
-    return response as string;
-  }
-
-  /**
-   * get_current_user
-   */
-  public async getCurrentUser(): Promise<string> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_current_user', argsJson: {} });
-    return response as string;
-  }
-
-  /**
-   * acknowledge_shot_handler
-   */
-  public async acknowledgeShotHandler(params: { id: string; x: number; y: number }): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'acknowledge_shot_handler', argsJson: params });
     return response as void;
   }
 

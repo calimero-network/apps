@@ -1,49 +1,6 @@
 {
   "schema_version": "wasm-abi/1",
   "types": {
-    "Board": {
-      "kind": "alias",
-      "target": {
-        "kind": "bytes"
-      }
-    },
-    "Cell": {
-      "kind": "variant",
-      "variants": [
-        {
-          "name": "Empty"
-        },
-        {
-          "name": "Ship"
-        },
-        {
-          "name": "Hit"
-        },
-        {
-          "name": "Miss"
-        },
-        {
-          "name": "Pending"
-        }
-      ]
-    },
-    "Coordinate": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "x",
-          "type": {
-            "kind": "u32"
-          }
-        },
-        {
-          "name": "y",
-          "type": {
-            "kind": "u32"
-          }
-        }
-      ]
-    },
     "Event_AuditFailed": {
       "kind": "record",
       "fields": [
@@ -227,20 +184,6 @@
         }
       ]
     },
-    "Fleet": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "ships",
-          "type": {
-            "kind": "list",
-            "items": {
-              "$ref": "Ship"
-            }
-          }
-        }
-      ]
-    },
     "GameState": {
       "kind": "record",
       "fields": [
@@ -273,8 +216,7 @@
             "fields": [],
             "crdt_type": "lww_register",
             "inner_type": {
-              "kind": "bytes",
-              "size": 32
+              "$ref": "PublicKey"
             }
           }
         },
@@ -285,8 +227,7 @@
             "fields": [],
             "crdt_type": "lww_register",
             "inner_type": {
-              "kind": "bytes",
-              "size": 32
+              "$ref": "PublicKey"
             }
           }
         },
@@ -297,8 +238,7 @@
             "fields": [],
             "crdt_type": "lww_register",
             "inner_type": {
-              "kind": "bytes",
-              "size": 32
+              "$ref": "PublicKey"
             }
           }
         },
@@ -309,8 +249,7 @@
             "fields": [],
             "crdt_type": "lww_register",
             "inner_type": {
-              "kind": "bytes",
-              "size": 32
+              "$ref": "PublicKey"
             }
           }
         },
@@ -438,74 +377,23 @@
         {
           "name": "shooter",
           "type": {
-            "kind": "bytes",
-            "size": 32
+            "$ref": "PublicKey"
           }
         },
         {
           "name": "target",
           "type": {
-            "kind": "bytes",
-            "size": 32
+            "$ref": "PublicKey"
           }
         }
       ]
     },
-    "PlayerBoard": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "own",
-          "type": {
-            "$ref": "Board"
-          }
-        },
-        {
-          "name": "ships",
-          "type": {
-            "kind": "u64"
-          }
-        },
-        {
-          "name": "placed",
-          "type": {
-            "kind": "bool"
-          }
-        },
-        {
-          "name": "salt",
-          "type": {
-            "kind": "bytes",
-            "size": 16
-          }
-        },
-        {
-          "name": "pristine",
-          "type": {
-            "kind": "bytes"
-          }
-        }
-      ]
-    },
-    "Ship": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "coordinates",
-          "type": {
-            "kind": "list",
-            "items": {
-              "$ref": "Coordinate"
-            }
-          }
-        },
-        {
-          "name": "length",
-          "type": {
-            "kind": "u32"
-          }
-        }
-      ]
+    "PublicKey": {
+      "kind": "alias",
+      "target": {
+        "kind": "bytes",
+        "size": 32
+      }
     },
     "ShotsView": {
       "kind": "record",
@@ -523,68 +411,148 @@
           }
         }
       ]
-    },
-    "ValidationInput": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "board",
-          "type": {
-            "$ref": "Board"
-          },
-          "nullable": true
-        },
-        {
-          "name": "coordinates",
-          "type": {
-            "kind": "list",
-            "items": {
-              "$ref": "Coordinate"
-            }
-          },
-          "nullable": true
-        },
-        {
-          "name": "size",
-          "type": {
-            "kind": "u32"
-          },
-          "nullable": true
-        },
-        {
-          "name": "ship_length",
-          "type": {
-            "kind": "u32"
-          },
-          "nullable": true
-        },
-        {
-          "name": "fleet_composition",
-          "type": {
-            "kind": "list",
-            "items": {
-              "kind": "u32"
-            }
-          },
-          "nullable": true
-        },
-        {
-          "name": "ships",
-          "type": {
-            "kind": "list",
-            "items": {
-              "kind": "list",
-              "items": {
-                "$ref": "Coordinate"
-              }
-            }
-          },
-          "nullable": true
-        }
-      ]
     }
   },
   "methods": [
+    {
+      "name": "acknowledge_shot",
+      "params": [
+        {
+          "name": "match_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "acknowledge_shot_handler",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "x",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "u32"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "export_board_seed",
+      "params": [
+        {
+          "name": "match_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "ExportedSeed"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_active_match_id",
+      "params": [],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_current_turn",
+      "params": [],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_current_user",
+      "params": [],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_own_board",
+      "params": [
+        {
+          "name": "match_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "OwnBoardView"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_shots",
+      "params": [
+        {
+          "name": "match_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "ShotsView"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "import_board_seed",
+      "params": [
+        {
+          "name": "match_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "board_bytes",
+          "type": {
+            "kind": "bytes"
+          }
+        },
+        {
+          "name": "salt",
+          "type": {
+            "kind": "bytes",
+            "size": 16
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
     {
       "name": "init",
       "params": [
@@ -639,7 +607,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "propose_shot",
@@ -665,21 +634,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
-    },
-    {
-      "name": "acknowledge_shot",
-      "params": [
-        {
-          "name": "match_id",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "string"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "reveal_board",
@@ -693,130 +649,21 @@
       ],
       "returns": {
         "kind": "unit"
-      }
-    },
-    {
-      "name": "export_board_seed",
-      "params": [
-        {
-          "name": "match_id",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "$ref": "ExportedSeed"
-      }
-    },
-    {
-      "name": "import_board_seed",
-      "params": [
-        {
-          "name": "match_id",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "board_bytes",
-          "type": {
-            "kind": "bytes"
-          }
-        },
-        {
-          "name": "salt",
-          "type": {
-            "kind": "bytes",
-            "size": 16
-          }
-        }
-      ],
-      "returns": {
-        "kind": "unit"
-      }
-    },
-    {
-      "name": "get_own_board",
-      "params": [
-        {
-          "name": "match_id",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "$ref": "OwnBoardView"
-      }
-    },
-    {
-      "name": "get_shots",
-      "params": [
-        {
-          "name": "match_id",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "$ref": "ShotsView"
-      }
-    },
-    {
-      "name": "get_active_match_id",
-      "params": [],
-      "returns": {
-        "kind": "string"
-      }
-    },
-    {
-      "name": "get_current_turn",
-      "params": [],
-      "returns": {
-        "kind": "string"
-      }
-    },
-    {
-      "name": "get_current_user",
-      "params": [],
-      "returns": {
-        "kind": "string"
-      }
-    },
-    {
-      "name": "acknowledge_shot_handler",
-      "params": [
-        {
-          "name": "id",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "x",
-          "type": {
-            "kind": "u32"
-          }
-        },
-        {
-          "name": "y",
-          "type": {
-            "kind": "u32"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "unit"
-      }
+      },
+      "intent": "read_only"
     }
   ],
   "events": [
     {
-      "name": "ShipsPlaced",
+      "name": "AuditFailed",
       "payload": {
-        "$ref": "Event_ShipsPlaced"
+        "$ref": "Event_AuditFailed"
+      }
+    },
+    {
+      "name": "AuditPassed",
+      "payload": {
+        "$ref": "Event_AuditPassed"
       }
     },
     {
@@ -832,21 +679,15 @@
       }
     },
     {
-      "name": "AuditPassed",
+      "name": "MatchEnded",
       "payload": {
-        "$ref": "Event_AuditPassed"
+        "$ref": "Event_MatchEnded"
       }
     },
     {
-      "name": "AuditFailed",
+      "name": "ShipsPlaced",
       "payload": {
-        "$ref": "Event_AuditFailed"
-      }
-    },
-    {
-      "name": "ShotProposed",
-      "payload": {
-        "$ref": "Event_ShotProposed"
+        "$ref": "Event_ShipsPlaced"
       }
     },
     {
@@ -856,17 +697,18 @@
       }
     },
     {
+      "name": "ShotProposed",
+      "payload": {
+        "$ref": "Event_ShotProposed"
+      }
+    },
+    {
       "name": "Winner",
       "payload": {
         "$ref": "Event_Winner"
       }
-    },
-    {
-      "name": "MatchEnded",
-      "payload": {
-        "$ref": "Event_MatchEnded"
-      }
     }
   ],
-  "state_root": "GameState"
+  "state_root": "GameState",
+  "state_version": 1
 }

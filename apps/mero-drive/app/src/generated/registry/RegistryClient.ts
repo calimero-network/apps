@@ -135,6 +135,8 @@ export class RegistryClient {
 
   /**
    * add_manager
+   *
+   * @intent mutating
    */
   public async addManager(params: { member: string }): Promise<void> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'add_manager', argsJson: params });
@@ -143,6 +145,8 @@ export class RegistryClient {
 
   /**
    * bind_folder_context
+   *
+   * @intent mutating
    */
   public async bindFolderContext(params: { folder_id: FolderId; context_id: ContextId }): Promise<void> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'bind_folder_context', argsJson: params });
@@ -151,6 +155,8 @@ export class RegistryClient {
 
   /**
    * claim_owner
+   *
+   * @intent mutating
    */
   public async claimOwner(): Promise<void> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'claim_owner', argsJson: {} });
@@ -159,6 +165,8 @@ export class RegistryClient {
 
   /**
    * clear_folder_role
+   *
+   * @intent mutating
    */
   public async clearFolderRole(params: { folder_id: FolderId; member: string }): Promise<void> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'clear_folder_role', argsJson: params });
@@ -255,6 +263,8 @@ export class RegistryClient {
 
   /**
    * move_folder
+   *
+   * @intent mutating
    */
   public async moveFolder(params: { id: FolderId; new_parent: FolderId | null }): Promise<void> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'move_folder', argsJson: params });
@@ -263,6 +273,8 @@ export class RegistryClient {
 
   /**
    * register_folder
+   *
+   * @intent mutating
    */
   public async registerFolder(params: { id: FolderId; parent_id: FolderId | null; color: string | null; alias: string | null }): Promise<void> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'register_folder', argsJson: params });
@@ -271,6 +283,8 @@ export class RegistryClient {
 
   /**
    * remove_manager
+   *
+   * @intent mutating
    */
   public async removeManager(params: { member: string }): Promise<void> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'remove_manager', argsJson: params });
@@ -279,6 +293,8 @@ export class RegistryClient {
 
   /**
    * reorder
+   *
+   * @intent mutating
    */
   public async reorder(params: { parent_id: FolderId | null; folder_ids: FolderId[] }): Promise<void> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'reorder', argsJson: params });
@@ -287,6 +303,8 @@ export class RegistryClient {
 
   /**
    * set_color
+   *
+   * @intent mutating
    */
   public async setColor(params: { id: FolderId; color: string }): Promise<void> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_color', argsJson: params });
@@ -295,6 +313,8 @@ export class RegistryClient {
 
   /**
    * set_folder_alias
+   *
+   * @intent mutating
    */
   public async setFolderAlias(params: { id: FolderId; alias: string }): Promise<void> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_folder_alias', argsJson: params });
@@ -303,6 +323,8 @@ export class RegistryClient {
 
   /**
    * set_folder_role
+   *
+   * @intent mutating
    */
   public async setFolderRole(params: { folder_id: FolderId; member: string; role: Role }): Promise<void> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_folder_role', argsJson: params });
@@ -311,6 +333,8 @@ export class RegistryClient {
 
   /**
    * set_visibility
+   *
+   * @intent mutating
    */
   public async setVisibility(params: { id: FolderId; visibility: Visibility }): Promise<void> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_visibility', argsJson: params });
@@ -319,6 +343,8 @@ export class RegistryClient {
 
   /**
    * unregister_folder
+   *
+   * @intent mutating
    */
   public async unregisterFolder(params: { id: FolderId }): Promise<void> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'unregister_folder', argsJson: params });

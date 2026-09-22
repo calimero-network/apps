@@ -486,24 +486,6 @@ jobs:
       - name: Build
         run: cargo mero build -p ${{ matrix.app }}
 
-      # `cargo mero build` resolves the ABI from the compiled `__calimero_abi()`,
-      # so this is the authoritative copy. A stale committed ABI would let the
-      # generated-client check validate against a snapshot of a contract that no
-      # longer exists and report success.
-      - name: Assert the committed ABI matches the built contract
-        run: |
-          # `git add --intent-to-add` first: plain `git diff` ignores UNTRACKED
-          # files, so a new app with no committed ABI at all would sail through
-          # the gate that exists to notice exactly that.
-          git add --intent-to-add -- 'apps/*/logic/res/abi.json' 'apps/*/logic/res/state-schema.json' 2>/dev/null || true
-          if ! git diff --quiet -- 'apps/*/logic/res/abi.json' 'apps/*/logic/res/state-schema.json'; then
-            echo "::error::a committed ABI is stale. Run 'cargo mero build -p ${{ matrix.app }}' and 'pnpm -F ${{ matrix.app }} codegen', then commit."
-            git --no-pager diff --stat -- 'apps/*/logic/res/'
-            git --no-pager diff -- 'apps/*/logic/res/abi.json' | head -200
-            exit 1
-          fi
-          echo "committed ABI matches the built contract"
-
       # Prove the app is PUBLISHABLE, not merely compilable.
       #
       # This exists because of a gap it would have caught: kv-store had no `icon`
@@ -529,6 +511,25 @@ jobs:
             --dev \
             --app-version 0.0.0 \
             --output "dist/dry-run-${{ matrix.app }}.mpk"
+
+      # After the bundle, not the build: only the bundle rebuilds every service the
+      # manifest lists, so only then is each logic/crates/<name>/res/ ABI current.
+      - name: Assert the committed ABIs match the built contracts
+        env:
+          ABI: ":(glob)apps/*/logic/**/res/abi.json"
+          SCHEMA: ":(glob)apps/*/logic/**/res/state-schema.json"
+        run: |
+          # `git add --intent-to-add` first: plain `git diff` ignores UNTRACKED
+          # files, so a new app with no committed ABI at all would sail through
+          # the gate that exists to notice exactly that.
+          git add --intent-to-add -- "$ABI" "$SCHEMA" 2>/dev/null || true
+          if ! git diff --quiet -- "$ABI" "$SCHEMA"; then
+            echo "::error::a committed ABI is stale. Run '${RUSTFLAGS:+RUSTFLAGS=\"$RUSTFLAGS\" }cargo mero bundle --manifest-path apps/${{ matrix.app }}/logic/Cargo.toml --dev --app-version 0.0.0 --output /tmp/dry-run.mpk' and 'pnpm -F ${{ matrix.app }} codegen', then commit."
+            git --no-pager diff --stat -- "$ABI" "$SCHEMA"
+            git --no-pager diff -- "$ABI" "$SCHEMA" | head -200
+            exit 1
+          fi
+          echo "committed ABIs match the built contracts"
 
       # An app may ship a hand-rolled bundle FIXTURE its scenarios install —
       # scaffolding-e2e's two-service .mpk, which exists to exercise merod's
@@ -573,6 +574,8 @@ jobs:
             apps/*/logic/res/abi.json
             apps/*/logic/res/state-schema.json
             apps/*/logic/res/*.mpk
+            apps/*/logic/crates/*/res/abi.json
+            apps/*/logic/crates/*/res/state-schema.json
           retention-days: 3
 
   frontend:
