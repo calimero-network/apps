@@ -3,7 +3,7 @@
 // bound to their own CRDT hook, which turns an edit into a delta and a peer's
 // event into a re-read. EditorShell owns every piece of visual chrome.
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { EditorShell } from '@/components/editor/EditorShell';
 import { useConfirm } from '@/components/ui/confirm-dialog';
 import type { DocDto } from '@/generated/docs/DocsClient';
@@ -12,6 +12,10 @@ import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useFolderPermissions } from '@/hooks/useFolderPermissions';
 import { useFugueBody } from '@/hooks/useFugueBody';
 import { useFugueTitle } from '@/hooks/useFugueTitle';
+import { useBodyCursors, type CursorEditor } from '@/hooks/useBodyCursors';
+import { useDocPresence } from '@/hooks/useDocPresence';
+import { useTitleCursors } from '@/hooks/useTitleCursors';
+import type { DriveEditor } from '@/components/editor/blocknote/schema';
 import { DocumentInspector } from './DocumentInspector';
 
 const TITLE_REFETCH_MS = 800; // one list refetch per rename, not per keystroke
@@ -23,7 +27,8 @@ interface Props {
 }
 
 export function DocumentEditor({ folderId, docId, onClose }: Props) {
-  const { namespaceId } = useDriveWorkspace();
+  const { namespaceId, selfIdentity, namespaceMemberNames } =
+    useDriveWorkspace();
   const perms = useFolderPermissions(namespaceId ?? '', folderId);
   // Doc-edit ability is the registry Role, gated through useFolderPermissions.
   // A caps-fetch failure leaves this false, so the editor opens read-only
@@ -43,15 +48,43 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
   const [doc, setDoc] = useState<DocDto | null>(null);
   const [loadError, setLoadError] = useState<Error | null>(null);
 
+  const identity = useMemo(
+    () =>
+      selfIdentity
+        ? {
+            id: selfIdentity,
+            name: namespaceMemberNames[selfIdentity] || 'Anonymous',
+          }
+        : null,
+    [selfIdentity, namespaceMemberNames],
+  );
+  const openDocId = docsContextId ? docId : null;
+
+  const { peers, publish } = useDocPresence(docsContextId, openDocId, identity);
   const title = useFugueTitle({
     client,
-    docId: docsContextId ? docId : null,
+    docId: openDocId,
     contextId: docsContextId,
+    publish,
   });
   const body = useFugueBody({
     client,
-    docId: docsContextId ? docId : null,
+    docId: openDocId,
     contextId: docsContextId,
+  });
+  const [editor, setEditor] = useState<DriveEditor | null>(null);
+  const onEditorReady = useCallback(
+    (ready: DriveEditor) => setEditor(ready),
+    [],
+  );
+  const titleCarets = useTitleCursors(client, openDocId, peers, title.title);
+  useBodyCursors({
+    client,
+    docId: openDocId,
+    editor: editor as CursorEditor | null,
+    peers,
+    publish,
+    revision: body.content,
   });
 
   useEffect(() => {
@@ -128,6 +161,7 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
                 onChange: title.onChange,
                 onSelect: title.onSelect,
                 inputRef: title.inputRef,
+                carets: titleCarets,
               }
             : undefined
         }
@@ -142,6 +176,7 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
         lastSavedAt={doc ? new Date(doc.updated_at / 1_000_000) : null}
         isAppReady={!!namespaceId && !!docsContextId}
         isLoading={body.loading}
+        onEditorReady={onEditorReady}
       />
       <DocumentInspector client={client} docId={docId} />
     </>

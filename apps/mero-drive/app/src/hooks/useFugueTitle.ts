@@ -1,6 +1,6 @@
 // Binds a plain text input to the document title CRDT: a keystroke becomes one
-// scalar-indexed delta, and a peer's TitleChanged becomes a re-read with the
-// caret carried across on an anchor.
+// scalar-indexed delta, a peer's TitleChanged becomes a re-read with the caret
+// carried across on an anchor, and the caret is published as live presence.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -11,6 +11,7 @@ import { diffText } from '@/lib/rich/delta';
 import { parseRichEvents } from '@/lib/rich/events';
 import { scalarToUtf16, utf16ToScalar } from '@/lib/rich/offsets';
 import { UndoHistory } from '@/lib/rich/undo';
+import type { CaretSlice } from './useDocPresence';
 import type { ChangePayload, DocsClient } from '@/generated/docs/DocsClient';
 import { isContextEvent } from './useContextEvents';
 
@@ -21,6 +22,8 @@ export interface UseFugueTitleOptions {
   client: DocsClient | null;
   docId: string | null;
   contextId: string | null;
+  /** Where to publish this caret; the document view owns the one slot. */
+  publish?: (caret: CaretSlice) => void;
 }
 
 export interface UseFugueTitleResult {
@@ -40,6 +43,7 @@ export function useFugueTitle({
   client,
   docId,
   contextId,
+  publish,
 }: UseFugueTitleOptions): UseFugueTitleResult {
   const [title, showTitle] = useState('');
   const [error, setError] = useState<Error | null>(null);
@@ -54,6 +58,8 @@ export function useFugueTitle({
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const contextIds = useMemo(() => (contextId ? [contextId] : []), [contextId]);
+  const publishRef = useRef(publish);
+  publishRef.current = publish;
 
   useEffect(() => {
     historyRef.current.reset(docId);
@@ -97,6 +103,7 @@ export function useFugueTitle({
         })
         .then((anchor) => {
           anchorRef.current = anchor;
+          publishRef.current?.({ blockId: null, anchor, head: anchor });
         })
         .catch((cause) => setError(asError(cause)));
     }, CARET_DEBOUNCE_MS);

@@ -24,6 +24,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { BlockNoteView } from '@blocknote/mantine';
+import { createExtension } from '@blocknote/core';
 import { useCreateBlockNote } from '@blocknote/react';
 import '@blocknote/core/fonts/inter.css';
 import '@blocknote/mantine/style.css';
@@ -31,7 +32,8 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import { EditorStatusBar } from './EditorStatusBar';
 import { EditorHeader, type TitleBinding } from './EditorHeader';
 import { useTheme } from '@/components/theme/ThemeProvider';
-import { schema } from './blocknote/schema';
+import { schema, type DriveEditor } from './blocknote/schema';
+import { presencePlugin } from './presence/presencePlugin';
 import {
   serializeBlocks,
   parseStoredContent,
@@ -62,6 +64,8 @@ export interface EditorShellProps {
   lastSavedAt?: Date | null;
   isAppReady?: boolean;
   isLoading?: boolean;
+  /** Handed the live editor once, so presence can read and decorate it. */
+  onEditorReady?: (editor: DriveEditor) => void;
   /** View-only mode: BlockNote becomes non-editable and the header
    *  renders the title as plain text. Callers should ALSO gate the
    *  mutation callbacks at the binding level (defense in depth). */
@@ -94,6 +98,7 @@ export const EditorShell: React.FC<EditorShellProps> = ({
   isAppReady = true,
   isLoading = false,
   readOnly = false,
+  onEditorReady,
 }) => {
   const { theme } = useTheme();
 
@@ -107,10 +112,24 @@ export const EditorShell: React.FC<EditorShellProps> = ({
     [],
   );
 
+  const presence = useMemo(
+    () =>
+      createExtension({
+        key: 'calimeroPresence',
+        prosemirrorPlugins: [presencePlugin()],
+      }),
+    [],
+  );
+
   const editor = useCreateBlockNote({
     schema,
     initialContent: initialBlocks,
+    extensions: [presence],
   });
+
+  useEffect(() => {
+    if (editor) onEditorReady?.(editor);
+  }, [editor, onEditorReady]);
 
   const [wordCount, setWordCount] = useState(0);
   const [charCount, setCharCount] = useState(0);

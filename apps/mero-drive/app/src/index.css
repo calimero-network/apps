@@ -304,3 +304,29 @@ html .bn-container[data-color-scheme='dark'] {
     opacity: 0.5;
   }
 }
+
+/* Remote carets. The label hides until the caret is hovered so a busy
+   document does not turn into a wall of names. */
+.cal-presence-cursor {
+  position: relative;
+  margin-left: -1px;
+  pointer-events: none;
+}
+
+.cal-presence-label {
+  position: absolute;
+  top: -1.15em;
+  left: -1px;
+  padding: 0 0.25rem;
+  border-radius: 0.25rem;
+  color: #fff;
+  font-size: 0.625rem;
+  line-height: 1.15em;
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.cal-presence-cursor:hover .cal-presence-label {
+  opacity: 1;
+}
