@@ -24,10 +24,16 @@ catalog:
   #   mero-react 9.1.2 (#73)  — neither non-admin AppMode asked for
   #     `context:subscribe`, which core requires for /sse, /sse/subscription and
   #     /ws. Every app token was refused 403 permission_denied on all three.
+  #   mero-react 9.1.3 (#74)  — and MeroProvider's own stream handler then threw
+  #     both of those 403s away: it opened `if (!err.message.includes('401'))`,
+  #     and core answers a dead or under-scoped token with 403, never 401. The
+  #     app went offline with no refresh, no logout and no prompt — and 19.14.1
+  #     correctly stopping its reconnect loop turned that into a SILENT dead end.
   # ⚠️ The grant set is baked into a client key when it is MINTED, so an app
-  # already holding a token has to log in again to pick the second one up.
+  # already holding a token has to log in again to pick #73 up. 9.1.3 is what
+  # makes that happen by itself instead of stranding the session offline.
   "@calimero-network/mero-js": ^19.14.1
-  "@calimero-network/mero-react": ^9.1.2
+  "@calimero-network/mero-react": ^9.1.3
   "@calimero-network/mero-ui": ^1.5.1
   # The landing template's feature-card and theme-toggle icons. Catalogued
   # because twelve apps now import it; before this, the three that already used
