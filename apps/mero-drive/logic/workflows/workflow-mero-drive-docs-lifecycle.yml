@@ -590,7 +590,7 @@ steps:
     type: assert
     statements:
       - '"{{comment_doc}}" == "{{doc_a}}"'
-      - '"{{comment_body}}" == "Looks good to me."'
+      - '{{comment_body}} == "Looks good to me."'
 
   - name: Sync the comment to Bob
     type: wait_for_sync

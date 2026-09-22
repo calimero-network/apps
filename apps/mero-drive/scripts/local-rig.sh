@@ -48,9 +48,11 @@ require_node_index() {
   esac
 }
 
+# MEROD_BINARY wins; otherwise the integration build, then a plain merod.
 resolve_merod() {
-  local merod="${MEROD_BINARY:-$(command -v merod || true)}"
-  [ -n "$merod" ] && [ -x "$merod" ] || die "no merod; set MEROD_BINARY or put one on PATH"
+  local merod="${MEROD_BINARY:-}"
+  [ -n "$merod" ] || merod="$(command -v merod-integration || command -v merod || true)"
+  [ -n "$merod" ] && [ -x "$merod" ] || die "no merod; set MEROD_BINARY or put merod-integration on PATH"
   echo "$merod"
 }
 
