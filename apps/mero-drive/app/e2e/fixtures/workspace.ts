@@ -590,6 +590,21 @@ export class SettingsDriver {
     await expect(dialog).toBeHidden({ timeout: 10_000 });
     return url;
   }
+
+  // Presence dot on a row of the namespace members panel; Settings must be open.
+  async expectMemberPresence(
+    label: string,
+    state: 'Here now' | 'Away',
+    opts: { timeout?: number } = {},
+  ): Promise<void> {
+    const row = this.page
+      .getByRole('region', { name: 'Namespace members' })
+      .getByRole('listitem')
+      .filter({ hasText: label });
+    await expect(row.getByRole('img', { name: state })).toBeVisible({
+      timeout: opts.timeout ?? 60_000,
+    });
+  }
 }
 
 function escapeRegex(s: string): string {
