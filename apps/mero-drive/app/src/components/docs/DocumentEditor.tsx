@@ -86,6 +86,8 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
     peers,
     publish,
     revision: body.revision,
+    toBackendId: body.backendIdOf,
+    toEditorId: body.editorIdOf,
   });
 
   useEffect(() => {
@@ -156,7 +158,7 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
         // cannot rename, edit or delete; EditorShell's readOnly flag is the
         // second layer, not the authoritative one.
         title={
-          canEditDocs
+          canEditDocs && title.loaded
             ? {
                 value: title.title,
                 onChange: title.onChange,

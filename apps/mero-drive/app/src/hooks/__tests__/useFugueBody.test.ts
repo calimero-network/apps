@@ -312,6 +312,21 @@ describe('useFugueBody', () => {
     expect(client.insertBlock).not.toHaveBeenCalled();
   });
 
+  it('keeps a peer\'s text that lands while this window changes that block\'s kind', async () => {
+    const client = fakeClient([row('blk-1', 'one'), row('blk-2', 'two')]);
+    const editor = new FakeEditor();
+    await mount(client, editor);
+
+    client.getDocument.mockResolvedValue([row('blk-1', 'one'), row('blk-2', 'two!', 'heading')]);
+    editor.updateBlock('blk-2', { type: 'heading' });
+    await settle();
+    await settle();
+
+    expect(client.setKind).toHaveBeenCalledWith({ doc: DOC, block: 'blk-2', kind: 'heading' });
+    expect(editor.textOf('blk-2')).toBe('two!');
+    expect(client.applyDeltaOn).not.toHaveBeenCalled();
+  });
+
   it('undoes and redoes through the editor history, not per write', async () => {
     const client = fakeClient([row('blk-1', 'a')]);
     const editor = new FakeEditor();

@@ -37,7 +37,9 @@ import {
 } from '@/components/editor/presence/geometry';
 import {
   applyRemoteText,
+  domSelection,
   flushPendingInput,
+  keepSelection,
   type RemoteTextEditor,
 } from '@/components/editor/remoteText';
 import type { SaveStatus } from '@/components/editor/types';
@@ -84,8 +86,9 @@ export interface UseFugueBodyResult {
   redo: () => void;
   /** Bumps on every change a peer made, so anchors are re-resolved. */
   revision: number;
-  /** The backend id of a block the editor knows by its own id. */
+  /** The backend id of a block the editor knows by its own id, and back. */
   backendIdOf: (editorId: string) => string;
+  editorIdOf: (backendId: string) => string;
 }
 
 interface Caret {
@@ -199,10 +202,13 @@ export function useFugueBody({
   const asPeer = useCallback((apply: (live: BodyEditor) => void) => {
     const live = editorRef.current;
     if (!live) return;
+    flushPendingInput(live.prosemirrorView);
     if (!live.transact) return apply(live);
+    const before = domSelection(live.prosemirrorView);
     live.transact((tr) => {
       tr.setMeta('addToHistory', false);
       apply(live);
+      keepSelection(tr, before);
     });
   }, []);
 
@@ -478,17 +484,10 @@ export function useFugueBody({
       if (outcome.structural && outcome.refused) {
         resyncRef.current = true;
       } else if (outcome.structural) {
-        // The node now holds this structure; tracking it stops a resend.
-        serverRef.current = next.map((block) => {
-          const id = backendIdOf(block.id);
-          const held = serverBlock(id);
-          return {
-            ...block,
-            id,
-            inline: held && !outcome.touched.has(id) ? held.inline : block.inline,
-          };
-        });
-        await refreshWith(outcome.touched);
+        // Every call landed, so the node holds exactly what was diffed; tracking
+        // that stops a resend and lets the re-read rebase a peer's edit into it.
+        serverRef.current = next.map((block) => ({ ...block, id: backendIdOf(block.id) }));
+        await refreshWith(new Set());
       }
       if (outcome.refused) dirtyRef.current = true;
       setError(null);
@@ -622,5 +621,6 @@ export function useFugueBody({
     redo,
     revision,
     backendIdOf,
+    editorIdOf,
   };
 }

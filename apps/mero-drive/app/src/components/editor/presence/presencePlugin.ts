@@ -5,7 +5,7 @@
 import { Plugin, PluginKey, type EditorState } from 'prosemirror-state';
 import { Decoration, DecorationSet, type EditorView } from 'prosemirror-view';
 import type { CaretDecoration } from '@/lib/rich/cursors';
-import { flushPendingInput } from '../remoteText';
+import { domSelection, flushPendingInput, keepSelection, syncSelectionFromDom } from '../remoteText';
 
 const PRESENCE_META = 'calimero-presence';
 
@@ -67,6 +67,16 @@ export function presencePlugin(): Plugin<DecorationSet> {
     },
     props: {
       decorations: (state) => presenceKey.getState(state) ?? DecorationSet.empty,
+      handleDOMEvents: {
+        // Runs before any keymap: the view reads selection changes late, and a
+        // shortcut pressed in that gap would act on where the caret used to be.
+        keydown: (view, event) => {
+          if (event.isComposing) return false;
+          flushPendingInput(view);
+          syncSelectionFromDom(view);
+          return false;
+        },
+      },
     },
   });
 }
@@ -77,5 +87,7 @@ export function setPresenceDecorations(
   specs: CaretDecoration[],
 ): void {
   flushPendingInput(view);
-  view.dispatch(view.state.tr.setMeta(presenceKey, specs));
+  const tr = view.state.tr.setMeta(presenceKey, specs);
+  keepSelection(tr, domSelection(view));
+  view.dispatch(tr);
 }

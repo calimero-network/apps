@@ -2,7 +2,7 @@
 // that is already there: the editor maps the caret itself and never rebuilds the
 // DOM a keystroke it has not read yet still lives in.
 
-import type { Transaction } from 'prosemirror-state';
+import { TextSelection, type Transaction } from 'prosemirror-state';
 import type { EditorView } from 'prosemirror-view';
 import { BOOLEAN_KEYS, type AttrDelta } from '@/lib/rich/attributes';
 import { posAt } from '@/lib/rich/cursors';
@@ -35,6 +35,47 @@ export function flushPendingInput(view: EditorView | undefined): void {
   }
 }
 
+/** The browser's own selection in document positions, when it is in this view.
+ *  The view's record can lag the browser, and a dispatch writes that record back. */
+export function domSelection(view: EditorView | undefined): { anchor: number; head: number } | null {
+  try {
+    const selection = view?.root && 'getSelection' in view.root ? (view.root as Document).getSelection() : null;
+    if (!view || !selection?.anchorNode || !selection.focusNode) return null;
+    if (!view.dom.contains(selection.anchorNode) || !view.dom.contains(selection.focusNode)) return null;
+    return {
+      anchor: view.posAtDOM(selection.anchorNode, selection.anchorOffset),
+      head: view.posAtDOM(selection.focusNode, selection.focusOffset),
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Records the browser's selection when the view's record lags it, so a key
+ *  that acts on the selection (Enter, a format shortcut) acts where the user is. */
+export function syncSelectionFromDom(view: EditorView): void {
+  const actual = domSelection(view);
+  const { selection } = view.state;
+  if (!actual || (actual.anchor === selection.anchor && actual.head === selection.head)) return;
+  try {
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, actual.anchor, actual.head)));
+  } catch {
+    // A position outside the document is not a selection worth recording.
+  }
+}
+
+/** Puts the browser's selection, carried through the steps `tr` holds, on `tr`. */
+export function keepSelection(tr: Transaction, before: { anchor: number; head: number } | null): void {
+  if (!before) return;
+  try {
+    // Bias -1: a peer's insert at the caret goes after it, so the user's next
+    // keystroke chains onto their own text and each person's run stays whole.
+    tr.setSelection(TextSelection.create(tr.doc, tr.mapping.map(before.anchor, -1), tr.mapping.map(before.head, -1)));
+  } catch {
+    // A position the steps removed has no selection to keep; leave the mapped one.
+  }
+}
+
 const schemaOf = (editor: RemoteTextEditor): SchemaLike => editor.pmSchema as SchemaLike;
 
 // BlockNote holds a link as an inline node, not a mark, so a link change is left
@@ -62,6 +103,8 @@ const knows = (editor: RemoteTextEditor, op: Change): boolean =>
 /** Applies `ops` to block `blockId`; false when they need the whole-block path. */
 export function applyRemoteText(editor: RemoteTextEditor, blockId: string, ops: Change[]): boolean {
   if (ops.some(touchesLink) || !ops.every((op) => knows(editor, op))) return false;
+  flushPendingInput(editor.prosemirrorView);
+  const before = domSelection(editor.prosemirrorView);
   return editor.transact((tr) => {
     // A peer's edit is not the user's to undo; history rebases theirs past it.
     tr.setMeta('addToHistory', false);
@@ -93,6 +136,7 @@ export function applyRemoteText(editor: RemoteTextEditor, blockId: string, ops: 
         at += op.retain;
       }
     }
+    keepSelection(tr, before);
     return true;
   });
 }
