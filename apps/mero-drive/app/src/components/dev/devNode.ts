@@ -28,26 +28,29 @@ export async function setDevNodeOnline(
   if (!resp.ok) throw new Error(`POST /__dev/node/${index}/${action} -> ${resp.status}`);
 }
 
-/** The node this window was opened against, or 1 when `?node` is absent. */
-export function selectedDevNode(): number {
+/** The node this window was opened against, or null when `?node` is absent. */
+export function selectedDevNode(): number | null {
   const raw = new URLSearchParams(window.location.search).get('node');
   const index = Number(raw);
-  return Number.isInteger(index) && index > 0 ? index : 1;
+  return raw !== null && Number.isInteger(index) && index > 0 ? index : null;
 }
 
 /**
  * Writes the rig's session for the selected node into the storage mero-react
- * reads, before the provider's first render. Silent when the dev server serves
- * no nodes, which is every run without the rig.
+ * reads, before the provider's first render. Silent without `?node=` or
+ * without the rig.
  */
 export async function applyDevNodeSelection(): Promise<void> {
+  // No `?node=`, no session: an unasked-for one would sign every visitor in.
+  const selected = selectedDevNode();
+  if (selected === null) return;
   let nodes: DevNodes;
   try {
     nodes = await fetchDevNodes();
   } catch {
     return;
   }
-  const node = nodes.nodes.find((n) => n.index === selectedDevNode());
+  const node = nodes.nodes.find((n) => n.index === selected);
   if (!node) return;
   const expiresAt = Date.now() + 3_600_000;
   localStorage.setItem(

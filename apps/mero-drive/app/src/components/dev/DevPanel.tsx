@@ -26,12 +26,15 @@ export default function DevPanel() {
   }, []);
 
   React.useEffect(() => {
+    if (selected === null) return;
     void refresh();
     const timer = setInterval(() => void refresh(), POLL_MS);
     return () => clearInterval(timer);
-  }, [refresh]);
+  }, [refresh, selected]);
 
-  if (nodes.length === 0) return null;
+  // No `?node=`, no panel: it would otherwise sit over the landing page's own
+  // controls in every dev window.
+  if (selected === null || nodes.length === 0) return null;
 
   const toggle = async (node: DevNode) => {
     setBusy(node.index);
