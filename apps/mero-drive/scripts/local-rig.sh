@@ -9,7 +9,7 @@ BASE_PORT=3920
 NODE_PREFIX=drive-rig-node
 ADMIN_USER="admin"
 ADMIN_PASSWORD=adminadmin # throwaway, loopback only; merod enforces 8 characters
-LOG_LEVEL="merod=info,calimero_=info,calimero_node::sync=debug"
+LOG_LEVEL="${RIG_LOG_LEVEL:-merod=info,calimero_=info,calimero_node::sync=debug}"
 HEALTH_TIMEOUT=60 # seconds a node gets to serve /admin-api/health after a start
 STOP_TIMEOUT=30   # seconds a node gets to exit after SIGTERM
 
