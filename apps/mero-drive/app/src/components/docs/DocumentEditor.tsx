@@ -163,6 +163,7 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
                 value: title.title,
                 onChange: title.onChange,
                 onSelect: title.onSelect,
+                onKeyDown: title.onKeyDown,
                 inputRef: title.inputRef,
                 carets: titleCarets,
               }

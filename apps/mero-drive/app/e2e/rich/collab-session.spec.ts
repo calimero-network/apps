@@ -14,6 +14,7 @@ const NODES = [1, 2];
 const KEY_DELAY_MS = 90; // human typing speed, so keystrokes and sync overlap
 const EMOJI = ` ${String.fromCodePoint(0x1f600)} ${String.fromCodePoint(0x1f468, 0x200d, 0x1f469, 0x200d, 0x1f467)}`;
 const PASTE = 'abcdefghij'.repeat(500); // 5000 characters in one editor change
+const NEW_UNDO_STEP_MS = 1000; // past the editors' 500 ms grouping, so the next edit undoes on its own
 
 async function typeLive(page: Page, text: string): Promise<void> {
   await page.keyboard.type(text, { delay: KEY_DELAY_MS });
@@ -180,6 +181,12 @@ test('two people edit one document live, formatted, with undo, and apart', async
     await redo(a.page);
     const redone = await settledTexts(rig.doc, [a.page, b.page]);
     expect.soft(redone).toEqual(before);
+
+    await caretToEnd(a.page, 1);
+    await a.page.keyboard.press(`${MOD}+z`);
+    expect.soft(await settledTexts(rig.doc, [a.page, b.page])).toEqual(undone);
+    await a.page.keyboard.press(`${MOD}+Shift+z`);
+    expect.soft(await settledTexts(rig.doc, [a.page, b.page])).toEqual(before);
   });
 
   await test.step('title: both type into the title at once', async () => {
@@ -202,6 +209,26 @@ test('two people edit one document live, formatted, with undo, and apart', async
     for (const page of [a.page, b.page]) {
       await expect.soft(titleInput(page)).toHaveValue(expected, { timeout: 15_000 });
     }
+  });
+
+  await test.step('title: undo takes back only your own words, after the other edits too', async () => {
+    const title = await titleOnNode(1, rig.doc);
+    await a.page.waitForTimeout(NEW_UNDO_STEP_MS);
+    await titleInput(a.page).click();
+    await titleInput(a.page).press('End');
+    await typeLive(a.page, ' v2');
+    await expect.poll(() => titleOnNode(2, rig.doc), { timeout: 60_000 }).toBe(`${title} v2`);
+    await titleInput(b.page).click();
+    await titleInput(b.page).press('Home');
+    await typeLive(b.page, 'Our ');
+    await expect(titleInput(a.page)).toHaveValue(`Our ${title} v2`, { timeout: 30_000 });
+
+    // A peer's change resets the input, so this is the title's own history, not the browser's.
+    await titleInput(a.page).press(`${MOD}+z`);
+    await expect.poll(() => titleOnNode(2, rig.doc), { timeout: 30_000 }).toBe(`Our ${title}`);
+    await expect.soft(titleInput(b.page)).toHaveValue(`Our ${title}`, { timeout: 15_000 });
+    await titleInput(a.page).press(`${MOD}+Shift+z`);
+    await expect.poll(() => titleOnNode(2, rig.doc), { timeout: 30_000 }).toBe(`Our ${title} v2`);
   });
 
   await test.step('blocks: Enter splits and Backspace merges while the other types', async () => {

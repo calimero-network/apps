@@ -27,6 +27,7 @@ export interface TitleBinding {
   value: string;
   onChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
   onSelect: () => void;
+  onKeyDown: (event: React.KeyboardEvent<HTMLInputElement>) => void;
   inputRef: React.MutableRefObject<HTMLInputElement | null>;
   carets: TitleCaret[];
 }
@@ -69,6 +70,7 @@ export const EditorHeader: React.FC<EditorHeaderProps> = ({
             maxLength={MAX_ALIAS_LENGTH}
             onChange={title.onChange}
             onSelect={title.onSelect}
+            onKeyDown={title.onKeyDown}
             className="w-full bg-transparent rounded px-2 py-1 text-center text-sm font-medium border border-transparent hover:border-border focus:border-primary/50 focus:outline-none focus:ring-2 focus:ring-primary/30"
           />
           <TitleCursors

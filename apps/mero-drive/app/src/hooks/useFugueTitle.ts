@@ -23,6 +23,7 @@ import { useRetry } from './useRetry';
 const CARET_DEBOUNCE_MS = 200; // one anchor mint per pause, not per keystroke
 const REFRESH_DEBOUNCE_MS = 50; // coalesces a typing peer's event burst
 const RECONCILE_MS = 4000; // an event lost while the node restarted still lands
+const UNDO_GROUP_MS = 500; // writes closer than this undo as one step, as in the body
 
 export interface UseFugueTitleOptions {
   client: DocsClient | null;
@@ -37,6 +38,8 @@ export interface UseFugueTitleResult {
   inputRef: React.MutableRefObject<HTMLInputElement | null>;
   onChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
   onSelect: () => void;
+  /** Undo and redo shortcuts, taken from the browser's own input history. */
+  onKeyDown: (event: React.KeyboardEvent<HTMLInputElement>) => void;
   undo: () => void;
   redo: () => void;
   error: Error | null;
@@ -73,7 +76,10 @@ export function useFugueTitle({
   const inFlightRef = useRef(false);
   // Where the caret goes once React has rendered a value a peer changed.
   const caretRef = useRef<{ anchor: number; head: number } | null>(null);
-  const historyRef = useRef(new UndoHistory(docId));
+  // One entry per typing burst: the write tokens in the order they landed.
+  const historyRef = useRef(new UndoHistory<string[]>(docId));
+  const openGroupRef = useRef<string[] | null>(null);
+  const lastWriteAtRef = useRef(0);
   const caretTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const drainRef = useRef<(() => Promise<void>) | null>(null);
@@ -117,7 +123,8 @@ export function useFugueTitle({
       // serde's untagged form, which is what `ops` already is.
       const result = await client.titleApplyDeltaOn({ doc: docId, base, ops: ops as unknown as ChangePayload[] });
       if (result.applied && result.token) {
-        historyRef.current.record(result.token);
+        if (openGroupRef.current) openGroupRef.current.push(result.token);
+        else historyRef.current.record((openGroupRef.current = [result.token]));
         serverRef.current = applyText(base, ops);
       } else {
         dirtyRef.current = true;
@@ -180,6 +187,7 @@ export function useFugueTitle({
 
   useEffect(() => {
     historyRef.current.reset(docId);
+    openGroupRef.current = null;
     serverRef.current = '';
     localRef.current = '';
     loadedRef.current = false;
@@ -231,6 +239,9 @@ export function useFugueTitle({
 
   const write = useCallback(
     (next: string) => {
+      const now = Date.now();
+      if (now - lastWriteAtRef.current > UNDO_GROUP_MS) openGroupRef.current = null;
+      lastWriteAtRef.current = now;
       localRef.current = next;
       showTitle(next);
       dirtyRef.current = true;
@@ -282,7 +293,13 @@ export function useFugueTitle({
     (direction: 'undo' | 'redo') => {
       if (!client || !docId) return;
       const history = historyRef.current;
-      const apply = (token: string) => client.titleUndo({ doc: docId, token });
+      openGroupRef.current = null;
+      // Newest write first; the inverses come back in the order redo replays them.
+      const apply = async (group: string[]) => {
+        const inverses: string[] = [];
+        for (const token of [...group].reverse()) inverses.push(await client.titleUndo({ doc: docId, token }));
+        return inverses;
+      };
       const ran = direction === 'undo' ? history.undo(apply) : history.redo(apply);
       ran
         .then((moved) => {
@@ -296,12 +313,25 @@ export function useFugueTitle({
   );
   const undo = useCallback(() => step('undo'), [step]);
   const redo = useCallback(() => step('redo'), [step]);
+  // A peer's change resets the input's value, which empties the browser's undo.
+  const onKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLInputElement>) => {
+      if (!(event.metaKey || event.ctrlKey)) return;
+      const key = event.key.toLowerCase();
+      if (key !== 'z' && key !== 'y') return;
+      event.preventDefault();
+      if (key === 'y' || event.shiftKey) redo();
+      else undo();
+    },
+    [undo, redo],
+  );
 
   return {
     title,
     inputRef,
     onChange,
     onSelect: publishCaret,
+    onKeyDown,
     undo,
     redo,
     status,

@@ -199,6 +199,58 @@ describe('useFugueTitle', () => {
     expect(client.titleUndo).toHaveBeenLastCalledWith({ doc: DOC, token: 'redo-1' });
   });
 
+  /** Two writes `gap` ms apart, answered with tokens tok-a and tok-b. */
+  async function twoWrites(gap: number) {
+    const client = fakeClient();
+    client.titleApplyDeltaOn
+      .mockResolvedValueOnce(applied('Notes!', 'tok-a'))
+      .mockResolvedValueOnce(applied('Notes!!', 'tok-b'));
+    client.titleUndo.mockImplementation(({ token }: { token: string }) => Promise.resolve(`inv-${token}`));
+    const { result } = mount(client);
+    await settle();
+    act(() => result.current.onChange(change('Notes!')));
+    await settle(gap);
+    act(() => result.current.onChange(change('Notes!!')));
+    await settle();
+    return { client, result };
+  }
+
+  const undoTokens = (client: FakeClient) => client.titleUndo.mock.calls.map(([arg]) => arg.token);
+
+  it('undoes a typing burst as one step, newest write first, and redoes it oldest first', async () => {
+    const { client, result } = await twoWrites(100);
+    act(() => result.current.undo());
+    await settle();
+    expect(undoTokens(client)).toEqual(['tok-b', 'tok-a']);
+    act(() => result.current.redo());
+    await settle();
+    expect(undoTokens(client)).toEqual(['tok-b', 'tok-a', 'inv-tok-a', 'inv-tok-b']);
+  });
+
+  it('starts a new undo step after a pause in typing', async () => {
+    const { client, result } = await twoWrites(1000);
+    act(() => result.current.undo());
+    await settle();
+    expect(undoTokens(client)).toEqual(['tok-b']);
+  });
+
+  it('takes the undo and redo shortcuts in the title through its own history', async () => {
+    const { client, result } = await twoWrites(1000);
+    const key = (init: KeyboardEventInit) => {
+      const event = { ...init, preventDefault: vi.fn() } as unknown as React.KeyboardEvent<HTMLInputElement>;
+      act(() => result.current.onKeyDown(event));
+      return event.preventDefault as Mock;
+    };
+    expect(key({ key: 'z', metaKey: true })).toHaveBeenCalled();
+    await settle();
+    expect(undoTokens(client)).toEqual(['tok-b']);
+    expect(key({ key: 'Z', metaKey: true, shiftKey: true })).toHaveBeenCalled();
+    await settle();
+    expect(undoTokens(client)).toEqual(['tok-b', 'inv-tok-b']);
+    expect(key({ key: 'z' })).not.toHaveBeenCalled();
+    expect(undoTokens(client)).toHaveLength(2);
+  });
+
   it('mints an anchor at the caret in scalar positions', async () => {
     const client = fakeClient();
     client.getTitle.mockResolvedValue('a\u{1F44B}b');
