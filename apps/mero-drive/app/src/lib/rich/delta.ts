@@ -23,7 +23,7 @@ export interface AttrSpan {
 /** One step of an attributed change, walking the block as it was before. */
 export type Change =
   | { retain: number; attributes?: AttrDelta }
-  | { insert: string; attributes: AttrDelta }
+  | { insert: string; attributes?: AttrDelta }
   | { delete: number };
 
 /** BlockNote's inline content nodes. */
@@ -154,6 +154,14 @@ export function diffSpans(prev: AttrSpan[], next: AttrSpan[]): Change[] {
     ops.pop();
   }
   return ops;
+}
+
+/** The change list for plain text, which the title API takes without attributes. */
+export function diffText(prev: string, next: string): Change[] {
+  return diffSpans(
+    [{ text: prev, attributes: {} }],
+    [{ text: next, attributes: {} }],
+  ).map((op) => ('insert' in op ? { insert: op.insert } : op));
 }
 
 /** Backend spans as BlockNote inline content, links nested. */

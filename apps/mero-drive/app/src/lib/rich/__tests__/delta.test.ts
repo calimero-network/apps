@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { diffSpans, spansToInline, inlineToSpans } from '../delta';
+import { diffSpans, diffText, spansToInline, inlineToSpans } from '../delta';
 import type { AttrSpan } from '../delta';
 
 const plain = (text: string): AttrSpan[] => [{ text, attributes: {} }];
@@ -236,5 +236,32 @@ describe('inlineToSpans', () => {
       },
     ];
     expect(spansToInline(inlineToSpans(inline))).toEqual(inline);
+  });
+});
+
+describe('diffText', () => {
+  it('types one character with no attributes on the op', () => {
+    expect(diffText('hello', 'hello!')).toEqual([
+      { retain: 5 },
+      { insert: '!' },
+    ]);
+  });
+
+  it('replaces the whole title as a delete and an insert', () => {
+    expect(diffText('Untitled', 'Notes')).toEqual([
+      { delete: 8 },
+      { insert: 'Notes' },
+    ]);
+  });
+
+  it('is empty when the title did not change', () => {
+    expect(diffText('Notes', 'Notes')).toEqual([]);
+  });
+
+  it('counts an astral character as one scalar', () => {
+    expect(diffText('a\u{1F44B}b', 'ab')).toEqual([
+      { retain: 1 },
+      { delete: 1 },
+    ]);
   });
 });
