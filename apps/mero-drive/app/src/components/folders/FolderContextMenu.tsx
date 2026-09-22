@@ -35,12 +35,15 @@ interface Props {
    *  while the per-folder fetch is still in flight. */
   currentVisibility: 'Open' | 'Restricted' | undefined;
   onRename: () => void;
+  /** Reveals the folder's children so the one about to be created shows up. */
+  onNewSubfolder: () => void;
 }
 
 export function FolderContextMenu({
   folderId,
   currentVisibility,
   onRename,
+  onNewSubfolder,
 }: Props) {
   const {
     namespaceId,
@@ -113,7 +116,12 @@ export function FolderContextMenu({
             </DropdownMenuItem>
           )}
           {perms.canCreateSubfolder && (
-            <DropdownMenuItem onClick={() => setShowNewSub(true)}>
+            <DropdownMenuItem
+              onClick={() => {
+                onNewSubfolder();
+                setShowNewSub(true);
+              }}
+            >
               <Plus className="mr-2 h-4 w-4" />
               New subfolder
             </DropdownMenuItem>
