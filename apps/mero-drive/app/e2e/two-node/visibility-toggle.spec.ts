@@ -6,9 +6,7 @@
 import { test, expect } from '../fixtures/two-user';
 
 test.describe('Visibility toggle (two-node)', () => {
-  // Bob's tree hides the now-Restricted folder and his selection sticks on
-  // "Loading folder..." instead of the ask-admin card.
-  test.fixme("Open → Restricted revokes Bob's inherited access", async ({
+  test("Open → Restricted revokes Bob's inherited access", async ({
     alice,
     bob,
   }) => {
@@ -31,10 +29,12 @@ test.describe('Visibility toggle (two-node)', () => {
     // Alice: flip to Restricted.
     await alice.toggleVisibility('Mutable');
 
-    // Bob: his view should collapse back to the ask-admin card once
-    // the visibility op reaches his node. Generous timeout —
-    // governance propagation + permission re-evaluation latency.
-    await bob.restrictedCard.expectAskAdmin({ timeout: 60_000 });
+    // Restricted folders are hidden from non-members, so once the op reaches
+    // Bob's node the folder leaves his tree and his pane drops the selection.
+    await bob.tree.expectFolderHidden('Mutable', { timeout: 60_000 });
+    await expect(
+      bob.page.getByRole('heading', { name: /Select a folder/i }),
+    ).toBeVisible({ timeout: 15_000 });
   });
 
   test('Restricted -> Open reveals the folder to Bob', async ({ alice, bob }) => {
