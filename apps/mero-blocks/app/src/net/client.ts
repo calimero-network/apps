@@ -1,12 +1,13 @@
 // GameClient: session + JSON-RPC + SSE subscription in one connect() call.
 
 import {
+  AuthRevokedError,
   SseClient,
   type GroupMembershipEventData,
   type GroupMigrationEventData,
   type SseEventData,
 } from "@calimero-network/mero-js";
-import { getAccessToken, getSession } from "./session";
+import { clearSession, getAccessToken, getSession } from "./session";
 import { ownedContextIdentity } from "./admin";
 import { rpcExecute, RpcTarget } from "./rpc";
 import { decodeSseEvents, GameEvent } from "./events";
@@ -73,8 +74,21 @@ export class GameClient {
       if (evt.contextId && evt.contextId !== contextId) return;
       for (const ev of decodeSseEvents(evt.data)) onEvent(ev);
     });
-    this.sse.on("error", () => {
-      /* SseClient reconnects on its own; polling covers the gap */
+    // Most stream errors are transient: SseClient reconnects on its own and
+    // polling covers the gap, so swallowing them is right.
+    //
+    // `AuthRevokedError` is the one that is not. From mero-js 19.14.1 (#166) a
+    // revoked token family is recognised on the stream — it arrives as 403 +
+    // `x-auth-error: token_revoked`, never 401 — and the client deliberately
+    // STOPS reconnecting, because every retry re-sends the same dead
+    // credential. So "it reconnects on its own" stops being true at exactly
+    // this point, and swallowing it leaves the game silently frozen with no
+    // way back. Nothing we hold is live; clear it and make the user log in.
+    this.sse.on("error", (err: Error) => {
+      if (err instanceof AuthRevokedError) {
+        console.warn(`[sse] auth revoked (${err.reason}) — re-login required`);
+        clearSession();
+      }
     });
     this.sse.connect().catch(() => {});
     this.sse.subscribe([contextId]).catch(() => {});
