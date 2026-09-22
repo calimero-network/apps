@@ -19,6 +19,7 @@ import { initials } from "../lib/people";
 import { labelMembers, summariseMembers, type RoomMemberLabel } from "../lib/roomMembers";
 import type { Member } from "../types";
 import styles from "./Manage.module.css";
+import { JoinSyncBanner, useJoinSync } from "@calimero-apps/join-sync";
 
 /**
  * Rooms inside one stream (namespace). A room is a SUBGROUP plus the context bound
@@ -51,6 +52,8 @@ export default function RoomsPage() {
   /** Contract roster per room context, so rows can show WHO is in a call. */
   const [rosters, setRosters] = useState<Record<string, RoomMemberLabel[]>>({});
   const [listing, setListing] = useState(true);
+  /** The stream whose room list has come back at least once. */
+  const [listedForNs, setListedForNs] = useState<string | null>(null);
   const [nsName, setNsName] = useState("");
   const [name, setName] = useState("");
 
@@ -84,6 +87,14 @@ export default function RoomsPage() {
     [],
   );
 
+  // A stream joined this session whose rooms have not replicated yet. Without
+  // this a brand-new member is told "No rooms in this stream" about a stream
+  // that may well have several.
+  const { isSyncing, dismiss: dismissSyncing } = useJoinSync({
+    namespaceId: namespaceId || null,
+    settled: listedForNs === namespaceId,
+  });
+
   const load = useCallback(
     async (showSpinner = true) => {
       if (!mero || !namespaceId) return;
@@ -98,6 +109,8 @@ export default function RoomsPage() {
           (info?.name ?? "").trim() || `Stream ${namespaceId.slice(0, 6)}`,
         );
         setRooms(await listRooms(mero.admin, namespaceId));
+        // A real answer, empty or not — that is what ends the sync gate.
+        setListedForNs(namespaceId);
       } catch (e) {
         setError(e instanceof Error ? e.message : "Could not load rooms.");
       } finally {
@@ -387,7 +400,11 @@ export default function RoomsPage() {
           </div>
         )}
 
-        {!listing && !resolvingAppId && !notInstalled && rooms.length === 0 && (
+        {isSyncing && (
+          <JoinSyncBanner show what="rooms" onDismiss={dismissSyncing} />
+        )}
+
+        {!isSyncing && !listing && !resolvingAppId && !notInstalled && rooms.length === 0 && (
           <div className={styles.empty}>
             <span className={styles.emptyTitle}>No rooms in this stream</span>
             <span className={styles.emptyHint}>

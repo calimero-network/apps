@@ -1373,12 +1373,17 @@ impl E2eKvStore {
         let uploader = caller_account();
         let timestamp = env::time_now();
 
-        // Announce blob to network for peer discovery
+        // `blob_announce_to_context` returns once the announce is SCHEDULED, not
+        // once it is delivered — and since rc.39 it feeds availability-node
+        // prefetch only, never discovery (peers find blobs by probe now). A
+        // `false` here is therefore not a failure worth warning about, and the
+        // old "Failed to announce" line was a false alarm in every e2e log.
         let current_context = env::context_id();
-        if env::blob_announce_to_context(&blob_id, &current_context) {
-            app::log!("Announced blob {} to network", blob_id_str);
-        } else {
-            app::log!("Warning: Failed to announce blob {}", blob_id_str);
+        if !env::blob_announce_to_context(&blob_id, &current_context) {
+            app::log!(
+                "Announce not scheduled for blob {} (prefetch only)",
+                blob_id_str
+            );
         }
 
         let file_record = FileRecord {

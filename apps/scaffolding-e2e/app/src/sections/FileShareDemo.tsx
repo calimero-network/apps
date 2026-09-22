@@ -73,7 +73,7 @@ export function FileShareDemo() {
   async function handleDownload(file: api.FileRecord) {
     setDownloadingId(file.id);
     try {
-      const blobRes = await api.getBlobIdB58(file.id);
+      const blobRes = await api.getBlobIdHex(file.id);
       const blobId = (blobRes as { result?: { output?: string } })?.result?.output;
       if (!blobId) throw new Error("Could not get blob ID");
       const nodeUrl = getNodeUrl();

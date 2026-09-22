@@ -10,6 +10,7 @@ import type { Namespace } from '@calimero-network/mero-react';
 import {
   IconAllIssues, IconMyIssues, IconBoard, IconMembers,
 } from './icons';
+import { JoinSyncBanner } from '@calimero-apps/join-sync';
 
 export interface SidebarProps {
   totalIssues: number;
@@ -23,6 +24,9 @@ export interface SidebarProps {
   onNewNamespace: () => void;
   onJoinNamespace: () => void;
   repos: RepoEntry[];
+  /** A workspace joined this session whose repos have not arrived yet. */
+  reposSyncing?: boolean;
+  onDismissReposSyncing?: () => void;
   activeRepo: string | null;
   onSelectRepo: (id: string) => void;
   onAddRepo: () => void;
@@ -48,6 +52,8 @@ export default function Sidebar({
   onNewNamespace,
   onJoinNamespace,
   repos,
+  reposSyncing,
+  onDismissReposSyncing,
   activeRepo,
   onSelectRepo,
   onAddRepo,
@@ -95,7 +101,14 @@ export default function Sidebar({
           >+</button>
         </div>
         <div className="repos-list">
-          {repos.length === 0 ? (
+          {reposSyncing ? (
+            <JoinSyncBanner
+              show
+              what="repos"
+              onDismiss={onDismissReposSyncing}
+              style={{ margin: '4px 8px 8px', fontSize: 12 }}
+            />
+          ) : repos.length === 0 ? (
             <span className="repos-empty">No repos yet</span>
           ) : (
             repos.map((r) => (

@@ -771,6 +771,9 @@ importers:
 
   apps/mero-forum/app:
     dependencies:
+      '@calimero-apps/join-sync':
+        specifier: workspace:*
+        version: link:../../../packages/join-sync
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
@@ -859,6 +862,9 @@ importers:
 
   apps/mero-issue-tracker/app:
     dependencies:
+      '@calimero-apps/join-sync':
+        specifier: workspace:*
+        version: link:../../../packages/join-sync
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
@@ -935,6 +941,9 @@ importers:
 
   apps/mero-pass/app:
     dependencies:
+      '@calimero-apps/join-sync':
+        specifier: workspace:*
+        version: link:../../../packages/join-sync
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
@@ -1120,6 +1129,9 @@ importers:
 
   apps/mero-sheets/app:
     dependencies:
+      '@calimero-apps/join-sync':
+        specifier: workspace:*
+        version: link:../../../packages/join-sync
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
@@ -1214,6 +1226,9 @@ importers:
 
   apps/mero-sign/app:
     dependencies:
+      '@calimero-apps/join-sync':
+        specifier: workspace:*
+        version: link:../../../packages/join-sync
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
@@ -1389,6 +1404,9 @@ importers:
 
   apps/mero-stream/app:
     dependencies:
+      '@calimero-apps/join-sync':
+        specifier: workspace:*
+        version: link:../../../packages/join-sync
       '@calimero-network/mero-icons':
         specifier: 'catalog:'
         version: 0.0.5(react@19.2.8)
@@ -1584,6 +1602,30 @@ importers:
       vitest:
         specifier: 'catalog:'
         version: 4.1.11(@types/node@26.4.0)(jsdom@25.0.1)(vite@6.4.3(@types/node@26.4.0)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.103.1)(tsx@4.23.13))
+
+  packages/join-sync:
+    devDependencies:
+      '@testing-library/react':
+        specifier: 'catalog:'
+        version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      '@types/react':
+        specifier: ^19.2.18
+        version: 19.2.18
+      jsdom:
+        specifier: 'catalog:'
+        version: 25.0.1
+      react:
+        specifier: 'catalog:'
+        version: 19.2.8
+      react-dom:
+        specifier: 'catalog:'
+        version: 19.2.8(react@19.2.8)
+      typescript:
+        specifier: 'catalog:'
+        version: 5.8.3
+      vitest:
+        specifier: 'catalog:'
+        version: 4.1.11(@types/node@26.4.0)(jsdom@25.0.1)(vite@7.3.6(@types/node@26.4.0)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.103.1)(tsx@4.23.13))
 
 packages:
 
@@ -10838,6 +10880,14 @@ snapshots:
     optionalDependencies:
       vite: 7.3.6(@types/node@22.20.1)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.103.1)(tsx@4.23.13)
 
+  '@vitest/mocker@4.1.11(vite@7.3.6(@types/node@26.4.0)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.103.1)(tsx@4.23.13))':
+    dependencies:
+      '@vitest/spy': 4.1.11
+      estree-walker: 3.0.3
+      magic-string: 0.30.21
+    optionalDependencies:
+      vite: 7.3.6(@types/node@26.4.0)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.103.1)(tsx@4.23.13)
+
   '@vitest/pretty-format@4.1.11':
     dependencies:
       tinyrainbow: 3.1.1
@@ -14627,6 +14677,22 @@ snapshots:
       sass: 1.103.1
       tsx: 4.23.13
 
+  vite@7.3.6(@types/node@26.4.0)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.103.1)(tsx@4.23.13):
+    dependencies:
+      esbuild: 0.28.2
+      fdir: 6.5.0(picomatch@4.0.7)
+      picomatch: 4.0.7
+      postcss: 8.5.26
+      rollup: 4.63.0
+      tinyglobby: 0.2.17
+    optionalDependencies:
+      '@types/node': 26.4.0
+      fsevents: 2.3.3
+      jiti: 2.7.0
+      lightningcss: 1.33.0
+      sass: 1.103.1
+      tsx: 4.23.13
+
   vitest@4.1.11(@types/node@16.18.126)(jsdom@29.1.1(canvas@3.2.3))(vite@6.4.3(@types/node@16.18.126)(jiti@1.21.7)(lightningcss@1.33.0)(sass@1.103.1)(tsx@4.23.13)):
     dependencies:
       '@vitest/expect': 4.1.11
@@ -14816,6 +14882,34 @@ snapshots:
       tinyglobby: 0.2.17
       tinyrainbow: 3.1.1
       vite: 6.4.3(@types/node@26.4.0)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.103.1)(tsx@4.23.13)
+      why-is-node-running: 2.3.0
+    optionalDependencies:
+      '@types/node': 26.4.0
+      jsdom: 25.0.1
+    transitivePeerDependencies:
+      - msw
+
+  vitest@4.1.11(@types/node@26.4.0)(jsdom@25.0.1)(vite@7.3.6(@types/node@26.4.0)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.103.1)(tsx@4.23.13)):
+    dependencies:
+      '@vitest/expect': 4.1.11
+      '@vitest/mocker': 4.1.11(vite@7.3.6(@types/node@26.4.0)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.103.1)(tsx@4.23.13))
+      '@vitest/pretty-format': 4.1.11
+      '@vitest/runner': 4.1.11
+      '@vitest/snapshot': 4.1.11
+      '@vitest/spy': 4.1.11
+      '@vitest/utils': 4.1.11
+      es-module-lexer: 2.3.2
+      expect-type: 1.4.0
+      magic-string: 0.30.21
+      obug: 2.1.4
+      pathe: 2.0.3
+      picomatch: 4.0.7
+      std-env: 4.2.0
+      tinybench: 2.9.0
+      tinyexec: 1.3.0
+      tinyglobby: 0.2.17
+      tinyrainbow: 3.1.1
+      vite: 7.3.6(@types/node@26.4.0)(jiti@2.7.0)(lightningcss@1.33.0)(sass@1.103.1)(tsx@4.23.13)
       why-is-node-running: 2.3.0
     optionalDependencies:
       '@types/node': 26.4.0

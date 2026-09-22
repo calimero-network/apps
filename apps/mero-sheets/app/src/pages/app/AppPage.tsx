@@ -28,6 +28,7 @@ import { useSpreadsheet } from '../../hooks/useSpreadsheet';
 import { describeError } from '../../utils/errors';
 import { cellRef } from '../../components/FormulaBar';
 import { isFormula, insertReference, type AutoRef } from '../../spreadsheet/formulaEdit';
+import { JoinSyncBanner } from '@calimero-apps/join-sync';
 import { normalizeRect, sheetPrefix, rectCells, type CellCoord, type Rect } from '../../spreadsheet/refs';
 import { planFill } from '../../spreadsheet/fill';
 import { toTSV, fromTSV } from '../../spreadsheet/clipboard';
@@ -786,7 +787,21 @@ export default function AppPage() {
             </WorkspaceList>
           )}
 
-          {listLoading && <p style={{ margin: '4px 0 16px' }}>Loading spreadsheets…</p>}
+          {/* Joined, but this workspace's spreadsheets have not replicated yet.
+              Without this the list above is empty and reads as "there is
+              nothing here" rather than "it is on its way". */}
+          {ws.isSyncing && (
+            <div style={{ margin: '4px 0 16px' }}>
+              <JoinSyncBanner
+                show
+                what="spreadsheets"
+                onDismiss={ws.dismissSyncing}
+              />
+            </div>
+          )}
+          {listLoading && !ws.isSyncing && (
+            <p style={{ margin: '4px 0 16px' }}>Loading spreadsheets…</p>
+          )}
           {ws.notInstalled && (
             <ErrLine>
               This app is not installed on your node, so it has nowhere to keep a

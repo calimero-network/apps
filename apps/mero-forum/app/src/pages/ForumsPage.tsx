@@ -16,6 +16,7 @@ import {
 import InviteModal from "../components/InviteModal";
 import { useDialogOpen } from "../hooks/useDialogOpen";
 import styles from "./ForumsPage.module.css";
+import { JoinSyncBanner, useJoinSync } from "@calimero-apps/join-sync";
 
 /**
  * Forums inside one space (namespace). A forum is a SUBGROUP plus the context bound
@@ -45,6 +46,8 @@ export default function ForumsPage() {
   const { appId } = useApplicationId();
 
   const [forums, setForums] = useState<ForumRow[]>([]);
+  /** The space whose forum list has come back at least once. */
+  const [listedForNs, setListedForNs] = useState<string | null>(null);
   /** Contract roster per forum context, kept for the member counts on each row. */
   const [listing, setListing] = useState(true);
   const [nsName, setNsName] = useState("");
@@ -100,6 +103,8 @@ export default function ForumsPage() {
           (info?.name ?? "").trim() || `Space ${namespaceId.slice(0, 6)}`,
         );
         setForums(await listForums(mero.admin, namespaceId));
+        // A real answer, empty or not — that is what ends the sync gate.
+        setListedForNs(namespaceId);
       } catch (e) {
         setError(e instanceof Error ? e.message : "Could not load forums.");
       } finally {
@@ -112,6 +117,14 @@ export default function ForumsPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // A space joined this session whose forums have not replicated yet. Without
+  // this the branch below tells a brand-new member "No forums yet. Create one
+  // above." about a space that may be full of them.
+  const { isSyncing, dismiss: dismissSyncing } = useJoinSync({
+    namespaceId: namespaceId || null,
+    settled: listedForNs === namespaceId,
+  });
 
   const create = useCallback(() => {
     const forumName = name.trim();
@@ -300,7 +313,9 @@ export default function ForumsPage() {
         {status && <p className={styles.empty}>{status}</p>}
         {error && <p className={styles.joinError}>{error}</p>}
 
-        {listing ? (
+        {isSyncing ? (
+          <JoinSyncBanner show what="forums" onDismiss={dismissSyncing} />
+        ) : listing ? (
           <p className={styles.empty}>Loading…</p>
         ) : forums.length === 0 ? (
           <p className={styles.empty} data-testid="forums-empty">

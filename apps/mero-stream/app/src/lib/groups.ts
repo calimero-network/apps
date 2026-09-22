@@ -32,6 +32,7 @@ import {
   type SignedInvitation,
   type StreamInvitePayload,
 } from "./inviteCodec";
+import { markNamespaceJustJoined } from "@calimero-apps/join-sync";
 
 /** The admin client, as `useMero().mero.admin` provides it. */
 export type AdminLike = MeroJs["admin"];
@@ -262,6 +263,11 @@ export async function redeemInvite(
   onStatus: (message: string) => void,
 ): Promise<Redeemed> {
   const accepted = await acceptInvite(admin, payload, onStatus);
+
+  // The grant has landed; the namespace's own state has not. Flag it so the
+  // list this joiner is about to see says "syncing" rather than rendering an
+  // empty view that is indistinguishable from an empty streams.
+  if (accepted.namespaceId) markNamespaceJustJoined(accepted.namespaceId);
 
   if (accepted.roomId && accepted.contextId) {
     const identity = await enterRoomContext(

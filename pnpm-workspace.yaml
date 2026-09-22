@@ -10,9 +10,9 @@
 
 packages:
   - "apps/*/app"
-  # Add "packages/*" back alongside the first shared frontend package. Unlike
-  # Cargo, pnpm tolerates a glob that matches nothing, so this is housekeeping
-  # rather than a break waiting to happen.
+  # The first shared frontend package landed with the post-join sync gate
+  # (@calimero-apps/join-sync), so this is live now rather than housekeeping.
+  - "packages/*"
 
 catalog:
   # ── Calimero ───────────────────────────────────────────────────────────────

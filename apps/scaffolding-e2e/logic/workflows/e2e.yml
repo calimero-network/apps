@@ -1728,6 +1728,19 @@ steps:
     statements:
       - "is_set({{txt_file_id}})"
 
+  # ── The negative control, before anything can populate node-2 ──────────────
+  # Blobs are content-addressed, so a node that already holds identical bytes
+  # serves them from local storage and never touches the network. Without this
+  # step first, the cross-node fetch further down would prove nothing at all.
+  #
+  # It doubles as the assertion that pins rule 1 of the blob contract: with no
+  # `context_id` there is no discovery — the node reads its own store and 404s.
+  - name: Node-2 does not hold the PNG bytes yet (local-only read must fail)
+    type: download_blob
+    node: e2e-node-2
+    blob_id: "{{png_blob_id}}"
+    expected_failure: true
+
   - name: Wait for sync after blob uploads
     type: wait_for_sync
     context_id: "{{context_id}}"
@@ -1760,7 +1773,10 @@ steps:
     outputs:
       node2_files: result.output
 
-  - name: Assert node-2 sees files (blob discovery working)
+  # ⚠️ NOT blob discovery — `list_files` reads CRDT contract state, which
+  # replicates independently of the bytes. This step passed identically while
+  # blob transfer was entirely broken. The bytes are asserted below.
+  - name: Assert node-2 sees the file RECORDS (contract state, not bytes)
     type: assert
     statements:
       - "is_set({{node2_files}})"
@@ -1773,10 +1789,83 @@ steps:
     outputs:
       node3_files: result.output
 
-  - name: Assert node-3 sees files (blob discovery working)
+  # ⚠️ NOT blob discovery — `list_files` reads CRDT contract state, which
+  # replicates independently of the bytes. This step passed identically while
+  # blob transfer was entirely broken. The bytes are asserted below.
+  - name: Assert node-3 sees the file RECORDS (contract state, not bytes)
     type: assert
     statements:
       - "is_set({{node3_files}})"
+
+  # ══ The bytes, not the record ═════════════════════════════════════════════
+  # Everything above asserts that contract STATE replicated. Nothing yet asserts
+  # that a single byte of the blob can reach a second node — which is the only
+  # thing `upload_blob` exists for, and the one regression a green run here
+  # would otherwise hide (core#3831's probe discovery replaced the DHT record in
+  # rc.39; if it broke, every assertion above would still pass).
+
+  # Read it back on the uploader to get the authoritative hash. Comparing
+  # node-2's bytes against this, rather than a hardcoded digest, keeps the
+  # workflow honest if `static/sample.png` is ever replaced.
+  - name: Read the PNG locally on node-1
+    type: download_blob
+    node: e2e-node-1
+    blob_id: "{{png_blob_id}}"
+    expected_size: "{{png_blob_size}}"
+    outputs:
+      png_source_sha256: sha256
+
+  # With `context_id` the node may probe the context's peers for a holder and
+  # pull the bytes. Size and sha256 are both checked before any variable is
+  # exported, so a truncated or corrupt transfer cannot pass.
+  - name: Node-2 fetches the PNG bytes over the network
+    type: download_blob
+    node: e2e-node-2
+    blob_id: "{{png_blob_id}}"
+    context_id: "{{context_id}}"
+    expected_size: "{{png_blob_size}}"
+    expected_sha256: "{{png_source_sha256}}"
+    outputs:
+      png_received_size: size
+      png_received_sha256: sha256
+
+  - name: Assert node-2's bytes are byte-identical to node-1's
+    type: assert
+    statements:
+      - "equal({{png_received_size}}, {{png_blob_size}})"
+      - "equal({{png_received_sha256}}, {{png_source_sha256}})"
+
+  # A second blob of a different size through the same path. One size passing
+  # can be luck in a chunked transfer; two is a much narrower coincidence.
+  - name: Node-3 does not hold the TXT bytes yet
+    type: download_blob
+    node: e2e-node-3
+    blob_id: "{{txt_blob_id}}"
+    expected_failure: true
+
+  - name: Read the TXT locally on node-1
+    type: download_blob
+    node: e2e-node-1
+    blob_id: "{{txt_blob_id}}"
+    expected_size: "{{txt_blob_size}}"
+    outputs:
+      txt_source_sha256: sha256
+
+  - name: Node-3 fetches the TXT bytes over the network
+    type: download_blob
+    node: e2e-node-3
+    blob_id: "{{txt_blob_id}}"
+    context_id: "{{context_id}}"
+    expected_size: "{{txt_blob_size}}"
+    expected_sha256: "{{txt_source_sha256}}"
+    outputs:
+      txt_received_sha256: sha256
+
+  - name: Assert the two transfers delivered different, correct bytes
+    type: assert
+    statements:
+      - "equal({{txt_received_sha256}}, {{txt_source_sha256}})"
+      - "not_equal({{txt_received_sha256}}, {{png_received_sha256}})"
 
   - name: Get PNG file details
     type: call

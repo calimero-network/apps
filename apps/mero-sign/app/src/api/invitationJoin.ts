@@ -47,6 +47,7 @@ import {
   pickInvitedAgreement,
 } from '../lib/agreements';
 import { setActiveWorkspace } from '../lib/activeWorkspace';
+import { markNamespaceJustJoined } from '@calimero-apps/join-sync';
 
 /**
  * The `app` handle `useCalimero()` returns.
@@ -317,6 +318,10 @@ export async function redeemInvitation(
   // node is right about what it joined.
   const workspaceId = joined.namespaceId || namespaceId;
   setActiveWorkspace(workspaceId);
+  // Joined; the workspace's agreements have not replicated yet. Flagged so the
+  // list the joiner lands on says "syncing" rather than showing the empty state
+  // it is otherwise indistinguishable from.
+  markNamespaceJustJoined(workspaceId);
   const workspaceName = (joined.groupName || parsed.workspaceName || '').trim();
 
   onStage?.('entering');

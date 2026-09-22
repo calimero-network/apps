@@ -538,16 +538,15 @@ impl MeroSignState {
 
         let blob_id = parse_blob_id_hex(&blob_id_str)?;
 
-        // Announce the signature blob to the network for discovery
+        // `blob_announce_to_context` returns once the announce is SCHEDULED, not
+        // once it is delivered — and since rc.39 it feeds availability-node
+        // prefetch only, never discovery (peers find blobs by probe now). A
+        // `false` here is therefore not a failure worth warning about, and the
+        // old "Failed to announce" line was a false alarm in every e2e log.
         let current_context = env::context_id();
-        if env::blob_announce_to_context(&blob_id, &current_context) {
+        if !env::blob_announce_to_context(&blob_id, &current_context) {
             app::log!(
-                "Successfully announced signature blob {} to network",
-                blob_id_str
-            );
-        } else {
-            app::log!(
-                "Failed to announce signature blob {} to network",
+                "Announce not scheduled for signature blob {} (prefetch only)",
                 blob_id_str
             );
         }
@@ -874,15 +873,15 @@ impl MeroSignState {
 
         let pdf_blob_id = parse_blob_id_hex(&pdf_blob_id_str)?;
 
-        // Announce blob to the network for discovery
+        // Announce is scheduled, not delivered, and since rc.39 it feeds
+        // availability-node prefetch only — never discovery. A `false` is not a
+        // failure. See the note on the signature-blob announce above.
         let current_context = env::context_id();
-        if env::blob_announce_to_context(&pdf_blob_id, &current_context) {
+        if !env::blob_announce_to_context(&pdf_blob_id, &current_context) {
             app::log!(
-                "Successfully announced PDF blob {} to network",
+                "Announce not scheduled for PDF blob {} (prefetch only)",
                 pdf_blob_id_str
             );
-        } else {
-            app::log!("Failed to announce PDF blob {} to network", pdf_blob_id_str);
         }
 
         // ⚠️ WAS `*self.owner.get()` — the same copy-paste as the admin gate
@@ -1069,16 +1068,13 @@ impl MeroSignState {
 
         let pdf_blob_id = parse_blob_id_hex(&pdf_blob_id_str)?;
 
-        // Announce the signed blob to the network for discovery
+        // Announce is scheduled, not delivered, and since rc.39 it feeds
+        // availability-node prefetch only — never discovery. A `false` is not a
+        // failure. See the note on the signature-blob announce above.
         let current_context = env::context_id();
-        if env::blob_announce_to_context(&pdf_blob_id, &current_context) {
+        if !env::blob_announce_to_context(&pdf_blob_id, &current_context) {
             app::log!(
-                "Successfully announced signed PDF blob {} to network",
-                pdf_blob_id_str
-            );
-        } else {
-            app::log!(
-                "Failed to announce signed PDF blob {} to network",
+                "Announce not scheduled for signed PDF blob {} (prefetch only)",
                 pdf_blob_id_str
             );
         }

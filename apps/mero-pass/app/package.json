@@ -28,6 +28,7 @@
     "test:live": "vitest run --config e2e/live/vitest.config.ts"
   },
   "dependencies": {
+    "@calimero-apps/join-sync": "workspace:*",
     "@calimero-network/mero-icons": "catalog:",
     "@calimero-network/mero-js": "catalog:",
     "@calimero-network/mero-platform": "catalog:",

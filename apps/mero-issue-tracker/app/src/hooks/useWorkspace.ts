@@ -54,6 +54,7 @@ import {
   writeActiveRepo,
   clearPersistedWorkspace,
 } from './workspacePersistence';
+import { markNamespaceJustJoined, useJoinSync } from '@calimero-apps/join-sync';
 
 export interface RepoEntry {
   contextId: string;
@@ -62,6 +63,14 @@ export interface RepoEntry {
 }
 
 export interface UseWorkspaceReturn {
+  /**
+   * A workspace joined this session whose repos have not replicated yet. The
+   * sidebar shows "syncing" instead of "No repos yet", which is otherwise what
+   * a brand-new member reads about a workspace full of them.
+   */
+  isSyncing: boolean;
+  dismissSyncing: () => void;
+
   applicationId: string | null;
   /** True while the node is still being asked which installed app this is. */
   resolvingApplicationId: boolean;
@@ -588,14 +597,34 @@ export function useWorkspace(): UseWorkspaceReturn {
       invitation: payload.invitation as never,
       ...(payload.groupAlias ? { groupName: payload.groupAlias } : {}),
     });
+    // Joined; this workspace's repos have not replicated yet. Flagged so the
+    // sidebar says "syncing" rather than "No repos yet" — which is what a
+    // joiner currently reads about a workspace full of them.
+    markNamespaceJustJoined(nsId);
     await refetchNamespaces();
     selectNamespace(nsId);
     await refetchContexts();
   }, [joinNamespace, refetchNamespaces, refetchContexts, selectNamespace]);
 
+  // `reposLoading` going false is the signal the repo list answered — for the
+  // namespace that was active when it did, which is why the id is recorded
+  // rather than just a boolean.
+  const [listedForNs, setListedForNs] = useState<string | null>(null);
+  useEffect(() => {
+    if (!activeNs || reposLoading) return;
+    setListedForNs(activeNs);
+  }, [activeNs, reposLoading]);
+
+  const { isSyncing, dismiss: dismissSyncing } = useJoinSync({
+    namespaceId: activeNs,
+    settled: listedForNs === activeNs,
+  });
+
   const clearPersisted = useCallback(() => clearPersistedWorkspace(), []);
 
   return {
+    isSyncing,
+    dismissSyncing,
     applicationId,
     resolvingApplicationId,
     namespaces,

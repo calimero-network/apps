@@ -18,6 +18,7 @@ import { adminApi } from '../../lib/node';
 import { useCalimero } from '../../lib/useCalimero';
 import { AgreementService } from '../../api/agreementService';
 import styles from './AgreementsPage.module.css';
+import { JoinSyncBanner, useJoinSync } from '@calimero-apps/join-sync';
 
 // ── The agreements in one workspace ─────────────────────────────────────────
 //
@@ -64,10 +65,20 @@ export default function AgreementsPage() {
   const { app } = useCalimero(workspaceId);
 
   const [rows, setRows] = useState<AgreementRow[]>([]);
+  /** The workspace whose agreement list has come back at least once. */
+  const [listedForWs, setListedForWs] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   // The stored workspace is not on this node. See `load`.
   const [gone, setGone] = useState(false);
+
+  // A workspace joined this session whose agreements have not replicated yet.
+  // Without this a joiner following an invite is told "No agreements yet" about
+  // the very workspace they were invited to sign something in.
+  const { isSyncing, dismiss: dismissSyncing } = useJoinSync({
+    namespaceId: workspaceId ?? null,
+    settled: !!workspaceId && listedForWs === workspaceId,
+  });
 
   const [newName, setNewName] = useState('');
   const [creating, setCreating] = useState(false);
@@ -96,6 +107,8 @@ export default function AgreementsPage() {
     setError(null);
     try {
       setRows(await listAgreements(adminApi(), workspaceId));
+      // A real answer, empty or not — that is what ends the sync gate.
+      setListedForWs(workspaceId);
       setGone(false);
     } catch (e) {
       setRows([]);
@@ -286,7 +299,9 @@ export default function AgreementsPage() {
           </button>
         </div>
 
-        {loading ? (
+        {isSyncing ? (
+          <JoinSyncBanner show what="agreements" onDismiss={dismissSyncing} />
+        ) : loading ? (
           <p className={styles.empty}>Loading…</p>
         ) : error ? null /* the error above already says why the list is empty;
                             "No agreements yet. Create one above" underneath it
