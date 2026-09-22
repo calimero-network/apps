@@ -1,6 +1,7 @@
 export {
   primeInvitationCapture,
   onInvitation,
+  peekInvitation,
   resetInvitationCaptureForTests,
   invitationFromRaw,
   urlWithoutInvitation,

@@ -73,7 +73,7 @@ export default function AppPage(): React.ReactElement | null {
   // a successful join or an explicit cancel and never on a failure — so a
   // transient error stays retryable across a reload.
   const pendingInvitation = usePendingInvitation();
-  const pendingInvite = pendingInvitation?.code ?? null;
+  const pendingInvite = pendingInvitation?.token ?? null;
   const forgetPendingInvite = useCallback(() => {
     pendingInvitation?.resolve();
   }, [pendingInvitation]);

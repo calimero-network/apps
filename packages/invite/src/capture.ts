@@ -70,6 +70,13 @@ export const MAX_AUTO_JOIN_ATTEMPTS = 3;
 const listeners = new Set<Listener>();
 /** Captured but not yet taken by a listener. Replayed to a late subscriber. */
 let buffered: CapturedInvitation | null = null;
+/**
+ * The captured invitation, held for the life of the session rather than
+ * consumed on delivery — so code that is not a subscriber can still ask. Used
+ * by bootstrap paths that need to know an invitation is inbound before they
+ * decide where to send the user.
+ */
+let current: CapturedInvitation | null = null;
 let controller: DeepLinkController | null = null;
 /** Namespaced per app so two apps on one origin cannot spend each other's budget. */
 let attemptsKey = "calimero:invitation-attempts";
@@ -175,6 +182,7 @@ export function urlWithoutInvitation(href: string): string {
 }
 
 function deliver(invitation: CapturedInvitation): void {
+  current = invitation;
   if (listeners.size === 0) {
     buffered = invitation;
     return;
@@ -221,6 +229,7 @@ function ensureController(): void {
       token,
       resolve: () => {
         forgetAttempts(token);
+        if (current?.token === token) current = null;
         intent.resolve();
       },
       autoJoin: spendAttempt(token),
@@ -260,11 +269,24 @@ export function onInvitation(listener: Listener): () => void {
   };
 }
 
+/**
+ * The captured invitation right now, without subscribing.
+ *
+ * Unlike `onInvitation`, this does not consume it and does not register a
+ * listener — it answers "is an invitation inbound?" for code that only needs
+ * to know, such as a bootstrap deciding where to land the user.
+ */
+export function peekInvitation(): CapturedInvitation | null {
+  ensureController();
+  return current;
+}
+
 /** Test seam: drop the controller and any buffered intent. */
 export function resetInvitationCaptureForTests(): void {
   controller?.dispose();
   controller = null;
   listeners.clear();
   buffered = null;
+  current = null;
   attemptsKey = "calimero:invitation-attempts";
 }

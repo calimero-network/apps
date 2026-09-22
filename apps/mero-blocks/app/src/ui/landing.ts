@@ -26,7 +26,7 @@ import {
   resolveApplicationId,
   worldNameOf,
 } from "../net/admin";
-import { onInvite } from "../net/invitationIntents";
+import { onInvitation as onInvite } from "@calimero-apps/invite";
 import { beginWebLogin } from "../net/auth";
 import { inviteLink } from "../net/inviteLink";
 import { clearSession, getSession, hasConnection, isAuthenticated, updateSession } from "../net/session";

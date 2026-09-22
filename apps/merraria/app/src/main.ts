@@ -9,7 +9,7 @@ import { AIR, HOTBAR, STARTING_INVENTORY } from "./engine/tiles";
 import { TileStore } from "./engine/world";
 import { createWorldInvite, ownedContextIdentity } from "./net/admin";
 import { inviteLink } from "./net/inviteLink";
-import { primeInviteCapture } from "./net/invitationIntents";
+import { primeInvitationCapture as primeInviteCapture } from "@calimero-apps/invite";
 import { GameClient } from "./net/client";
 import {
   captureSessionFromHash,
@@ -34,7 +34,7 @@ import { PauseMenu } from "./ui/overlays";
 // as it goes. Capture is durable, so an invite arriving before a node is
 // connected survives the web-login redirect and is replayed once the world
 // picker can act on it.
-primeInviteCapture();
+primeInviteCapture("merraria");
 
 const SAVE_MS = 5000;
 const MINIMAP_MS = 500; // live map: remote miners move on it in near real time

@@ -3,7 +3,7 @@ import styled, { keyframes } from 'styled-components';
 import { useMero } from '@calimero-network/mero-react';
 import { C } from '../theme';
 import { decodeInvite, type SheetsInvitePayload } from '../lib/inviteCodec';
-import { onInvitation, type CapturedInvitation } from '../lib/invitationIntents';
+import { onInvitation, type CapturedInvitation } from "@calimero-apps/invite";
 import { acceptInvite } from '../lib/workspaces';
 
 /**
@@ -53,7 +53,7 @@ export default function InvitationPrompt({
   useEffect(
     () =>
       onInvitation((captured) => {
-        const payload = decodeInvite(captured.code);
+        const payload = decodeInvite(captured.token);
         if (!payload) {
           setError('That invitation could not be read. Ask for a new link.');
           // Acked anyway: a payload that will not decode now will not decode
