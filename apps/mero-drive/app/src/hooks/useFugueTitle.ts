@@ -93,7 +93,7 @@ export function useFugueTitle({
 
   /** A peer moved the title from the node's last known value to `remote`. */
   const rebase = useCallback((remote: string) => {
-    const incoming = transform(diffText(serverRef.current, localRef.current), diffText(serverRef.current, remote), true);
+    const incoming = transform(diffText(serverRef.current, localRef.current), diffText(serverRef.current, remote, { keepShared: true }), true);
     serverRef.current = remote;
     if (incoming.length === 0) return;
     const before = localRef.current;

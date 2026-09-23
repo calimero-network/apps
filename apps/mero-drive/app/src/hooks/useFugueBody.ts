@@ -236,7 +236,7 @@ export function useFugueBody({
   /** A peer moved one block from `base` to `remote`; carry that into the editor. */
   const rebaseBlock = useCallback(
     (backendId: string, base: AttrSpan[], remote: AttrSpan[]) => {
-      const remoteChange = diffSpans(base, remote);
+      const remoteChange = diffSpans(base, remote, { keepShared: true });
       if (remoteChange.length === 0) return;
       // Read pending input before the editor is diffed, or the diff misses it.
       flushPendingInput(editorRef.current?.prosemirrorView);

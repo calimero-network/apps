@@ -210,6 +210,26 @@ describe('useFugueBody', () => {
     });
   });
 
+  it('keeps a pending keystroke after its own letter when peers typed on both sides of it', async () => {
+    const client = fakeClient([row('blk-1', 'Shared:a')]);
+    client.applyDeltaOn
+      .mockResolvedValueOnce(refused('Shared:bac'))
+      .mockResolvedValueOnce(applied('Shared:ba1c'));
+    const editor = new FakeEditor();
+    await mount(client, editor);
+
+    editor.type('blk-1', 'Shared:a1');
+    await settle();
+
+    expect(client.applyDeltaOn).toHaveBeenLastCalledWith({
+      doc: DOC,
+      block: 'blk-1',
+      base: 'Shared:bac',
+      ops: [{ retain: 9 }, { insert: '1', attributes: {} }],
+    });
+    expect(editor.textOf('blk-1')).toBe('Shared:ba1c');
+  });
+
   it('folds a peer edit into the block without losing a keystroke typed meanwhile', async () => {
     const client = fakeClient([row('blk-1', 'The fox.')]);
     client.applyDeltaOn.mockResolvedValue(applied('bob The fox. ab'));

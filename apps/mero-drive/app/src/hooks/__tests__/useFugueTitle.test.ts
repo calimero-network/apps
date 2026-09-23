@@ -146,6 +146,20 @@ describe('useFugueTitle', () => {
     });
   });
 
+  it('keeps a pending keystroke after its own letter when peers typed on both sides of it', async () => {
+    const client = fakeClient();
+    client.getTitle.mockResolvedValue('Shared:a');
+    client.titleApplyDeltaOn
+      .mockResolvedValueOnce(refused('Shared:bac'))
+      .mockResolvedValueOnce(applied('Shared:ba1c'));
+    const { result } = mount(client);
+    await settle();
+    act(() => result.current.onChange(change('Shared:a1')));
+    await settle();
+    expect(client.titleApplyDeltaOn).toHaveBeenLastCalledWith({ doc: DOC, base: 'Shared:bac', ops: [{ retain: 9 }, { insert: '1' }] });
+    expect(result.current.title).toBe('Shared:ba1c');
+  });
+
   it('carries the caret through a peer change instead of resetting it', async () => {
     const client = fakeClient();
     const { result } = mount(client);

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { diffSpans, diffText, spansToInline, inlineToSpans } from '../delta';
 import type { AttrSpan } from '../delta';
+import { applyChanges } from '../ot';
 
 const plain = (text: string): AttrSpan[] => [{ text, attributes: {} }];
 
@@ -122,6 +123,53 @@ describe('diffSpans', () => {
       { retain: 2 },
       { insert: 'Z', attributes: {} },
     ]);
+  });
+});
+
+describe('diffSpans keeps a letter both texts share', () => {
+  it("still reads the user's own overtyped selection as one replace", () => {
+    expect(diffSpans(plain('ab'), plain('ba'))).toEqual([{ delete: 2 }, { insert: 'ba', attributes: {} }]);
+  });
+
+  it('reads peers typing on both sides of a letter as two inserts around it, not a replace', () => {
+    expect(diffSpans(plain('Shared:a'), plain('Shared:bac'), { keepShared: true })).toEqual([
+      { retain: 7 },
+      { insert: 'b', attributes: {} },
+      { retain: 1 },
+      { insert: 'c', attributes: {} },
+    ]);
+  });
+
+  it('keeps a shared letter while formatting changes around it', () => {
+    const next: AttrSpan[] = [
+      { text: 'x', attributes: { bold: 'true' } },
+      { text: 'a', attributes: {} },
+      { text: 'y', attributes: {} },
+    ];
+    expect(diffSpans(plain('a'), next, { keepShared: true })).toEqual([
+      { insert: 'x', attributes: { bold: 'true' } },
+      { retain: 1 },
+      { insert: 'y', attributes: {} },
+    ]);
+  });
+
+  it('turns any text into any other, including past the alignment bound', () => {
+    let seed = 7;
+    const rand = (n: number) => {
+      seed = (seed * 1103515245 + 12345) % 2 ** 31;
+      return seed % n;
+    };
+    const word = (len: number) => Array.from({ length: len }, () => 'abc'[rand(3)]).join('');
+    for (const [from, to] of [[5, 7], [40, 33], [1200, 1100]]) {
+      for (let round = 0; round < 20; round++) {
+        const prev = plain(word(from));
+        const next = plain(word(to));
+        for (const keepShared of [false, true]) {
+          const text = applyChanges(prev, diffSpans(prev, next, { keepShared })).map((span) => span.text).join('');
+          expect(text).toBe(next[0].text);
+        }
+      }
+    }
   });
 });
 

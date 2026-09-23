@@ -14,6 +14,8 @@ import {
   type MarkAttrs,
 } from './attributes';
 
+const MAX_ALIGN_CELLS = 1_000_000; // bounds the alignment table a changed middle may build (2 MB)
+
 /** One run of equally attributed text, as the backend renders and takes it. */
 export interface AttrSpan {
   text: string;
@@ -53,14 +55,60 @@ function toChars(spans: AttrSpan[]): AttrChar[] {
   return out;
 }
 
+type Step = '=' | '-' | '+';
+
+/** The edit script turning `a` into `b` that keeps their longest common
+ *  subsequence, so a letter both hold is never read as replaced. */
+function align(a: AttrChar[], b: AttrChar[]): Step[] {
+  const n = a.length;
+  const m = b.length;
+  if (n * m > MAX_ALIGN_CELLS) return replaceAll(a, b);
+  const w = m + 1;
+  const lcs = new Uint16Array((n + 1) * w);
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = m - 1; j >= 0; j--) {
+      lcs[i * w + j] =
+        a[i].ch === b[j].ch ? lcs[(i + 1) * w + j + 1] + 1 : Math.max(lcs[(i + 1) * w + j], lcs[i * w + j + 1]);
+    }
+  }
+  const steps: Step[] = [];
+  let i = 0;
+  let j = 0;
+  while (i < n || j < m) {
+    if (i < n && j < m && a[i].ch === b[j].ch) {
+      steps.push('=');
+      i += 1;
+      j += 1;
+    } else if (j >= m || (i < n && lcs[(i + 1) * w + j] >= lcs[i * w + j + 1])) {
+      steps.push('-');
+      i += 1;
+    } else {
+      steps.push('+');
+      j += 1;
+    }
+  }
+  return steps;
+}
+
+const replaceAll = (a: AttrChar[], b: AttrChar[]): Step[] => [
+  ...Array<Step>(a.length).fill('-'),
+  ...Array<Step>(b.length).fill('+'),
+];
+
 function isRetain(
   op: Change,
 ): op is { retain: number; attributes?: AttrDelta } {
   return 'retain' in op;
 }
 
+export interface DiffOptions {
+  /** Keep letters both texts hold, for reading a peer's change, where a
+   *  replaced middle would drop the identity of the reader's own letters. */
+  keepShared?: boolean;
+}
+
 /** The minimal change list turning `prev` into `next`. */
-export function diffSpans(prev: AttrSpan[], next: AttrSpan[]): Change[] {
+export function diffSpans(prev: AttrSpan[], next: AttrSpan[], { keepShared = false }: DiffOptions = {}): Change[] {
   const before = toChars(prev);
   const after = toChars(next);
 
@@ -117,28 +165,44 @@ export function diffSpans(prev: AttrSpan[], next: AttrSpan[]): Change[] {
     }
   };
 
+  const pushInserts = (from: number, to: number) => {
+    let run = from;
+    while (run < to) {
+      let end = run + 1;
+      while (end < to && attrsEqual(after[end].attrs, after[run].attrs)) end += 1;
+      ops.push({
+        insert: after
+          .slice(run, end)
+          .map((c) => c.ch)
+          .join(''),
+        attributes: { ...after[run].attrs },
+      });
+      run = end;
+    }
+  };
+
   pushRetainRange(0, head, 0);
 
-  const removed = before.length - tail - head;
-  if (removed > 0) ops.push({ delete: removed });
-
-  let run = head;
-  while (run < after.length - tail) {
-    let end = run + 1;
-    while (
-      end < after.length - tail &&
-      attrsEqual(after[end].attrs, after[run].attrs)
-    ) {
-      end += 1;
+  const middle = [before.slice(head, before.length - tail), after.slice(head, after.length - tail)] as const;
+  const steps = keepShared ? align(...middle) : replaceAll(...middle);
+  let was = head;
+  let now = head;
+  for (let k = 0; k < steps.length; ) {
+    let end = k;
+    while (end < steps.length && steps[end] === steps[k]) end += 1;
+    const count = end - k;
+    if (steps[k] === '=') {
+      pushRetainRange(was, was + count, was - now);
+      was += count;
+      now += count;
+    } else if (steps[k] === '-') {
+      ops.push({ delete: count });
+      was += count;
+    } else {
+      pushInserts(now, now + count);
+      now += count;
     }
-    ops.push({
-      insert: after
-        .slice(run, end)
-        .map((c) => c.ch)
-        .join(''),
-      attributes: { ...after[run].attrs },
-    });
-    run = end;
+    k = end;
   }
 
   pushRetainRange(
@@ -157,10 +221,11 @@ export function diffSpans(prev: AttrSpan[], next: AttrSpan[]): Change[] {
 }
 
 /** The change list for plain text, which the title API takes without attributes. */
-export function diffText(prev: string, next: string): Change[] {
+export function diffText(prev: string, next: string, options: DiffOptions = {}): Change[] {
   return diffSpans(
     [{ text: prev, attributes: {} }],
     [{ text: next, attributes: {} }],
+    options,
   ).map((op) => ('insert' in op ? { insert: op.insert } : op));
 }
 
