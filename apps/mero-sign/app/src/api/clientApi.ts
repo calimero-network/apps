@@ -154,9 +154,13 @@ export interface ClientApi {
   // The signer is the CALLER's account, derived inside the contract. There is
   // deliberately no signer parameter: the one that used to be here let any
   // member record a signature attributed to another member.
+  // `baseHash` is the hash of the version the signer actually opened. Signing
+  // replaces the whole PDF, so a signature built from a stale copy would erase
+  // whoever signed in between; the contract refuses that rather than losing it.
   signDocument(
     contextId: string,
     documentId: string,
+    baseHash: string,
     pdfBlobIdStr: string,
     fileSize: number,
     newHash: string,

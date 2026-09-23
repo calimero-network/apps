@@ -171,6 +171,26 @@ impl calimero_storage::collections::rekey::RekeyTarget for DocumentInfo {
 }
 
 /// Document status tracking
+///
+/// ⚠️ `FullySigned` IS TERMINAL, and that is a deliberate change.
+///
+/// Adding a participant, or promoting one to `Sign`, used to walk every
+/// `FullySigned` document and put it back to `PartiallySigned` — on the
+/// reasoning that "everybody has signed" stops being true when the set of
+/// signers grows. The effect was that a finished agreement silently un-finished
+/// itself: no event, no record that it had ever been complete, and no way for
+/// the people who had already signed to find out.
+///
+/// That treats completion as a query over current membership. It is not: it is
+/// a fact about the past. Three people signed this document on these dates, and
+/// adding a fourth person tomorrow does not make that untrue — it means the
+/// fourth person was not party to it. If they need to be, that is a new
+/// document, which is also the only honest way to get their signature onto the
+/// same page as the others.
+///
+/// So nothing reopens a completed document any more. `Declined` and `Voided`
+/// are the two terminal states still missing; until they exist a stalled
+/// agreement is indistinguishable from an ignored one.
 #[derive(AbiType, Debug, Clone, PartialEq, BorshSerialize, BorshDeserialize, Serialize)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
@@ -840,6 +860,27 @@ impl MeroSignState {
         }
     }
 
+    /// Whether this participant is one whose signature a document waits for.
+    ///
+    /// `Sign` and above; a `Read` participant is a viewer and never blocks
+    /// completion. Keyed by ACCOUNT, like `participants` and `permissions` — see
+    /// the note on `sign_document`.
+    ///
+    /// A participant with no permission row at all is treated as a viewer rather
+    /// than a signer: the alternative is an agreement that can never complete
+    /// because of a row that was never written, and refusing to complete is the
+    /// worse failure here.
+    fn is_required_signer(&self, account: &UserId) -> bool {
+        self.permissions
+            .get(account)
+            .ok()
+            .flatten()
+            .map(|cell| {
+                PermissionCell::rank(&cell.level) >= PermissionCell::rank(&PermissionLevel::Sign)
+            })
+            .unwrap_or(false)
+    }
+
     /// Upload a document
     #[allow(clippy::too_many_arguments)]
     pub fn upload_document(
@@ -1039,6 +1080,7 @@ impl MeroSignState {
     pub fn sign_document(
         &mut self,
         document_id: String,
+        base_hash: String,
         pdf_blob_id_str: String,
         file_size: u64,
         new_hash: String,
@@ -1065,6 +1107,43 @@ impl MeroSignState {
             Ok(None) => return Err(AppError::msg("Document not found".to_string())),
             Err(e) => return Err(AppError::msg(format!("Failed to get document: {:?}", e))),
         };
+
+        // ⚠️ THE GUARD THAT STOPS TWO SIGNATURES DESTROYING EACH OTHER.
+        //
+        // A signature here is not a field value, it is a whole replacement PDF:
+        // the signer downloads the document, flattens their own mark into it in
+        // the browser, uploads the result as a NEW blob, and the lines below
+        // overwrite `pdf_blob_id`/`size`/`hash` with it.
+        //
+        // So two people who start from the same version both succeed, and the
+        // second write wins: `document_signatures` ends up with two entries
+        // while the stored PDF carries ONE mark, and the loser's blob is
+        // orphaned with nothing referencing it. The audit trail and the artefact
+        // disagree, silently, and the lost signature is unrecoverable. Nothing
+        // in the storage layer prevents it either — `DocumentInfo` is
+        // deliberately undispatched (see its `MergeStrategy`) and its only clock
+        // is `uploaded_at`, which never advances after upload.
+        //
+        // `base_hash` is the hash the signer actually had in front of them. If
+        // it no longer matches, somebody else signed in the meantime and this
+        // PDF was built from a stale copy — so it would erase their mark.
+        // Refusing sends the signer back to re-fetch and re-sign, which is
+        // optimistic concurrency and the honest answer while the document
+        // remains a mutable blob.
+        //
+        // This is a STOPGAP. The real fix is to stop rewriting the PDF at all —
+        // keep the original immutable and store each signature's mark as data
+        // keyed by its signer, so two signatures are two writes to two different
+        // keys and no conflict exists to lose. That is a state-layout change and
+        // it is tracked separately; this guard stops the data loss today.
+        if document.hash != base_hash {
+            return Err(AppError::msg(format!(
+                "This document changed while you were signing it: you started from {}, \
+                 but it is now at {}. Somebody else signed in the meantime, and saving \
+                 this copy would erase their signature. Reopen the document and sign again.",
+                base_hash, document.hash
+            )));
+        }
 
         let pdf_blob_id = parse_blob_id_hex(&pdf_blob_id_str)?;
 
@@ -1164,6 +1243,15 @@ impl MeroSignState {
             Err(e) => return Err(AppError::msg(format!("Failed to get document: {:?}", e))),
         };
 
+        // Gathered BEFORE the entry guard below, which borrows `self` mutably
+        // for as long as it lives — `is_required_signer` reads `permissions` and
+        // cannot run while it is held.
+        let required_signers: Vec<UserId> = self
+            .participants
+            .iter()
+            .map(|it| it.filter(|p| self.is_required_signer(p)).collect())
+            .unwrap_or_default();
+
         // Read-only here, so `get` is right — but the empty case cannot be a
         // freshly-built `Vector`: `unwrap_or_else(Vector::new)` mixes a detached
         // collection into a `ValueRef` branch, and a detached nested CRDT has a
@@ -1190,22 +1278,33 @@ impl MeroSignState {
             ));
         }
 
+        // ⚠️ ONLY THE PARTICIPANTS WHO CAN ACTUALLY SIGN COUNT.
+        //
+        // This used to demand a signature from EVERY entry of `participants`,
+        // with no regard for what they are allowed to do. `Read` is a real level
+        // in this contract — `require_permission` refuses an upload or a
+        // signature from anyone below `Sign` — so a reader was required to
+        // produce a signature the contract would have rejected. One reader in an
+        // agreement meant no document in it could ever reach `FullySigned`, and
+        // nothing reported that: the status simply never advanced.
+        //
+        // That made the `Read` level unusable in practice, which is why every
+        // path that seats a participant grants `Sign`. A viewer is a reasonable
+        // thing to want in a signing app, and this is what it costs to have one.
         let mut all_signed = true;
-        if let Ok(participants_iter) = self.participants.iter() {
-            for participant in participants_iter {
-                let mut signed = false;
-                if let Ok(sig_iter) = signatures.iter() {
-                    for sig in sig_iter {
-                        if sig.signer == participant {
-                            signed = true;
-                            break;
-                        }
+        for participant in &required_signers {
+            let mut signed = false;
+            if let Ok(sig_iter) = signatures.iter() {
+                for sig in sig_iter {
+                    if sig.signer == *participant {
+                        signed = true;
+                        break;
                     }
                 }
-                if !signed {
-                    all_signed = false;
-                    break;
-                }
+            }
+            if !signed {
+                all_signed = false;
+                break;
             }
         }
 
@@ -1246,9 +1345,6 @@ impl MeroSignState {
             .insert(executor_id, PermissionLevel::Sign.into())
             .map_err(|e| AppError::msg(format!("Failed to set permissions: {:?}", e)))?;
 
-        // A new signer means the documents that were complete no longer are.
-        self.reopen_fully_signed_documents();
-
         app::emit!(MeroSignEvent::ParticipantJoined {
             user_id: executor_id
         });
@@ -1277,10 +1373,6 @@ impl MeroSignState {
         self.permissions
             .insert(user_id, permission.clone().into())
             .map_err(|e| AppError::msg(format!("Failed to set permissions: {:?}", e)))?;
-
-        if PermissionCell::rank(&permission) >= PermissionCell::rank(&PermissionLevel::Sign) {
-            self.reopen_fully_signed_documents();
-        }
 
         app::emit!(MeroSignEvent::ParticipantJoined { user_id });
 
@@ -1376,14 +1468,6 @@ impl MeroSignState {
             .insert(user_id, permission.clone().into())
             .map_err(|e| AppError::msg(format!("Failed to set permissions: {:?}", e)))?;
 
-        // Someone who could not sign now can, so a document that was complete
-        // is complete no longer.
-        if PermissionCell::rank(&permission) >= PermissionCell::rank(&PermissionLevel::Sign)
-            && PermissionCell::rank(&current) < PermissionCell::rank(&PermissionLevel::Sign)
-        {
-            self.reopen_fully_signed_documents();
-        }
-
         app::emit!(MeroSignEvent::ParticipantPermissionChanged {
             user_id,
             permission
@@ -1406,27 +1490,6 @@ impl MeroSignState {
     /// One call removes the guess: the contract is the only thing that knows.
     pub fn whoami(&self) -> UserId {
         env::account_id()
-    }
-
-    /// Re-open every document that had been fully signed.
-    ///
-    /// Called whenever someone gains the ability to sign, because "everybody has
-    /// signed" stops being true the moment the set of signers grows. Was three
-    /// copies of the same loop.
-    fn reopen_fully_signed_documents(&mut self) {
-        let mut docs_to_update = Vec::new();
-        if let Ok(entries) = self.documents.entries() {
-            for (_, document) in entries {
-                if document.status == DocumentStatus::FullySigned {
-                    let mut updated_document = document.clone();
-                    updated_document.status = DocumentStatus::PartiallySigned;
-                    docs_to_update.push(updated_document);
-                }
-            }
-        }
-        for document in docs_to_update {
-            let _ = self.documents.insert(document.id.clone(), document);
-        }
     }
 
     /// List all participants
@@ -1951,20 +2014,48 @@ mod tests {
 
     // ── signatures and consent ───────────────────────────────────────────────
 
+    /// Sign whatever the document is currently at.
+    ///
+    /// `sign_document` refuses a signature built from a stale copy, so the base
+    /// hash has to be read back rather than hard-coded: after the first
+    /// signature the document is no longer at the hash `upload_doc` gave it.
+    /// Each signature advances the hash to the next value in the chain, which is
+    /// what a real signer's freshly-flattened PDF does.
     fn sign_as(
         app: &mut TestHost<MeroSignState>,
         account: [u8; 32],
         device: [u8; 32],
         doc: &str,
     ) -> app::Result<()> {
+        let base = hash_of(app, doc);
+        let next = format!("{base}-signed");
         app.call_as_account(account, device, |s| {
             s.sign_document(
                 doc.to_owned(),
+                base.clone(),
                 hexed([0x22; 32]),
                 2048,
-                "cafebabe".to_owned(),
+                next.clone(),
             )
         })
+    }
+
+    fn hash_of(app: &TestHost<MeroSignState>, doc: &str) -> String {
+        app.view(|s| s.list_documents())
+            .unwrap()
+            .into_iter()
+            .find(|d| d.id == doc)
+            .expect("document exists")
+            .hash
+    }
+
+    fn status_of(app: &TestHost<MeroSignState>, doc: &str) -> DocumentStatus {
+        app.view(|s| s.list_documents())
+            .unwrap()
+            .into_iter()
+            .find(|d| d.id == doc)
+            .expect("document exists")
+            .status
     }
 
     fn signers_of(app: &TestHost<MeroSignState>, doc: &str) -> Vec<UserId> {
@@ -2189,6 +2280,155 @@ mod tests {
             })
             .unwrap_err();
         assert!(format!("{err:?}").contains("not signed"), "got: {err:?}");
+    }
+
+    // ── two signatures must not destroy each other ──────────────────────────
+
+    /// The data-loss bug, stated directly.
+    ///
+    /// Bob and Alice both open the document at the same version. Alice signs.
+    /// Bob's browser has already flattened his mark into the copy he downloaded,
+    /// so the PDF he is about to upload contains HIS signature and not hers —
+    /// saving it would overwrite `pdf_blob_id` and Alice's mark would be gone
+    /// from the artefact while her `DocumentSignature` row stayed behind.
+    ///
+    /// Before the `base_hash` guard both calls returned `Ok`.
+    #[test]
+    fn a_signature_built_from_a_stale_copy_is_refused() {
+        let mut app = new_agreement();
+        bob_joins(&mut app);
+        let doc = upload_doc(&mut app);
+
+        // Both of them are looking at the same version.
+        let what_they_both_opened = hash_of(&app, &doc);
+
+        for (account, device) in [(ALICE_ACCOUNT, ALICE_DEVICE), (BOB_ACCOUNT, BOB_DEVICE)] {
+            app.call_as_account(account, device, |s| s.set_consent(doc.clone()))
+                .unwrap();
+        }
+
+        sign_as(&mut app, ALICE_ACCOUNT, ALICE_DEVICE, &doc).unwrap();
+
+        // Bob saves the copy he opened, which no longer reflects the document.
+        let err = app
+            .call_as_account(BOB_ACCOUNT, BOB_DEVICE, |s| {
+                s.sign_document(
+                    doc.clone(),
+                    what_they_both_opened.clone(),
+                    hexed([0x33; 32]),
+                    4096,
+                    "bob-only".to_owned(),
+                )
+            })
+            .unwrap_err();
+        assert!(
+            format!("{err:?}").contains("changed while you were signing"),
+            "got: {err:?}"
+        );
+
+        // Alice's signature survived, and hers is the PDF on record.
+        assert_eq!(signers_of(&app, &doc), vec![ALICE_ACCOUNT]);
+        assert_ne!(hash_of(&app, &doc), "bob-only");
+    }
+
+    /// And the recovery path works: re-open, re-sign, both signatures land.
+    #[test]
+    fn re_signing_from_the_current_version_succeeds() {
+        let mut app = new_agreement();
+        bob_joins(&mut app);
+        let doc = upload_doc(&mut app);
+        for (account, device) in [(ALICE_ACCOUNT, ALICE_DEVICE), (BOB_ACCOUNT, BOB_DEVICE)] {
+            app.call_as_account(account, device, |s| s.set_consent(doc.clone()))
+                .unwrap();
+        }
+
+        sign_as(&mut app, ALICE_ACCOUNT, ALICE_DEVICE, &doc).unwrap();
+        // `sign_as` re-reads the hash, which is what the UI does on reopen.
+        sign_as(&mut app, BOB_ACCOUNT, BOB_DEVICE, &doc).unwrap();
+
+        assert_eq!(signers_of(&app, &doc), vec![ALICE_ACCOUNT, BOB_ACCOUNT]);
+    }
+
+    // ── a viewer is finally possible ────────────────────────────────────────
+
+    /// A `Read` participant used to make completion unreachable: the all-signed
+    /// count demanded a signature from every participant, including the ones
+    /// `require_permission` would have refused one from. So the document sat at
+    /// `PartiallySigned` forever and nothing said why.
+    #[test]
+    fn a_viewer_does_not_block_completion() {
+        const VIEWER: [u8; 32] = [0xDD; 32];
+        let mut app = new_agreement();
+        bob_joins(&mut app);
+        app.call(|s| s.add_participant(hexed(VIEWER), PermissionLevel::Read))
+            .unwrap();
+        let doc = upload_doc(&mut app);
+
+        for (account, device) in [(ALICE_ACCOUNT, ALICE_DEVICE), (BOB_ACCOUNT, BOB_DEVICE)] {
+            app.call_as_account(account, device, |s| s.set_consent(doc.clone()))
+                .unwrap();
+            sign_as(&mut app, account, device, &doc).unwrap();
+            app.call_as_account(account, device, |s| s.mark_participant_signed(doc.clone()))
+                .unwrap();
+        }
+
+        assert_eq!(
+            status_of(&app, &doc),
+            DocumentStatus::FullySigned,
+            "the viewer must not be counted among the signatures the document waits for"
+        );
+    }
+
+    /// The other half: a viewer is still not a signature. Promote them and the
+    /// document is no longer complete-able without them.
+    #[test]
+    fn a_signer_still_blocks_completion() {
+        const LATECOMER: [u8; 32] = [0xEE; 32];
+        let mut app = new_agreement();
+        app.call(|s| s.add_participant(hexed(LATECOMER), PermissionLevel::Sign))
+            .unwrap();
+        let doc = upload_doc(&mut app);
+
+        app.call(|s| s.set_consent(doc.clone())).unwrap();
+        sign_as(&mut app, ALICE_ACCOUNT, ALICE_DEVICE, &doc).unwrap();
+        app.call(|s| s.mark_participant_signed(doc.clone()))
+            .unwrap();
+
+        assert_eq!(status_of(&app, &doc), DocumentStatus::PartiallySigned);
+    }
+
+    // ── completion is a fact about the past ─────────────────────────────────
+
+    /// Adding a participant used to walk every `FullySigned` document and put it
+    /// back to `PartiallySigned`. A finished agreement un-finished itself, with
+    /// no event and no trace that it had ever been complete.
+    #[test]
+    fn a_completed_document_stays_completed_when_somebody_new_joins() {
+        let mut app = new_agreement();
+        let doc = upload_doc(&mut app);
+        app.call(|s| s.set_consent(doc.clone())).unwrap();
+        sign_as(&mut app, ALICE_ACCOUNT, ALICE_DEVICE, &doc).unwrap();
+        app.call(|s| s.mark_participant_signed(doc.clone()))
+            .unwrap();
+        assert_eq!(status_of(&app, &doc), DocumentStatus::FullySigned);
+
+        bob_joins(&mut app);
+        assert_eq!(
+            status_of(&app, &doc),
+            DocumentStatus::FullySigned,
+            "a new participant must not reopen a document Alice already completed"
+        );
+
+        const VIEWER: [u8; 32] = [0xDD; 32];
+        app.call(|s| s.add_participant(hexed(VIEWER), PermissionLevel::Read))
+            .unwrap();
+        app.call(|s| s.set_participant_permission(hexed(VIEWER), PermissionLevel::Sign))
+            .unwrap();
+        assert_eq!(
+            status_of(&app, &doc),
+            DocumentStatus::FullySigned,
+            "neither must a promotion"
+        );
     }
 
     fn upload_doc(app: &mut TestHost<MeroSignState>) -> String {

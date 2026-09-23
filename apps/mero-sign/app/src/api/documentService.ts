@@ -163,6 +163,7 @@ export class DocumentService {
   async signDocument(
     contextId: string,
     documentId: string,
+    baseHash: string,
     updatedPdfFile: File,
     agreementContextID?: string,
     agreementContextUserID?: string,
@@ -206,10 +207,14 @@ export class DocumentService {
         };
       }
 
-      // Call the backend signDocument API with updated PDF data and hash
+      // `baseHash` is the hash of the version this signer opened. Signing
+      // replaces the document's whole PDF, so if somebody else signed while
+      // this one was being filled in, saving would drop their mark — the
+      // contract compares and refuses rather than losing it silently.
       const response = await this.clientApi.signDocument(
         contextId,
         documentId,
+        baseHash,
         blobId,
         updatedPdfFile.size,
         newHash,

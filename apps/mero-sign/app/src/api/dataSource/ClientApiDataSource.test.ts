@@ -257,7 +257,14 @@ describe('which context a call runs in', () => {
 describe('a failure reports the node, not this repo', () => {
   it('surfaces the message the node sent', async () => {
     nextThrow = new Error('rpc sign_document: not a participant');
-    const res = await api.signDocument(STORED_CONTEXT, 'doc-1', HEX, 1, 'hash');
+    const res = await api.signDocument(
+      STORED_CONTEXT,
+      'doc-1',
+      'base-hash',
+      HEX,
+      1,
+      'hash',
+    );
     expect(res.data).toBeNull();
     expect(res.error?.message).toBe('rpc sign_document: not a participant');
   });

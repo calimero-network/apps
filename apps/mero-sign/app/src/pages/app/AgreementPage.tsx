@@ -21,10 +21,16 @@ import {
 import { useActiveWorkspace } from '../../lib/activeWorkspace';
 import { blobClient } from '../../lib/node';
 import { toBlobIdHex } from '../../lib/blobIds';
+import {
+  integrityWarning,
+  verifyDocumentBytes,
+} from '../../lib/documentIntegrity';
 import { encodeInvite } from '../../lib/inviteCodec';
 import { shareableInvitation } from '../../lib/inviteLink';
 import {
   DEMOTION_UNAVAILABLE,
+  INVITABLE_LEVELS,
+  INVITE_LEVEL_LABELS,
   LEVEL_DESCRIPTIONS,
   buildRoster,
   canRemove,
@@ -113,6 +119,8 @@ export default function AgreementPage() {
   // rendered "No PDF selected. Please upload a PDF to get started.", forever,
   // for everyone. The blob id was sitting on the row the whole time.
   const [viewingFile, setViewingFile] = useState<File | null>(null);
+  // Set when the fetched bytes do not hash to what the agreement recorded.
+  const [integrity, setIntegrity] = useState<string | null>(null);
   const [viewingError, setViewingError] = useState<string | null>(null);
 
   // ⚠️ A SECOND WAY OUT, that does not depend on the viewer rendering one.
@@ -136,11 +144,13 @@ export default function AgreementPage() {
     if (!viewing) {
       setViewingFile(null);
       setViewingError(null);
+      setIntegrity(null);
       return;
     }
     let cancelled = false;
     setViewingFile(null);
     setViewingError(null);
+    setIntegrity(null);
     void (async () => {
       try {
         // Hex — and `toBlobIdHex` also accepts the base58 ids written before
@@ -153,6 +163,17 @@ export default function AgreementPage() {
         }
         const blob = await blobClient.downloadBlob(blobId, contextId);
         if (cancelled) return;
+
+        // The hash has always been recorded and shown; nothing ever checked
+        // it, so a blob that came back as something else rendered without a
+        // word. A mismatch warns rather than blocking — see `documentIntegrity`.
+        const integrity = await verifyDocumentBytes(
+          await blob.arrayBuffer(),
+          viewing.hash,
+        );
+        if (cancelled) return;
+        setIntegrity(integrityWarning(integrity));
+
         setViewingFile(
           new File([blob], viewing.name || 'document.pdf', {
             type: 'application/pdf',
@@ -180,6 +201,13 @@ export default function AgreementPage() {
   // ⚠️ An invitation is to the WORKSPACE, not to this agreement. See below.
   const workspaceId = useActiveWorkspace();
   const [inviteeId, setInviteeId] = useState('');
+  // Defaults to Signer because that is what inviting somebody to an agreement
+  // ordinarily means, and the picker states the consequence rather than
+  // relying on a safe default that fights the common case. The choice can be
+  // raised later but never lowered — see INVITABLE_LEVELS.
+  const [inviteeLevel, setInviteeLevel] = useState<PermissionLevel>(
+    PermissionLevel.Sign,
+  );
   const [targetedPayload, setTargetedPayload] = useState('');
 
   const flash = useCallback((message: string) => {
@@ -392,10 +420,17 @@ export default function AgreementPage() {
         setError(res.error?.message || 'Could not create that invitation.');
         return;
       }
+      // ⚠️ WAS HARDCODED `PermissionLevel.Sign`, so every person ever invited
+      // became a signer and the `Read` level — which the contract enforces and
+      // this UI describes — was unreachable in the product. It was also
+      // unusable even if you reached it: completion demanded a signature from
+      // every participant regardless of level, so one viewer meant no document
+      // in the agreement could ever finish. Both halves are fixed; this is the
+      // half that lets anyone ask for a viewer.
       await clientApi.addParticipant(
         contextId,
         id,
-        PermissionLevel.Sign,
+        inviteeLevel,
         contextId,
         executorKey || undefined,
       );
@@ -403,7 +438,7 @@ export default function AgreementPage() {
     } finally {
       setMintingInvite(false);
     }
-  }, [inviteeId, nodeApi, clientApi, contextId, executorKey]);
+  }, [inviteeId, inviteeLevel, nodeApi, clientApi, contextId, executorKey]);
 
   const copy = useCallback(
     (value: string, what: string) => {
@@ -729,6 +764,21 @@ export default function AgreementPage() {
                   onChange={(e) => setInviteeId(e.target.value)}
                   data-testid="invitee-id"
                 />
+                <select
+                  className={styles.input}
+                  value={inviteeLevel}
+                  onChange={(e) =>
+                    setInviteeLevel(e.target.value as PermissionLevel)
+                  }
+                  data-testid="invitee-level"
+                  aria-label="What they can do"
+                >
+                  {INVITABLE_LEVELS.map((level) => (
+                    <option key={level} value={level}>
+                      {INVITE_LEVEL_LABELS[level]}
+                    </option>
+                  ))}
+                </select>
                 <button
                   className={styles.btn}
                   onClick={() => void mintTargeted()}
@@ -737,6 +787,12 @@ export default function AgreementPage() {
                   Create
                 </button>
               </div>
+              <p className={styles.note} style={{ marginTop: 8 }}>
+                A document is complete once every signer has signed it; viewers
+                are never waited on. A viewer can be made a signer later, but a
+                signer cannot be made a viewer — to undo that you have to remove
+                them and invite them again.
+              </p>
               {targetedPayload && (
                 <div className={styles.tokenBox}>
                   <span className={styles.token}>{targetedPayload}</span>
@@ -838,22 +894,33 @@ export default function AgreementPage() {
                 </p>
               </div>
             ) : (
-              <PDFViewer
-                file={viewingFile}
-                onClose={() => setViewing(null)}
-                title={viewing.name}
-                showDownload
-                showClose
-                maxHeight="86vh"
-                contextId={contextId}
-                documentId={viewing.id}
-                documentHash={viewing.hash}
-                showSaveToContext
-                onDocumentSaved={() => {
-                  setViewing(null);
-                  void loadDocuments();
-                }}
-              />
+              <>
+                {integrity && (
+                  <p
+                    className={styles.error}
+                    data-testid="integrity-warning"
+                    style={{ margin: '12px 16px 0' }}
+                  >
+                    {integrity}
+                  </p>
+                )}
+                <PDFViewer
+                  file={viewingFile}
+                  onClose={() => setViewing(null)}
+                  title={viewing.name}
+                  showDownload
+                  showClose
+                  maxHeight="86vh"
+                  contextId={contextId}
+                  documentId={viewing.id}
+                  documentHash={viewing.hash}
+                  showSaveToContext
+                  onDocumentSaved={() => {
+                    setViewing(null);
+                    void loadDocuments();
+                  }}
+                />
+              </>
             )}
           </div>
         </div>
