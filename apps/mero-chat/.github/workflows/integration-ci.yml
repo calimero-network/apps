@@ -180,6 +180,22 @@ jobs:
           echo "GROUP_ID:   ${GROUP_ID:-<not found>}"
           echo "CONTEXT_ID: ${CONTEXT_ID:-<not found>}"
 
+          # Fail here rather than let the suite skip itself.
+          #
+          # `integrationEnvAvailable()` requires all four of node url, token,
+          # group id and context id, and every integration test calls
+          # `test.skip()` when one is missing. So a discovery step that quietly
+          # produced an empty id gives a GREEN job that ran nothing — the job
+          # name says "Full-Stack Integration Tests" and the report says zero
+          # failures, which is indistinguishable from the suite passing.
+          if [ -z "${GROUP_ID}" ] || [ -z "${CONTEXT_ID}" ]; then
+            echo "::error::Could not discover the group/context the merobox setup created."
+            echo "  /admin-api/groups   → ${GROUPS}"
+            echo "  /admin-api/contexts → ${CTXS}"
+            echo "Without both, every integration test skips and the job passes vacuously."
+            exit 1
+          fi
+
           cat > app/.env.integration << ENVEOF
           E2E_NODE_URL=${NODE_1_URL}
           E2E_NODE_URL_2=${NODE_2_URL}

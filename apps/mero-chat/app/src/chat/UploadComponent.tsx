@@ -133,7 +133,18 @@ export default function UploadComponent({
         await onReplace(currentFile ?? null);
       }
 
-      const res = await uploadBlobDirect(file, getContextId() || undefined);
+      // No context, no upload. A blob announced to nobody is stored on this
+      // node and invisible to every other member of the channel — and it looks
+      // like it worked, because our own node has the bytes. Refusing here is
+      // the only point at which the user can still be told.
+      const contextId = getContextId();
+      if (!contextId) {
+        throw new Error(
+          "Open a channel before attaching a file — an attachment is stored against the conversation it belongs to.",
+        );
+      }
+
+      const res = await uploadBlobDirect(file, contextId);
 
       if (res.error || !res.data?.blobId) {
         throw new Error(res.error?.message || "Failed to upload attachment");

@@ -38,8 +38,15 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # `tsc -b`, NOT `tsc --noEmit`.
+      #
+      # tsconfig.json here is a SOLUTION file: `"files": []` plus references to
+      # tsconfig.app.json and tsconfig.node.json. `tsc --noEmit` honours
+      # `files: []` and type-checks exactly nothing — it exits 0 on a tree full
+      # of errors, which is what this gate did. `-b` walks the references, which
+      # is also what `pnpm build` does.
       - name: Typecheck
-        run: pnpm exec tsc --noEmit
+        run: pnpm exec tsc -b
 
       - name: Lint
         run: pnpm lint
