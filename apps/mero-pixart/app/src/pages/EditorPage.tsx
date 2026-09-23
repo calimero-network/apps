@@ -8,10 +8,11 @@ import { resetMethodSupport, rpcWithFallback } from "../api/compat";
 import { mapLimit } from "../utils/concurrency";
 import { useSse } from "../hooks/useSse";
 import { useToast } from "../contexts/ToastContext";
+import { useShallow } from "zustand/react/shallow";
 import { useEditorStore } from "../store/editorStore";
 import {
   getLayerCanvas, peekLayerCanvas, getMaskCanvas, peekMaskCanvas,
-  setLayerCanvas, dropLayerCanvas, dropMaskCanvas, clearAllCanvases,
+  setLayerCanvas, dropLayerCanvas, dropMaskCanvas, clearAllCanvases, markLayerBlank,
 } from "../store/layerCanvases";
 import {
   bytesToImage, canvasToPngBytes, createCanvas, ctx2d, applyCurves, parseCurves,
@@ -67,7 +68,29 @@ export default function EditorPage() {
     doc, layers, selectedLayerId, editingMaskOf, showRulers, panels,
     setDoc, setLayers, upsertLayer, removeLayer, selectLayer, setEditingMask,
     setRole, setZoom, setPan, bumpRender, canEdit, clearHistory, setSelection,
-  } = useEditorStore();
+  } = useEditorStore(useShallow((s) => ({
+    doc: s.doc,
+    layers: s.layers,
+    selectedLayerId: s.selectedLayerId,
+    editingMaskOf: s.editingMaskOf,
+    showRulers: s.showRulers,
+    panels: s.panels,
+    setDoc: s.setDoc,
+    setLayers: s.setLayers,
+    upsertLayer: s.upsertLayer,
+    removeLayer: s.removeLayer,
+    selectLayer: s.selectLayer,
+    setEditingMask: s.setEditingMask,
+    setRole: s.setRole,
+    setZoom: s.setZoom,
+    setPan: s.setPan,
+    bumpRender: s.bumpRender,
+    canEdit: s.canEdit,
+    clearHistory: s.clearHistory,
+    setSelection: s.setSelection,
+    // `canEdit()` reads the role, so re-render when it changes.
+    myRole: s.myRole,
+  })));
 
   const myId = useRef<string>("");
   const loadedBlobs = useRef<Set<string>>(new Set());
@@ -535,7 +558,10 @@ export default function EditorPage() {
     // a new one gets the first free number rather than a third layer called
     // "Group" — the same helper ⌘G uses.
     if (kind === "group") layer.name = nextGroupName(useEditorStore.getState().layers);
-    if (kind === "raster") getLayerCanvas(layer.id, layer.width, layer.height); // blank transparent
+    if (kind === "raster") {
+      getLayerCanvas(layer.id, layer.width, layer.height); // blank transparent
+      markLayerBlank(layer.id); // …so the compositor can skip it until it's painted
+    }
     upsertLayer(layer);
     selectLayer(layer.id);
     bumpRender();
@@ -816,7 +842,10 @@ export default function EditorPage() {
     const sel = useEditorStore.getState().selectedLayer();
     if (!sel || !canEdit()) return;
     const curves = parseCurves(curvesJson);
-    const c = peekLayerCanvas(sel.id);
+    // `get*`, not `peek*`: this writes the pixels, and the compositor's caches
+    // (and the blank-layer skip) only see writes that declare themselves.
+    const existing = peekLayerCanvas(sel.id);
+    const c = existing && getLayerCanvas(sel.id, existing.width, existing.height);
     if (curves && c && (sel.kind === "raster" || sel.kind === "fill")) {
       const baked = applyCurves(c, curves);
       const ctx = ctx2d(c);
@@ -839,8 +868,9 @@ export default function EditorPage() {
     const sel = useEditorStore.getState().selectedLayer();
     if (!sel || !canEdit()) return;
     if (sel.kind !== "raster") { showToast("Select a raster layer for Levels.", "error"); return; }
-    const c = peekLayerCanvas(sel.id);
-    if (!c) { showToast("This layer has no pixels yet.", "error"); return; }
+    const existing = peekLayerCanvas(sel.id);
+    if (!existing) { showToast("This layer has no pixels yet.", "error"); return; }
+    const c = getLayerCanvas(sel.id, existing.width, existing.height); // write intent
     useEditorStore.getState().pushHistory([sel.id], "Levels");
     const baked = applyLevels(c, levels);
     const ctx = ctx2d(c);
@@ -1002,6 +1032,7 @@ export default function EditorPage() {
       fc.fillRect(0, 0, c.width, c.height);
     }
     if (!c) { showToast("This layer has no pixels yet.", "error"); return; }
+    c = getLayerCanvas(sel.id, c.width, c.height); // write intent
     useEditorStore.getState().pushHistory([sel.id], `Filter: ${kind}`);
     const out = applyFilter(c, kind);
     const ctx = ctx2d(c);
@@ -1281,6 +1312,7 @@ export default function EditorPage() {
             fc.fillRect(0, 0, c.width, c.height);
           }
           if (c) {
+            c = getLayerCanvas(layer.id, c.width, c.height); // write intent
             st.pushHistory([layer.id], "Clear Selection");
             const cx = ctx2d(c);
             cx.save();

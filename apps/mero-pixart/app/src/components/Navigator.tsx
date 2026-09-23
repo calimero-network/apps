@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useEditorStore } from "../store/editorStore";
-import { composite } from "../utils/compositor";
+import { renderView } from "../utils/compositor";
 import { createCanvas, ctx2d } from "../utils/raster";
 import styles from "./Navigator.module.css";
 
@@ -43,8 +43,12 @@ export default function Navigator() {
     if (!doc || collapsed) return;
     if (genTimer.current) clearTimeout(genTimer.current);
     genTimer.current = setTimeout(() => {
-      const { layers } = useEditorStore.getState();
-      const flat = composite(layers, doc.width, doc.height, { background: doc.background });
+      const { layers, selectedLayerId } = useEditorStore.getState();
+      // The view's own cached stack — the same one the canvas just drew — so
+      // this is a few blits, not a recomposite of every layer.
+      const flat = renderView(layers, doc.width, doc.height, {
+        background: doc.background, focusId: selectedLayerId,
+      });
       const small = createCanvas(tw, th);
       const sctx = ctx2d(small);
       sctx.imageSmoothingEnabled = true;

@@ -1,6 +1,8 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useShallow } from "zustand/react/shallow";
 import { useEditorStore } from "../store/editorStore";
 import { peekLayerCanvas } from "../store/layerCanvases";
+import { layerThumbUrl, pruneLayerThumbs } from "../utils/layerThumbs";
 import {
   buildTree, contentCount, isDescendantOf, visibleRows, type TreeNode,
 } from "../utils/layerTree";
@@ -39,7 +41,20 @@ export default function LayersPanel({
     toggleLayerSelection, editingMaskOf, setEditingMask, canEdit, upsertLayer, bumpRender,
     panelCollapsed, togglePanelCollapsed, collapsedGroups, toggleGroupCollapsed,
     setAllGroupsCollapsed,
-  } = useEditorStore();
+  } = useEditorStore(useShallow((s) => ({
+    layers: s.layers, selectedLayerId: s.selectedLayerId, selectedLayerIds: s.selectedLayerIds,
+    selectLayer: s.selectLayer, setSelectedLayers: s.setSelectedLayers,
+    toggleLayerSelection: s.toggleLayerSelection, editingMaskOf: s.editingMaskOf,
+    setEditingMask: s.setEditingMask, canEdit: s.canEdit, upsertLayer: s.upsertLayer,
+    bumpRender: s.bumpRender, panelCollapsed: s.panelCollapsed,
+    togglePanelCollapsed: s.togglePanelCollapsed, collapsedGroups: s.collapsedGroups,
+    toggleGroupCollapsed: s.toggleGroupCollapsed, setAllGroupsCollapsed: s.setAllGroupsCollapsed,
+    // `canEdit()` reads the role, so the panel must re-render when it changes.
+    myRole: s.myRole,
+  })));
+  // Subscribed to on its own: this panel only reads the store, so zoom, pan and
+  // every other unrelated write no longer re-render it (it used to take the whole
+  // store). The row list is cheap; the thumbnails were not — see utils/layerThumbs.
   const collapsed = panelCollapsed.layers;
   const [renaming, setRenaming] = useState<string | null>(null);
   const [dragId, setDragId] = useState<string | null>(null);
@@ -49,6 +64,7 @@ export default function LayersPanel({
   const draftColor = useRef<string>("");
   const editable = canEdit();
 
+  useEffect(() => { pruneLayerThumbs(new Set(layers.map((l) => l.id))); }, [layers]);
   const tree = buildTree(layers);
   // Every row in display order, collapsed subtrees included: reordering must
   // renumber the layers you cannot see too, or collapsing a folder would
@@ -474,13 +490,16 @@ function layerColor(layer: Layer): string {
 }
 
 function Thumb({ layer }: { layer: Layer }) {
+  // Pixels are painted imperatively and announced by `renderTick`, so the
+  // thumbnail listens for it; the cache makes an unchanged layer a map lookup.
+  useEditorStore((s) => s.renderTick);
   // A fill layer that hasn't been painted is a flat swatch; once it has pixels
   // (brush/bucket), show those instead.
   if (layer.kind === "fill" && !peekLayerCanvas(layer.id)) {
     return <span className={styles.thumb} style={{ background: layer.fill || "#000" }} />;
   }
   const c = peekLayerCanvas(layer.id);
-  const url = c ? c.toDataURL() : "";
+  const url = c ? layerThumbUrl(layer.id, c) : "";
   return (
     <span className={`${styles.thumb} mp-checkerboard`}>
       {url && <img src={url} alt="" />}

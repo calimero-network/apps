@@ -1,3 +1,4 @@
+import { useShallow } from "zustand/react/shallow";
 import { useEditorStore } from "../store/editorStore";
 import { BRUSH_TYPES, SHAPE_KINDS, type Layer, type TextProps } from "../types";
 import styles from "./OptionsBar.module.css";
@@ -16,7 +17,29 @@ const FONTS = [
 ];
 
 export default function OptionsBar({ onUpdateText, onTransform }: Props) {
-  const s = useEditorStore();
+  const s = useEditorStore(useShallow((s) => ({
+    activeTool: s.activeTool,
+    brushHardness: s.brushHardness,
+    brushOpacity: s.brushOpacity,
+    brushSize: s.brushSize,
+    brushType: s.brushType,
+    doc: s.doc,
+    gradientFill: s.gradientFill,
+    gradientType: s.gradientType,
+    layers: s.layers,
+    selectedLayerId: s.selectedLayerId,
+    selection: s.selection,
+    setBrush: s.setBrush,
+    setGradientFill: s.setGradientFill,
+    setGradientType: s.setGradientType,
+    setSelection: s.setSelection,
+    setShapeKind: s.setShapeKind,
+    setShapeStroke: s.setShapeStroke,
+    setTransformMode: s.setTransformMode,
+    shapeKind: s.shapeKind,
+    shapeStroke: s.shapeStroke,
+    transformMode: s.transformMode,
+  })));
   const { activeTool } = s;
   const sel = s.layers.find((l) => l.id === s.selectedLayerId);
   // Typography controls show for a selected text layer under Text/Move/Transform

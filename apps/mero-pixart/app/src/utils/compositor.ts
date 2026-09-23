@@ -40,7 +40,7 @@ import type { Adjustments, Layer } from "../types";
 import { adjustmentsToFilter, blendOp, createCanvas, ctx2d, renderTextLayer } from "./raster";
 import { drawWarped, layerMatrix, parseWarp } from "./transform";
 import {
-  layerPixelVersion, maskPixelVersion, peekLayerCanvas, peekMaskCanvas,
+  isLayerBlank, layerPixelVersion, maskPixelVersion, peekLayerCanvas, peekMaskCanvas,
 } from "../store/layerCanvases";
 
 function byId(layers: Layer[]): Map<string, Layer> {
@@ -160,6 +160,8 @@ function maskToAlpha(mask: HTMLCanvasElement): HTMLCanvasElement {
 // ── Prepared-layer cache ────────────────────────────────────────────────────
 
 interface Prepared {
+  /** The {@link prepareSignature} these pixels were built from. */
+  sig: string;
   canvas: HTMLCanvasElement;
   /** Where to draw it in the layer's LOCAL space — a blur spills outside the
    *  layer box, so a blurred layer's prepared canvas is padded. */
@@ -170,9 +172,7 @@ interface Prepared {
   warpBaked: boolean;
 }
 
-interface CacheEntry extends Prepared {
-  sig: string;
-}
+type CacheEntry = Prepared;
 
 const preparedCache = new Map<string, CacheEntry>();
 
@@ -313,22 +313,32 @@ export interface CompositeOptions {
   masks?: PixelSource;
 }
 
-export function composite(
-  layers: Layer[],
-  width: number,
-  height: number,
-  opts: CompositeOptions = {},
-): HTMLCanvasElement {
-  const out = createCanvas(width, height);
-  const ctx = ctx2d(out);
+/** One layer, ready to draw: its prepared pixels plus how to place them. */
+interface DrawOp {
+  layer: Layer;
+  prepared: Prepared;
+  alpha: number;
+  op: GlobalCompositeOperation;
+  /** Everything that decides what this op paints — prepared pixels, transform,
+   *  alpha, blend. Two ops with equal keys draw identical pixels. */
+  key: string;
+}
+
+/**
+ * The layer stack as the flat, bottom-to-top list of draws the composite makes.
+ *
+ * Folders are not isolated (a folder only contributes inherited visibility and
+ * opacity, see `effectiveVisible`/`effectiveOpacity`), so the composite is
+ * exactly "run these draws in order" — which is what lets {@link StackCompositor}
+ * cache a prefix and a suffix of it.
+ */
+function drawOps(layers: Layer[], opts: CompositeOptions): DrawOp[] {
   const map = byId(layers);
   const peek = opts.sources ?? peekLayerCanvas;
   const peekMask = opts.masks ?? peekMaskCanvas;
-
-  if (opts.background && opts.background !== "#00000000") {
-    ctx.fillStyle = opts.background;
-    ctx.fillRect(0, 0, width, height);
-  }
+  // Known-blank is a fact about the editor's registry, so it is only trusted
+  // when the pixels come from the registry too.
+  const blank = opts.sources ? () => false : isLayerBlank;
 
   // Prepared canvases are big (a padded, full-resolution copy per layer), so a
   // layer that has gone away must not keep one alive. Flattening and exporting
@@ -341,10 +351,13 @@ export function composite(
   }
 
   const ordered = [...layers].sort((a, b) => a.layerIndex - b.layerIndex);
-
+  const ops: DrawOp[] = [];
   for (const layer of ordered) {
     if (opts.skipId === layer.id) continue;
     if (!effectiveVisible(layer, map)) continue;
+    // A fully transparent canvas draws nothing under every blend mode we offer
+    // (all of them leave the backdrop alone where the source alpha is 0).
+    if (layer.kind === "raster" && blank(layer.id)) continue;
 
     const alpha = effectiveOpacity(layer, map);
     if (alpha <= 0) continue;
@@ -352,25 +365,173 @@ export function composite(
     const prepared = prepareLayer(layer, peek, peekMask);
     if (!prepared) continue;
 
-    ctx.save();
-    ctx.globalAlpha = alpha;
-    ctx.globalCompositeOperation = blendOp(layer.blendMode);
-    // Transform: one matrix for position / mirror / shear / scale / rotation
-    // (see utils/transform — the gizmo and hit-testing read the same one). The
-    // mask, the adjustments filter and the warp are already baked into
-    // `prepared`, whose origin sits at (ox, oy) in the layer's local space.
     const m = layerMatrix(layer);
-    ctx.transform(m.a, m.b, m.c, m.d, m.e, m.f);
-    const warp = prepared.warpBaked ? null : parseWarp(layer.warp);
-    if (warp) {
-      // Same call the un-cached compositor made: the mesh maps the prepared
-      // canvas's own rect onto the warped quad.
-      drawWarped(ctx, prepared.canvas, prepared.canvas.width, prepared.canvas.height, warp);
-    } else {
-      ctx.drawImage(prepared.canvas, prepared.ox, prepared.oy);
-    }
-    ctx.restore();
+    const op = blendOp(layer.blendMode);
+    const key = `${layer.id}|${prepared.sig}|${m.a},${m.b},${m.c},${m.d},${m.e},${m.f}|${alpha}|${op}`;
+    ops.push({ layer, prepared, alpha, op, key });
   }
+  return ops;
+}
 
+function drawOp(ctx: CanvasRenderingContext2D, { layer, prepared, alpha, op }: DrawOp): void {
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.globalCompositeOperation = op;
+  // Transform: one matrix for position / mirror / shear / scale / rotation
+  // (see utils/transform — the gizmo and hit-testing read the same one). The
+  // mask, the adjustments filter and the warp are already baked into
+  // `prepared`, whose origin sits at (ox, oy) in the layer's local space.
+  const m = layerMatrix(layer);
+  ctx.transform(m.a, m.b, m.c, m.d, m.e, m.f);
+  const warp = prepared.warpBaked ? null : parseWarp(layer.warp);
+  if (warp) {
+    // Same call the un-cached compositor made: the mesh maps the prepared
+    // canvas's own rect onto the warped quad.
+    drawWarped(ctx, prepared.canvas, prepared.canvas.width, prepared.canvas.height, warp);
+  } else {
+    ctx.drawImage(prepared.canvas, prepared.ox, prepared.oy);
+  }
+  ctx.restore();
+}
+
+function fillBackground(ctx: CanvasRenderingContext2D, background: string | undefined, w: number, h: number) {
+  if (background && background !== "#00000000") {
+    ctx.fillStyle = background;
+    ctx.fillRect(0, 0, w, h);
+  }
+}
+
+export function composite(
+  layers: Layer[],
+  width: number,
+  height: number,
+  opts: CompositeOptions = {},
+): HTMLCanvasElement {
+  const out = createCanvas(width, height);
+  const ctx = ctx2d(out);
+  fillBackground(ctx, opts.background, width, height);
+  for (const op of drawOps(layers, opts)) drawOp(ctx, op);
   return out;
+}
+
+// ── Stack compositor (the on-screen view) ─────────────────────────────────────
+//
+// The prepared cache makes each layer cheap, but a composite still blits every
+// layer, and in a document built by pressing "New raster layer" every layer is
+// DOCUMENT-SIZED. Forty of them is forty full-document blits per brush dab or
+// per pointermove of a drag — measured at ~80ms a frame, with all the time in
+// `drawImage`.
+//
+// But a gesture only ever changes one layer: the one being painted or dragged.
+// So, the way image editors have always done it, the stack is split around that
+// focus layer:
+//
+//     [ below — cached ]   [ focus — drawn live ]   [ above — cached ]
+//
+// and a frame is three blits however tall the stack is. Each cached half is
+// keyed by the draw keys of the layers in it, so it is rebuilt only when one of
+// THOSE layers changes (or the focus moves to another layer, which is a click,
+// not a frame).
+//
+// Correctness of the split:
+//   • below is a prefix of the exact draw sequence `composite` runs, background
+//     included, so it is not an approximation of anything;
+//   • above can be pre-flattened into its own transparent canvas only when every
+//     layer in it is plain source-over, because "over" is associative and every
+//     blend mode is not. With any blended layer above the focus, the above layers
+//     are drawn one by one onto the result instead — still correct, just not
+//     sped up.
+//
+// Export keeps calling `composite` directly, so what is saved never depends on
+// this cache. The Navigator's minimap shares the view's instance (see
+// `renderView`): it used to run a full uncached composite 220ms after every
+// change — forty document-sized blits, a visible hitch just after a stroke ends.
+
+interface Cached { key: string; canvas: HTMLCanvasElement }
+
+export class StackCompositor {
+  private below: Cached | null = null;
+  private above: Cached | null = null;
+  private out: HTMLCanvasElement | null = null;
+  /** The draw keys `out` currently shows. */
+  private frameKey = "";
+  /** The flattened document. The returned canvas is reused by the next call —
+   *  draw it (or copy it) before compositing again. */
+  render(
+    layers: Layer[], width: number, height: number,
+    opts: CompositeOptions & { focusId?: string | null } = {},
+  ): HTMLCanvasElement {
+    const ops = drawOps(layers, opts);
+    let f = opts.focusId ? ops.findIndex((o) => o.layer.id === opts.focusId) : -1;
+    if (f < 0) f = ops.length; // no focus: the whole stack is "below"
+
+    const size = `${width}x${height}`;
+    const belowOps = ops.slice(0, f);
+    const belowKey = `${size}|${opts.background ?? ""}|` + belowOps.map((o) => o.key).join(";");
+    if (!this.below || this.below.key !== belowKey) {
+      const c = this.below?.canvas.width === width && this.below.canvas.height === height
+        ? this.below.canvas : createCanvas(width, height);
+      const ctx = ctx2d(c);
+      ctx.clearRect(0, 0, width, height);
+      fillBackground(ctx, opts.background, width, height);
+      for (const op of belowOps) drawOp(ctx, op);
+      this.below = { key: belowKey, canvas: c };
+    }
+    if (f >= ops.length) return this.below.canvas;
+
+    const aboveOps = ops.slice(f + 1);
+    const flattenAbove = aboveOps.length > 1 && aboveOps.every((o) => o.op === "source-over");
+    if (flattenAbove) {
+      const aboveKey = `${size}|` + aboveOps.map((o) => o.key).join(";");
+      if (!this.above || this.above.key !== aboveKey) {
+        const c = this.above?.canvas.width === width && this.above.canvas.height === height
+          ? this.above.canvas : createCanvas(width, height);
+        const ctx = ctx2d(c);
+        ctx.clearRect(0, 0, width, height);
+        for (const op of aboveOps) drawOp(ctx, op);
+        this.above = { key: aboveKey, canvas: c };
+      }
+    }
+
+    const focus = ops[f];
+    // Everything the frame is built from. When none of it changed (the Navigator
+    // asking for the frame the canvas just drew, a redraw for an overlay), the
+    // last frame is still exact — hand it back rather than re-assemble it.
+    const frameKey = `${belowKey}#${focus.key}#${aboveOps.map((o) => o.key).join(";")}`;
+    if (this.out && this.frameKey === frameKey) return this.out;
+
+    // Why the whole frame is re-assembled, not just the rectangle the focus
+    // layer moved through: measured, Skia rasterises a transformed layer
+    // slightly differently depending on where it sits against the canvas
+    // edges, so ANY cropped or clipped repaint (both were tried) comes out up
+    // to ~20/255 off a full redraw — a visible seam. e2e/stack-compositor.spec
+    // is the test that caught it.
+    if (!this.out || this.out.width !== width || this.out.height !== height) {
+      this.out = createCanvas(width, height);
+    }
+    const ctx = ctx2d(this.out);
+    ctx.clearRect(0, 0, width, height);
+    ctx.drawImage(this.below.canvas, 0, 0);
+    drawOp(ctx, focus);
+    if (flattenAbove) ctx.drawImage(this.above!.canvas, 0, 0);
+    else for (const op of aboveOps) drawOp(ctx, op);
+    this.frameKey = frameKey;
+    return this.out;
+  }
+}
+
+let view: StackCompositor | null = null;
+
+/**
+ * The flattened document as the editor shows it, through ONE shared
+ * StackCompositor — the canvas and the Navigator ask for the same stack, so the
+ * second of them is three blits, not a recomposite. The returned canvas is
+ * reused by the next call: draw it before calling again.
+ */
+export function renderView(
+  layers: Layer[], width: number, height: number,
+  opts: CompositeOptions & { focusId?: string | null } = {},
+): HTMLCanvasElement {
+  view ??= new StackCompositor();
+  return view.render(layers, width, height, opts);
 }
