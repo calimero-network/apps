@@ -58,6 +58,28 @@ export function getLayerCanvas(id: string, width: number, height: number): HTMLC
   return c;
 }
 
+// ── Known-blank layers ──────────────────────────────────────────────────────
+//
+// "New raster layer" allocates a document-sized, fully transparent canvas. Forty
+// of those cost the compositor forty full-document blits that draw nothing. So a
+// caller that KNOWS it just made a blank canvas says so, and the flag is pinned
+// to the pixel version at that moment: the first `get*` (every write path goes
+// through one — see "Pixel versions") bumps the version and the flag is gone.
+// Nothing ever has to remember to clear it.
+
+const blankAt = new Map<string, number>();
+
+/** Record that a layer's canvas is, right now, fully transparent. */
+export function markLayerBlank(id: string): void {
+  blankAt.set(id, layerPixelVersion(id));
+}
+
+/** True only while no write intent has touched the canvas since {@link markLayerBlank}. */
+export function isLayerBlank(id: string): boolean {
+  const at = blankAt.get(id);
+  return at !== undefined && at === layerPixelVersion(id);
+}
+
 export function peekLayerCanvas(id: string): HTMLCanvasElement | undefined {
   return canvases.get(id);
 }

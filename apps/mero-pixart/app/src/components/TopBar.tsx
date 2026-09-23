@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { useShallow } from "zustand/react/shallow";
 import { useEditorStore } from "../store/editorStore";
 import { invertSelection, resizeSelection } from "../utils/geometry";
 import { FILTERS, UNITS, type FilterKind, type LayerKind, type Member, type PanelId, type Role } from "../types";
@@ -59,7 +60,34 @@ export default function TopBar({
     layers, selectedLayerId, selectedLayerIds, doc, showRulers, toggleRulers, setTool,
     view, setView, guides, clearGuides, panels, togglePanel, setSelection,
     setTransformMode, setAllGroupsCollapsed, panelCollapsed, togglePanelCollapsed,
-  } = useEditorStore();
+  } = useEditorStore(useShallow((s) => ({
+    zoom: s.zoom,
+    setZoom: s.setZoom,
+    setPan: s.setPan,
+    undo: s.undo,
+    redo: s.redo,
+    undoStack: s.undoStack,
+    redoStack: s.redoStack,
+    selection: s.selection,
+    layers: s.layers,
+    selectedLayerId: s.selectedLayerId,
+    selectedLayerIds: s.selectedLayerIds,
+    doc: s.doc,
+    showRulers: s.showRulers,
+    toggleRulers: s.toggleRulers,
+    setTool: s.setTool,
+    view: s.view,
+    setView: s.setView,
+    guides: s.guides,
+    clearGuides: s.clearGuides,
+    panels: s.panels,
+    togglePanel: s.togglePanel,
+    setSelection: s.setSelection,
+    setTransformMode: s.setTransformMode,
+    setAllGroupsCollapsed: s.setAllGroupsCollapsed,
+    panelCollapsed: s.panelCollapsed,
+    togglePanelCollapsed: s.togglePanelCollapsed,
+  })));
   const imgRef = useRef<HTMLInputElement>(null);
   const svgRef = useRef<HTMLInputElement>(null);
   const [menu, setMenu] = useState<MenuId>(null);

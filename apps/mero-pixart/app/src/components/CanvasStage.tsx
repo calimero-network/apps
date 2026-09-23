@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useShallow } from "zustand/react/shallow";
 import { useEditorStore, type ViewSettings } from "../store/editorStore";
 import { usePointerStore } from "../store/pointerStore";
 import { getLayerCanvas, getMaskCanvas, peekLayerCanvas, peekMaskCanvas } from "../store/layerCanvases";
-import { composite } from "../utils/compositor";
+import { composite, renderView } from "../utils/compositor";
 import { createCanvas, ctx2d, hexToRgb } from "../utils/raster";
 import { docToLayerLocal, normRect, selectionPathDoc, selectionPathLocal } from "../utils/geometry";
 import {
@@ -109,6 +110,8 @@ export default function CanvasStage({
   // Right-click context menu (cut/copy/paste) anchored at screen coords.
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
 
+  // Only what this component reads — a bare `useEditorStore()` re-renders on
+  // every store write (history pushes, panel toggles, …), not just these.
   const {
     doc, layers, zoom, panX, panY, renderTick,
     activeTool, transformMode, selectedLayerId, selectedLayerIds, editingMaskOf, editingTextId,
@@ -117,7 +120,20 @@ export default function CanvasStage({
     view, guides,
     setPan, setZoom, setPrimaryColor, bumpRender, canEdit, pushHistory,
     setSelection, setCloneSource, setClipboard, setEditingText, selectLayer,
-  } = useEditorStore();
+  } = useEditorStore(useShallow((s) => ({
+    doc: s.doc, layers: s.layers, zoom: s.zoom, panX: s.panX, panY: s.panY, renderTick: s.renderTick,
+    activeTool: s.activeTool, transformMode: s.transformMode, selectedLayerId: s.selectedLayerId,
+    selectedLayerIds: s.selectedLayerIds, editingMaskOf: s.editingMaskOf, editingTextId: s.editingTextId,
+    primaryColor: s.primaryColor, secondaryColor: s.secondaryColor, brushSize: s.brushSize,
+    brushHardness: s.brushHardness, brushOpacity: s.brushOpacity, brushType: s.brushType,
+    selection: s.selection, shapeKind: s.shapeKind, shapeStroke: s.shapeStroke,
+    gradientType: s.gradientType, gradientFill: s.gradientFill, cloneSource: s.cloneSource,
+    clipboard: s.clipboard, view: s.view, guides: s.guides,
+    setPan: s.setPan, setZoom: s.setZoom, setPrimaryColor: s.setPrimaryColor, bumpRender: s.bumpRender,
+    canEdit: s.canEdit, pushHistory: s.pushHistory, setSelection: s.setSelection,
+    setCloneSource: s.setCloneSource, setClipboard: s.setClipboard, setEditingText: s.setEditingText,
+    selectLayer: s.selectLayer,
+  })));
 
   // ── Flattened-document cache ─────────────────────────────────────────────
   //
@@ -129,9 +145,13 @@ export default function CanvasStage({
   // `renderTick` covers every imperative pixel mutation (that is what bumps it),
   // and the metadata string covers everything else the compositor reads. Zoom and
   // pan are deliberately absent.
+  //
+  // Underneath, `renderView`'s StackCompositor keeps the layers below and above the selected
+  // one pre-flattened, so painting or dragging that layer is three blits rather
+  // than one per layer (see the note on StackCompositor).
   const flatCache = useRef<{ sig: string; canvas: HTMLCanvasElement } | null>(null);
   const flattened = (ls: Layer[], d: DocumentInfo): HTMLCanvasElement => {
-    const sig = `${renderTick}|${d.width}x${d.height}|${d.background}|` + ls.map((l) =>
+    const sig = `${renderTick}|${d.width}x${d.height}|${d.background}|${selectedLayerId}|` + ls.map((l) =>
       [
         l.id, l.layerIndex, l.visible ? 1 : 0, l.parentId ?? "", l.opacity, l.blendMode,
         l.x, l.y, l.width, l.height, l.rotation, l.scaleX, l.scaleY,
@@ -141,7 +161,9 @@ export default function CanvasStage({
     ).join(";");
     const hit = flatCache.current;
     if (hit && hit.sig === sig) return hit.canvas;
-    const canvas = composite(ls, d.width, d.height, { background: d.background });
+    const canvas = renderView(ls, d.width, d.height, {
+      background: d.background, focusId: selectedLayerId,
+    });
     flatCache.current = { sig, canvas };
     return canvas;
   };
@@ -759,13 +781,23 @@ export default function CanvasStage({
     draw();
   };
 
+  // A trackpad fires wheel events far faster than the display refreshes, and each
+  // one was a store write → React render → canvas redraw. They are accumulated
+  // and applied once per frame instead; the result is the same as applying them
+  // one by one (zoom factors multiply, pan deltas add).
+  const wheel = useRef<{ zoom: number; dx: number; dy: number; raf: number }>({ zoom: 1, dx: 0, dy: 0, raf: 0 });
+  useEffect(() => () => cancelAnimationFrame(wheel.current.raf), []);
   const onWheel = (e: React.WheelEvent) => {
-    if (e.ctrlKey || e.metaKey) {
-      const factor = e.deltaY < 0 ? 1.1 : 0.9;
-      setZoom(zoom * factor);
-    } else {
-      setPan(panX - e.deltaX, panY - e.deltaY);
-    }
+    const w = wheel.current;
+    if (e.ctrlKey || e.metaKey) w.zoom *= e.deltaY < 0 ? 1.1 : 0.9;
+    else { w.dx += e.deltaX; w.dy += e.deltaY; }
+    if (w.raf) return;
+    w.raf = requestAnimationFrame(() => {
+      const s = useEditorStore.getState();
+      if (w.zoom !== 1) s.setZoom(s.zoom * w.zoom);
+      if (w.dx || w.dy) s.setPan(s.panX - w.dx, s.panY - w.dy);
+      wheel.current = { zoom: 1, dx: 0, dy: 0, raf: 0 };
+    });
   };
 
   // ensure mask canvas exists when entering mask edit

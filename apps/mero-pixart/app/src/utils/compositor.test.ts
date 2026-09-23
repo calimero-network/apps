@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { composite, invalidatePrepared, preparedCacheSize } from "./compositor";
+import { composite, invalidatePrepared, preparedCacheSize, StackCompositor } from "./compositor";
+import { dropLayerCanvas, getLayerCanvas, markLayerBlank } from "../store/layerCanvases";
 import { createCanvas } from "./raster";
-import { imageDraws } from "../test/canvasStub";
+import { drawCalls, imageDraws } from "../test/canvasStub";
 import { makeGroup, makeLayer } from "../test/factories";
 import type { Layer } from "../types";
 
@@ -339,5 +340,130 @@ describe("prepared-layer caching", () => {
     expect(preparedCacheSize()).toBe(1);
     invalidatePrepared();
     expect(preparedCacheSize()).toBe(0);
+  });
+});
+
+describe("StackCompositor (the on-screen view)", () => {
+  const opts = (focusId: string | null, background?: string) => ({
+    focusId, background,
+    sources: (id: string) => sources.get(id) ?? null,
+    masks: () => null,
+  });
+
+  function stack(n: number, patch: (i: number) => Partial<Layer> = () => ({})): Layer[] {
+    return Array.from({ length: n }, (_, i) => {
+      pixels(`l${i}`);
+      return makeLayer({ id: `l${i}`, layerIndex: i, ...patch(i) });
+    });
+  }
+
+  /** Every layer-source blit the split made, in paint order: below, focus, above. */
+  function splitSources(out: HTMLCanvasElement): HTMLCanvasElement[] {
+    const flatten = (c: HTMLCanvasElement): HTMLCanvasElement[] =>
+      imageDraws(c).flatMap((d) => {
+        const src = d.source as HTMLCanvasElement;
+        // A cached half is itself a canvas of draws — expand it.
+        return [...sources.values()].includes(src) ? [src] : flatten(src);
+      });
+    return flatten(out);
+  }
+
+  it("makes the same draws, in the same order, as the reference composite", () => {
+    const layers = stack(7);
+    const reference = run(layers).draws.map((d) => d.source);
+    for (const focus of [null, "l0", "l3", "l6"]) {
+      invalidatePrepared();
+      const out = new StackCompositor().render(layers, 100, 100, opts(focus));
+      expect(splitSources(out)).toEqual(reference);
+    }
+  });
+
+  it("paints the focus layer between two cached halves — three blits however tall the stack", () => {
+    const layers = stack(40);
+    const out = new StackCompositor().render(layers, 100, 100, opts("l20"));
+    const draws = imageDraws(out);
+    expect(draws).toHaveLength(3);
+    expect(draws[1].source).toBe(sources.get("l20"));
+  });
+
+  it("dragging the focus layer re-blits it without rebuilding either half", () => {
+    const layers = stack(10);
+    const sc = new StackCompositor();
+    const out = sc.render(layers, 100, 100, opts("l5"));
+    const [below, , above] = imageDraws(out).map((d) => d.source as HTMLCanvasElement);
+    const belowDraws = imageDraws(below).length;
+    const aboveDraws = imageDraws(above).length;
+    const before = imageDraws(out).length;
+
+    const moved = layers.map((l) => (l.id === "l5" ? { ...l, x: l.x + 30 } : l));
+    expect(sc.render(moved, 100, 100, opts("l5"))).toBe(out);
+    const frame = imageDraws(out).slice(before);
+    expect(frame.map((d) => d.source)).toEqual([below, sources.get("l5"), above]);
+    expect(imageDraws(below)).toHaveLength(belowDraws); // not redrawn
+    expect(imageDraws(above)).toHaveLength(aboveDraws);
+  });
+
+  it("an unchanged frame draws nothing at all", () => {
+    const layers = stack(10);
+    const sc = new StackCompositor();
+    const out = sc.render(layers, 100, 100, opts("l5"));
+    const before = drawCalls(out).length;
+    sc.render(layers, 100, 100, opts("l5"));
+    expect(drawCalls(out)).toHaveLength(before);
+  });
+
+  it("rebuilds the half a changed layer lives in, and only that half", () => {
+    const layers = stack(10);
+    const sc = new StackCompositor();
+    const [below, , above] = imageDraws(sc.render(layers, 100, 100, opts("l5")))
+      .map((d) => d.source as HTMLCanvasElement);
+    const aboveDraws = imageDraws(above).length;
+    const belowDraws = imageDraws(below).length;
+
+    const changed = layers.map((l) => (l.id === "l2" ? { ...l, opacity: 40 } : l));
+    sc.render(changed, 100, 100, opts("l5"));
+    expect(imageDraws(below).length).toBeGreaterThan(belowDraws); // redrawn
+    expect(imageDraws(above)).toHaveLength(aboveDraws); // untouched
+  });
+
+  it("does not pre-flatten the layers above when one of them blends — over is associative, multiply is not", () => {
+    const layers = stack(6, (i) => (i === 4 ? { blendMode: "multiply" } : {}));
+    const out = new StackCompositor().render(layers, 100, 100, opts("l2"));
+    const draws = imageDraws(out);
+    // below, focus, then l3 / l4 / l5 drawn one by one onto the result
+    expect(draws.map((d) => d.source).slice(1)).toEqual(
+      ["l2", "l3", "l4", "l5"].map((id) => sources.get(id)));
+    expect(draws[3].globalCompositeOperation).toBe("multiply");
+  });
+
+  it("with no selection, the whole stack is one cached canvas", () => {
+    const layers = stack(5);
+    const sc = new StackCompositor();
+    const a = sc.render(layers, 100, 100, opts(null, "#ffffff"));
+    const drawn = imageDraws(a).length;
+    const b = sc.render(layers, 100, 100, opts(null, "#ffffff"));
+    expect(b).toBe(a);
+    expect(imageDraws(b)).toHaveLength(drawn); // served from cache, nothing redrawn
+  });
+});
+
+describe("known-blank layers", () => {
+  it("are skipped until something writes to them", () => {
+    const layer = makeLayer({ id: "fresh" });
+    getLayerCanvas("fresh", 10, 10);
+    markLayerBlank("fresh");
+    expect(imageDraws(composite([layer], 100, 100))).toHaveLength(0);
+
+    getLayerCanvas("fresh", 10, 10); // a brush dab's write intent
+    expect(imageDraws(composite([layer], 100, 100))).toHaveLength(1);
+    dropLayerCanvas("fresh");
+  });
+
+  it("are not trusted when the caller supplies its own pixels", () => {
+    getLayerCanvas("shadow", 10, 10);
+    markLayerBlank("shadow");
+    pixels("shadow");
+    expect(run([makeLayer({ id: "shadow" })]).draws).toHaveLength(1);
+    dropLayerCanvas("shadow");
   });
 });
