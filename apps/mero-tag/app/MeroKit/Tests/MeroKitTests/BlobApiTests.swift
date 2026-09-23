@@ -44,6 +44,48 @@ final class BlobApiTests: XCTestCase {
         XCTAssertEqual(data, payload)
     }
 
+    /// rc.39 removed the blob DHT: `?context_id=` is the only way to find a
+    /// blob. `download` did not send one at all, so a blob written on any other
+    /// node could never be fetched — it read as "not found", not as a missing
+    /// parameter.
+    func testDownloadSendsContextQuery() async throws {
+        let cap = Captured()
+        MockURLProtocol.handler = { cap.record($0); return MockURLProtocol.ok($0, "") }
+        _ = try await api.download("deadbeef", contextId: "ctx-1")
+        XCTAssertEqual(cap.request?.url?.path, "/admin-api/blobs/deadbeef")
+        XCTAssertTrue(cap.request?.url?.query?.contains("context_id=ctx-1") ?? false)
+        XCTAssertEqual(cap.auth, "Bearer tok")
+    }
+
+    /// A local read-back is legitimate, so the parameter stays optional — but
+    /// then nothing is appended, rather than an empty one being sent.
+    func testDownloadWithoutContextHasNoQuery() async throws {
+        let cap = Captured()
+        MockURLProtocol.handler = { cap.record($0); return MockURLProtocol.ok($0, "") }
+        _ = try await api.download("deadbeef")
+        XCTAssertNil(cap.request?.url?.query)
+    }
+
+    /// A blob id is 64 hex characters since rc.27 removed base58. It is passed
+    /// through verbatim — re-encoding one is a write-then-read failure that
+    /// reads like three unrelated bugs.
+    func testBlobIdIsUsedVerbatim() async throws {
+        let cap = Captured()
+        let hexId = String(repeating: "ab", count: 32)
+        MockURLProtocol.handler = { cap.record($0); return MockURLProtocol.ok($0, "") }
+        _ = try await api.download(hexId, contextId: "ctx")
+        XCTAssertEqual(cap.request?.url?.path, "/admin-api/blobs/\(hexId)")
+    }
+
+    /// Under ~30 seconds the client aborts the peer sweep that rc.39 made the
+    /// only discovery path, and a blob that would have arrived reads as absent.
+    func testTransferTimeoutOutlastsThePeerSweep() async throws {
+        let cap = Captured()
+        MockURLProtocol.handler = { cap.record($0); return MockURLProtocol.ok($0, "") }
+        _ = try await api.download("b", contextId: "ctx")
+        XCTAssertGreaterThan(cap.request?.timeoutInterval ?? 0, 30)
+    }
+
     func testUploadMissingIdThrows() async {
         MockURLProtocol.handler = { MockURLProtocol.ok($0, #"{"data":{}}"#) }
         do { _ = try await api.upload(Data()); XCTFail("expected throw") }

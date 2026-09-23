@@ -118,6 +118,14 @@ public final class MeroService {
 
     // ── Live events ─────────────────────────────────────────────────────────
 
+    /// Reported when the event stream stops for a reason no retry can fix: the
+    /// session is dead, or the node silently declined to subscribe this member
+    /// to the context (it answers 200 and drops what the caller may not
+    /// observe, so the stream would otherwise just look quiet forever).
+    public func onStreamError(_ handler: (@Sendable (MeroError) -> Void)?) {
+        client.sse.onError = handler
+    }
+
     public func events() -> AsyncStream<TagEvent> {
         let raw = client.sse.events(contexts: [contextId])
         return AsyncStream { continuation in

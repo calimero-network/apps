@@ -46,7 +46,7 @@ nodes:
   # Must match `min-runtime-version`; see the note in logic-test.yml. It also
   # has to be a release whose HOST can call back into the wasm to merge a
   # custom-stamped collection entry, which is what property 1 rests on.
-  image: ghcr.io/calimero-network/merod:0.11.0-rc.38
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.41
   prefix: calimero-node
 
 steps:

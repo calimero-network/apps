@@ -52,12 +52,34 @@ final class RpcClientTests: XCTestCase {
         } catch { XCTFail("wrong error type: \(error)") }
     }
 
-    func testUnauthorizedFiresCallback() async {
+    /// Fires only when the refusal could not be recovered. Here there is no
+    /// refresh token to recover with, so it does.
+    func testUnrecoverableUnauthorizedFiresCallback() async {
         respond("{}", status: 401)
         let expectation = expectation(description: "onUnauthorized")
         client.onUnauthorized = { expectation.fulfill() }
         _ = try? await client.executeRaw(contextId: "ctx", method: "x", args: RpcClient.NoArgs())
         await fulfillment(of: [expectation], timeout: 1)
+    }
+
+    /// The other half, and the one that matters on a phone: an hourly expiry
+    /// that refreshes cleanly must not be reported. An app that wired this hook
+    /// to "log out" would otherwise log the user out once an hour for a
+    /// recovery that worked.
+    func testRecoveredExpiryDoesNotFireCallback() async throws {
+        store.refreshToken = "ref"
+        let fired = Counter()
+        client.onUnauthorized = { fired.bump("hit") }
+        MockURLProtocol.handler = { req in
+            if req.url?.path == "/auth/refresh" {
+                return MockURLProtocol.ok(req, #"{"data":{"access_token":"new","refresh_token":"r2"}}"#)
+            }
+            return req.value(forHTTPHeaderField: "Authorization") == "Bearer tok"
+                ? MockURLProtocol.authError(req, status: 401, reason: "token_expired")
+                : MockURLProtocol.ok(req, #"{"result":{"output":null}}"#)
+        }
+        try await client.executeVoid(contextId: "ctx", method: "x", args: RpcClient.NoArgs())
+        XCTAssertEqual(fired.count("hit"), 0)
     }
 
     func testSendsBearerAndExecuteEnvelope() async throws {

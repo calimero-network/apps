@@ -9,6 +9,9 @@ public final class TrackerStore: ObservableObject {
     @Published public private(set) var presence: [String: Presence] = [:]
     @Published public private(set) var space: SpaceInfo?
     @Published public var lastError: String?
+    /// False once the event stream has stopped for good. The UI can fall back
+    /// to pull-to-refresh instead of waiting for events that will never come.
+    @Published public private(set) var isLive = false
 
     private let service: MeroService
     private var eventTask: Task<Void, Never>?
@@ -45,6 +48,13 @@ public final class TrackerStore: ObservableObject {
     /// frequency `trackerUpdated` we refetch the single tracker.
     public func startListening() {
         eventTask?.cancel()
+        service.onStreamError { [weak self] error in
+            Task { @MainActor in
+                self?.isLive = false
+                self?.lastError = error.localizedDescription
+            }
+        }
+        isLive = true
         eventTask = Task { [weak self] in
             guard let self else { return }
             for await event in service.events() {
@@ -59,6 +69,8 @@ public final class TrackerStore: ObservableObject {
                     break
                 }
             }
+            // The stream only ends when it cannot be re-established.
+            self.isLive = false
         }
     }
 
@@ -89,5 +101,7 @@ public final class TrackerStore: ObservableObject {
     public func stop() {
         eventTask?.cancel()
         eventTask = nil
+        service.onStreamError(nil)
+        isLive = false
     }
 }

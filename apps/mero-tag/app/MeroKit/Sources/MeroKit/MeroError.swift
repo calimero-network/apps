@@ -10,6 +10,16 @@ public enum MeroError: Error, LocalizedError, Equatable {
     case decoding(String)
     case transport(String)
     case emptyResult
+    /// The session is dead and no retry can revive it — see `AuthFailure`.
+    /// Raised INSTEAD of `.http(401/403, …)` so a caller cannot mistake a
+    /// revoked credential for an ordinary forbidden response and keep retrying.
+    case authRevoked(AuthFailure)
+    /// The node accepted the subscribe call but silently dropped contexts the
+    /// caller may not observe. Core answers `200 {"status":"subscribed",
+    /// "contexts":[…]}` listing only what it actually subscribed, so a stream
+    /// that will never carry an event is otherwise indistinguishable from a
+    /// quiet one.
+    case notSubscribed(contexts: [String])
 
     public var errorDescription: String? {
         switch self {
@@ -19,6 +29,10 @@ public enum MeroError: Error, LocalizedError, Equatable {
         case .decoding(let m):        return "Decoding failed: \(m)"
         case .transport(let m):       return "Transport error: \(m)"
         case .emptyResult:            return "RPC returned an empty result."
+        case .authRevoked(let r):     return "\(r.userFacingReason) Please sign in again."
+        case .notSubscribed(let c):
+            return "The node did not subscribe this session to \(c.joined(separator: ", ")) — "
+                 + "no event from it will ever arrive."
         }
     }
 

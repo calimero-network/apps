@@ -131,10 +131,15 @@ green "Node started (pid $!  logs: /tmp/merotag-dev-node.log)"
 wait_for_node
 
 step "Authenticating"
+# Same grant set the app asks for (`AuthApi.permissions`) — `context:subscribe`
+# included, since core maps /sse, /sse/subscription and /ws to it. A
+# `user_password` login as the node admin is minted `admin` regardless (the
+# handler mints from the ROOT KEY's grants and ignores this field), so this is
+# the two copies agreeing rather than a behaviour change.
 AUTH_RES=$(curl -sf -X POST "${NODE_URL}/auth/token" \
   -H "Content-Type: application/json" \
   -d "$(jq -n --arg u "$ADMIN_USER" --arg p "$ADMIN_PASS" \
-        '{auth_method:"user_password",public_key:$u,client_name:"dev-node.sh",timestamp:0,permissions:[],provider_data:{username:$u,password:$p}}')" )
+        '{auth_method:"user_password",public_key:$u,client_name:"dev-node.sh",timestamp:0,permissions:["context:execute","context:list","context:subscribe","application:list","namespace","group","blob","context:alias"],provider_data:{username:$u,password:$p}}')" )
 ACCESS_TOKEN=$(echo "$AUTH_RES" | jq -r '.data.access_token // empty')
 [ -n "$ACCESS_TOKEN" ] || { red "Auth failed"; echo "$AUTH_RES" >&2; exit 1; }
 green "Authenticated as '${ADMIN_USER}'"

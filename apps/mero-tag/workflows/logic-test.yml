@@ -23,7 +23,7 @@ nodes:
   # host does not necessarily have is the other half: the host-initiated
   # custom-entry merge callback that cross-node divergence needs. See
   # convergence-test.yml, which depends on it.
-  image: ghcr.io/calimero-network/merod:0.11.0-rc.38
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.41
   prefix: calimero-node
 
 # The bump is also why the install step below names a `.mpk` and not

@@ -5,14 +5,18 @@ import Foundation
 /// to `{nodeUrl}/jsonrpc` with a Bearer token, then normalises the output.
 public final class RpcClient {
     private let store: TokenStore
-    private let session: URLSession
+    private let transport: AuthorizedTransport
 
-    /// Called when a non-auth request returns 401 (token expired/revoked).
+    /// Called when a request's credential was refused and could NOT be
+    /// recovered. A routine hourly expiry refreshes silently and never reaches
+    /// this; only a session that is actually gone does.
     public var onUnauthorized: (() -> Void)?
 
-    public init(store: TokenStore, session: URLSession = .shared) {
+    public init(store: TokenStore, session: URLSession = .shared, authority: SessionAuthority? = nil) {
         self.store = store
-        self.session = session
+        self.transport = AuthorizedTransport(
+            session: session,
+            authority: authority ?? SessionAuthority(store: store, session: session))
     }
 
     private struct Request<A: Encodable>: Encodable {
@@ -66,29 +70,19 @@ public final class RpcClient {
             throw MeroError.notConfigured
         }
 
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        if let token = store.accessToken {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        }
-        let body = Request(params: .init(contextId: contextId, method: method, argsJson: args))
-        request.httpBody = try JSONEncoder().encode(body)
+        let body = try JSONEncoder().encode(
+            Request(params: .init(contextId: contextId, method: method, argsJson: args)))
 
-        let (data, response): (Data, URLResponse)
-        do {
-            (data, response) = try await session.data(for: request)
-        } catch {
-            throw MeroError.transport(error.localizedDescription)
-        }
-
-        if let http = response as? HTTPURLResponse {
-            if http.statusCode == 401 { onUnauthorized?() }
-            guard (200..<300).contains(http.statusCode) else {
-                throw MeroError.http(status: http.statusCode,
-                                     body: String(data: data, encoding: .utf8) ?? "")
-            }
-        }
+        let notify = onUnauthorized
+        let (data, http) = try await transport.send(build: { token in
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            if let token { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
+            request.httpBody = body
+            return request
+        }, onUnauthorized: notify)
+        try ensureSuccess(http, data)
 
         let top = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
         if let error = top?["error"] {

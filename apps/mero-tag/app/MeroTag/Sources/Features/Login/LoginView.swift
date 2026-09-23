@@ -19,6 +19,17 @@ struct LoginCard: View {
                 MeroField(icon: "lock.fill", placeholder: "Password", text: $password, secure: true)
                 MeroField(icon: "number", placeholder: "Context ID", text: $contextId)
 
+                // Why the app is back here. A session the node revoked or let
+                // expire past recovery drops the user out with no explanation
+                // otherwise, which reads as the app having crashed.
+                if let notice = app.sessionNotice, app.loginError == nil {
+                    Label(notice, systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .transition(.opacity)
+                }
+
                 if let error = app.loginError {
                     Text(error)
                         .font(.caption)
