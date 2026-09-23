@@ -263,19 +263,96 @@ public final class MeroARService {
     }
 
     // ── World map (ARWorldMap relocalization) ─────────────────────────────────
+
+    /// How long a single blob transfer may take.
+    ///
+    /// ⚠️ Not a nicety, and not the SDK default. `MeroConfig.timeout` is **10
+    /// seconds** (it mirrors mero-js's `timeoutMs: 10000`), which is the right
+    /// number for an admin call and the wrong one for a blob: since core#3823
+    /// (0.11.0-rc.39) removed the blob DHT, a GET for a blob this node does not
+    /// hold makes the node *probe its peers* for it, and that sweep regularly
+    /// runs past 30s on a cold context. A client that gives up at 10s aborts the
+    /// sweep and reports "not found" for a blob that was about to arrive — which
+    /// reads as a corrupt world map rather than as a timeout. An `ARWorldMap`
+    /// for a scanned room is also megabytes, so the upload wants the same headroom.
+    private static let blobTimeout: TimeInterval = 120
+
     /// Upload a serialized `ARWorldMap`, then point the room at the new blob.
-    /// `contextId` on the upload makes the node announce the blob so peers can
-    /// fetch it before the contract call even lands.
+    ///
+    /// `context_id` is mandatory in practice. rc.39 made it the ONLY way a blob
+    /// is discoverable: an upload without it is announced to nobody, so every
+    /// other device in the room gets a 404 forever. (The contract's
+    /// `set_world_map` also calls `blob_announce_to_context`, but that announces
+    /// a blob the node must already be able to find.)
+    ///
+    /// Sent by hand rather than through `admin.uploadBlob` only to carry
+    /// ``blobTimeout`` — the wire shape is identical (raw octet-stream body,
+    /// `context_id` in the query string, `{ data: { blob_id, size } }` back).
     @discardableResult
     public func publishWorldMap(_ data: Data) async throws -> String {
-        let info = try await mero.admin.uploadBlob(
-            UploadBlobRequest(data: data, contextId: contextId))
-        try await callVoid("set_world_map", ["blob_id": .string(info.blobId)])
-        return info.blobId
+        let (response, _) = try await mero.http.sendRaw(
+            HttpRequest(
+                path: blobUploadPath,
+                method: .put,
+                body: .data(data, contentType: "application/octet-stream"),
+                timeout: Self.blobTimeout))
+        let envelope = try MeroJSON.decode(ApiResponse<BlobRef>.self, from: response)
+        guard let blobId = envelope.data?.blobId, !blobId.isEmpty else {
+            throw MeroError.decoding("the node accepted the world map but returned no blob id")
+        }
+        try await callVoid("set_world_map", ["blob_id": .string(blobId)])
+        return blobId
     }
 
+    /// Fetch the room's shared world map.
+    ///
+    /// ⚠️ `context_id` again, for the same rc.39 reason — and this is the side
+    /// that actually breaks without it. The *publisher's* node holds the bytes
+    /// locally, so it downloads fine either way; every other device has to have
+    /// the node go and find them, and with no context id there is nowhere to
+    /// look now that the DHT is gone. `admin.getBlob(_:)` in the pinned SDK
+    /// sends no query string at all, so the request is built here.
+    ///
+    /// A blob id is **hex** (core#3691, 0.11.0-rc.27 removed base58). It is used
+    /// verbatim — exactly as the contract stored it — and never re-encoded.
     public func downloadWorldMap(blobId: String) async throws -> Data {
-        try await mero.admin.getBlob(blobId)
+        let (data, _) = try await mero.http.sendRaw(
+            HttpRequest(path: blobDownloadPath(blobId), timeout: Self.blobTimeout))
+        return data
+    }
+
+    /// `PUT` path for a world-map upload into this room.
+    ///
+    /// Split out so a test can assert the context id is on it: the whole rc.39
+    /// failure mode is a request that is perfectly well-formed and reaches
+    /// nobody, which nothing but reading the URL will show.
+    var blobUploadPath: String {
+        "/admin-api/blobs?context_id=\(Self.query(contextId))"
+    }
+
+    /// `GET` path for a world map belonging to this room.
+    func blobDownloadPath(_ blobId: String) -> String {
+        "/admin-api/blobs/\(Self.query(blobId))?context_id=\(Self.query(contextId))"
+    }
+
+    /// Percent-encode an id for a URL. Both ids are hex today and need no
+    /// escaping; this is here so a future id spelling cannot silently produce a
+    /// malformed path.
+    static func query(_ value: String) -> String {
+        value.addingPercentEncoding(
+            withAllowedCharacters: CharacterSet(
+                charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~"
+            )) ?? value
+    }
+
+    /// `{ blob_id, size }` — core spells blob DTOs snake_case.
+    struct BlobRef: Codable, Sendable {
+        let blobId: String
+        let size: Int?
+        enum CodingKeys: String, CodingKey {
+            case blobId = "blob_id"
+            case size
+        }
     }
 
     // ── Live events ─────────────────────────────────────────────────────────────
