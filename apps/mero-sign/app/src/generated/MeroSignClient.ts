@@ -489,7 +489,7 @@ export class MeroSignClient {
    *
    * @intent mutating
    */
-  public async signDocument(params: { document_id: string; pdf_blob_id_str: string; file_size: number; new_hash: string }): Promise<void> {
+  public async signDocument(params: { document_id: string; base_hash: string; pdf_blob_id_str: string; file_size: number; new_hash: string }): Promise<void> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'sign_document', argsJson: params });
     return response as void;
   }

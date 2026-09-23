@@ -507,9 +507,13 @@ const PDFViewer: React.FC<PDFViewerProps> = ({
         localStorage.getItem('agreementContextUserID') || undefined;
 
       // Use DocumentService for signing
+      // `documentHash` is what this viewer opened. The contract refuses the
+      // write if the document has moved on since — somebody else signed while
+      // this signature was being placed, and saving would erase their mark.
       const response = await documentService.signDocument(
         contextId,
         documentId,
+        documentHash,
         signedFile,
         agreementContextID,
         agreementContextUserID,

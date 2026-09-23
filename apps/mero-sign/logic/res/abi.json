@@ -1141,6 +1141,12 @@
           }
         },
         {
+          "name": "base_hash",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
           "name": "pdf_blob_id_str",
           "type": {
             "kind": "string"

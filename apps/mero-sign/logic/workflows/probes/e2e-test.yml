@@ -431,6 +431,9 @@ steps:
     method: sign_document
     args:
       document_id: "{{document_id}}"
+      # The version this signer opened. Signing replaces the whole PDF, so the
+      # contract refuses a copy built from a stale one.
+      base_hash: "abc123def456"
       pdf_blob_id_str: "{{signed_blob_id}}"
       file_size: "{{signed_blob_size}}"
       new_hash: "signed_hash_node2_abc123"
@@ -475,6 +478,7 @@ steps:
     method: sign_document
     args:
       document_id: "{{document_id}}"
+      base_hash: "signed_hash_node2_abc123"
       pdf_blob_id_str: "{{signed_blob_id}}"
       file_size: "{{signed_blob_size}}"
       new_hash: "should_fail_hash"
@@ -559,6 +563,7 @@ steps:
     method: sign_document
     args:
       document_id: "{{document_id}}"
+      base_hash: "signed_hash_node2_abc123"
       pdf_blob_id_str: "{{signed_blob_id_1}}"
       file_size: "{{signed_blob_size_1}}"
       new_hash: "signed_hash_node1_def456"

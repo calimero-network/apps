@@ -606,6 +606,7 @@ export class ClientApiDataSource implements ClientApi {
   async signDocument(
     contextId: string,
     documentId: string,
+    baseHash: string,
     pdfBlobIdStr: string,
     fileSize: number,
     newHash: string,
@@ -618,6 +619,7 @@ export class ClientApiDataSource implements ClientApi {
       (c) =>
         c.signDocument({
           document_id: documentId,
+          base_hash: baseHash,
           pdf_blob_id_str: pdfBlobIdStr,
           file_size: fileSize,
           new_hash: newHash,

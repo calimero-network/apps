@@ -81,6 +81,31 @@ export function promotionsFor(current: PermissionLevel): PermissionLevel[] {
 }
 
 /** Why a demotion is not offered, in words a user can act on. */
+/**
+ * The levels an invitation may seat somebody at.
+ *
+ * `Admin` is deliberately absent: it is a promotion you make from the People
+ * tab once they are in, not something to hand out in the same breath as an
+ * invitation.
+ *
+ * ⚠️ The choice is effectively PERMANENT in the raising direction only — a
+ * level can be promoted later but never lowered, because permissions merge by
+ * taking the higher rank and a demotion would be discarded on every other node
+ * (see `DEMOTION_UNAVAILABLE`). Inviting somebody as a signer cannot be undone
+ * except by removing them.
+ */
+export const INVITABLE_LEVELS: PermissionLevel[] = [
+  PermissionLevel.Sign,
+  PermissionLevel.Read,
+];
+
+/** What each invitable level is called where a sender picks one. */
+export const INVITE_LEVEL_LABELS: Record<PermissionLevel, string> = {
+  [PermissionLevel.Read]: 'Viewer — can read it, never asked to sign',
+  [PermissionLevel.Sign]: 'Signer — their signature is required',
+  [PermissionLevel.Admin]: 'Admin',
+};
+
 export const DEMOTION_UNAVAILABLE =
   'Permissions can be raised but not lowered: they merge by taking the higher level, ' +
   'so a downgrade would apply on your node and nowhere else. Remove the person instead — ' +
