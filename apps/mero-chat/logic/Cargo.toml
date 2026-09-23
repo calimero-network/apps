@@ -18,20 +18,20 @@ sha2 = { version = "0.10", default-features = false }
 # Pinned to a real release TAG — this does NOT track master, whatever the old
 # comment here said. Cargo.lock records which commit the tag resolved to, so a
 # bump is a deliberate `cargo update` reviewed as its own diff.
-calimero-sdk = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.41" }
-calimero-storage = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.41" }
-calimero-storage-macros = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.41" }
+calimero-sdk = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.42" }
+calimero-storage = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.42" }
+calimero-storage-macros = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.42" }
 thiserror = "1.0.56"
 
 # ABI description is a host-build concern: the manifest is extracted by running
 # the app natively. Linking it into the wasm only bloats the module.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-calimero-wasm-abi = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.41" }
+calimero-wasm-abi = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.42" }
 
 [dev-dependencies]
 # Enables register_crdt_merge + the native mock host so TestHost can drive the
 # AccessControl writer-set state under `cargo test`.
-calimero-storage = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.41", features = ["testing"] }
+calimero-storage = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.42", features = ["testing"] }
 
 [profile.app-release]
 inherits = "release"
@@ -78,4 +78,4 @@ slug        = "com.calimero.chat"
 #          how, or it does not compile (see `src/lib.rs`)
 #   rc.38  37 admin request bodies closed: an extra key is now a 400/422
 #   rc.39  the blob DHT is gone; `?context_id=` is the only discovery path
-min-runtime-version = "0.11.0-rc.41"
+min-runtime-version = "0.11.0-rc.42"

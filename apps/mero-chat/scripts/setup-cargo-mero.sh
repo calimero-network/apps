@@ -6,14 +6,14 @@ set -euo pipefail
 # in logic/Cargo.toml. (0.11.0-rc.20 was the first release carrying the
 # bundle-manifest capabilities the metadata table uses: icon, slug, versioned
 # output path.)
-RELEASE=0.11.0-rc.41
+RELEASE=0.11.0-rc.42
 
 # Per-asset SHA-256, so a re-uploaded asset under the same tag cannot swap the
 # binary silently. Refresh these together with RELEASE:
 #   shasum -a 256 cargo-mero_<target>.tar.gz
-CHECKSUM_aarch64_apple_darwin=b46184ed70b4ebf06d486e35b3240123dc7bef75b4f584546d09a66536621e02
-CHECKSUM_aarch64_unknown_linux_gnu=5b95dda7422948d4aac185f39c3a773a8585cc4d9b2635b10762724f013cfea3
-CHECKSUM_x86_64_unknown_linux_gnu=a93ac0ab1b480fc7a7454e0d0a7d5d1c7395e419cc05b97cf790b3c065f487f1
+CHECKSUM_aarch64_apple_darwin=4dd2a21a04ae1cc5f9c8a03ad8f5e282d40b65c523b968ffcc89a7fe03434977
+CHECKSUM_aarch64_unknown_linux_gnu=9fc3bd23baa73575687261297f3bdb2756a17477ee28c1e3993ab6b442926710
+CHECKSUM_x86_64_unknown_linux_gnu=f732e49d0ddc94d8b8eccdc4c5b93ded614e8be1631ba232f06f08dc9f4630ca
 
 # The CI action asks for this rather than grepping the line above, so
 # reformatting it cannot silently break the action.
