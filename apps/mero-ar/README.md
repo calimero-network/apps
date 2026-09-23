@@ -39,7 +39,7 @@ make logic-bundle # rebuild just the .mpk (raw .wasm is not installable since rc
 Implementation plan & task tracker: **[../merointerier.md](../merointerier.md)**.
 Run `make help` for all targets.
 
-## Identity & roles (core 0.11.0-rc.32)
+## Identity & roles (core 0.11.0-rc.41)
 
 Nothing in the contract trusts a client-supplied id. A member **is** an account:
 every write is attributed to `env::account_id()`, and so is every ownership
@@ -74,9 +74,33 @@ JSON-RPC `execute` payload has no such field to read, so passing one only looked
 like it was steering something. Who a write is attributed to is decided by which
 session signed it, not by an argument.
 
+## The world map is a blob, and a blob needs a context (core 0.11.0-rc.39)
+
+Relocalization is the one thing here that does not travel on the DAG: the room's
+`ARWorldMap` is uploaded as a blob and the contract stores only its id.
+
+core#3823 (0.11.0-rc.39) removed the blob DHT. `?context_id=` is now the **only**
+index a node has — an upload without one is announced to nobody, and a download
+without one has nowhere to look. Neither fails loudly: the request is well
+formed, the node answers, and the bytes simply never arrive. It is also
+invisible from the device that published the map, which holds the bytes locally
+and relocalizes perfectly; it only breaks for everyone else in the room, which
+is the whole point of a *shared* world map. So both calls in `MeroARService`
+carry the room's context id, and `BlobRequestTests` asserts the URLs still do.
+
+Two more things the same code depends on:
+
+- **A blob id is hex** (core#3691, rc.27 removed base58). It is stored on the
+  contract exactly as the node minted it and is never re-encoded.
+- **The transfer timeout is not the SDK default.** `MeroConfig.timeout` is 10s,
+  which is right for an admin call. A blob this node does not hold makes it probe
+  its peers, and that sweep routinely runs past 30s on a cold context — giving up
+  at 10s aborts a fetch that was about to succeed and reports it as "not found".
+  Blob requests use 120s.
+
 ## Status
 
-- ✅ WASM scene-graph contract (objects + transforms, presence, comments, locking, versioned LWW, world-map blob) — core rc.32, builds + unit-tested
+- ✅ WASM scene-graph contract (objects + transforms, presence, comments, locking, versioned LWW, world-map blob) — core rc.41, builds + unit-tested
 - ✅ Account identity model: account-attributed writes, account-keyed roles, owner-gated room name, admin lock-breaking — covered by both merobox suites
 - ✅ App on the shared swift-sdk: login, Keychain session resume, live SSE, roles UI
 - ✅ ARKit/RealityKit room view: place/sync objects, camera-pose presence, publish + relocalize into a shared `ARWorldMap`

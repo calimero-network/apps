@@ -29,10 +29,28 @@ options:
 #
 # Also picked up here: #25's `expectedSlug:` on the invite parser (RoomInvite
 # now passes it instead of hand-rolling the check) and #26/#27's CI fixes.
+#
+# Moved to swift-sdk master (#34/#36/#37/#38) alongside the rc.41 pin. The one
+# that matters to a phone is **#36**: `RefreshGate` deduped only refreshes that
+# overlapped in time, so a 401 that was issued before a rotation but landed
+# after it found the gate free and started a *second* rotation. Refresh tokens
+# are single-use (core#3083), so the second rotation invalidates the bundle the
+# first one just issued — presenting it is treated as theft and core revokes the
+# whole family. That is one of the two ways an app ends up in a permanent 403
+# loop, and on iOS it is the likely one: an app suspended and resumed fires
+# several requests at once against a token that expired while it was in the
+# background. The gate now remembers the newest token it produced and a stale
+# 401 simply retries.
+#
+# ⚠️ Deliberately NOT moved to swift-sdk#40 (`feat/core-rc38`, unmerged). Its
+# three fatal bodies are `createNamespace`, `createGroup` and
+# `createGroupInNamespace` — the provisioning calls. This app calls none of
+# them; it only joins and reads (see MeroARService). So nothing here blocks on
+# that PR. Pick it up after it merges, not before.
 packages:
   MeroKit:
     url: https://github.com/calimero-network/swift-sdk
-    revision: e63250e22c4f630f41129be1ca47a6b42f239243
+    revision: 39e6ce5dde8dce01821a7dd6e5be4b074584c096
 
 targets:
   MeroAR:

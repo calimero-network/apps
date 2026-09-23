@@ -116,7 +116,7 @@ dependencies = [
  "proc-macro-crate 3.5.0",
  "proc-macro2",
  "quote",
- "syn 3.0.5",
+ "syn 3.0.6",
 ]
 
 [[package]]
@@ -165,7 +165,7 @@ checksum = "fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04"
 [[package]]
 name = "calimero-account"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?tag=0.11.0-rc.38#7f3d953b98e2ab691c0968ff91e0168fa8e79a58"
+source = "git+https://github.com/calimero-network/core?tag=0.11.0-rc.41#88e323b351d660d3103770dbc8ba094a42bc3c69"
 dependencies = [
  "borsh 1.8.1",
  "calimero-primitives",
@@ -176,7 +176,7 @@ dependencies = [
 [[package]]
 name = "calimero-prelude"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?tag=0.11.0-rc.38#7f3d953b98e2ab691c0968ff91e0168fa8e79a58"
+source = "git+https://github.com/calimero-network/core?tag=0.11.0-rc.41#88e323b351d660d3103770dbc8ba094a42bc3c69"
 dependencies = [
  "borsh 1.8.1",
  "calimero-primitives",
@@ -187,7 +187,7 @@ dependencies = [
 [[package]]
 name = "calimero-primitives"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?tag=0.11.0-rc.38#7f3d953b98e2ab691c0968ff91e0168fa8e79a58"
+source = "git+https://github.com/calimero-network/core?tag=0.11.0-rc.41#88e323b351d660d3103770dbc8ba094a42bc3c69"
 dependencies = [
  "borsh 1.8.1",
  "calimero-wasm-abi",
@@ -206,7 +206,7 @@ dependencies = [
 [[package]]
 name = "calimero-sdk"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?tag=0.11.0-rc.38#7f3d953b98e2ab691c0968ff91e0168fa8e79a58"
+source = "git+https://github.com/calimero-network/core?tag=0.11.0-rc.41#88e323b351d660d3103770dbc8ba094a42bc3c69"
 dependencies = [
  "borsh 1.8.1",
  "calimero-account",
@@ -223,20 +223,20 @@ dependencies = [
 [[package]]
 name = "calimero-sdk-macros"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?tag=0.11.0-rc.38#7f3d953b98e2ab691c0968ff91e0168fa8e79a58"
+source = "git+https://github.com/calimero-network/core?tag=0.11.0-rc.41#88e323b351d660d3103770dbc8ba094a42bc3c69"
 dependencies = [
  "prettyplease",
  "proc-macro2",
  "quote",
  "sha2 0.11.0",
- "syn 3.0.5",
+ "syn 3.0.6",
  "thiserror 2.0.20",
 ]
 
 [[package]]
 name = "calimero-storage"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?tag=0.11.0-rc.38#7f3d953b98e2ab691c0968ff91e0168fa8e79a58"
+source = "git+https://github.com/calimero-network/core?tag=0.11.0-rc.41#88e323b351d660d3103770dbc8ba094a42bc3c69"
 dependencies = [
  "borsh 1.8.1",
  "calimero-account",
@@ -260,16 +260,16 @@ dependencies = [
 [[package]]
 name = "calimero-storage-macros"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?tag=0.11.0-rc.38#7f3d953b98e2ab691c0968ff91e0168fa8e79a58"
+source = "git+https://github.com/calimero-network/core?tag=0.11.0-rc.41#88e323b351d660d3103770dbc8ba094a42bc3c69"
 dependencies = [
  "quote",
- "syn 3.0.5",
+ "syn 3.0.6",
 ]
 
 [[package]]
 name = "calimero-sys"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?tag=0.11.0-rc.38#7f3d953b98e2ab691c0968ff91e0168fa8e79a58"
+source = "git+https://github.com/calimero-network/core?tag=0.11.0-rc.41#88e323b351d660d3103770dbc8ba094a42bc3c69"
 dependencies = [
  "cfg-if",
 ]
@@ -277,7 +277,7 @@ dependencies = [
 [[package]]
 name = "calimero-wasm-abi"
 version = "0.0.0"
-source = "git+https://github.com/calimero-network/core?tag=0.11.0-rc.38#7f3d953b98e2ab691c0968ff91e0168fa8e79a58"
+source = "git+https://github.com/calimero-network/core?tag=0.11.0-rc.41#88e323b351d660d3103770dbc8ba094a42bc3c69"
 dependencies = [
  "indexmap",
  "serde",
@@ -288,9 +288,9 @@ dependencies = [
 
 [[package]]
 name = "cfg-if"
-version = "1.0.4"
+version = "1.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801"
+checksum = "4e7648175b45a9a48536d676f68d918270699102aa8dab5496df06904c914600"
 
 [[package]]
 name = "cfg_aliases"
@@ -408,7 +408,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c54e03a951783e8b327515db3f2a2fd0e3bed362a96b066f341ce66ed49b4ead"
 dependencies = [
  "data-encoding",
- "syn 3.0.5",
+ "syn 3.0.6",
 ]
 
 [[package]]
@@ -441,7 +441,7 @@ checksum = "c6232dd377dcc64799954cbd3a9bb882e9cdc1308ccd87b1c098f1fb2eaf82a8"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 3.0.5",
+ "syn 3.0.6",
 ]
 
 [[package]]
@@ -848,7 +848,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2bfe0f4c752e450fc2faf62654f1c134747922825d5b04ca717b8874f41a40c0"
 dependencies = [
  "proc-macro2",
- "syn 3.0.5",
+ "syn 3.0.6",
 ]
 
 [[package]]
@@ -952,7 +952,7 @@ checksum = "e7a5d71263a5a7d47b41f6b3f06ba276f10cc18b0931f1799f710578e2309348"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 3.0.5",
+ "syn 3.0.6",
 ]
 
 [[package]]
@@ -1044,9 +1044,9 @@ dependencies = [
 
 [[package]]
 name = "syn"
-version = "3.0.5"
+version = "3.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "12df2e0110f65b775f769bb17ef989067a1d931b2eb822bd4346631eeada89f9"
+checksum = "8593e8e72159ed2257d083c7a454a85cbf854f37a0966d8d483aff8c8a3ebcee"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1061,7 +1061,7 @@ checksum = "901704edd0dfe137f1987838ee4f259e4e063c31371bdb423f7ae38ec6f77f02"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 3.0.5",
+ "syn 3.0.6",
 ]
 
 [[package]]
@@ -1101,7 +1101,7 @@ checksum = "bc04cd3e1236dd4a98afca4569f2deb3f120e5422a4023be2cb683f8486292af"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 3.0.5",
+ "syn 3.0.6",
 ]
 
 [[package]]
@@ -1198,9 +1198,9 @@ checksum = "b6f5e870be6c3b371b77fe0ee0bafb859fa4964b4404c27de1d380043c4dda20"
 
 [[package]]
 name = "unicode-ident"
-version = "1.0.24"
+version = "1.0.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e6e4313cd5fcd3dad5cafa179702e2b244f760991f45397d14d4ebf38247da75"
+checksum = "d245f478577f809a851594d02313b640fb437e0bb33866753cff937863096954"
 
 [[package]]
 name = "unsigned-varint"
@@ -1235,9 +1235,9 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "wasmparser"
-version = "0.258.0"
+version = "0.259.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d9a61719f93a87b16d325921e251800c4833f8fab50fa21c7de73aed50086313"
+checksum = "0f7c12eac7bb587801590f6a67ff0bc84d0748513864b71108e4b311cc3df694"
 dependencies = [
  "bitflags",
  "hashbrown 0.17.1",
@@ -1280,7 +1280,7 @@ checksum = "33811428bee40dbceb6d545e95754741d17a6aef9a4849f0fd62e2ba4f412a78"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 3.0.5",
+ "syn 3.0.6",
  "synstructure",
 ]
 
@@ -1321,7 +1321,7 @@ checksum = "f75b4683f6c7f45248d4d64056a24298c6281e0993356d7d1b4a1a962ef10d4a"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 3.0.5",
+ "syn 3.0.6",
  "synstructure",
 ]
 
@@ -1375,7 +1375,7 @@ checksum = "34df6fc39dbd26ddc9c10e6a2984476e13acce22e64e4487636ef494369225da"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 3.0.5",
+ "syn 3.0.6",
 ]
 
 [[package]]
