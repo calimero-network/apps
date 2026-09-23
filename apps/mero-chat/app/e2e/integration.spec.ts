@@ -187,14 +187,25 @@ test.describe("Cross-node message sync", () => {
       return;
     }
 
-    // Send a message via node 1's RPC
+    // Send a message via node 1's RPC.
+    //
+    // No `sender_username`. The contract's `send_message` never had that
+    // parameter, and argument deserialization is exact — an extra key is a
+    // guest panic, not an ignored field:
+    //
+    //   send_message: failed to deserialize arguments ... unknown field
+    //   `sender_username`, expected one of `message`, `mentions`,
+    //   `mentions_usernames`, `parent_message`, `timestamp`, `files`, `images`
+    //
+    // The sender is derived from `env::executor_id()` inside the contract, so
+    // naming one here could never have set it. The merobox scenarios call this
+    // method with the correct key set, which is why they pass.
     await client1.rpcCall(env.contextId, ids1[0], "send_message", {
       message: marker,
       mentions: [],
       mentions_usernames: [],
       parent_message: null,
       timestamp: Math.floor(ts / 1000),
-      sender_username: "Alice",
       files: null,
       images: null,
     });
