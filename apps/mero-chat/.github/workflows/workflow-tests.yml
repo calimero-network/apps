@@ -53,11 +53,15 @@ jobs:
       - name: Install cargo-mero
         uses: ./.github/actions/setup-cargo-mero
 
-      # Builds res/curb.wasm (ABI embedded, wasm-opt'd) AND the .mpk, so the
-      # nodes below run the same artifact a release publishes.
-      - name: Build curb WASM and bundle
+      # Builds res/curb.wasm (ABI embedded, wasm-opt'd) AND the signed .mpk, then
+      # stages the .mpk at the fixed `logic/dist/curb.mpk` the scenarios install
+      # from. `cargo mero bundle` alone is NOT enough any more: it names the file
+      # after `[package] version`, and since rc.41 the node refuses a raw
+      # `res/curb.wasm` outright ("not a signed application bundle"), which
+      # merobox reports as a bare 500 on the install step. See logic/stage-bundle.sh.
+      - name: Build curb WASM and stage the bundle
         working-directory: logic
-        run: cargo mero bundle --dev
+        run: ./stage-bundle.sh
 
       - name: Install merobox
       # ⚠️ calimero-client-py MUST be pinned, not just merobox. It is the layer
@@ -67,14 +71,21 @@ jobs:
       #
       # That is not hypothetical here. Leaving it unpinned resolved to 0.6.33,
       # which expects rc.25's renamed `namespaceId`, against the rc.24 node these
-      # scenarios start:
+      # scenarios started:
       #
       #     Join namespace failed: Client error: missing field `namespaceId`
       #
-      # 0.6.29 is the version the rest of the fleet ran green against rc.24
-      # nodes. Moving the node to rc.25 means moving BOTH pins and migrating the
-      # scenario schema (see logic/Cargo.toml's min-runtime-version note).
-        run: pip install merobox==0.6.66 calimero-client-py==0.6.33 && merobox --version
+      # 0.6.66/0.6.33 is the pair that ran green against rc.26 nodes. The rc.41
+      # node below needs 0.6.75/0.7.0, which is the pair mero-ar and mero-tag run
+      # against rc.38+ — 0.6.33 predates client-py #102/#105, which stopped the
+      # client dropping `admitters` and the admitter addresses from an invitation
+      # on re-encode, and rc.29 made `admitters` non-empty. A dropped `admitters`
+      # is refused by the node, so the two-node join in integration-setup.yml
+      # cannot pass on the old pair whatever the scenario says.
+      #
+      # Bump BOTH together and in this order: client-py 0.7.0 dropped a kwarg
+      # older merobox passes, so 0.6.66 + 0.7.0 does not work either.
+        run: pip install merobox==0.6.75 calimero-client-py==0.7.0 && merobox --version
 
       - name: Run E2E workflow (3-node)
         working-directory: workflows

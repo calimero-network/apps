@@ -3,7 +3,6 @@ use calimero_sdk::serde::{Deserialize, Serialize};
 use calimero_sdk::abi::AbiType;
 use calimero_sdk::{app, env, AccountId, BlobId};
 use calimero_storage::collections::crdt_meta::MergeError;
-use calimero_storage::collections::rekey::RekeyTarget;
 use calimero_storage::collections::{
     AccessControl, AuthoredMap, AuthoredVector, LwwRegister, Mergeable as MergeableTrait,
     UnorderedMap, UnorderedSet, Vector,
@@ -77,6 +76,21 @@ pub struct MessageSentEvent {
     pub message_id: String,
 }
 
+// `#[app::mergeable]`, not `#[derive(Mergeable)]`: since core 0.11.0-rc.32 a type
+// that implements `Mergeable` must SAY how it merges, and the two answers are
+// different decisions, not styles. The derive writes a field-by-field merge and
+// sets `DISPATCHED = false` — the storage layer then resolves the entry
+// structurally and never calls the rule below, which for `Attachment` would
+// silently discard "newest upload wins" in favour of last-write-wins on the
+// whole value. The attribute stamps a `CustomTypeId` on every entry holding an
+// `Attachment` and dispatches merge to the impl here, which is the rule this app
+// actually depends on. It also emits the `RekeyTarget` that used to be written
+// by hand just below — writing one as well is a conflicting-impl error.
+//
+// No `id = "..."` override: the default digest is over `module_path!()` + the
+// type name, and neither this crate nor this module is expected to be renamed.
+// Pin an id only if the type may move after entries have been stamped.
+#[app::mergeable]
 #[derive(Debug, Clone, BorshDeserialize, BorshSerialize, Serialize, Deserialize, AbiType)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
@@ -89,21 +103,43 @@ pub struct Attachment {
 }
 
 impl MergeableTrait for Attachment {
+    /// Newest upload wins, with a deterministic tie-break.
+    ///
+    /// The tie-break is not decoration. `merge` must be commutative and
+    /// idempotent, and `uploaded_at` is a millisecond clock: two replicas that
+    /// attach different files in the same millisecond compare equal, and a rule
+    /// that only acts on `>` then leaves each side holding its own value
+    /// forever — every re-merge changes nothing, so the entry never converges
+    /// and no error is ever raised. Ordering the equal-clock case by the
+    /// remaining fields gives both sides the same answer whichever way round
+    /// they merge. `blob_id` is compared as its hex string, which is what the
+    /// wire carries since rc.27.
     fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
         if other.uploaded_at > self.uploaded_at {
+            *self = other.clone();
+        } else if other.uploaded_at == self.uploaded_at
+            && other.tie_break_key() > self.tie_break_key()
+        {
             *self = other.clone();
         }
         Ok(())
     }
 }
 
-// `Mergeable` requires `RekeyTarget` (rc.8+). `Attachment` holds only leaf
-// fields (no nested collections), so re-keying is a no-op.
-impl RekeyTarget for Attachment {
-    fn rekey_relative_to(&mut self, _parent_id: calimero_storage::address::Id) {}
-}
-
 impl Attachment {
+    /// Total order over the fields that identify an attachment, used only to
+    /// settle an equal-`uploaded_at` merge. `blob_id` alone would do in
+    /// practice, but including the rest keeps the key a function of the whole
+    /// value, so two attachments that differ at all order differently.
+    fn tie_break_key(&self) -> (String, String, u64, String) {
+        (
+            self.blob_id.to_string(),
+            self.name.clone(),
+            self.size,
+            self.mime_type.clone(),
+        )
+    }
+
     fn to_public(&self) -> AttachmentPublic {
         AttachmentPublic {
             name: self.name.clone(),
@@ -196,6 +232,14 @@ impl Default for Role {
 /// named role the registry stores.
 const ROLE_MOD: &str = "mod";
 
+// Dispatched merge (see `Attachment` for why the attribute and not the derive).
+// `Message` cannot take `#[derive(Mergeable)]` in any case: the derive writes its
+// own `Mergeable` impl, which would collide with the one below, and its
+// field lint rejects a bare `sender: UserId`. The attribute also emits the
+// `RekeyTarget` impl that used to be hand-written after the merge, field by
+// field under `field_child_id(parent_id, "<field name>")` — the same child ids,
+// so nothing moves in storage.
+#[app::mergeable]
 #[derive(BorshDeserialize, BorshSerialize, AbiType)]
 #[borsh(crate = "calimero_sdk::borsh")]
 pub struct Message {
@@ -238,59 +282,13 @@ impl MergeableTrait for Message {
     }
 }
 
-// `Mergeable` requires `RekeyTarget` (rc.8+). Mirrors what `#[derive(Mergeable)]`
-// would emit: deterministically re-key each field's nested collection ids under
-// a field-namespaced child of the entry id, so replicas converge. The
-// autoref-dispatching macro re-keys collection fields (`UnorderedSet`, `Vector`)
-// and no-ops on leaf fields (`LwwRegister`, `Option<..>`, `UserId`).
-impl RekeyTarget for Message {
-    fn rekey_relative_to(&mut self, parent_id: calimero_storage::address::Id) {
-        use calimero_storage::collections::rekey::field_child_id;
-        calimero_storage::rekey_field_if_supported!(
-            &mut self.timestamp,
-            field_child_id(parent_id, "timestamp")
-        );
-        calimero_storage::rekey_field_if_supported!(
-            &mut self.mentions,
-            field_child_id(parent_id, "mentions")
-        );
-        calimero_storage::rekey_field_if_supported!(
-            &mut self.mentions_usernames,
-            field_child_id(parent_id, "mentions_usernames")
-        );
-        calimero_storage::rekey_field_if_supported!(
-            &mut self.files,
-            field_child_id(parent_id, "files")
-        );
-        calimero_storage::rekey_field_if_supported!(
-            &mut self.images,
-            field_child_id(parent_id, "images")
-        );
-        calimero_storage::rekey_field_if_supported!(
-            &mut self.id,
-            field_child_id(parent_id, "id")
-        );
-        calimero_storage::rekey_field_if_supported!(
-            &mut self.text,
-            field_child_id(parent_id, "text")
-        );
-        calimero_storage::rekey_field_if_supported!(
-            &mut self.edited_on,
-            field_child_id(parent_id, "edited_on")
-        );
-        calimero_storage::rekey_field_if_supported!(
-            &mut self.deleted,
-            field_child_id(parent_id, "deleted")
-        );
-    }
-
-    fn register_nested_value_types() {
-        // `Attachment` is the only custom struct nested through this type's
-        // collections (`files`/`images: Vector<Attachment>`); register it so it
-        // is re-keyed when stored, not last-writer-wins'd.
-        calimero_storage::register_rekey_if_supported!(Attachment);
-    }
-}
+// The `RekeyTarget` impl that used to sit here is now emitted by
+// `#[app::mergeable]` on the struct above. It re-keys every field under
+// `field_child_id(parent_id, "<field name>")` — byte-for-byte the child ids the
+// hand-written version derived — and its `register_nested_value_types` scans
+// the field types, so `Attachment` (reached through `files`/`images:
+// Vector<Attachment>`) is still registered. Writing one here as well is a
+// conflicting-impl error.
 
 impl Clone for Message {
     fn clone(&self) -> Self {
@@ -473,6 +471,12 @@ pub struct UserProfile {
 }
 
 /// Per-context profile stored in CRDT state.
+// Dispatched merge (see `Attachment`). The rule below is not plain field-by-field
+// delegation — it lifts a `None` avatar to the other side's `Some` — so the
+// derive's structural resolution would quietly lose an avatar set concurrently
+// with a rename. `#[app::mergeable]` also emits the `RekeyTarget` that followed
+// the impl.
+#[app::mergeable]
 #[derive(BorshDeserialize, BorshSerialize, AbiType)]
 #[borsh(crate = "calimero_sdk::borsh")]
 pub struct StoredProfile {
@@ -489,22 +493,6 @@ impl MergeableTrait for StoredProfile {
             self.avatar = other.avatar.clone();
         }
         Ok(())
-    }
-}
-
-// `Mergeable` requires `RekeyTarget` (rc.8+). `StoredProfile` holds only
-// `LwwRegister` leaves, so every field re-key dispatches to the no-op arm.
-impl RekeyTarget for StoredProfile {
-    fn rekey_relative_to(&mut self, parent_id: calimero_storage::address::Id) {
-        use calimero_storage::collections::rekey::field_child_id;
-        calimero_storage::rekey_field_if_supported!(
-            &mut self.username,
-            field_child_id(parent_id, "username")
-        );
-        calimero_storage::rekey_field_if_supported!(
-            &mut self.avatar,
-            field_child_id(parent_id, "avatar")
-        );
     }
 }
 

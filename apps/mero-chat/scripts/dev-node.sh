@@ -72,14 +72,17 @@ LOG_FILE="/tmp/curb-dev-$([ "$SECONDARY" = true ] && echo node2 || echo node).lo
 ADMIN_USER="${E2E_ADMIN_USER:-admin}"
 ADMIN_PASS="${E2E_ADMIN_PASS:-calimero1234}"
 
-WASM_PATH="$REPO_ROOT/logic/res/curb.wasm"
-
-# Bundle filename is "<last dotted segment of package>-<version>.mpk", matching
-# logic/build-bundle.sh. Both read the package from [package.metadata.calimero]
-# so the two never drift.
-BUNDLE_VERSION="${APP_VERSION:-0.1.0}"
-BUNDLE_PACKAGE=$(sed -n 's/^package  *= *"\(.*\)"/\1/p' "$REPO_ROOT/logic/Cargo.toml" | tail -1)
-BUNDLE_PATH="$REPO_ROOT/logic/res/${BUNDLE_PACKAGE##*.}-${BUNDLE_VERSION}.mpk"
+# One staged path, written by logic/stage-bundle.sh and shared with
+# scripts/setup-nodes.sh and every merobox scenario, so a node started by any of
+# them installs the SAME artifact. That matters beyond tidiness: the application
+# id is hash(package, signer), and two nodes that installed different bundles
+# get different ids and can never share a context.
+#
+# This used to derive `res/<short>-<version>.mpk` from build-bundle.sh, whose
+# version defaulted to 0.1.0 regardless of what Cargo.toml said and which needs
+# `mero-sign` plus a signing key from a sibling `core` checkout. `cargo mero
+# bundle --dev` needs neither.
+BUNDLE_PATH="${CURB_BUNDLE_PATH:-$REPO_ROOT/logic/dist/curb.mpk}"
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -220,13 +223,9 @@ green "Clean slate ready"
 # artifact or they end up with different application ids and can never share a
 # context. It only builds when there is nothing to reuse (standalone run).
 if ! $SECONDARY || [ ! -f "$BUNDLE_PATH" ]; then
-  step "Building WASM"
-  (cd "$REPO_ROOT/logic" && cargo mero build)
-  green "curb.wasm built"
-
-  step "Packaging bundle"
-  (cd "$REPO_ROOT/logic" && ./build-bundle.sh)
-  green "bundle built"
+  step "Building WASM and staging the bundle"
+  "$REPO_ROOT/logic/stage-bundle.sh"
+  green "bundle built: ${BUNDLE_PATH##*/}"
 else
   info "Reusing bundle: ${BUNDLE_PATH##*/}"
 fi
@@ -354,7 +353,7 @@ step "Installing curb app"
 APP_RES=$(curl -sf -X POST "${NODE_URL}/admin-api/install-dev-application" \
   -H "Authorization: Bearer ${ACCESS_TOKEN}" \
   -H "Content-Type: application/json" \
-  -d "$(jq -n --arg p "$BUNDLE_PATH" '{path: $p, metadata: [], package: null, version: null}')" \
+  -d "$(jq -n --arg p "$BUNDLE_PATH" '{path: $p}')" \
   2>/dev/null) || APP_RES="{}"
 APP_ID=$(echo "$APP_RES" | jq -r '.data.applicationId // empty' 2>/dev/null || true)
 

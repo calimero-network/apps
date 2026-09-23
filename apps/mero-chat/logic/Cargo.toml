@@ -50,19 +50,32 @@ author      = "Calimero"
 icon        = "../app/public/icons/icon-512x512.png"
 frontend    = "https://mero-chat-pwa.vercel.app/"
 slug        = "com.calimero.chat"
-# Equal to the SDK tag above, always. Absent until now, which is why the
-# registry advertises `minRuntimeVersion: 0.1.0` for this package: that is
-# cargo-mero's placeholder floor, and it tells every node "any version will do"
-# while the wasm calls host functions an old node does not have.
+# Equal to the SDK tag above, always — it is the floor a node checks before it
+# will accept the bundle at all. Without it cargo-mero advertises the
+# placeholder `0.1.0`, which tells every node "any version will do" while the
+# wasm calls host functions an old node does not have.
 #
-# The e2e node now matches: `workflows/*.yml` start merod 0.11.0-rc.26. The
-# mismatch could be held open for rc.25 because `crates/sys`, the host-function
-# surface, was unchanged — the wasm's import set could not outgrow an rc.24 node.
+# THREE places move together, and a bump that changes only this file is why
+# every bot PR here is red:
+#   1. the `calimero-*` git tags above (including the `[dev-dependencies]` copy)
+#   2. this line
+#   3. `image: ghcr.io/calimero-network/merod:<tag>` in EVERY `workflows/*.yml`,
+#      plus `RELEASE` in `scripts/setup-cargo-mero.sh`
 #
-# rc.26 is different, and the difference is not in the import set. core#3633 added
-# `order` to `Metadata`, which rides inside `Action` across the guest<->host
-# boundary. The signatures are identical; the borsh payload behind them is not.
-# A contract built on rc.26 against an rc.24 node writes actions that node cannot
-# decode, and it surfaces as a peer that never replicates rather than as an error
-# — measured on this branch, not assumed. So the image moves with the SDK.
+# "Equal", not "at least", because the guest<->host payload is not stable across
+# releases even when the signatures are. core#3633 (rc.26) added `order` to
+# `Metadata`, which rides inside `Action` across that boundary: a contract built
+# on the newer SDK writes actions an older node cannot decode, and it surfaces
+# as a peer that never replicates rather than as an error — measured on this
+# branch, not assumed.
+#
+# rc.28 -> rc.41 crossed four more breaking releases, each of which had to be
+# worked through rather than pinned past:
+#   rc.29  invitations carry non-empty `admitters` and are clamped to 24h
+#   rc.31  an `http` registry node serves no bytecode to peers, so the app is
+#          installed on EVERY node in `workflows/integration-setup.yml`
+#   rc.32  `#[app::mergeable]` — a type implementing `Mergeable` must declare
+#          how, or it does not compile (see `src/lib.rs`)
+#   rc.38  37 admin request bodies closed: an extra key is now a 400/422
+#   rc.39  the blob DHT is gone; `?context_id=` is the only discovery path
 min-runtime-version = "0.11.0-rc.41"

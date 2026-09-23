@@ -33,11 +33,18 @@ NODE_2_URL="http://localhost:${NODE_2_PORT}"
 ADMIN_USER="${E2E_ADMIN_USER:-admin}"
 ADMIN_PASS="${E2E_ADMIN_PASS:-calimero1234}"
 
-# Defaults to the raw wasm. Point it at a signed .mpk to install WITH metadata
-# (name, icon, links.frontend) — a raw-wasm install carries none, so the app
-# shows no name or icon and desktop offers no "Open" entry:
-#   CURB_WASM_PATH=$REPO_ROOT/logic/res/com.calimero.chat-0.1.0.mpk
-WASM_PATH="${CURB_WASM_PATH:-$REPO_ROOT/logic/res/curb.wasm}"
+# The SIGNED BUNDLE, not the raw wasm — and since rc.41 that is not a
+# preference. `install_application_from_path` reads the file and bails with
+# "not a signed application bundle" on anything that is not one, because the
+# application id derives from the manifest's (package, signer) pair and a raw
+# module has no manifest to derive it from. (Even before that it was the wrong
+# artifact: a raw-wasm install carries no name, icon or links.frontend, so the
+# app showed no name and desktop offered no "Open" entry.)
+#
+# `logic/stage-bundle.sh` puts it here; the merobox scenarios install the same
+# file. Override to test a different bundle:
+#   CURB_BUNDLE_PATH=$REPO_ROOT/logic/dist/com.calimero.chat-3.1.1.mpk
+BUNDLE_PATH="${CURB_BUNDLE_PATH:-${CURB_WASM_PATH:-$REPO_ROOT/logic/dist/curb.mpk}}"
 ENV_OUT="$REPO_ROOT/app/.env.integration"
 
 USE_MEROBOX=false
@@ -290,13 +297,15 @@ green "All tools found"
 
 # ── Build WASM if needed ──────────────────────────────────────────────────────
 
-step "Checking WASM build"
-if [ ! -f "$WASM_PATH" ]; then
-  yellow "curb.wasm not found — building (first run is slow)…"
-  (cd "$REPO_ROOT/logic" && cargo mero build)
-  green "curb.wasm built: $WASM_PATH"
+step "Checking bundle build"
+if [ ! -f "$BUNDLE_PATH" ]; then
+  yellow "curb.mpk not found — building (first run is slow)…"
+  # stage-bundle.sh, not `cargo mero build`: the latter emits only the raw
+  # wasm, which the node now refuses. See its header.
+  "$REPO_ROOT/logic/stage-bundle.sh"
+  green "bundle built: $BUNDLE_PATH"
 else
-  green "WASM already exists: $WASM_PATH"
+  green "Bundle already exists: $BUNDLE_PATH"
 fi
 
 # ── Start nodes ───────────────────────────────────────────────────────────────
@@ -333,7 +342,7 @@ else
     -X POST "${NODE_1_URL}/admin-api/install-dev-application" \
     -H "Authorization: Bearer ${ACCESS_TOKEN_1}" \
     -H "Content-Type: application/json" \
-    -d "$(jq -n --arg p "$WASM_PATH" '{path: $p, metadata: [], package: null, version: null}')" \
+    -d "$(jq -n --arg p "$BUNDLE_PATH" '{path: $p}')" \
     2>/dev/null) || APP_HTTP="000"
   APP_RES=$(cat /tmp/curb-app-install-n1.json 2>/dev/null || echo "{}")
   APP_ID=$(echo "$APP_RES" | jq -r '.data.applicationId // empty' 2>/dev/null || true)
@@ -358,7 +367,7 @@ else
   curl -sf -X POST "${NODE_2_URL}/admin-api/install-dev-application" \
     -H "Authorization: Bearer ${ACCESS_TOKEN_2}" \
     -H "Content-Type: application/json" \
-    -d "$(jq -n --arg p "$WASM_PATH" '{path: $p, metadata: [], package: null, version: null}')" \
+    -d "$(jq -n --arg p "$BUNDLE_PATH" '{path: $p}')" \
     2>/dev/null | jq -r '.data.applicationId // "already installed"' 2>/dev/null \
     && green "App installed on node-2" || yellow "App install on node-2 failed (non-fatal)"
 
