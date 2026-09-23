@@ -376,9 +376,19 @@ steps:
   # artefact, and his blob would be orphaned. Before the guard this call
   # returned success.
   #
-  # ⚠️ `expected_failure` ALONE would pass on any failure at all — a typo in the
-  # method name would satisfy it just as well as the guard firing. `expected_error`
-  # pins which failure counts, and merobox refuses the one without the other.
+  # ⚠️ `expected_failure` ALONE passes on ANY failure — a typo in the method name
+  # would satisfy it just as well as the guard firing. The obvious pin,
+  # `expected_error`, CANNOT be used here: core returns an app's `AppError` as a
+  # `FunctionCallError` whose payload arrives in `error.data` as a JSON array of
+  # BYTE VALUES, and merobox matches that verbatim. The substring never matches
+  # the text no matter how the message is worded — it is looking at
+  # `[34, 84, 104, 105, 115, …]`.
+  #
+  # So this asserts the PROPERTY instead of the wording, which is the stronger
+  # test anyway: after the refusal the document must still be at the hash Bob
+  # left it at, and must NOT carry the one Alice tried to write. That is exactly
+  # "his signature was not erased", and it cannot be satisfied by an unrelated
+  # failure.
   - name: Alice tries to sign the version she still has open
     type: call
     node: calimero-node-1
@@ -392,7 +402,22 @@ steps:
       new_hash: "dead00000000000000000000000000000000000000000000000000000000dead"
     executor_public_key: "{{alice_key}}"
     expected_failure: true
-    expected_error: "changed while you were signing"
+
+  - name: Read the document back after the refusal
+    type: call
+    node: calimero-node-1
+    context_id: "{{agreement_id}}"
+    method: list_documents
+    args: {}
+    executor_public_key: "{{alice_key}}"
+    outputs:
+      docs_after_stale: result
+
+  - name: Bob's version survived and Alice's stale copy never landed
+    type: assert
+    statements:
+      - 'contains({{docs_after_stale}}, "1111111111111111111111111111111111111111111111111111111111111111")'
+      - 'not_contains({{docs_after_stale}}, "dead00000000000000000000000000000000000000000000000000000000dead")'
 
   # Alice reopens, which puts her at the version Bob left behind.
   - name: Alice signs
