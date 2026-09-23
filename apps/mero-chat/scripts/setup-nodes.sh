@@ -246,11 +246,31 @@ stop_node_merod() {
 
 # ── merobox node management ───────────────────────────────────────────────────
 
+# ⚠️ `merobox nuke` does not actually delete the node data, and only says so
+# in passing: "Deleting N data directory(ies)... No data directories were
+# deleted." The rocksdb under `workflows/data/calimero-node-N` is written by
+# the container as root, so your user cannot remove it and it survives.
+#
+# A node that boots onto a previous run's database fails namespace creation
+# with a bare HTTP 500 and, in the node log, "failed to mint this node's
+# account" — which reads as a flaky node rather than as leftover state. This is
+# the wipe that makes `--restart` mean restart. It needs sudo; if you are not
+# an admin, `docker run --rm -v "$PWD/data:/d" alpine rm -rf /d/*` does the
+# same job from inside a container.
+wipe_merobox_data() {
+  local dir="$REPO_ROOT/workflows/data"
+  [ -d "$dir" ] || return 0
+  rm -rf "$dir" 2>/dev/null && return 0
+  yellow "Node data is root-owned (written by the container) — removing with sudo"
+  sudo rm -rf "$dir"
+}
+
 start_nodes_merobox() {
   step "Starting nodes via merobox (--no-docker)"
   cd "$REPO_ROOT/workflows"
   merobox stop --all  2>/dev/null || true
   merobox nuke --force 2>/dev/null || true
+  wipe_merobox_data
   # integration-setup.yml sets stop_all_nodes: false so nodes stay running
   merobox bootstrap run --no-docker integration-setup.yml
   cd "$REPO_ROOT"
@@ -266,6 +286,7 @@ if $STOP; then
   if $USE_MEROBOX && command -v merobox &>/dev/null; then
     merobox stop --all 2>/dev/null || true
     merobox nuke --force 2>/dev/null || true
+    wipe_merobox_data
   fi
   if $CLEAN; then
     step "Removing node home directories"

@@ -67,6 +67,18 @@ cleanup() {
     (cd "$WORKFLOWS_DIR" && merobox nuke --force >/dev/null 2>&1) || true
   fi
 
+  # 2b) The part `nuke` does not do. It reports "No data directories were
+  #     deleted" and moves on: `workflows/data/calimero-node-N` is written by
+  #     the container as root, so it survives and the next run boots onto the
+  #     previous run's rocksdb. On rc.41 that is a bare HTTP 500 from
+  #     create_namespace ("failed to mint this node's account" in the node
+  #     log), which looks like a flaky node rather than stale state.
+  if [ -d "$WORKFLOWS_DIR/data" ]; then
+    rm -rf "$WORKFLOWS_DIR/data" 2>/dev/null \
+      || sudo rm -rf "$WORKFLOWS_DIR/data" 2>/dev/null \
+      || yellow "Could not remove $WORKFLOWS_DIR/data — the next run may inherit its state"
+  fi
+
   # 3) Remove any orphaned `calimero-node-*-init` containers (left when a
   #    container was created but failed to start).
   if command -v docker >/dev/null 2>&1; then

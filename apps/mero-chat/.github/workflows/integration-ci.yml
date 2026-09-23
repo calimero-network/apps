@@ -98,6 +98,16 @@ jobs:
         run: |
           merobox stop --all 2>/dev/null || true
           merobox nuke --force 2>/dev/null || true
+          # ⚠️ `nuke` reports "Deleting N data directory(ies)... No data
+          # directories were deleted." The rocksdb under
+          # `workflows/data/calimero-node-N` is written by the container as
+          # root, so the runner user cannot remove it and it survives. A node
+          # that boots onto a previous run's database 500s on namespace
+          # creation with "failed to mint this node's account" — which reads as
+          # a flaky node, not as leftover state. `sudo` is what makes the wipe
+          # happen. This job caches nothing between runs, but a re-run on the
+          # same runner, or a cancelled run, leaves the directory behind.
+          sudo rm -rf data
           # --e2e-mode: without it merod keeps its DEFAULT bootstrap nodes, so
           # these containers join the public network, discover each other's
           # public and relay addresses through the shared rendezvous, and dial
@@ -263,6 +273,8 @@ jobs:
         run: |
           merobox stop --all 2>/dev/null || true
           merobox nuke --force 2>/dev/null || true
+          # See the note on the setup step: nuke leaves the root-owned rocksdb.
+          sudo rm -rf workflows/data
 
       # ── Artifacts ─────────────────────────────────────────────────────────────
 
