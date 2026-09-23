@@ -21,6 +21,7 @@ import {
 import {
   backendBlocks,
   backendSpans,
+  changedRange,
   fromBlockNote,
   toBlockNote,
   type BlockNoteBlock,
@@ -317,8 +318,9 @@ export function useFugueBody({
     [asPeer, editorIdOf, localBlocks],
   );
 
-  /** Replaces the whole editor document, keeping the caret's scalar position. */
-  const replaceAll = useCallback(
+  /** Moves the editor to `remote` by replacing only the top-level blocks that
+   *  differ, keeping the caret's scalar position. */
+  const replaceChanged = useCallback(
     (remote: EditorBlock[]) => {
       const live = editorRef.current;
       if (!live) return;
@@ -330,17 +332,24 @@ export function useFugueBody({
           if (at) caret = { block: backendIdOf(block.id), at };
         }
       }
-      asPeer((peer) =>
-        peer.replaceBlocks(
-          peer.document.map((block) => block.id),
-          toBlockNote(remote) as unknown as Record<string, unknown>[],
-        ),
-      );
-      idMapRef.current = new Map();
+      const target = toBlockNote(remote.map((block) => ({ ...block, id: editorIdOf(block.id) })));
+      asPeer((peer) => {
+        const { at, remove, insert } = changedRange(peer.document, target);
+        const ids = remove.map((block) => block.id);
+        const nodes = insert as unknown as Record<string, unknown>[];
+        if (ids.length > 0 && nodes.length > 0) peer.replaceBlocks(ids, nodes);
+        else if (ids.length > 0) peer.removeBlocks(ids);
+        else if (nodes.length > 0 && at > 0) peer.insertBlocks(nodes, peer.document[at - 1].id, 'after');
+        else if (nodes.length > 0) peer.insertBlocks(nodes, peer.document[0].id, 'before');
+      });
+      const present = new Set(fromBlockNote(live.document).map((block) => block.id));
+      for (const editorId of [...idMapRef.current.keys()]) {
+        if (!present.has(editorId)) idMapRef.current.delete(editorId);
+      }
       if (view && caret) placeCaret(view, caret.block, caret.at);
       setRevision((value) => value + 1);
     },
-    [asPeer, backendIdOf],
+    [asPeer, backendIdOf, editorIdOf],
   );
 
   /** The node's document against the editor: structure first, then text. */
@@ -361,7 +370,7 @@ export function useFugueBody({
           staleRef.current = true;
           return;
         }
-        replaceAll(remote);
+        replaceChanged(remote);
         serverRef.current = remote;
         return;
       }
@@ -374,7 +383,7 @@ export function useFugueBody({
       // What still differs is the user's newer edit, which the next flush sends.
       if (structureOf(localBlocks()) !== structureOf(remote)) dirtyRef.current = true;
     },
-    [applyRemoteStructure, isSynced, localBlocks, rebaseBlock, replaceAll],
+    [applyRemoteStructure, isSynced, localBlocks, rebaseBlock, replaceChanged],
   );
 
   const refreshWith = useCallback(
