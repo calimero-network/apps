@@ -2404,26 +2404,62 @@ mod tests {
         assert_eq!(blob_id, parsed);
     }
 
+    /// A blob id is 64 lowercase hex characters.
+    ///
+    /// This replaces a test that asserted the encoded id contained no `0`, `O`,
+    /// `I` or `l` — the base58 alphabet's excluded characters. core removed
+    /// base58 in 0.11.0-rc.27 and `Display` is `hex::encode` now, so that
+    /// assertion was checking a property the type no longer has. It kept
+    /// passing only because the byte it chose, `0x42`, happens to render as
+    /// "42": the all-zeros id it tested two functions above would have failed
+    /// it. Asserting the real shape instead, and over bytes that would catch
+    /// the drift.
     #[test]
-    fn blob_id_encoded_is_non_empty_string() {
-        let encoded = BlobId::from([0x42u8; 32]).to_string();
-        assert!(!encoded.is_empty());
-        assert!(!encoded.contains('0'));
-        assert!(!encoded.contains('O'));
-        assert!(!encoded.contains('I'));
-        assert!(!encoded.contains('l'));
+    fn blob_id_encodes_as_64_lowercase_hex() {
+        for bytes in [[0x00u8; 32], [0x42u8; 32], [0xffu8; 32]] {
+            let encoded = BlobId::from(bytes).to_string();
+            assert_eq!(encoded.len(), 64, "encoded: {encoded}");
+            assert!(
+                encoded
+                    .chars()
+                    .all(|c| c.is_ascii_digit() || ('a'..='f').contains(&c)),
+                "not lowercase hex: {encoded}"
+            );
+        }
+        assert_eq!(BlobId::from([0x00u8; 32]).to_string(), "0".repeat(64));
+        assert_eq!(BlobId::from([0xffu8; 32]).to_string(), "f".repeat(64));
     }
 
     #[test]
-    fn parse_blob_id_invalid_base58_chars() {
-        assert!("not-valid-base58!!!!-/-".parse::<BlobId>().is_err());
+    fn parse_blob_id_rejects_non_hex_characters() {
+        assert!("not-valid-hex!!!!-/-".parse::<BlobId>().is_err());
+        // `g` is past the hex alphabet, and 64 characters long so the length
+        // check cannot be what rejects it.
+        assert!("g".repeat(64).parse::<BlobId>().is_err());
+    }
+
+    /// The whole point of `api/blobs.ts`'s `toBlobIdHex`, from the other side.
+    ///
+    /// This app's lineage used to `bs58::encode` a blob id before storing it.
+    /// Base58 of 32 bytes is ~44 characters from a wider alphabet, so it is
+    /// non-empty and looks like an id — and the node refuses it. Pinning the
+    /// refusal here means a reintroduction fails in `cargo test` rather than as
+    /// a 404 three layers away.
+    #[test]
+    fn parse_blob_id_rejects_a_base58_spelling_of_a_real_id() {
+        let id = BlobId::from([0x42u8; 32]);
+        let as_base58 = bs58::encode(*id.as_ref()).into_string();
+        assert_ne!(as_base58, id.to_string());
+        assert!(as_base58.parse::<BlobId>().is_err(), "base58: {as_base58}");
     }
 
     #[test]
-    fn parse_blob_id_wrong_byte_length() {
-        // Valid base58 but encodes fewer than 32 bytes
-        let short = bs58::encode(vec![1u8, 2, 3, 4]).into_string();
-        assert!(short.parse::<BlobId>().is_err());
+    fn parse_blob_id_wrong_length() {
+        // Hex, and every character legal — only the length is wrong, so this
+        // cannot pass for the wrong reason.
+        assert!("01020304".parse::<BlobId>().is_err());
+        assert!("a".repeat(63).parse::<BlobId>().is_err());
+        assert!("a".repeat(65).parse::<BlobId>().is_err());
     }
 
     #[test]

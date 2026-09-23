@@ -149,21 +149,37 @@ jobs:
           ACCESS_TOKEN_2="$PLACEHOLDER_JWT"
           REFRESH_TOKEN_2="$PLACEHOLDER_JWT"
 
-          GROUPS=$(curl -sf "${NODE_1_URL}/admin-api/groups" \
-            2>/dev/null) || GROUPS="{}"
-          GROUP_ID=$(echo "$GROUPS" | jq -r '
-            (.data // .) |
-            if type == "array" then .[0].groupId
-            elif type == "object" then (.groups[0].groupId // .items[0].groupId)
-            else empty end' 2>/dev/null || echo "")
-
+          # BOTH ids come from `GET /admin-api/contexts`, in one call.
+          #
+          # There is no `GET /admin-api/groups` on rc.41 — the router has
+          # `POST /groups` (create) and `GET /groups/{group_id}` (fetch one),
+          # and nothing that lists them. The old code called it anyway and
+          # `curl -sf` did not reject the answer, which came back as the bare
+          # token `1001`; `jq` saw a number rather than an array or object,
+          # took its `else empty end` branch, and produced an EMPTY GROUP_ID
+          # with no error anywhere.
+          #
+          # That matters more than the route does. `integrationEnvAvailable()`
+          # requires a group id, and every integration test calls `test.skip()`
+          # without one — so on rc.41 this step would have written an env file
+          # that skipped the ENTIRE suite while the job reported success. The
+          # guard below is what turned that into a red build instead. (MEASURED
+          # on this branch; whether the older route answered properly on the
+          # rc.26 nodes master runs was not checked — those logs have expired.)
+          #
+          # The context row already carries `groupId`, and it is the better
+          # source anyway: it is by construction the group that owns the
+          # context the tests use, which a separate listing could not promise.
           CTXS=$(curl -sf "${NODE_1_URL}/admin-api/contexts" \
             2>/dev/null) || CTXS="{}"
-          CONTEXT_ID=$(echo "$CTXS" | jq -r '
+          CTX=$(echo "$CTXS" | jq -c '
             (.data // .) |
-            if type == "array" then .[0].id // .[0].contextId
-            elif type == "object" then (.contexts[0].id // .contexts[0].contextId // .items[0].id)
-            else empty end' 2>/dev/null || echo "")
+            if type == "array" then .[0]
+            elif type == "object" then (.contexts[0] // .items[0])
+            else empty end' 2>/dev/null || echo "null")
+          CONTEXT_ID=$(echo "$CTX" | jq -r '(.id // .contextId) // empty' 2>/dev/null || echo "")
+          GROUP_ID=$(echo "$CTX" | jq -r '(.groupId // .group_id) // empty' 2>/dev/null || echo "")
+          GROUPS="(not queried — rc.41 has no GET /admin-api/groups)"
 
           MEMBER_KEY=""
           if [ -n "$CONTEXT_ID" ]; then
