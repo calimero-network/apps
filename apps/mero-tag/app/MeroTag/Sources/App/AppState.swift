@@ -12,6 +12,10 @@ public final class AppState: ObservableObject {
     @Published public var username: String = ""
     @Published public var loginError: String?
     @Published public var isLoggingIn = false
+    /// Why the last session ended, when the node ended it rather than the user.
+    /// Shown on the way back to the login screen so a forced logout is not
+    /// indistinguishable from the app having been restarted.
+    @Published public var sessionNotice: String?
 
     public let client: MeroClient
     public private(set) var service: MeroService?
@@ -26,8 +30,18 @@ public final class AppState: ObservableObject {
         isLoggingIn = true
         loginError = nil
         defer { isLoggingIn = false }
+        sessionNotice = nil
         do {
             try await client.auth.login(nodeUrl: nodeUrl, username: username, password: password)
+            // Access tokens expire after an hour and MeroKit now refreshes them
+            // on its own. This handler only runs when the node has ended the
+            // session for good — a revoked family, a replayed refresh, a grant
+            // the token does not carry — none of which a refresh can undo. The
+            // credentials are already gone by the time it fires; all that is
+            // left is to stop pretending the map is live.
+            await client.onSessionEnded { [weak self] reason in
+                Task { @MainActor in self?.sessionEnded(reason) }
+            }
             // Member id: use the username for now (matches dev flow). A later
             // phase resolves the real context identity via /identities-owned.
             let memberId = username
@@ -41,6 +55,14 @@ public final class AppState: ObservableObject {
         } catch {
             loginError = error.localizedDescription
         }
+    }
+
+    /// The node ended the session. Unlike `logout()` this leaves a reason
+    /// behind, because the user did not ask for it.
+    public func sessionEnded(_ reason: AuthFailure) {
+        guard phase != .loggedOut else { return }
+        sessionNotice = reason.userFacingReason + " Please sign in again."
+        logout()
     }
 
     public func logout() {

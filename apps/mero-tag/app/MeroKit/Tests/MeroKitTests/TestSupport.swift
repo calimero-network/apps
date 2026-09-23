@@ -68,3 +68,25 @@ final class Captured: @unchecked Sendable {
         body = req.bodyData
     }
 }
+
+/// Thread-safe counter for assertions made inside the mock handler — the
+/// handler runs on URLSession's queue, and the refresh tests care about how
+/// many times it was reached.
+final class Counter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var counts: [String: Int] = [:]
+    func bump(_ key: String) { lock.lock(); counts[key, default: 0] += 1; lock.unlock() }
+    func count(_ key: String) -> Int { lock.lock(); defer { lock.unlock() }; return counts[key] ?? 0 }
+}
+
+extension MockURLProtocol {
+    /// A response carrying core's `X-Auth-Error` header, which is what decides
+    /// whether a refusal is recoverable.
+    static func authError(_ request: URLRequest, status: Int, reason: String) -> (HTTPURLResponse, Data) {
+        let resp = HTTPURLResponse(
+            url: request.url!, statusCode: status, httpVersion: nil,
+            headerFields: ["X-Auth-Error": reason])!
+        // Core sends an EMPTY body with these. So does this.
+        return (resp, Data())
+    }
+}

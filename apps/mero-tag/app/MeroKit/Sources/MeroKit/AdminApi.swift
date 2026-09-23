@@ -4,11 +4,13 @@ import Foundation
 /// contexts, identities, …). Mirrors web `rpc.ts` admin helpers.
 public final class AdminApi {
     private let store: TokenStore
-    private let session: URLSession
+    private let transport: AuthorizedTransport
 
-    public init(store: TokenStore, session: URLSession = .shared) {
+    public init(store: TokenStore, session: URLSession = .shared, authority: SessionAuthority? = nil) {
         self.store = store
-        self.session = session
+        self.transport = AuthorizedTransport(
+            session: session,
+            authority: authority ?? SessionAuthority(store: store, session: session))
     }
 
     public func get<T: Decodable>(_ path: String, as type: T.Type = T.self) async throws -> T {
@@ -33,23 +35,15 @@ public final class AdminApi {
         guard let nodeUrl = store.nodeUrl, let url = URL(string: "\(trim(nodeUrl))/admin-api\(path)") else {
             throw MeroError.notConfigured
         }
-        var request = URLRequest(url: url)
-        request.httpMethod = method
-        if let token = store.accessToken {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        let (data, http) = try await transport.send { token in
+            var request = URLRequest(url: url)
+            request.httpMethod = method
+            if let token { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
+            if let contentType { request.setValue(contentType, forHTTPHeaderField: "Content-Type") }
+            request.httpBody = body
+            return request
         }
-        if let contentType { request.setValue(contentType, forHTTPHeaderField: "Content-Type") }
-        request.httpBody = body
-
-        let (data, response): (Data, URLResponse)
-        do {
-            (data, response) = try await session.data(for: request)
-        } catch {
-            throw MeroError.transport(error.localizedDescription)
-        }
-        if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
-            throw MeroError.http(status: http.statusCode, body: String(data: data, encoding: .utf8) ?? "")
-        }
+        try ensureSuccess(http, data)
         // admin-api wraps payloads as { data: ... } — unwrap if present, else decode whole.
         if let envelope = try? JSONDecoder().decode(DataEnvelope<T>.self, from: data), let inner = envelope.data {
             return inner

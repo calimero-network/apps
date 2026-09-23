@@ -42,6 +42,26 @@ if case let .event(ctx, data) = SseMessageDecoder.decode(#"{"result":{"contextId
     check("event payload", (obj?["TrackerUpdated"] as? String) == "t1")
 } else { check("event decode", false) }
 
+print("AuthFailure (the 403 that is not a 401)")
+func classify(_ status: Int, _ reason: String?) -> AuthFailure? {
+    var headers: [String: String] = [:]
+    if let reason { headers["X-Auth-Error"] = reason }
+    return HTTPURLResponse(url: URL(string: "http://n/sse")!, statusCode: status,
+                           httpVersion: nil, headerFields: headers)?.authFailure
+}
+check("revoked is a 403", classify(403, "token_revoked") == .tokenRevoked)
+check("revoked is terminal", AuthFailure.tokenRevoked.isTerminal && !AuthFailure.tokenRevoked.isRefreshable)
+check("expired is the only refreshable one", AuthFailure.tokenExpired.isRefreshable)
+check("reuse is a 401 and terminal", classify(401, "token_reuse") == .tokenReuse && AuthFailure.tokenReuse.isTerminal)
+check("permission_denied is a 403", classify(403, "permission_denied") == .permissionDenied)
+check("headerless 403 is terminal", classify(403, nil)?.isTerminal == true)
+check("headerless 401 is refreshable", classify(401, nil)?.isRefreshable == true)
+check("2xx is not an auth failure", classify(200, nil) == nil)
+
+print("AuthApi grant set")
+check("asks for context:subscribe", AuthApi.permissions.contains("context:subscribe"))
+check("grant set is not empty", !AuthApi.permissions.isEmpty)
+
 print("TokenStore")
 let store = InMemoryTokenStore(nodeUrl: "http://x", accessToken: "tok")
 check("reads token", store.accessToken == "tok")

@@ -118,7 +118,7 @@ wait_for_node
 step "Authenticating node2"
 AUTH_RES=$(curl -sf -X POST "${NODE_URL}/auth/token" -H "Content-Type: application/json" \
   -d "$(jq -n --arg u "$ADMIN_USER" --arg p "$ADMIN_PASS" \
-        '{auth_method:"user_password",public_key:$u,client_name:"dev-node2.sh",timestamp:0,permissions:[],provider_data:{username:$u,password:$p}}')" )
+        '{auth_method:"user_password",public_key:$u,client_name:"dev-node2.sh",timestamp:0,permissions:["context:execute","context:list","context:subscribe","application:list","namespace","group","blob","context:alias"],provider_data:{username:$u,password:$p}}')" )
 ACCESS_TOKEN=$(echo "$AUTH_RES" | jq -r '.data.access_token // empty')
 [ -n "$ACCESS_TOKEN" ] || { red "Auth failed for node2"; echo "$AUTH_RES" >&2; exit 1; }
 green "Authenticated"
