@@ -284,6 +284,14 @@ export function useFugueBody({
     [],
   );
 
+  // Closing the editor inside the debounce window still sends the last edit.
+  useEffect(
+    () => () => {
+      if (flushTimerRef.current) void drain();
+    },
+    [drain],
+  );
+
   const onContentChange = useCallback(
     (serialized: string) => {
       let document: BlockNoteBlock[];

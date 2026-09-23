@@ -278,4 +278,24 @@ describe('useFugueBody', () => {
     expect(result.current.error?.message).toBe('offline');
     expect(client.getDocument).toHaveBeenCalled();
   });
+
+  it('sends an edit still inside the debounce window when the editor closes', async () => {
+    const client = fakeClient();
+    client.getDocument.mockResolvedValue([row('blk-1', 'hello')]);
+    const { result, unmount } = mount(client);
+    await settle();
+
+    act(() =>
+      result.current.onContentChange(
+        JSON.stringify([bnBlock('blk-1', 'hello!')]),
+      ),
+    );
+    unmount();
+    await settle();
+    expect(client.applyDelta).toHaveBeenCalledWith({
+      doc: DOC,
+      block: 'blk-1',
+      ops: [{ retain: 5 }, { insert: '!', attributes: {} }],
+    });
+  });
 });
