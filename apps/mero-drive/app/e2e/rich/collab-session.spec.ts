@@ -1,12 +1,12 @@
-// One editing session between two people, each on their own node, in one
-// document: live typing, formatting, undo and redo, then edits made while cut
-// off from each other. Every phase asserts what both nodes hold, exactly.
+// One editing session in one document, each person on their own node: two
+// type, format, restructure and undo live and while cut off, then a third joins
+// and all three type at once. Every phase asserts what the nodes hold, exactly.
 
 import type { Page } from '@playwright/test';
-import { expect, test } from './fixtures/rich';
+import { expect, test, type RichWindow } from './fixtures/rich';
 import { expectDigest, settle } from './helpers/converge';
 import { blockText, occurrences, sameCharacterCounts, spanSummary } from './helpers/doc-model';
-import { MOD, applyBold, applyItalic, caretBlockText, caretTo, caretToEnd, redo, selectText, undo, titleInput } from './helpers/editor';
+import { MOD, applyBold, applyItalic, applyLink, caretBlockText, caretTo, caretToEnd, redo, selectText, undo, titleInput } from './helpers/editor';
 import { switchNode } from './helpers/rig';
 import { addExplicitMember, blocksOnNode, digestOnNode, ownedIdentity, titleOnNode } from './helpers/rpc';
 
@@ -14,6 +14,8 @@ const NODES = [1, 2];
 const KEY_DELAY_MS = 90; // human typing speed, so keystrokes and sync overlap
 const EMOJI = ` ${String.fromCodePoint(0x1f600)} ${String.fromCodePoint(0x1f468, 0x200d, 0x1f469, 0x200d, 0x1f467)}`;
 const PASTE = 'abcdefghij'.repeat(500); // 5000 characters in one editor change
+const PEER_MID_RUN_MS = 700; // the peer acts while the typist is part-way through a run
+const LINK = 'https://calimero.network';
 const NEW_UNDO_STEP_MS = 1000; // past the editors' 500 ms grouping, so the next edit undoes on its own
 
 async function typeLive(page: Page, text: string): Promise<void> {
@@ -29,6 +31,23 @@ async function shownLines(page: Page): Promise<string[]> {
     .filter(Boolean);
 }
 
+/** Each block as indent, kind and text, read from node 1. */
+async function shapes(doc: Parameters<typeof settle>[0]): Promise<string[]> {
+  return (await blocksOnNode(1, doc)).map((b) => `${'  '.repeat(b.depth)}${b.kind}:${blockText(b)}`);
+}
+
+/** `typist` types `run` at the end of block `index` while `peer` runs part-way through it. */
+async function whileTyping(typist: Page, index: number, run: string, peer: () => Promise<void>): Promise<void> {
+  await caretToEnd(typist, index);
+  await Promise.all([
+    typeLive(typist, run),
+    (async () => {
+      await typist.waitForTimeout(PEER_MID_RUN_MS);
+      await peer();
+    })(),
+  ]);
+}
+
 /** Every block's text once both nodes hold one document and both windows show it. */
 async function settledTexts(doc: Parameters<typeof settle>[0], pages: Page[]): Promise<string[]> {
   await settle(doc, NODES);
@@ -40,7 +59,7 @@ async function settledTexts(doc: Parameters<typeof settle>[0], pages: Page[]): P
   return texts;
 }
 
-test('two people edit one document live, formatted, with undo, and apart', async ({ rig }) => {
+test('people edit one document live: formatted, restructured, undone, apart, then three at once', async ({ rig }) => {
   test.setTimeout(20 * 60_000);
   const [a, b] = await rig.seed(NODES);
 
@@ -304,10 +323,80 @@ test('two people edit one document live, formatted, with undo, and apart', async
     expect.soft(occurrences(text, ' Right side.')).toBe(1);
   });
 
+  await test.step('structure: a peer moves, indents, nests and links while the other types', async () => {
+    const start = await shapes(rig.doc);
+    await settle(rig.doc, NODES);
+    await a.page.waitForTimeout(NEW_UNDO_STEP_MS);
+
+    await whileTyping(a.page, 0, ' +move', async () => {
+      await caretTo(b.page, 3, 2);
+      await b.page.keyboard.press(`Shift+${MOD}+ArrowUp`);
+    });
+    await settle(rig.doc, NODES);
+    const moved = [`${start[0]} +move`, start[1], start[3], start[2], ...start.slice(4)];
+    expect.soft(await shapes(rig.doc)).toEqual(moved);
+
+    // The peer's move rebuilds part of the document; the run typed before it must still undo.
+    await caretToEnd(a.page, 0);
+    await a.page.keyboard.press(`${MOD}+z`);
+    await settle(rig.doc, NODES);
+    expect.soft(await shapes(rig.doc)).toEqual([start[0], ...moved.slice(1)]);
+    await a.page.keyboard.press(`${MOD}+Shift+z`);
+    await settle(rig.doc, NODES);
+    expect.soft(await shapes(rig.doc)).toEqual(moved);
+
+    await whileTyping(a.page, 0, ' +nest', async () => {
+      await caretTo(b.page, 3, 2);
+      await b.page.keyboard.press('Tab');
+    });
+    await whileTyping(a.page, 0, ' +child', async () => {
+      await caretToEnd(b.page, 3);
+      await b.page.keyboard.press('Enter');
+      await b.page.keyboard.type('Nested note');
+    });
+    await settle(rig.doc, NODES);
+    const nested = await shapes(rig.doc);
+    expect.soft(nested[0]).toBe(`${start[0]} +move +nest +child`);
+    expect.soft(nested.slice(1, 5)).toEqual([start[1], start[3], `  ${start[2]}`, '  paragraph:Nested note']);
+
+    await whileTyping(a.page, 1, ' +link', async () => {
+      await selectText(b.page, 1, 'Notes');
+      await applyLink(b.page, LINK);
+    });
+    await settle(rig.doc, NODES);
+    const linked = (await blocksOnNode(1, rig.doc))[1];
+    expect.soft(blockText(linked)).toBe(`${start[1].slice(start[1].indexOf(':') + 1)} +link`);
+    expect.soft(spanSummary(linked)[0]).toBe(`link=${LINK}:Notes`);
+  });
+
+  let c: RichWindow | undefined;
   await test.step('late joiner: a third node opens the document and reads it identically', async () => {
     const digest = await settle(rig.doc, NODES);
-    await rig.join(3);
+    c = await rig.join(3);
     await expectDigest(rig.doc, [3], digest);
+    expect.soft(await digestOnNode(3, rig.doc)).toBe(digest);
+  });
+
+  await test.step('three: three people type at one spot and each run stays whole', async () => {
+    if (!c) throw new Error('the third window did not open');
+    const everyone = [a, b, c];
+    const orders = [[0, 1, 2], [0, 2, 1], [1, 0, 2], [1, 2, 0], [2, 0, 1], [2, 1, 0]];
+    // A split shows up in some rounds only, so one round alone proves little.
+    for (const round of [1, 2, 3]) {
+      const before = blockText((await blocksOnNode(1, rig.doc))[0]);
+      const runs = ['a', 'b', 'c'].map((letter) => `${letter}${round}`.repeat(3));
+      await Promise.all(
+        everyone.map(async (w, i) => {
+          await caretToEnd(w.page, 0);
+          await typeLive(w.page, runs[i]);
+        }),
+      );
+      await settle(rig.doc, [1, 2, 3]);
+      const tail = blockText((await blocksOnNode(1, rig.doc))[0]).slice(before.length);
+      expect.soft(orders.map((order) => order.map((i) => runs[i]).join('')), `round ${round}`).toContain(tail);
+    }
+    const digest = await digestOnNode(1, rig.doc);
+    expect.soft(await digestOnNode(2, rig.doc)).toBe(digest);
     expect.soft(await digestOnNode(3, rig.doc)).toBe(digest);
   });
 });

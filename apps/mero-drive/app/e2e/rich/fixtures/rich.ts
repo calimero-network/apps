@@ -8,6 +8,8 @@ import { rigAvailable, rigNodes } from '../helpers/nodes';
 import { goOnline, waitForHealth } from '../helpers/rig';
 import { findDoc, type DocRef } from '../helpers/rpc';
 
+const VIDEO_DIR = process.env.RICH_VIDEO_DIR; // set to record every window, for reviewing a run
+const VIDEO_SIZE = { width: 1280, height: 800 };
 
 export interface RichWindow {
   node: number;
@@ -42,7 +44,9 @@ export class RichRig {
     // A window opened against a node that is still restarting boots unauthed
     // and lands on the landing page instead of the workspace.
     await waitForHealth(node, true);
-    const context = await this.browser.newContext();
+    const context = await this.browser.newContext(
+      VIDEO_DIR ? { viewport: VIDEO_SIZE, recordVideo: { dir: VIDEO_DIR, size: VIDEO_SIZE } } : {},
+    );
     this.contexts.push(context);
     const page = await context.newPage();
     await page.goto(`/app?node=${node}`);
