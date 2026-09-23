@@ -18,13 +18,16 @@
  * holder, then transfer). `?context_id=` stopped being a hint and became the
  * only way a blob is found at all.
  *
- * Both halves matter, and both fail silently:
- *   - an upload with no context announces to nobody, so the bytes exist on one
- *     node and are unreachable from every other;
- *   - a read with no context never leaves the local store.
- * In both cases the sender sees their own image perfectly well, because their
- * own node has it. Only the recipient sees nothing, and there is no error
- * anywhere to explain it.
+ * The READ side is the load-bearing one, and that is a measurement, not a
+ * reading of the docs: a read with no context never leaves the local store,
+ * while an upload with no context is still served to a peer that asks with one
+ * (see the last test in "cross-node transfer", which asserted the documented
+ * behaviour first and was corrected by the node). The uploader's announce feeds
+ * availability-node prefetch instead.
+ *
+ * Either way the sender sees their own image perfectly well, because their own
+ * node has it. Only the recipient sees nothing, and there is no error anywhere
+ * to explain it — which is why these run against two nodes.
  *
  * ── Budgets ──────────────────────────────────────────────────────────────────
  *
@@ -266,17 +269,35 @@ test.describe("cross-node transfer", () => {
     expect(down.bytes).toBeNull();
   });
 
-  test("a blob uploaded with NO context never reaches node 2", async () => {
+  // ── MEASURED, and not what the upload-side docs imply ──────────────────────
+  //
+  // This test asserted the opposite first — that a blob uploaded without
+  // `?context_id=` "never reaches node 2" — because that is what the SDK's own
+  // doc says ("Without it the blob is only readable on this node"). Against
+  // real rc.41 nodes, node 2 answered **200**.
+  //
+  // So discovery is driven by the READER's context, not the writer's announce.
+  // Node 2 probes that context's peers; node 1 is a member and holds the bytes,
+  // so it serves them — whether or not the upload named a context. The
+  // announce feeds availability-node prefetch (`blob_announce_to_context`
+  // returns once the announce is SCHEDULED, and since rc.39 that path is
+  // prefetch only, never discovery), which matters when the holder is offline
+  // and an availability node has to answer instead.
+  //
+  // The app still requires a context on upload — it costs nothing, it is the
+  // documented contract, and prefetch is worth having — but the honest reason
+  // is "so a peer that is offline can still be served", NOT "otherwise nobody
+  // can read it". Asserting the measured behaviour, so that if core ever does
+  // tighten this, the change is caught here rather than discovered in an app.
+  test("a blob uploaded with NO context is still served to node 2, via the reader's context", async () => {
     const env = requireTwoNodes();
     const data = payload("no-context-upload");
 
-    // The upload succeeds and hands back a real id — which is the whole problem.
-    // Nothing at this point tells the uploader that the bytes went nowhere.
     const up = await putBlob(env.nodeUrl, env.accessToken, data);
     expect(up.status).toBe(200);
     expect(up.blobId).toMatch(/^[0-9a-f]{64}$/);
 
-    // It is readable where it was stored...
+    // Readable where it was stored, obviously.
     const local = await getBlob(
       env.nodeUrl,
       env.accessToken,
@@ -286,10 +307,9 @@ test.describe("cross-node transfer", () => {
     expect(local.status).toBe(200);
     expect(local.bytes!.equals(data)).toBe(true);
 
-    // ...and nowhere else, even asking with the context, because it was never
-    // announced to one. This is "I sent the picture and you can't see it",
-    // reproduced. `api/blobs.ts` refuses this upload client-side now; this test
-    // pins the node behaviour that makes the refusal necessary.
+    // And readable from node 2 too, because node 2 supplies a context whose
+    // peers include the holder. Byte-for-byte, so this is a real transfer and
+    // not a 200 with an empty body.
     const remote = await getBlob(
       env.nodeUrl2,
       env.accessToken2 || env.accessToken,
@@ -297,8 +317,8 @@ test.describe("cross-node transfer", () => {
       env.contextId,
       AbortSignal.timeout(CROSS_NODE_TIMEOUT_MS - 10_000),
     );
-    expect(remote.status).toBe(404);
-    expect(remote.bytes).toBeNull();
+    expect(remote.status).toBe(200);
+    expect(remote.bytes!.equals(data)).toBe(true);
   });
 });
 

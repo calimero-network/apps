@@ -679,6 +679,17 @@ E2E_CONTEXT_GROUP_ID=${GENERAL_GROUP_ID:-${GROUP_ID:-}}
 E2E_CONTEXT_ID=${CONTEXT_ID:-}
 E2E_MEMBER_KEY=${MEMBER_KEY:-}
 E2E_MEMBER_KEY_2=${MEMBER_KEY_2:-}
+
+# These tokens were minted by the node's own POST /auth/token (see
+# bootstrap_auth), which exists because this script inits with
+# --auth-mode embedded. So they are real, and the browser-driven specs
+# (chat.spec.ts, integration.spec.ts's "Authentication with live node") can
+# actually log the app in.
+#
+# CI cannot say this: merobox starts its containers in open-auth mode and
+# fabricates a placeholder JWT, which the admin API ignores and mero-react
+# rejects. Those specs skip there, with the reason printed.
+E2E_BROWSER_AUTH=1
 EOF
 
 green "Written: $ENV_OUT"

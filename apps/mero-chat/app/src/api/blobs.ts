@@ -22,11 +22,24 @@
 // for this app it never is. Every blob we read belongs to a conversation, and
 // the conversation IS the context to probe.
 //
-// The write side is the same story from the other end: `uploadBlob` without a
-// context stores the bytes and announces them to nobody, so the blob is
-// readable on the uploading node and unreachable everywhere else. That reads as
-// "the image uploaded fine and nobody else can see it" — the uploader's own
-// browser shows it, because the uploader's node has it.
+// The write side is weaker than the SDK doc implies, and this is MEASURED
+// against two real rc.41 nodes rather than read off the types.
+//
+// `uploadBlob`'s doc says "Without it the blob is only readable on this node."
+// That is not what happens: a blob uploaded with NO context is still served to
+// a second node that asks WITH one, because discovery probes the reader's
+// context and any peer holding the bytes answers. See the matching case in
+// `e2e/blobs.spec.ts`, which asserted the documented behaviour first and had to
+// be corrected.
+//
+// What the announce actually buys is availability-node prefetch —
+// `blob_announce_to_context` returns once the announce is SCHEDULED, and since
+// rc.39 that path feeds prefetch only, never discovery. It matters when the
+// holder is offline and an availability node has to answer instead.
+//
+// So `contextId` stays required on upload: it costs nothing, it is the
+// documented contract, and prefetch is worth having. Just not for the reason
+// the doc gives.
 //
 // ── The 35-second budget ─────────────────────────────────────────────────────
 //
@@ -117,9 +130,10 @@ export function isUsableBlobId(value: string | number[] | Uint8Array): boolean {
 export class BlobContextRequiredError extends Error {
   constructor(operation: string) {
     super(
-      `${operation} needs a context id. Since core 0.11.0-rc.39 a blob is only ` +
-        `reachable through the context it was announced to — without one the ` +
-        `bytes are stored on this node and visible to nobody else.`,
+      `${operation} needs a context id. Since core 0.11.0-rc.39 a blob is found ` +
+        `by probing a context's peers — a read without one never leaves this ` +
+        `node's own store, and an upload without one is never prefetched by the ` +
+        `context's availability nodes.`,
     );
     this.name = "BlobContextRequiredError";
   }

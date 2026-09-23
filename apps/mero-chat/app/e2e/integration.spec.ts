@@ -14,6 +14,7 @@
 
 import { test, expect } from "@playwright/test";
 import {
+  browserAuthAvailable,
   integrationEnvAvailable,
   getIntegrationEnv,
   injectRealTokens,
@@ -26,7 +27,7 @@ test.beforeAll(() => {
   if (!integrationEnvAvailable()) {
     console.log(
       "[integration] E2E_NODE_URL / E2E_ACCESS_TOKEN not set — skipping integration suite.\n" +
-      "[integration] Run  ./scripts/setup-nodes.sh  to start live nodes.",
+        "[integration] Run  ./scripts/setup-nodes.sh  to start live nodes.",
     );
   }
 });
@@ -43,8 +44,8 @@ function requireEnv() {
 async function setupAuth(page: import("@playwright/test").Page) {
   const env = getIntegrationEnv();
   await injectRealTokens(page, {
-    nodeUrl:      env.nodeUrl,
-    accessToken:  env.accessToken,
+    nodeUrl: env.nodeUrl,
+    accessToken: env.accessToken,
     refreshToken: env.refreshToken,
   });
 }
@@ -54,24 +55,31 @@ async function setupAuth(page: import("@playwright/test").Page) {
 test.describe("Node health", () => {
   test("node 1 is healthy", async () => {
     const env = requireEnv();
-    const client = new NodeClient({ nodeUrl: env.nodeUrl, accessToken: env.accessToken });
+    const client = new NodeClient({
+      nodeUrl: env.nodeUrl,
+      accessToken: env.accessToken,
+    });
     expect(await client.health()).toBe(true);
   });
 
   test("node 2 is healthy", async () => {
     const env = requireEnv();
-    const client = new NodeClient({ nodeUrl: env.nodeUrl2, accessToken: env.accessToken2 });
+    const client = new NodeClient({
+      nodeUrl: env.nodeUrl2,
+      accessToken: env.accessToken2,
+    });
     expect(await client.health()).toBe(true);
   });
 
   test("context is reachable and has expected seed data", async () => {
     const env = requireEnv();
-    const client = new NodeClient({ nodeUrl: env.nodeUrl, accessToken: env.accessToken });
+    const client = new NodeClient({
+      nodeUrl: env.nodeUrl,
+      accessToken: env.accessToken,
+    });
 
     const contexts = await client.listContexts();
-    const ctx = contexts.find(
-      (c) => c.contextId === env.contextId,
-    );
+    const ctx = contexts.find((c) => c.contextId === env.contextId);
     expect(ctx).toBeTruthy();
   });
 });
@@ -79,6 +87,22 @@ test.describe("Node health", () => {
 // ── Authentication ────────────────────────────────────────────────────────────
 
 test.describe("Authentication with live node", () => {
+  // These three drive the real app in a browser, unlike the rest of this file,
+  // so they need a session mero-react will accept — not just a reachable node.
+  // The CI job's nodes run in open-auth mode with a fabricated placeholder JWT:
+  // fine for the admin-API and JSON-RPC tests above and below, useless to the
+  // app, which bounces to /login. See `browserAuthAvailable()` for the detail
+  // and for what closing the gap would take.
+  test.beforeEach(() => {
+    if (!browserAuthAvailable()) {
+      test.skip(
+        true,
+        "E2E_BROWSER_AUTH != 1: the node has no embedded auth, so these tokens " +
+          "cannot log the app in. Run ./scripts/setup-nodes.sh to get real ones.",
+      );
+    }
+  });
+
   test("real tokens pass mero-react auth — workspace selector appears", async ({
     page,
   }) => {
@@ -130,11 +154,12 @@ test.describe("Authentication with live node", () => {
     await page.getByRole("button", { name: /disconnect node/i }).click();
     await page.waitForTimeout(500);
 
-    const tokens = await page.evaluate(() => localStorage.getItem("mero-tokens"));
+    const tokens = await page.evaluate(() =>
+      localStorage.getItem("mero-tokens"),
+    );
     expect(tokens).toBeNull();
   });
 });
-
 
 // ── Real-time sync (two nodes) ────────────────────────────────────────────────
 
@@ -145,12 +170,12 @@ test.describe("Cross-node message sync", () => {
     const marker = `sync-test-${ts}`;
 
     const client1 = new NodeClient({
-      nodeUrl:      env.nodeUrl,
-      accessToken:  env.accessToken,
+      nodeUrl: env.nodeUrl,
+      accessToken: env.accessToken,
     });
     const client2 = new NodeClient({
-      nodeUrl:      env.nodeUrl2,
-      accessToken:  env.accessToken2,
+      nodeUrl: env.nodeUrl2,
+      accessToken: env.accessToken2,
     });
 
     // Get identities for both nodes
@@ -164,14 +189,14 @@ test.describe("Cross-node message sync", () => {
 
     // Send a message via node 1's RPC
     await client1.rpcCall(env.contextId, ids1[0], "send_message", {
-      message:            marker,
-      mentions:           [],
+      message: marker,
+      mentions: [],
       mentions_usernames: [],
-      parent_message:     null,
-      timestamp:          Math.floor(ts / 1000),
-      sender_username:    "Alice",
-      files:              null,
-      images:             null,
+      parent_message: null,
+      timestamp: Math.floor(ts / 1000),
+      sender_username: "Alice",
+      files: null,
+      images: null,
     });
 
     // Poll node 2 for up to 30s waiting for the message to sync
@@ -190,6 +215,9 @@ test.describe("Cross-node message sync", () => {
       }
     }
 
-    expect(found, `Message "${marker}" did not sync to node 2 within 30 s`).toBe(true);
+    expect(
+      found,
+      `Message "${marker}" did not sync to node 2 within 30 s`,
+    ).toBe(true);
   });
 });
