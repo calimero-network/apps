@@ -4,6 +4,7 @@
 import { expect, test } from '@playwright/test';
 import type { Block } from '../../src/generated/docs/DocsClient';
 import { blockText, occurrences, sameCharacterCounts, spanSummary } from './helpers/doc-model';
+import { settledAcross } from './helpers/converge';
 import { waitForValue } from './helpers/rpc';
 
 const FOX: Block = {
@@ -61,5 +62,34 @@ test.describe('waitForValue', () => {
         label: 'digest',
       }),
     ).rejects.toThrow(/digest never reached .*cat.*last was .*fox/s);
+  });
+});
+
+test.describe('settledAcross', () => {
+  const FAST = { interval: 1, timeout: 2_000 };
+
+  /** A node that answers each value in turn, then keeps answering the last one. */
+  const answers = (...values: string[]) => {
+    let call = 0;
+    return async () => values[Math.min(call++, values.length - 1)];
+  };
+
+  test('waits out a node that is behind on its first reads', async () => {
+    const nodes = [answers('moved'), answers('stale', 'stale', 'stale', 'moved')];
+    expect(await settledAcross([0, 1], (node) => nodes[node](), FAST)).toBe('moved');
+  });
+
+  test('does not settle on the first node\'s value before a peer\'s write reaches it', async () => {
+    const nodes = [answers('stale', 'stale', 'moved'), answers('moved')];
+    expect(await settledAcross([0, 1], (node) => nodes[node](), FAST)).toBe('moved');
+  });
+
+  test('never takes a failed read as agreement, and names the last reads when it gives up', async () => {
+    const failing = async () => {
+      throw new Error('node down');
+    };
+    await expect(settledAcross([1, 2], failing, { interval: 1, timeout: 50 })).rejects.toThrow(
+      /nodes 1, 2 never settled; last read .*node down/,
+    );
   });
 });
