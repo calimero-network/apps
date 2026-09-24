@@ -119,28 +119,18 @@ fn the_seeded_writer_can_set_and_get() {
 
 /// Two devices of ONE account, writing concurrently to `SharedStorage`.
 ///
-/// ⚠️ IGNORED BECAUSE IT FAILS, and the failure looks like a real storage-layer
-/// defect rather than a bug in this contract. Every replica ends up with the
-/// SAME value — the invariant below passes on all of them, and invariants are
-/// checked before the hash comparison — but the replicas' ROOT HASHES differ,
-/// so `assert_all_replicas_equal` panics with `replicas DIVERGED`.
+/// Every replica must end with the same value AND the same root hash. Sync
+/// compares root hashes, so two nodes holding identical data under different
+/// hashes would keep seeing each other as out of date.
 ///
-/// Isolated against core 0.11.0-rc.34 AND rc.37:
-///   - seeded state alone, 3 devices, no writes        → converges
-///   - a plain `UnorderedMap` write, 3 devices         → converges
-///   - `shared_set` from 2 devices of ONE account      → DIVERGES
-///
-/// So it is specific to `SharedStorage` written by two devices of one account —
-/// exactly the tension `one_account()` exists to exercise, and a case nothing
-/// else covers. Values agreeing while root hashes do not is the same shape as
-/// the nested-`PNCounter` divergence, and it matters because sync compares root
-/// hashes: two nodes holding identical data would keep seeing each other as out
-/// of date.
-///
-/// Un-ignore once the storage layer is fixed; if it turns out the harness is
-/// wrong to compare hashes across devices, delete it instead.
+/// This was `#[ignore]`d from rc.34 to rc.41: the values agreed but the root
+/// hashes did not (`replicas DIVERGED`), specifically for `SharedStorage`
+/// written by two devices of one account. It passes from rc.42, where core
+/// carries a collection container's own row over sync's hash comparison
+/// (core#4008, #4009) — verified by running this test against both SDK tags:
+/// rc.41 diverges, rc.42 passes 10/10. It stays here so the divergence cannot
+/// come back unnoticed.
 #[test]
-#[ignore = "SharedStorage root hashes diverge across two devices of one account (reproduced on rc.34 and rc.37); values agree"]
 fn two_devices_of_the_seeded_account_both_write() {
     converge_app(node_init)
         .replicas(3)
