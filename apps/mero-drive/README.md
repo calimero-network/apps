@@ -38,6 +38,7 @@ pnpm run app:dev
 ```
 
 `scripts/local-rig.sh up` builds the bundle, starts three merod nodes on ports 3920-3925 under `/tmp/merodrive-rig`, installs the bundle on each, creates the namespace, the folder group and its docs context, joins the other two nodes, waits for them to agree on one context state hash, and writes `app/.env.integration`.
+`RIG_BUNDLE=<path.mpk>` installs that bundle instead of building one.
 It stops only the processes it started, recorded in `/tmp/merodrive-rig/rig.pids`.
 
 ```bash
@@ -166,6 +167,7 @@ pnpm run app:generate-client                  # regenerate DocsClient/RegistryCl
 - **Bundle** — assembles the `.mpk` artifact and uploads it for reviewers + the e2e job
 - **E2E (mero-drive)** - every scenario in `logic/workflows/`, each retried against the cold-join race, with node logs collected per scenario
 - **Browser E2E (mero-drive)** - the Playwright projects; `single-node` and `two-node` run against nodes the suite starts itself, or against the rig when `app/.env.integration` exists
+- **Browser E2E rich (mero-drive)** - the `rich` Playwright project, the live collab session, against a three-node rig brought up with CI's bundle
 
 Known upstream merobox gaps that block additional coverage are tracked as [calimero-network/merobox#214](https://github.com/calimero-network/merobox/issues/214) (`expected_failure` not honored by group_management step classes), [#215](https://github.com/calimero-network/merobox/issues/215) (context-alias steps), [#216](https://github.com/calimero-network/merobox/issues/216) (wait-for-SSE-event), and [#217](https://github.com/calimero-network/merobox/issues/217) (generic admin-API HTTP step).
 

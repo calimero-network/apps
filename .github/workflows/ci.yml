@@ -667,79 +667,7 @@ jobs:
           echo "KV_MPK_PATH=$PWD/$mpk" >> "$GITHUB_ENV"
           echo "using $mpk ($(wc -c <"$mpk") bytes)"
 
-      # The merod the workspace declares, so the browser runs against the same
-      # release the contract is built for. Read from the merod-image pin rather
-      # than hard-coded, so a core bump stays one edit.
-      - name: Resolve the merod version
-        id: merod
-        run: |
-          set -euo pipefail
-          ver=$(awk -F'"' '/^merod-image/{print $2}' Cargo.toml | sed 's/.*://')
-          test -n "$ver"
-          echo "merod $ver"
-          echo "version=$ver" >> "$GITHUB_OUTPUT"
-
-      # ⚠️ CACHED, and that is the actual fix rather than a nicety.
-      #
-      # This job is a MATRIX over every changed app, so a push that touches the
-      # workspace root fans out to ~16 legs — and each one downloaded the SAME
-      # immutable tarball from GitHub releases at the same moment. That is not
-      # just wasteful, it is very likely what provoked the throttling: master
-      # went red on
-      #
-      #     curl: (22) The requested URL returned error: 504     × 6
-      #
-      # in `Browser E2E (mero-sign)`, dying in this step before a single test
-      # ran, and the identical failure took out `mero-pass` on #150 an hour
-      # earlier and `mero-blocks` before that.
-      #
-      # A release asset is immutable for a given tag, so the version IS the
-      # cache key and there is nothing to invalidate. After the first leg warms
-      # it, the other fifteen do no network I/O at all.
-      - name: Cache merod
-        id: merod-cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.local/merod
-          key: merod-${{ runner.os }}-${{ steps.merod.outputs.version }}
-
-      - name: Download merod
-        if: steps.merod-cache.outputs.cache-hit != 'true'
-        run: |
-          set -euo pipefail
-          ver='${{ steps.merod.outputs.version }}'
-          url="https://github.com/calimero-network/core/releases/download/${ver}/merod_x86_64-unknown-linux-gnu.tar.gz"
-          # ⚠️ Retried, and PATIENTLY. The previous settings were
-          # `--retry 5 --retry-delay 3`, which gives up after roughly thirty
-          # seconds — measured against the failure above, all six attempts
-          # landed inside 26s and every one got a 504. A releases blip outlasts
-          # that. `--retry-max-time` spreads the attempts over three minutes
-          # instead, which is still far cheaper than a red master.
-          #
-          # `--retry-all-errors` so a connection reset counts as retryable;
-          # plain `--retry` is documented around transient HTTP and timeout
-          # cases only, and `curl: (35) Recv failure` is neither.
-          curl -fsSL --retry 8 --retry-delay 5 --retry-max-time 180 \
-            --retry-all-errors --connect-timeout 20 --max-time 300 \
-            "$url" -o /tmp/merod.tgz
-          mkdir -p "$HOME/.local/merod"
-          tar -xzf /tmp/merod.tgz -C "$HOME/.local/merod"
-
-      - name: Put merod on the path
-        run: |
-          set -euo pipefail
-          # Runs on a cache hit too, so `MEROD_BINARY` is set either way — the
-          # download step is skipped when cached, and a variable exported only
-          # there would be empty for fifteen of the sixteen legs.
-          bin=$(find "$HOME/.local/merod" -type f -name merod -print -quit)
-          if [ -z "$bin" ]; then
-            echo "::error::merod is not in ~/.local/merod — the cache restored nothing and the download was skipped"
-            ls -laR "$HOME/.local/merod" || true
-            exit 1
-          fi
-          chmod +x "$bin"
-          "$bin" --version
-          echo "MEROD_BINARY=$bin" >> "$GITHUB_ENV"
+      - uses: ./.github/actions/setup-merod
 
       - name: Enable corepack (pnpm)
         run: corepack enable
@@ -751,145 +679,11 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - name: Resolve the Playwright version
-        id: pw
-        working-directory: apps/${{ matrix.app }}/app
-        run: echo "version=$(npx playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
-
-      # Keyed on the resolved version so a Playwright bump invalidates it.
-      - uses: actions/cache@v4
-        id: pw-cache
+      # Capped because `playwright install --with-deps` has no timeout of its own.
+      - uses: ./.github/actions/setup-playwright
+        timeout-minutes: 15
         with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
-
-      # ⚠️ Both Playwright install steps below shell out to `apt-get update`,
-      # and apt exits 100 when ANY configured index fails — including the
-      # third-party repos the runner image ships and Playwright never reads a
-      # package from. Playwright turns that into
-      # `Failed to install browser dependencies`, which reads as a broken app.
-      #
-      # On 2026-09-09 Google's Chrome repo served a `Release` file newer than
-      # its `Packages.gz` (Release created 17:16Z, Packages last modified
-      # 09:41Z). apt called it `Hash Sum mismatch` and ALL SIXTEEN Browser E2E
-      # legs went red on main with no test having run — on the very commit
-      # whose PR run had been green ninety minutes earlier. The bounded retry
-      # below cannot clear that: a stale CDN index is not a transient stall, so
-      # all three attempts hit the same mismatch.
-      #
-      # Playwright's deps come from Ubuntu main/universe only, so the fix is to
-      # take the other lists out of apt's view for this job. Parked by rename
-      # rather than deleted (apt reads only `*.list`/`*.sources`), and selected
-      # by CONTENT so a future runner image reshuffling the filenames cannot
-      # accidentally park the Ubuntu archive itself.
-      - name: Keep apt to the Ubuntu archive
-        run: |
-          set -euo pipefail
-          for f in /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources; do
-            [ -e "$f" ] || continue
-            # `ubuntu.com` matches the archive/security/ports hosts;
-            # `apt-mirrors.txt` matches the `mirror+file:` list the hosted
-            # images use. Deliberately NOT a bare `ubuntu`, which would also
-            # match `packages.microsoft.com/ubuntu/24.04/prod`.
-            if grep -qE 'ubuntu\.com|apt-mirrors\.txt' "$f"; then
-              echo "keeping   $(basename "$f")"
-              continue
-            fi
-            echo "parking   $(basename "$f")"
-            sudo mv "$f" "$f.ci-disabled"
-          done
-          # Defense in depth for the OTHER half of this failure class: a reset
-          # or timeout mid-fetch. apt does not retry by default, and the retry
-          # loops below can only re-run the whole install.
-          printf 'Acquire::Retries "3";\n' | sudo tee /etc/apt/apt.conf.d/99-ci-retries >/dev/null
-      # ⚠️ `playwright install --with-deps` has no timeout of its own and has
-      # been observed running to the 6-hour job default elsewhere in the fleet.
-      # Capped, and the OS deps are installed separately on a cache hit so the
-      # ~170 MB browser download is skipped.
-      - name: Install Chromium
-        if: steps.pw-cache.outputs.cache-hit != 'true'
-        timeout-minutes: 15
-        working-directory: apps/${{ matrix.app }}/app
-        # Same apt hang as the cache-hit step below; same bounded retry.
-        run: |
-          for attempt in 1 2 3; do
-            if timeout 300 npx playwright install --with-deps chromium; then exit 0; fi
-            echo "::warning::playwright install attempt $attempt hung or failed; retrying"
-            # ⚠️ `timeout` kills the npx wrapper, NOT the apt-get it started
-            # under sudo — and that orphan keeps /var/lib/dpkg/lock-frontend.
-            # So a timed-out attempt POISONS every retry after it:
-            #
-            #     E: Could not get lock /var/lib/dpkg/lock-frontend.
-            #        It is held by process 2746 (apt-get)
-            #
-            # which is exactly how `Browser E2E (mero-sheets)` died on
-            # 2026-09-11 — attempt 1 hung for the full 4 minutes fetching
-            # fonts, then attempts 2 and 3 failed in under a second each. The
-            # loop looked like three chances and was really one.
-            #
-            # So clear the ground before retrying: kill the orphan, wait for
-            # the lock to actually drop (SIGTERM is not instant), and finish
-            # any half-configured packages it left behind.
-            sudo pkill -x apt-get 2>/dev/null || true
-            sudo pkill -x dpkg 2>/dev/null || true
-            for _ in $(seq 1 60); do
-              sudo fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || break
-              sleep 2
-            done
-            sudo dpkg --configure -a >/dev/null 2>&1 || true
-            sleep 15
-          done
-          echo "::error::playwright install failed three times — an apt stall or a broken index, not the app"
-          echo "apt sources still in play:"; cat /etc/apt/sources.list /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources 2>/dev/null || true
-          exit 1
-
-      # ⚠️ Retried, and each ATTEMPT is bounded rather than just the step.
-      #
-      # `playwright install-deps` shells out to apt, which intermittently hangs
-      # rather than failing. A bare `timeout-minutes` does not help: the step
-      # timeout FAILS THE JOB, so a transient apt stall reads as a broken app.
-      # It killed three jobs in one afternoon — Browser E2E (mero-sign) on main
-      # and (mero-pixart) on a PR, both with no test output at all, the log
-      # ending in `Terminate orphan process: (npm exec playwright install-deps
-      # chromium)`. A rerun passed every time.
-      #
-      # `timeout` bounds each attempt so a hang becomes a retry instead of a
-      # dead job; the step budget covers three of them.
-      - name: Install Chromium OS deps (cache hit)
-        if: steps.pw-cache.outputs.cache-hit == 'true'
-        timeout-minutes: 15
-        working-directory: apps/${{ matrix.app }}/app
-        run: |
-          for attempt in 1 2 3; do
-            if timeout 240 npx playwright install-deps chromium; then exit 0; fi
-            echo "::warning::playwright install-deps attempt $attempt hung or failed; retrying"
-            # ⚠️ `timeout` kills the npx wrapper, NOT the apt-get it started
-            # under sudo — and that orphan keeps /var/lib/dpkg/lock-frontend.
-            # So a timed-out attempt POISONS every retry after it:
-            #
-            #     E: Could not get lock /var/lib/dpkg/lock-frontend.
-            #        It is held by process 2746 (apt-get)
-            #
-            # which is exactly how `Browser E2E (mero-sheets)` died on
-            # 2026-09-11 — attempt 1 hung for the full 4 minutes fetching
-            # fonts, then attempts 2 and 3 failed in under a second each. The
-            # loop looked like three chances and was really one.
-            #
-            # So clear the ground before retrying: kill the orphan, wait for
-            # the lock to actually drop (SIGTERM is not instant), and finish
-            # any half-configured packages it left behind.
-            sudo pkill -x apt-get 2>/dev/null || true
-            sudo pkill -x dpkg 2>/dev/null || true
-            for _ in $(seq 1 60); do
-              sudo fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || break
-              sleep 2
-            done
-            sudo dpkg --configure -a >/dev/null 2>&1 || true
-            sleep 15
-          done
-          echo "::error::playwright install-deps failed three times — an apt stall or a broken index, not the app"
-          echo "apt sources still in play:"; cat /etc/apt/sources.list /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources 2>/dev/null || true
-          exit 1
+          working-directory: apps/${{ matrix.app }}/app
 
       # An app opts into a specific CI suite with `test:e2e:ci`; otherwise the
       # default projects run. scaffolding-e2e needs this: its default config has
@@ -915,6 +709,96 @@ jobs:
             apps/${{ matrix.app }}/app/playwright-report
             apps/${{ matrix.app }}/app/test-results
             apps/${{ matrix.app }}/app/.playwright-data/*.log
+          retention-days: 7
+          if-no-files-found: ignore
+
+  browser-e2e-rich:
+    name: Browser E2E rich (mero-drive)
+    needs: [changes, wasm]
+    # The `browser` gate, narrowed to mero-drive: the `rich` project needs the
+    # three-node rig, which the `browser` job's own two nodes cannot stand in for.
+    if: (needs.changes.outputs.frontend == 'true' || needs.changes.outputs.logic == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.tooling == 'true' || needs.changes.outputs.js_deps == 'true') && contains(fromJSON(needs.changes.outputs.apps), 'mero-drive')
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: mpk-mero-drive-${{ github.sha }}
+          path: bundle
+
+      - name: Verify the bundle arrived
+        run: |
+          set -euo pipefail
+          mpk=$(find bundle -name '*.mpk' -print -quit)
+          if [ -z "$mpk" ]; then
+            echo "::error::no .mpk in the downloaded artifact - the rig would install nothing"
+            ls -la bundle || true
+            exit 1
+          fi
+          echo "RIG_BUNDLE=$PWD/$mpk" >> "$GITHUB_ENV"
+          echo "using $mpk ($(wc -c <"$mpk") bytes)"
+
+      - uses: ./.github/actions/setup-merod
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ runner.os }}-${{ hashFiles('requirements-e2e.txt') }}
+
+      - run: pip install -r requirements-e2e.txt && merobox --version
+
+      - name: Enable corepack (pnpm)
+        run: corepack enable
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # Capped because `playwright install --with-deps` has no timeout of its own.
+      - uses: ./.github/actions/setup-playwright
+        timeout-minutes: 15
+        with:
+          working-directory: apps/mero-drive/app
+
+      - name: Bring the three-node rig up
+        id: rig
+        run: apps/mero-drive/scripts/local-rig.sh up
+
+      - name: Run the rich project
+        working-directory: apps/mero-drive/app
+        run: npx playwright test --project=rich
+
+      - name: Take the rig down
+        if: always() && steps.rig.outcome != 'skipped'
+        run: apps/mero-drive/scripts/local-rig.sh down
+
+      - name: Upload the report
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-e2e-rich-mero-drive-${{ github.sha }}
+          path: |
+            apps/mero-drive/app/playwright-report
+            apps/mero-drive/app/test-results
+          retention-days: 7
+          if-no-files-found: ignore
+
+      # Separate from the report: sync debug logging makes these hundreds of MB.
+      - name: Upload the node logs
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-e2e-rich-node-logs-${{ github.sha }}
+          path: /tmp/merodrive-rig/data/*/logs/*.log
           retention-days: 7
           if-no-files-found: ignore
 

@@ -23,7 +23,7 @@ import sys
 CI = pathlib.Path(__file__).resolve().parents[2] / ".github/workflows/ci.yml"
 
 # consumer -> the job whose uploaded artifact it downloads
-ARTIFACT_DEPS = {"browser": "wasm", "e2e": "wasm"}
+ARTIFACT_DEPS = {"browser": "wasm", "browser-e2e-rich": "wasm", "e2e": "wasm"}
 
 src = CI.read_text()
 
