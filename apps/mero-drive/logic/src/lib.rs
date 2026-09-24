@@ -99,6 +99,16 @@ impl Block {
     }
 }
 
+/// What `apply_delta_on` did. The block's spans come back either way, so a
+/// refused write hands the client exactly the state it has to rebase onto.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, AbiType)]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct Applied {
+    pub applied: bool,
+    pub token: Option<String>,
+    pub spans: Vec<Span>,
+}
+
 /// One step of an attributed editor change, mirroring `DeltaOp`, which has no
 /// `AbiType`. Untagged so the YAML stays Quill's: `- retain: 6`.
 #[derive(Clone, Debug, Serialize, Deserialize, AbiType)]
@@ -583,6 +593,29 @@ impl DocsState {
             block: &block
         });
         encode_token(&undo)
+    }
+
+    /// `apply_delta`, but only onto the text the caller diffed against: a
+    /// position counted in any other text names the wrong place.
+    pub fn apply_delta_on(
+        &mut self,
+        doc: String,
+        block: String,
+        base: String,
+        ops: Vec<Change>,
+    ) -> app::Result<Applied> {
+        let id: BlockId = decode_token(&block)?;
+        let current = self.read(&doc)?.body.block_body(id)?.get_text()?;
+        let token = if current == base {
+            Some(self.apply_delta(doc.clone(), block, ops)?)
+        } else {
+            None
+        };
+        Ok(Applied {
+            applied: token.is_some(),
+            token,
+            spans: self.read(&doc)?.body.block_delta(id)?,
+        })
     }
 
     /// Take a whole transaction back, returning a token that redoes it.
@@ -1224,6 +1257,50 @@ mod tests {
             app.view(|s| s.list_blocks(DOC.to_owned())).unwrap(),
             vec![block]
         );
+    }
+
+    #[test]
+    fn apply_delta_on_applies_onto_the_text_it_was_diffed_against() {
+        let mut app = host("t");
+        let block = add_block(&mut app, "paragraph");
+        let _typed = type_text(&mut app, &block, "The fox.");
+        let applied = app
+            .call(|s| {
+                s.apply_delta_on(
+                    DOC.to_owned(),
+                    block.clone(),
+                    "The fox.".to_owned(),
+                    vec![retain(3), insert(" red")],
+                )
+            })
+            .unwrap();
+        assert!(applied.applied);
+        assert!(applied.token.is_some());
+        assert_eq!(applied.spans.len(), 1);
+        assert_eq!(applied.spans[0].text, "The red fox.");
+        assert_eq!(digest(&app), "paragraph/0{:The red fox.};");
+    }
+
+    #[test]
+    fn apply_delta_on_refuses_a_stale_base_and_hands_back_the_current_text() {
+        let mut app = host("t");
+        let block = add_block(&mut app, "paragraph");
+        let _typed = type_text(&mut app, &block, "The fox.");
+        // The client last saw "The fox"; a peer has since appended the dot.
+        let refused = app
+            .call(|s| {
+                s.apply_delta_on(
+                    DOC.to_owned(),
+                    block.clone(),
+                    "The fox".to_owned(),
+                    vec![retain(7), insert("es")],
+                )
+            })
+            .unwrap();
+        assert!(!refused.applied);
+        assert_eq!(refused.token, None);
+        assert_eq!(refused.spans[0].text, "The fox.");
+        assert_eq!(digest(&app), "paragraph/0{:The fox.};");
     }
 
     #[test]

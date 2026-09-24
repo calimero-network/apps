@@ -26,7 +26,26 @@ die() {
 node_name() { echo "$NODE_PREFIX-$1"; }
 p2p_port() { echo $((BASE_PORT + 2 * ($1 - 1))); }
 rpc_port() { echo $((BASE_PORT + 2 * $1 - 1)); }
+# The swarm port in the node's own config, which is the isolated one once it
+# has been moved, so a second isolation never replaces a port that is not there.
+current_p2p_port() {
+  awk '/^\[swarm\]/ { in_swarm = 1; next } /^\[/ { in_swarm = 0 } in_swarm && /^listen/ { match($0, /tcp\/[0-9]+/); print substr($0, RSTART + 4, RLENGTH - 4); exit }' "$(config_path "$1")"
+}
+
+# A fresh port per isolation: a peer that learned the last one would otherwise
+# dial straight back in, and the node would never actually be alone.
+free_port() {
+  local port
+  while :; do
+    port=$((39000 + RANDOM % 900))
+    if ! lsof -nP -i :"$port" >/dev/null 2>&1; then
+      echo "$port"
+      return
+    fi
+  done
+}
 node_home() { echo "$RIG_DIR/data/$(node_name "$1")/$(node_name "$1")"; }
+config_path() { echo "$(node_home "$1")/$(node_name "$1")/config.toml"; }
 
 node_url() { echo "http://localhost:$(rpc_port "$1")"; }
 
@@ -37,12 +56,28 @@ require_node_index() {
   esac
 }
 
-# MEROD_BINARY wins; otherwise the integration build, then a plain merod.
+# MEROD_BINARY wins; then the binary `up` recorded, so a restart from the dev
+# server (no PATH of ours) uses the same build; then the integration build.
 resolve_merod() {
   local merod="${MEROD_BINARY:-}"
+  [ -n "$merod" ] || [ ! -L "$RIG_DIR/bin/merod" ] || merod="$(readlink "$RIG_DIR/bin/merod")"
   [ -n "$merod" ] || merod="$(command -v merod-integration || command -v merod || true)"
   [ -n "$merod" ] && [ -x "$merod" ] || die "no merod; set MEROD_BINARY or put merod-integration on PATH"
   echo "$merod"
+}
+
+# One switch at a time: the dev server and a test cleanup can both call
+# offline/online for the same node, and two starts on one home race.
+LOCK_DIR="$RIG_DIR/rig.lock"
+with_lock() {
+  local waited=0
+  until mkdir "$LOCK_DIR" 2>/dev/null; do
+    sleep 1
+    waited=$((waited + 1))
+    [ "$waited" -lt 180 ] || die "rig lock held for 180s at $LOCK_DIR"
+  done
+  trap 'rmdir "$LOCK_DIR" 2>/dev/null' EXIT
+  "$@"
 }
 
 # `<index> <pid>` per line. A node that is offline holds no line.
@@ -57,6 +92,8 @@ write_pid() {
   { [ -n "$rest" ] && echo "$rest"; [ -n "$pid" ] && echo "$index $pid"; } >"$PID_FILE.tmp" || true
   mv "$PID_FILE.tmp" "$PID_FILE"
 }
+
+is_isolated() { [ -f "$(config_path "$1").online" ]; }
 
 alive() { [ -n "${1:-}" ] && kill -0 "$1" 2>/dev/null; }
 
@@ -292,9 +329,21 @@ cmd_up() {
 
   token="$(mint_token 1 | jq -r .data.access_token)"
   app_id="$(application_id "$token")"
+  write_env "$app_id"
 
+  echo
+  echo "rig up: $NODE_COUNT nodes, run dir $RIG_DIR"
+  cmd_status
+  echo "application: $app_id"
+  echo "contexts:    $(curl -sf "$(node_url 1)/admin-api/contexts" -H "Authorization: Bearer $token" | jq -r '.data.contexts[]? // .data[]? // empty' | tr '\n' ' ')"
+  echo "env:         $ENV_FILE"
+}
+
+# Tokens live one hour, so `tokens` re-mints them for a rig that stays up longer.
+write_env() {
+  local app_id=$1
   {
-    echo "# Written by scripts/local-rig.sh up. Do not edit by hand."
+    echo "# Written by scripts/local-rig.sh. Do not edit by hand."
     echo "E2E_APPLICATION_ID=$app_id"
     for index in $(seq 1 "$NODE_COUNT"); do
       local suffix="" tokens
@@ -305,19 +354,25 @@ cmd_up() {
       echo "E2E_REFRESH_TOKEN$suffix=$(echo "$tokens" | jq -r .data.refresh_token)"
     done
   } >"$ENV_FILE"
+}
 
-  echo
-  echo "rig up: $NODE_COUNT nodes, run dir $RIG_DIR"
-  cmd_status
-  echo "application: $app_id"
-  echo "contexts:    $(curl -sf "$(node_url 1)/admin-api/contexts" -H "Authorization: Bearer $token" | jq -r '.data.contexts[]? // .data[]? // empty' | tr '\n' ' ')"
-  echo "env:         $ENV_FILE"
+cmd_tokens() {
+  local index token
+  for index in $(seq 1 "$NODE_COUNT"); do
+    healthy "$index" || die "node $index is not healthy; bring it online first"
+  done
+  token="$(mint_token 1 | jq -r .data.access_token)"
+  write_env "$(application_id "$token")"
+  echo "tokens refreshed: $ENV_FILE"
 }
 
 cmd_down() {
   local index
   [ -f "$PID_FILE" ] || die "no pid file at $PID_FILE; nothing this script started is running"
-  for index in $(seq 1 "$NODE_COUNT"); do stop_node "$index"; done
+  for index in $(seq 1 "$NODE_COUNT"); do
+    stop_node "$index"
+    restore_config "$index"
+  done
   echo "rig down: $NODE_COUNT nodes stopped"
 }
 
@@ -328,7 +383,7 @@ cmd_status() {
     if ! alive "$pid"; then
       state="offline"
     elif healthy "$index"; then
-      state="online  pid $pid"
+      is_isolated "$index" && state="isolated pid $pid" || state="online  pid $pid"
     else
       state="starting pid $pid"
     fi
@@ -336,16 +391,62 @@ cmd_status() {
   done
 }
 
+# Backed up once per offline stretch, so a repeat `offline` never clobbers the original.
+backup_config() {
+  local config
+  config="$(config_path "$1")"
+  [ -f "$config.online" ] || cp "$config" "$config.online"
+}
+
+restore_config() {
+  local config
+  config="$(config_path "$1")"
+  [ -f "$config.online" ] && mv "$config.online" "$config"
+  return 0
+}
+
+# Moves the swarm listeners off their bootstrap port and turns off mDNS, so
+# peers dialing the old port and address fail while the RPC port keeps serving.
+isolate_config() {
+  local index=$1 config
+  config="$(config_path "$index")"
+  python3 - "$config" "$(current_p2p_port "$index")" "$(free_port)" <<'PY'
+import re
+import sys
+import tomllib
+
+path, old_port, new_port = sys.argv[1], sys.argv[2], sys.argv[3]
+text = open(path).read()
+
+
+def rewrite_section(text, header, pattern, replacement):
+    start = text.index(f"\n[{header}]\n") + 1
+    end = text.find("\n[", start + 1)
+    end = len(text) if end == -1 else end
+    return text[:start] + re.sub(pattern, replacement, text[start:end]) + text[end:]
+
+
+text = rewrite_section(text, "swarm", rf'(?<=/){re.escape(old_port)}(?=["/])', new_port)
+text = rewrite_section(text, "discovery", r"mdns = true", "mdns = false")
+open(path, "w").write(text)
+tomllib.loads(text)  # fail loudly if the rewrite produced invalid toml
+PY
+}
+
 cmd_offline() {
   require_node_index "${1:-}"
   stop_node "$1"
-  echo "node $1 offline"
+  backup_config "$1"
+  isolate_config "$1"
+  start_node "$1"
+  echo "node $1 offline (isolated, rpc still serving)"
 }
 
 cmd_online() {
   require_node_index "${1:-}"
-  # Idempotent, so restoring a node that never went down is not an error.
-  alive "$(read_pid "$1")" || start_node "$1"
+  stop_node "$1"
+  restore_config "$1"
+  start_node "$1"
   echo "node $1 online  $(node_url "$1")"
 }
 
@@ -353,10 +454,11 @@ case "${1:-}" in
 up) cmd_up ;;
 down) cmd_down ;;
 status) cmd_status ;;
-offline) cmd_offline "${2:-}" ;;
-online) cmd_online "${2:-}" ;;
+tokens) with_lock cmd_tokens ;;
+offline) with_lock cmd_offline "${2:-}" ;;
+online) with_lock cmd_online "${2:-}" ;;
 *)
-  echo "usage: local-rig.sh up|down|status|offline <n>|online <n>" >&2
+  echo "usage: local-rig.sh up|down|status|tokens|offline <n>|online <n>" >&2
   exit 2
   ;;
 esac

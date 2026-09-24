@@ -623,6 +623,76 @@ steps:
     statements:
       - 'json_equal({{undone_digest}}, {"output": "paragraph/0{:fox};"})'
 
+  - name: A body write diffed against a stale base is refused
+    type: call
+    node: drive-node-1
+    context_id: '{{docs_ctx}}'
+    method: apply_delta_on
+    executor_public_key: '{{alice_key}}'
+    args:
+      doc: '{{body_doc}}'
+      block: '{{block}}'
+      base: fx
+      ops:
+        - retain: 3
+        - insert: '!'
+    outputs:
+      refused_write: result
+
+  - name: Assert the refusal hands back the block unchanged
+    type: json_assert
+    statements:
+      - 'json_equal({{refused_write}}, {"output": {"applied": false, "token": null, "spans": [{"text": "fox"}]}})'
+
+  - name: A body write diffed against the current text applies
+    type: call
+    node: drive-node-1
+    context_id: '{{docs_ctx}}'
+    method: apply_delta_on
+    executor_public_key: '{{alice_key}}'
+    args:
+      doc: '{{body_doc}}'
+      block: '{{block}}'
+      base: fox
+      ops:
+        - retain: 3
+        - insert: '!'
+    outputs:
+      guarded_write: result
+      guarded_token: result.output.token
+
+  - name: Assert the guarded write landed
+    type: json_assert
+    statements:
+      - 'json_subset({{guarded_write}}, {"output": {"applied": true, "spans": [{"text": "fox!"}]}})'
+
+  - name: Alice undoes the guarded write
+    type: call
+    node: drive-node-1
+    context_id: '{{docs_ctx}}'
+    method: undo
+    executor_public_key: '{{alice_key}}'
+    args:
+      doc: '{{body_doc}}'
+      block: '{{block}}'
+      token: '{{guarded_token}}'
+
+  - name: Read the digest after undoing the guarded write
+    type: call
+    node: drive-node-1
+    context_id: '{{docs_ctx}}'
+    method: get_state_digest
+    executor_public_key: '{{alice_key}}'
+    args:
+      doc: '{{body_doc}}'
+    outputs:
+      guarded_undone_digest: result
+
+  - name: Assert the block is back to the word
+    type: json_assert
+    statements:
+      - 'json_equal({{guarded_undone_digest}}, {"output": "paragraph/0{:fox};"})'
+
   - name: Alice anchors the gap before the last character of the word
     type: call
     node: drive-node-1

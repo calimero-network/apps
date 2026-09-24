@@ -4,15 +4,30 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { useRef } from 'react';
 import { EditorHeader, type TitleBinding } from '../EditorHeader';
+import type { TitleCaret } from '@/lib/rich/cursors';
 import { stampBlocks } from '../EditorShell';
 
-function Header(props: { undo?: boolean; readOnly?: boolean }) {
+const CARET = {
+  author: 'alice',
+  name: 'Ada',
+  colour: '#3b82f6',
+  caret: 2,
+  from: 2,
+  to: 4,
+};
+
+function Header(props: {
+  undo?: boolean;
+  readOnly?: boolean;
+  carets?: TitleCaret[];
+}) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const title: TitleBinding = {
     value: 'Notes',
     onChange: vi.fn(),
     onSelect: vi.fn(),
     inputRef,
+    carets: props.carets ?? [],
   };
   return (
     <EditorHeader
@@ -39,6 +54,27 @@ describe('EditorHeader test hooks', () => {
     expect(screen.queryByTestId('doc-title-input')).toBeNull();
     expect(screen.queryByTestId('doc-undo')).toBeNull();
     expect(screen.getByText('Notes')).toBeTruthy();
+  });
+});
+
+describe('title presence markers', () => {
+  it('draws a caret and a selection for a peer on the title', () => {
+    render(<Header carets={[CARET]} />);
+    expect(screen.getByTestId('presence-cursor').dataset.author).toBe('alice');
+    expect(screen.getByTestId('presence-selection').dataset.author).toBe(
+      'alice',
+    );
+  });
+
+  it('draws no selection for a collapsed caret', () => {
+    render(<Header carets={[{ ...CARET, from: 2, to: 2 }]} />);
+    expect(screen.getByTestId('presence-cursor')).toBeTruthy();
+    expect(screen.queryByTestId('presence-selection')).toBeNull();
+  });
+
+  it('draws nothing when no peer is on the title', () => {
+    render(<Header />);
+    expect(screen.queryByTestId('presence-cursor')).toBeNull();
   });
 });
 

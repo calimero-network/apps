@@ -26,6 +26,14 @@ export function peersOnDoc<T extends { docId: string }>(
   return on;
 }
 
+/** What a re-resolve depends on; a fresh map identity is not a reason to call. */
+export function signature(peers: Map<string, DocPresence>): string {
+  return [...peers]
+    .map(([author, s]) => `${author}|${s.blockId ?? ''}|${s.anchor}|${s.head}`)
+    .sort()
+    .join('\n');
+}
+
 /** The caret colour for an author, stable across sessions and peers. */
 export function presenceColour(authorId: string): string {
   let hash = 0;

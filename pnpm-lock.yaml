@@ -671,6 +671,12 @@ importers:
       postcss:
         specifier: ^8.5.10
         version: 8.5.26
+      prosemirror-state:
+        specifier: ^1.4.4
+        version: 1.4.4
+      prosemirror-view:
+        specifier: ^1.41.4
+        version: 1.42.3
       react:
         specifier: 'catalog:'
         version: 19.2.8

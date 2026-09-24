@@ -23,6 +23,8 @@
     "clsx": "^2.1.1",
     "lucide-react": "^0.562.0",
     "postcss": "^8.5.10",
+    "prosemirror-state": "^1.4.4",
+    "prosemirror-view": "^1.41.4",
     "react": "catalog:",
     "react-dom": "catalog:",
     "react-router-dom": "^6.22.3",
@@ -78,6 +80,7 @@
     "e2e:landing": "playwright test --project=landing",
     "e2e:single": "playwright test --project=single-node",
     "e2e:two-node": "playwright test --project=two-node",
+    "e2e:rich": "../scripts/local-rig.sh tokens && playwright test --project=rich",
     "e2e:integration": "playwright test --project=single-node --project=two-node",
     "e2e:report": "playwright show-report playwright-report"
   },

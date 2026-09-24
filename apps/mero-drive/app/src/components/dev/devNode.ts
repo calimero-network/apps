@@ -4,6 +4,8 @@ export interface DevNode {
   index: number;
   url: string;
   online: boolean;
+  /** online | isolated (peers cut, rpc serving) | stopped. */
+  state?: 'online' | 'isolated' | 'stopped' | 'starting';
   accessToken: string;
   refreshToken: string;
 }
@@ -26,6 +28,18 @@ export async function setDevNodeOnline(
   const action = online ? 'online' : 'offline';
   const resp = await fetch(`/__dev/node/${index}/${action}`, { method: 'POST' });
   if (!resp.ok) throw new Error(`POST /__dev/node/${index}/${action} -> ${resp.status}`);
+}
+
+/** The JWT's exp in milliseconds, so the client refreshes on the real deadline. */
+function tokenExpiry(token: string): number | null {
+  const payload = token.split('.')[1];
+  if (!payload) return null;
+  try {
+    const exp = (JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/'))) as { exp?: number }).exp;
+    return typeof exp === 'number' ? exp * 1000 : null;
+  } catch {
+    return null;
+  }
 }
 
 /** The node this window was opened against, or null when `?node` is absent. */
@@ -52,7 +66,7 @@ export async function applyDevNodeSelection(): Promise<void> {
   }
   const node = nodes.nodes.find((n) => n.index === selected);
   if (!node) return;
-  const expiresAt = Date.now() + 3_600_000;
+  const expiresAt = tokenExpiry(node.accessToken) ?? Date.now() + 3_600_000;
   localStorage.setItem(
     'mero-tokens',
     JSON.stringify({

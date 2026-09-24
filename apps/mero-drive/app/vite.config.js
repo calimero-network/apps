@@ -30,12 +30,31 @@ function readRigEnv() {
   return { applicationId: env.E2E_APPLICATION_ID, nodes };
 }
 
-async function online(url) {
+// Rig tokens live one hour; a JWT past (or near) its exp signs the window out.
+function tokensExpireWithin(rig, seconds) {
+  const now = Math.floor(Date.now() / 1000);
+  return rig.nodes.some((node) => {
+    const payload = node.accessToken?.split('.')[1];
+    if (!payload) return true;
+    const exp = JSON.parse(Buffer.from(payload, 'base64url').toString()).exp;
+    return typeof exp !== 'number' || exp < now + seconds;
+  });
+}
+
+// An isolated node still serves RPC, so its state comes from the rig rather
+// than from a health probe, which cannot tell isolated from online.
+async function nodeStates() {
+  const states = new Map();
   try {
-    return (await fetch(`${url}/admin-api/health`)).ok;
+    const { stdout } = await run(RIG, ['status']);
+    for (const line of stdout.split('\n')) {
+      const match = /^node\s+([0-9]+)\s+\S+\s+(\w+)/.exec(line.trim());
+      if (match) states.set(Number(match[1]), match[2]);
+    }
   } catch {
-    return false;
+    // Fall through: an unreadable rig reports every node stopped.
   }
+  return states;
 }
 
 // Dev-only bridge to scripts/local-rig.sh: the node list the `?node=` switch
@@ -55,10 +74,13 @@ function devRig() {
         if (req.method === 'GET' && req.url === '/nodes') {
           Promise.resolve()
             .then(async () => {
+              if (tokensExpireWithin(readRigEnv(), 300)) await run(RIG, ['tokens']);
               const rig = readRigEnv();
-              const nodes = await Promise.all(
-                rig.nodes.map(async (node) => ({ ...node, online: await online(node.url) })),
-              );
+              const states = await nodeStates();
+              const nodes = rig.nodes.map((node) => {
+                const state = states.get(node.index) ?? 'stopped';
+                return { ...node, state, online: state === 'online' };
+              });
               send(200, { ...rig, nodes });
             })
             .catch(() => send(200, { applicationId: '', nodes: [] }));

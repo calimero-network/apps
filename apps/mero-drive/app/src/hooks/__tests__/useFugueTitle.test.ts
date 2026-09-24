@@ -7,6 +7,7 @@ import type { ChangeEvent } from 'react';
 import type { DocsClient } from '@/generated/docs/DocsClient';
 import { useFugueTitle } from '../useFugueTitle';
 
+const publish = vi.fn();
 let deliver: ((event: unknown) => void) | null = null;
 
 vi.mock('@calimero-network/mero-react', () => ({
@@ -55,18 +56,20 @@ const settle = async (ms = 400) => {
   });
 };
 
-function mount(client: FakeClient) {
+function mount(client: FakeClient, withPresence = false) {
   return renderHook(() =>
     useFugueTitle({
       client: client as unknown as DocsClient,
       docId: DOC,
       contextId: CTX,
+      publish: withPresence ? publish : undefined,
     }),
   );
 }
 
 beforeEach(() => {
   vi.useFakeTimers();
+  publish.mockClear();
   deliver = null;
 });
 
@@ -141,6 +144,37 @@ describe('useFugueTitle', () => {
       position: 2,
       before: true,
     });
+  });
+
+  it('publishes the caret anchor as presence for this document', async () => {
+    const client = fakeClient();
+    const { result } = mount(client, true);
+    await settle();
+    const input = document.createElement('input');
+    document.body.appendChild(input);
+    input.value = 'Notes';
+    input.setSelectionRange(2, 2);
+    result.current.inputRef.current = input;
+
+    act(() => result.current.onSelect());
+    await settle();
+    expect(publish).toHaveBeenCalledWith({
+      blockId: null,
+      anchor: 'anc-1',
+      head: 'anc-1',
+    });
+  });
+
+  it('publishes nothing when the view gave it nowhere to publish', async () => {
+    const client = fakeClient();
+    const { result } = mount(client);
+    await settle();
+    const input = document.createElement('input');
+    document.body.appendChild(input);
+    result.current.inputRef.current = input;
+    act(() => result.current.onSelect());
+    await settle();
+    expect(publish).not.toHaveBeenCalled();
   });
 
   it('re-reads on a peer TitleChanged and restores the caret through the anchor', async () => {

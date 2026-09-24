@@ -6,6 +6,12 @@ import {
 
 // Generated types
 
+export interface Applied {
+  applied: boolean;
+  token: string | null;
+  spans: Span[];
+}
+
 export interface Block {
   id: string;
   kind: string;
@@ -244,6 +250,16 @@ export class DocsClient {
   public async applyDelta(params: { doc: string; block: string; ops: ChangePayload[] }): Promise<string> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'apply_delta', argsJson: params });
     return response as string;
+  }
+
+  /**
+   * apply_delta_on
+   *
+   * @intent mutating
+   */
+  public async applyDeltaOn(params: { doc: string; block: string; base: string; ops: ChangePayload[] }): Promise<Applied> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'apply_delta_on', argsJson: params });
+    return response as Applied;
   }
 
   /**

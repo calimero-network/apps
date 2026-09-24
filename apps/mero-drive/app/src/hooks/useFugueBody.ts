@@ -1,8 +1,12 @@
-// Binds the BlockNote document to the body CRDT. A burst of keystrokes is
-// coalesced into one diff, the diff becomes the ordered backend calls, and a
-// peer's event becomes a re-read applied only when the render actually differs.
+// Binds the BlockNote document to the body CRDT. The editor always equals the
+// node's last known state plus the user's pending edit: a peer's change is
+// transformed past that edit before it touches one block, and every write is
+// guarded by the text it was diffed against, so a stale write is refused and
+// rebased instead of landing in the wrong place.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { TextSelection } from 'prosemirror-state';
+import type { EditorView } from 'prosemirror-view';
 import {
   useSubscription,
   type SubscriptionEventData,
@@ -16,26 +20,61 @@ import {
 } from '@/lib/rich/blocks';
 import {
   backendBlocks,
+  backendSpans,
   fromBlockNote,
   toBlockNote,
   type BlockNoteBlock,
 } from '@/lib/rich/blocknote';
+import { attrsEqual } from '@/lib/rich/attributes';
+import { inlineOffset, posAt, scalarAt } from '@/lib/rich/cursors';
+import { diffSpans, spansToInline, type AttrSpan, type Change } from '@/lib/rich/delta';
 import { parseRichEvents } from '@/lib/rich/events';
-import { UndoHistory } from '@/lib/rich/undo';
+import { applyChanges, transform, transformPosition } from '@/lib/rich/ot';
+import { isTransportFailure } from '@/lib/rich/transport';
+import {
+  blockGeometry,
+  type DocNode,
+} from '@/components/editor/presence/geometry';
+import {
+  applyRemoteText,
+  flushPendingInput,
+  type RemoteTextEditor,
+} from '@/components/editor/remoteText';
 import type { SaveStatus } from '@/components/editor/types';
 import { isContextEvent } from './useContextEvents';
+import { useRetry } from './useRetry';
 
-const FLUSH_DEBOUNCE_MS = 300; // one diff per typing pause, not per keystroke
-const REFRESH_DEBOUNCE_MS = 150; // coalesces a typing peer's event burst
+const FLUSH_DEBOUNCE_MS = 50; // a few keystrokes per write; correctness does not depend on it
+const REFRESH_DEBOUNCE_MS = 50; // coalesces a typing peer's event burst
+const RECONCILE_MS = 4000; // an event lost while the node restarted still lands
+
+/** The slice of the BlockNote editor the binding drives. */
+export interface BodyEditor {
+  readonly document: BlockNoteBlock[];
+  readonly prosemirrorView: EditorView | undefined;
+  updateBlock(id: string, update: Record<string, unknown>): unknown;
+  insertBlocks(
+    blocks: Record<string, unknown>[],
+    reference: string,
+    placement: 'before' | 'after',
+  ): unknown;
+  removeBlocks(ids: string[]): unknown;
+  replaceBlocks(remove: string[], insert: Record<string, unknown>[]): unknown;
+  readonly pmSchema?: RemoteTextEditor['pmSchema'];
+  transact?: RemoteTextEditor['transact'];
+  undo?(): boolean;
+  redo?(): boolean;
+}
 
 export interface UseFugueBodyOptions {
   client: DocsClient | null;
   docId: string | null;
   contextId: string | null;
+  editor: BodyEditor | null;
 }
 
 export interface UseFugueBodyResult {
-  /** The document as EditorShell's opaque serialized string, or undefined. */
+  /** The document as first loaded, for EditorShell's one-time content. */
   content: string | undefined;
   onContentChange: (content: string) => void;
   status: SaveStatus;
@@ -43,216 +82,447 @@ export interface UseFugueBodyResult {
   error: Error | null;
   undo: () => void;
   redo: () => void;
+  /** Bumps on every change a peer made, so anchors are re-resolved. */
+  revision: number;
+  /** The backend id of a block the editor knows by its own id. */
+  backendIdOf: (editorId: string) => string;
+}
+
+interface Caret {
+  anchor: number;
+  head: number;
+}
+
+interface Outcome {
+  refused: boolean;
+  structural: boolean;
+  touched: Set<string>;
 }
 
 const asError = (cause: unknown): Error =>
   cause instanceof Error ? cause : new Error(String(cause));
 
-const editorIdOf = (placeholder: string): string => placeholder.slice(4);
+const structureOf = (blocks: EditorBlock[]): string =>
+  JSON.stringify(blocks.map((b) => [b.id, b.kind, b.depth, b.attrs]));
 
-/** One undoable body write: the backend takes the block as well as the token. */
-interface BodyUndo {
-  block: string;
-  token: string;
+/** The caret's scalar offsets when it sits inside `editorId`'s text. */
+function caretIn(view: EditorView, editorId: string): Caret | null {
+  const geometry = blockGeometry(view.state.doc as unknown as DocNode, editorId);
+  if (!geometry) return null;
+  const end = geometry.contentStart + inlineOffset(geometry.items, geometry.text.length);
+  const { anchor, head } = view.state.selection;
+  const inside = (pos: number) => pos >= geometry.contentStart && pos <= end;
+  if (!inside(anchor) || !inside(head)) return null;
+  return { anchor: scalarAt(geometry, anchor), head: scalarAt(geometry, head) };
 }
 
-function parseDocument(content: string): BlockNoteBlock[] {
-  const parsed: unknown = JSON.parse(content);
-  return Array.isArray(parsed) ? (parsed as BlockNoteBlock[]) : [];
+function placeCaret(view: EditorView, editorId: string, caret: Caret): void {
+  const geometry = blockGeometry(view.state.doc as unknown as DocNode, editorId);
+  if (!geometry) return;
+  const { doc } = view.state;
+  view.dispatch(
+    view.state.tr.setSelection(
+      TextSelection.create(doc, posAt(geometry, caret.anchor), posAt(geometry, caret.head)),
+    ),
+  );
 }
 
 export function useFugueBody({
   client,
   docId,
   contextId,
+  editor,
 }: UseFugueBodyOptions): UseFugueBodyResult {
   const [content, setContent] = useState<string | undefined>(undefined);
   const [status, setStatus] = useState<SaveStatus>('saved');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
+  const [revision, setRevision] = useState(0);
 
-  // The document as last reconciled with the backend, in editor ids.
-  const appliedRef = useRef<EditorBlock[]>([]);
-  // A block the editor minted keeps its own id until a call answers a real one.
+  // The document as the node last reported it, in backend ids.
+  const serverRef = useRef<EditorBlock[]>([]);
+  // A block the editor minted keeps its own id; this maps it to the node's.
   const idMapRef = useRef(new Map<string, string>());
-  const historyRef = useRef(new UndoHistory<BodyUndo>(docId));
-  const pendingRef = useRef<BlockNoteBlock[] | null>(null);
-  const inFlightRef = useRef(false);
+  const dirtyRef = useRef(false);
   const staleRef = useRef(false);
+  const resyncRef = useRef(false);
+  const inFlightRef = useRef(false);
   const loadedRef = useRef(false);
+  const syncedRef = useRef(false);
+  const editorRef = useRef<BodyEditor | null>(editor);
+  editorRef.current = editor;
   const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const drainRef = useRef<(() => Promise<void>) | null>(null);
+  const { schedule: scheduleRetry, reset: resetRetry } = useRetry(
+    () => void drainRef.current?.(),
+  );
 
   const contextIds = useMemo(() => (contextId ? [contextId] : []), [contextId]);
 
-  const backendId = useCallback(
+  const backendIdOf = useCallback(
     (editorId: string) => idMapRef.current.get(editorId) ?? editorId,
     [],
   );
-  const withBackendIds = useCallback(
-    (blocks: EditorBlock[]): EditorBlock[] =>
-      blocks.map((block) => ({ ...block, id: backendId(block.id) })),
-    [backendId],
+  const editorIdOf = useCallback((backendId: string) => {
+    for (const [editorId, id] of idMapRef.current) {
+      if (id === backendId) return editorId;
+    }
+    return backendId;
+  }, []);
+
+  /** The editor's document as the flat list the diff takes, in backend ids. */
+  const localBlocks = useCallback((): EditorBlock[] => {
+    const live = editorRef.current;
+    if (!live) return [];
+    return fromBlockNote(live.document).map((block) => ({
+      ...block,
+      id: backendIdOf(block.id),
+    }));
+  }, [backendIdOf]);
+
+  // Until the editor holds the loaded document, a diff against it would
+  // delete everything the node has.
+  const isSynced = useCallback((): boolean => {
+    if (syncedRef.current) return true;
+    const live = editorRef.current;
+    if (!live || !loadedRef.current) return false;
+    const held = new Set(localBlocks().map((block) => block.id));
+    syncedRef.current = serverRef.current.every((block) => held.has(block.id));
+    return syncedRef.current;
+  }, [localBlocks]);
+
+  const serverBlock = (id: string): EditorBlock | undefined =>
+    serverRef.current.find((block) => block.id === id);
+
+  /** Runs a peer's block-level change outside the user's undo history. */
+  const asPeer = useCallback((apply: (live: BodyEditor) => void) => {
+    const live = editorRef.current;
+    if (!live) return;
+    if (!live.transact) return apply(live);
+    live.transact((tr) => {
+      tr.setMeta('addToHistory', false);
+      apply(live);
+    });
+  }, []);
+
+  /** `ops` into one editor block as steps; a whole-block replace is the fallback. */
+  const replaceInline = useCallback(
+    (editorId: string, spans: AttrSpan[], ops: Change[]) => {
+      const live = editorRef.current;
+      if (!live) return;
+      if (live.pmSchema && live.transact && applyRemoteText(live as RemoteTextEditor, editorId, ops)) {
+        return;
+      }
+      const view = live.prosemirrorView;
+      const caret = view ? caretIn(view, editorId) : null;
+      asPeer((peer) => peer.updateBlock(editorId, { content: spansToInline(spans) }));
+      if (view && caret) {
+        placeCaret(view, editorId, {
+          anchor: transformPosition(ops, caret.anchor),
+          head: transformPosition(ops, caret.head),
+        });
+      }
+    },
+    [asPeer],
   );
 
+  /** A peer moved one block from `base` to `remote`; carry that into the editor. */
+  const rebaseBlock = useCallback(
+    (backendId: string, base: AttrSpan[], remote: AttrSpan[]) => {
+      const remoteChange = diffSpans(base, remote);
+      if (remoteChange.length === 0) return;
+      // Read pending input before the editor is diffed, or the diff misses it.
+      flushPendingInput(editorRef.current?.prosemirrorView);
+      const editorId = editorIdOf(backendId);
+      const local = localBlocks().find((block) => block.id === backendId);
+      if (!local) return;
+      const pending = diffSpans(base, local.inline);
+      const incoming = transform(pending, remoteChange, true);
+      if (incoming.length === 0) return;
+      replaceInline(editorId, applyChanges(local.inline, incoming), incoming);
+      setRevision((value) => value + 1);
+    },
+    [editorIdOf, localBlocks, replaceInline],
+  );
+
+  /** A remote block the editor does not hold yet, placed after its predecessor. */
+  const insertRemote = (live: BodyEditor, remote: EditorBlock[], index: number) => {
+    const [node] = toBlockNote([remote[index]]);
+    const held = new Set(localBlocks().map((block) => block.id));
+    for (let i = index - 1; i >= 0; i--) {
+      if (held.has(remote[i].id)) {
+        live.insertBlocks([node as unknown as Record<string, unknown>], editorIdOf(remote[i].id), 'after');
+        return;
+      }
+    }
+    const first = live.document[0];
+    if (first) live.insertBlocks([node as unknown as Record<string, unknown>], first.id, 'before');
+  };
+
+  /**
+   * Block-level changes a peer made, applied one block at a time. False means
+   * a peer change it cannot place that way: a move, a depth or a nested insert.
+   */
+  const applyRemoteStructure = useCallback(
+    (remote: EditorBlock[]): boolean => {
+      const live = editorRef.current;
+      if (!live) return false;
+      const server = new Map(serverRef.current.map((b) => [b.id, b]));
+      const remoteIds = new Set(remote.map((b) => b.id));
+      const local = new Map(localBlocks().map((b) => [b.id, b]));
+
+      const common = remote.map((b) => b.id).filter((id) => server.has(id) && local.has(id));
+      const inCommon = new Set(common);
+      const serverOrder = serverRef.current.map((b) => b.id).filter((id) => inCommon.has(id));
+      const localOrder = [...local.keys()].filter((id) => inCommon.has(id));
+      const peerMoved = common.join() !== serverOrder.join() && localOrder.join() === serverOrder.join();
+      if (peerMoved) return false;
+
+      for (const block of remote) {
+        const was = server.get(block.id);
+        const now = local.get(block.id);
+        if (was && now && block.depth !== now.depth && now.depth === was.depth) return false;
+        if (!was && !now && block.depth !== 0) return false;
+      }
+
+      const gone = [...local.keys()].filter((id) => server.has(id) && !remoteIds.has(id));
+      if (gone.length > 0) asPeer((peer) => peer.removeBlocks(gone.map(editorIdOf)));
+
+      for (let i = 0; i < remote.length; i++) {
+        const block = remote[i];
+        if (!server.has(block.id) && !local.has(block.id)) asPeer((peer) => insertRemote(peer, remote, i));
+      }
+
+      for (const block of remote) {
+        const was = server.get(block.id);
+        const now = local.get(block.id);
+        if (!was || !now) continue;
+        const changed = block.kind !== was.kind || !attrsEqual(block.attrs, was.attrs);
+        const untouched = now.kind === was.kind && attrsEqual(now.attrs, was.attrs);
+        if (changed && untouched) {
+          const [node] = toBlockNote([{ ...block, inline: now.inline }]);
+          asPeer((peer) => peer.updateBlock(editorIdOf(block.id), { type: node.type, props: node.props }));
+        }
+      }
+      return true;
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- insertRemote reads refs only
+    [asPeer, editorIdOf, localBlocks],
+  );
+
+  /** Replaces the whole editor document, keeping the caret's scalar position. */
+  const replaceAll = useCallback(
+    (remote: EditorBlock[]) => {
+      const live = editorRef.current;
+      if (!live) return;
+      const view = live.prosemirrorView;
+      let caret: { block: string; at: Caret } | null = null;
+      if (view) {
+        for (const block of live.document) {
+          const at = caretIn(view, block.id);
+          if (at) caret = { block: backendIdOf(block.id), at };
+        }
+      }
+      asPeer((peer) =>
+        peer.replaceBlocks(
+          peer.document.map((block) => block.id),
+          toBlockNote(remote) as unknown as Record<string, unknown>[],
+        ),
+      );
+      idMapRef.current = new Map();
+      if (view && caret) placeCaret(view, caret.block, caret.at);
+      setRevision((value) => value + 1);
+    },
+    [asPeer, backendIdOf],
+  );
+
+  /** The node's document against the editor: structure first, then text. */
+  const reconcile = useCallback(
+    (remote: EditorBlock[], touched: Set<string>) => {
+      flushPendingInput(editorRef.current?.prosemirrorView);
+      if (!loadedRef.current || !isSynced()) {
+        // The editor has not applied the load yet, so hand it the newer one.
+        serverRef.current = remote;
+        loadedRef.current = true;
+        setContent(JSON.stringify(toBlockNote(remote)));
+        return;
+      }
+      if (!applyRemoteStructure(remote)) {
+        if (diffBlocks(serverRef.current, localBlocks()).length > 0) {
+          // Our own block change is unsent; send it, then read again.
+          dirtyRef.current = true;
+          staleRef.current = true;
+          return;
+        }
+        replaceAll(remote);
+        serverRef.current = remote;
+        return;
+      }
+      const previous = new Map(serverRef.current.map((b) => [b.id, b]));
+      for (const block of remote) {
+        const was = previous.get(block.id);
+        if (was && !touched.has(block.id)) rebaseBlock(block.id, was.inline, block.inline);
+      }
+      serverRef.current = remote;
+      // What still differs is the user's newer edit, which the next flush sends.
+      if (structureOf(localBlocks()) !== structureOf(remote)) dirtyRef.current = true;
+    },
+    [applyRemoteStructure, isSynced, localBlocks, rebaseBlock, replaceAll],
+  );
+
+  const refreshWith = useCallback(
+    async (touched: Set<string>) => {
+      if (!client || !docId) return;
+      try {
+        const remote = backendBlocks(await client.getDocument({ doc: docId }));
+        reconcile(remote, touched);
+        setStatus((prev) => (prev === 'error' ? prev : 'saved'));
+      } catch (cause) {
+        setError(asError(cause));
+      } finally {
+        setLoading(false);
+      }
+    },
+    [client, docId, reconcile],
+  );
+  const refresh = useCallback(() => refreshWith(new Set()), [refreshWith]);
+
+  /** Runs one diff's calls in order, stopping at the first refused write. */
   const runCalls = useCallback(
-    async (target: DocsClient, doc: string, calls: BlockCall[]) => {
+    async (target: DocsClient, doc: string, calls: BlockCall[], progress: { done: number }): Promise<Outcome> => {
       const minted = new Map<string, string>();
-      const real = (ref: string | null) =>
-        ref === null ? null : minted.get(ref) ?? ref;
+      const touched = new Set<string>();
+      const real = (ref: string | null) => (ref === null ? null : (minted.get(ref) ?? ref));
+      const mint = (ref: string, id: string) => {
+        minted.set(ref, id);
+        if (isPlaceholder(ref)) idMapRef.current.set(ref.slice(4), id);
+        touched.add(id);
+      };
+      const structural = calls.some((call) => call.call !== 'apply_delta');
       for (const call of calls) {
         switch (call.call) {
           case 'merge_blocks':
-            await target.mergeBlocks({
-              doc,
-              first: real(call.first) as string,
-              second: real(call.second) as string,
-            });
+            await target.mergeBlocks({ doc, first: real(call.first) as string, second: real(call.second) as string });
+            touched.add(real(call.first) as string);
+            touched.add(real(call.second) as string);
             break;
           case 'split_block':
-            minted.set(
-              call.ref,
-              await target.splitBlock({
-                doc,
-                block: real(call.block) as string,
-                at: call.at,
-              }),
-            );
+            touched.add(real(call.block) as string);
+            mint(call.ref, await target.splitBlock({ doc, block: real(call.block) as string, at: call.at }));
             break;
           case 'insert_block':
-            minted.set(
-              call.ref,
-              await target.insertBlock({
-                doc,
-                after: real(call.after),
-                kind: call.kind,
-                depth: call.depth,
-              }),
-            );
+            mint(call.ref, await target.insertBlock({ doc, after: real(call.after), kind: call.kind, depth: call.depth }));
             break;
           case 'delete_block':
-            await target.deleteBlock({
-              doc,
-              block: real(call.block) as string,
-            });
+            await target.deleteBlock({ doc, block: real(call.block) as string });
+            touched.add(real(call.block) as string);
             break;
           case 'move_block':
-            await target.moveBlock({
-              doc,
-              block: real(call.block) as string,
-              after: real(call.after),
-            });
+            await target.moveBlock({ doc, block: real(call.block) as string, after: real(call.after) });
+            touched.add(real(call.block) as string);
             break;
           case 'set_kind':
-            await target.setKind({
-              doc,
-              block: real(call.block) as string,
-              kind: call.kind,
-            });
+            await target.setKind({ doc, block: real(call.block) as string, kind: call.kind });
+            touched.add(real(call.block) as string);
             break;
           case 'set_depth':
-            await target.setDepth({
-              doc,
-              block: real(call.block) as string,
-              depth: call.depth,
-            });
+            await target.setDepth({ doc, block: real(call.block) as string, depth: call.depth });
+            touched.add(real(call.block) as string);
             break;
           case 'set_attr':
-            await target.setAttr({
-              doc,
-              block: real(call.block) as string,
-              key: call.key,
-              value: call.value,
-            });
+            await target.setAttr({ doc, block: real(call.block) as string, key: call.key, value: call.value });
+            touched.add(real(call.block) as string);
             break;
           case 'apply_delta': {
             const block = real(call.block) as string;
-            historyRef.current.record({
+            // The generated ChangePayload is a tagged union; the contract
+            // takes serde's untagged form, which is what `ops` already is.
+            const result = await target.applyDeltaOn({
+              doc,
               block,
-              // The generated ChangePayload is a tagged union; the contract
-              // takes serde's untagged form, which is what `ops` already is.
-              token: await target.applyDelta({
-                doc,
-                block,
-                ops: call.ops as unknown as ChangePayload[],
-              }),
+              base: call.base,
+              ops: call.ops as unknown as ChangePayload[],
             });
+            const was = serverBlock(block);
+            if (was && !touched.has(block)) {
+              const base = result.applied ? applyChanges(was.inline, call.ops) : was.inline;
+              const spans = backendSpans(result.spans);
+              rebaseBlock(block, base, spans);
+              was.inline = spans;
+            }
+            if (!result.applied) return { refused: true, structural, touched };
             break;
           }
         }
+        progress.done += 1;
       }
-      for (const [ref, id] of minted) {
-        if (isPlaceholder(ref)) idMapRef.current.set(editorIdOf(ref), id);
-      }
+      return { refused: false, structural, touched };
     },
-    [],
+    [rebaseBlock],
   );
 
-  const flush = useCallback(async () => {
-    const document = pendingRef.current;
-    pendingRef.current = null;
-    if (!document || !client || !docId) return;
-    const next = fromBlockNote(document);
-    const calls = diffBlocks(
-      withBackendIds(appliedRef.current),
-      withBackendIds(next),
-    );
-    appliedRef.current = next;
+  // False stops the drain loop: a transport failure defers to scheduleRetry.
+  const flush = useCallback(async (): Promise<boolean> => {
+    if (!client || !docId || !editorRef.current || !isSynced()) return true;
+    const next = localBlocks();
+    const calls = diffBlocks(serverRef.current, next);
     if (calls.length === 0) {
       setStatus('saved');
-      return;
+      return true;
     }
     setStatus('saving');
+    const progress = { done: 0 };
     try {
-      await runCalls(client, docId, calls);
+      const outcome = await runCalls(client, docId, calls, progress);
+      if (outcome.structural && outcome.refused) {
+        resyncRef.current = true;
+      } else if (outcome.structural) {
+        // The node now holds this structure; tracking it stops a resend.
+        serverRef.current = next.map((block) => {
+          const id = backendIdOf(block.id);
+          const held = serverBlock(id);
+          return {
+            ...block,
+            id,
+            inline: held && !outcome.touched.has(id) ? held.inline : block.inline,
+          };
+        });
+        await refreshWith(outcome.touched);
+      }
+      if (outcome.refused) dirtyRef.current = true;
       setError(null);
-      setStatus('saved');
+      setStatus(outcome.refused ? 'saving' : 'saved');
+      resetRetry();
+      return true;
     } catch (cause) {
+      dirtyRef.current = true;
+      // Calls that did land left the node ahead of what we hold; read before resending.
+      if (progress.done > 0) resyncRef.current = true;
+      if (isTransportFailure(cause)) {
+        setStatus('offline');
+        scheduleRetry();
+        return false;
+      }
       setError(asError(cause));
       setStatus('error');
-      // The local model no longer matches the backend, so take its word for it.
-      staleRef.current = true;
+      resyncRef.current = true;
+      return true;
     }
-  }, [client, docId, runCalls, withBackendIds]);
+  }, [backendIdOf, client, docId, isSynced, localBlocks, refreshWith, resetRetry, runCalls, scheduleRetry]);
 
-  const refresh = useCallback(async () => {
-    if (!client || !docId) return;
-    try {
-      const rows = await client.getDocument({ doc: docId });
-      const blocks = backendBlocks(rows);
-      // A re-read must not clear a failed write's error: the write is still
-      // the thing that needs reporting, and only a later success settles it.
-      setStatus((prev) => (prev === 'error' ? prev : 'saved'));
-      if (!loadedRef.current) setError(null);
-      // String equality would churn: the editor serializes default props this
-      // model drops. An empty call list is the real "nothing to apply" test.
-      if (
-        loadedRef.current &&
-        diffBlocks(withBackendIds(appliedRef.current), blocks).length === 0
-      ) {
-        return;
-      }
-      loadedRef.current = true;
-      // A re-read speaks backend ids, so the editor-id map starts over.
-      idMapRef.current = new Map();
-      appliedRef.current = blocks;
-      setContent(JSON.stringify(toBlockNote(blocks)));
-    } catch (cause) {
-      setError(asError(cause));
-    } finally {
-      setLoading(false);
-    }
-  }, [client, docId, withBackendIds]);
-
-  // A local write and a re-read cannot interleave: the re-read would replace
-  // the editor with a document the in-flight calls have not reached yet.
   const drain = useCallback(async () => {
     if (inFlightRef.current) return;
     inFlightRef.current = true;
     try {
-      while (pendingRef.current || staleRef.current) {
-        if (pendingRef.current) await flush();
-        else {
+      while (dirtyRef.current || staleRef.current || resyncRef.current) {
+        if (resyncRef.current) {
+          resyncRef.current = false;
+          await refreshWith(new Set(serverRef.current.map((b) => b.id)));
+        } else if (dirtyRef.current) {
+          dirtyRef.current = false;
+          if (!(await flush())) break;
+        } else {
           staleRef.current = false;
           await refresh();
         }
@@ -260,19 +530,35 @@ export function useFugueBody({
     } finally {
       inFlightRef.current = false;
     }
-  }, [flush, refresh]);
+  }, [flush, refresh, refreshWith]);
+  drainRef.current = drain;
 
   useEffect(() => {
-    historyRef.current.reset(docId);
     idMapRef.current = new Map();
-    appliedRef.current = [];
-    pendingRef.current = null;
+    serverRef.current = [];
+    dirtyRef.current = false;
+    staleRef.current = false;
+    resyncRef.current = false;
     loadedRef.current = false;
+    syncedRef.current = false;
+    resetRetry();
     setContent(undefined);
     setLoading(true);
     if (!client || !docId) return;
     void refresh();
-  }, [client, docId, refresh]);
+  }, [client, docId, refresh, resetRetry]);
+
+  // A node restart drops the event stream, so an edit made while it was away
+  // arrives on no event; an idle re-read is what closes that window.
+  useEffect(() => {
+    if (!client || !docId) return;
+    const timer = setInterval(() => {
+      if (dirtyRef.current || inFlightRef.current) return;
+      staleRef.current = true;
+      void drainRef.current?.();
+    }, RECONCILE_MS);
+    return () => clearInterval(timer);
+  }, [client, docId]);
 
   useEffect(
     () => () => {
@@ -291,15 +577,8 @@ export function useFugueBody({
   );
 
   const onContentChange = useCallback(
-    (serialized: string) => {
-      let document: BlockNoteBlock[];
-      try {
-        document = parseDocument(serialized);
-      } catch (cause) {
-        setError(asError(cause));
-        return;
-      }
-      pendingRef.current = document;
+    (_serialized: string) => {
+      dirtyRef.current = true;
       setStatus('unsaved');
       if (flushTimerRef.current) clearTimeout(flushTimerRef.current);
       flushTimerRef.current = setTimeout(() => {
@@ -328,24 +607,10 @@ export function useFugueBody({
   );
   useSubscription(contextIds, handleEvent);
 
-  const step = useCallback(
-    (direction: 'undo' | 'redo') => {
-      if (!client || !docId) return;
-      const history = historyRef.current;
-      const apply = async ({ block, token }: BodyUndo) => {
-        const inverse = await client.undo({ doc: docId, block, token });
-        staleRef.current = true;
-        void drain();
-        return { block, token: inverse };
-      };
-      const ran =
-        direction === 'undo' ? history.undo(apply) : history.redo(apply);
-      ran.catch((cause) => setError(asError(cause)));
-    },
-    [client, docId, drain],
-  );
-  const undo = useCallback(() => step('undo'), [step]);
-  const redo = useCallback(() => step('redo'), [step]);
+  // One history for the buttons and the keyboard: the editor's own, which
+  // holds only this user's edits and groups a typing burst into one step.
+  const undo = useCallback(() => void editorRef.current?.undo?.(), []);
+  const redo = useCallback(() => void editorRef.current?.redo?.(), []);
 
   return {
     content,
@@ -355,5 +620,7 @@ export function useFugueBody({
     error,
     undo,
     redo,
+    revision,
+    backendIdOf,
   };
 }

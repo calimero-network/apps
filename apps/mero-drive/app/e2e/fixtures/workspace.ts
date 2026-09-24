@@ -103,7 +103,14 @@ export class WorkspaceDriver {
     } catch {
       return; // no gate — already named
     }
-    await gate.getByPlaceholder('Your display name').fill(displayName);
+    // A named member's gate can flash and close on its own while the name
+    // loads; treat a gate that vanished as dismissed.
+    try {
+      await gate.getByPlaceholder('Your display name').fill(displayName, { timeout: 5_000 });
+    } catch (e) {
+      if (!(await gate.isVisible())) return;
+      throw e;
+    }
     await gate.getByRole('button', { name: /^Continue$/ }).click();
     await expect(gate).toBeHidden({ timeout: 20_000 });
   }

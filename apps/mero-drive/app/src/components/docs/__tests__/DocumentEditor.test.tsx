@@ -18,6 +18,12 @@ vi.mock('@calimero-network/mero-react', () => ({
   useSubscription: (_ids: string[], handler: (event: unknown) => void) => {
     deliver = handler;
   },
+  useEphemeral: () => ({
+    peers: new Map(),
+    setPresence: vi.fn(),
+    ageOf: () => undefined,
+    error: null,
+  }),
 }));
 vi.mock('@/hooks/useDriveWorkspace', () => ({
   useDriveWorkspace: () => ({

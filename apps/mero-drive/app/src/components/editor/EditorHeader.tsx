@@ -12,6 +12,8 @@ import {
   Trash2,
   Undo2,
 } from 'lucide-react';
+import { TitleCursors } from './presence/TitleCursors';
+import type { TitleCaret } from '@/lib/rich/cursors';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -26,6 +28,7 @@ export interface TitleBinding {
   onChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
   onSelect: () => void;
   inputRef: React.MutableRefObject<HTMLInputElement | null>;
+  carets: TitleCaret[];
 }
 
 interface EditorHeaderProps {
@@ -55,7 +58,7 @@ export const EditorHeader: React.FC<EditorHeaderProps> = ({
 
     <div className="flex-1 flex justify-center px-4">
       {title ? (
-        <div className="flex items-center gap-1.5 max-w-xs w-full">
+        <div className="relative flex items-center gap-1.5 max-w-xs w-full">
           <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
           <input
             type="text"
@@ -67,6 +70,11 @@ export const EditorHeader: React.FC<EditorHeaderProps> = ({
             onChange={title.onChange}
             onSelect={title.onSelect}
             className="w-full bg-transparent rounded px-2 py-1 text-center text-sm font-medium border border-transparent hover:border-border focus:border-primary/50 focus:outline-none focus:ring-2 focus:ring-primary/30"
+          />
+          <TitleCursors
+            carets={title.carets}
+            text={title.value}
+            inputRef={title.inputRef}
           />
         </div>
       ) : (
