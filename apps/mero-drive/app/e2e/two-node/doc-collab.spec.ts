@@ -81,7 +81,14 @@ test.describe('Document collab (two-node)', () => {
     await alice.editor.expectContent('hello from bob', { timeout: 60_000 });
   });
 
-  // merod rc.41 keys presence off the folder subgroup's own keyring, which an Open folder does not use, so set_ephemeral fails "no current group key".
+  // FIXME — no longer the core bug this was parked for. On rc.41 presence
+  // itself failed ("no current group key": presence keyed off the Open folder's
+  // subgroup keyring); core#4027 in rc.42 fixed that, and on an rc.42 rig every
+  // set_ephemeral now succeeds. What still fails is the caret's anchor:
+  // `anchor_at` is refused with "provided string contained invalid character
+  // '-' at byte 8" because useBodyCursors → useFugueBody.backendIdOf falls back
+  // to the editor's own UUID for a block with no backend id mapped yet, and the
+  // contract decodes `block` as a base58 token. No anchor, no slice, no cursor.
   test.fixme("Each sees the other's named cursor", async ({
     alice,
     bob,
