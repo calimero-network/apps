@@ -2,8 +2,8 @@
 // positions, so every assertion is the exact call the backend would receive.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { Mock } from 'vitest';
-import { renderHook, act } from '@testing-library/react';
-import type { ChangeEvent } from 'react';
+import { renderHook, render, act, fireEvent, screen } from '@testing-library/react';
+import { createElement, type ChangeEvent } from 'react';
 import type { DocsClient } from '@/generated/docs/DocsClient';
 import { useFugueTitle } from '../useFugueTitle';
 
@@ -21,8 +21,20 @@ const CTX = 'ctx-1';
 
 type FakeClient = Record<'getTitle' | 'titleApplyDeltaOn' | 'titleUndo' | 'titleAnchorAt', Mock>;
 
-const applied = (text: string, token = 'tok-1') => ({ applied: true, token, text });
-const refused = (text: string) => ({ applied: false, token: null, text });
+const applied = (text: string, token = 'tok-1', anchor: string | null = null, anchor_pos: number | null = null) => ({
+  applied: true,
+  token,
+  text,
+  anchor,
+  anchor_pos,
+});
+const refused = (text: string, anchor: string | null = null, anchor_pos: number | null = null) => ({
+  applied: false,
+  token: null,
+  text,
+  anchor,
+  anchor_pos,
+});
 
 function fakeClient(): FakeClient {
   return {
@@ -116,6 +128,7 @@ describe('useFugueTitle', () => {
       doc: DOC,
       base: 'Notes',
       ops: [{ retain: 5 }, { insert: '!' }],
+      anchor: null,
     });
     expect(result.current.status).toBe('saved');
   });
@@ -143,6 +156,7 @@ describe('useFugueTitle', () => {
       doc: DOC,
       base: 'My Notes',
       ops: [{ retain: 8 }, { insert: '!' }],
+      anchor: null,
     });
   });
 
@@ -156,8 +170,174 @@ describe('useFugueTitle', () => {
     await settle();
     act(() => result.current.onChange(change('Shared:a1')));
     await settle();
-    expect(client.titleApplyDeltaOn).toHaveBeenLastCalledWith({ doc: DOC, base: 'Shared:bac', ops: [{ retain: 9 }, { insert: '1' }] });
+    expect(client.titleApplyDeltaOn).toHaveBeenLastCalledWith({ doc: DOC, base: 'Shared:bac', ops: [{ retain: 9 }, { insert: '1' }], anchor: null });
     expect(result.current.title).toBe('Shared:ba1c');
+  });
+
+  it('puts a refused keystroke right after its writer\'s own last letter, not after an identical one', async () => {
+    const client = fakeClient();
+    client.getTitle.mockResolvedValue('Shared:');
+    client.titleApplyDeltaOn
+      .mockResolvedValueOnce(applied('Shared:a', 'tok-a', 'anc-a', 8))
+      // Peers typed `b3` before the `a` and `3c3` in its gap; the `a` is at 9.
+      .mockResolvedValueOnce(refused('Shared:b3a3c3', 'anc-a', 10))
+      .mockResolvedValueOnce(applied('Shared:b3a33c3', 'tok-b', 'anc-3', 11));
+    const { result } = mount(client);
+    await settle();
+    act(() => result.current.onChange(change('Shared:a')));
+    await settle();
+    const input = focusedInput(result, 'Shared:a3', 9);
+    const setSelection = vi.spyOn(input, 'setSelectionRange');
+    act(() => result.current.onChange(change('Shared:a3')));
+    await settle();
+    expect(client.titleApplyDeltaOn).toHaveBeenNthCalledWith(2, {
+      doc: DOC,
+      base: 'Shared:a',
+      ops: [{ retain: 8 }, { insert: '3' }],
+      anchor: 'anc-a',
+    });
+    expect(client.titleApplyDeltaOn).toHaveBeenLastCalledWith({
+      doc: DOC,
+      base: 'Shared:b3a3c3',
+      ops: [{ retain: 10 }, { insert: '3' }],
+      anchor: 'anc-a',
+    });
+    expect(result.current.title).toBe('Shared:b3a33c3');
+    expect(setSelection).toHaveBeenLastCalledWith(11, 11);
+  });
+
+  it('keeps sending at its anchor while the keystrokes stay at it', async () => {
+    const client = fakeClient();
+    client.getTitle.mockResolvedValue('b');
+    client.titleApplyDeltaOn
+      .mockResolvedValueOnce(applied('ab', 'tok-a', 'anc-a', 1))
+      .mockResolvedValueOnce(applied('abb', 'tok-b', 'anc-b', 2));
+    const { result } = mount(client);
+    await settle();
+    act(() => result.current.onChange(change('ab')));
+    await settle();
+    act(() => result.current.onChange(change('abb')));
+    await settle();
+    // A plain diff reads `abb` as a `b` after the peer's `b`, at 2.
+    expect(client.titleApplyDeltaOn).toHaveBeenLastCalledWith({
+      doc: DOC,
+      base: 'ab',
+      ops: [{ retain: 1 }, { insert: 'b' }],
+      anchor: 'anc-a',
+    });
+  });
+
+  it('falls back to the diff when the refused edit is not an insert at the anchor', async () => {
+    const client = fakeClient();
+    client.getTitle.mockResolvedValue('Notes');
+    client.titleApplyDeltaOn
+      .mockResolvedValueOnce(applied('Notes!', 'tok-a', 'anc-a', 6))
+      .mockResolvedValueOnce(refused('My Notes!'))
+      .mockResolvedValueOnce(applied('My otes!'));
+    const { result } = mount(client);
+    await settle();
+    act(() => result.current.onChange(change('Notes!')));
+    await settle();
+    act(() => result.current.onChange(change('otes!')));
+    await settle();
+    expect(client.titleApplyDeltaOn).toHaveBeenLastCalledWith({
+      doc: DOC,
+      base: 'My Notes!',
+      ops: [{ retain: 3 }, { delete: 1 }],
+      anchor: null,
+    });
+    expect(result.current.title).toBe('My otes!');
+  });
+
+  it('moves typing to where the node puts its anchor when a peer change made the local position drift', async () => {
+    const client = fakeClient();
+    client.getTitle.mockResolvedValue('ba1');
+    client.titleApplyDeltaOn
+      .mockResolvedValueOnce(applied('b1a1', 'tok-a', 'anc-1', 2))
+      // The text matches, but the anchor after our `1` is at 3, not 5.
+      .mockResolvedValueOnce(refused('cb1a1a1', 'anc-1', 3))
+      .mockResolvedValueOnce(applied('cb1Xa1a1'));
+    const { result } = mount(client);
+    await settle();
+    act(() => result.current.onChange(change('b1a1')));
+    await settle();
+    // Read as a `c` before and `1a` after the `b`, which puts our `1` at 4.
+    client.getTitle.mockResolvedValue('cb1a1a1');
+    act(() => deliver?.(titleEvent(DOC)));
+    await settle();
+    act(() => result.current.onChange(change('cb1a1Xa1')));
+    await settle();
+    expect(client.titleApplyDeltaOn).toHaveBeenNthCalledWith(2, {
+      doc: DOC,
+      base: 'cb1a1a1',
+      ops: [{ retain: 5 }, { insert: 'X' }],
+      anchor: 'anc-1',
+    });
+    expect(client.titleApplyDeltaOn).toHaveBeenLastCalledWith({
+      doc: DOC,
+      base: 'cb1a1a1',
+      ops: [{ retain: 3 }, { insert: 'X' }],
+      anchor: 'anc-1',
+    });
+    expect(result.current.title).toBe('cb1Xa1a1');
+  });
+
+  it('falls back to the diff when an edit made during an anchored write is not an insert', async () => {
+    const client = fakeClient();
+    client.getTitle.mockResolvedValue('Notes');
+    let answer: (value: unknown) => void = () => {};
+    client.titleApplyDeltaOn
+      .mockResolvedValueOnce(applied('Notes!', 'tok-a', 'anc-a', 6))
+      .mockReturnValueOnce(new Promise((resolve) => (answer = resolve)))
+      .mockResolvedValueOnce(applied('My otes!?'));
+    const { result } = mount(client);
+    await settle();
+    act(() => result.current.onChange(change('Notes!')));
+    await settle();
+    act(() => result.current.onChange(change('Notes!?')));
+    await settle(10);
+    act(() => result.current.onChange(change('otes!?')));
+    await act(async () => answer(refused('My Notes!', 'anc-a', 9)));
+    await settle();
+    expect(client.titleApplyDeltaOn).toHaveBeenLastCalledWith({
+      doc: DOC,
+      base: 'My Notes!',
+      ops: [{ retain: 3 }, { delete: 6 }, { insert: 'otes!?' }],
+      anchor: null,
+    });
+    expect(result.current.title).toBe('My otes!?');
+  });
+
+  it('keeps a peer\'s letter that landed just before a keystroke typed into the input', async () => {
+    const client = fakeClient();
+    client.getTitle.mockResolvedValue('Rich');
+    client.titleApplyDeltaOn.mockResolvedValue(applied('TRich!'));
+    const Field = () => {
+      const bound = useFugueTitle({ client: client as unknown as DocsClient, docId: DOC, contextId: CTX });
+      return createElement('input', { ref: bound.inputRef, value: bound.title, onChange: bound.onChange });
+    };
+    render(createElement(Field));
+    await settle();
+    const input = screen.getByRole<HTMLInputElement>('textbox');
+    expect(input.value).toBe('Rich');
+
+    let resolveRead: (value: string) => void = () => {};
+    client.getTitle.mockReturnValueOnce(new Promise<string>((resolve) => (resolveRead = resolve)));
+    act(() => deliver?.(titleEvent(DOC)));
+    await settle(100);
+    // The peer's `T` arrives and a key lands before React renders it.
+    resolveRead('TRich');
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+    fireEvent.change(input, { target: { value: `${input.value}!` } });
+    await settle();
+
+    expect(client.titleApplyDeltaOn).toHaveBeenCalledWith({
+      doc: DOC,
+      base: 'TRich',
+      ops: [{ retain: 5 }, { insert: '!' }],
+      anchor: null,
+    });
+    expect(input.value).toBe('TRich!');
   });
 
   it('carries the caret through a peer change instead of resetting it', async () => {
@@ -195,6 +375,7 @@ describe('useFugueTitle', () => {
       doc: DOC,
       base: 'Meeting Notes',
       ops: [{ retain: 13 }, { insert: '!' }],
+      anchor: null,
     });
   });
 

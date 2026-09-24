@@ -181,6 +181,13 @@ export function transformPosition(ops: Change[], index: number): number {
   return moved;
 }
 
+/** The inserts of `ops` placed at scalar `at` instead, and where they end. */
+export function moveInserts(ops: Change[], at: number): { ops: Change[]; end: number } {
+  const inserts = ops.filter((op) => 'insert' in op);
+  const end = inserts.reduce((sum, op) => sum + lengthOf(op), at);
+  return { ops: at > 0 ? [{ retain: at }, ...inserts] : inserts, end };
+}
+
 interface Char {
   ch: string;
   attrs: MarkAttrs;

@@ -28,9 +28,9 @@ import {
 } from '@/lib/rich/blocknote';
 import { attrsEqual } from '@/lib/rich/attributes';
 import { inlineOffset, posAt, scalarAt } from '@/lib/rich/cursors';
-import { diffSpans, spansToInline, type AttrSpan, type Change } from '@/lib/rich/delta';
+import { diffSpans, insertAt, spansToInline, type AttrSpan, type Change } from '@/lib/rich/delta';
 import { parseRichEvents } from '@/lib/rich/events';
-import { applyChanges, transform, transformPosition } from '@/lib/rich/ot';
+import { applyChanges, moveInserts, transform, transformPosition } from '@/lib/rich/ot';
 import { isTransportFailure } from '@/lib/rich/transport';
 import {
   blockGeometry,
@@ -147,6 +147,8 @@ export function useFugueBody({
   const serverRef = useRef<EditorBlock[]>([]);
   // A block the editor minted keeps its own id; this maps it to the node's.
   const idMapRef = useRef(new Map<string, string>());
+  // Per block, the gap after this client's last write and where it sits in serverRef.
+  const anchorsRef = useRef(new Map<string, { token: string; pos: number }>());
   const dirtyRef = useRef(false);
   const staleRef = useRef(false);
   const resyncRef = useRef(false);
@@ -234,20 +236,37 @@ export function useFugueBody({
     [asPeer],
   );
 
-  /** A peer moved one block from `base` to `remote`; carry that into the editor. */
+  /**
+   * A peer moved one block from `base` to `remote`; carry that into the editor.
+   * `anchorAt` is where a refused write's anchor sits in `remote`.
+   */
   const rebaseBlock = useCallback(
-    (backendId: string, base: AttrSpan[], remote: AttrSpan[]) => {
+    (backendId: string, base: AttrSpan[], remote: AttrSpan[], anchorAt: number | null = null) => {
       const remoteChange = diffSpans(base, remote, { keepShared: true });
-      if (remoteChange.length === 0) return;
+      // A refusal at an anchor moves the typing even when the text is unchanged.
+      if (remoteChange.length === 0 && anchorAt === null) return;
       // Read pending input before the editor is diffed, or the diff misses it.
       flushPendingInput(editorRef.current?.prosemirrorView);
       const editorId = editorIdOf(backendId);
       const local = localBlocks().find((block) => block.id === backendId);
       if (!local) return;
-      const pending = diffSpans(base, local.inline);
-      const incoming = transform(pending, remoteChange, true);
-      if (incoming.length === 0) return;
-      replaceInline(editorId, applyChanges(local.inline, incoming), incoming);
+      const anchor = anchorsRef.current.get(backendId);
+      const typed = anchor ? insertAt(base, local.inline, anchor.pos) : null;
+      if (anchor && typed && anchorAt !== null) {
+        const moved = moveInserts(typed, anchorAt);
+        const target = applyChanges(remote, moved.ops);
+        const view = editorRef.current?.prosemirrorView;
+        const typing = view ? caretIn(view, editorId) !== null : false;
+        replaceInline(editorId, target, diffSpans(local.inline, target, { keepShared: true }));
+        if (view && typing) placeCaret(view, editorId, { anchor: moved.end, head: moved.end });
+        anchor.pos = anchorAt;
+      } else {
+        if (remoteChange.length === 0) return;
+        const incoming = transform(typed ?? diffSpans(base, local.inline), remoteChange, true);
+        if (anchor) anchor.pos = transformPosition(remoteChange, anchor.pos);
+        if (incoming.length === 0) return;
+        replaceInline(editorId, applyChanges(local.inline, incoming), incoming);
+      }
       setRevision((value) => value + 1);
     },
     [editorIdOf, localBlocks, replaceInline],
@@ -342,6 +361,7 @@ export function useFugueBody({
           peer.insertBlocks(nodes, peer.document[Math.max(at - 1, 0)].id, at > 0 ? 'after' : 'before');
         }
       });
+      anchorsRef.current.clear();
       const present = new Set(fromBlockNote(live.document).map((block) => block.id));
       for (const editorId of [...idMapRef.current.keys()]) {
         if (!present.has(editorId)) idMapRef.current.delete(editorId);
@@ -415,6 +435,8 @@ export function useFugueBody({
         touched.add(id);
       };
       const structural = calls.some((call) => call.call !== 'apply_delta');
+      // A structural write can move text between blocks, so no anchor position is trusted past it.
+      if (structural) anchorsRef.current.clear();
       for (const call of calls) {
         switch (call.call) {
           case 'merge_blocks':
@@ -451,21 +473,29 @@ export function useFugueBody({
             break;
           case 'apply_delta': {
             const block = real(call.block) as string;
+            const was = serverBlock(block);
+            const anchor = anchorsRef.current.get(block);
+            const typed = was && anchor && insertAt(was.inline, applyChanges(was.inline, call.ops), anchor.pos);
+            const ops = typed ?? call.ops;
             // The generated ChangePayload is a tagged union; the contract
             // takes serde's untagged form, which is what `ops` already is.
             const result = await target.applyDeltaOn({
               doc,
               block,
               base: call.base,
-              ops: call.ops as unknown as ChangePayload[],
+              ops: ops as unknown as ChangePayload[],
+              // The anchor claims the write is an insert at it, which the node checks.
+              anchor: typed ? (anchor?.token ?? null) : null,
             });
-            const was = serverBlock(block);
             if (was && !touched.has(block)) {
-              const base = result.applied ? applyChanges(was.inline, call.ops) : was.inline;
+              const base = result.applied ? applyChanges(was.inline, ops) : was.inline;
               const spans = backendSpans(result.spans);
-              rebaseBlock(block, base, spans);
+              rebaseBlock(block, base, spans, result.applied ? null : result.anchor_pos);
               was.inline = spans;
             }
+            if (result.anchor !== null && result.anchor_pos !== null) {
+              anchorsRef.current.set(block, { token: result.anchor, pos: result.anchor_pos });
+            } else anchorsRef.current.delete(block);
             if (!result.applied) return { refused: true, structural, touched };
             break;
           }
@@ -543,6 +573,7 @@ export function useFugueBody({
 
   useEffect(() => {
     idMapRef.current = new Map();
+    anchorsRef.current = new Map();
     serverRef.current = [];
     dirtyRef.current = false;
     staleRef.current = false;

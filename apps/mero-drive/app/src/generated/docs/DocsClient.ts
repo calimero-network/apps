@@ -10,6 +10,8 @@ export interface Applied {
   applied: boolean;
   token: string | null;
   spans: Span[];
+  anchor: string | null;
+  anchor_pos: number | null;
 }
 
 export interface Block {
@@ -171,6 +173,8 @@ export interface TitleApplied {
   applied: boolean;
   token: string | null;
   text: string;
+  anchor: string | null;
+  anchor_pos: number | null;
 }
 
 
@@ -263,7 +267,7 @@ export class DocsClient {
    *
    * @intent mutating
    */
-  public async applyDeltaOn(params: { doc: string; block: string; base: string; ops: ChangePayload[] }): Promise<Applied> {
+  public async applyDeltaOn(params: { doc: string; block: string; base: string; ops: ChangePayload[]; anchor: string | null }): Promise<Applied> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'apply_delta_on', argsJson: params });
     return response as Applied;
   }
@@ -611,7 +615,7 @@ export class DocsClient {
    *
    * @intent mutating
    */
-  public async titleApplyDeltaOn(params: { doc: string; base: string; ops: ChangePayload[] }): Promise<TitleApplied> {
+  public async titleApplyDeltaOn(params: { doc: string; base: string; ops: ChangePayload[]; anchor: string | null }): Promise<TitleApplied> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'title_apply_delta_on', argsJson: params });
     return response as TitleApplied;
   }

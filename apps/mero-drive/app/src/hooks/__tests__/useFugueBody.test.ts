@@ -109,8 +109,20 @@ function fakeClient(document: ReturnType<typeof row>[]): FakeClient {
   };
 }
 
-const applied = (text: string, token = 'tok-1') => ({ applied: true, token, spans: spans(text) });
-const refused = (text: string) => ({ applied: false, token: null, spans: spans(text) });
+const applied = (text: string, token = 'tok-1', anchor: string | null = null, anchor_pos: number | null = null) => ({
+  applied: true,
+  token,
+  spans: spans(text),
+  anchor,
+  anchor_pos,
+});
+const refused = (text: string, anchor: string | null = null, anchor_pos: number | null = null) => ({
+  applied: false,
+  token: null,
+  spans: spans(text),
+  anchor,
+  anchor_pos,
+});
 
 const peerEvent = (doc: string) => ({
   contextId: CTX,
@@ -186,6 +198,7 @@ describe('useFugueBody', () => {
       block: 'blk-1',
       base: 'The fox.',
       ops: [{ retain: 8 }, { insert: ' ab', attributes: {} }],
+      anchor: null,
     });
     await settle();
     expect(client.applyDeltaOn).toHaveBeenCalledTimes(1);
@@ -209,6 +222,7 @@ describe('useFugueBody', () => {
       block: 'blk-1',
       base: 'bob The fox.',
       ops: [{ retain: 12 }, { insert: ' ab', attributes: {} }],
+      anchor: null,
     });
   });
 
@@ -228,8 +242,113 @@ describe('useFugueBody', () => {
       block: 'blk-1',
       base: 'Shared:bac',
       ops: [{ retain: 9 }, { insert: '1', attributes: {} }],
+      anchor: null,
     });
     expect(editor.textOf('blk-1')).toBe('Shared:ba1c');
+  });
+
+  it('puts a refused keystroke right after its writer\'s own last letter, not after an identical one', async () => {
+    const client = fakeClient([row('blk-1', 'Shared:')]);
+    client.applyDeltaOn
+      .mockResolvedValueOnce(applied('Shared:a', 'tok-a', 'anc-a', 8))
+      // Peers typed `b3` before the `a` and `3c3` in its gap; the `a` is at 9.
+      .mockResolvedValueOnce(refused('Shared:b3a3c3', 'anc-a', 10))
+      .mockResolvedValueOnce(applied('Shared:b3a33c3', 'tok-b', 'anc-3', 11));
+    const editor = new FakeEditor();
+    await mount(client, editor);
+
+    editor.type('blk-1', 'Shared:a');
+    await settle();
+    editor.type('blk-1', 'Shared:a3');
+    await settle();
+
+    expect(client.applyDeltaOn).toHaveBeenNthCalledWith(2, {
+      doc: DOC,
+      block: 'blk-1',
+      base: 'Shared:a',
+      ops: [{ retain: 8 }, { insert: '3', attributes: {} }],
+      anchor: 'anc-a',
+    });
+    expect(client.applyDeltaOn).toHaveBeenLastCalledWith({
+      doc: DOC,
+      block: 'blk-1',
+      base: 'Shared:b3a3c3',
+      ops: [{ retain: 10 }, { insert: '3', attributes: {} }],
+      anchor: 'anc-a',
+    });
+    expect(editor.textOf('blk-1')).toBe('Shared:b3a33c3');
+  });
+
+  it('keeps sending at its anchor while the keystrokes stay at it', async () => {
+    const client = fakeClient([row('blk-1', 'b')]);
+    client.applyDeltaOn
+      .mockResolvedValueOnce(applied('ab', 'tok-a', 'anc-a', 1))
+      .mockResolvedValueOnce(applied('abb', 'tok-b', 'anc-b', 2));
+    const editor = new FakeEditor();
+    await mount(client, editor);
+
+    editor.type('blk-1', 'ab');
+    await settle();
+    editor.type('blk-1', 'abb');
+    await settle();
+
+    // A plain diff reads `abb` as a `b` after the peer's `b`, at 2.
+    expect(client.applyDeltaOn).toHaveBeenLastCalledWith({
+      doc: DOC,
+      block: 'blk-1',
+      base: 'ab',
+      ops: [{ retain: 1 }, { insert: 'b', attributes: {} }],
+      anchor: 'anc-a',
+    });
+  });
+
+  it('moves typing to where the node puts its anchor when a peer change made the local position drift', async () => {
+    const client = fakeClient([row('blk-1', 'ba1')]);
+    client.applyDeltaOn
+      .mockResolvedValueOnce(applied('b1a1', 'tok-a', 'anc-1', 2))
+      .mockResolvedValueOnce(refused('cb1a1a1', 'anc-1', 3))
+      .mockResolvedValueOnce(applied('cb1Xa1a1'));
+    const editor = new FakeEditor();
+    await mount(client, editor);
+    editor.type('blk-1', 'b1a1');
+    await settle();
+    client.getDocument.mockResolvedValue([row('blk-1', 'cb1a1a1')]);
+    act(() => deliver?.(peerEvent(DOC)));
+    await settle();
+
+    editor.type('blk-1', 'cb1a1Xa1');
+    await settle();
+
+    expect(client.applyDeltaOn).toHaveBeenLastCalledWith({
+      doc: DOC,
+      block: 'blk-1',
+      base: 'cb1a1a1',
+      ops: [{ retain: 3 }, { insert: 'X', attributes: {} }],
+      anchor: 'anc-1',
+    });
+    expect(editor.textOf('blk-1')).toBe('cb1Xa1a1');
+  });
+
+  it('forgets its anchors once a write changes the block structure', async () => {
+    const client = fakeClient([row('blk-1', 'b')]);
+    client.applyDeltaOn.mockResolvedValueOnce(applied('ab', 'tok-a', 'anc-a', 1));
+    const editor = new FakeEditor();
+    await mount(client, editor);
+    editor.type('blk-1', 'ab');
+    await settle();
+
+    client.applyDeltaOn.mockResolvedValue(applied('abb'));
+    editor.document.splice(1, 0, bn('new-1', ''));
+    editor.type('blk-1', 'abb');
+    await settle();
+
+    expect(client.applyDeltaOn).toHaveBeenLastCalledWith({
+      doc: DOC,
+      block: 'blk-1',
+      base: 'ab',
+      ops: [{ retain: 2 }, { insert: 'b', attributes: {} }],
+      anchor: null,
+    });
   });
 
   it('folds a peer edit into the block without losing a keystroke typed meanwhile', async () => {
@@ -252,6 +371,7 @@ describe('useFugueBody', () => {
       block: 'blk-1',
       base: 'bob The fox.',
       ops: [{ retain: 12 }, { insert: ' ab', attributes: {} }],
+      anchor: null,
     });
   });
 
@@ -273,6 +393,7 @@ describe('useFugueBody', () => {
       block: 'blk-new',
       base: '',
       ops: [{ insert: 'hi', attributes: {} }],
+      anchor: null,
     });
     expect(client.applyDeltaOn).toHaveBeenCalledTimes(1);
   });
@@ -315,6 +436,7 @@ describe('useFugueBody', () => {
       block: 'blk-2',
       base: 'two',
       ops: [{ retain: 3 }, { insert: '!', attributes: {} }],
+      anchor: null,
     });
   });
 
@@ -420,6 +542,7 @@ describe('useFugueBody', () => {
       block: 'blk-1',
       base: 'The fox.',
       ops: [{ retain: 8 }, { insert: ' ab', attributes: {} }],
+      anchor: null,
     });
   });
 });
