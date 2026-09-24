@@ -5,14 +5,51 @@ import { expect, type Page } from '@playwright/test';
 
 export const MOD = process.platform === 'darwin' ? 'Meta' : 'Control';
 
+/** Where the caret sits inside the text of block `blockIndex`, or -1 elsewhere. */
+function offsetIn(page: Page, blockIndex: number): Promise<number> {
+  return page.evaluate((index) => {
+    const text = document.querySelectorAll('[data-testid="doc-editor"] .bn-inline-content')[index];
+    const selection = window.getSelection();
+    if (!text || !selection || selection.rangeCount === 0) return -1;
+    const range = selection.getRangeAt(0);
+    if (!text.contains(range.startContainer)) return -1;
+    const measured = document.createRange();
+    measured.selectNodeContents(text);
+    measured.setEnd(range.startContainer, range.startOffset);
+    return measured.toString().length;
+  }, blockIndex);
+}
+
 /** Puts the caret `offset` characters into a block, counting from its start. */
 export async function caretTo(page: Page, blockIndex: number, offset: number): Promise<void> {
-  // The block's own text, never its wrapper: BlockNote reads a click below a
-  // block's text as "add a block here" and moves the caret into the new one.
   const text = page.getByTestId('doc-editor').locator('.bn-inline-content').nth(blockIndex);
-  await text.click();
-  await page.keyboard.press('Home');
-  for (let step = 0; step < offset; step++) await page.keyboard.press('ArrowRight');
+  // A peer's edit landing mid-move can shift the layout or the text under the
+  // caret, so confirm it sits exactly where asked and place it again if not.
+  await expect(async () => {
+    await text.click();
+    await page.keyboard.press('Home');
+    for (let step = 0; step < offset; step++) await page.keyboard.press('ArrowRight');
+    expect(await offsetIn(page, blockIndex), `caret at ${blockIndex}:${offset}`).toBe(offset);
+  }).toPass({ timeout: 20_000 });
+}
+
+/** Puts the caret at the end of a block's text; End only reaches the end of
+ *  the visual line, which is earlier in a block long enough to wrap. */
+export async function caretToEnd(page: Page, blockIndex: number): Promise<void> {
+  const text = page.getByTestId('doc-editor').locator('.bn-inline-content').nth(blockIndex);
+  await expect(async () => {
+    await text.click();
+    const length = await text.evaluate((node) => {
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      range.collapse(false);
+      const selection = window.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+      return (node.textContent ?? '').length;
+    });
+    expect(await offsetIn(page, blockIndex), `caret at the end of block ${blockIndex}`).toBe(length);
+  }).toPass({ timeout: 20_000 });
 }
 
 export async function applyBold(page: Page): Promise<void> {
@@ -46,30 +83,20 @@ export async function redo(page: Page): Promise<void> {
   await page.getByTestId('doc-redo').click();
 }
 
-/** Selects `text` inside a block through the browser selection, then waits
- *  until the editor holds exactly it: fast Shift+Arrow presses get dropped. */
+/** Selects `text` inside a block with Shift+Arrow, as a person does, and
+ *  confirms the editor holds exactly that selection before returning. */
 export async function selectText(page: Page, blockIndex: number, text: string): Promise<void> {
-  await caretTo(page, blockIndex, 0);
-  await page.evaluate(
-    ({ index, needle }) => {
-      const root = document.querySelectorAll('[data-testid="doc-editor"] .bn-inline-content')[index];
-      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-        const at = (node.textContent ?? '').indexOf(needle);
-        if (at < 0) continue;
-        const range = document.createRange();
-        range.setStart(node, at);
-        range.setEnd(node, at + needle.length);
-        const selection = window.getSelection();
-        selection?.removeAllRanges();
-        selection?.addRange(range);
-        return;
-      }
-      throw new Error(`"${needle}" is not in block ${index}`);
-    },
-    { index: blockIndex, needle: text },
-  );
-  await expect.poll(() => page.evaluate(() => window.getSelection()?.toString())).toBe(text);
+  await expect(async () => {
+    const start = await page
+      .getByTestId('doc-editor')
+      .locator('.bn-inline-content')
+      .nth(blockIndex)
+      .evaluate((node, needle) => (node.textContent ?? '').indexOf(needle), text);
+    expect(start, `"${text}" in block ${blockIndex}`).toBeGreaterThanOrEqual(0);
+    await caretTo(page, blockIndex, start);
+    for (let step = 0; step < text.length; step++) await page.keyboard.press('Shift+ArrowRight');
+    expect(await page.evaluate(() => window.getSelection()?.toString())).toBe(text);
+  }).toPass({ timeout: 30_000 });
 }
 
 /** The text of the block the caret sits in, as the browser reports it. */

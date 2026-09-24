@@ -36,7 +36,13 @@ export interface UseBodyCursorsOptions {
   publish: (caret: CaretSlice) => void;
   /** Changes whenever the body was re-read, so anchors resolve again. */
   revision: unknown;
+  /** The node's id for a block this window knows by its own, and back. */
+  toBackendId: (editorId: string) => string;
+  toEditorId: (backendId: string) => string;
 }
+
+const SETTLE_MS = 150; // publish once a caret stops moving, not per keystroke
+const RETRY_MS = 400; // the node may not hold the text the caret counts yet
 
 interface AuthoredSlice {
   author: string;
@@ -62,12 +68,16 @@ export function useBodyCursors({
   peers,
   publish,
   revision,
+  toBackendId,
+  toEditorId,
 }: UseBodyCursorsOptions): void {
   const publishRef = useRef(publish);
   publishRef.current = publish;
   const peersRef = useRef(peers);
   peersRef.current = peers;
   const peerKey = signature(peers);
+  const idsRef = useRef({ toBackendId, toEditorId });
+  idsRef.current = { toBackendId, toEditorId };
 
   useEffect(() => {
     if (!client || !docId || !editor) return;
@@ -101,9 +111,10 @@ export function useBodyCursors({
       }
       if (!live) return;
       const doc = editor.prosemirrorState.doc;
+      const { toEditorId: local } = idsRef.current;
       setPresenceDecorations(
         editor.prosemirrorView,
-        caretDecorations(carets, (blockId) => blockGeometry(doc, blockId)),
+        caretDecorations(carets, (blockId) => blockGeometry(doc, local(blockId))),
       );
     })();
 
@@ -114,40 +125,31 @@ export function useBodyCursors({
 
   useEffect(() => {
     if (!client || !docId || !editor) return;
-    const send = () => {
-      const blockId = editor.getTextCursorPosition()?.block?.id;
-      if (!blockId) return;
-      const geometry = blockGeometry(editor.prosemirrorState.doc, blockId);
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const send = (retry: boolean) => {
+      const editorId = editor.getTextCursorPosition()?.block?.id;
+      if (!editorId) return;
+      const geometry = blockGeometry(editor.prosemirrorState.doc, editorId);
       if (!geometry) return;
+      const blockId = idsRef.current.toBackendId(editorId);
       const { anchor, head } = editor.prosemirrorState.selection;
-      void Promise.all([
-        client.anchorAt({
-          doc: docId,
-          block: blockId,
-          position: scalarAt(geometry, anchor),
-          before: true,
-        }),
-        client.anchorAt({
-          doc: docId,
-          block: blockId,
-          position: scalarAt(geometry, head),
-          before: true,
-        }),
-      ])
+      const mint = (position: number) =>
+        client.anchorAt({ doc: docId, block: blockId, position: scalarAt(geometry, position), before: true });
+      void Promise.all([mint(anchor), mint(head)])
         .then(([anchorToken, headToken]) =>
-          publishRef.current({
-            blockId,
-            anchor: anchorToken,
-            head: headToken,
-          }),
+          publishRef.current({ blockId, anchor: anchorToken, head: headToken }),
         )
         .catch(() => {
-          /* a caret nobody can place is not worth an error surface */
+          if (retry) timer = setTimeout(() => send(false), RETRY_MS);
         });
     };
-    send();
-    const unsubscribe = editor.onSelectionChange(send);
+    send(true);
+    const unsubscribe = editor.onSelectionChange(() => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => send(true), SETTLE_MS);
+    });
     return () => {
+      if (timer) clearTimeout(timer);
       unsubscribe();
       // An empty anchor is the withdrawal: every renderer skips it.
       publishRef.current({ blockId: null, anchor: '', head: '' });

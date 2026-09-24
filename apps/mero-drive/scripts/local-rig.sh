@@ -9,7 +9,7 @@ BASE_PORT=3920
 NODE_PREFIX=drive-rig-node
 ADMIN_USER="admin"
 ADMIN_PASSWORD=adminadmin # throwaway, loopback only; merod enforces 8 characters
-LOG_LEVEL="merod=info,calimero_=info,calimero_node::sync=debug"
+LOG_LEVEL="${RIG_LOG_LEVEL:-merod=info,calimero_=info,calimero_node::sync=debug}"
 HEALTH_TIMEOUT=60 # seconds a node gets to serve /admin-api/health after a start
 STOP_TIMEOUT=30   # seconds a node gets to exit after SIGTERM
 
@@ -335,7 +335,7 @@ cmd_up() {
   echo "rig up: $NODE_COUNT nodes, run dir $RIG_DIR"
   cmd_status
   echo "application: $app_id"
-  echo "contexts:    $(curl -sf "$(node_url 1)/admin-api/contexts" -H "Authorization: Bearer $token" | jq -r '.data.contexts[]? // .data[]? // empty' | tr '\n' ' ')"
+  echo "contexts:    $(curl -sf "$(node_url 1)/admin-api/contexts" -H "Authorization: Bearer $token" | jq -r '(.data.contexts? // .data)[]? | .id' | tr '\n' ' ')"
   echo "env:         $ENV_FILE"
 }
 

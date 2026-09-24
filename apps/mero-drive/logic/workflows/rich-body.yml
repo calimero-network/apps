@@ -242,6 +242,73 @@ steps:
     statements:
       - 'is_set({{title_redo_token}})'
 
+  - name: A title write diffed against a stale base is refused
+    type: call
+    node: drive-node-1
+    context_id: '{{docs_ctx}}'
+    method: title_apply_delta_on
+    executor_public_key: '{{alice_key}}'
+    args:
+      doc: '{{title_doc}}'
+      base: cor
+      ops:
+        - retain: 3
+        - insert: X
+    outputs:
+      refused_title: result
+
+  - name: Assert the refusal hands back the title unchanged
+    type: json_assert
+    statements:
+      - 'json_equal({{refused_title}}, {"output": {"applied": false, "token": null, "text": "core"}})'
+
+  - name: A title write diffed against the current title applies
+    type: call
+    node: drive-node-1
+    context_id: '{{docs_ctx}}'
+    method: title_apply_delta_on
+    executor_public_key: '{{alice_key}}'
+    args:
+      doc: '{{title_doc}}'
+      base: core
+      ops:
+        - retain: 4
+        - insert: '!'
+    outputs:
+      guarded_title: result
+      guarded_title_token: result.output.token
+
+  - name: Assert the guarded title write landed
+    type: json_assert
+    statements:
+      - 'json_subset({{guarded_title}}, {"output": {"applied": true, "text": "core!"}})'
+
+  - name: Alice undoes the guarded title write
+    type: call
+    node: drive-node-1
+    context_id: '{{docs_ctx}}'
+    method: title_undo
+    executor_public_key: '{{alice_key}}'
+    args:
+      doc: '{{title_doc}}'
+      token: '{{guarded_title_token}}'
+
+  - name: Read the title after undoing the guarded write
+    type: call
+    node: drive-node-1
+    context_id: '{{docs_ctx}}'
+    method: get_title
+    executor_public_key: '{{alice_key}}'
+    args:
+      doc: '{{title_doc}}'
+    outputs:
+      guarded_title_undone: result
+
+  - name: Assert the title is back to the seed
+    type: json_assert
+    statements:
+      - 'json_equal({{guarded_title_undone}}, {"output": "core"})'
+
   # Anchored mid-string, not at the end: an end anchor borsh-encodes to one
   # byte, whose bs58 token is "2", and YAML reads that back as an integer.
   - name: Alice anchors the gap before the third character of the title

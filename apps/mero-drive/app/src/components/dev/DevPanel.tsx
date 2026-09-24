@@ -52,7 +52,7 @@ export default function DevPanel() {
   return (
     <aside
       data-testid="dev-panel"
-      className="fixed bottom-4 right-4 z-50 w-64 rounded-lg border border-border bg-background/95 p-3 text-xs shadow-lg backdrop-blur"
+      className="fixed bottom-14 right-4 z-50 w-64 rounded-lg border border-border bg-background/95 p-3 text-xs shadow-lg backdrop-blur"
     >
       <p data-testid="node-label" className="mb-2 font-medium text-foreground">
         Rig - this window is node {selected}

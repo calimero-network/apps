@@ -21,6 +21,7 @@ import {
 import {
   backendBlocks,
   backendSpans,
+  changedRange,
   fromBlockNote,
   toBlockNote,
   type BlockNoteBlock,
@@ -37,7 +38,9 @@ import {
 } from '@/components/editor/presence/geometry';
 import {
   applyRemoteText,
+  domSelection,
   flushPendingInput,
+  keepSelection,
   type RemoteTextEditor,
 } from '@/components/editor/remoteText';
 import type { SaveStatus } from '@/components/editor/types';
@@ -84,8 +87,9 @@ export interface UseFugueBodyResult {
   redo: () => void;
   /** Bumps on every change a peer made, so anchors are re-resolved. */
   revision: number;
-  /** The backend id of a block the editor knows by its own id. */
+  /** The backend id of a block the editor knows by its own id, and back. */
   backendIdOf: (editorId: string) => string;
+  editorIdOf: (backendId: string) => string;
 }
 
 interface Caret {
@@ -199,10 +203,13 @@ export function useFugueBody({
   const asPeer = useCallback((apply: (live: BodyEditor) => void) => {
     const live = editorRef.current;
     if (!live) return;
+    flushPendingInput(live.prosemirrorView);
     if (!live.transact) return apply(live);
+    const before = domSelection(live.prosemirrorView);
     live.transact((tr) => {
       tr.setMeta('addToHistory', false);
       apply(live);
+      keepSelection(tr, before);
     });
   }, []);
 
@@ -230,7 +237,7 @@ export function useFugueBody({
   /** A peer moved one block from `base` to `remote`; carry that into the editor. */
   const rebaseBlock = useCallback(
     (backendId: string, base: AttrSpan[], remote: AttrSpan[]) => {
-      const remoteChange = diffSpans(base, remote);
+      const remoteChange = diffSpans(base, remote, { keepShared: true });
       if (remoteChange.length === 0) return;
       // Read pending input before the editor is diffed, or the diff misses it.
       flushPendingInput(editorRef.current?.prosemirrorView);
@@ -311,8 +318,9 @@ export function useFugueBody({
     [asPeer, editorIdOf, localBlocks],
   );
 
-  /** Replaces the whole editor document, keeping the caret's scalar position. */
-  const replaceAll = useCallback(
+  /** Moves the editor to `remote` by replacing only the top-level blocks that
+   *  differ, keeping the caret's scalar position. */
+  const replaceChanged = useCallback(
     (remote: EditorBlock[]) => {
       const live = editorRef.current;
       if (!live) return;
@@ -324,17 +332,24 @@ export function useFugueBody({
           if (at) caret = { block: backendIdOf(block.id), at };
         }
       }
-      asPeer((peer) =>
-        peer.replaceBlocks(
-          peer.document.map((block) => block.id),
-          toBlockNote(remote) as unknown as Record<string, unknown>[],
-        ),
-      );
-      idMapRef.current = new Map();
+      const target = toBlockNote(remote.map((block) => ({ ...block, id: editorIdOf(block.id) })));
+      asPeer((peer) => {
+        const { at, remove, insert } = changedRange(peer.document, target);
+        const ids = remove.map((block) => block.id);
+        const nodes = insert as unknown as Record<string, unknown>[];
+        if (ids.length > 0) peer.replaceBlocks(ids, nodes);
+        else if (nodes.length > 0) {
+          peer.insertBlocks(nodes, peer.document[Math.max(at - 1, 0)].id, at > 0 ? 'after' : 'before');
+        }
+      });
+      const present = new Set(fromBlockNote(live.document).map((block) => block.id));
+      for (const editorId of [...idMapRef.current.keys()]) {
+        if (!present.has(editorId)) idMapRef.current.delete(editorId);
+      }
       if (view && caret) placeCaret(view, caret.block, caret.at);
       setRevision((value) => value + 1);
     },
-    [asPeer, backendIdOf],
+    [asPeer, backendIdOf, editorIdOf],
   );
 
   /** The node's document against the editor: structure first, then text. */
@@ -355,7 +370,7 @@ export function useFugueBody({
           staleRef.current = true;
           return;
         }
-        replaceAll(remote);
+        replaceChanged(remote);
         serverRef.current = remote;
         return;
       }
@@ -368,7 +383,7 @@ export function useFugueBody({
       // What still differs is the user's newer edit, which the next flush sends.
       if (structureOf(localBlocks()) !== structureOf(remote)) dirtyRef.current = true;
     },
-    [applyRemoteStructure, isSynced, localBlocks, rebaseBlock, replaceAll],
+    [applyRemoteStructure, isSynced, localBlocks, rebaseBlock, replaceChanged],
   );
 
   const refreshWith = useCallback(
@@ -478,17 +493,10 @@ export function useFugueBody({
       if (outcome.structural && outcome.refused) {
         resyncRef.current = true;
       } else if (outcome.structural) {
-        // The node now holds this structure; tracking it stops a resend.
-        serverRef.current = next.map((block) => {
-          const id = backendIdOf(block.id);
-          const held = serverBlock(id);
-          return {
-            ...block,
-            id,
-            inline: held && !outcome.touched.has(id) ? held.inline : block.inline,
-          };
-        });
-        await refreshWith(outcome.touched);
+        // Every call landed, so the node holds exactly what was diffed; tracking
+        // that stops a resend and lets the re-read rebase a peer's edit into it.
+        serverRef.current = next.map((block) => ({ ...block, id: backendIdOf(block.id) }));
+        await refreshWith(new Set());
       }
       if (outcome.refused) dirtyRef.current = true;
       setError(null);
@@ -622,5 +630,6 @@ export function useFugueBody({
     redo,
     revision,
     backendIdOf,
+    editorIdOf,
   };
 }

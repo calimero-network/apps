@@ -1,15 +1,17 @@
-// Binds a plain text input to the document title CRDT: a keystroke becomes one
-// scalar-indexed delta, a peer's TitleChanged becomes a re-read with the caret
-// carried across on an anchor, and the caret is published as live presence.
+// Binds the title input to the title CRDT the way the body is bound: the input
+// always equals the node's last known title plus the user's pending edit. A
+// peer's change is transformed past that edit and the caret carried through it;
+// every write is guarded by the title it was diffed against.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   useSubscription,
   type SubscriptionEventData,
 } from '@calimero-network/mero-react';
-import { diffText } from '@/lib/rich/delta';
+import { diffText, type Change } from '@/lib/rich/delta';
 import { parseRichEvents } from '@/lib/rich/events';
 import { scalarToUtf16, utf16ToScalar } from '@/lib/rich/offsets';
+import { applyChanges, transform, transformPosition } from '@/lib/rich/ot';
 import { isTransportFailure } from '@/lib/rich/transport';
 import { UndoHistory } from '@/lib/rich/undo';
 import type { CaretSlice } from './useDocPresence';
@@ -19,8 +21,9 @@ import { isContextEvent } from './useContextEvents';
 import { useRetry } from './useRetry';
 
 const CARET_DEBOUNCE_MS = 200; // one anchor mint per pause, not per keystroke
-const REFRESH_DEBOUNCE_MS = 150; // coalesces a typing peer's event burst
+const REFRESH_DEBOUNCE_MS = 50; // coalesces a typing peer's event burst
 const RECONCILE_MS = 4000; // an event lost while the node restarted still lands
+const UNDO_GROUP_MS = 500; // writes closer than this undo as one step, as in the body
 
 export interface UseFugueTitleOptions {
   client: DocsClient | null;
@@ -35,14 +38,23 @@ export interface UseFugueTitleResult {
   inputRef: React.MutableRefObject<HTMLInputElement | null>;
   onChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
   onSelect: () => void;
+  /** Undo and redo shortcuts, taken from the browser's own input history. */
+  onKeyDown: (event: React.KeyboardEvent<HTMLInputElement>) => void;
   undo: () => void;
   redo: () => void;
   error: Error | null;
   status: SaveStatus;
+  /** False until the title is read; an edit before then has nothing to diff against. */
+  loaded: boolean;
 }
 
 const asError = (cause: unknown): Error =>
   cause instanceof Error ? cause : new Error(String(cause));
+
+const applyText = (text: string, ops: Change[]): string =>
+  applyChanges([{ text, attributes: {} }], ops)
+    .map((span) => span.text)
+    .join('');
 
 export function useFugueTitle({
   client,
@@ -53,54 +65,142 @@ export function useFugueTitle({
   const [title, showTitle] = useState('');
   const [error, setError] = useState<Error | null>(null);
   const [status, setStatus] = useState<SaveStatus>('saved');
+  const [loaded, setLoaded] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
-  // What the backend is believed to hold, so a re-read can tell our own write
-  // from a peer's without a round trip per keystroke. Advanced the instant a
-  // keystroke lands, so the next keystroke's diff is against the latest text.
+  // The title as the node last reported it, and the input's current value.
+  const serverRef = useRef('');
   const localRef = useRef('');
-  // What the backend has actually confirmed applying. Only this — not
-  // `localRef` — decides the base of a retried delta, so a failed write's
-  // characters are still in the diff on the next attempt.
-  const confirmedRef = useRef('');
-  const sendingRef = useRef(false);
-  const anchorRef = useRef<string | null>(null);
-  const caretRef = useRef<number | null>(null);
-  const historyRef = useRef(new UndoHistory(docId));
+  const loadedRef = useRef(false);
+  const dirtyRef = useRef(false);
+  const staleRef = useRef(false);
+  const inFlightRef = useRef(false);
+  // Where the caret goes once React has rendered a value a peer changed.
+  const caretRef = useRef<{ anchor: number; head: number } | null>(null);
+  // One entry per typing burst: the write tokens in the order they landed.
+  const historyRef = useRef(new UndoHistory<string[]>(docId));
+  const openGroupRef = useRef<string[] | null>(null);
+  const lastWriteAtRef = useRef(0);
   const caretTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Breaks the sync→retry→sync cycle without reordering declarations.
-  const syncRef = useRef<(() => Promise<void>) | null>(null);
+  const drainRef = useRef<(() => Promise<void>) | null>(null);
   const { schedule: scheduleRetry, reset: resetRetry } = useRetry(
-    () => void syncRef.current?.(),
+    () => void drainRef.current?.(),
   );
 
   const contextIds = useMemo(() => (contextId ? [contextId] : []), [contextId]);
   const publishRef = useRef(publish);
   publishRef.current = publish;
 
+  /** A peer moved the title from the node's last known value to `remote`. */
+  const rebase = useCallback((remote: string) => {
+    const incoming = transform(diffText(serverRef.current, localRef.current), diffText(serverRef.current, remote, { keepShared: true }), true);
+    serverRef.current = remote;
+    if (incoming.length === 0) return;
+    const before = localRef.current;
+    const after = applyText(before, incoming);
+    const input = inputRef.current;
+    if (input && document.activeElement === input) {
+      const carry = (utf16: number | null) =>
+        scalarToUtf16(after, transformPosition(incoming, utf16ToScalar(before, utf16 ?? 0)));
+      caretRef.current = { anchor: carry(input.selectionStart), head: carry(input.selectionEnd) };
+    }
+    localRef.current = after;
+    showTitle(after);
+  }, []);
+
+  // False stops the drain loop: a transport failure defers to scheduleRetry.
+  const flush = useCallback(async (): Promise<boolean> => {
+    if (!client || !docId || !loadedRef.current) return true;
+    const base = serverRef.current;
+    const ops = diffText(base, localRef.current);
+    if (ops.length === 0) {
+      setStatus('saved');
+      return true;
+    }
+    setStatus('saving');
+    try {
+      // The generated ChangePayload is a tagged union; the contract takes
+      // serde's untagged form, which is what `ops` already is.
+      const result = await client.titleApplyDeltaOn({ doc: docId, base, ops: ops as unknown as ChangePayload[] });
+      if (result.applied && result.token) {
+        if (openGroupRef.current) openGroupRef.current.push(result.token);
+        else historyRef.current.record((openGroupRef.current = [result.token]));
+        serverRef.current = applyText(base, ops);
+      } else {
+        dirtyRef.current = true;
+      }
+      rebase(result.text);
+      setError(null);
+      setStatus(result.applied ? 'saved' : 'saving');
+      resetRetry();
+      return true;
+    } catch (cause) {
+      if (isTransportFailure(cause)) {
+        dirtyRef.current = true;
+        setStatus('offline');
+        scheduleRetry();
+        return false;
+      }
+      setError(asError(cause));
+      setStatus('error');
+      staleRef.current = true;
+      return true;
+    }
+  }, [client, docId, rebase, resetRetry, scheduleRetry]);
+
+  const refresh = useCallback(async () => {
+    if (!client || !docId) return;
+    try {
+      const remote = await client.getTitle({ doc: docId });
+      if (!loadedRef.current) {
+        loadedRef.current = true;
+        serverRef.current = remote;
+        localRef.current = remote;
+        showTitle(remote);
+        setLoaded(true);
+        return;
+      }
+      rebase(remote);
+    } catch (cause) {
+      setError(asError(cause));
+    }
+  }, [client, docId, rebase]);
+
+  const drain = useCallback(async () => {
+    if (inFlightRef.current) return;
+    inFlightRef.current = true;
+    try {
+      while (dirtyRef.current || staleRef.current) {
+        if (dirtyRef.current) {
+          dirtyRef.current = false;
+          if (!(await flush())) break;
+        } else {
+          staleRef.current = false;
+          await refresh();
+        }
+      }
+    } finally {
+      inFlightRef.current = false;
+    }
+  }, [flush, refresh]);
+  drainRef.current = drain;
+
   useEffect(() => {
     historyRef.current.reset(docId);
-    anchorRef.current = null;
+    openGroupRef.current = null;
+    serverRef.current = '';
     localRef.current = '';
-    confirmedRef.current = '';
+    loadedRef.current = false;
+    setLoaded(false);
+    dirtyRef.current = false;
+    staleRef.current = false;
     resetRetry();
     setStatus('saved');
     showTitle('');
     if (!client || !docId) return;
-    let live = true;
-    client
-      .getTitle({ doc: docId })
-      .then((text) => {
-        if (!live) return;
-        localRef.current = text;
-        confirmedRef.current = text;
-        showTitle(text);
-      })
-      .catch((cause) => live && setError(asError(cause)));
-    return () => {
-      live = false;
-    };
-  }, [client, docId, resetRetry]);
+    staleRef.current = true;
+    void drain();
+  }, [client, docId, drain, resetRetry]);
 
   useEffect(
     () => () => {
@@ -109,6 +209,16 @@ export function useFugueTitle({
     },
     [],
   );
+
+  // A peer's change re-renders the value, which moves the caret to the end;
+  // put it where the change carried it before the browser paints.
+  useLayoutEffect(() => {
+    const caret = caretRef.current;
+    caretRef.current = null;
+    const input = inputRef.current;
+    if (!caret || !input || document.activeElement !== input) return;
+    input.setSelectionRange(Math.min(caret.anchor, caret.head), Math.max(caret.anchor, caret.head));
+  }, [title]);
 
   const publishCaret = useCallback(() => {
     if (caretTimerRef.current) clearTimeout(caretTimerRef.current);
@@ -122,126 +232,23 @@ export function useFugueTitle({
           position: utf16ToScalar(localRef.current, caret),
           before: true,
         })
-        .then((anchor) => {
-          anchorRef.current = anchor;
-          publishRef.current?.({ blockId: null, anchor, head: anchor });
-        })
+        .then((anchor) => publishRef.current?.({ blockId: null, anchor, head: anchor }))
         .catch((cause) => setError(asError(cause)));
     }, CARET_DEBOUNCE_MS);
   }, [client, docId]);
 
-  const refresh = useCallback(async () => {
-    if (!client || !docId) return;
-    try {
-      const text = await client.getTitle({ doc: docId });
-      if (text === localRef.current) return;
-      const anchor = anchorRef.current;
-      if (anchor) {
-        const resolved = await client.titleResolve({
-          doc: docId,
-          anchors: [anchor],
-        });
-        caretRef.current =
-          resolved[0] == null ? null : scalarToUtf16(text, resolved[0]);
-      }
-      localRef.current = text;
-      confirmedRef.current = text;
-      showTitle(text);
-    } catch (cause) {
-      setError(asError(cause));
-    }
-  }, [client, docId]);
-
-  const handleEvent = useCallback(
-    (event: SubscriptionEventData) => {
-      if (!isContextEvent(event) || !docId) return;
-      const mine = parseRichEvents(event.data).some(
-        (parsed) => parsed.kind === 'TitleChanged' && parsed.doc === docId,
-      );
-      if (!mine) return;
-      if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
-      refreshTimerRef.current = setTimeout(() => {
-        refreshTimerRef.current = null;
-        void refresh();
-      }, REFRESH_DEBOUNCE_MS);
-    },
-    [docId, refresh],
-  );
-  useSubscription(contextIds, handleEvent);
-
-  // A node restart drops the event stream, so a peer's title edit arrives on
-  // no event; an idle re-read is what closes that window.
-  useEffect(() => {
-    if (!client || !docId) return;
-    const timer = setInterval(() => {
-      if (localRef.current !== confirmedRef.current) return;
-      void refresh();
-    }, RECONCILE_MS);
-    return () => clearInterval(timer);
-  }, [client, docId, refresh]);
-
-  // A re-read replaces the whole value, so the caret the anchor resolved to
-  // has to be put back once React has rendered it.
-  useEffect(() => {
-    const caret = caretRef.current;
-    caretRef.current = null;
-    const input = inputRef.current;
-    if (caret === null || !input || document.activeElement !== input) return;
-    input.setSelectionRange(caret, caret);
-  }, [title]);
-
-  // Diffs `confirmedRef` (backend truth) against `localRef` (the latest
-  // typed text) and sends the result; a typing burst during an in-flight
-  // or retried send is folded into the next diff, not sent as its own call.
-  const sync = useCallback(async (): Promise<void> => {
-    if (sendingRef.current || !client || !docId) return;
-    const ops = diffText(confirmedRef.current, localRef.current);
-    if (ops.length === 0) {
-      setStatus('saved');
-      return;
-    }
-    sendingRef.current = true;
-    setStatus('saving');
-    const target = localRef.current;
-    let transportFailure = false;
-    try {
-      const token = await client
-        // The generated ChangePayload is a tagged union; the contract takes
-        // serde's untagged form, which is what `ops` already is.
-        .titleApplyDelta({ doc: docId, ops: ops as unknown as ChangePayload[] });
-      confirmedRef.current = target;
-      historyRef.current.record(token);
-      setError(null);
-      resetRetry();
-    } catch (cause) {
-      if (isTransportFailure(cause)) {
-        transportFailure = true;
-        setStatus('offline');
-        scheduleRetry();
-      } else {
-        // The node answered and refused the delta; give up on it, matching
-        // the prior no-retry behavior, and leave only the error visible.
-        confirmedRef.current = target;
-        setError(asError(cause));
-        setStatus('error');
-      }
-    } finally {
-      sendingRef.current = false;
-    }
-    if (!transportFailure) {
-      if (localRef.current !== confirmedRef.current) void sync();
-      else setStatus('saved');
-    }
-  }, [client, docId, resetRetry, scheduleRetry]);
-  syncRef.current = sync;
-
   const write = useCallback(
     (next: string) => {
-      showTitle(next);
+      const now = Date.now();
+      if (now - lastWriteAtRef.current > UNDO_GROUP_MS) openGroupRef.current = null;
+      lastWriteAtRef.current = now;
       localRef.current = next;
-      void sync();
+      showTitle(next);
+      dirtyRef.current = true;
+      setStatus('unsaved');
+      void drain();
     },
-    [sync],
+    [drain],
   );
 
   const onChange = useCallback(
@@ -252,30 +259,83 @@ export function useFugueTitle({
     [write, publishCaret],
   );
 
+  const handleEvent = useCallback(
+    (event: SubscriptionEventData) => {
+      if (!isContextEvent(event) || !docId) return;
+      const mine = parseRichEvents(event.data).some(
+        (parsed) => parsed.kind === 'TitleChanged' && parsed.doc === docId,
+      );
+      if (!mine) return;
+      staleRef.current = true;
+      if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
+      refreshTimerRef.current = setTimeout(() => {
+        refreshTimerRef.current = null;
+        void drain();
+      }, REFRESH_DEBOUNCE_MS);
+    },
+    [docId, drain],
+  );
+  useSubscription(contextIds, handleEvent);
+
+  // A node restart drops the event stream, so a peer's title edit arrives on
+  // no event; an idle re-read is what closes that window.
+  useEffect(() => {
+    if (!client || !docId) return;
+    const timer = setInterval(() => {
+      if (dirtyRef.current || inFlightRef.current) return;
+      staleRef.current = true;
+      void drain();
+    }, RECONCILE_MS);
+    return () => clearInterval(timer);
+  }, [client, docId, drain]);
+
   const step = useCallback(
     (direction: 'undo' | 'redo') => {
       if (!client || !docId) return;
       const history = historyRef.current;
-      const apply = (token: string) => client.titleUndo({ doc: docId, token });
-      const ran =
-        direction === 'undo' ? history.undo(apply) : history.redo(apply);
+      openGroupRef.current = null;
+      // Newest write first; the inverses come back in the order redo replays them.
+      const apply = async (group: string[]) => {
+        const inverses: string[] = [];
+        for (const token of [...group].reverse()) inverses.push(await client.titleUndo({ doc: docId, token }));
+        return inverses;
+      };
+      const ran = direction === 'undo' ? history.undo(apply) : history.redo(apply);
       ran
-        .then((moved) => (moved ? refresh() : undefined))
+        .then((moved) => {
+          if (!moved) return;
+          staleRef.current = true;
+          return drain();
+        })
         .catch((cause) => setError(asError(cause)));
     },
-    [client, docId, refresh],
+    [client, docId, drain],
   );
   const undo = useCallback(() => step('undo'), [step]);
   const redo = useCallback(() => step('redo'), [step]);
+  // A peer's change resets the input's value, which empties the browser's undo.
+  const onKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLInputElement>) => {
+      if (!(event.metaKey || event.ctrlKey)) return;
+      const key = event.key.toLowerCase();
+      if (key !== 'z' && key !== 'y') return;
+      event.preventDefault();
+      if (key === 'y' || event.shiftKey) redo();
+      else undo();
+    },
+    [undo, redo],
+  );
 
   return {
     title,
     inputRef,
     onChange,
     onSelect: publishCaret,
+    onKeyDown,
     undo,
     redo,
     status,
     error,
+    loaded,
   };
 }

@@ -1,7 +1,7 @@
 // The attributes the browser suites address the editor through. They are a
 // contract with those suites, so a rename has to break a test here first.
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { useRef } from 'react';
 import { EditorHeader, type TitleBinding } from '../EditorHeader';
 import type { TitleCaret } from '@/lib/rich/cursors';
@@ -16,6 +16,8 @@ const CARET = {
   to: 4,
 };
 
+const onTitleKeyDown = vi.fn();
+
 function Header(props: {
   undo?: boolean;
   readOnly?: boolean;
@@ -26,6 +28,7 @@ function Header(props: {
     value: 'Notes',
     onChange: vi.fn(),
     onSelect: vi.fn(),
+    onKeyDown: onTitleKeyDown,
     inputRef,
     carets: props.carets ?? [],
   };
@@ -47,6 +50,12 @@ describe('EditorHeader test hooks', () => {
     ).toBe('Notes');
     expect(screen.getByTestId('doc-undo')).toBeTruthy();
     expect(screen.getByTestId('doc-redo')).toBeTruthy();
+  });
+
+  it("hands the title's keys to its binding, which owns the title's undo", () => {
+    render(<Header undo />);
+    fireEvent.keyDown(screen.getByTestId('doc-title-input'), { key: 'z', metaKey: true });
+    expect(onTitleKeyDown).toHaveBeenCalledWith(expect.objectContaining({ key: 'z', metaKey: true }));
   });
 
   it('renders the title read-only with no field and no undo', () => {

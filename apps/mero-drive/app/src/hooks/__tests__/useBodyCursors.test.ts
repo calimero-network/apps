@@ -98,8 +98,13 @@ const client = {
 };
 
 const publish = vi.fn();
+const identity = { toBackendId: (id: string) => id, toEditorId: (id: string) => id };
 
-function mount(peers: Map<string, DocPresence>, editor: CursorEditor | null) {
+function mount(
+  peers: Map<string, DocPresence>,
+  editor: CursorEditor | null,
+  ids = identity,
+) {
   return renderHook(() =>
     useBodyCursors({
       client: client as unknown as DocsClient,
@@ -108,9 +113,16 @@ function mount(peers: Map<string, DocPresence>, editor: CursorEditor | null) {
       peers,
       publish,
       revision: 'rev-1',
+      ...ids,
     }),
   );
 }
+
+// blk-1 is this window's own id for a block the node knows as node-1.
+const minted = {
+  toBackendId: (id: string) => (id === 'blk-1' ? 'node-1' : id),
+  toEditorId: (id: string) => (id === 'node-1' ? 'blk-1' : id),
+};
 
 beforeEach(() => {
   dispatched.length = 0;
@@ -121,6 +133,14 @@ beforeEach(() => {
 });
 
 describe('useBodyCursors - drawing peers', () => {
+  it('finds a peer caret on a node id in the block this window knows by its own id', async () => {
+    await act(async () => {
+      mount(new Map([['ada', peer({ blockId: 'node-1' })]]), fakeEditor(), minted);
+    });
+    expect(client.resolveIds).toHaveBeenCalledWith({ doc: DOC, block: 'node-1', anchors: ['anc-a', 'anc-b'] });
+    expect(JSON.stringify(lastDrawn())).toContain('"kind"');
+  });
+
   it('resolves a block once for every peer on it', async () => {
     const peers = new Map([
       ['alice', peer()],
@@ -233,15 +253,31 @@ describe('useBodyCursors - publishing our own caret', () => {
     });
   });
 
-  it('republishes when the selection moves', async () => {
+  it('republishes once when the selection settles after moving', async () => {
     await act(async () => {
       mount(new Map(), fakeEditor());
     });
     publish.mockClear();
-    await act(async () => {
-      selectionListener?.();
-    });
+    vi.useFakeTimers();
+    try {
+      await act(async () => {
+        selectionListener?.();
+        selectionListener?.();
+        selectionListener?.();
+        await vi.advanceTimersByTimeAsync(400);
+      });
+    } finally {
+      vi.useRealTimers();
+    }
     expect(publish).toHaveBeenCalledTimes(1);
+  });
+
+  it('anchors and publishes on the node id of a block this window created', async () => {
+    await act(async () => {
+      mount(new Map(), fakeEditor(2, 2), minted);
+    });
+    expect(client.anchorAt).toHaveBeenCalledWith({ doc: DOC, block: 'node-1', position: 0, before: true });
+    expect(publish).toHaveBeenCalledWith({ blockId: 'node-1', anchor: 'anc-mine', head: 'anc-mine' });
   });
 
   it('withdraws the caret when the editor goes away', async () => {

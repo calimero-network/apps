@@ -5,7 +5,7 @@ import { renderHook } from '@testing-library/react';
 import { useCreateBlockNote } from '@blocknote/react';
 import { TextSelection } from 'prosemirror-state';
 import { schema } from '../blocknote/schema';
-import { applyRemoteText, flushPendingInput } from '../remoteText';
+import { applyRemoteText, domSelection, flushPendingInput, keepSelection, syncSelectionFromDom } from '../remoteText';
 import { blockGeometry, type DocNode } from '../presence/geometry';
 
 function editorWith(text: string) {
@@ -89,5 +89,71 @@ describe('applyRemoteText', () => {
     expect(() => flushPendingInput(undefined)).not.toThrow();
     const unmounted = new Proxy({}, { get: () => { throw new Error('not mounted'); } });
     expect(() => flushPendingInput(unmounted as Parameters<typeof flushPendingInput>[0])).not.toThrow();
+  });
+
+  it('keeps a selection the view has not recorded, carried through the peer steps', () => {
+    const editor = editorWith('The fox.');
+    editor.transact((tr) => {
+      const geometry = blockGeometry(tr.doc as unknown as DocNode, 'b1');
+      if (!geometry) throw new Error('no block b1');
+      const fox = { anchor: geometry.contentStart + 4, head: geometry.contentStart + 7 };
+      tr.insertText('PEER ', geometry.contentStart);
+      keepSelection(tr, fox);
+    });
+    const state = editor._tiptapEditor.state;
+    const start = blockGeometry(state.doc as unknown as DocNode, 'b1')?.contentStart ?? 0;
+    expect([state.selection.anchor - start, state.selection.head - start]).toEqual([9, 12]);
+  });
+
+  it('reports no browser selection without a view to read it from', () => {
+    expect(domSelection(undefined)).toBeNull();
+  });
+
+  it('records the browser selection before a key acts on a stale one', () => {
+    const editor = editorWith('The fox.');
+    const state = () => editor._tiptapEditor.state;
+    const start = blockGeometry(state().doc as unknown as DocNode, 'b1')?.contentStart ?? 0;
+    const dispatch = vi.fn();
+    const inside = document.createElement('p');
+    const view = {
+      state: state(),
+      dom: { contains: () => true },
+      root: { getSelection: () => ({ anchorNode: inside, anchorOffset: 4, focusNode: inside, focusOffset: 7 }) },
+      posAtDOM: (_node: Node, offset: number) => start + offset,
+      dispatch,
+    } as unknown as Parameters<typeof syncSelectionFromDom>[0];
+    syncSelectionFromDom(view);
+    expect(dispatch).toHaveBeenCalledTimes(1);
+    const selection = dispatch.mock.calls[0][0].selection;
+    expect([selection.anchor - start, selection.head - start]).toEqual([4, 7]);
+  });
+
+  it('dispatches nothing when the view already records the browser selection', () => {
+    const editor = editorWith('The fox.');
+    const state = editor._tiptapEditor.state;
+    const dispatch = vi.fn();
+    const view = {
+      state,
+      dom: { contains: () => true },
+      root: { getSelection: () => ({ anchorNode: {}, anchorOffset: 0, focusNode: {}, focusOffset: 0 }) },
+      posAtDOM: () => state.selection.anchor,
+      dispatch,
+    } as unknown as Parameters<typeof syncSelectionFromDom>[0];
+    syncSelectionFromDom(view);
+    expect(dispatch).not.toHaveBeenCalled();
+  });
+
+  it('keeps a caret before a peer insert landing exactly on it, so its own run stays whole', () => {
+    const editor = editorWith('ab');
+    editor.transact((tr) => {
+      const geometry = blockGeometry(tr.doc as unknown as DocNode, 'b1');
+      if (!geometry) throw new Error('no block b1');
+      const caret = geometry.contentStart + 2;
+      tr.insertText('PEER', caret);
+      keepSelection(tr, { anchor: caret, head: caret });
+    });
+    const state = editor._tiptapEditor.state;
+    const start = blockGeometry(state.doc as unknown as DocNode, 'b1')?.contentStart ?? 0;
+    expect(state.selection.head - start).toBe(2);
   });
 });

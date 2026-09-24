@@ -83,8 +83,10 @@ class FakeEditor implements BodyEditor {
     this.onChange();
   }
 
-  replaceBlocks(_remove: string[], insert: Record<string, unknown>[]): void {
-    this.document = structuredClone(insert) as unknown as BnBlock[];
+  replaceBlocks(remove: string[], insert: Record<string, unknown>[]): void {
+    const at = this.document.findIndex((b) => remove.includes(b.id));
+    this.document = this.document.filter((b) => !remove.includes(b.id));
+    this.document.splice(at, 0, ...(structuredClone(insert) as unknown as BnBlock[]));
     this.onChange();
   }
 }
@@ -210,6 +212,26 @@ describe('useFugueBody', () => {
     });
   });
 
+  it('keeps a pending keystroke after its own letter when peers typed on both sides of it', async () => {
+    const client = fakeClient([row('blk-1', 'Shared:a')]);
+    client.applyDeltaOn
+      .mockResolvedValueOnce(refused('Shared:bac'))
+      .mockResolvedValueOnce(applied('Shared:ba1c'));
+    const editor = new FakeEditor();
+    await mount(client, editor);
+
+    editor.type('blk-1', 'Shared:a1');
+    await settle();
+
+    expect(client.applyDeltaOn).toHaveBeenLastCalledWith({
+      doc: DOC,
+      block: 'blk-1',
+      base: 'Shared:bac',
+      ops: [{ retain: 9 }, { insert: '1', attributes: {} }],
+    });
+    expect(editor.textOf('blk-1')).toBe('Shared:ba1c');
+  });
+
   it('folds a peer edit into the block without losing a keystroke typed meanwhile', async () => {
     const client = fakeClient([row('blk-1', 'The fox.')]);
     client.applyDeltaOn.mockResolvedValue(applied('bob The fox. ab'));
@@ -312,6 +334,21 @@ describe('useFugueBody', () => {
     expect(client.insertBlock).not.toHaveBeenCalled();
   });
 
+  it('keeps a peer\'s text that lands while this window changes that block\'s kind', async () => {
+    const client = fakeClient([row('blk-1', 'one'), row('blk-2', 'two')]);
+    const editor = new FakeEditor();
+    await mount(client, editor);
+
+    client.getDocument.mockResolvedValue([row('blk-1', 'one'), row('blk-2', 'two!', 'heading')]);
+    editor.updateBlock('blk-2', { type: 'heading' });
+    await settle();
+    await settle();
+
+    expect(client.setKind).toHaveBeenCalledWith({ doc: DOC, block: 'blk-2', kind: 'heading' });
+    expect(editor.textOf('blk-2')).toBe('two!');
+    expect(client.applyDeltaOn).not.toHaveBeenCalled();
+  });
+
   it('undoes and redoes through the editor history, not per write', async () => {
     const client = fakeClient([row('blk-1', 'a')]);
     const editor = new FakeEditor();
@@ -325,6 +362,38 @@ describe('useFugueBody', () => {
     expect(editor.undo).toHaveBeenCalledTimes(1);
     expect(editor.redo).toHaveBeenCalledTimes(1);
     expect(client.undo).not.toHaveBeenCalled();
+  });
+
+  it("replaces only the blocks a peer's move touched, so the rest keep their undo history", async () => {
+    const rows = [row('blk-1', 'Alpha'), row('blk-2', 'Bravo'), row('blk-3', 'Charlie'), row('blk-4', 'Delta')];
+    const client = fakeClient(rows);
+    const editor = new FakeEditor();
+    await mount(client, editor);
+    const replace = vi.spyOn(editor, 'replaceBlocks');
+
+    client.getDocument.mockResolvedValue([rows[0], rows[1], rows[3], rows[2]]);
+    act(() => deliver?.(peerEvent(DOC)));
+    await settle();
+
+    expect(editor.document.map((b) => b.id)).toEqual(['blk-1', 'blk-2', 'blk-4', 'blk-3']);
+    expect(replace).toHaveBeenCalledTimes(1);
+    expect(replace.mock.calls[0][0]).toEqual(['blk-3', 'blk-4']);
+  });
+
+  it("inserts a peer's nested block beside the untouched ones instead of rebuilding the document", async () => {
+    const rows = [row('blk-1', 'Alpha'), row('blk-2', 'Bravo')];
+    const client = fakeClient(rows);
+    const editor = new FakeEditor();
+    await mount(client, editor);
+    const replace = vi.spyOn(editor, 'replaceBlocks');
+
+    client.getDocument.mockResolvedValue([rows[0], rows[1], { ...row('blk-3', 'Echo'), depth: 1 }]);
+    act(() => deliver?.(peerEvent(DOC)));
+    await settle();
+
+    expect(editor.document.map((b) => b.id)).toEqual(['blk-1', 'blk-2']);
+    expect(editor.document[1]).toMatchObject({ id: 'blk-2', children: [{ id: 'blk-3' }] });
+    expect(replace.mock.calls.map(([remove]) => remove)).toEqual([['blk-2']]);
   });
 
   it('ignores an event for another document', async () => {

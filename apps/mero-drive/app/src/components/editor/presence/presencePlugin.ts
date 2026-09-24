@@ -5,24 +5,21 @@
 import { Plugin, PluginKey, type EditorState } from 'prosemirror-state';
 import { Decoration, DecorationSet, type EditorView } from 'prosemirror-view';
 import type { CaretDecoration } from '@/lib/rich/cursors';
-import { flushPendingInput } from '../remoteText';
+import { domSelection, flushPendingInput, keepSelection, syncSelectionFromDom } from '../remoteText';
 
 const PRESENCE_META = 'calimero-presence';
 
 export const presenceKey = new PluginKey<DecorationSet>(PRESENCE_META);
 
-/** Render one peer's caret: a zero-width marker carrying their name. */
+/** Render one peer's caret: a zero-width marker whose name CSS draws, so it is never document text. */
 function caretElement(spec: CaretDecoration & { kind: 'caret' }): HTMLElement {
   const caret = document.createElement('span');
   caret.className = 'cal-presence-cursor';
   caret.dataset.testid = 'presence-cursor';
   caret.dataset.author = spec.author;
+  caret.dataset.name = spec.name;
   caret.style.borderLeft = `2px solid ${spec.colour}`;
-  const label = document.createElement('span');
-  label.className = 'cal-presence-label';
-  label.textContent = spec.name;
-  label.style.backgroundColor = spec.colour;
-  caret.appendChild(label);
+  caret.style.setProperty('--presence-colour', spec.colour);
   return caret;
 }
 
@@ -46,7 +43,8 @@ function build(specs: CaretDecoration[], doc: EditorState['doc']): DecorationSet
     decorations.push(
       Decoration.widget(spec.pos, () => caretElement(spec), {
         side: 1,
-        key: `presence-${spec.author}`,
+        // A new key per position rebuilds the caret on a move, replaying its name flag.
+        key: `presence-${spec.author}-${spec.pos}`,
       }),
     );
   }
@@ -67,6 +65,16 @@ export function presencePlugin(): Plugin<DecorationSet> {
     },
     props: {
       decorations: (state) => presenceKey.getState(state) ?? DecorationSet.empty,
+      handleDOMEvents: {
+        // Runs before any keymap: the view reads selection changes late, and a
+        // shortcut pressed in that gap would act on where the caret used to be.
+        keydown: (view, event) => {
+          if (event.isComposing) return false;
+          flushPendingInput(view);
+          syncSelectionFromDom(view);
+          return false;
+        },
+      },
     },
   });
 }
@@ -77,5 +85,7 @@ export function setPresenceDecorations(
   specs: CaretDecoration[],
 ): void {
   flushPendingInput(view);
-  view.dispatch(view.state.tr.setMeta(presenceKey, specs));
+  const tr = view.state.tr.setMeta(presenceKey, specs);
+  keepSelection(tr, domSelection(view));
+  view.dispatch(tr);
 }
