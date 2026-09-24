@@ -4,15 +4,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { DocsClient } from '@/generated/docs/DocsClient';
 import { titleCarets, type TitleCaret } from '@/lib/rich/cursors';
-import type { DocPresence } from '@/lib/rich/presence';
-
-/** What a re-resolve depends on; a fresh map identity is not a reason to call. */
-function signature(peers: Map<string, DocPresence>): string {
-  return [...peers]
-    .map(([author, s]) => `${author}|${s.blockId ?? ''}|${s.anchor}|${s.head}`)
-    .sort()
-    .join('\n');
-}
+import { signature, type DocPresence } from '@/lib/rich/presence';
 
 export function useTitleCursors(
   client: DocsClient | null,

@@ -6,14 +6,12 @@ import type { Page } from '@playwright/test';
 import { expect, test } from './fixtures/rich';
 import { settle } from './helpers/converge';
 import { blockText, occurrences, sameCharacterCounts, spanSummary } from './helpers/doc-model';
-import { applyBold, applyItalic, caretBlockText, caretTo, redo, selectText, undo } from './helpers/editor';
-import { waitForHealth } from './helpers/rig';
+import { MOD, applyBold, applyItalic, caretBlockText, caretTo, redo, selectText, undo } from './helpers/editor';
+import { switchNode } from './helpers/rig';
 import { blocksOnNode } from './helpers/rpc';
 
 const NODES = [1, 2];
 const KEY_DELAY_MS = 90; // human typing speed, so keystrokes and sync overlap
-const MOD = process.platform === 'darwin' ? 'Meta' : 'Control';
-const APP_URL = `http://localhost:${process.env.PW_PORT ?? '5179'}`;
 
 async function caretToEnd(page: Page, block: number): Promise<void> {
   await caretTo(page, block, 0);
@@ -22,13 +20,6 @@ async function caretToEnd(page: Page, block: number): Promise<void> {
 
 async function typeLive(page: Page, text: string): Promise<void> {
   await page.keyboard.type(text, { delay: KEY_DELAY_MS });
-}
-
-/** The rig's switch: the node keeps serving its window but reaches no peer. */
-async function peers(node: number, action: 'offline' | 'online'): Promise<void> {
-  const resp = await fetch(`${APP_URL}/__dev/node/${node}/${action}`, { method: 'POST' });
-  expect(resp.ok, `switching node ${node} ${action}`).toBe(true);
-  await waitForHealth(node, true);
 }
 
 /** Every block's text on a node, once both nodes hold one identical document. */
@@ -181,14 +172,14 @@ test('two people edit one document live, formatted, with undo, and apart', async
   });
 
   await test.step('apart: both cut off, each writes, then both rejoin', async () => {
-    await peers(1, 'offline');
-    await peers(2, 'offline');
+    await switchNode(1, 'offline');
+    await switchNode(2, 'offline');
     await caretToEnd(a.page, 2);
     await typeLive(a.page, ' Left side.');
     await caretToEnd(b.page, 2);
     await typeLive(b.page, ' Right side.');
-    await peers(1, 'online');
-    await peers(2, 'online');
+    await switchNode(1, 'online');
+    await switchNode(2, 'online');
 
     const text = (await settledTexts(rig.doc))[2];
     const tail = text.slice('Alice writes here. More from Alice.'.length);

@@ -15,7 +15,6 @@ export interface DocRef {
 export interface AdminContext {
   id: string;
   serviceName: string;
-  contextStateHash: string;
 }
 
 export async function execute<T>(
@@ -97,20 +96,6 @@ export function blocksOnNode(node: number, doc: DocRef): Promise<Block[]> {
   return execute(node, doc.contextId, 'get_document', { doc: doc.docId });
 }
 
-/** Contiguous occurrences of `needle`, the claim about interleaving `contains` cannot make. */
-export function passageCountOnNode(
-  node: number,
-  doc: DocRef,
-  block: string,
-  needle: string,
-): Promise<number> {
-  return execute(node, doc.contextId, 'passage_count', {
-    doc: doc.docId,
-    block,
-    needle,
-  });
-}
-
 /** The identity this node signs with in a context, which presence names as the author. */
 export async function ownedIdentity(node: number, contextId: string): Promise<string> {
   const { url, accessToken } = rigNode(node);
@@ -125,15 +110,6 @@ export async function ownedIdentity(node: number, contextId: string): Promise<st
   const [identity] = body.data.identities;
   if (!identity) throw new Error(`node ${node} owns no identity in ${contextId}`);
   return identity;
-}
-
-export async function rootHashOnNode(
-  node: number,
-  contextId: string,
-): Promise<string> {
-  const context = (await adminContexts(node)).find((row) => row.id === contextId);
-  if (!context) throw new Error(`node ${node} does not hold context ${contextId}`);
-  return context.contextStateHash;
 }
 
 /** Polls `read` until it equals `want`, and reports the last value it did see. */

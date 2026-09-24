@@ -11,6 +11,7 @@ function textNode(text: string): DocNode {
     isText: true,
     text,
     textContent: text,
+    nodeSize: text.length,
     childCount: 0,
     child: () => {
       throw new Error('text nodes have no children');
@@ -28,13 +29,14 @@ function node(
     isTextblock: type.textblock ?? false,
     isText: false,
     textContent: children.map((child) => child.textContent).join(''),
+    nodeSize: children.reduce((sum, child) => sum + child.nodeSize, 2),
     childCount: children.length,
     child: (index) => children[index],
     descendants(fn) {
       let pos = 0;
       for (const child of children) {
         if (fn(child, pos) !== false) child.descendants(shift(fn, pos + 1));
-        pos += size(child);
+        pos += child.nodeSize;
       }
     },
   };
@@ -45,13 +47,6 @@ const shift =
   (fn: (n: DocNode, pos: number) => boolean | void, by: number) =>
   (n: DocNode, pos: number) =>
     fn(n, pos + by);
-
-function size(n: DocNode): number {
-  if (n.isText) return (n.text ?? '').length;
-  let inner = 0;
-  for (let i = 0; i < n.childCount; i++) inner += size(n.child(i));
-  return inner + 2;
-}
 
 // doc > container(blk-1) > paragraph > "hello"
 const simple = node({}, [

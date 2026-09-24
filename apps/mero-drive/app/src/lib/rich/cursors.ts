@@ -2,7 +2,7 @@
 // anchors, not positions, so by the time they arrive the text has moved; this
 // turns the positions THIS replica resolved them to into editor coordinates.
 
-import { scalarToUtf16 } from './offsets';
+import { scalarToUtf16, utf16ToScalar } from './offsets';
 
 /** One inline run of a block; a wrapping node costs a token on each side. */
 export interface InlineItem {
@@ -105,6 +105,16 @@ export function textOffset(items: InlineItem[], inline: number): number {
   return text;
 }
 
+/** The editor position of scalar offset `scalar` in a block's text. */
+export function posAt(block: BlockGeometry, scalar: number): number {
+  return block.contentStart + inlineOffset(block.items, scalarToUtf16(block.text, scalar));
+}
+
+/** The scalar offset in a block's text of editor position `pos`. */
+export function scalarAt(block: BlockGeometry, pos: number): number {
+  return utf16ToScalar(block.text, textOffset(block.items, pos - block.contentStart));
+}
+
 /** Every decoration to draw for the peers whose blocks this replica has. */
 export function caretDecorations(
   peers: PeerCaret[],
@@ -115,11 +125,8 @@ export function caretDecorations(
     const block = geometry(peer.blockId);
     if (!block || peer.anchor === null || peer.head === null) continue;
     const { author, name, colour } = peer;
-    const at = (scalar: number) =>
-      block.contentStart +
-      inlineOffset(block.items, scalarToUtf16(block.text, scalar));
-    const anchor = at(peer.anchor);
-    const head = at(peer.head);
+    const anchor = posAt(block, peer.anchor);
+    const head = posAt(block, peer.head);
     if (anchor !== head) {
       out.push({
         kind: 'selection',

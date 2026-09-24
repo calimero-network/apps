@@ -24,6 +24,7 @@ function textNode(text: string): DocNode {
     isText: true,
     text,
     textContent: text,
+    nodeSize: text.length,
     childCount: 0,
     child: () => {
       throw new Error('no children');
@@ -37,6 +38,7 @@ const doc: DocNode = {
   isTextblock: false,
   isText: false,
   textContent: 'hello world',
+  nodeSize: 17,
   childCount: 1,
   child: () => {
     throw new Error('unused');
@@ -46,6 +48,7 @@ const doc: DocNode = {
       isTextblock: true,
       isText: false,
       textContent: 'hello world',
+      nodeSize: 13,
       childCount: 1,
       child: () => textNode('hello world'),
       descendants: () => {},
@@ -55,6 +58,7 @@ const doc: DocNode = {
       isTextblock: false,
       isText: false,
       textContent: 'hello world',
+      nodeSize: 15,
       childCount: 1,
       child: () => paragraph,
       descendants: (inner) => inner(paragraph, 1),

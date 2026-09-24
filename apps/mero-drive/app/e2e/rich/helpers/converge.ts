@@ -1,6 +1,6 @@
 // Convergence assertions, read from the nodes rather than from the windows.
 
-import { digestOnNode, titleOnNode, waitForValue, type DocRef } from './rpc';
+import { digestOnNode, waitForValue, type DocRef } from './rpc';
 
 const CONVERGE_TIMEOUT_MS = 180_000;
 
@@ -14,20 +14,6 @@ export async function expectDigest(
     await waitForValue(() => digestOnNode(node, doc), expected, {
       timeout,
       label: `digest on node ${node}`,
-    });
-  }
-}
-
-export async function expectTitle(
-  doc: DocRef,
-  nodes: number[],
-  expected: string,
-  timeout = CONVERGE_TIMEOUT_MS,
-): Promise<void> {
-  for (const node of nodes) {
-    await waitForValue(() => titleOnNode(node, doc), expected, {
-      timeout,
-      label: `title on node ${node}`,
     });
   }
 }

@@ -3,11 +3,7 @@
 
 import { expect, type Page } from '@playwright/test';
 
-const MOD = process.platform === 'darwin' ? 'Meta' : 'Control';
-
-export function block(page: Page, index: number) {
-  return page.getByTestId('doc-block').nth(index);
-}
+export const MOD = process.platform === 'darwin' ? 'Meta' : 'Control';
 
 /** Puts the caret `offset` characters into a block, counting from its start. */
 export async function caretTo(page: Page, blockIndex: number, offset: number): Promise<void> {
@@ -17,29 +13,6 @@ export async function caretTo(page: Page, blockIndex: number, offset: number): P
   await text.click();
   await page.keyboard.press('Home');
   for (let step = 0; step < offset; step++) await page.keyboard.press('ArrowRight');
-}
-
-export async function typeAt(
-  page: Page,
-  blockIndex: number,
-  offset: number,
-  text: string,
-): Promise<void> {
-  await caretTo(page, blockIndex, offset);
-  await page.keyboard.type(text);
-}
-
-export async function selectRange(
-  page: Page,
-  blockIndex: number,
-  start: number,
-  end: number,
-): Promise<void> {
-  if (end < start) throw new Error(`selectRange needs end >= start, got ${start}..${end}`);
-  await caretTo(page, blockIndex, start);
-  for (let step = 0; step < end - start; step++) {
-    await page.keyboard.press('Shift+ArrowRight');
-  }
 }
 
 export async function applyBold(page: Page): Promise<void> {
@@ -57,47 +30,10 @@ export async function applyLink(page: Page, url: string): Promise<void> {
   await input.press('Enter');
 }
 
-/** Where the caret sits inside its block, in characters from the block start. */
-export function caretOffset(page: Page): Promise<number> {
-  return page.evaluate(() => {
-    const selection = window.getSelection();
-    if (!selection || selection.rangeCount === 0) return -1;
-    const anchor = selection.getRangeAt(0);
-    const host = (
-      anchor.startContainer.nodeType === Node.ELEMENT_NODE
-        ? (anchor.startContainer as Element)
-        : anchor.startContainer.parentElement
-    )?.closest('[data-testid="doc-block"]');
-    if (!host) return -1;
-    const measured = document.createRange();
-    measured.selectNodeContents(host);
-    measured.setEnd(anchor.startContainer, anchor.startOffset);
-    return measured.toString().length;
-  });
-}
-
 // ─── title ──────────────────────────────────────────────────────────
 
 export function titleInput(page: Page) {
   return page.getByTestId('doc-title-input');
-}
-
-export async function typeInTitle(page: Page, offset: number, text: string): Promise<void> {
-  const input = titleInput(page);
-  await input.click();
-  await input.press('Home');
-  for (let step = 0; step < offset; step++) await input.press('ArrowRight');
-  await page.keyboard.type(text);
-}
-
-export function titleCaret(page: Page): Promise<number> {
-  return titleInput(page).evaluate(
-    (node) => (node as HTMLInputElement).selectionStart ?? -1,
-  );
-}
-
-export function titleValue(page: Page): Promise<string> {
-  return titleInput(page).inputValue();
 }
 
 // ─── history ────────────────────────────────────────────────────────
@@ -108,22 +44,6 @@ export async function undo(page: Page): Promise<void> {
 
 export async function redo(page: Page): Promise<void> {
   await page.getByTestId('doc-redo').click();
-}
-
-// ─── dev panel readback ─────────────────────────────────────────────
-
-/** The digest this window's node reports, re-read on every poll. */
-export async function waitForDigest(
-  page: Page,
-  expected: string,
-  timeout = 120_000,
-): Promise<void> {
-  await expect(async () => {
-    await page.getByTestId('doc-inspector-read').click();
-    await expect(page.getByTestId('digest-value')).toHaveText(expected, {
-      timeout: 2_000,
-    });
-  }).toPass({ timeout });
 }
 
 /** Selects `text` inside a block through the browser selection, then waits

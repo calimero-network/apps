@@ -16,7 +16,6 @@ STOP_TIMEOUT=30   # seconds a node gets to exit after SIGTERM
 DRIVE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ENV_FILE="$DRIVE_DIR/app/.env.integration"
 PID_FILE="$RIG_DIR/rig.pids"
-ISOLATED_FILE="$RIG_DIR/rig.isolated"
 WORKFLOW="$RIG_DIR/rig-mesh.yml"
 
 die() {
@@ -94,21 +93,7 @@ write_pid() {
   mv "$PID_FILE.tmp" "$PID_FILE"
 }
 
-is_isolated() { [ -f "$ISOLATED_FILE" ] && grep -qx "$1" "$ISOLATED_FILE"; }
-
-mark_isolated() {
-  local index=$1 rest
-  rest="$([ -f "$ISOLATED_FILE" ] && awk -v n="$index" '$1 != n' "$ISOLATED_FILE" || true)"
-  { [ -n "$rest" ] && echo "$rest"; echo "$index"; } >"$ISOLATED_FILE.tmp"
-  mv "$ISOLATED_FILE.tmp" "$ISOLATED_FILE"
-}
-
-unmark_isolated() {
-  local index=$1 rest
-  rest="$([ -f "$ISOLATED_FILE" ] && awk -v n="$index" '$1 != n' "$ISOLATED_FILE" || true)"
-  { [ -n "$rest" ] && echo "$rest"; } >"$ISOLATED_FILE.tmp"
-  mv "$ISOLATED_FILE.tmp" "$ISOLATED_FILE"
-}
+is_isolated() { [ -f "$(config_path "$1").online" ]; }
 
 alive() { [ -n "${1:-}" ] && kill -0 "$1" 2>/dev/null; }
 
@@ -319,7 +304,6 @@ cmd_up() {
   rm -rf "$RIG_DIR"
   mkdir -p "$RIG_DIR/bin"
   : >"$PID_FILE"
-  : >"$ISOLATED_FILE"
   # merobox resolves a merod on PATH even when it only touches PIDs.
   ln -sf "$merod" "$RIG_DIR/bin/merod"
   write_workflow "$bundle"
@@ -388,7 +372,6 @@ cmd_down() {
   for index in $(seq 1 "$NODE_COUNT"); do
     stop_node "$index"
     restore_config "$index"
-    unmark_isolated "$index"
   done
   echo "rig down: $NODE_COUNT nodes stopped"
 }
@@ -456,7 +439,6 @@ cmd_offline() {
   backup_config "$1"
   isolate_config "$1"
   start_node "$1"
-  mark_isolated "$1"
   echo "node $1 offline (isolated, rpc still serving)"
 }
 
@@ -465,7 +447,6 @@ cmd_online() {
   stop_node "$1"
   restore_config "$1"
   start_node "$1"
-  unmark_isolated "$1"
   echo "node $1 online  $(node_url "$1")"
 }
 

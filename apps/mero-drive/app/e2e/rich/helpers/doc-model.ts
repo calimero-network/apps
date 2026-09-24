@@ -3,15 +3,8 @@
 
 import type { Block, Span } from '../../../src/generated/docs/DocsClient';
 
-/** The editor stamps every block with its alignment, so every digest carries it. */
-export const PARAGRAPH = 'paragraph/0[textAlignment=left]';
-
 export function blockText(block: Block): string {
   return block.spans.map((span) => span.text).join('');
-}
-
-export function documentText(blocks: Block[]): string {
-  return blocks.map(blockText).join('');
 }
 
 /** `bold=true|link=x:text` per span, the shape a spans assertion compares. */
@@ -23,11 +16,6 @@ export function spanSummary(block: Block): string[] {
         .sort()
         .join('|')}:${span.text}`,
   );
-}
-
-/** Code points, not UTF-16 units: an emoji is one, a ZWJ sequence is several. */
-export function codePointLength(text: string): number {
-  return Array.from(text).length;
 }
 
 /** Non-overlapping occurrences of `needle`; 1 means the passage stayed contiguous. */

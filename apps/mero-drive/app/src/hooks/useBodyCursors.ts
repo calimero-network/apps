@@ -11,11 +11,10 @@ import {
 import { setPresenceDecorations } from '@/components/editor/presence/presencePlugin';
 import {
   caretDecorations,
-  textOffset,
+  scalarAt,
   type PeerCaret,
 } from '@/lib/rich/cursors';
-import { utf16ToScalar } from '@/lib/rich/offsets';
-import type { DocPresence } from '@/lib/rich/presence';
+import { signature, type DocPresence } from '@/lib/rich/presence';
 import type { CaretSlice } from './useDocPresence';
 
 /** The slice of BlockNote this hook drives; narrowed so a test can fake it. */
@@ -42,15 +41,6 @@ export interface UseBodyCursorsOptions {
 interface AuthoredSlice {
   author: string;
   slice: DocPresence;
-}
-
-/** What a re-resolve actually depends on, so a fresh map identity is not a
- *  reason to call the node again. */
-function signature(peers: Map<string, DocPresence>): string {
-  return [...peers]
-    .map(([author, s]) => `${author}|${s.blockId ?? ''}|${s.anchor}|${s.head}`)
-    .sort()
-    .join('\n');
 }
 
 /** Peers with a caret on a body block, grouped so each block costs one call. */
@@ -130,22 +120,17 @@ export function useBodyCursors({
       const geometry = blockGeometry(editor.prosemirrorState.doc, blockId);
       if (!geometry) return;
       const { anchor, head } = editor.prosemirrorState.selection;
-      const scalar = (position: number) =>
-        utf16ToScalar(
-          geometry.text,
-          textOffset(geometry.items, position - geometry.contentStart),
-        );
       void Promise.all([
         client.anchorAt({
           doc: docId,
           block: blockId,
-          position: scalar(anchor),
+          position: scalarAt(geometry, anchor),
           before: true,
         }),
         client.anchorAt({
           doc: docId,
           block: blockId,
-          position: scalar(head),
+          position: scalarAt(geometry, head),
           before: true,
         }),
       ])

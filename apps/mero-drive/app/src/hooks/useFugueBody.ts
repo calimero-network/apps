@@ -26,10 +26,9 @@ import {
   type BlockNoteBlock,
 } from '@/lib/rich/blocknote';
 import { attrsEqual } from '@/lib/rich/attributes';
-import { inlineOffset, textOffset } from '@/lib/rich/cursors';
+import { inlineOffset, posAt, scalarAt } from '@/lib/rich/cursors';
 import { diffSpans, spansToInline, type AttrSpan, type Change } from '@/lib/rich/delta';
 import { parseRichEvents } from '@/lib/rich/events';
-import { scalarToUtf16, utf16ToScalar } from '@/lib/rich/offsets';
 import { applyChanges, transform, transformPosition } from '@/lib/rich/ot';
 import { isTransportFailure } from '@/lib/rich/transport';
 import {
@@ -43,11 +42,10 @@ import {
 } from '@/components/editor/remoteText';
 import type { SaveStatus } from '@/components/editor/types';
 import { isContextEvent } from './useContextEvents';
+import { useRetry } from './useRetry';
 
 const FLUSH_DEBOUNCE_MS = 50; // a few keystrokes per write; correctness does not depend on it
 const REFRESH_DEBOUNCE_MS = 50; // coalesces a typing peer's event burst
-const INITIAL_RETRY_DELAY_MS = 1000; // backoff for a write the node never answered
-const MAX_RETRY_DELAY_MS = 10_000;
 const RECONCILE_MS = 4000; // an event lost while the node restarted still lands
 
 /** The slice of the BlockNote editor the binding drives. */
@@ -115,21 +113,16 @@ function caretIn(view: EditorView, editorId: string): Caret | null {
   const { anchor, head } = view.state.selection;
   const inside = (pos: number) => pos >= geometry.contentStart && pos <= end;
   if (!inside(anchor) || !inside(head)) return null;
-  const toScalar = (pos: number) =>
-    utf16ToScalar(geometry.text, textOffset(geometry.items, pos - geometry.contentStart));
-  return { anchor: toScalar(anchor), head: toScalar(head) };
+  return { anchor: scalarAt(geometry, anchor), head: scalarAt(geometry, head) };
 }
 
 function placeCaret(view: EditorView, editorId: string, caret: Caret): void {
   const geometry = blockGeometry(view.state.doc as unknown as DocNode, editorId);
   if (!geometry) return;
-  const toPos = (scalar: number) =>
-    geometry.contentStart +
-    inlineOffset(geometry.items, scalarToUtf16(geometry.text, scalar));
   const { doc } = view.state;
   view.dispatch(
     view.state.tr.setSelection(
-      TextSelection.create(doc, toPos(caret.anchor), toPos(caret.head)),
+      TextSelection.create(doc, posAt(geometry, caret.anchor), posAt(geometry, caret.head)),
     ),
   );
 }
@@ -160,9 +153,10 @@ export function useFugueBody({
   editorRef.current = editor;
   const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const retryDelayRef = useRef(INITIAL_RETRY_DELAY_MS);
   const drainRef = useRef<(() => Promise<void>) | null>(null);
+  const { schedule: scheduleRetry, reset: resetRetry } = useRetry(
+    () => void drainRef.current?.(),
+  );
 
   const contextIds = useMemo(() => (contextId ? [contextId] : []), [contextId]);
 
@@ -468,16 +462,6 @@ export function useFugueBody({
     [rebaseBlock],
   );
 
-  const scheduleRetry = useCallback(() => {
-    if (retryTimerRef.current) return;
-    const delay = retryDelayRef.current;
-    retryDelayRef.current = Math.min(delay * 2, MAX_RETRY_DELAY_MS);
-    retryTimerRef.current = setTimeout(() => {
-      retryTimerRef.current = null;
-      void drainRef.current?.();
-    }, delay);
-  }, []);
-
   // False stops the drain loop: a transport failure defers to scheduleRetry.
   const flush = useCallback(async (): Promise<boolean> => {
     if (!client || !docId || !editorRef.current || !isSynced()) return true;
@@ -509,7 +493,7 @@ export function useFugueBody({
       if (outcome.refused) dirtyRef.current = true;
       setError(null);
       setStatus(outcome.refused ? 'saving' : 'saved');
-      retryDelayRef.current = INITIAL_RETRY_DELAY_MS;
+      resetRetry();
       return true;
     } catch (cause) {
       dirtyRef.current = true;
@@ -525,7 +509,7 @@ export function useFugueBody({
       resyncRef.current = true;
       return true;
     }
-  }, [backendIdOf, client, docId, isSynced, localBlocks, refreshWith, runCalls, scheduleRetry]);
+  }, [backendIdOf, client, docId, isSynced, localBlocks, refreshWith, resetRetry, runCalls, scheduleRetry]);
 
   const drain = useCallback(async () => {
     if (inFlightRef.current) return;
@@ -557,16 +541,12 @@ export function useFugueBody({
     resyncRef.current = false;
     loadedRef.current = false;
     syncedRef.current = false;
-    if (retryTimerRef.current) {
-      clearTimeout(retryTimerRef.current);
-      retryTimerRef.current = null;
-    }
-    retryDelayRef.current = INITIAL_RETRY_DELAY_MS;
+    resetRetry();
     setContent(undefined);
     setLoading(true);
     if (!client || !docId) return;
     void refresh();
-  }, [client, docId, refresh]);
+  }, [client, docId, refresh, resetRetry]);
 
   // A node restart drops the event stream, so an edit made while it was away
   // arrives on no event; an idle re-read is what closes that window.
@@ -584,7 +564,6 @@ export function useFugueBody({
     () => () => {
       if (flushTimerRef.current) clearTimeout(flushTimerRef.current);
       if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
-      if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
     },
     [],
   );

@@ -161,13 +161,9 @@ export function transform(a: Change[], b: Change[], priority: boolean): Change[]
 
 /**
  * Where scalar position `index` moves once `ops` apply. An insert landing
- * exactly on it leaves it in place unless `priority` is false.
+ * exactly on it leaves it in place.
  */
-export function transformPosition(
-  ops: Change[],
-  index: number,
-  priority = true,
-): number {
+export function transformPosition(ops: Change[], index: number): number {
   const cursor = new Cursor(ops);
   let offset = 0;
   let moved = index;
@@ -179,7 +175,7 @@ export function transformPosition(
       moved -= Math.min(length, moved - offset);
       continue;
     }
-    if (kind === 'insert' && (offset < moved || !priority)) moved += length;
+    if (kind === 'insert' && offset < moved) moved += length;
     offset += length;
   }
   return moved;

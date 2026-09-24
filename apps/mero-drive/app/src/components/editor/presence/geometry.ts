@@ -10,6 +10,7 @@ export interface DocNode {
   isText: boolean;
   text?: string | null;
   textContent: string;
+  nodeSize: number;
   childCount: number;
   child(index: number): DocNode;
   descendants(fn: (node: DocNode, pos: number) => boolean | void): void;
@@ -20,13 +21,12 @@ export function blockGeometry(
   doc: DocNode,
   blockId: string,
 ): BlockGeometry | null {
-  const hits: { node: DocNode; pos: number }[] = [];
+  let found = null as { node: DocNode; pos: number } | null;
   doc.descendants((node, pos) => {
-    if (hits.length > 0) return false;
-    if (node.attrs?.id === blockId) hits.push({ node, pos });
-    return hits.length === 0;
+    if (found) return false;
+    if (node.attrs?.id === blockId) found = { node, pos };
+    return !found;
   });
-  const found = hits[0];
   if (!found) return null;
 
   const textblock = found.node.isTextblock
@@ -57,14 +57,7 @@ function firstTextblock(
   for (let i = 0; i < node.childCount; i++) {
     const child = node.child(i);
     if (child.isTextblock) return { node: child, pos };
-    pos += nodeSize(child);
+    pos += child.nodeSize;
   }
   return null;
-}
-
-function nodeSize(node: DocNode): number {
-  if (node.isText) return (node.text ?? '').length;
-  let inner = 0;
-  for (let i = 0; i < node.childCount; i++) inner += nodeSize(node.child(i));
-  return inner + 2;
 }

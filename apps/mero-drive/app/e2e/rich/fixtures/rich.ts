@@ -22,7 +22,6 @@ export class RichRig {
   /** One folder per test inside the rig's own namespace, which every node has already joined. */
   readonly folder: string;
   private readonly contexts: BrowserContext[] = [];
-  private readonly windows = new Map<number, RichWindow>();
   private docRef: DocRef | null = null;
 
   constructor(
@@ -69,7 +68,6 @@ export class RichRig {
         await ws.editor.expectMounted();
       },
     };
-    this.windows.set(node, window);
     return window;
   }
 
@@ -98,12 +96,6 @@ export class RichRig {
     await window.ws.restrictedCard.joinIfPrompted();
     await window.ws.docs.expectDocVisible(this.title, { timeout: 120_000 });
     await window.ws.openDoc(this.title);
-    return window;
-  }
-
-  window(node: number): RichWindow {
-    const window = this.windows.get(node);
-    if (!window) throw new Error(`no window open on node ${node}`);
     return window;
   }
 

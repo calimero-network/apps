@@ -3,15 +3,7 @@
 
 import { expect, test } from '@playwright/test';
 import type { Block } from '../../src/generated/docs/DocsClient';
-import {
-  PARAGRAPH,
-  blockText,
-  codePointLength,
-  documentText,
-  occurrences,
-  sameCharacterCounts,
-  spanSummary,
-} from './helpers/doc-model';
+import { blockText, occurrences, sameCharacterCounts, spanSummary } from './helpers/doc-model';
 import { waitForValue } from './helpers/rpc';
 
 const FOX: Block = {
@@ -27,25 +19,14 @@ const FOX: Block = {
 };
 
 test.describe('doc model helpers', () => {
-  test('blockText and documentText concatenate spans in order', () => {
+  test('blockText concatenates spans in order', () => {
     expect(blockText(FOX)).toBe('the quick fox');
     expect(blockText(FOX)).not.toBe('the fox quick');
-    expect(documentText([FOX, { ...FOX, id: 'b2' }])).toBe('the quick foxthe quick fox');
   });
 
   test('spanSummary carries the marks, not just the text', () => {
     expect(spanSummary(FOX)).toEqual([':the ', 'bold=true:quick', ': fox']);
     expect(spanSummary(FOX)).not.toEqual([':the ', ':quick', ': fox']);
-  });
-
-  test('codePointLength counts an emoji once and a ZWJ sequence by its parts', () => {
-    const rocket = String.fromCodePoint(0x1f680);
-    expect(rocket.length).toBe(2); // UTF-16 units, the wrong count
-    expect(codePointLength(rocket)).toBe(1);
-    // woman + ZWJ + rocket: three code points, one rendered glyph.
-    const astronaut = '\u{1F469}\u200D\u{1F680}';
-    expect(codePointLength(astronaut)).toBe(3);
-    expect(codePointLength(astronaut)).not.toBe(1);
   });
 
   test('occurrences counts contiguous passages, so interleaving shows up', () => {
@@ -75,7 +56,7 @@ test.describe('waitForValue', () => {
 
   test('a wrong expected literal fails, and the message names the last value', async () => {
     await expect(
-      waitForValue(async () => `${PARAGRAPH}{:fox};`, `${PARAGRAPH}{:cat};`, {
+      waitForValue(async () => 'paragraph/0{:fox};', 'paragraph/0{:cat};', {
         timeout: 1_000,
         label: 'digest',
       }),

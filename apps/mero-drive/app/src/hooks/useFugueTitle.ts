@@ -16,11 +16,10 @@ import type { CaretSlice } from './useDocPresence';
 import type { ChangePayload, DocsClient } from '@/generated/docs/DocsClient';
 import type { SaveStatus } from '@/components/editor/types';
 import { isContextEvent } from './useContextEvents';
+import { useRetry } from './useRetry';
 
 const CARET_DEBOUNCE_MS = 200; // one anchor mint per pause, not per keystroke
 const REFRESH_DEBOUNCE_MS = 150; // coalesces a typing peer's event burst
-const INITIAL_RETRY_DELAY_MS = 1000; // backoff for a write the node never answered
-const MAX_RETRY_DELAY_MS = 10_000;
 const RECONCILE_MS = 4000; // an event lost while the node restarted still lands
 
 export interface UseFugueTitleOptions {
@@ -69,10 +68,11 @@ export function useFugueTitle({
   const historyRef = useRef(new UndoHistory(docId));
   const caretTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const retryDelayRef = useRef(INITIAL_RETRY_DELAY_MS);
-  // Breaks the sync→scheduleRetry→sync cycle without reordering declarations.
+  // Breaks the sync→retry→sync cycle without reordering declarations.
   const syncRef = useRef<(() => Promise<void>) | null>(null);
+  const { schedule: scheduleRetry, reset: resetRetry } = useRetry(
+    () => void syncRef.current?.(),
+  );
 
   const contextIds = useMemo(() => (contextId ? [contextId] : []), [contextId]);
   const publishRef = useRef(publish);
@@ -83,11 +83,7 @@ export function useFugueTitle({
     anchorRef.current = null;
     localRef.current = '';
     confirmedRef.current = '';
-    if (retryTimerRef.current) {
-      clearTimeout(retryTimerRef.current);
-      retryTimerRef.current = null;
-    }
-    retryDelayRef.current = INITIAL_RETRY_DELAY_MS;
+    resetRetry();
     setStatus('saved');
     showTitle('');
     if (!client || !docId) return;
@@ -104,13 +100,12 @@ export function useFugueTitle({
     return () => {
       live = false;
     };
-  }, [client, docId]);
+  }, [client, docId, resetRetry]);
 
   useEffect(
     () => () => {
       if (caretTimerRef.current) clearTimeout(caretTimerRef.current);
       if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
-      if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
     },
     [],
   );
@@ -195,16 +190,6 @@ export function useFugueTitle({
     input.setSelectionRange(caret, caret);
   }, [title]);
 
-  const scheduleRetry = useCallback(() => {
-    if (retryTimerRef.current) return; // already scheduled
-    const delay = retryDelayRef.current;
-    retryDelayRef.current = Math.min(delay * 2, MAX_RETRY_DELAY_MS);
-    retryTimerRef.current = setTimeout(() => {
-      retryTimerRef.current = null;
-      void syncRef.current?.();
-    }, delay);
-  }, []);
-
   // Diffs `confirmedRef` (backend truth) against `localRef` (the latest
   // typed text) and sends the result; a typing burst during an in-flight
   // or retried send is folded into the next diff, not sent as its own call.
@@ -227,7 +212,7 @@ export function useFugueTitle({
       confirmedRef.current = target;
       historyRef.current.record(token);
       setError(null);
-      retryDelayRef.current = INITIAL_RETRY_DELAY_MS;
+      resetRetry();
     } catch (cause) {
       if (isTransportFailure(cause)) {
         transportFailure = true;
@@ -247,7 +232,7 @@ export function useFugueTitle({
       if (localRef.current !== confirmedRef.current) void sync();
       else setStatus('saved');
     }
-  }, [client, docId, scheduleRetry]);
+  }, [client, docId, resetRetry, scheduleRetry]);
   syncRef.current = sync;
 
   const write = useCallback(

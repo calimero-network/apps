@@ -1,13 +1,13 @@
-// The offline switch, and the one sequence every merge scenario needs: two
-// causally independent edits, each written while the other side is cut off.
+// The rig's offline switch, driven through the dev server, and the wait for a
+// node's health to settle after it.
 
-import { rigNode, rigNodes } from './nodes';
+import { rigNode } from './nodes';
 
 const APP_URL = process.env.VITE_APP_URL ?? `http://localhost:${process.env.PW_PORT ?? '5179'}`;
 const SWITCH_TIMEOUT_MS = 90_000;
 const HEALTH_TIMEOUT_MS = 90_000;
 
-async function switchNode(node: number, action: 'offline' | 'online'): Promise<void> {
+export async function switchNode(node: number, action: 'offline' | 'online'): Promise<void> {
   const resp = await fetch(`${APP_URL}/__dev/node/${node}/${action}`, {
     method: 'POST',
     signal: AbortSignal.timeout(SWITCH_TIMEOUT_MS),
@@ -16,11 +16,6 @@ async function switchNode(node: number, action: 'offline' | 'online'): Promise<v
   if (!resp.ok || body.ok !== true) {
     throw new Error(`node ${node} ${action} failed: ${body.output ?? resp.status}`);
   }
-}
-
-export async function goOffline(node: number): Promise<void> {
-  await switchNode(node, 'offline');
-  await waitForHealth(node, false);
 }
 
 export async function goOnline(node: number): Promise<void> {
@@ -44,32 +39,4 @@ export async function waitForHealth(node: number, want: boolean): Promise<void> 
     }
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
-}
-
-export interface DivergentSide {
-  node: number;
-  /** Re-opens the document after the node restarted; the event stream does not survive it. */
-  reopen: () => Promise<void>;
-  edit: () => Promise<void>;
-}
-
-/** Runs both edits without either node seeing the other's, then reconnects
- *  everything and re-opens each window, which its node's restart had closed.
- *  Every other rig node is held offline too, so none can relay between them. */
-export async function diverge(first: DivergentSide, second: DivergentSide): Promise<void> {
-  const others = rigNodes()
-    .map((node) => node.index)
-    .filter((index) => index !== first.node && index !== second.node);
-  for (const node of others) await goOffline(node);
-  await goOffline(second.node);
-  await first.edit();
-
-  await goOffline(first.node);
-  await goOnline(second.node);
-  await second.reopen();
-  await second.edit();
-
-  await goOnline(first.node);
-  for (const node of others) await goOnline(node);
-  await first.reopen();
 }

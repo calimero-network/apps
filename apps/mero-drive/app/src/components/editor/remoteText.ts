@@ -5,9 +5,8 @@
 import type { Transaction } from 'prosemirror-state';
 import type { EditorView } from 'prosemirror-view';
 import { BOOLEAN_KEYS, type AttrDelta } from '@/lib/rich/attributes';
-import { inlineOffset } from '@/lib/rich/cursors';
+import { posAt } from '@/lib/rich/cursors';
 import type { Change } from '@/lib/rich/delta';
-import { scalarToUtf16 } from '@/lib/rich/offsets';
 import { blockGeometry, type DocNode } from './presence/geometry';
 
 interface MarkType {
@@ -49,13 +48,10 @@ function markOf(editor: RemoteTextEditor, key: string, value: string): unknown {
   return BOOLEAN_KEYS.has(key) ? type.create() : type.create({ stringValue: value });
 }
 
-function marksOf(editor: RemoteTextEditor, attrs: AttrDelta | undefined): unknown[] | null {
+function marksOf(editor: RemoteTextEditor, attrs: AttrDelta | undefined): unknown[] {
   const marks: unknown[] = [];
   for (const [key, value] of Object.entries(attrs ?? {})) {
-    if (value === null) continue;
-    const mark = markOf(editor, key, value);
-    if (!mark) return null;
-    marks.push(mark);
+    if (value !== null) marks.push(markOf(editor, key, value));
   }
   return marks;
 }
@@ -72,15 +68,14 @@ export function applyRemoteText(editor: RemoteTextEditor, blockId: string, ops: 
     // Positions come from the transaction's document, so each op sees the last.
     const pos = (scalar: number): number | null => {
       const geometry = blockGeometry(tr.doc as unknown as DocNode, blockId);
-      if (!geometry) return null;
-      return geometry.contentStart + inlineOffset(geometry.items, scalarToUtf16(geometry.text, scalar));
+      return geometry ? posAt(geometry, scalar) : null;
     };
     let at = 0;
     for (const op of ops) {
       const from = pos(at);
       if (from === null) return false;
       if ('insert' in op) {
-        const marks = marksOf(editor, op.attributes) ?? [];
+        const marks = marksOf(editor, op.attributes);
         tr.insert(from, schemaOf(editor).text(op.insert, marks) as Parameters<Transaction['insert']>[1]);
         at += Array.from(op.insert).length;
       } else if ('delete' in op) {

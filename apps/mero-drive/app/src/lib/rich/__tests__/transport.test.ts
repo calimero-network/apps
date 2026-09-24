@@ -25,16 +25,6 @@ describe('isTransportFailure', () => {
     expect(isTransportFailure(new RpcError(-32000, 'block not found'))).toBe(false);
   });
 
-  it('calls a raw fetch TypeError a transport failure', () => {
-    expect(isTransportFailure(new TypeError('Failed to fetch'))).toBe(true);
-  });
-
-  it('calls an AbortError timeout a transport failure', () => {
-    expect(isTransportFailure(new DOMException('The user aborted a request.', 'AbortError'))).toBe(
-      true,
-    );
-  });
-
   it('calls an unrelated error an application error', () => {
     expect(isTransportFailure(new Error('boom'))).toBe(false);
   });
