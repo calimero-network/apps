@@ -881,8 +881,9 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
           {kindTitle(el)}
         </span>
         <div className={styles.layerBtns}>
-          <button className={controls.iconButton} title="Bring to Front" data-testid="bring-to-front" onClick={() => handleBringToFront()}>↑ Front</button>
-          <button className={controls.iconButton} title="Send to Back" data-testid="send-to-back" onClick={() => handleSendToBack()}>↓ Back</button>
+          {/* Icon-only, so the heading beside them has room for "Rounded rectangle". */}
+          <button className={controls.iconButton} title="Bring to front" aria-label="Bring to front" data-testid="bring-to-front" onClick={() => handleBringToFront()}>⤒</button>
+          <button className={controls.iconButton} title="Send to back" aria-label="Send to back" data-testid="send-to-back" onClick={() => handleSendToBack()}>⤓</button>
         </div>
       </div>
 

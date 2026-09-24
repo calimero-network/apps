@@ -189,7 +189,9 @@
   border-radius: 2px;
   background: currentColor;
 }
-.widthNumber { flex: 0 0 64px; }
+.widthNumber { flex: 0 0 52px; min-width: 0; }
+/* The presets take what is left of the row, never pushing the number off it. */
+.fieldRow > [role="radiogroup"] { flex: 1 1 auto; min-width: 0; }
 
 .colorNone {
   font-size: 11px;
@@ -514,7 +516,7 @@
   gap: 8px;
   padding: 3px 0;
 }
-.fieldRow > .fieldLabel { flex: 0 0 52px; }
+.fieldRow > .fieldLabel { flex: 0 0 44px; }
 
 .fieldStack {
   display: flex;
