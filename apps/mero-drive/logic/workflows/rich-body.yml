@@ -260,7 +260,7 @@ steps:
   - name: Assert the refusal hands back the title unchanged
     type: json_assert
     statements:
-      - 'json_equal({{refused_title}}, {"output": {"applied": false, "token": null, "text": "core"}})'
+      - 'json_equal({{refused_title}}, {"output": {"applied": false, "token": null, "text": "core", "anchor": null, "anchor_pos": null}})'
 
   - name: A title write diffed against the current title applies
     type: call
@@ -277,11 +277,33 @@ steps:
     outputs:
       guarded_title: result
       guarded_title_token: result.output.token
+      guarded_title_anchor: result.output.anchor
 
-  - name: Assert the guarded title write landed
+  - name: Assert the guarded title write landed, anchored after its last letter
     type: json_assert
     statements:
-      - 'json_subset({{guarded_title}}, {"output": {"applied": true, "text": "core!"}})'
+      - 'json_subset({{guarded_title}}, {"output": {"applied": true, "text": "core!", "anchor_pos": 5}})'
+
+  - name: A refused title write sent with that anchor
+    type: call
+    node: drive-node-1
+    context_id: '{{docs_ctx}}'
+    method: title_apply_delta_on
+    executor_public_key: '{{alice_key}}'
+    args:
+      doc: '{{title_doc}}'
+      base: core
+      ops:
+        - retain: 4
+        - insert: '?'
+      anchor: '{{guarded_title_anchor}}'
+    outputs:
+      anchored_title: result
+
+  - name: Assert the refusal hands back where the anchor sits now
+    type: json_assert
+    statements:
+      - 'json_equal({{anchored_title}}, {"output": {"applied": false, "token": null, "text": "core!", "anchor": "{{guarded_title_anchor}}", "anchor_pos": 5}})'
 
   - name: Alice undoes the guarded title write
     type: call
@@ -709,7 +731,7 @@ steps:
   - name: Assert the refusal hands back the block unchanged
     type: json_assert
     statements:
-      - 'json_equal({{refused_write}}, {"output": {"applied": false, "token": null, "spans": [{"text": "fox"}]}})'
+      - 'json_equal({{refused_write}}, {"output": {"applied": false, "token": null, "spans": [{"text": "fox"}], "anchor": null, "anchor_pos": null}})'
 
   - name: A body write diffed against the current text applies
     type: call
@@ -727,11 +749,34 @@ steps:
     outputs:
       guarded_write: result
       guarded_token: result.output.token
+      guarded_anchor: result.output.anchor
 
-  - name: Assert the guarded write landed
+  - name: Assert the guarded write landed, anchored after its last letter
     type: json_assert
     statements:
-      - 'json_subset({{guarded_write}}, {"output": {"applied": true, "spans": [{"text": "fox!"}]}})'
+      - 'json_subset({{guarded_write}}, {"output": {"applied": true, "spans": [{"text": "fox!"}], "anchor_pos": 4}})'
+
+  - name: A refused body write sent with that anchor
+    type: call
+    node: drive-node-1
+    context_id: '{{docs_ctx}}'
+    method: apply_delta_on
+    executor_public_key: '{{alice_key}}'
+    args:
+      doc: '{{body_doc}}'
+      block: '{{block}}'
+      base: fox
+      ops:
+        - retain: 3
+        - insert: '?'
+      anchor: '{{guarded_anchor}}'
+    outputs:
+      anchored_write: result
+
+  - name: Assert the refusal hands back where the anchor sits now
+    type: json_assert
+    statements:
+      - 'json_equal({{anchored_write}}, {"output": {"applied": false, "token": null, "spans": [{"text": "fox!"}], "anchor": "{{guarded_anchor}}", "anchor_pos": 4}})'
 
   - name: Alice undoes the guarded write
     type: call

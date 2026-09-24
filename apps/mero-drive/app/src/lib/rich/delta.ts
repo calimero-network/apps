@@ -95,6 +95,25 @@ const replaceAll = (a: AttrChar[], b: AttrChar[]): Step[] => [
   ...Array<Step>(b.length).fill('+'),
 ];
 
+/** `chars` as inserts, one per run of equal attributes, each carrying its set. */
+function insertRuns(chars: AttrChar[]): Change[] {
+  const ops: Change[] = [];
+  let run = 0;
+  while (run < chars.length) {
+    let end = run + 1;
+    while (end < chars.length && attrsEqual(chars[end].attrs, chars[run].attrs)) end += 1;
+    ops.push({
+      insert: chars
+        .slice(run, end)
+        .map((c) => c.ch)
+        .join(''),
+      attributes: { ...chars[run].attrs },
+    });
+    run = end;
+  }
+  return ops;
+}
+
 function isRetain(
   op: Change,
 ): op is { retain: number; attributes?: AttrDelta } {
@@ -165,22 +184,6 @@ export function diffSpans(prev: AttrSpan[], next: AttrSpan[], { keepShared = fal
     }
   };
 
-  const pushInserts = (from: number, to: number) => {
-    let run = from;
-    while (run < to) {
-      let end = run + 1;
-      while (end < to && attrsEqual(after[end].attrs, after[run].attrs)) end += 1;
-      ops.push({
-        insert: after
-          .slice(run, end)
-          .map((c) => c.ch)
-          .join(''),
-        attributes: { ...after[run].attrs },
-      });
-      run = end;
-    }
-  };
-
   pushRetainRange(0, head, 0);
 
   const middle = [before.slice(head, before.length - tail), after.slice(head, after.length - tail)] as const;
@@ -199,7 +202,7 @@ export function diffSpans(prev: AttrSpan[], next: AttrSpan[], { keepShared = fal
       ops.push({ delete: count });
       was += count;
     } else {
-      pushInserts(now, now + count);
+      ops.push(...insertRuns(after.slice(now, now + count)));
       now += count;
     }
     k = end;
@@ -220,13 +223,35 @@ export function diffSpans(prev: AttrSpan[], next: AttrSpan[], { keepShared = fal
   return ops;
 }
 
+/**
+ * `next` as one insert into `prev` at scalar `at`, or null when it is any other
+ * edit. Unlike a diff, it places the insert even between identical characters.
+ */
+export function insertAt(prev: AttrSpan[], next: AttrSpan[], at: number): Change[] | null {
+  const before = toChars(prev);
+  const after = toChars(next);
+  const count = after.length - before.length;
+  if (count <= 0 || at > before.length) return null;
+  for (let i = 0; i < before.length; i++) {
+    const kept = after[i < at ? i : i + count];
+    if (kept.ch !== before[i].ch || !attrsEqual(kept.attrs, before[i].attrs)) return null;
+  }
+  return [...(at > 0 ? [{ retain: at }] : []), ...insertRuns(after.slice(at, at + count))];
+}
+
+const plainText = (text: string): AttrSpan[] => [{ text, attributes: {} }];
+
+const withoutAttrs = (ops: Change[]): Change[] => ops.map((op) => ('insert' in op ? { insert: op.insert } : op));
+
 /** The change list for plain text, which the title API takes without attributes. */
 export function diffText(prev: string, next: string, options: DiffOptions = {}): Change[] {
-  return diffSpans(
-    [{ text: prev, attributes: {} }],
-    [{ text: next, attributes: {} }],
-    options,
-  ).map((op) => ('insert' in op ? { insert: op.insert } : op));
+  return withoutAttrs(diffSpans(plainText(prev), plainText(next), options));
+}
+
+/** {@link insertAt} for plain text. */
+export function insertTextAt(prev: string, next: string, at: number): Change[] | null {
+  const ops = insertAt(plainText(prev), plainText(next), at);
+  return ops && withoutAttrs(ops);
 }
 
 /** Backend spans as BlockNote inline content, links nested. */
