@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { diffSpans, diffText, spansToInline, inlineToSpans } from '../delta';
+import { diffSpans, diffText, insertAt, insertTextAt, spansToInline, inlineToSpans } from '../delta';
 import type { AttrSpan } from '../delta';
 import { applyChanges } from '../ot';
 
@@ -311,5 +311,37 @@ describe('diffText', () => {
       { retain: 1 },
       { delete: 1 },
     ]);
+  });
+});
+
+describe('insertAt', () => {
+  it('places an insert at the given position inside a run of identical letters', () => {
+    expect(insertAt(plain('aa'), plain('aaa'), 1)).toEqual([{ retain: 1 }, { insert: 'a', attributes: {} }]);
+    expect(diffSpans(plain('aa'), plain('aaa'))).toEqual([{ retain: 2 }, { insert: 'a', attributes: {} }]);
+  });
+
+  it('carries each inserted run\'s attributes', () => {
+    const next: AttrSpan[] = [
+      { text: 'a', attributes: {} },
+      { text: 'X', attributes: { bold: 'true' } },
+      { text: 'Yb', attributes: {} },
+    ];
+    expect(insertAt(plain('ab'), next, 1)).toEqual([
+      { retain: 1 },
+      { insert: 'X', attributes: { bold: 'true' } },
+      { insert: 'Y', attributes: {} },
+    ]);
+  });
+
+  it('is null for an insert elsewhere, a delete, a format change or no change', () => {
+    expect(insertAt(plain('ab'), plain('abX'), 1)).toBeNull();
+    expect(insertAt(plain('ab'), plain('a'), 1)).toBeNull();
+    expect(insertAt(plain('ab'), [{ text: 'ab', attributes: { bold: 'true' } }], 1)).toBeNull();
+    expect(insertAt(plain('ab'), plain('ab'), 1)).toBeNull();
+    expect(insertAt(plain('ab'), plain('abX'), 3)).toBeNull();
+  });
+
+  it('counts scalars, not UTF-16 units', () => {
+    expect(insertTextAt('\u{1F600}b', '\u{1F600}Xb', 1)).toEqual([{ retain: 1 }, { insert: 'X' }]);
   });
 });
