@@ -243,7 +243,8 @@ export function useFugueBody({
   const rebaseBlock = useCallback(
     (backendId: string, base: AttrSpan[], remote: AttrSpan[], anchorAt: number | null = null) => {
       const remoteChange = diffSpans(base, remote, { keepShared: true });
-      if (remoteChange.length === 0) return;
+      // A refusal at an anchor moves the typing even when the text is unchanged.
+      if (remoteChange.length === 0 && anchorAt === null) return;
       // Read pending input before the editor is diffed, or the diff misses it.
       flushPendingInput(editorRef.current?.prosemirrorView);
       const editorId = editorIdOf(backendId);
@@ -260,6 +261,7 @@ export function useFugueBody({
         if (view && typing) placeCaret(view, editorId, { anchor: moved.end, head: moved.end });
         anchor.pos = anchorAt;
       } else {
+        if (remoteChange.length === 0) return;
         const incoming = transform(typed ?? diffSpans(base, local.inline), remoteChange, true);
         if (anchor) anchor.pos = transformPosition(remoteChange, anchor.pos);
         if (incoming.length === 0) return;
@@ -473,8 +475,8 @@ export function useFugueBody({
             const block = real(call.block) as string;
             const was = serverBlock(block);
             const anchor = anchorsRef.current.get(block);
-            const ops =
-              (was && anchor && insertAt(was.inline, applyChanges(was.inline, call.ops), anchor.pos)) ?? call.ops;
+            const typed = was && anchor && insertAt(was.inline, applyChanges(was.inline, call.ops), anchor.pos);
+            const ops = typed ?? call.ops;
             // The generated ChangePayload is a tagged union; the contract
             // takes serde's untagged form, which is what `ops` already is.
             const result = await target.applyDeltaOn({
@@ -482,7 +484,8 @@ export function useFugueBody({
               block,
               base: call.base,
               ops: ops as unknown as ChangePayload[],
-              anchor: anchor?.token ?? null,
+              // The anchor claims the write is an insert at it, which the node checks.
+              anchor: typed ? (anchor?.token ?? null) : null,
             });
             if (was && !touched.has(block)) {
               const base = result.applied ? applyChanges(was.inline, ops) : was.inline;

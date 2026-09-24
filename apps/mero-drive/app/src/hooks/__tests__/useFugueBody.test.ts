@@ -302,6 +302,33 @@ describe('useFugueBody', () => {
     });
   });
 
+  it('moves typing to where the node puts its anchor when a peer change made the local position drift', async () => {
+    const client = fakeClient([row('blk-1', 'ba1')]);
+    client.applyDeltaOn
+      .mockResolvedValueOnce(applied('b1a1', 'tok-a', 'anc-1', 2))
+      .mockResolvedValueOnce(refused('cb1a1a1', 'anc-1', 3))
+      .mockResolvedValueOnce(applied('cb1Xa1a1'));
+    const editor = new FakeEditor();
+    await mount(client, editor);
+    editor.type('blk-1', 'b1a1');
+    await settle();
+    client.getDocument.mockResolvedValue([row('blk-1', 'cb1a1a1')]);
+    act(() => deliver?.(peerEvent(DOC)));
+    await settle();
+
+    editor.type('blk-1', 'cb1a1Xa1');
+    await settle();
+
+    expect(client.applyDeltaOn).toHaveBeenLastCalledWith({
+      doc: DOC,
+      block: 'blk-1',
+      base: 'cb1a1a1',
+      ops: [{ retain: 3 }, { insert: 'X', attributes: {} }],
+      anchor: 'anc-1',
+    });
+    expect(editor.textOf('blk-1')).toBe('cb1Xa1a1');
+  });
+
   it('forgets its anchors once a write changes the block structure', async () => {
     const client = fakeClient([row('blk-1', 'b')]);
     client.applyDeltaOn.mockResolvedValueOnce(applied('ab', 'tok-a', 'anc-a', 1));

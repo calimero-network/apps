@@ -94,12 +94,17 @@ export function useFugueTitle({
   const publishRef = useRef(publish);
   publishRef.current = publish;
 
-  /** The user's edit over the node's title; typing on at the anchor stays an insert there. */
-  const pending = useCallback((): Change[] => {
+  /** The user's edit as one insert at the anchor, or null when it is any other edit. */
+  const typedAtAnchor = useCallback((): Change[] | null => {
     const anchor = anchorRef.current;
-    const base = serverRef.current;
-    return (anchor && insertTextAt(base, localRef.current, anchor.pos)) ?? diffText(base, localRef.current);
+    return anchor && insertTextAt(serverRef.current, localRef.current, anchor.pos);
   }, []);
+
+  /** The user's edit over the node's title. */
+  const pending = useCallback(
+    (): Change[] => typedAtAnchor() ?? diffText(serverRef.current, localRef.current),
+    [typedAtAnchor],
+  );
 
   /** Puts `after` in the input, the caret where `carry` moves its scalar offsets. */
   const show = useCallback((after: string, carry: (scalar: number) => number) => {
@@ -129,22 +134,22 @@ export function useFugueTitle({
   /** A refused write whose edit is one insert at the anchor, replayed where the anchor now sits. */
   const rebaseAtAnchor = useCallback(
     (remote: string, at: number): boolean => {
-      const anchor = anchorRef.current;
-      const typed = anchor && insertTextAt(serverRef.current, localRef.current, anchor.pos);
+      const typed = typedAtAnchor();
       if (!typed) return false;
       const moved = moveInserts(typed, at);
       serverRef.current = remote;
       show(applyText(remote, moved.ops), () => moved.end);
       return true;
     },
-    [show],
+    [show, typedAtAnchor],
   );
 
   // False stops the drain loop: a transport failure defers to scheduleRetry.
   const flush = useCallback(async (): Promise<boolean> => {
     if (!client || !docId || !loadedRef.current) return true;
     const base = serverRef.current;
-    const ops = pending();
+    const typed = typedAtAnchor();
+    const ops = typed ?? diffText(base, localRef.current);
     if (ops.length === 0) {
       setStatus('saved');
       return true;
@@ -153,7 +158,8 @@ export function useFugueTitle({
     try {
       // The generated ChangePayload is a tagged union; the contract takes
       // serde's untagged form, which is what `ops` already is.
-      const anchor = anchorRef.current?.token ?? null;
+      // The anchor claims the write is an insert at it, which the node checks.
+      const anchor = typed ? (anchorRef.current?.token ?? null) : null;
       const result = await client.titleApplyDeltaOn({ doc: docId, base, ops: ops as unknown as ChangePayload[], anchor });
       if (result.applied && result.token) {
         if (openGroupRef.current) openGroupRef.current.push(result.token);
@@ -183,7 +189,7 @@ export function useFugueTitle({
       staleRef.current = true;
       return true;
     }
-  }, [client, docId, pending, rebase, rebaseAtAnchor, resetRetry, scheduleRetry]);
+  }, [client, docId, rebase, rebaseAtAnchor, resetRetry, scheduleRetry, typedAtAnchor]);
 
   const refresh = useCallback(async () => {
     if (!client || !docId) return;

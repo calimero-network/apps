@@ -186,6 +186,27 @@ fn edit_end(ops: &[Change]) -> usize {
         .sum()
 }
 
+/// Whether an anchored write is an insert right where its anchor sits. A client's
+/// position for its anchor can drift across identical characters; the node's cannot.
+fn at_anchor(anchored: bool, anchor_pos: Option<usize>, ops: &[Change]) -> bool {
+    if !anchored {
+        return true;
+    }
+    let (start, inserts) = match ops.split_first() {
+        Some((
+            Change::Retain {
+                retain,
+                attributes: None,
+            },
+            rest,
+        )) => (*retain, rest),
+        _ => (0, ops),
+    };
+    !inserts.is_empty()
+        && inserts.iter().all(|op| matches!(op, Change::Insert { .. }))
+        && anchor_pos == Some(start)
+}
+
 /// Opaque identities cross JSON-RPC as one string, so a client never parses them.
 fn encode_token<T: calimero_sdk::borsh::BorshSerialize>(value: &T) -> app::Result<String> {
     Ok(bs58::encode(calimero_sdk::borsh::to_vec(value)?).into_string())
@@ -452,8 +473,8 @@ impl DocsState {
         encode_token(&steps)
     }
 
-    /// `title_apply_delta`, but only onto the title the caller diffed against. A refusal
-    /// places `anchor`, so a pending edit goes back beside its writer's own last character.
+    /// `title_apply_delta`, but only onto the title the caller diffed against and, with an
+    /// `anchor`, only as an insert where that anchor sits; a refusal places the anchor.
     pub fn title_apply_delta_on(
         &mut self,
         doc: String,
@@ -461,12 +482,13 @@ impl DocsState {
         ops: Vec<Change>,
         anchor: Option<String>,
     ) -> app::Result<TitleApplied> {
-        let current = self.read(&doc)?.title.get_text()?;
-        if current != base {
-            let anchor_pos = match &anchor {
-                Some(token) => self.read(&doc)?.title.resolve(&decode_token(token)?).ok(),
-                None => None,
-            };
+        let title = &self.read(&doc)?.title;
+        let current = title.get_text()?;
+        let anchor_pos = match &anchor {
+            Some(token) => title.resolve(&decode_token(token)?).ok(),
+            None => None,
+        };
+        if current != base || !at_anchor(anchor.is_some(), anchor_pos, &ops) {
             return Ok(TitleApplied {
                 applied: false,
                 token: None,
@@ -659,7 +681,7 @@ impl DocsState {
     }
 
     /// `apply_delta`, but only onto the text the caller diffed against, since a position
-    /// counted in any other text names the wrong place. A refusal places `anchor`.
+    /// counted in any other text names the wrong place. `anchor` as in `title_apply_delta_on`.
     pub fn apply_delta_on(
         &mut self,
         doc: String,
@@ -672,16 +694,12 @@ impl DocsState {
         let body = self.read(&doc)?.body.block_body(id)?;
         // The spans are the text as well, so one read serves the guard and a refusal.
         let spans = body.to_delta()?;
-        if spans
-            .iter()
-            .map(|span| span.text.as_str())
-            .collect::<String>()
-            != base
-        {
-            let anchor_pos = match &anchor {
-                Some(token) => body.resolve_many(&[decode_token(token)?])?.pop().flatten(),
-                None => None,
-            };
+        let anchor_pos = match &anchor {
+            Some(token) => body.resolve_many(&[decode_token(token)?])?.pop().flatten(),
+            None => None,
+        };
+        let current: String = spans.iter().map(|span| span.text.as_str()).collect();
+        if current != base || !at_anchor(anchor.is_some(), anchor_pos, &ops) {
             return Ok(Applied {
                 applied: false,
                 token: None,
@@ -1477,6 +1495,60 @@ mod tests {
         assert_eq!(refused.spans[0].text, "The fox.");
         assert_eq!(digest(&app), "paragraph/0{:The fox.};");
         assert_eq!((refused.anchor, refused.anchor_pos), (None, None));
+    }
+
+    #[test]
+    fn an_anchored_write_away_from_its_anchor_is_refused_even_on_the_current_text() {
+        let mut app = host("t");
+        let block = add_block(&mut app, "paragraph");
+        let applied = app
+            .call(|s| {
+                s.apply_delta_on(
+                    DOC.to_owned(),
+                    block.clone(),
+                    String::new(),
+                    vec![insert("b1")],
+                    None,
+                )
+            })
+            .unwrap();
+        let anchor = applied.anchor;
+        // A peer's `1` beside ours: the client read the peer's as its own.
+        let _peer = app
+            .call(|s| s.apply_delta(DOC.to_owned(), block.clone(), vec![retain(2), insert("a1")]))
+            .unwrap();
+        let send = |at: usize| {
+            let (block, anchor) = (block.clone(), anchor.clone());
+            move |s: &mut DocsState| {
+                let ops = vec![retain(at), insert("X")];
+                s.apply_delta_on(DOC.to_owned(), block, "b1a1".to_owned(), ops, anchor)
+            }
+        };
+        let drifted = app.call(send(4)).unwrap();
+        assert!(!drifted.applied);
+        assert_eq!(drifted.anchor_pos, Some(2));
+        let placed = app.call(send(2)).unwrap();
+        assert!(placed.applied);
+        assert_eq!(placed.spans[0].text, "b1Xa1");
+    }
+
+    #[test]
+    fn title_apply_delta_on_refuses_an_anchored_write_that_is_not_an_insert() {
+        let mut app = host("Shared:");
+        let anchor = guarded_title(&mut app, "a").anchor;
+        let refused = app
+            .call(|s| {
+                s.title_apply_delta_on(
+                    DOC.to_owned(),
+                    "Shared:a".to_owned(),
+                    vec![retain(7), Change::Delete { delete: 1 }],
+                    anchor,
+                )
+            })
+            .unwrap();
+        assert!(!refused.applied);
+        assert_eq!(refused.anchor_pos, Some(8));
+        assert_eq!(title(&app), "Shared:a");
     }
 
     #[test]
