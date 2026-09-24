@@ -6,7 +6,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { EditorShell } from '@/components/editor/EditorShell';
 import { useConfirm } from '@/components/ui/confirm-dialog';
-import { MAX_ALIAS_LENGTH } from '@/constants/config';
 import type { DocDto } from '@/generated/docs/DocsClient';
 import { useDocs } from '@/hooks/useDocs';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
@@ -71,15 +70,6 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
     };
   }, [docId, docsContextId, docsGet]);
 
-  const { onChange: onTitleChange } = title;
-  const onTitleInput = useCallback(
-    (event: React.ChangeEvent<HTMLInputElement>) => {
-      if (event.target.value.length > MAX_ALIAS_LENGTH) return;
-      onTitleChange(event);
-    },
-    [onTitleChange],
-  );
-
   // The sidebar renders the title, so let the list catch up once typing stops.
   useEffect(() => {
     if (!title.title) return;
@@ -135,7 +125,7 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
           canEditDocs
             ? {
                 value: title.title,
-                onChange: onTitleInput,
+                onChange: title.onChange,
                 onSelect: title.onSelect,
                 inputRef: title.inputRef,
               }

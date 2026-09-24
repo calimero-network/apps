@@ -2,7 +2,7 @@
 // contract with those suites, so a rename has to break a test here first.
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { useRef, type MutableRefObject } from 'react';
+import { useRef } from 'react';
 import { EditorHeader, type TitleBinding } from '../EditorHeader';
 import { stampBlocks } from '../EditorShell';
 
@@ -12,7 +12,7 @@ function Header(props: { undo?: boolean; readOnly?: boolean }) {
     value: 'Notes',
     onChange: vi.fn(),
     onSelect: vi.fn(),
-    inputRef: inputRef as MutableRefObject<HTMLInputElement | null>,
+    inputRef,
   };
   return (
     <EditorHeader

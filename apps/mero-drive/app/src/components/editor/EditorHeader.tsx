@@ -18,6 +18,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { MAX_ALIAS_LENGTH } from '@/constants/config';
 
 /** The live title field's binding; absent renders the title read-only. */
 export interface TitleBinding {
@@ -62,6 +63,7 @@ export const EditorHeader: React.FC<EditorHeaderProps> = ({
             aria-label="Document title"
             ref={title.inputRef}
             value={title.value}
+            maxLength={MAX_ALIAS_LENGTH}
             onChange={title.onChange}
             onSelect={title.onSelect}
             className="w-full bg-transparent rounded px-2 py-1 text-center text-sm font-medium border border-transparent hover:border-border focus:border-primary/50 focus:outline-none focus:ring-2 focus:ring-primary/30"

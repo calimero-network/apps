@@ -54,9 +54,6 @@ export function DocumentInspector({ client, docId }: Props) {
             digest{' '}
             <code data-testid="digest-value">{snapshot?.digest ?? ''}</code>
           </p>
-          <p className="truncate text-muted-foreground">
-            gas <span data-testid="lastcall-gas">{''}</span>
-          </p>
           <ul data-testid="inspector-blocks" className="space-y-0.5">
             {(snapshot?.blocks ?? []).map((block) => (
               <li

@@ -25,8 +25,6 @@ export interface UseFugueTitleOptions {
 
 export interface UseFugueTitleResult {
   title: string;
-  /** Write a new whole title; the diff against the last one is what is sent. */
-  setTitle: (next: string) => void;
   inputRef: React.MutableRefObject<HTMLInputElement | null>;
   onChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
   onSelect: () => void;
@@ -194,7 +192,6 @@ export function useFugueTitle({
 
   return {
     title,
-    setTitle: write,
     inputRef,
     onChange,
     onSelect: publishCaret,

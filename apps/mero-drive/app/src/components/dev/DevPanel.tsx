@@ -10,7 +10,7 @@ import {
   type DevNode,
 } from './devNode';
 
-/** Portal target for the per-node inspector: title, digest, block rows, gas. */
+/** Portal target for the per-node inspector: title, digest, block rows. */
 export const DEV_INSPECTOR_SLOT = 'dev-inspector';
 
 const POLL_MS = 3000;
@@ -79,8 +79,8 @@ export default function DevPanel() {
       </ul>
       <div id={DEV_INSPECTOR_SLOT} className="peer mt-3 border-t border-border pt-2 empty:hidden" />
       <p className="mt-3 border-t border-border pt-2 text-muted-foreground peer-[&:not(:empty)]:hidden">
-        No inspector mounted - per-node title, document digest, block rows and
-        the last call's gas land here.
+        No inspector mounted - per-node title, document digest and block rows
+        land here.
       </p>
     </aside>
   );

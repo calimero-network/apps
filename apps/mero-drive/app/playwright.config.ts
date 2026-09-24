@@ -4,16 +4,6 @@ import { defineConfig, devices } from '@playwright/test';
 // this monorepo already pin. See the note in vite.config.js.
 const APP_PORT = process.env.PW_PORT ?? '5179';
 const APP_URL = process.env.VITE_APP_URL ?? `http://localhost:${APP_PORT}`;
-function devServer(port: string) {
-  return {
-    command: `pnpm dev --host 127.0.0.1 --port ${port}`,
-    url: `http://localhost:${port}`,
-    reuseExistingServer: !process.env.CI,
-    timeout: 120_000,
-    stdout: 'pipe' as const,
-    stderr: 'pipe' as const,
-  };
-}
 
 export default defineConfig({
   testDir: './e2e',
@@ -35,7 +25,16 @@ export default defineConfig({
     actionTimeout: 15_000,
     navigationTimeout: 30_000,
   },
-  webServer: process.env.SKIP_WEB_SERVER ? undefined : [devServer(APP_PORT)],
+  webServer: process.env.SKIP_WEB_SERVER
+    ? undefined
+    : {
+        command: `pnpm dev --host 127.0.0.1 --port ${APP_PORT}`,
+        url: `http://localhost:${APP_PORT}`,
+        reuseExistingServer: !process.env.CI,
+        timeout: 120_000,
+        stdout: 'pipe',
+        stderr: 'pipe',
+      },
   projects: [
     {
       name: 'landing',
