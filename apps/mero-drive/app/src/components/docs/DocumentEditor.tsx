@@ -6,13 +6,15 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { EditorShell } from '@/components/editor/EditorShell';
 import { useConfirm } from '@/components/ui/confirm-dialog';
-import { MAX_ALIAS_LENGTH } from '@/constants/config';
 import type { DocDto } from '@/generated/docs/DocsClient';
 import { useDocs } from '@/hooks/useDocs';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useFolderPermissions } from '@/hooks/useFolderPermissions';
 import { useFugueBody } from '@/hooks/useFugueBody';
 import { useFugueTitle } from '@/hooks/useFugueTitle';
+import { DocumentInspector } from './DocumentInspector';
+
+const TITLE_REFETCH_MS = 800; // one list refetch per rename, not per keystroke
 
 interface Props {
   folderId: string;
@@ -68,15 +70,12 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
     };
   }, [docId, docsContextId, docsGet]);
 
-  const onDocumentNameChange = useCallback(
-    (next: string) => {
-      const trimmed = next.trim().slice(0, MAX_ALIAS_LENGTH) || 'Untitled';
-      title.setTitle(trimmed);
-      // The sidebar renders the title, so let the list know it moved.
-      void docsRefetch();
-    },
-    [title, docsRefetch],
-  );
+  // The sidebar renders the title, so let the list catch up once typing stops.
+  useEffect(() => {
+    if (!title.title) return;
+    const timer = setTimeout(() => void docsRefetch(), TITLE_REFETCH_MS);
+    return () => clearTimeout(timer);
+  }, [title.title, docsRefetch]);
 
   const onDelete = useCallback(async () => {
     if (!doc) return;
@@ -116,21 +115,35 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
   }
 
   return (
-    <EditorShell
-      documentName={title.title || 'Untitled'}
-      // Every mutation handler gates on canEditDocs so a read-only viewer
-      // cannot rename, edit or delete; EditorShell's readOnly flag is the
-      // second layer, not the authoritative one.
-      onDocumentNameChange={canEditDocs ? onDocumentNameChange : undefined}
-      onBack={onClose}
-      onDelete={canEditDocs ? onDelete : undefined}
-      onContentChange={canEditDocs ? body.onContentChange : undefined}
-      readOnly={!canEditDocs}
-      initialContent={body.content}
-      saveStatus={body.status}
-      lastSavedAt={doc ? new Date(doc.updated_at / 1_000_000) : null}
-      isAppReady={!!namespaceId && !!docsContextId}
-      isLoading={body.loading}
-    />
+    <>
+      <EditorShell
+        documentName={title.title || 'Untitled'}
+        // Every mutation handler gates on canEditDocs so a read-only viewer
+        // cannot rename, edit or delete; EditorShell's readOnly flag is the
+        // second layer, not the authoritative one.
+        title={
+          canEditDocs
+            ? {
+                value: title.title,
+                onChange: title.onChange,
+                onSelect: title.onSelect,
+                inputRef: title.inputRef,
+              }
+            : undefined
+        }
+        onBack={onClose}
+        onDelete={canEditDocs ? onDelete : undefined}
+        onUndo={canEditDocs ? body.undo : undefined}
+        onRedo={canEditDocs ? body.redo : undefined}
+        onContentChange={canEditDocs ? body.onContentChange : undefined}
+        readOnly={!canEditDocs}
+        initialContent={body.content}
+        saveStatus={body.status}
+        lastSavedAt={doc ? new Date(doc.updated_at / 1_000_000) : null}
+        isAppReady={!!namespaceId && !!docsContextId}
+        isLoading={body.loading}
+      />
+      <DocumentInspector client={client} docId={docId} />
+    </>
   );
 }

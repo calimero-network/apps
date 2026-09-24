@@ -9,7 +9,7 @@ A private, end-to-end encrypted document workspace on the [Calimero](https://cal
   - `crates/docs` — document CRUD + tags + archive inside a folder context
   - `crates/types` — shared types (`FolderId`, `ContextId`, `Visibility`, `DriveError`) + ABI-stable constants
 - **`app/`** — React + Tiptap web app; talks to a Calimero node via `@calimero-network/mero-react` hooks
-- **`logic/workflows/`** — the merobox scenarios CI runs (see [CI](#ci))
+- **`logic/workflows/`** - the merobox scenarios CI runs (see [CI](#ci))
 
 ## Feature set
 
@@ -48,7 +48,7 @@ scripts/local-rig.sh down             # stop every node this script started
 ```
 
 The dev server serves the rig to the browser under `/__dev` (dev builds only): `GET /__dev/nodes` is the node list, `POST /__dev/node/<n>/offline` and `/online` are the switch.
-The dev panel in the bottom right shows which node this window talks to and toggles any node.
+The dev panel in the bottom right shows which node this window talks to, toggles any node, and portals an inspector into `#dev-inspector`.
 
 `?node=<n>` points a window at rig node n.
 Two windows need two origins, because one origin is one `localStorage`: open `http://localhost:5179/app?node=1` and `http://127.0.0.1:5179/app?node=2`.
@@ -164,8 +164,8 @@ pnpm run app:generate-client                  # regenerate DocsClient/RegistryCl
 - **Frontend** — lint + vitest + build
 - **Logic (Rust)** — `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test --workspace`, WASM build for both crates
 - **Bundle** — assembles the `.mpk` artifact and uploads it for reviewers + the e2e job
-- **E2E (mero-drive)** — every scenario in `logic/workflows/`, each retried against the cold-join race, with node logs collected per scenario
-- **Browser E2E (mero-drive)** — the Playwright projects; `single-node` and `two-node` run against nodes the suite starts itself, or against the rig when `app/.env.integration` exists
+- **E2E (mero-drive)** - every scenario in `logic/workflows/`, each retried against the cold-join race, with node logs collected per scenario
+- **Browser E2E (mero-drive)** - the Playwright projects; `single-node` and `two-node` run against nodes the suite starts itself, or against the rig when `app/.env.integration` exists
 
 Known upstream merobox gaps that block additional coverage are tracked as [calimero-network/merobox#214](https://github.com/calimero-network/merobox/issues/214) (`expected_failure` not honored by group_management step classes), [#215](https://github.com/calimero-network/merobox/issues/215) (context-alias steps), [#216](https://github.com/calimero-network/merobox/issues/216) (wait-for-SSE-event), and [#217](https://github.com/calimero-network/merobox/issues/217) (generic admin-API HTTP step).
 

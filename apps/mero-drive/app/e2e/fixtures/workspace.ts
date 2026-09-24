@@ -508,20 +508,9 @@ export class EditorDriver {
     await this.page.getByRole('button', { name: /^Documents$/ }).click();
   }
 
-  // EditorHeader renders the doc name as a <button>; clicking flips
-  // it into an inline <input type="text"> (with autoFocus). Enter
-  // commits the rename via the onKeyDown handler.
+  // EditorHeader renders the doc name as a live input, so a rename is a fill.
   async renameTitle(next: string): Promise<void> {
-    // A fresh doc is named "Untitled". It renders in TWO places at once:
-    // the editor-header title button (in <main>) AND a doc-leaf button in
-    // the sidebar tree (in <aside>, role="complementary"). Scope to <main>
-    // so the exact-name match resolves to the header title button only —
-    // otherwise it's a strict-mode violation against the sidebar leaf.
-    await this.page
-      .getByRole('main')
-      .getByRole('button', { name: 'Untitled', exact: true })
-      .click();
-    const input = this.page.locator('main input[type="text"]:focus');
+    const input = this.page.getByTestId('doc-title-input');
     await input.fill(next);
     await input.press('Enter');
   }

@@ -1,6 +1,6 @@
-// Rig console: which node this window talks to and an offline switch per node.
-// App mounts it under import.meta.env.DEV only, so nothing here polls a
-// production build.
+// Rig console: which node this window talks to, an offline switch per node,
+// and a slot the editor work portals its inspector into. App mounts it under
+// import.meta.env.DEV only, so nothing here polls a production build.
 import React from 'react';
 import { Button } from '@/components/ui/button';
 import {
@@ -9,6 +9,9 @@ import {
   setDevNodeOnline,
   type DevNode,
 } from './devNode';
+
+/** Portal target for the per-node inspector: title, digest, block rows. */
+export const DEV_INSPECTOR_SLOT = 'dev-inspector';
 
 const POLL_MS = 3000;
 
@@ -26,12 +29,15 @@ export default function DevPanel() {
   }, []);
 
   React.useEffect(() => {
+    if (selected === null) return;
     void refresh();
     const timer = setInterval(() => void refresh(), POLL_MS);
     return () => clearInterval(timer);
-  }, [refresh]);
+  }, [refresh, selected]);
 
-  if (nodes.length === 0) return null;
+  // No `?node=`, no panel: it would otherwise sit over the landing page's own
+  // controls in every dev window.
+  if (selected === null || nodes.length === 0) return null;
 
   const toggle = async (node: DevNode) => {
     setBusy(node.index);
@@ -48,7 +54,7 @@ export default function DevPanel() {
       data-testid="dev-panel"
       className="fixed bottom-4 right-4 z-50 w-64 rounded-lg border border-border bg-background/95 p-3 text-xs shadow-lg backdrop-blur"
     >
-      <p className="mb-2 font-medium text-foreground">
+      <p data-testid="node-label" className="mb-2 font-medium text-foreground">
         Rig - this window is node {selected}
       </p>
       <ul className="space-y-1">
@@ -71,6 +77,11 @@ export default function DevPanel() {
           </li>
         ))}
       </ul>
+      <div id={DEV_INSPECTOR_SLOT} className="peer mt-3 border-t border-border pt-2 empty:hidden" />
+      <p className="mt-3 border-t border-border pt-2 text-muted-foreground peer-[&:not(:empty)]:hidden">
+        No inspector mounted - per-node title, document digest and block rows
+        land here.
+      </p>
     </aside>
   );
 }
