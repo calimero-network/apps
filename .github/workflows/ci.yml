@@ -781,7 +781,7 @@ jobs:
         if: always() && steps.rig.outcome != 'skipped'
         run: apps/mero-drive/scripts/local-rig.sh down
 
-      - name: Upload the report and node logs
+      - name: Upload the report
         if: failure() || cancelled()
         uses: actions/upload-artifact@v4
         with:
@@ -789,7 +789,16 @@ jobs:
           path: |
             apps/mero-drive/app/playwright-report
             apps/mero-drive/app/test-results
-            /tmp/merodrive-rig/data/*/logs/*.log
+          retention-days: 7
+          if-no-files-found: ignore
+
+      # Separate from the report: sync debug logging makes these hundreds of MB.
+      - name: Upload the node logs
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-e2e-rich-node-logs-${{ github.sha }}
+          path: /tmp/merodrive-rig/data/*/logs/*.log
           retention-days: 7
           if-no-files-found: ignore
 
