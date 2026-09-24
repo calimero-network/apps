@@ -79,9 +79,9 @@ export class WorkspaceDriver {
     await dialog.getByRole('button', { name: /^Create$/ }).click();
     // Creation dialog closes (the name gate may now be showing).
     await expect(dialog).toBeHidden({ timeout: 15_000 });
-    await expect(this.page.locator('select').first()).toContainText(name, {
-      timeout: 15_000,
-    });
+    await expect(
+      this.page.locator('select').first().locator('option:checked'),
+    ).toHaveText(name, { timeout: 15_000 });
   }
 
   // Dismiss the required display-name gate by setting a name. The gate
@@ -103,14 +103,7 @@ export class WorkspaceDriver {
     } catch {
       return; // no gate — already named
     }
-    // A named member's gate can flash and close on its own while the name
-    // loads; treat a gate that vanished as dismissed.
-    try {
-      await gate.getByPlaceholder('Your display name').fill(displayName, { timeout: 5_000 });
-    } catch (e) {
-      if (!(await gate.isVisible())) return;
-      throw e;
-    }
+    await gate.getByPlaceholder('Your display name').fill(displayName);
     await gate.getByRole('button', { name: /^Continue$/ }).click();
     await expect(gate).toBeHidden({ timeout: 20_000 });
   }

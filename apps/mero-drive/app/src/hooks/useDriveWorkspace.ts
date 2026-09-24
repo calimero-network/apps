@@ -70,6 +70,7 @@ import {
   stageHidesContent,
   type DriveLoadingStage,
 } from '@/lib/driveStage';
+import { nextNamespaceSelection } from '@/lib/namespaceSelection';
 import {
   pinnedMetadata,
   readPin,
@@ -310,21 +311,20 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
   // session. Prefer a just-joined id over both, so the user lands on
   // the namespace they just accepted instead of an arbitrary survivor.
   const userCleared = useRef(false);
+  const createdNsId = useRef<string | null>(null);
   useEffect(() => {
-    if (namespaces.length === 0) return;
     if (userCleared.current) return;
-    const justJoined = readJustJoinedSet();
-    if (justJoined.size > 0) {
-      const target = namespaces.find((n) => justJoined.has(n.namespaceId));
-      if (target && target.namespaceId !== selectedNsId) {
-        setSelectedNsId(target.namespaceId);
-        return;
-      }
+    const listed = namespaces.map((n) => n.namespaceId);
+    if (createdNsId.current && listed.includes(createdNsId.current)) {
+      createdNsId.current = null;
     }
-    if (selectedNsId && namespaces.some((n) => n.namespaceId === selectedNsId)) {
-      return;
-    }
-    setSelectedNsId(namespaces[0].namespaceId);
+    const next = nextNamespaceSelection({
+      listed,
+      selected: selectedNsId,
+      justJoined: readJustJoinedSet(),
+      created: createdNsId.current,
+    });
+    if (next !== selectedNsId) setSelectedNsId(next);
   }, [namespaces, selectedNsId, setSelectedNsId]);
 
   const rootGroupId = selectedNsId;
@@ -1217,6 +1217,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
             );
           }
         }
+        createdNsId.current = ns.namespaceId;
         await refetchNamespaces();
         userCleared.current = false;
         setSelectedNsId(ns.namespaceId);
