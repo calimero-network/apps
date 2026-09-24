@@ -188,7 +188,7 @@ export function WorkspaceLayout() {
               <Circle
                 className={`h-2 w-2 ${
                   isOnline
-                    ? 'fill-[hsl(var(--synced))] text-[hsl(var(--synced))]'
+                    ? 'fill-sync-synced text-sync-synced'
                     : 'fill-destructive text-destructive'
                 }`}
               />
@@ -198,9 +198,9 @@ export function WorkspaceLayout() {
           <ThemeToggle />
           {namespaceId && (
             <Button
-              variant="ghost"
+              variant={showSettings ? 'selected' : 'ghost'}
               size="sm"
-              className={`gap-1.5 ${showSettings ? 'bg-selected text-selected-foreground hover:bg-selected' : ''}`}
+              className="gap-1.5"
               aria-pressed={showSettings}
               onClick={() => setShowSettings((v) => !v)}
             >

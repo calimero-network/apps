@@ -45,7 +45,7 @@
 
     --border: 0 0% 88%;
     --input: 0 0% 88%;
-    --ring: 82 100% 24%;
+    --ring: var(--primary-ink);
 
     --radius: 0.5rem;
 
@@ -55,7 +55,7 @@
     --text-primary: 0 0% 7%;
     --text-secondary: 0 0% 40%;
     --text-tertiary: 0 0% 53%;
-    --success: 82 100% 24%;
+    --success: var(--primary-ink);
     --success-foreground: 0 0% 100%;
     --warning: 38 92% 50%;
     --warning-foreground: 0 0% 100%;
@@ -68,7 +68,7 @@
     --secure-muted: 83 100% 91%;
 
     /* Sync status */
-    --synced: 83 100% 53%;
+    --synced: var(--primary);
     --syncing: 38 92% 50%;
     --offline: 0 0% 53%;
 
@@ -115,7 +115,7 @@
 
     --border: 240 5% 17%;
     --input: 240 5% 17%;
-    --ring: 83 100% 53%;
+    --ring: var(--primary-ink);
 
     /* Custom tokens - dark */
     --surface-elevated: 240 5% 12%;
@@ -123,18 +123,18 @@
     --text-primary: 0 0% 93%;
     --text-secondary: 240 3% 64%;
     --text-tertiary: 240 2% 44%;
-    --success: 83 100% 53%;
+    --success: var(--primary-ink);
     --success-foreground: 260 8% 8%;
     --warning: 38 85% 55%;
     --warning-foreground: 260 8% 8%;
     --info: 200 75% 55%;
     --info-foreground: 260 8% 8%;
 
-    --secure: 83 100% 53%;
+    --secure: var(--primary-ink);
     --secure-foreground: 260 8% 8%;
     --secure-muted: 85 33% 13%;
 
-    --synced: 83 100% 53%;
+    --synced: var(--primary);
     --syncing: 38 85% 55%;
     --offline: 240 2% 44%;
 

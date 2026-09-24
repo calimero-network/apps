@@ -21,6 +21,8 @@ const buttonVariants = cva(
         secure: "bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm",
         toolbar: "bg-transparent hover:bg-muted text-muted-foreground hover:text-foreground h-8 w-8 p-0",
         "toolbar-active": "bg-selected text-selected-foreground hover:bg-selected/80 h-8 w-8 p-0",
+        // A pressed toggle: the lime selection wash rather than a fill.
+        selected: "bg-selected text-selected-foreground hover:bg-selected/80",
       },
       size: {
         default: "h-10 px-4 py-2",

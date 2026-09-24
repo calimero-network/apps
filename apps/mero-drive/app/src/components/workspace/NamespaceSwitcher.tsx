@@ -1,16 +1,8 @@
-// Top-bar workspace switcher. One trigger showing the active workspace;
-// its menu lists every namespace for this application (from
-// useDriveWorkspace — which reads `useNamespacesForApplication`
-// internally) plus the create / join actions.
-//
-// namespaceId doubles as the root groupId under the current admin
-// API (it's the parent groupId for createGroupInNamespace,
-// useSubgroups, etc.) — useDriveWorkspace exposes both fields but
-// derives `rootGroupId` from `selectedNamespaceId` directly.
+// Top-bar workspace switcher: the app's namespaces plus the create / join actions.
+// namespaceId doubles as the root groupId under the current admin API.
 
 import React, { useState } from 'react';
-import * as DropdownMenuPrimitive from '@radix-ui/react-dropdown-menu';
-import { Check, ChevronsUpDown, Link, Plus } from 'lucide-react';
+import { ChevronsUpDown, Link, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -18,16 +10,14 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
+import { namespaceLabel } from '@/lib/namespaceLabel';
 import { NamespaceCreateDialog } from './NamespaceCreateDialog';
 import { NamespaceJoinDialog } from './NamespaceJoinDialog';
-
-function workspaceLabel(n: { name?: string | null; namespaceId: string }) {
-  return n.name ?? n.namespaceId.slice(0, 8);
-}
 
 function initials(label: string): string {
   const words = label.trim().split(/\s+/).filter(Boolean);
@@ -86,7 +76,9 @@ export function NamespaceSwitcher() {
   }
 
   const current = namespaces.find((n) => n.namespaceId === selectedNamespaceId);
-  const currentLabel = current ? workspaceLabel(current) : null;
+  const currentLabel = current
+    ? namespaceLabel(current.namespaceId, current.name)
+    : null;
 
   return (
     <>
@@ -111,7 +103,7 @@ export function NamespaceSwitcher() {
         </DropdownMenuTrigger>
         <DropdownMenuContent
           align="start"
-          className="w-72 rounded-lg p-1 shadow-lg"
+          className="flex max-h-[var(--radix-dropdown-menu-content-available-height)] w-72 flex-col rounded-lg p-1 shadow-lg"
         >
           {namespaces.length > 0 && (
             <>
@@ -122,15 +114,16 @@ export function NamespaceSwitcher() {
               <DropdownMenuRadioGroup
                 value={selectedNamespaceId ?? ''}
                 onValueChange={selectNamespace}
-                className="max-h-[min(20rem,calc(var(--radix-dropdown-menu-content-available-height)_-_6rem))] overflow-y-auto"
+                className="min-h-0 max-h-80 overflow-y-auto"
               >
                 {namespaces.map((n) => {
-                  const label = workspaceLabel(n);
+                  const label = namespaceLabel(n.namespaceId, n.name);
                   return (
-                    <DropdownMenuPrimitive.RadioItem
+                    <DropdownMenuRadioItem
                       key={n.namespaceId}
                       value={n.namespaceId}
-                      className="flex cursor-default select-none items-center gap-2.5 rounded-md px-2 py-1.5 text-sm outline-none transition-colors focus:bg-accent data-[state=checked]:bg-secondary"
+                      textValue={label}
+                      className="gap-2.5 rounded-md"
                     >
                       <WorkspaceTile label={label} />
                       <span className="min-w-0 flex-1 leading-tight">
@@ -139,10 +132,7 @@ export function NamespaceSwitcher() {
                           {n.memberCount} member{n.memberCount === 1 ? '' : 's'}
                         </span>
                       </span>
-                      <DropdownMenuPrimitive.ItemIndicator>
-                        <Check className="h-4 w-4 text-primary-ink" />
-                      </DropdownMenuPrimitive.ItemIndicator>
-                    </DropdownMenuPrimitive.RadioItem>
+                    </DropdownMenuRadioItem>
                   );
                 })}
               </DropdownMenuRadioGroup>

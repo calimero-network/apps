@@ -266,7 +266,7 @@ export function NamespaceMemberRow({
           title={isPresent ? 'Here now' : 'Away'}
           className={`h-2 w-2 shrink-0 rounded-full border ${
             isPresent
-              ? 'border-[hsl(var(--synced))] bg-[hsl(var(--synced))]'
+              ? 'border-sync-synced bg-sync-synced'
               : 'border-muted-foreground/60 bg-transparent'
           }`}
         />
