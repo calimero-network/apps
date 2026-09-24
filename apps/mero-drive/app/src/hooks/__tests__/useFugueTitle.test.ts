@@ -232,7 +232,7 @@ describe('useFugueTitle', () => {
     client.getTitle.mockResolvedValue('Notes');
     client.titleApplyDeltaOn
       .mockResolvedValueOnce(applied('Notes!', 'tok-a', 'anc-a', 6))
-      .mockResolvedValueOnce(refused('My Notes!', 'anc-a', 9))
+      .mockResolvedValueOnce(refused('My Notes!'))
       .mockResolvedValueOnce(applied('My otes!'));
     const { result } = mount(client);
     await settle();
@@ -244,9 +244,68 @@ describe('useFugueTitle', () => {
       doc: DOC,
       base: 'My Notes!',
       ops: [{ retain: 3 }, { delete: 1 }],
-      anchor: 'anc-a',
+      anchor: null,
     });
     expect(result.current.title).toBe('My otes!');
+  });
+
+  it('moves typing to where the node puts its anchor when a peer change made the local position drift', async () => {
+    const client = fakeClient();
+    client.getTitle.mockResolvedValue('ba1');
+    client.titleApplyDeltaOn
+      .mockResolvedValueOnce(applied('b1a1', 'tok-a', 'anc-1', 2))
+      // The text matches, but the anchor after our `1` is at 3, not 5.
+      .mockResolvedValueOnce(refused('cb1a1a1', 'anc-1', 3))
+      .mockResolvedValueOnce(applied('cb1Xa1a1'));
+    const { result } = mount(client);
+    await settle();
+    act(() => result.current.onChange(change('b1a1')));
+    await settle();
+    // Read as a `c` before and `1a` after the `b`, which puts our `1` at 4.
+    client.getTitle.mockResolvedValue('cb1a1a1');
+    act(() => deliver?.(titleEvent(DOC)));
+    await settle();
+    act(() => result.current.onChange(change('cb1a1Xa1')));
+    await settle();
+    expect(client.titleApplyDeltaOn).toHaveBeenNthCalledWith(2, {
+      doc: DOC,
+      base: 'cb1a1a1',
+      ops: [{ retain: 5 }, { insert: 'X' }],
+      anchor: 'anc-1',
+    });
+    expect(client.titleApplyDeltaOn).toHaveBeenLastCalledWith({
+      doc: DOC,
+      base: 'cb1a1a1',
+      ops: [{ retain: 3 }, { insert: 'X' }],
+      anchor: 'anc-1',
+    });
+    expect(result.current.title).toBe('cb1Xa1a1');
+  });
+
+  it('falls back to the diff when an edit made during an anchored write is not an insert', async () => {
+    const client = fakeClient();
+    client.getTitle.mockResolvedValue('Notes');
+    let answer: (value: unknown) => void = () => {};
+    client.titleApplyDeltaOn
+      .mockResolvedValueOnce(applied('Notes!', 'tok-a', 'anc-a', 6))
+      .mockReturnValueOnce(new Promise((resolve) => (answer = resolve)))
+      .mockResolvedValueOnce(applied('My otes!?'));
+    const { result } = mount(client);
+    await settle();
+    act(() => result.current.onChange(change('Notes!')));
+    await settle();
+    act(() => result.current.onChange(change('Notes!?')));
+    await settle(10);
+    act(() => result.current.onChange(change('otes!?')));
+    await act(async () => answer(refused('My Notes!', 'anc-a', 9)));
+    await settle();
+    expect(client.titleApplyDeltaOn).toHaveBeenLastCalledWith({
+      doc: DOC,
+      base: 'My Notes!',
+      ops: [{ retain: 3 }, { delete: 6 }, { insert: 'otes!?' }],
+      anchor: null,
+    });
+    expect(result.current.title).toBe('My otes!?');
   });
 
   it('keeps a peer\'s letter that landed just before a keystroke typed into the input', async () => {
