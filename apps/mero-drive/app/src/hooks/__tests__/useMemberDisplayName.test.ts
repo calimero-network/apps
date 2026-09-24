@@ -114,6 +114,60 @@ describe('useMemberDisplayName', () => {
     expect(result.current.loading).toBe(true);
   });
 
+  it('is loaded once the first read answers, and stays loaded through a refetch', () => {
+    const state = {
+      metadata: null,
+      loading: true,
+      error: null,
+      refetch: vi.fn(),
+    };
+    memberMetadataMock.mockImplementation(() => state);
+    const { result, rerender } = renderHook(() =>
+      useMemberDisplayName('ns1', 'someone'),
+    );
+    expect(result.current.loaded).toBe(false);
+    state.loading = false;
+    rerender();
+    expect(result.current.loaded).toBe(true);
+    state.loading = true;
+    rerender();
+    expect(result.current.loaded).toBe(true);
+  });
+
+  it('is loaded when the first read answers before a loading render', () => {
+    memberMetadataMock.mockReturnValue({
+      metadata: { name: 'Alice', data: {}, updatedAt: 0, updatedBy: '' },
+      loading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    const { result } = renderHook(() =>
+      useMemberDisplayName('ns1', 'alice-key'),
+    );
+    expect(result.current.loaded).toBe(true);
+  });
+
+  it('is not loaded for a new member until its own read answers', () => {
+    const state = {
+      metadata: null,
+      loading: false,
+      error: null,
+      refetch: vi.fn(),
+    };
+    memberMetadataMock.mockImplementation(() => state);
+    const { result, rerender } = renderHook(
+      ({ member }) => useMemberDisplayName('ns1', member),
+      { initialProps: { member: 'a' } },
+    );
+    expect(result.current.loaded).toBe(true);
+    state.loading = true;
+    rerender({ member: 'b' });
+    expect(result.current.loaded).toBe(false);
+    state.loading = false;
+    rerender({ member: 'b' });
+    expect(result.current.loaded).toBe(true);
+  });
+
   it('setName refuses when hook is bound to a non-self memberId', async () => {
     // setName is self-only: when the hook is bound to someone else's
     // identity, calling setName must throw rather than silently refetch
