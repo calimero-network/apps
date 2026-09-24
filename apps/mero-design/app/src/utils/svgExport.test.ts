@@ -83,6 +83,13 @@ describe("elementToSvgNode", () => {
     expect(svg).toContain('fill="#123456"');
   });
 
+  it("keeps indentation: SVG would otherwise collapse leading spaces", () => {
+    const svg = elementToSvgNode(el({ id: "a", data: { kind: "text", content: "fn a() {\n    b();\n}" } }));
+    expect(svg).toContain('xml:space="preserve"');
+    expect(svg).toContain("white-space: pre");
+    expect(svg).toContain(">    b();</tspan>");
+  });
+
   it("escapes text content instead of injecting markup", () => {
     const svg = elementToSvgNode(el({ id: "a", data: { kind: "text", content: '</text><script>x</script>' } }));
     expect(svg).not.toContain("<script>");

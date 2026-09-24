@@ -182,6 +182,11 @@ export function elementToSvgNode(el: Element, options: SvgOptions = {}): string 
         )
         .join("");
       return `<text ${attrs({
+        // SVG collapses runs of whitespace — indentation included — unless told
+        // not to. The canvas keeps every space, so an indented code block came
+        // out flush-left in exports and on presentation slides.
+        "xml:space": "preserve",
+        style: "white-space: pre",
         "font-family": el.data.fontFamily ?? "sans-serif",
         "font-size": size,
         "font-weight": el.data.bold ? "bold" : undefined,
