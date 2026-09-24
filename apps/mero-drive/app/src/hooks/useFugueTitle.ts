@@ -4,14 +4,15 @@
 // every write is guarded by the title it was diffed against.
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import {
   useSubscription,
   type SubscriptionEventData,
 } from '@calimero-network/mero-react';
-import { diffText, type Change } from '@/lib/rich/delta';
+import { diffText, insertTextAt, type Change } from '@/lib/rich/delta';
 import { parseRichEvents } from '@/lib/rich/events';
 import { scalarToUtf16, utf16ToScalar } from '@/lib/rich/offsets';
-import { applyChanges, transform, transformPosition } from '@/lib/rich/ot';
+import { applyChanges, moveInserts, transform, transformPosition } from '@/lib/rich/ot';
 import { isTransportFailure } from '@/lib/rich/transport';
 import { UndoHistory } from '@/lib/rich/undo';
 import type { CaretSlice } from './useDocPresence';
@@ -76,6 +77,8 @@ export function useFugueTitle({
   const inFlightRef = useRef(false);
   // Where the caret goes once React has rendered a value a peer changed.
   const caretRef = useRef<{ anchor: number; head: number } | null>(null);
+  // The gap after this client's last write, as the node names it and where it sits in serverRef.
+  const anchorRef = useRef<{ token: string; pos: number } | null>(null);
   // One entry per typing burst: the write tokens in the order they landed.
   const historyRef = useRef(new UndoHistory<string[]>(docId));
   const openGroupRef = useRef<string[] | null>(null);
@@ -91,28 +94,57 @@ export function useFugueTitle({
   const publishRef = useRef(publish);
   publishRef.current = publish;
 
-  /** A peer moved the title from the node's last known value to `remote`. */
-  const rebase = useCallback((remote: string) => {
-    const incoming = transform(diffText(serverRef.current, localRef.current), diffText(serverRef.current, remote, { keepShared: true }), true);
-    serverRef.current = remote;
-    if (incoming.length === 0) return;
+  /** The user's edit over the node's title; typing on at the anchor stays an insert there. */
+  const pending = useCallback((): Change[] => {
+    const anchor = anchorRef.current;
+    const base = serverRef.current;
+    return (anchor && insertTextAt(base, localRef.current, anchor.pos)) ?? diffText(base, localRef.current);
+  }, []);
+
+  /** Puts `after` in the input, the caret where `carry` moves its scalar offsets. */
+  const show = useCallback((after: string, carry: (scalar: number) => number) => {
     const before = localRef.current;
-    const after = applyText(before, incoming);
     const input = inputRef.current;
     if (input && document.activeElement === input) {
-      const carry = (utf16: number | null) =>
-        scalarToUtf16(after, transformPosition(incoming, utf16ToScalar(before, utf16 ?? 0)));
-      caretRef.current = { anchor: carry(input.selectionStart), head: carry(input.selectionEnd) };
+      const moved = (utf16: number | null) => scalarToUtf16(after, carry(utf16ToScalar(before, utf16 ?? 0)));
+      caretRef.current = { anchor: moved(input.selectionStart), head: moved(input.selectionEnd) };
     }
     localRef.current = after;
-    showTitle(after);
+    // Rendered now: a key pressed before React renders would edit the old value.
+    flushSync(() => showTitle(after));
   }, []);
+
+  /** A peer moved the title from the node's last known value to `remote`. */
+  const rebase = useCallback(
+    (remote: string) => {
+      const remoteChange = diffText(serverRef.current, remote, { keepShared: true });
+      const incoming = transform(pending(), remoteChange, true);
+      serverRef.current = remote;
+      if (anchorRef.current) anchorRef.current.pos = transformPosition(remoteChange, anchorRef.current.pos);
+      if (incoming.length > 0) show(applyText(localRef.current, incoming), (at) => transformPosition(incoming, at));
+    },
+    [pending, show],
+  );
+
+  /** A refused write whose edit is one insert at the anchor, replayed where the anchor now sits. */
+  const rebaseAtAnchor = useCallback(
+    (remote: string, at: number): boolean => {
+      const anchor = anchorRef.current;
+      const typed = anchor && insertTextAt(serverRef.current, localRef.current, anchor.pos);
+      if (!typed) return false;
+      const moved = moveInserts(typed, at);
+      serverRef.current = remote;
+      show(applyText(remote, moved.ops), () => moved.end);
+      return true;
+    },
+    [show],
+  );
 
   // False stops the drain loop: a transport failure defers to scheduleRetry.
   const flush = useCallback(async (): Promise<boolean> => {
     if (!client || !docId || !loadedRef.current) return true;
     const base = serverRef.current;
-    const ops = diffText(base, localRef.current);
+    const ops = pending();
     if (ops.length === 0) {
       setStatus('saved');
       return true;
@@ -121,7 +153,8 @@ export function useFugueTitle({
     try {
       // The generated ChangePayload is a tagged union; the contract takes
       // serde's untagged form, which is what `ops` already is.
-      const result = await client.titleApplyDeltaOn({ doc: docId, base, ops: ops as unknown as ChangePayload[] });
+      const anchor = anchorRef.current?.token ?? null;
+      const result = await client.titleApplyDeltaOn({ doc: docId, base, ops: ops as unknown as ChangePayload[], anchor });
       if (result.applied && result.token) {
         if (openGroupRef.current) openGroupRef.current.push(result.token);
         else historyRef.current.record((openGroupRef.current = [result.token]));
@@ -129,7 +162,11 @@ export function useFugueTitle({
       } else {
         dirtyRef.current = true;
       }
-      rebase(result.text);
+      if (result.applied || result.anchor_pos === null || !rebaseAtAnchor(result.text, result.anchor_pos)) {
+        rebase(result.text);
+      }
+      anchorRef.current =
+        result.anchor !== null && result.anchor_pos !== null ? { token: result.anchor, pos: result.anchor_pos } : null;
       setError(null);
       setStatus(result.applied ? 'saved' : 'saving');
       resetRetry();
@@ -146,7 +183,7 @@ export function useFugueTitle({
       staleRef.current = true;
       return true;
     }
-  }, [client, docId, rebase, resetRetry, scheduleRetry]);
+  }, [client, docId, pending, rebase, rebaseAtAnchor, resetRetry, scheduleRetry]);
 
   const refresh = useCallback(async () => {
     if (!client || !docId) return;
@@ -188,6 +225,7 @@ export function useFugueTitle({
   useEffect(() => {
     historyRef.current.reset(docId);
     openGroupRef.current = null;
+    anchorRef.current = null;
     serverRef.current = '';
     localRef.current = '';
     loadedRef.current = false;

@@ -25,6 +25,20 @@
               "$ref": "Span"
             }
           }
+        },
+        {
+          "name": "anchor",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "anchor_pos",
+          "type": {
+            "kind": "u32"
+          },
+          "nullable": true
         }
       ]
     },
@@ -686,6 +700,20 @@
           "type": {
             "kind": "string"
           }
+        },
+        {
+          "name": "anchor",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "anchor_pos",
+          "type": {
+            "kind": "u32"
+          },
+          "nullable": true
         }
       ]
     }
@@ -825,6 +853,13 @@
               "$ref": "Change"
             }
           }
+        },
+        {
+          "name": "anchor",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
         }
       ],
       "returns": {
@@ -1588,6 +1623,13 @@
               "$ref": "Change"
             }
           }
+        },
+        {
+          "name": "anchor",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
         }
       ],
       "returns": {

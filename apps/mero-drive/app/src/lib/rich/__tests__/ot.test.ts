@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { applyChanges, transform, transformPosition } from '../ot';
+import { applyChanges, moveInserts, transform, transformPosition } from '../ot';
 import type { AttrSpan, Change } from '../delta';
 
 const plain = (text: string): AttrSpan[] => [{ text, attributes: {} }];
@@ -89,5 +89,15 @@ describe('transformPosition', () => {
   it('pulls a caret left past a delete before it, clamping inside one', () => {
     expect(transformPosition([{ retain: 1 }, { delete: 3 }], 6)).toBe(3);
     expect(transformPosition([{ retain: 1 }, { delete: 3 }], 2)).toBe(1);
+  });
+});
+
+describe('moveInserts', () => {
+  it('moves a change\'s inserts to another position and reports where they end', () => {
+    expect(moveInserts([{ retain: 2 }, { insert: '\u{1F600}b' }], 5)).toEqual({
+      ops: [{ retain: 5 }, { insert: '\u{1F600}b' }],
+      end: 7,
+    });
+    expect(moveInserts([{ retain: 2 }, { insert: 'x' }], 0)).toEqual({ ops: [{ insert: 'x' }], end: 1 });
   });
 });

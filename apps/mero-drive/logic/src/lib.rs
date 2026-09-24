@@ -107,6 +107,10 @@ pub struct Applied {
     pub applied: bool,
     pub token: Option<String>,
     pub spans: Vec<Span>,
+    /// The gap after this write's last change, or on a refusal the anchor sent.
+    pub anchor: Option<String>,
+    /// Where `anchor` sits in `spans`.
+    pub anchor_pos: Option<usize>,
 }
 
 /// What `title_apply_delta_on` did; the title comes back either way.
@@ -116,6 +120,10 @@ pub struct TitleApplied {
     pub applied: bool,
     pub token: Option<String>,
     pub text: String,
+    /// The gap after this write's last change, or on a refusal the anchor sent.
+    pub anchor: Option<String>,
+    /// Where `anchor` sits in `text`.
+    pub anchor_pos: Option<usize>,
 }
 
 /// One step of an attributed editor change, mirroring `DeltaOp`, which has no
@@ -165,6 +173,17 @@ impl Change {
             _ => app::bail!("the title carries no formatting: drop `attributes`"),
         })
     }
+}
+
+/// The gap right after an edit's last change, counted in the text it produces.
+fn edit_end(ops: &[Change]) -> usize {
+    ops.iter()
+        .map(|op| match op {
+            Change::Retain { retain, .. } => *retain,
+            Change::Insert { insert, .. } => insert.chars().count(),
+            Change::Delete { .. } => 0,
+        })
+        .sum()
 }
 
 /// Opaque identities cross JSON-RPC as one string, so a client never parses them.
@@ -433,23 +452,38 @@ impl DocsState {
         encode_token(&steps)
     }
 
-    /// `title_apply_delta`, but only onto the title the caller diffed against.
+    /// `title_apply_delta`, but only onto the title the caller diffed against. A refusal
+    /// places `anchor`, so a pending edit goes back beside its writer's own last character.
     pub fn title_apply_delta_on(
         &mut self,
         doc: String,
         base: String,
         ops: Vec<Change>,
+        anchor: Option<String>,
     ) -> app::Result<TitleApplied> {
         let current = self.read(&doc)?.title.get_text()?;
-        let token = if current == base {
-            Some(self.title_apply_delta(doc.clone(), ops)?)
-        } else {
-            None
-        };
+        if current != base {
+            let anchor_pos = match &anchor {
+                Some(token) => self.read(&doc)?.title.resolve(&decode_token(token)?).ok(),
+                None => None,
+            };
+            return Ok(TitleApplied {
+                applied: false,
+                token: None,
+                text: current,
+                anchor: anchor_pos.and(anchor),
+                anchor_pos,
+            });
+        }
+        let end = edit_end(&ops);
+        let token = self.title_apply_delta(doc.clone(), ops)?;
+        let title = &self.read(&doc)?.title;
         Ok(TitleApplied {
-            applied: token.is_some(),
-            token,
-            text: self.read(&doc)?.title.get_text()?,
+            applied: true,
+            token: Some(token),
+            text: title.get_text()?,
+            anchor: Some(encode_token(&title.anchor_at(end, Bias::After)?)?),
+            anchor_pos: Some(end),
         })
     }
 
@@ -624,26 +658,47 @@ impl DocsState {
         encode_token(&undo)
     }
 
-    /// `apply_delta`, but only onto the text the caller diffed against: a
-    /// position counted in any other text names the wrong place.
+    /// `apply_delta`, but only onto the text the caller diffed against, since a position
+    /// counted in any other text names the wrong place. A refusal places `anchor`.
     pub fn apply_delta_on(
         &mut self,
         doc: String,
         block: String,
         base: String,
         ops: Vec<Change>,
+        anchor: Option<String>,
     ) -> app::Result<Applied> {
         let id: BlockId = decode_token(&block)?;
-        let current = self.read(&doc)?.body.block_body(id)?.get_text()?;
-        let token = if current == base {
-            Some(self.apply_delta(doc.clone(), block, ops)?)
-        } else {
-            None
-        };
+        let body = self.read(&doc)?.body.block_body(id)?;
+        // The spans are the text as well, so one read serves the guard and a refusal.
+        let spans = body.to_delta()?;
+        if spans
+            .iter()
+            .map(|span| span.text.as_str())
+            .collect::<String>()
+            != base
+        {
+            let anchor_pos = match &anchor {
+                Some(token) => body.resolve_many(&[decode_token(token)?])?.pop().flatten(),
+                None => None,
+            };
+            return Ok(Applied {
+                applied: false,
+                token: None,
+                spans,
+                anchor: anchor_pos.and(anchor),
+                anchor_pos,
+            });
+        }
+        let end = edit_end(&ops);
+        let token = self.apply_delta(doc.clone(), block, ops)?;
+        let body = self.read(&doc)?.body.block_body(id)?;
         Ok(Applied {
-            applied: token.is_some(),
-            token,
-            spans: self.read(&doc)?.body.block_delta(id)?,
+            applied: true,
+            token: Some(token),
+            spans: body.to_delta()?,
+            anchor: Some(encode_token(&body.anchor_at(end, Bias::After)?)?),
+            anchor_pos: Some(end),
         })
     }
 
@@ -1297,6 +1352,7 @@ mod tests {
                     DOC.to_owned(),
                     "core".to_owned(),
                     vec![retain(4), insert(" team")],
+                    None,
                 )
             })
             .unwrap();
@@ -1315,6 +1371,7 @@ mod tests {
                     DOC.to_owned(),
                     "cor".to_owned(),
                     vec![retain(3), insert("X")],
+                    None,
                 )
             })
             .unwrap();
@@ -1322,6 +1379,57 @@ mod tests {
         assert_eq!(refused.token, None);
         assert_eq!(refused.text, "core");
         assert_eq!(title(&app), "core");
+        assert_eq!((refused.anchor, refused.anchor_pos), (None, None));
+    }
+
+    /// Appends `text` to the title through the guard.
+    fn guarded_title(app: &mut TestHost<DocsState>, text: &str) -> TitleApplied {
+        let base = title(app);
+        let end = base.chars().count();
+        app.call(|s| {
+            s.title_apply_delta_on(DOC.to_owned(), base, vec![retain(end), insert(text)], None)
+        })
+        .unwrap()
+    }
+
+    #[test]
+    fn title_apply_delta_on_hands_back_an_anchor_after_the_write() {
+        let mut app = host("Shared:");
+        let applied = guarded_title(&mut app, "a");
+        assert_eq!(applied.anchor_pos, Some(8));
+        let anchor = applied.anchor.unwrap();
+        assert_eq!(
+            app.view(|s| s.title_resolve(DOC.to_owned(), vec![anchor]))
+                .unwrap(),
+            vec![Some(8)]
+        );
+    }
+
+    #[test]
+    fn title_apply_delta_on_places_the_anchor_of_a_refused_write_beside_its_own_letter() {
+        let mut app = host("Shared:");
+        let anchor = guarded_title(&mut app, "a").anchor;
+        // Peers typed on both sides of the writer's `a`, one right in its gap.
+        let _left = app
+            .call(|s| s.title_apply_delta(DOC.to_owned(), vec![retain(7), insert("b3")]))
+            .unwrap();
+        let _right = app
+            .call(|s| s.title_apply_delta(DOC.to_owned(), vec![retain(10), insert("3c3")]))
+            .unwrap();
+        let refused = app
+            .call(|s| {
+                s.title_apply_delta_on(
+                    DOC.to_owned(),
+                    "Shared:a".to_owned(),
+                    vec![retain(8), insert("3")],
+                    anchor.clone(),
+                )
+            })
+            .unwrap();
+        assert!(!refused.applied);
+        assert_eq!(refused.text, "Shared:b3a3c3");
+        assert_eq!(refused.anchor, anchor);
+        assert_eq!(refused.anchor_pos, Some(10));
     }
 
     #[test]
@@ -1336,6 +1444,7 @@ mod tests {
                     block.clone(),
                     "The fox.".to_owned(),
                     vec![retain(3), insert(" red")],
+                    None,
                 )
             })
             .unwrap();
@@ -1359,6 +1468,7 @@ mod tests {
                     block.clone(),
                     "The fox".to_owned(),
                     vec![retain(7), insert("es")],
+                    None,
                 )
             })
             .unwrap();
@@ -1366,6 +1476,53 @@ mod tests {
         assert_eq!(refused.token, None);
         assert_eq!(refused.spans[0].text, "The fox.");
         assert_eq!(digest(&app), "paragraph/0{:The fox.};");
+        assert_eq!((refused.anchor, refused.anchor_pos), (None, None));
+    }
+
+    #[test]
+    fn apply_delta_on_places_the_anchor_of_a_refused_write_beside_its_own_letter() {
+        let mut app = host("t");
+        let block = add_block(&mut app, "paragraph");
+        let applied = app
+            .call(|s| {
+                s.apply_delta_on(
+                    DOC.to_owned(),
+                    block.clone(),
+                    String::new(),
+                    vec![insert("Shared:a")],
+                    None,
+                )
+            })
+            .unwrap();
+        assert_eq!(applied.anchor_pos, Some(8));
+        let anchor = applied.anchor;
+        let _left = app
+            .call(|s| s.apply_delta(DOC.to_owned(), block.clone(), vec![retain(7), insert("b3")]))
+            .unwrap();
+        let _right = app
+            .call(|s| {
+                s.apply_delta(
+                    DOC.to_owned(),
+                    block.clone(),
+                    vec![retain(10), insert("3c3")],
+                )
+            })
+            .unwrap();
+        let refused = app
+            .call(|s| {
+                s.apply_delta_on(
+                    DOC.to_owned(),
+                    block.clone(),
+                    "Shared:a".to_owned(),
+                    vec![retain(8), insert("3")],
+                    anchor.clone(),
+                )
+            })
+            .unwrap();
+        assert!(!refused.applied);
+        assert_eq!(refused.spans[0].text, "Shared:b3a3c3");
+        assert_eq!(refused.anchor, anchor);
+        assert_eq!(refused.anchor_pos, Some(10));
     }
 
     #[test]
