@@ -1,7 +1,7 @@
 // Drives the editor the way a person does, with real key events, and finds
 // everything through the fixed data-testid contract.
 
-import { expect, type Page } from '@playwright/test';
+import { expect, type Locator, type Page } from '@playwright/test';
 
 export const MOD = process.platform === 'darwin' ? 'Meta' : 'Control';
 
@@ -27,27 +27,32 @@ export async function caretTo(page: Page, blockIndex: number, offset: number): P
   // caret, so confirm it sits exactly where asked and place it again if not.
   await expect(async () => {
     await text.click();
-    await page.keyboard.press('Home');
+    await collapseToEdge(text, 'start');
     for (let step = 0; step < offset; step++) await page.keyboard.press('ArrowRight');
     expect(await offsetIn(page, blockIndex), `caret at ${blockIndex}:${offset}`).toBe(offset);
   }).toPass({ timeout: 20_000 });
 }
 
-/** Puts the caret at the end of a block's text; End only reaches the end of
- *  the visual line, which is earlier in a block long enough to wrap. */
+/** Collapses the selection to one edge of a block's text and returns its length.
+ *  Not Home or End: on Linux they stop at the visual line, so a wrapped block misses. */
+function collapseToEdge(text: Locator, edge: 'start' | 'end'): Promise<number> {
+  return text.evaluate((node, toStart) => {
+    const range = document.createRange();
+    range.selectNodeContents(node);
+    range.collapse(toStart);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    return (node.textContent ?? '').length;
+  }, edge === 'start');
+}
+
+/** Puts the caret at the end of a block's text. */
 export async function caretToEnd(page: Page, blockIndex: number): Promise<void> {
   const text = page.getByTestId('doc-editor').locator('.bn-inline-content').nth(blockIndex);
   await expect(async () => {
     await text.click();
-    const length = await text.evaluate((node) => {
-      const range = document.createRange();
-      range.selectNodeContents(node);
-      range.collapse(false);
-      const selection = window.getSelection();
-      selection?.removeAllRanges();
-      selection?.addRange(range);
-      return (node.textContent ?? '').length;
-    });
+    const length = await collapseToEdge(text, 'end');
     expect(await offsetIn(page, blockIndex), `caret at the end of block ${blockIndex}`).toBe(length);
   }).toPass({ timeout: 20_000 });
 }
