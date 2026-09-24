@@ -50,17 +50,10 @@
     --radius: 0.5rem;
 
     /* Custom tokens */
-    --surface-elevated: 0 0% 100%;
-    --surface-sunken: 0 0% 96%;
-    --text-primary: 0 0% 7%;
-    --text-secondary: 0 0% 40%;
-    --text-tertiary: 0 0% 53%;
     --success: var(--primary-ink);
     --success-foreground: 0 0% 100%;
     --warning: 38 92% 50%;
     --warning-foreground: 0 0% 100%;
-    --info: 200 80% 50%;
-    --info-foreground: 0 0% 100%;
 
     /* Encryption/Security accent */
     --secure: 82 100% 19%;
@@ -71,15 +64,6 @@
     --synced: var(--primary);
     --syncing: 38 92% 50%;
     --offline: 0 0% 53%;
-
-    --sidebar-background: 0 0% 98%;
-    --sidebar-foreground: 0 0% 7%;
-    --sidebar-primary: 83 100% 53%;
-    --sidebar-primary-foreground: 260 8% 8%;
-    --sidebar-accent: 0 0% 94%;
-    --sidebar-accent-foreground: 0 0% 7%;
-    --sidebar-border: 0 0% 91%;
-    --sidebar-ring: 82 100% 24%;
   }
 
   /* Neutral near-blacks, not blue-greys. The lime needs no deepening here, so
@@ -118,17 +102,10 @@
     --ring: var(--primary-ink);
 
     /* Custom tokens - dark */
-    --surface-elevated: 240 5% 12%;
-    --surface-sunken: 240 7% 5%;
-    --text-primary: 0 0% 93%;
-    --text-secondary: 240 3% 64%;
-    --text-tertiary: 240 2% 44%;
     --success: var(--primary-ink);
     --success-foreground: 260 8% 8%;
     --warning: 38 85% 55%;
     --warning-foreground: 260 8% 8%;
-    --info: 200 75% 55%;
-    --info-foreground: 260 8% 8%;
 
     --secure: var(--primary-ink);
     --secure-foreground: 260 8% 8%;
@@ -137,15 +114,6 @@
     --synced: var(--primary);
     --syncing: 38 85% 55%;
     --offline: 240 2% 44%;
-
-    --sidebar-background: 240 7% 6%;
-    --sidebar-foreground: 0 0% 93%;
-    --sidebar-primary: 83 100% 53%;
-    --sidebar-primary-foreground: 260 8% 8%;
-    --sidebar-accent: 240 6% 13%;
-    --sidebar-accent-foreground: 0 0% 93%;
-    --sidebar-border: 240 6% 14%;
-    --sidebar-ring: 83 100% 53%;
   }
 }
 
@@ -170,49 +138,11 @@
 }
 
 @layer components {
-  .text-gradient {
-    @apply bg-clip-text text-transparent bg-gradient-to-r from-primary to-primary/70;
-  }
-
-  .surface-elevated {
-    @apply bg-card shadow-sm border border-border/50;
-  }
-
-  .surface-sunken {
-    background: hsl(var(--surface-sunken));
-  }
-
-  .glass {
-    @apply backdrop-blur-xl bg-background/80 border border-border/30;
-  }
 
   .security-badge {
     @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium;
     background: hsl(var(--secure-muted));
     color: hsl(var(--secure));
-  }
-
-  .sync-indicator {
-    @apply w-2 h-2 rounded-full;
-  }
-
-  .sync-indicator.synced {
-    background: hsl(var(--synced));
-    box-shadow: 0 0 8px hsl(var(--synced) / 0.5);
-  }
-
-  .sync-indicator.syncing {
-    background: hsl(var(--syncing));
-    animation: pulse 1.5s ease-in-out infinite;
-  }
-
-  .sync-indicator.offline {
-    background: hsl(var(--offline));
-  }
-
-  .editor-content {
-    font-family: 'Inter Variable', 'Inter', system-ui, sans-serif;
-    @apply text-foreground;
   }
 }
 
@@ -256,72 +186,6 @@ html .bn-container[data-color-scheme='dark'] {
 }
 
 
-@layer utilities {
-  .animate-fade-in {
-    animation: fadeIn 0.5s ease-out forwards;
-  }
-
-  .animate-slide-up {
-    animation: slideUp 0.6s ease-out forwards;
-  }
-
-  .animate-scale-in {
-    animation: scaleIn 0.3s ease-out forwards;
-  }
-
-  .animate-glow {
-    animation: glow 2s ease-in-out infinite alternate;
-  }
-}
-
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-@keyframes slideUp {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes scaleIn {
-  from {
-    opacity: 0;
-    transform: scale(0.95);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
-@keyframes glow {
-  from {
-    box-shadow: 0 0 20px hsl(var(--primary) / 0.2);
-  }
-  to {
-    box-shadow: 0 0 40px hsl(var(--primary) / 0.4);
-  }
-}
-
-@keyframes pulse {
-  0%, 100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.5;
-  }
-}
 
 /* Remote carets. The name shows when the peer moves, then fades, so a busy
    document does not turn into a wall of names. */

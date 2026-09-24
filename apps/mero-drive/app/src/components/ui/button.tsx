@@ -15,12 +15,6 @@ const buttonVariants = cva(
         secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/80",
         ghost: "hover:bg-accent hover:text-accent-foreground",
         link: "text-primary-ink underline-offset-4 hover:underline",
-        // Custom variants for Mero Drive
-        hero: "bg-primary text-primary-foreground shadow-glow hover:shadow-glow-lg hover:scale-[1.02] active:scale-[0.98]",
-        "hero-outline": "border-2 border-primary/30 bg-transparent text-foreground hover:bg-primary/10 hover:border-primary/50",
-        secure: "bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm",
-        toolbar: "bg-transparent hover:bg-muted text-muted-foreground hover:text-foreground h-8 w-8 p-0",
-        "toolbar-active": "bg-selected text-selected-foreground hover:bg-selected/80 h-8 w-8 p-0",
         // A pressed toggle: the lime selection wash rather than a fill.
         selected: "bg-selected text-selected-foreground hover:bg-selected/80",
       },
