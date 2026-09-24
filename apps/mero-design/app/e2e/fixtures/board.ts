@@ -232,6 +232,19 @@ export async function openBoard(page: Page, opts: BoardOptions = {}): Promise<Bo
         value = null;
         break;
       }
+      case "update_element_label": {
+        const a = body?.params?.argsJson as { id?: string; label?: string | null };
+        state.elements = state.elements.map((e) => (e.id === a.id ? { ...e, label: a.label ?? null } : e));
+        value = null;
+        break;
+      }
+      case "send_to_back": {
+        // Mirrors the contract: everything else moves up one.
+        const a = body?.params?.argsJson as { id?: string };
+        state.elements = state.elements.map((e) => ({ ...e, layerIndex: e.id === a.id ? 0 : e.layerIndex + 1 }));
+        value = null;
+        break;
+      }
       case "clear_elements": state.elements = []; value = null; break;
       case "clear_comments": state.comments = []; value = null; break;
       case "add_comment": {

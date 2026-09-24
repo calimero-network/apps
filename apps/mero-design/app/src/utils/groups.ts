@@ -95,11 +95,25 @@ export function derivedName(el: Element): string {
   return el.data.kind;
 }
 
+/**
+ * A screen's place in the presentation, carried at the end of its name:
+ * `screen/Home @3`. See `screens.ts` — this lives here only so the layers tree
+ * can hide it and a rename can keep it, without groups importing screens.
+ */
+export const SCREEN_ORDER_SUFFIX = /\s*@(\d+)$/;
+
+/** True for `screen/<name>` — the one label shape that can carry an order. */
+function isScreenPath(segments: string[]): boolean {
+  return segments.length === 2 && segments[0].toLowerCase() === "screen";
+}
+
 /** The name shown in the layers tree: last label segment, else derived. */
 export function nameOf(el: Element, override?: string): string {
   if (override && override.trim()) return override.trim();
   const segments = splitPath(el.label);
-  return segments.length > 0 ? segments[segments.length - 1] : derivedName(el);
+  if (segments.length === 0) return derivedName(el);
+  const last = segments[segments.length - 1];
+  return isScreenPath(segments) ? last.replace(SCREEN_ORDER_SUFFIX, "") || last : last;
 }
 
 /** The label an element should carry to sit in `groupPath` under `name`. */
@@ -298,7 +312,14 @@ export function renameGroup(elements: Element[], groupPath: string, newName: str
   return patch;
 }
 
-/** Renames one element, leaving the group it sits in alone. */
+/**
+ * Renames one element, leaving the group it sits in alone — and, for a screen,
+ * its place in the presentation: renaming a slide must not reshuffle the deck.
+ */
 export function renameElement(el: Element, newName: string): string {
-  return labelFor(groupPathOf(el.label), newName || derivedName(el));
+  const next = labelFor(groupPathOf(el.label), newName || derivedName(el));
+  const segments = splitPath(el.label);
+  const order = isScreenPath(segments) ? segments[1].match(SCREEN_ORDER_SUFFIX) : null;
+  if (!order || SCREEN_ORDER_SUFFIX.test(next)) return next;
+  return `${next} @${order[1]}`;
 }

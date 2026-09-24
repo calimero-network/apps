@@ -28,6 +28,7 @@ import Slider from "./ui/Slider";
 import ColorField from "./ui/ColorField";
 import { Checkbox, Segmented, Switch } from "./ui/Toggle";
 import LayerRowMenu from "./LayerRowMenu";
+import ScreensPanel from "./ScreensPanel";
 import { useGroupActions } from "../hooks/useGroupActions";
 import type { Element } from "../types";
 import styles from "./PropertiesPanel.module.css";
@@ -39,7 +40,14 @@ const FONTS = [
   "Courier New", "Impact", "Comic Sans MS",
 ];
 
-type PanelTab = "properties" | "layers" | "prototype";
+type PanelTab = "properties" | "layers" | "screens" | "prototype";
+
+const TAB_LABELS: Record<PanelTab, string> = {
+  properties: "Props",
+  layers: "Layers",
+  screens: "Screens",
+  prototype: "Proto",
+};
 
 interface Props {
   contextId: string;
@@ -1099,9 +1107,9 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
   return (
     <div className={`${styles.panel} ${controls.kit}`}>
       <div className={styles.tabBar}>
-        {(["properties", "layers", "prototype"] as PanelTab[]).map((t) => (
+        {(Object.keys(TAB_LABELS) as PanelTab[]).map((t) => (
           <button key={t} className={`${styles.tabBtn} ${tab === t ? styles.tabBtnActive : ""}`} onClick={() => setTab(t)}>
-            {t === "properties" ? "Props" : t === "layers" ? "Layers" : "Proto"}
+            {TAB_LABELS[t]}
           </button>
         ))}
       </div>
@@ -1109,6 +1117,7 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
       <div className={styles.tabContent}>
         {tab === "properties" && propertiesPanel}
         {tab === "layers" && layersPanelContent}
+        {tab === "screens" && <ScreensPanel contextId={contextId} readOnly={readOnly} />}
         {tab === "prototype" && protoPanel}
       </div>
     </div>

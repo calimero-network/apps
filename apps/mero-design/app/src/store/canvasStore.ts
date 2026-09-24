@@ -30,6 +30,12 @@ interface CanvasState {
   elementLabels: Record<string, string>;
   /** Group paths the layers tree is showing collapsed. */
   collapsedGroups: Record<string, boolean>;
+  /**
+   * Presentation mode. `null` when not presenting; otherwise the screen to open
+   * on (`null` start = the first). Here rather than in CanvasPage because both
+   * the toolbar and the Screens tab start it.
+   */
+  presentation: { startId: string | null } | null;
 
   setTool: (tool: Tool) => void;
   /**
@@ -52,6 +58,8 @@ interface CanvasState {
   setElementLabel: (id: string, label: string) => void;
   setElementLabels: (labels: Record<string, string>) => void;
   toggleGroupCollapsed: (path: string) => void;
+  startPresentation: (startId?: string | null) => void;
+  stopPresentation: () => void;
 
   // History
   snapshot: () => void;
@@ -80,6 +88,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   clipboard: [],
   elementLabels: {},
   collapsedGroups: {},
+  presentation: null,
 
   setTool: (tool) => set({ activeTool: tool, selectedElementId: null, selectedElementIds: [] }),
   selectWithPointer: (id) => set({ activeTool: "select", selectedElementId: id, selectedElementIds: [id] }),
@@ -167,6 +176,9 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
 
   toggleGroupCollapsed: (path) =>
     set((s) => ({ collapsedGroups: { ...s.collapsedGroups, [path]: !s.collapsedGroups[path] } })),
+
+  startPresentation: (startId = null) => set({ presentation: { startId } }),
+  stopPresentation: () => set({ presentation: null }),
 
   copyElements: (els) =>
     // Layer order, so a paste rebuilds the stack the way it was copied rather

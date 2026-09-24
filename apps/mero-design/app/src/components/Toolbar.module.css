@@ -149,6 +149,8 @@
 }
 .previewBtn:hover { background: #2563eb; color: #fff; }
 .previewBtnActive { background: #2563eb; color: #fff; }
+.presentBtn { margin-left: 6px; background: #2563eb; color: #fff; }
+.presentBtn:hover { background: #1d4ed8; border-color: #1d4ed8; }
 
 .exportSep {
   display: block;
@@ -325,6 +327,12 @@
 }
 .optionsItem:hover:not(:disabled) { background: #f5f5f5; }
 .optionsItem:disabled { color: #bbb; cursor: default; }
+.optionsHint {
+  display: block;
+  margin-top: 1px;
+  font-size: 10.5px;
+  color: #999;
+}
 
 .optionsError {
   font-size: 11px;
