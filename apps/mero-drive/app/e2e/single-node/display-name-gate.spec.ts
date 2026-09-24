@@ -5,7 +5,7 @@
 // aria-labelledby="name-gate-title", heading "Set your name", an
 // input placeholder="Your display name", and a "Continue" button.
 // It overlays the sidebar + main (z-40) but NOT the top bar —
-// the namespace <select>, Settings, and Log out stay accessible.
+// the workspace switcher, Settings, and Log out stay accessible.
 
 import { test, expect } from '../fixtures/single-user';
 
@@ -22,9 +22,9 @@ test.describe('Display-name gate (single-node)', () => {
     ).toBeVisible({ timeout: 20_000 });
 
     // Top-bar escape hatches remain accessible despite the overlay.
-    await expect(alice.page.locator('select').first()).toBeVisible();
+    await expect(alice.page.getByTestId('workspace-switcher')).toBeVisible();
     await expect(
-      alice.page.getByRole('button', { name: /Log out/i }),
+      alice.page.getByRole('button', { name: 'Log out', exact: true }),
     ).toBeEnabled();
 
     // Fill the name and continue.

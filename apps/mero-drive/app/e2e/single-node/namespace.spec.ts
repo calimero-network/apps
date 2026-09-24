@@ -9,9 +9,9 @@ test.describe('Namespace (single-node)', () => {
   test('create namespace via NamespaceSwitcher', async ({ alice }) => {
     await alice.goToWorkspace();
     await alice.createNamespace('Phoenix Alpha');
-    await expect(
-      alice.page.locator('select').first().locator('option:checked'),
-    ).toHaveText('Phoenix Alpha');
+    await expect(alice.page.getByTestId('workspace-switcher')).toContainText(
+      'Phoenix Alpha',
+    );
   });
 
   test('switch between namespaces', async ({ alice }) => {
@@ -19,9 +19,9 @@ test.describe('Namespace (single-node)', () => {
     await alice.createNamespace('Phoenix A');
     await alice.createNamespace('Phoenix B');
     await alice.switchNamespace('Phoenix A');
-    await expect(
-      alice.page.locator('select').first().locator('option:checked'),
-    ).toHaveText('Phoenix A');
+    await expect(alice.page.getByTestId('workspace-switcher')).toContainText(
+      'Phoenix A',
+    );
   });
 
   test('empty workspace shows Select-a-folder state', async ({ alice }) => {
