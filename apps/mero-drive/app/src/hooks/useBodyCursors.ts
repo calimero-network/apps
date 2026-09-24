@@ -37,13 +37,12 @@ export interface UseBodyCursorsOptions {
   /** Changes whenever the body was re-read, so anchors resolve again. */
   revision: unknown;
   /** The node's id for a block this window knows by its own, and back. */
-  toBackendId?: (editorId: string) => string;
-  toEditorId?: (backendId: string) => string;
+  toBackendId: (editorId: string) => string;
+  toEditorId: (backendId: string) => string;
 }
 
 const SETTLE_MS = 150; // publish once a caret stops moving, not per keystroke
 const RETRY_MS = 400; // the node may not hold the text the caret counts yet
-const same = (id: string) => id;
 
 interface AuthoredSlice {
   author: string;
@@ -69,8 +68,8 @@ export function useBodyCursors({
   peers,
   publish,
   revision,
-  toBackendId = same,
-  toEditorId = same,
+  toBackendId,
+  toEditorId,
 }: UseBodyCursorsOptions): void {
   const publishRef = useRef(publish);
   publishRef.current = publish;

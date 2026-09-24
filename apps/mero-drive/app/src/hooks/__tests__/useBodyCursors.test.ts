@@ -98,11 +98,12 @@ const client = {
 };
 
 const publish = vi.fn();
+const identity = { toBackendId: (id: string) => id, toEditorId: (id: string) => id };
 
 function mount(
   peers: Map<string, DocPresence>,
   editor: CursorEditor | null,
-  ids?: { toBackendId: (id: string) => string; toEditorId: (id: string) => string },
+  ids = identity,
 ) {
   return renderHook(() =>
     useBodyCursors({

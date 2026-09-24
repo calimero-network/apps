@@ -337,10 +337,10 @@ export function useFugueBody({
         const { at, remove, insert } = changedRange(peer.document, target);
         const ids = remove.map((block) => block.id);
         const nodes = insert as unknown as Record<string, unknown>[];
-        if (ids.length > 0 && nodes.length > 0) peer.replaceBlocks(ids, nodes);
-        else if (ids.length > 0) peer.removeBlocks(ids);
-        else if (nodes.length > 0 && at > 0) peer.insertBlocks(nodes, peer.document[at - 1].id, 'after');
-        else if (nodes.length > 0) peer.insertBlocks(nodes, peer.document[0].id, 'before');
+        if (ids.length > 0) peer.replaceBlocks(ids, nodes);
+        else if (nodes.length > 0) {
+          peer.insertBlocks(nodes, peer.document[Math.max(at - 1, 0)].id, at > 0 ? 'after' : 'before');
+        }
       });
       const present = new Set(fromBlockNote(live.document).map((block) => block.id));
       for (const editorId of [...idMapRef.current.keys()]) {
