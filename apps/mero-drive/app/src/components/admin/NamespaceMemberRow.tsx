@@ -71,7 +71,7 @@ interface Props {
 function roleBadgeClasses(role: string | undefined): string {
   switch (role) {
     case 'Admin':
-      return 'bg-primary/10 text-primary border-primary/30';
+      return 'bg-selected text-selected-foreground border-transparent';
     case 'ReadOnly':
       return 'bg-muted text-muted-foreground border-border';
     case 'Member':

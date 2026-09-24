@@ -42,6 +42,8 @@ export function FolderTreeItem({
 }: Props) {
   const folder = byId.get(node.id);
   const isSelected = selectedId === node.id;
+  // An open doc always belongs to the selected folder; highlight only the doc.
+  const isHighlighted = isSelected && !selectedDocId;
   const isExpanded = expanded.has(node.id);
   const [renaming, setRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState('');
@@ -95,8 +97,8 @@ export function FolderTreeItem({
     <li>
       <div
         className={`group flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm cursor-pointer transition-colors ${
-          isSelected
-            ? 'bg-primary/10 text-primary font-medium'
+          isHighlighted
+            ? 'bg-selected text-selected-foreground font-medium'
             : 'text-foreground hover:bg-muted/60'
         }`}
         onClick={() => {

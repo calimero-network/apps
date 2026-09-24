@@ -75,7 +75,7 @@ export const EditorHeader: React.FC<EditorHeaderProps> = ({
             onKeyDown={title.onKeyDown}
             // Sized to the text so the icon sits beside a centred title, not beside an empty box.
             style={{ width: `${Math.max(title.value.length, MIN_TITLE_CH) + 2}ch` }}
-            className="max-w-full bg-transparent rounded px-2 py-1 text-center text-sm font-medium border border-transparent hover:border-border focus:border-primary/50 focus:outline-none focus:ring-2 focus:ring-primary/30"
+            className="max-w-full bg-transparent rounded px-2 py-1 text-center text-sm font-medium border border-transparent hover:border-border focus:border-ring focus:outline-none focus:ring-2 focus:ring-primary/40"
           />
           <TitleCursors
             carets={title.carets}

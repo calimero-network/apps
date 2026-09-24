@@ -9,18 +9,18 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default: "bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm hover:shadow-md",
+        default: "bg-primary text-primary-foreground hover:bg-primary/85",
         destructive: "bg-destructive text-destructive-foreground hover:bg-destructive/90 shadow-sm",
         outline: "border border-input bg-background hover:bg-accent hover:text-accent-foreground",
         secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/80",
         ghost: "hover:bg-accent hover:text-accent-foreground",
-        link: "text-primary underline-offset-4 hover:underline",
+        link: "text-primary-ink underline-offset-4 hover:underline",
         // Custom variants for Mero Drive
         hero: "bg-primary text-primary-foreground shadow-glow hover:shadow-glow-lg hover:scale-[1.02] active:scale-[0.98]",
         "hero-outline": "border-2 border-primary/30 bg-transparent text-foreground hover:bg-primary/10 hover:border-primary/50",
         secure: "bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm",
         toolbar: "bg-transparent hover:bg-muted text-muted-foreground hover:text-foreground h-8 w-8 p-0",
-        "toolbar-active": "bg-primary/10 text-primary hover:bg-primary/20 h-8 w-8 p-0",
+        "toolbar-active": "bg-selected text-selected-foreground hover:bg-selected/80 h-8 w-8 p-0",
       },
       size: {
         default: "h-10 px-4 py-2",

@@ -198,9 +198,9 @@ export function WorkspaceLayout() {
           <ThemeToggle />
           {namespaceId && (
             <Button
-              variant={showSettings ? 'default' : 'ghost'}
+              variant="ghost"
               size="sm"
-              className="gap-1.5"
+              className={`gap-1.5 ${showSettings ? 'bg-selected text-selected-foreground hover:bg-selected' : ''}`}
               aria-pressed={showSettings}
               onClick={() => setShowSettings((v) => !v)}
             >
@@ -385,7 +385,7 @@ function SyncingWorkspaceState({
     <div className="flex h-full items-center justify-center p-8">
       <div className="w-full max-w-md text-center">
         {!stalled && (
-          <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-b-2 border-t-2 border-primary" />
+          <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-b-2 border-t-2 border-primary-ink" />
         )}
         <h2 className="text-xl font-semibold text-foreground">{title}</h2>
         <p className="mt-2 text-sm text-muted-foreground">{body}</p>
