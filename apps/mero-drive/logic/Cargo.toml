@@ -13,10 +13,6 @@ repository.workspace = true
 [lib]
 crate-type = ["cdylib", "rlib"]
 
-[features]
-default   = []
-schema_v2 = []
-
 [package.metadata.calimero]
 package     = "com.calimero.mero-drive-docs"
 name        = "Mero Drive Docs"
@@ -35,7 +31,7 @@ icon        = "assets/icon-512x512.png"
 # contract is built against rc.26, and a node older than that installs the bundle
 # happily and then dies at context creation with `link error: unknown import`.
 # check-app-metadata.sh now asserts this equals the workspace value.
-min-runtime-version = "0.11.0-rc.41"
+min-runtime-version = "0.11.0-rc.42"
 frontend    = "https://mero-drive.vercel.app"
 
 # Two services, ONE bundle. Declared at PACKAGE level, which cargo-mero supports
@@ -57,6 +53,7 @@ crate = "mero-drive-registry"
 
 [dependencies]
 mero-drive-types        = { path = "crates/types" }
+bs58                    = { workspace = true }
 calimero-sdk            = { workspace = true }
 calimero-storage        = { workspace = true }
 calimero-storage-macros = { workspace = true }

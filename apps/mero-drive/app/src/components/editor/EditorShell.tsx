@@ -32,7 +32,6 @@ import { EditorStatusBar } from './EditorStatusBar';
 import { EditorHeader } from './EditorHeader';
 import { useTheme } from '@/components/theme/ThemeProvider';
 import { schema } from './blocknote/schema';
-import { DriveFormattingToolbar } from './blocknote/FormattingToolbar';
 import {
   serializeBlocks,
   parseStoredContent,
@@ -249,11 +248,7 @@ export const EditorShell: React.FC<EditorShellProps> = ({
                 editor={editor}
                 editable={!readOnly}
                 theme={theme}
-                formattingToolbar={false}
-              >
-                {/* Custom selection toolbar: defaults + font-size control. */}
-                <DriveFormattingToolbar />
-              </BlockNoteView>
+              />
             </div>
           </div>
 

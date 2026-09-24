@@ -41,7 +41,7 @@ catalog:
   "@calimero-network/mero-icons": ^0.0.5
   "@calimero-network/mero-platform": ^0.1.0
   "@calimero-network/mero-platform-react": ^0.1.0
-  "@calimero-network/abi-codegen": ^2.0.1
+  "@calimero-network/abi-codegen": ^2.1.0
 
   # ── runtime ────────────────────────────────────────────────────────────────
   react: ^19.2.8

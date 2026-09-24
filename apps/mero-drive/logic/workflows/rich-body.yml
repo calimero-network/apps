@@ -1,0 +1,861 @@
+name: Mero Drive - Rich Title and Body
+description: >
+  The document title (FugueText) and body (RichDocument) driven over JSON-RPC by
+  three real nodes. Every body and title method is called here, and the two
+  convergence cases edit DISJOINT positions so the converged value is one
+  literal whichever order the deltas arrive in.
+
+  The concurrent window runs with Node 3 stopped, so its catch-up is a real
+  offline replay rather than a race: partition_peers is a no-op outside Docker.
+
+e2e_mode: true
+
+# Defined individually so every port is pinned: the count form lets --e2e-mode
+# allocate ports dynamically, and a later start_node reconnects on base_port.
+nodes:
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.42
+  mdns: true
+  drive-node-1:
+    port: 3910
+    rpc_port: 3911
+  drive-node-2:
+    port: 3912
+    rpc_port: 3913
+  drive-node-3:
+    port: 3914
+    rpc_port: 3915
+
+steps:
+  # ── bootstrap ────────────────────────────────────────────────────────────
+
+  - name: Install the bundle on Node 1
+    type: install_application
+    node: drive-node-1
+    path: dist/com.calimero.mero-drive-docs.mpk
+    dev: true
+    outputs:
+      app_id: applicationId
+
+  # A node cut off from its peers cannot lazily fetch bytecode, so install first.
+  - name: Install the bundle on Node 2
+    type: install_application
+    node: drive-node-2
+    path: dist/com.calimero.mero-drive-docs.mpk
+    dev: true
+
+  - name: Install the bundle on Node 3
+    type: install_application
+    node: drive-node-3
+    path: dist/com.calimero.mero-drive-docs.mpk
+    dev: true
+
+  # merobox waits for container health, which is not the same as ready: on a
+  # cold host the first admin call returns 500 a few seconds into the run.
+  - name: Settle before the first admin call
+    type: wait
+    seconds: 12
+
+  - name: Alice creates the namespace
+    type: create_namespace
+    node: drive-node-1
+    application_id: '{{app_id}}'
+    outputs:
+      namespace_id: namespaceId
+
+  - name: Alice creates the folder group
+    type: create_group_in_namespace
+    node: drive-node-1
+    namespace_id: '{{namespace_id}}'
+    group_name: notes
+    outputs:
+      notes_group: groupId
+
+  - name: Alice creates the docs context bound to the folder group
+    type: create_context
+    node: drive-node-1
+    application_id: '{{app_id}}'
+    group_id: '{{notes_group}}'
+    service_name: docs
+    outputs:
+      docs_ctx: contextId
+      alice_key: memberPublicKey
+
+  - name: Create a namespace invitation for Bob
+    type: create_namespace_invitation
+    node: drive-node-1
+    namespace_id: '{{namespace_id}}'
+    outputs:
+      bob_invite: invitation
+
+  - name: Create a namespace invitation for Carol
+    type: create_namespace_invitation
+    node: drive-node-1
+    namespace_id: '{{namespace_id}}'
+    outputs:
+      carol_invite: invitation
+
+  - name: Wait for namespace gossip to reach the other nodes
+    type: wait
+    seconds: 10
+
+  - name: Bob joins the namespace
+    type: join_namespace
+    node: drive-node-2
+    namespace_id: '{{namespace_id}}'
+    invitation: '{{bob_invite}}'
+    outputs:
+      bob_identity: memberIdentity
+
+  - name: Settle before Carol joins the namespace
+    type: wait
+    seconds: 12
+
+  - name: Carol joins the namespace
+    type: join_namespace
+    node: drive-node-3
+    namespace_id: '{{namespace_id}}'
+    invitation: '{{carol_invite}}'
+    outputs:
+      carol_identity: memberIdentity
+
+  - name: Alice adds Bob and Carol to the folder group
+    type: add_group_members
+    node: drive-node-1
+    group_id: '{{notes_group}}'
+    members:
+      - identity: '{{bob_identity}}'
+        role: Member
+      - identity: '{{carol_identity}}'
+        role: Member
+
+  - name: Wait for folder subgroup membership to propagate
+    type: wait
+    seconds: 10
+
+  - name: Bob joins the docs context
+    type: join_context
+    node: drive-node-2
+    context_id: '{{docs_ctx}}'
+    outputs:
+      bob_key: memberPublicKey
+
+  - name: Carol joins the docs context
+    type: join_context
+    node: drive-node-3
+    context_id: '{{docs_ctx}}'
+    outputs:
+      carol_key: memberPublicKey
+
+  - name: Sync the docs context across all three nodes
+    type: wait_for_sync
+    nodes: [drive-node-1, drive-node-2, drive-node-3]
+    context_id: '{{docs_ctx}}'
+    timeout: 60
+    trigger_sync: true
+
+  # ── the two documents ────────────────────────────────────────────────────
+
+  - name: Alice creates the title document
+    type: call
+    node: drive-node-1
+    context_id: '{{docs_ctx}}'
+    method: create_doc
+    executor_public_key: '{{alice_key}}'
+    args:
+      title: core
+    outputs:
+      title_doc: result.output
+
+  - name: Alice creates the body document
+    type: call
+    node: drive-node-1
+    context_id: '{{docs_ctx}}'
+    method: create_doc
+    executor_public_key: '{{alice_key}}'
+    args:
+      title: Notes
+    outputs:
+      body_doc: result.output
+
+  - name: The seeded title reads back
+    type: call
+    node: drive-node-1
+    context_id: '{{docs_ctx}}'
+    method: get_title
+    executor_public_key: '{{alice_key}}'
+    args:
+      doc: '{{title_doc}}'
+    outputs:
+      seeded_title: result
+
+  - name: Assert the seeded title
+    type: json_assert
+    statements:
+      - 'json_equal({{seeded_title}}, {"output": "core"})'
+
+  # ── every title method ───────────────────────────────────────────────────
+
+  - name: Alice types a suffix onto the title document
+    type: call
+    node: drive-node-1
+    context_id: '{{docs_ctx}}'
+    method: title_apply_delta
+    executor_public_key: '{{alice_key}}'
+    args:
+      doc: '{{title_doc}}'
+      ops:
+        - retain: 4
+        - insert: ' draft'
+    outputs:
+      title_undo_token: result.output
+
+  - name: The suffix landed
+    type: call
+    node: drive-node-1
+    context_id: '{{docs_ctx}}'
+    method: get_title
+    executor_public_key: '{{alice_key}}'
+    args:
+      doc: '{{title_doc}}'
+    outputs:
+      title_after_suffix: result
+
+  - name: Assert the suffix
+    type: json_assert
+    statements:
+      - 'json_equal({{title_after_suffix}}, {"output": "core draft"})'
+
+  - name: Alice takes the suffix back
+    type: call
+    node: drive-node-1
+    context_id: '{{docs_ctx}}'
+    method: title_undo
+    executor_public_key: '{{alice_key}}'
+    args:
+      doc: '{{title_doc}}'
+      token: '{{title_undo_token}}'
+    outputs:
+      title_redo_token: result.output
+
+  - name: Assert the undo restored the seeded title
+    type: assert
+    statements:
+      - 'is_set({{title_redo_token}})'
+
+  # Anchored mid-string, not at the end: an end anchor borsh-encodes to one
+  # byte, whose bs58 token is "2", and YAML reads that back as an integer.
+  - name: Alice anchors the gap before the third character of the title
+    type: call
+    node: drive-node-1
+    context_id: '{{docs_ctx}}'
+    method: title_anchor_at
+    executor_public_key: '{{alice_key}}'
+    args:
+      doc: '{{title_doc}}'
+      position: 2
+      before: true
+    outputs:
+      title_anchor: result.output
+
+  - name: Resolve Alice's title anchor
+    type: call
+    node: drive-node-1
+    context_id: '{{docs_ctx}}'
+    method: title_resolve
+    executor_public_key: '{{alice_key}}'
+    args:
+      doc: '{{title_doc}}'
+      anchors:
+        - '{{title_anchor}}'
+    outputs:
+      title_positions: result
+
+  - name: Assert the title anchor resolves where it was placed
+    type: json_assert
+    statements:
+      - 'json_equal({{title_positions}}, {"output": [2]})'
+
+  # ── every body method ────────────────────────────────────────────────────
+
+  - name: Alice adds the first block
+    type: call
+    node: drive-node-1
+    context_id: '{{docs_ctx}}'
+    method: insert_block
+    executor_public_key: '{{alice_key}}'
+    args:
+      doc: '{{body_doc}}'
+      after: null
+      kind: paragraph
+      depth: 0
+    outputs:
+      block: result.output
+
+  - name: Alice types into the first block
+    type: call
+    node: drive-node-1
+    context_id: '{{docs_ctx}}'
+    method: apply_delta
+    executor_public_key: '{{alice_key}}'
+    args:
+      doc: '{{body_doc}}'
+      block: '{{block}}'
+      ops:
+        - insert: fox
+
+  - name: Read the block back as text
+    type: call
+    node: drive-node-1
+    context_id: '{{docs_ctx}}'
+    method: get_text
+    executor_public_key: '{{alice_key}}'
+    args:
+      doc: '{{body_doc}}'
+      block: '{{block}}'
+    outputs:
+      block_text: result
+
+  - name: Assert the block text
+    type: json_assert
+    statements:
+      - 'json_equal({{block_text}}, {"output": "fox"})'
+
+  - name: List the blocks
+    type: call
+    node: drive-node-1
+    context_id: '{{docs_ctx}}'
+    method: list_blocks
+    executor_public_key: '{{alice_key}}'
+    args:
+      doc: '{{body_doc}}'
+    outputs:
+      block_ids: result
+
+  - name: Assert the document holds exactly the one block
+    type: json_assert
+    statements:
+      - 'json_equal({{block_ids}}, {"output": ["{{block}}"]})'
+
+  - name: Read one block
+    type: call
+    node: drive-node-1
+    context_id: '{{docs_ctx}}'
+    method: get_block
+    executor_public_key: '{{alice_key}}'
+    args:
+      doc: '{{body_doc}}'
+      block: '{{block}}'
+    outputs:
+      one_block: result
+
+  - name: Assert the block renders its kind, depth and text
+    type: json_assert
+    statements:
+      - 'json_equal({{one_block}}, {"output": {"id": "{{block}}", "kind": "paragraph", "depth": 0, "attrs": {}, "spans": [{"text": "fox"}]}})'
+
+  - name: Read the whole document
+    type: call
+    node: drive-node-1
+    context_id: '{{docs_ctx}}'
+    method: get_document
+    executor_public_key: '{{alice_key}}'
+    args:
+      doc: '{{body_doc}}'
+    outputs:
+      whole_document: result
+
+  - name: Assert the whole document is that one block
+    type: json_assert
+    statements:
+      - 'json_equal({{whole_document}}, {"output": [{"id": "{{block}}", "kind": "paragraph", "depth": 0, "attrs": {}, "spans": [{"text": "fox"}]}]})'
+
+  - name: Alice bolds the word
+    type: call
+    node: drive-node-1
+    context_id: '{{docs_ctx}}'
+    method: mark
+    executor_public_key: '{{alice_key}}'
+    args:
+      doc: '{{body_doc}}'
+      block: '{{block}}'
+      start: 0
+      end: 3
+      key: bold
+      value: 'true'
+    outputs:
+      bold_mark: result.output
+
+  - name: Assert the mark was minted
+    type: assert
+    statements:
+      - 'is_set({{bold_mark}})'
+
+  - name: Read the block's rendered spans
+    type: call
+    node: drive-node-1
+    context_id: '{{docs_ctx}}'
+    method: get_block_delta
+    executor_public_key: '{{alice_key}}'
+    args:
+      doc: '{{body_doc}}'
+      block: '{{block}}'
+    outputs:
+      bold_spans: result
+
+  # `true` unquoted: core renders a mark value as the JSON it parses to, so a
+  # client reads a boolean here and not the string the write passed.
+  - name: Assert the whole word is one bold span
+    type: json_assert
+    statements:
+      - 'json_equal({{bold_spans}}, {"output": [{"text": "fox", "attributes": {"bold": true}}]})'
+
+  - name: Alice takes the bold back off
+    type: call
+    node: drive-node-1
+    context_id: '{{docs_ctx}}'
+    method: mark
+    executor_public_key: '{{alice_key}}'
+    args:
+      doc: '{{body_doc}}'
+      block: '{{block}}'
+      start: 0
+      end: 3
+      key: bold
+      value: null
+
+  - name: Alice makes the block a heading, indents it and aligns it
+    type: call
+    node: drive-node-1
+    context_id: '{{docs_ctx}}'
+    method: set_kind
+    executor_public_key: '{{alice_key}}'
+    args:
+      doc: '{{body_doc}}'
+      block: '{{block}}'
+      kind: heading
+
+  - name: Indent the heading
+    type: call
+    node: drive-node-1
+    context_id: '{{docs_ctx}}'
+    method: set_depth
+    executor_public_key: '{{alice_key}}'
+    args:
+      doc: '{{body_doc}}'
+      block: '{{block}}'
+      depth: 1
+
+  - name: Align the heading
+    type: call
+    node: drive-node-1
+    context_id: '{{docs_ctx}}'
+    method: set_attr
+    executor_public_key: '{{alice_key}}'
+    args:
+      doc: '{{body_doc}}'
+      block: '{{block}}'
+      key: align
+      value: end
+
+  - name: Read the structured digest
+    type: call
+    node: drive-node-1
+    context_id: '{{docs_ctx}}'
+    method: get_state_digest
+    executor_public_key: '{{alice_key}}'
+    args:
+      doc: '{{body_doc}}'
+    outputs:
+      structured_digest: result
+
+  - name: Assert the kind, depth and attribute all render
+    type: json_assert
+    statements:
+      - 'json_equal({{structured_digest}}, {"output": "heading/1[align=end]{:fox};"})'
+
+  - name: Drop the alignment
+    type: call
+    node: drive-node-1
+    context_id: '{{docs_ctx}}'
+    method: set_attr
+    executor_public_key: '{{alice_key}}'
+    args:
+      doc: '{{body_doc}}'
+      block: '{{block}}'
+      key: align
+      value: null
+
+  - name: Unindent the block
+    type: call
+    node: drive-node-1
+    context_id: '{{docs_ctx}}'
+    method: set_depth
+    executor_public_key: '{{alice_key}}'
+    args:
+      doc: '{{body_doc}}'
+      block: '{{block}}'
+      depth: 0
+
+  - name: Make the block a paragraph again
+    type: call
+    node: drive-node-1
+    context_id: '{{docs_ctx}}'
+    method: set_kind
+    executor_public_key: '{{alice_key}}'
+    args:
+      doc: '{{body_doc}}'
+      block: '{{block}}'
+      kind: paragraph
+
+  - name: Alice splits the block
+    type: call
+    node: drive-node-1
+    context_id: '{{docs_ctx}}'
+    method: split_block
+    executor_public_key: '{{alice_key}}'
+    args:
+      doc: '{{body_doc}}'
+      block: '{{block}}'
+      at: 1
+    outputs:
+      tail_block: result.output
+
+  - name: Read the split digest
+    type: call
+    node: drive-node-1
+    context_id: '{{docs_ctx}}'
+    method: get_state_digest
+    executor_public_key: '{{alice_key}}'
+    args:
+      doc: '{{body_doc}}'
+    outputs:
+      split_digest: result
+
+  - name: Assert the split produced two blocks
+    type: json_assert
+    statements:
+      - 'json_equal({{split_digest}}, {"output": "paragraph/0{:f};paragraph/0{:ox};"})'
+
+  - name: Alice merges the halves back
+    type: call
+    node: drive-node-1
+    context_id: '{{docs_ctx}}'
+    method: merge_blocks
+    executor_public_key: '{{alice_key}}'
+    args:
+      doc: '{{body_doc}}'
+      first: '{{block}}'
+      second: '{{tail_block}}'
+
+  - name: Read the merged digest
+    type: call
+    node: drive-node-1
+    context_id: '{{docs_ctx}}'
+    method: get_state_digest
+    executor_public_key: '{{alice_key}}'
+    args:
+      doc: '{{body_doc}}'
+    outputs:
+      merged_digest: result
+
+  - name: Assert the merge restored the one block
+    type: json_assert
+    statements:
+      - 'json_equal({{merged_digest}}, {"output": "paragraph/0{:fox};"})'
+
+  - name: Alice appends a sentence, then takes it back
+    type: call
+    node: drive-node-1
+    context_id: '{{docs_ctx}}'
+    method: apply_delta
+    executor_public_key: '{{alice_key}}'
+    args:
+      doc: '{{body_doc}}'
+      block: '{{block}}'
+      ops:
+        - retain: 3
+        - insert: ' jumped.'
+    outputs:
+      body_undo_token: result.output
+
+  - name: Count the appended passage
+    type: call
+    node: drive-node-1
+    context_id: '{{docs_ctx}}'
+    method: passage_count
+    executor_public_key: '{{alice_key}}'
+    args:
+      doc: '{{body_doc}}'
+      block: '{{block}}'
+      needle: 'fox jumped.'
+    outputs:
+      passages: result
+
+  - name: Assert the sentence appears exactly once
+    type: json_assert
+    statements:
+      - 'json_equal({{passages}}, {"output": 1})'
+
+  - name: Alice undoes the append
+    type: call
+    node: drive-node-1
+    context_id: '{{docs_ctx}}'
+    method: undo
+    executor_public_key: '{{alice_key}}'
+    args:
+      doc: '{{body_doc}}'
+      block: '{{block}}'
+      token: '{{body_undo_token}}'
+
+  - name: Read the digest after the undo
+    type: call
+    node: drive-node-1
+    context_id: '{{docs_ctx}}'
+    method: get_state_digest
+    executor_public_key: '{{alice_key}}'
+    args:
+      doc: '{{body_doc}}'
+    outputs:
+      undone_digest: result
+
+  - name: Assert the undo restored the previous digest
+    type: json_assert
+    statements:
+      - 'json_equal({{undone_digest}}, {"output": "paragraph/0{:fox};"})'
+
+  - name: Alice anchors the gap before the last character of the word
+    type: call
+    node: drive-node-1
+    context_id: '{{docs_ctx}}'
+    method: anchor_at
+    executor_public_key: '{{alice_key}}'
+    args:
+      doc: '{{body_doc}}'
+      block: '{{block}}'
+      position: 2
+      before: true
+    outputs:
+      body_anchor: result.output
+
+  - name: Resolve that anchor
+    type: call
+    node: drive-node-1
+    context_id: '{{docs_ctx}}'
+    method: resolve_ids
+    executor_public_key: '{{alice_key}}'
+    args:
+      doc: '{{body_doc}}'
+      block: '{{block}}'
+      anchors:
+        - '{{body_anchor}}'
+    outputs:
+      body_positions: result
+
+  - name: Assert the body anchor resolves where it was placed
+    type: json_assert
+    statements:
+      - 'json_equal({{body_positions}}, {"output": [2]})'
+
+  - name: Alice adds a list item after the paragraph
+    type: call
+    node: drive-node-1
+    context_id: '{{docs_ctx}}'
+    method: insert_block
+    executor_public_key: '{{alice_key}}'
+    args:
+      doc: '{{body_doc}}'
+      after: '{{block}}'
+      kind: bulletListItem
+      depth: 0
+    outputs:
+      item_block: result.output
+
+  - name: Type into the list item
+    type: call
+    node: drive-node-1
+    context_id: '{{docs_ctx}}'
+    method: apply_delta
+    executor_public_key: '{{alice_key}}'
+    args:
+      doc: '{{body_doc}}'
+      block: '{{item_block}}'
+      ops:
+        - insert: item
+
+  - name: Alice moves the list item to the top
+    type: call
+    node: drive-node-1
+    context_id: '{{docs_ctx}}'
+    method: move_block
+    executor_public_key: '{{alice_key}}'
+    args:
+      doc: '{{body_doc}}'
+      block: '{{item_block}}'
+      after: null
+
+  - name: Read the reordered digest
+    type: call
+    node: drive-node-1
+    context_id: '{{docs_ctx}}'
+    method: get_state_digest
+    executor_public_key: '{{alice_key}}'
+    args:
+      doc: '{{body_doc}}'
+    outputs:
+      reordered_digest: result
+
+  - name: Assert the list item now comes first
+    type: json_assert
+    statements:
+      - 'json_equal({{reordered_digest}}, {"output": "bulletListItem/0{:item};paragraph/0{:fox};"})'
+
+  - name: Alice deletes the list item
+    type: call
+    node: drive-node-1
+    context_id: '{{docs_ctx}}'
+    method: delete_block
+    executor_public_key: '{{alice_key}}'
+    args:
+      doc: '{{body_doc}}'
+      block: '{{item_block}}'
+
+  - name: Both documents reached every node before the concurrent window
+    type: wait_for_sync
+    context_id: '{{docs_ctx}}'
+    nodes: [drive-node-1, drive-node-2, drive-node-3]
+    timeout: 120
+    trigger_sync: true
+    expect:
+      method: get_state_digest
+      args:
+        doc: '{{body_doc}}'
+      equals:
+        output: 'paragraph/0{:fox};'
+
+  # ── the concurrent window ────────────────────────────────────────────────
+  #
+  # Both cases edit DISJOINT positions, so the converged value is one literal
+  # whichever order the deltas arrive in and there is nothing to flake on.
+
+  - name: Stop Node 3 for the whole concurrent window
+    type: stop_node
+    nodes: [drive-node-3]
+
+  - name: Settle after Node 3 goes down
+    type: wait
+    seconds: 10
+
+  # The APPEND goes first and the PREPEND second, in both cases. A prepend is
+  # index 0, so it lands the same whether or not the append has arrived yet -
+  # which is what makes one literal true under a real partition and under the
+  # no-op partition_peers leaves outside Docker.
+
+  - name: Bob appends to the title
+    type: call
+    node: drive-node-2
+    context_id: '{{docs_ctx}}'
+    method: title_apply_delta
+    executor_public_key: '{{bob_key}}'
+    args:
+      doc: '{{title_doc}}'
+      ops:
+        - retain: 4
+        - insert: ' team'
+
+  - name: Alice prepends to the same title
+    type: call
+    node: drive-node-1
+    context_id: '{{docs_ctx}}'
+    method: title_apply_delta
+    executor_public_key: '{{alice_key}}'
+    args:
+      doc: '{{title_doc}}'
+      ops:
+        - insert: 'the '
+
+  - name: Bob appends to the shared block
+    type: call
+    node: drive-node-2
+    context_id: '{{docs_ctx}}'
+    method: apply_delta
+    executor_public_key: '{{bob_key}}'
+    args:
+      doc: '{{body_doc}}'
+      block: '{{block}}'
+      ops:
+        - retain: 3
+        - insert: ' jumped.'
+
+  - name: Alice prepends to the same block
+    type: call
+    node: drive-node-1
+    context_id: '{{docs_ctx}}'
+    method: apply_delta
+    executor_public_key: '{{alice_key}}'
+    args:
+      doc: '{{body_doc}}'
+      block: '{{block}}'
+      ops:
+        - insert: 'The '
+
+  - name: Bring Node 3 back
+    type: start_node
+    nodes: [drive-node-3]
+
+  - name: Wait for Node 3 to rejoin the mesh
+    type: wait
+    seconds: 15
+
+  - name: Both title edits survived on every node
+    type: wait_for_sync
+    context_id: '{{docs_ctx}}'
+    nodes: [drive-node-1, drive-node-2, drive-node-3]
+    timeout: 180
+    trigger_sync: true
+    expect:
+      method: get_title
+      args:
+        doc: '{{title_doc}}'
+      equals:
+        output: 'the core team'
+
+  - name: Both body edits survived on every node
+    type: wait_for_sync
+    context_id: '{{docs_ctx}}'
+    nodes: [drive-node-1, drive-node-2, drive-node-3]
+    timeout: 180
+    trigger_sync: true
+    expect:
+      method: get_state_digest
+      args:
+        doc: '{{body_doc}}'
+      equals:
+        output: 'paragraph/0{:The fox jumped.};'
+
+  - name: Neither sentence was interleaved
+    type: call
+    node: drive-node-3
+    context_id: '{{docs_ctx}}'
+    method: passage_count
+    executor_public_key: '{{carol_key}}'
+    args:
+      doc: '{{body_doc}}'
+      block: '{{block}}'
+      needle: 'The fox jumped.'
+    outputs:
+      converged_passages: result
+
+  - name: Assert the sentence reads once, end to end
+    type: json_assert
+    statements:
+      - 'json_equal({{converged_passages}}, {"output": 1})'
+
+  - name: No node reported a stuck root-hash divergence
+    type: assert_log_absent
+    nodes: [drive-node-1, drive-node-2, drive-node-3]
+    patterns:
+      - 'DIVERGENCE DETECTED'
+
+stop_all_nodes: true
+restart: false
+wait_timeout: 120

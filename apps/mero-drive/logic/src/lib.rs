@@ -5,41 +5,37 @@
 //!
 //! ## CRDT shape
 //!
-//! Each doc uses CRDT fields so concurrent edits merge deterministically:
+//! Every `position`, `start`, `end` and `at` on this surface indexes Unicode
+//! scalar values, not bytes and not UTF-16 code units. Block, mark and anchor
+//! identities cross JSON-RPC as bs58-encoded borsh, so a client passes them
+//! back verbatim and never parses them.
 //!
-//! - `title`   — `LwwRegister<String>` (simple overwrite with HLC tie-break)
-//! - `content` — `LwwRegister<String>` (legacy whole-snapshot body, last-write-
-//!   wins; the default non-collaborative path)
-//! - `content_updates` — `UnorderedSet<Vec<u8>>`, an add-only, idempotent log
-//!   of opaque **Yjs binary update blobs**. The collaborative editing path: Yjs
-//!   at the client owns the ProseMirror/BlockNote tree CRDT, and the WASM is a
-//!   replicated, convergent append-log of its updates. Add-wins set-union merge
-//!   (reused from core, content-addressed) makes concurrent edits MERGE rather
-//!   than LWW-clobber, and sidesteps core's RGA bugs (no flat char-RGA here).
-//! - `tags`    — `LwwRegister<Vec<String>>` (LWW-replaced list)
-//! - `archived` / `updated_at` — `LwwRegister<_>`
-//! - `created_at` — plain `u64`, written once at create time; treated as
-//!   immutable (writes are idempotent since creates of the same id are rejected).
+//! - `title` — `FugueText`, plain text that merges character by character
+//! - `body` — `RichDocument<DriveMarks>`, an ordered list of blocks each with
+//!   its own text, formatting and structure
+//! - `tags` — `LwwRegister<Vec<String>>` (LWW-replaced list)
+//! - `archived` / `created_at` / `updated_at` — `LwwRegister<_>`
 //!
-//! The nested `content_updates` set requires `DocRecord` to be a registered
-//! `RekeyTarget` so its storage id is deterministic across replicas — see the
-//! `DocRecord` doc comment for why this is the load-bearing correctness piece.
-//!
-//! ## Scope (v1)
+//! ## Scope
 //!
 //! No cross-service calls into the registry. The docs service knows nothing
 //! about the folder tree, color, or visibility — those live in the registry
 //! context, which the client queries separately and joins on the folder id.
 
+use std::collections::BTreeMap;
+use std::ops::DerefMut;
+
 use calimero_sdk::abi::AbiType;
 use calimero_sdk::app;
-use calimero_sdk::borsh::io::{Error as BorshIoError, ErrorKind as BorshErrorKind, Read};
 use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use calimero_sdk::serde::{Deserialize, Serialize};
 use calimero_sdk::types::Error as AppError;
 use calimero_storage::collections::crdt_meta::MergeError;
+use calimero_storage::collections::fugue_text::{Anchor, Bias, TextOp, Undo};
+use calimero_storage::collections::rich_text::{Attrs, DeltaOp, DeltaUndo};
 use calimero_storage::collections::{
-    AuthoredMap, Counter, LwwRegister, Mergeable, UnorderedMap, UnorderedSet,
+    AuthoredMap, BlockId, BlockView, Counter, Expand, FugueText, LwwRegister, MarkId, MarkSchema,
+    Mergeable, RichDocument, Span, UnorderedMap, ValueRef,
 };
 use calimero_storage::env as storage_env;
 use mero_drive_types::DriveError;
@@ -48,211 +44,172 @@ pub mod events;
 use events::Event;
 
 // ---------------------------------------------------------------------------
+// Mark schema
+// ---------------------------------------------------------------------------
+
+/// The boundary policy every mero-drive document is written with.
+///
+/// Permanent once documents exist: a bias is chosen when a mark is written and
+/// never revisited, so changing an entry here re-renders nothing and only
+/// splits new writes from old ones. An undeclared key is rejected at write time.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct DriveMarks;
+
+impl MarkSchema for DriveMarks {
+    fn expand(prefix: &str) -> Option<Expand> {
+        Some(match prefix {
+            "bold" | "italic" | "underline" | "strike" | "textColor" | "backgroundColor" => {
+                Expand::After
+            }
+            "link" | "code" | "comment" => Expand::None,
+            _ => return None,
+        })
+    }
+}
+
+/// One document's body. Block `kind` and `attrs` are BlockNote's own strings,
+/// stored opaquely and never validated here.
+type Body = RichDocument<DriveMarks>;
+
+// ---------------------------------------------------------------------------
+// Wire types
+// ---------------------------------------------------------------------------
+
+/// One rendered block, mirroring `BlockView` so its id is the same bs58 token
+/// every other method takes and returns.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, AbiType)]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct Block {
+    pub id: String,
+    pub kind: String,
+    pub depth: u8,
+    pub attrs: BTreeMap<String, String>,
+    pub spans: Vec<Span>,
+}
+
+impl Block {
+    fn new(view: BlockView) -> app::Result<Self> {
+        Ok(Self {
+            id: encode_token(&view.id)?,
+            kind: view.kind,
+            depth: view.depth,
+            attrs: view.attrs,
+            spans: view.spans,
+        })
+    }
+}
+
+/// One step of an attributed editor change, mirroring `DeltaOp`, which has no
+/// `AbiType`. Untagged so the YAML stays Quill's: `- retain: 6`.
+#[derive(Clone, Debug, Serialize, Deserialize, AbiType)]
+#[serde(crate = "calimero_sdk::serde", untagged)]
+pub enum Change {
+    Retain {
+        retain: usize,
+        #[serde(default)]
+        attributes: Option<Attrs>,
+    },
+    Insert {
+        insert: String,
+        #[serde(default)]
+        attributes: Option<Attrs>,
+    },
+    Delete {
+        delete: usize,
+    },
+}
+
+impl From<Change> for DeltaOp {
+    fn from(change: Change) -> Self {
+        match change {
+            Change::Retain { retain, attributes } => Self::Retain { retain, attributes },
+            Change::Insert { insert, attributes } => Self::Insert { insert, attributes },
+            Change::Delete { delete } => Self::Delete { delete },
+        }
+    }
+}
+
+impl Change {
+    /// The plain-text op this change is, for the title. The title carries no
+    /// formatting, so an op with attributes has no meaning there.
+    fn into_text_op(self) -> app::Result<TextOp> {
+        Ok(match self {
+            Self::Retain {
+                retain,
+                attributes: None,
+            } => TextOp::Retain(retain),
+            Self::Insert {
+                insert,
+                attributes: None,
+            } => TextOp::Insert(insert),
+            Self::Delete { delete } => TextOp::Delete(delete),
+            _ => app::bail!("the title carries no formatting: drop `attributes`"),
+        })
+    }
+}
+
+/// Opaque identities cross JSON-RPC as one string, so a client never parses them.
+fn encode_token<T: calimero_sdk::borsh::BorshSerialize>(value: &T) -> app::Result<String> {
+    Ok(bs58::encode(calimero_sdk::borsh::to_vec(value)?).into_string())
+}
+
+fn decode_token<T: calimero_sdk::borsh::BorshDeserialize>(token: &str) -> app::Result<T> {
+    let bytes = bs58::decode(token).into_vec()?;
+    Ok(calimero_sdk::borsh::from_slice(&bytes)?)
+}
+
+/// One block as a line of the document digest.
+fn digest_block(view: &BlockView, out: &mut String) {
+    out.push_str(&view.kind);
+    out.push('/');
+    out.push_str(&view.depth.to_string());
+    for (key, value) in &view.attrs {
+        out.push_str(&format!("[{key}={value}]"));
+    }
+    for span in &view.spans {
+        let attrs: Vec<String> = span
+            .attributes
+            .iter()
+            .map(|(key, value)| format!("{key}={value}"))
+            .collect();
+        out.push_str(&format!("{{{}:{}}}", attrs.join(","), span.text));
+    }
+    out.push(';');
+}
+
+// ---------------------------------------------------------------------------
 // Stored model
 // ---------------------------------------------------------------------------
 
 /// Per-document record.
 ///
-/// ## Content: LWW snapshot + collaborative CRDT update log
-///
-/// Two representations of the body coexist, by design:
-///
-/// - `content: LwwRegister<String>` — the legacy whole-snapshot field the
-///   non-collaborative (default) client path reads/writes via `edit_doc`.
-///   Last-write-wins on the full HTML/JSON snapshot. Kept for backward
-///   compatibility and as the fallback when the collab feature flag is off.
-/// - `content_updates: UnorderedSet<Vec<u8>>` — an add-only, idempotent log
-///   of opaque **Yjs binary update blobs**. Yjs at the client produces these;
-///   the WASM never parses them. The set reuses core's already-correct
-///   **add-wins set-union** merge: re-delivering a blob is a no-op (content-
-///   addressed entity id), and two replicas that each append distinct updates
-///   converge to the union. This sidesteps the known core RGA bugs entirely —
-///   the CRDT structure lives in Yjs at the client; the WASM is just a
-///   replicated, convergent append-log.
-///
-/// ## Deterministic re-keying — the #1 correctness requirement
-///
-/// A nested collection (`content_updates`) stored under a value type whose
-/// nested ids are NOT deterministically re-keyed keeps a per-replica RANDOM
-/// internal storage id and therefore NEVER converges across nodes (the
-/// historical #2577 / per-doc divergence class). The fix is for `DocRecord`
-/// to be a registered
-/// [`RekeyTarget`](calimero_storage::collections::rekey::RekeyTarget): when a
-/// record is inserted into the `docs` map under a deterministic entry id,
-/// `rekey_relative_to` re-keys `content_updates` to a deterministic id derived
-/// from that parent, so every node computes the same set id and the blobs
-/// converge as entities (add-wins set-union), not as a last-writer-wins blob.
-///
-/// `#[app::mergeable]` supplies that impl. It is required from core
-/// 0.11.0-rc.32 (core#3807: every `Mergeable` type must declare HOW it merges)
-/// and it generates exactly what this type used to hand-write — the cascade in
-/// `generate_struct_rekey` namespaces each field by NAME, emitting
-/// `field_child_id(parent_id, "content_updates")`, and `register_nested_value_types`
-/// cascades the registration into `UnorderedSet<Vec<u8>>` so the set's re-key
-/// thunk is present before any insert. The child ids are therefore unchanged
-/// from the hand-written version; nothing moves in storage.
-///
-/// The attribute rather than `#[derive(Mergeable)]` because the merge below is
-/// this app's own rule, and because `created_at: u64` is immutable plain data
-/// that the derive cannot field-merge. Being the dispatched form, the rule is
-/// actually called at every merge point — it delegates to `LwwRegister` and
-/// `UnorderedSet`, which are real CRDTs, so there is no timestamp tie to break
-/// here (contrast the plain-field records elsewhere in the fleet).
-///
-/// `BorshDeserialize` is hand-written for forward compatibility: pre-collab
-/// records were serialized WITHOUT `content_updates`, so the derived decoder
-/// would hit EOF and fail. The manual impl reads the original fields, then
-/// tolerates a clean EOF on the trailing field by seeding a fresh empty set —
-/// existing docs open with an empty update log, and the first
-/// `append_doc_update` re-inserts (and thus deterministically re-keys) the
-/// record. `BorshSerialize` stays derived (always writes the field), so
-/// newly-written records round-trip exactly.
-/// NOTE: `DocRecord` is intentionally NOT `Clone` — `UnorderedSet` (a storage
-/// collection) is not `Clone`, since cloning a live collection handle would
-/// alias one storage entity behind two records. Mutators therefore edit the
-/// record in place through `docs.get_mut(...)` (write-back-on-drop) rather than
-/// the old clone-mutate-reinsert pattern (which the LWW-only `FolderRecord`
-/// still uses, as it has no nested collection).
-#[app::mergeable(id = "mero_drive::DocRecord")]
-#[derive(BorshSerialize, AbiType)]
+/// The derive supplies the deterministic re-key cascade `title` and `body`
+/// need: a nested collection stored under a value type that is not a
+/// registered `RekeyTarget` keeps a per-replica random storage id and never
+/// converges.
+#[derive(BorshSerialize, BorshDeserialize, AbiType, app::Mergeable)]
 #[borsh(crate = "calimero_sdk::borsh")]
 pub struct DocRecord {
-    pub title: LwwRegister<String>,
-    pub content: LwwRegister<String>,
+    pub title: FugueText,
+    pub body: Body,
     /// Tags as an LWW-replaced list. `add_tag` / `remove_tag` read-modify-
     /// write the whole vec; concurrent tag edits on different nodes settle
-    /// by HLC (one side's full tag set wins). For v1 this matches spec.
+    /// by HLC (one side's full tag set wins).
     pub tags: LwwRegister<Vec<String>>,
     pub archived: LwwRegister<bool>,
-    /// Immutable after create — not wrapped in a CRDT because writes of the
-    /// same value are idempotent, and `create_doc` rejects id collisions.
-    pub created_at: u64,
+    /// Written once at create time; every replica holds the same value.
+    pub created_at: LwwRegister<u64>,
     pub updated_at: LwwRegister<u64>,
-    /// Add-only log of opaque Yjs update blobs (see the type-level doc).
-    pub content_updates: UnorderedSet<Vec<u8>>,
 }
 
-/// A `Read` that yields one buffered byte first, then delegates to an inner
-/// reader. Used by the forward-compat decoder to "un-read" the single probe
-/// byte it consumed to distinguish a clean EOF from field data (see below).
-struct PrefixByteReader<'a, R: Read> {
-    prefix: Option<u8>,
-    inner: &'a mut R,
-}
-
-impl<R: Read> Read for PrefixByteReader<'_, R> {
-    fn read(&mut self, buf: &mut [u8]) -> Result<usize, BorshIoError> {
-        if buf.is_empty() {
-            return Ok(0);
-        }
-        if let Some(b) = self.prefix.take() {
-            buf[0] = b;
-            // Fill the rest (if any) from the inner reader in the same call so
-            // a `read_exact` of N>1 bytes still makes progress; partial is fine
-            // (Read may return fewer bytes — callers loop).
-            if buf.len() > 1 {
-                let n = self.inner.read(&mut buf[1..])?;
-                return Ok(1 + n);
-            }
-            return Ok(1);
-        }
-        self.inner.read(buf)
-    }
-}
-
-/// Manual, forward-compatible decoder — see the `DocRecord` doc comment.
-/// Reads the original (pre-collab) field set, then handles the trailing
-/// `content_updates` field with a strict clean-EOF-vs-corruption distinction:
-///
-///   - **Clean EOF** (ZERO bytes remain where the field would start, detected
-///     by a `read_exact` of one byte returning `UnexpectedEof`) → an old,
-///     pre-collab record that never wrote the field → seed a fresh empty set.
-///   - **Any bytes present** → a record that DOES carry the field → decode it
-///     fully and propagate ANY error, including a mid-field `UnexpectedEof`,
-///     which now means genuine corruption (a partial write/read), NOT an old
-///     record. Previously a `UnexpectedEof` anywhere inside the field was
-///     swallowed into an empty set, silently discarding a corrupt-but-nonempty
-///     update log; this probe-byte approach only treats a *boundary* EOF as the
-///     old-record case. Using `read_exact` (rather than inspecting a `read`
-///     return count) makes that boundary distinction independent of any
-///     short-read policy.
-impl BorshDeserialize for DocRecord {
-    fn deserialize_reader<R: Read>(reader: &mut R) -> Result<Self, BorshIoError> {
-        let title = LwwRegister::<String>::deserialize_reader(reader)?;
-        let content = LwwRegister::<String>::deserialize_reader(reader)?;
-        let tags = LwwRegister::<Vec<String>>::deserialize_reader(reader)?;
-        let archived = LwwRegister::<bool>::deserialize_reader(reader)?;
-        let created_at = u64::deserialize_reader(reader)?;
-        let updated_at = LwwRegister::<u64>::deserialize_reader(reader)?;
-
-        // Probe a single byte to tell a clean field-boundary EOF (old record)
-        // apart from corruption. Use `read_exact` (not `read`) for GUARANTEED
-        // semantics: it returns `Err(UnexpectedEof)` iff zero bytes remained —
-        // a clean field boundary — and `Ok(())` iff a byte was read. This
-        // removes any dependence on a particular `Read::read` short-read policy
-        // (an in-memory slice reader never short-reads, but `read_exact`'s
-        // contract makes the clean-EOF distinction airtight regardless).
-        let mut probe = [0u8; 1];
-        let content_updates = match reader.read_exact(&mut probe) {
-            Err(e) if e.kind() == BorshErrorKind::UnexpectedEof => {
-                // Clean EOF: pre-collab record, no field bytes were ever
-                // written. A fresh set carries a random id, re-keyed
-                // deterministically on the first `append_doc_update` re-insert.
-                // Empty until then.
-                UnorderedSet::new()
-            }
-            // Any other read error is genuine I/O failure, not a record boundary.
-            Err(e) => return Err(e),
-            Ok(()) => {
-                // Field data present: decode the full field, un-reading the
-                // probe byte. A mid-field EOF here is genuine corruption and
-                // propagates.
-                let mut chained = PrefixByteReader {
-                    prefix: Some(probe[0]),
-                    inner: reader,
-                };
-                UnorderedSet::<Vec<u8>>::deserialize_reader(&mut chained)?
-            }
-        };
-
-        Ok(DocRecord {
-            title,
-            content,
-            tags,
-            archived,
-            created_at,
-            updated_at,
-            content_updates,
-        })
-    }
-}
-
-impl Mergeable for DocRecord {
-    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        <LwwRegister<String> as Mergeable>::merge(&mut self.title, &other.title)?;
-        <LwwRegister<String> as Mergeable>::merge(&mut self.content, &other.content)?;
-        <LwwRegister<Vec<String>> as Mergeable>::merge(&mut self.tags, &other.tags)?;
-        <LwwRegister<bool> as Mergeable>::merge(&mut self.archived, &other.archived)?;
-        // created_at is effectively immutable — identical across replicas.
-        <LwwRegister<u64> as Mergeable>::merge(&mut self.updated_at, &other.updated_at)?;
-        // Yjs update log: add-wins union. Content-addressed entity ids make
-        // re-delivery idempotent; distinct updates from both replicas survive.
-        <UnorderedSet<Vec<u8>> as Mergeable>::merge(
-            &mut self.content_updates,
-            &other.content_updates,
-        )?;
-        Ok(())
-    }
-}
-
-/// Flat projection of a `DocRecord` for list / get APIs.
+/// Flat projection of a `DocRecord` for list / get APIs. The body is read
+/// through `get_document` / `get_block_delta`, never flattened into a string.
 #[derive(Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize, AbiType)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct DocDto {
     pub id: String,
     pub title: String,
-    pub content: String,
     pub tags: Vec<String>,
     pub archived: bool,
     pub created_at: u64,
@@ -262,11 +219,13 @@ pub struct DocDto {
 fn project(id: &str, rec: &DocRecord) -> Result<DocDto, DriveError> {
     Ok(DocDto {
         id: id.to_string(),
-        title: rec.title.get().clone(),
-        content: rec.content.get().clone(),
+        title: rec
+            .title
+            .get_text()
+            .map_err(|e| DriveError::Invalid(format!("title.get_text: {e}")))?,
         tags: rec.tags.get().clone(),
         archived: *rec.archived.get(),
-        created_at: rec.created_at,
+        created_at: *rec.created_at.get(),
         updated_at: *rec.updated_at.get(),
     })
 }
@@ -326,8 +285,7 @@ fn project_comment(id: &str, c: &Comment) -> CommentDto {
 // State
 // ---------------------------------------------------------------------------
 
-/// v1 schema (default build). `docs` + authored `comments`.
-#[cfg(not(feature = "schema_v2"))]
+/// `docs` + authored `comments`.
 #[app::state(version = 1, emits = for<'a> Event<'a>)]
 pub struct DocsState {
     /// doc_id → record. The id is `doc-<counter>` and assigned by `create_doc`.
@@ -342,43 +300,6 @@ pub struct DocsState {
     next_comment_id: Counter,
 }
 
-/// v2 schema (feature `schema_v2`), raised to `version = 2`. Two migrations
-/// ride the one derive-carry:
-///   1. a real top-level additive field — `default_sort_order` (a new docs
-///      setting, defaulted via `#[migrate(new = ...)]`) — exercising the engine
-///      migrating existing committed state;
-///   2. the authored `comments` map, carried byte-for-byte so each entry keeps
-///      its owner stamp at schema 1 until the owner re-signs (the banner path).
-/// The derive-carry is required for (2): a manual read_raw rebuild would re-sign
-/// comments as the migrating identity and lose their owner stamps.
-#[cfg(feature = "schema_v2")]
-#[app::state(version = 2, emits = for<'a> Event<'a>)]
-#[derive(app::Migrate)]
-#[migrate(
-    from = DocsStateV1,
-    method = migrate_v1_to_v2,
-    emit = Event::Migrated { from_version: "1.0.0", to_version: "2.0.0" }
-)]
-pub struct DocsState {
-    docs: UnorderedMap<String, DocRecord>,
-    next_id: Counter,
-    comments: AuthoredMap<String, Comment>,
-    next_comment_id: Counter,
-    #[migrate(new = LwwRegister::new("created".to_owned()))]
-    default_sort_order: LwwRegister<String>,
-}
-
-/// v1 reader for the v2 migrate — field order must match the v1 state exactly.
-#[cfg(feature = "schema_v2")]
-#[derive(BorshDeserialize)]
-#[borsh(crate = "calimero_sdk::borsh")]
-struct DocsStateV1 {
-    docs: UnorderedMap<String, DocRecord>,
-    next_id: Counter,
-    comments: AuthoredMap<String, Comment>,
-    next_comment_id: Counter,
-}
-
 #[app::logic]
 impl DocsState {
     #[app::init]
@@ -388,28 +309,22 @@ impl DocsState {
             next_id: Counter::new_with_field_name("docs:next_id"),
             comments: AuthoredMap::new_with_field_name("docs:comments"),
             next_comment_id: Counter::new_with_field_name("docs:next_comment_id"),
-            // v2 adds a top-level setting (cfg'd field init is stripped
-            // correctly at compile time, unlike a cfg'd whole-fn).
-            #[cfg(feature = "schema_v2")]
-            default_sort_order: LwwRegister::new("created".to_owned()),
         }
     }
 
     // ---- CRUD ------------------------------------------------------------
 
-    pub fn create_doc(&mut self, title: String, content: String) -> app::Result<String> {
+    /// Creates a document and seeds its title. The body starts empty; a client
+    /// adds the first block with `insert_block`.
+    pub fn create_doc(&mut self, title: String) -> app::Result<String> {
         let id = self
-            .create_doc_inner(title, content)
+            .create_doc_inner(title)
             .map_err(|e| AppError::msg(e.to_string()))?;
         app::emit!(Event::DocCreated { id: &id });
         Ok(id)
     }
 
-    pub(crate) fn create_doc_inner(
-        &mut self,
-        title: String,
-        content: String,
-    ) -> Result<String, DriveError> {
+    pub(crate) fn create_doc_inner(&mut self, title: String) -> Result<String, DriveError> {
         self.next_id
             .increment()
             .map_err(|e| DriveError::Invalid(format!("next_id.increment: {e}")))?;
@@ -420,19 +335,17 @@ impl DocsState {
         let id = format!("doc-{}", n);
 
         let now = storage_env::time_now();
+        let mut title_text = FugueText::new();
+        let _minted = title_text
+            .insert_str(0, &title)
+            .map_err(|e| DriveError::Invalid(format!("title.insert_str: {e}")))?;
         let rec = DocRecord {
-            title: LwwRegister::new(title),
-            content: LwwRegister::new(content),
+            title: title_text,
+            body: Body::new(),
             tags: LwwRegister::new(Vec::new()),
             archived: LwwRegister::new(false),
-            created_at: now,
+            created_at: LwwRegister::new(now),
             updated_at: LwwRegister::new(now),
-            // Fresh empty update log. The set is created with a random id here;
-            // `docs.insert` re-keys it deterministically relative to the doc's
-            // map-entry id (via `DocRecord`'s `RekeyTarget` impl), so every
-            // replica that creates "doc-N" derives the same set id and their
-            // logs converge.
-            content_updates: UnorderedSet::new(),
         };
         self.docs
             .insert(id.clone(), rec)
@@ -466,112 +379,351 @@ impl DocsState {
         Ok(out)
     }
 
-    pub fn edit_doc(
-        &mut self,
-        id: String,
-        title: Option<String>,
-        content: Option<String>,
-    ) -> app::Result<()> {
-        let id_for_event = id.clone();
-        self.edit_doc_inner(id, title, content)
-            .map_err(|e| AppError::msg(e.to_string()))?;
-        app::emit!(Event::DocEdited { id: &id_for_event });
+    /// Renames a document by replacing the whole title, which is what a rename
+    /// box does. Character-level edits go through `title_apply_delta`.
+    pub fn edit_doc(&mut self, id: String, title: String) -> app::Result<()> {
+        let len = self.read(&id)?.title.len()?;
+        let ops = vec![
+            Change::Delete { delete: len },
+            Change::Insert {
+                insert: title,
+                attributes: None,
+            },
+        ];
+        let _undo = self.title_apply_delta(id.clone(), ops)?;
+        app::emit!(Event::DocEdited { id: &id });
         Ok(())
     }
 
-    pub(crate) fn edit_doc_inner(
-        &mut self,
-        id: String,
-        title: Option<String>,
-        content: Option<String>,
-    ) -> Result<(), DriveError> {
-        // Mutate in place via a write-back guard. `DocRecord` is no longer
-        // `Clone` (its `content_updates` set is a non-`Clone` collection), and
-        // an in-place edit preserves the record's already-deterministic entity
-        // id so no re-key is needed.
-        let mut rec = self
-            .docs
-            .get_mut(&id)
-            .map_err(|e| DriveError::Invalid(format!("docs.get_mut: {e}")))?
-            .ok_or_else(|| DriveError::NotFound(id.clone()))?;
-        if let Some(t) = title {
-            rec.title.set(t);
-        }
-        if let Some(c) = content {
-            rec.content.set(c);
-        }
-        rec.updated_at.set(storage_env::time_now());
-        Ok(())
-    }
+    // ---- title ------------------------------------------------------------
 
-    // ---- collaborative content (Yjs update log) -------------------------
-
-    /// Append an opaque Yjs update blob to a doc's add-only content log.
-    /// Idempotent: the set is content-addressed, so re-appending the same
-    /// blob (e.g. SSE re-delivery) is a no-op. This is the write side of the
-    /// client-side Yjs collaboration path; the WASM never parses the blob.
-    pub fn append_doc_update(&mut self, id: String, update: Vec<u8>) -> app::Result<()> {
-        let id_for_event = id.clone();
-        let changed = self
-            .append_doc_update_inner(id, update)
-            .map_err(|e| AppError::msg(e.to_string()))?;
-        // Only emit when the set ACTUALLY grew. The content log is content-
-        // addressed and re-delivery is common (SSE re-fires, reconnect
-        // refetch-then-reappend), so a duplicate append is a no-op — emitting
-        // DocEded for it would spam every peer into a redundant
-        // `get_doc_updates` + apply pass. Reuse DocEdited so the existing
-        // SSE-driven refresh wiring picks up genuine appends.
-        if changed {
-            app::emit!(Event::DocEdited { id: &id_for_event });
-        }
-        Ok(())
-    }
-
-    /// Returns `true` if the blob was NEW (the set grew), `false` if it was
-    /// already present (idempotent re-delivery).
-    pub(crate) fn append_doc_update_inner(
-        &mut self,
-        id: String,
-        update: Vec<u8>,
-    ) -> Result<bool, DriveError> {
-        if update.is_empty() {
-            return Err(DriveError::Invalid("empty update".into()));
-        }
-        let mut rec = self
-            .docs
-            .get_mut(&id)
-            .map_err(|e| DriveError::Invalid(format!("docs.get_mut: {e}")))?
-            .ok_or_else(|| DriveError::NotFound(id.clone()))?;
-        let inserted = rec
-            .content_updates
-            .insert(update)
-            .map_err(|e| DriveError::Invalid(format!("content_updates.insert: {e}")))?;
-        // Only bump updated_at on a real change so a duplicate re-delivery is a
-        // true no-op (it would otherwise advance the LWW clock and re-trigger
-        // sibling list re-sorts for nothing).
-        if inserted {
-            rec.updated_at.set(storage_env::time_now());
-        }
-        Ok(inserted)
-    }
-
-    /// Read the full set of Yjs update blobs for a doc. Order is unspecified
-    /// (a set) — Yjs update application is order-independent and idempotent, so
-    /// the client folds them in any order. The client dedupes already-applied
-    /// blobs by content hash.
     #[app::view]
-    pub fn get_doc_updates(&self, id: String) -> app::Result<Vec<Vec<u8>>> {
-        let rec = self
-            .docs
-            .get(&id)
-            .map_err(|e| AppError::msg(format!("docs.get: {e}")))?
-            .ok_or_else(|| AppError::msg(format!("not found: {}", id)))?;
-        let updates: Vec<Vec<u8>> = rec
-            .content_updates
+    pub fn get_title(&self, doc: String) -> app::Result<String> {
+        Ok(self.read(&doc)?.title.get_text()?)
+    }
+
+    /// One editor transaction on the title, returning an opaque token
+    /// `title_undo` takes.
+    pub fn title_apply_delta(&mut self, doc: String, ops: Vec<Change>) -> app::Result<String> {
+        let ops: Vec<TextOp> = ops
+            .into_iter()
+            .map(Change::into_text_op)
+            .collect::<app::Result<_>>()?;
+        let steps = self.write(&doc)?.title.apply_delta(&ops)?;
+        app::emit!(Event::TitleChanged { doc: &doc });
+        encode_token(&steps)
+    }
+
+    /// Takes a whole title transaction back, returning a token that redoes it.
+    pub fn title_undo(&mut self, doc: String, token: String) -> app::Result<String> {
+        let steps: Vec<Undo> = decode_token(&token)?;
+        let redo = self.write(&doc)?.title.undo(&steps)?;
+        app::emit!(Event::TitleChanged { doc: &doc });
+        encode_token(&redo)
+    }
+
+    /// A cursor for the gap at `position`, as an opaque token any member resolves.
+    #[app::view]
+    pub fn title_anchor_at(
+        &self,
+        doc: String,
+        position: usize,
+        before: bool,
+    ) -> app::Result<String> {
+        let bias = if before { Bias::Before } else { Bias::After };
+        encode_token(&self.read(&doc)?.title.anchor_at(position, bias)?)
+    }
+
+    /// Where anchors sit in THIS replica's title. `null` is an anchor this
+    /// replica cannot place yet.
+    // ponytail: one tree rebuild per anchor; batch it if a cursor list ever
+    // grows past a handful of peers.
+    #[app::view]
+    pub fn title_resolve(
+        &self,
+        doc: String,
+        anchors: Vec<String>,
+    ) -> app::Result<Vec<Option<usize>>> {
+        let record = self.read(&doc)?;
+        anchors
             .iter()
-            .map_err(|e| AppError::msg(format!("content_updates.iter: {e}")))?
-            .collect();
-        Ok(updates)
+            .map(|token| Ok(record.title.resolve(&decode_token::<Anchor>(token)?).ok()))
+            .collect()
+    }
+
+    // ---- body structure ---------------------------------------------------
+
+    pub fn insert_block(
+        &mut self,
+        doc: String,
+        after: Option<String>,
+        kind: String,
+        depth: u8,
+    ) -> app::Result<String> {
+        let after = after.as_deref().map(decode_token).transpose()?;
+        let block = self.write(&doc)?.body.insert_block(after, &kind, depth)?;
+        let block = encode_token(&block)?;
+        app::emit!(Event::BlockInserted {
+            doc: &doc,
+            block: &block
+        });
+        Ok(block)
+    }
+
+    pub fn delete_block(&mut self, doc: String, block: String) -> app::Result<()> {
+        let id = decode_token(&block)?;
+        let _was = self.write(&doc)?.body.delete_block(id)?;
+        app::emit!(Event::BlockDeleted {
+            doc: &doc,
+            block: &block
+        });
+        Ok(())
+    }
+
+    pub fn move_block(
+        &mut self,
+        doc: String,
+        block: String,
+        after: Option<String>,
+    ) -> app::Result<()> {
+        let id = decode_token(&block)?;
+        let after = after.as_deref().map(decode_token).transpose()?;
+        self.write(&doc)?.body.move_block(id, after)?;
+        app::emit!(Event::BlockMoved {
+            doc: &doc,
+            block: &block
+        });
+        Ok(())
+    }
+
+    pub fn set_kind(&mut self, doc: String, block: String, kind: String) -> app::Result<()> {
+        let id = decode_token(&block)?;
+        self.write(&doc)?.body.set_kind(id, &kind)?;
+        app::emit!(Event::BlockChanged {
+            doc: &doc,
+            block: &block
+        });
+        Ok(())
+    }
+
+    pub fn set_depth(&mut self, doc: String, block: String, depth: u8) -> app::Result<()> {
+        let id = decode_token(&block)?;
+        self.write(&doc)?.body.set_depth(id, depth)?;
+        app::emit!(Event::BlockChanged {
+            doc: &doc,
+            block: &block
+        });
+        Ok(())
+    }
+
+    /// `value: null` removes the attribute.
+    pub fn set_attr(
+        &mut self,
+        doc: String,
+        block: String,
+        key: String,
+        value: Option<String>,
+    ) -> app::Result<()> {
+        let id = decode_token(&block)?;
+        self.write(&doc)?
+            .body
+            .set_attr(id, &key, value.as_deref())?;
+        app::emit!(Event::BlockChanged {
+            doc: &doc,
+            block: &block
+        });
+        Ok(())
+    }
+
+    /// Split at visible position `at`, returning the new block's id.
+    pub fn split_block(&mut self, doc: String, block: String, at: usize) -> app::Result<String> {
+        let id = decode_token(&block)?;
+        let new = self.write(&doc)?.body.split_block(id, at)?;
+        let new = encode_token(&new)?;
+        app::emit!(Event::BlockInserted {
+            doc: &doc,
+            block: &new
+        });
+        app::emit!(Event::BlockChanged {
+            doc: &doc,
+            block: &block
+        });
+        Ok(new)
+    }
+
+    /// Append `second`'s body to `first` and tombstone `second`.
+    pub fn merge_blocks(&mut self, doc: String, first: String, second: String) -> app::Result<()> {
+        let (head, tail) = (decode_token(&first)?, decode_token(&second)?);
+        self.write(&doc)?.body.merge_blocks(head, tail)?;
+        app::emit!(Event::BlockChanged {
+            doc: &doc,
+            block: &first
+        });
+        app::emit!(Event::BlockDeleted {
+            doc: &doc,
+            block: &second
+        });
+        Ok(())
+    }
+
+    // ---- body text --------------------------------------------------------
+
+    /// One editor transaction, text and formatting together, returning an
+    /// opaque token `undo` takes.
+    pub fn apply_delta(
+        &mut self,
+        doc: String,
+        block: String,
+        ops: Vec<Change>,
+    ) -> app::Result<String> {
+        let ops: Vec<DeltaOp> = ops.into_iter().map(Into::into).collect();
+        let id = decode_token(&block)?;
+        let undo = self.write(&doc)?.body.apply_delta(id, &ops)?;
+        app::emit!(Event::TextChanged {
+            doc: &doc,
+            block: &block
+        });
+        encode_token(&undo)
+    }
+
+    /// Take a whole transaction back, returning a token that redoes it.
+    pub fn undo(&mut self, doc: String, block: String, token: String) -> app::Result<String> {
+        let id: BlockId = decode_token(&block)?;
+        let undo: DeltaUndo = decode_token(&token)?;
+        let redo = self.write(&doc)?.body.apply_undo(id, &undo)?;
+        app::emit!(Event::TextChanged {
+            doc: &doc,
+            block: &block
+        });
+        encode_token(&redo)
+    }
+
+    /// Set `key` over visible positions `[start, end)`. `null` is a no-op result
+    /// when every character already resolves to that value.
+    pub fn mark(
+        &mut self,
+        doc: String,
+        block: String,
+        start: usize,
+        end: usize,
+        key: String,
+        value: Option<String>,
+    ) -> app::Result<Option<String>> {
+        let id = decode_token(&block)?;
+        let minted = self
+            .write(&doc)?
+            .body
+            .mark(id, start, end, &key, value.as_deref())?;
+        self.emit_mark(&doc, &block, minted)
+    }
+
+    // ---- body reads -------------------------------------------------------
+
+    #[app::view]
+    pub fn get_document(&self, doc: String) -> app::Result<Vec<Block>> {
+        self.read(&doc)?
+            .body
+            .blocks()?
+            .into_iter()
+            .map(Block::new)
+            .collect()
+    }
+
+    #[app::view]
+    pub fn get_block(&self, doc: String, block: String) -> app::Result<Option<Block>> {
+        self.read(&doc)?
+            .body
+            .block(decode_token(&block)?)?
+            .map(Block::new)
+            .transpose()
+    }
+
+    /// One block's rendered spans: the read a binding does on every keystroke.
+    #[app::view]
+    pub fn get_block_delta(&self, doc: String, block: String) -> app::Result<Vec<Span>> {
+        Ok(self.read(&doc)?.body.block_delta(decode_token(&block)?)?)
+    }
+
+    #[app::view]
+    pub fn get_text(&self, doc: String, block: String) -> app::Result<String> {
+        Ok(self
+            .read(&doc)?
+            .body
+            .block_body(decode_token(&block)?)?
+            .get_text()?)
+    }
+
+    #[app::view]
+    pub fn list_blocks(&self, doc: String) -> app::Result<Vec<String>> {
+        self.read(&doc)?
+            .body
+            .blocks()?
+            .iter()
+            .map(|view| encode_token(&view.id))
+            .collect()
+    }
+
+    /// The ordered body as one canonical line, so replicas are compared exactly
+    /// by one value. Block ids are excluded because they carry the minting
+    /// replica, which no two nodes agree on.
+    #[app::view]
+    pub fn get_state_digest(&self, doc: String) -> app::Result<String> {
+        let mut out = String::new();
+        for view in &self.read(&doc)?.body.blocks()? {
+            digest_block(view, &mut out);
+        }
+        Ok(out)
+    }
+
+    /// How many times `needle` appears contiguously in a block's text, which is
+    /// an exact claim about interleaving that `contains` cannot make.
+    #[app::view]
+    pub fn passage_count(&self, doc: String, block: String, needle: String) -> app::Result<usize> {
+        let text = self
+            .read(&doc)?
+            .body
+            .block_body(decode_token(&block)?)?
+            .get_text()?;
+        Ok(text.matches(&needle).count())
+    }
+
+    /// A cursor for the gap at `position`, as an opaque token any member resolves.
+    #[app::view]
+    pub fn anchor_at(
+        &self,
+        doc: String,
+        block: String,
+        position: usize,
+        before: bool,
+    ) -> app::Result<String> {
+        let bias = if before { Bias::Before } else { Bias::After };
+        encode_token(
+            &self
+                .read(&doc)?
+                .body
+                .block_body(decode_token(&block)?)?
+                .anchor_at(position, bias)?,
+        )
+    }
+
+    /// Where anchors sit in THIS replica's block, one tree rebuild for the lot.
+    /// `null` is an anchor this replica cannot place yet.
+    #[app::view]
+    pub fn resolve_ids(
+        &self,
+        doc: String,
+        block: String,
+        anchors: Vec<String>,
+    ) -> app::Result<Vec<Option<usize>>> {
+        let anchors = anchors
+            .iter()
+            .map(|token| decode_token::<Anchor>(token))
+            .collect::<app::Result<Vec<Anchor>>>()?;
+        Ok(self
+            .read(&doc)?
+            .body
+            .block_body(decode_token(&block)?)?
+            .resolve_many(&anchors)?)
     }
 
     pub fn archive_doc(&mut self, id: String) -> app::Result<()> {
@@ -796,70 +948,526 @@ impl DocsState {
         }
         Ok(())
     }
+}
 
-    /// The top-level setting added by the v2 migration. Present in both builds
-    /// (a `#[cfg]` on the whole method confuses `#[app::logic]`'s export
-    /// codegen); only the field access is cfg'd. v1 has no such field, so it
-    /// returns empty there — the e2e calls this post-cascade (v2) and asserts it
-    /// reads back its migrate default, proving the engine migrated the existing
-    /// non-authored state.
-    #[app::view]
-    pub fn default_sort_order(&self) -> app::Result<String> {
-        #[cfg(feature = "schema_v2")]
-        {
-            Ok(self.default_sort_order.get().clone())
+/// Outside `#[app::logic]`: these are plumbing, not JSON-RPC surface.
+impl DocsState {
+    fn read(&self, doc: &str) -> app::Result<ValueRef<DocRecord>> {
+        match self.docs.get(doc)? {
+            Some(found) => Ok(found),
+            None => app::bail!("unknown document '{doc}'"),
         }
-        #[cfg(not(feature = "schema_v2"))]
-        {
-            Ok(String::new())
+    }
+
+    /// Every mutator goes through here, so the list's sort key advances in one
+    /// place rather than at fifteen call sites.
+    fn write(&mut self, doc: &str) -> app::Result<impl DerefMut<Target = DocRecord> + '_> {
+        match self.docs.get_mut(doc)? {
+            Some(mut found) => {
+                found.updated_at.set(storage_env::time_now());
+                Ok(found)
+            }
+            None => app::bail!("unknown document '{doc}'"),
         }
+    }
+
+    fn emit_mark(
+        &self,
+        doc: &str,
+        block: &str,
+        minted: Option<MarkId>,
+    ) -> app::Result<Option<String>> {
+        let Some(minted) = minted else {
+            return Ok(None);
+        };
+        let mark_id = encode_token(&minted)?;
+        app::emit!(Event::MarkApplied {
+            doc,
+            block,
+            mark_id: &mark_id
+        });
+        Ok(Some(mark_id))
     }
 }
 
 // ---------------------------------------------------------------------------
-// Unit tests (drive `*_inner` helpers so event emits are skipped — the
-// merobox workflow exercises the emit path on a real node).
+// Unit tests
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {
+    use calimero_sdk::testing::TestHost;
+
     use super::*;
 
+    const DOC: &str = "doc-1";
+
+    fn host(title: &str) -> TestHost<DocsState> {
+        let mut app = TestHost::new(DocsState::init);
+        let id = app.call(|s| s.create_doc(title.to_owned())).unwrap();
+        assert_eq!(id, DOC);
+        app
+    }
+
+    fn retain(count: usize) -> Change {
+        Change::Retain {
+            retain: count,
+            attributes: None,
+        }
+    }
+
+    fn insert(text: &str) -> Change {
+        Change::Insert {
+            insert: text.to_owned(),
+            attributes: None,
+        }
+    }
+
+    fn title(app: &TestHost<DocsState>) -> String {
+        app.view(|s| s.get_title(DOC.to_owned())).unwrap()
+    }
+
+    fn digest(app: &TestHost<DocsState>) -> String {
+        app.view(|s| s.get_state_digest(DOC.to_owned())).unwrap()
+    }
+
+    fn add_block(app: &mut TestHost<DocsState>, kind: &str) -> String {
+        app.call(|s| s.insert_block(DOC.to_owned(), None, kind.to_owned(), 0))
+            .unwrap()
+    }
+
+    fn type_text(app: &mut TestHost<DocsState>, block: &str, text: &str) -> String {
+        app.call(|s| s.apply_delta(DOC.to_owned(), block.to_owned(), vec![insert(text)]))
+            .unwrap()
+    }
+
+    // ---- DriveMarks ------------------------------------------------------
+
+    /// The table is permanent once documents exist: a bias is chosen at write
+    /// time and never revisited, so a changed entry splits new writes from old.
     #[test]
-    fn create_doc_assigns_id_and_returns_it() {
-        let mut app = DocsState::init();
-        let id = app
-            .create_doc_inner("hello".into(), "world".into())
+    fn drive_marks_declares_the_growing_and_non_growing_keys() {
+        for key in [
+            "bold",
+            "italic",
+            "underline",
+            "strike",
+            "textColor",
+            "backgroundColor",
+        ] {
+            assert_eq!(DriveMarks::expand(key), Some(Expand::After), "{key}");
+        }
+        for key in ["link", "code", "comment"] {
+            assert_eq!(DriveMarks::expand(key), Some(Expand::None), "{key}");
+        }
+    }
+
+    #[test]
+    fn drive_marks_rejects_an_undeclared_key() {
+        assert_eq!(DriveMarks::expand("highlight"), None);
+        assert_eq!(DriveMarks::expand(""), None);
+
+        let mut app = host("t");
+        let block = add_block(&mut app, "paragraph");
+        let _typed = type_text(&mut app, &block, "hello");
+        let err = app
+            .call(|s| {
+                s.mark(
+                    DOC.to_owned(),
+                    block.clone(),
+                    0,
+                    5,
+                    "highlight".to_owned(),
+                    Some("yellow".to_owned()),
+                )
+            })
+            .unwrap_err();
+        let err = format!("{err:?}");
+        assert!(err.contains("unknown mark key 'highlight'"), "{err}");
+    }
+
+    /// One policy covers every suffix of a prefix, which is what makes a
+    /// per-thread `comment:<id>` one declaration rather than N.
+    #[test]
+    fn a_comment_suffix_shares_the_comment_policy() {
+        assert_eq!(DriveMarks::expand("comment"), Some(Expand::None));
+        let mut app = host("t");
+        let block = add_block(&mut app, "paragraph");
+        let _typed = type_text(&mut app, &block, "hello world");
+        let mark = app
+            .call(|s| {
+                s.mark(
+                    DOC.to_owned(),
+                    block.clone(),
+                    0,
+                    5,
+                    "comment:alpha".to_owned(),
+                    Some("first".to_owned()),
+                )
+            })
             .unwrap();
-        assert!(id.starts_with("doc-"));
-        let d = app.get_doc(id.clone()).unwrap();
-        assert_eq!(d.id, id);
-        assert_eq!(d.title, "hello");
-        assert_eq!(d.content, "world");
-        assert!(!d.archived);
-        assert_eq!(d.tags, Vec::<String>::new());
+        assert!(mark.is_some());
+        assert_eq!(
+            digest(&app),
+            "paragraph/0{comment:alpha=first:hello}{: world};"
+        );
+    }
+
+    // ---- title -----------------------------------------------------------
+
+    #[test]
+    fn create_doc_seeds_the_title() {
+        let app = host("Roadmap");
+        assert_eq!(title(&app), "Roadmap");
+        assert_eq!(
+            app.view(|s| s.get_doc(DOC.to_owned())).unwrap().title,
+            "Roadmap"
+        );
+        // The body starts empty; a client adds the first block itself.
+        assert_eq!(digest(&app), "");
+    }
+
+    /// Position 2 is the gap AFTER the astral scalar: a UTF-16 index would land
+    /// inside its surrogate pair, a byte index inside its four bytes.
+    #[test]
+    fn a_title_delta_indexes_unicode_scalar_values() {
+        let mut app = host("a\u{1F600}b");
+        let _undo = app
+            .call(|s| s.title_apply_delta(DOC.to_owned(), vec![retain(2), insert("X")]))
+            .unwrap();
+        assert_eq!(title(&app), "a\u{1F600}Xb");
+    }
+
+    /// A ZWJ family is FIVE scalars, not one grapheme, so every joiner is its
+    /// own addressable position.
+    #[test]
+    fn a_zwj_sequence_is_five_addressable_scalars() {
+        const FAMILY: &str = "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}";
+        let mut app = host(FAMILY);
+        let _undo = app
+            .call(|s| s.title_apply_delta(DOC.to_owned(), vec![retain(1), insert("-")]))
+            .unwrap();
+        assert_eq!(title(&app), "\u{1F468}-\u{200D}\u{1F469}\u{200D}\u{1F467}");
+
+        let anchor = app
+            .view(|s| s.title_anchor_at(DOC.to_owned(), 6, true))
+            .unwrap();
+        assert_eq!(
+            app.view(|s| s.title_resolve(DOC.to_owned(), vec![anchor]))
+                .unwrap(),
+            vec![Some(6)]
+        );
     }
 
     #[test]
-    fn create_doc_increments_id() {
-        let mut app = DocsState::init();
-        let a = app.create_doc_inner("a".into(), "".into()).unwrap();
-        let b = app.create_doc_inner("b".into(), "".into()).unwrap();
-        assert_ne!(a, b);
+    fn title_undo_restores_the_previous_text() {
+        let mut app = host("Roadmap");
+        let undo = app
+            .call(|s| {
+                s.title_apply_delta(
+                    DOC.to_owned(),
+                    vec![retain(4), Change::Delete { delete: 3 }, insert("block")],
+                )
+            })
+            .unwrap();
+        assert_eq!(title(&app), "Roadblock");
+
+        let redo = app.call(|s| s.title_undo(DOC.to_owned(), undo)).unwrap();
+        assert_eq!(title(&app), "Roadmap");
+        let _again = app.call(|s| s.title_undo(DOC.to_owned(), redo)).unwrap();
+        assert_eq!(title(&app), "Roadblock");
     }
 
     #[test]
-    fn create_doc_accepts_empty_content() {
+    fn a_title_op_carrying_attributes_is_rejected() {
+        let mut app = host("t");
+        let err = app
+            .call(|s| {
+                s.title_apply_delta(
+                    DOC.to_owned(),
+                    vec![Change::Insert {
+                        insert: "x".to_owned(),
+                        attributes: Some(Attrs::from([(
+                            "bold".to_owned(),
+                            Some("true".to_owned()),
+                        )])),
+                    }],
+                )
+            })
+            .unwrap_err();
+        let err = format!("{err:?}");
+        assert!(err.contains("the title carries no formatting"), "{err}");
+        assert_eq!(title(&app), "t");
+    }
+
+    #[test]
+    fn edit_doc_replaces_the_whole_title() {
+        let mut app = host("old");
+        app.call(|s| s.edit_doc(DOC.to_owned(), "new".to_owned()))
+            .unwrap();
+        assert_eq!(title(&app), "new");
+    }
+
+    // ---- body ------------------------------------------------------------
+
+    #[test]
+    fn apply_delta_renders_into_the_digest() {
+        let mut app = host("t");
+        let block = add_block(&mut app, "paragraph");
+        let _typed = type_text(&mut app, &block, "hello world");
+        assert_eq!(digest(&app), "paragraph/0{:hello world};");
+        assert_eq!(
+            app.view(|s| s.get_text(DOC.to_owned(), block.clone()))
+                .unwrap(),
+            "hello world"
+        );
+        assert_eq!(
+            app.view(|s| s.list_blocks(DOC.to_owned())).unwrap(),
+            vec![block]
+        );
+    }
+
+    #[test]
+    fn split_block_then_merge_blocks_round_trips_the_digest() {
+        let mut app = host("t");
+        let block = add_block(&mut app, "paragraph");
+        let _typed = type_text(&mut app, &block, "hello world");
+        let before = digest(&app);
+
+        let tail = app
+            .call(|s| s.split_block(DOC.to_owned(), block.clone(), 5))
+            .unwrap();
+        assert_eq!(digest(&app), "paragraph/0{:hello};paragraph/0{: world};");
+
+        app.call(|s| s.merge_blocks(DOC.to_owned(), block.clone(), tail))
+            .unwrap();
+        assert_eq!(digest(&app), before);
+    }
+
+    #[test]
+    fn mark_renders_as_two_spans_over_the_marked_range() {
+        let mut app = host("t");
+        let block = add_block(&mut app, "paragraph");
+        let _typed = type_text(&mut app, &block, "hello world");
+        let mark = app
+            .call(|s| {
+                s.mark(
+                    DOC.to_owned(),
+                    block.clone(),
+                    0,
+                    5,
+                    "bold".to_owned(),
+                    Some("true".to_owned()),
+                )
+            })
+            .unwrap();
+        assert!(mark.is_some(), "a first bold is not redundant");
+
+        let spans = app
+            .view(|s| s.get_block_delta(DOC.to_owned(), block.clone()))
+            .unwrap();
+        assert_eq!(spans.len(), 2);
+        assert_eq!(spans[0].text, "hello");
+        assert_eq!(
+            spans[0].attributes.get("bold").map(String::as_str),
+            Some("true")
+        );
+        assert_eq!(spans[1].text, " world");
+        assert!(spans[1].attributes.is_empty());
+        assert_eq!(digest(&app), "paragraph/0{bold=true:hello}{: world};");
+
+        // Bold is `Expand::After`, so typing at the run's end joins it.
+        let _typed = app
+            .call(|s| s.apply_delta(DOC.to_owned(), block.clone(), vec![retain(5), insert("X")]))
+            .unwrap();
+        assert_eq!(digest(&app), "paragraph/0{bold=true:helloX}{: world};");
+    }
+
+    #[test]
+    fn undo_returns_the_block_to_its_previous_digest() {
+        let mut app = host("t");
+        let block = add_block(&mut app, "paragraph");
+        let _typed = type_text(&mut app, &block, "hello world");
+        let before = digest(&app);
+
+        let undo = app
+            .call(|s| {
+                s.apply_delta(
+                    DOC.to_owned(),
+                    block.clone(),
+                    vec![
+                        Change::Retain {
+                            retain: 6,
+                            attributes: Some(Attrs::from([(
+                                "bold".to_owned(),
+                                Some("true".to_owned()),
+                            )])),
+                        },
+                        Change::Delete { delete: 5 },
+                        insert("there"),
+                    ],
+                )
+            })
+            .unwrap();
+        assert_eq!(digest(&app), "paragraph/0{bold=true:hello there};");
+
+        let _redo = app
+            .call(|s| s.undo(DOC.to_owned(), block.clone(), undo))
+            .unwrap();
+        assert_eq!(digest(&app), before);
+    }
+
+    #[test]
+    fn structure_writes_land_in_the_digest() {
+        let mut app = host("t");
+        let block = add_block(&mut app, "paragraph");
+        let _typed = type_text(&mut app, &block, "Alpha");
+        app.call(|s| s.set_kind(DOC.to_owned(), block.clone(), "heading".to_owned()))
+            .unwrap();
+        app.call(|s| s.set_depth(DOC.to_owned(), block.clone(), 2))
+            .unwrap();
+        app.call(|s| {
+            s.set_attr(
+                DOC.to_owned(),
+                block.clone(),
+                "align".to_owned(),
+                Some("end".to_owned()),
+            )
+        })
+        .unwrap();
+        assert_eq!(digest(&app), "heading/2[align=end]{:Alpha};");
+
+        app.call(|s| s.set_attr(DOC.to_owned(), block.clone(), "align".to_owned(), None))
+            .unwrap();
+        assert_eq!(digest(&app), "heading/2{:Alpha};");
+
+        app.call(|s| s.delete_block(DOC.to_owned(), block)).unwrap();
+        assert_eq!(digest(&app), "");
+    }
+
+    #[test]
+    fn move_block_reorders_the_document() {
+        let mut app = host("t");
+        let first = add_block(&mut app, "paragraph");
+        let _typed = type_text(&mut app, &first, "Alpha");
+        let second = app
+            .call(|s| {
+                s.insert_block(
+                    DOC.to_owned(),
+                    Some(first.clone()),
+                    "paragraph".to_owned(),
+                    0,
+                )
+            })
+            .unwrap();
+        let _typed = type_text(&mut app, &second, "Beta");
+        assert_eq!(digest(&app), "paragraph/0{:Alpha};paragraph/0{:Beta};");
+
+        app.call(|s| s.move_block(DOC.to_owned(), second.clone(), None))
+            .unwrap();
+        assert_eq!(digest(&app), "paragraph/0{:Beta};paragraph/0{:Alpha};");
+        assert_eq!(
+            app.view(|s| s.get_document(DOC.to_owned()))
+                .unwrap()
+                .iter()
+                .map(|b| b.id.clone())
+                .collect::<Vec<_>>(),
+            vec![second, first]
+        );
+    }
+
+    #[test]
+    fn an_anchor_survives_an_edit_before_it() {
+        let mut app = host("t");
+        let block = add_block(&mut app, "paragraph");
+        let _typed = type_text(&mut app, &block, "hello world");
+        let anchor = app
+            .view(|s| s.anchor_at(DOC.to_owned(), block.clone(), 6, true))
+            .unwrap();
+        let _typed = app
+            .call(|s| s.apply_delta(DOC.to_owned(), block.clone(), vec![insert("say ")]))
+            .unwrap();
+        assert_eq!(
+            app.view(|s| s.resolve_ids(DOC.to_owned(), block.clone(), vec![anchor]))
+                .unwrap(),
+            vec![Some(10)]
+        );
+        assert_eq!(
+            app.view(|s| s.passage_count(DOC.to_owned(), block, "hello world".to_owned()))
+                .unwrap(),
+            1
+        );
+    }
+
+    /// A subscriber is told WHERE to re-read and nothing else, so every payload
+    /// has to name the document and the block it points at.
+    #[test]
+    fn every_body_event_names_the_document_and_the_block() {
+        use calimero_sdk::serde_json::{from_slice, json, Value};
+
+        let mut app = host("t");
+        let _ignored = app.take_events();
+        let block = add_block(&mut app, "paragraph");
+        let _typed = type_text(&mut app, &block, "hello world");
+        let _mark = app
+            .call(|s| {
+                s.mark(
+                    DOC.to_owned(),
+                    block.clone(),
+                    0,
+                    5,
+                    "bold".to_owned(),
+                    Some("true".to_owned()),
+                )
+            })
+            .unwrap();
+        app.call(|s| s.move_block(DOC.to_owned(), block.clone(), None))
+            .unwrap();
+        app.call(|s| s.delete_block(DOC.to_owned(), block.clone()))
+            .unwrap();
+
+        let seen: Vec<(String, Value)> = app
+            .events()
+            .iter()
+            .map(|e| (e.kind.clone(), from_slice(&e.data).expect("JSON payload")))
+            .collect();
+        let kinds: Vec<&str> = seen.iter().map(|(kind, _)| kind.as_str()).collect();
+        assert_eq!(
+            kinds,
+            [
+                "BlockInserted",
+                "TextChanged",
+                "MarkApplied",
+                "BlockMoved",
+                "BlockDeleted"
+            ]
+        );
+        for (kind, payload) in &seen {
+            assert_eq!(payload["doc"], json!(DOC), "{kind} lost the document");
+            assert_eq!(payload["block"], json!(block), "{kind} lost the block");
+            assert!(
+                payload.get("position").is_none() && payload.get("start").is_none(),
+                "{kind} ships a position, which indexes the EMITTING node only"
+            );
+        }
+    }
+
+    // ---- documents -------------------------------------------------------
+
+    #[test]
+    fn create_doc_assigns_an_incrementing_id() {
         let mut app = DocsState::init();
-        let id = app.create_doc_inner("t".into(), "".into()).unwrap();
-        assert_eq!(app.get_doc(id).unwrap().content, "");
+        let a = app.create_doc_inner("a".into()).unwrap();
+        let b = app.create_doc_inner("b".into()).unwrap();
+        assert_eq!(a, "doc-1");
+        assert_eq!(b, "doc-2");
     }
 
     #[test]
     fn list_docs_returns_created_docs() {
         let mut app = DocsState::init();
-        app.create_doc_inner("a".into(), "".into()).unwrap();
-        app.create_doc_inner("b".into(), "".into()).unwrap();
+        app.create_doc_inner("a".into()).unwrap();
+        app.create_doc_inner("b".into()).unwrap();
         assert_eq!(app.list_docs(false).unwrap().len(), 2);
     }
 
@@ -870,49 +1478,19 @@ mod tests {
     }
 
     #[test]
-    fn edit_doc_updates_title_and_content() {
-        let mut app = DocsState::init();
-        let id = app.create_doc_inner("old".into(), "body".into()).unwrap();
-        app.edit_doc_inner(id.clone(), Some("new".into()), Some("newbody".into()))
-            .unwrap();
-        let d = app.get_doc(id).unwrap();
-        assert_eq!(d.title, "new");
-        assert_eq!(d.content, "newbody");
-    }
-
-    #[test]
-    fn edit_doc_partial_keeps_untouched_fields() {
-        let mut app = DocsState::init();
-        let id = app.create_doc_inner("old".into(), "body".into()).unwrap();
-        app.edit_doc_inner(id.clone(), Some("new".into()), None)
-            .unwrap();
-        let d = app.get_doc(id).unwrap();
-        assert_eq!(d.title, "new");
-        assert_eq!(d.content, "body");
-    }
-
-    #[test]
-    fn edit_doc_clears_content_when_empty_string() {
-        let mut app = DocsState::init();
-        let id = app.create_doc_inner("t".into(), "body".into()).unwrap();
-        app.edit_doc_inner(id.clone(), None, Some("".into()))
-            .unwrap();
-        assert_eq!(app.get_doc(id).unwrap().content, "");
-    }
-
-    #[test]
-    fn edit_doc_unknown_is_not_found() {
+    fn a_body_write_on_an_unknown_doc_is_an_error() {
         let mut app = DocsState::init();
         let err = app
-            .edit_doc_inner("ghost".into(), Some("t".into()), None)
+            .insert_block("ghost".into(), None, "paragraph".into(), 0)
             .unwrap_err();
-        assert!(matches!(err, DriveError::NotFound(_)));
+        let err = format!("{err:?}");
+        assert!(err.contains("unknown document 'ghost'"), "{err}");
     }
 
     #[test]
     fn archive_hides_from_list_by_default() {
         let mut app = DocsState::init();
-        let id = app.create_doc_inner("t".into(), "".into()).unwrap();
+        let id = app.create_doc_inner("t".into()).unwrap();
         app.set_archived_inner(id.clone(), true).unwrap();
         assert_eq!(app.list_docs(false).unwrap().len(), 0);
         assert_eq!(app.list_docs(true).unwrap().len(), 1);
@@ -922,7 +1500,7 @@ mod tests {
     #[test]
     fn unarchive_restores_in_default_list() {
         let mut app = DocsState::init();
-        let id = app.create_doc_inner("t".into(), "".into()).unwrap();
+        let id = app.create_doc_inner("t".into()).unwrap();
         app.set_archived_inner(id.clone(), true).unwrap();
         app.set_archived_inner(id.clone(), false).unwrap();
         assert_eq!(app.list_docs(false).unwrap().len(), 1);
@@ -939,7 +1517,7 @@ mod tests {
     #[test]
     fn delete_doc_removes_from_map() {
         let mut app = DocsState::init();
-        let id = app.create_doc_inner("t".into(), "".into()).unwrap();
+        let id = app.create_doc_inner("t".into()).unwrap();
         app.delete_doc_inner(id.clone()).unwrap();
         assert!(app.get_doc(id).is_err());
         assert_eq!(app.list_docs(true).unwrap().len(), 0);
@@ -955,18 +1533,17 @@ mod tests {
     #[test]
     fn add_tag_inserts_and_is_set_no_dup() {
         let mut app = DocsState::init();
-        let id = app.create_doc_inner("t".into(), "".into()).unwrap();
+        let id = app.create_doc_inner("t".into()).unwrap();
         app.add_tag_inner(id.clone(), "todo".into()).unwrap();
         app.add_tag_inner(id.clone(), "todo".into()).unwrap();
         let d = app.get_doc(id).unwrap();
-        assert_eq!(d.tags.len(), 1);
-        assert_eq!(d.tags[0], "todo");
+        assert_eq!(d.tags, vec!["todo".to_string()]);
     }
 
     #[test]
     fn add_tag_rejects_empty() {
         let mut app = DocsState::init();
-        let id = app.create_doc_inner("t".into(), "".into()).unwrap();
+        let id = app.create_doc_inner("t".into()).unwrap();
         let err = app.add_tag_inner(id, "".into()).unwrap_err();
         assert!(matches!(err, DriveError::Invalid(_)));
     }
@@ -981,7 +1558,7 @@ mod tests {
     #[test]
     fn remove_tag_deletes_it() {
         let mut app = DocsState::init();
-        let id = app.create_doc_inner("t".into(), "".into()).unwrap();
+        let id = app.create_doc_inner("t".into()).unwrap();
         app.add_tag_inner(id.clone(), "todo".into()).unwrap();
         app.remove_tag_inner(id.clone(), "todo".into()).unwrap();
         assert_eq!(app.get_doc(id).unwrap().tags.len(), 0);
@@ -997,90 +1574,43 @@ mod tests {
     }
 
     #[test]
-    fn full_lifecycle_create_edit_archive_tag_delete() {
-        let mut app = DocsState::init();
-        let id = app
-            .create_doc_inner("draft".into(), "hello".into())
-            .unwrap();
-        app.edit_doc_inner(id.clone(), Some("final".into()), Some("world".into()))
-            .unwrap();
-        app.add_tag_inner(id.clone(), "review".into()).unwrap();
-        app.add_tag_inner(id.clone(), "urgent".into()).unwrap();
-        app.remove_tag_inner(id.clone(), "urgent".into()).unwrap();
-        app.set_archived_inner(id.clone(), true).unwrap();
-        let d = app.get_doc(id.clone()).unwrap();
-        assert_eq!(d.title, "final");
-        assert_eq!(d.content, "world");
-        assert_eq!(d.tags, vec!["review".to_string()]);
-        assert!(d.archived);
-        app.delete_doc_inner(id.clone()).unwrap();
-        assert!(app.get_doc(id).is_err());
-    }
-
-    // ---- edit_doc must advance updated_at (spec calls this out) ----
-
-    #[test]
-    fn edit_doc_advances_updated_at() {
-        let mut app = DocsState::init();
-        let id = app.create_doc_inner("t".into(), "".into()).unwrap();
-        let before = app.get_doc(id.clone()).unwrap().updated_at;
-        // Force a small HLC advance so the LWW timestamp on updated_at
-        // definitely ticks forward (same-ns collisions would be a flake).
-        std::thread::sleep(std::time::Duration::from_millis(2));
-        app.edit_doc_inner(id.clone(), Some("new".into()), None)
-            .unwrap();
-        let after = app.get_doc(id).unwrap().updated_at;
-        assert!(
-            after > before,
-            "updated_at should advance on edit (before={before}, after={after})",
-        );
-    }
-
-    #[test]
     fn archive_advances_updated_at() {
         let mut app = DocsState::init();
-        let id = app.create_doc_inner("t".into(), "".into()).unwrap();
+        let id = app.create_doc_inner("t".into()).unwrap();
         let before = app.get_doc(id.clone()).unwrap().updated_at;
         std::thread::sleep(std::time::Duration::from_millis(2));
         app.set_archived_inner(id.clone(), true).unwrap();
-        let after = app.get_doc(id).unwrap().updated_at;
-        assert!(after > before);
+        assert!(app.get_doc(id).unwrap().updated_at > before);
     }
 
-    // ---- edit_doc must NOT clobber other fields ----
-
+    /// The list's sort key must move when the BODY moves, not only when the
+    /// record's metadata does.
     #[test]
-    fn edit_doc_preserves_tags_and_archived() {
+    fn a_body_write_advances_updated_at() {
         let mut app = DocsState::init();
-        let id = app.create_doc_inner("t".into(), "c".into()).unwrap();
-        app.add_tag_inner(id.clone(), "urgent".into()).unwrap();
-        app.set_archived_inner(id.clone(), true).unwrap();
-        app.edit_doc_inner(id.clone(), Some("new".into()), None)
+        let id = app.create_doc_inner("t".into()).unwrap();
+        let before = app.get_doc(id.clone()).unwrap().updated_at;
+        std::thread::sleep(std::time::Duration::from_millis(2));
+        let _block = app
+            .insert_block(id.clone(), None, "paragraph".into(), 0)
             .unwrap();
-        let d = app.get_doc(id).unwrap();
-        assert_eq!(d.tags, vec!["urgent".to_string()]);
-        assert!(d.archived);
+        assert!(app.get_doc(id).unwrap().updated_at > before);
     }
 
     #[test]
-    fn add_tag_does_not_touch_content_or_title() {
+    fn add_tag_does_not_touch_the_title() {
         let mut app = DocsState::init();
-        let id = app.create_doc_inner("t".into(), "hello".into()).unwrap();
+        let id = app.create_doc_inner("t".into()).unwrap();
         app.add_tag_inner(id.clone(), "x".into()).unwrap();
-        let d = app.get_doc(id).unwrap();
-        assert_eq!(d.title, "t");
-        assert_eq!(d.content, "hello");
+        assert_eq!(app.get_doc(id).unwrap().title, "t");
     }
 
-    // ---- struct-level DocRecord::merge ----
+    // ---- struct-level DocRecord::merge ------------------------------------
     //
-    // Same rationale as FolderRecord::merge tests: pin the manual
-    // Mergeable impl so a future refactor doesn't silently break sync
-    // for a specific field. Uses explicit zero-HLC baselines on `a` so
-    // `b`'s real-clock writes deterministically win the LWW tie-break
-    // regardless of test-parallelism HLC collisions.
+    // Pin the derived Mergeable so a future refactor cannot silently break sync
+    // for one field. Explicit zero-HLC baselines on `a` make `b`'s real-clock
+    // writes win the tie-break regardless of test-parallelism HLC collisions.
 
-    use calimero_storage::collections::LwwRegister;
     use calimero_storage::logical_clock::HybridTimestamp;
 
     fn zero_lww<T>(v: T) -> LwwRegister<T> {
@@ -1089,245 +1619,35 @@ mod tests {
 
     fn stub_record() -> DocRecord {
         DocRecord {
-            title: zero_lww("old".into()),
-            content: zero_lww("old".into()),
+            title: FugueText::new(),
+            body: Body::new(),
             tags: zero_lww(Vec::new()),
             archived: zero_lww(false),
-            created_at: 0,
+            created_at: zero_lww(0),
             updated_at: zero_lww(0),
-            content_updates: UnorderedSet::new(),
         }
     }
 
     #[test]
-    fn doc_record_merge_lww_title_content() {
+    fn doc_record_merge_takes_the_later_metadata() {
         let mut a = stub_record();
         let mut b = stub_record();
-        // overwrite with real-clock HLCs so these win the merge
-        b.title = LwwRegister::new("new_title".into());
-        b.content = LwwRegister::new("new_content".into());
-        <DocRecord as Mergeable>::merge(&mut a, &b).unwrap();
-        assert_eq!(a.title.get(), "new_title");
-        assert_eq!(a.content.get(), "new_content");
-    }
-
-    #[test]
-    fn doc_record_merge_archived_flip() {
-        let mut a = stub_record();
-        let mut b = stub_record();
+        b.tags = LwwRegister::new(vec!["urgent".to_owned()]);
         b.archived = LwwRegister::new(true);
         <DocRecord as Mergeable>::merge(&mut a, &b).unwrap();
+        assert_eq!(a.tags.get(), &vec!["urgent".to_owned()]);
         assert!(*a.archived.get());
     }
 
     #[test]
     fn doc_record_merge_is_idempotent() {
-        // `DocRecord` is no longer `Clone` (its nested `content_updates` set is
-        // a non-`Clone` collection), so build two stubs with the same logical
-        // content instead of cloning a stored record. Merging twice must not
-        // change the converged value.
         let mut working = stub_record();
-        working.title = LwwRegister::new("t".into());
-        working.content = LwwRegister::new("c".into());
+        working.tags = LwwRegister::new(vec!["t".to_owned()]);
         let mut snapshot = stub_record();
-        snapshot.title = LwwRegister::new("t".into());
-        snapshot.content = LwwRegister::new("c".into());
-        let title_after = working.title.get().clone();
-        let content_after = working.content.get().clone();
+        snapshot.tags = LwwRegister::new(vec!["t".to_owned()]);
         <DocRecord as Mergeable>::merge(&mut working, &snapshot).unwrap();
         <DocRecord as Mergeable>::merge(&mut working, &snapshot).unwrap();
-        assert_eq!(working.title.get(), &title_after);
-        assert_eq!(working.content.get(), &content_after);
+        assert_eq!(working.tags.get(), &vec!["t".to_owned()]);
         assert!(!*working.archived.get());
-    }
-
-    // ---- Yjs content-update log (op-log) ----
-
-    #[test]
-    fn append_doc_update_stores_blob() {
-        let mut app = DocsState::init();
-        let id = app.create_doc_inner("t".into(), "".into()).unwrap();
-        app.append_doc_update_inner(id.clone(), vec![1, 2, 3])
-            .unwrap();
-        let updates = app.get_doc_updates(id).unwrap();
-        assert_eq!(updates, vec![vec![1, 2, 3]]);
-    }
-
-    #[test]
-    fn append_doc_update_is_idempotent() {
-        // Content-addressed set: appending the same blob twice yields one entry.
-        let mut app = DocsState::init();
-        let id = app.create_doc_inner("t".into(), "".into()).unwrap();
-        app.append_doc_update_inner(id.clone(), vec![9, 9]).unwrap();
-        app.append_doc_update_inner(id.clone(), vec![9, 9]).unwrap();
-        assert_eq!(app.get_doc_updates(id).unwrap().len(), 1);
-    }
-
-    #[test]
-    fn append_doc_update_reports_new_vs_duplicate() {
-        // `append_doc_update_inner` returns true only when the set actually
-        // grew. The event emit in `append_doc_update` keys on this so an
-        // idempotent re-delivery doesn't spam DocEdited.
-        let mut app = DocsState::init();
-        let id = app.create_doc_inner("t".into(), "".into()).unwrap();
-        // First append of a blob is new.
-        assert!(app.append_doc_update_inner(id.clone(), vec![5, 5]).unwrap());
-        // Re-delivery of the SAME blob does not change the set.
-        assert!(!app.append_doc_update_inner(id.clone(), vec![5, 5]).unwrap());
-        // A distinct blob is new again.
-        assert!(app.append_doc_update_inner(id.clone(), vec![6]).unwrap());
-        assert!(!app.append_doc_update_inner(id, vec![6]).unwrap());
-    }
-
-    #[test]
-    fn duplicate_append_does_not_advance_updated_at() {
-        // A no-op re-delivery must not tick the LWW clock — otherwise every
-        // SSE re-fire would re-sort sibling lists for nothing.
-        let mut app = DocsState::init();
-        let id = app.create_doc_inner("t".into(), "".into()).unwrap();
-        app.append_doc_update_inner(id.clone(), vec![1, 2]).unwrap();
-        let after_first = app.get_doc(id.clone()).unwrap().updated_at;
-        std::thread::sleep(std::time::Duration::from_millis(2));
-        // Same blob again — set unchanged, clock must not advance.
-        assert!(!app.append_doc_update_inner(id.clone(), vec![1, 2]).unwrap());
-        let after_dup = app.get_doc(id).unwrap().updated_at;
-        assert_eq!(after_first, after_dup);
-    }
-
-    #[test]
-    fn append_doc_update_accumulates_distinct_blobs() {
-        let mut app = DocsState::init();
-        let id = app.create_doc_inner("t".into(), "".into()).unwrap();
-        app.append_doc_update_inner(id.clone(), vec![1]).unwrap();
-        app.append_doc_update_inner(id.clone(), vec![2]).unwrap();
-        app.append_doc_update_inner(id.clone(), vec![3]).unwrap();
-        let mut updates = app.get_doc_updates(id).unwrap();
-        updates.sort();
-        assert_eq!(updates, vec![vec![1], vec![2], vec![3]]);
-    }
-
-    #[test]
-    fn append_doc_update_rejects_empty() {
-        let mut app = DocsState::init();
-        let id = app.create_doc_inner("t".into(), "".into()).unwrap();
-        let err = app.append_doc_update_inner(id, Vec::new()).unwrap_err();
-        assert!(matches!(err, DriveError::Invalid(_)));
-    }
-
-    #[test]
-    fn append_doc_update_unknown_doc_is_not_found() {
-        let mut app = DocsState::init();
-        let err = app
-            .append_doc_update_inner("ghost".into(), vec![1])
-            .unwrap_err();
-        assert!(matches!(err, DriveError::NotFound(_)));
-    }
-
-    #[test]
-    fn append_doc_update_advances_updated_at() {
-        let mut app = DocsState::init();
-        let id = app.create_doc_inner("t".into(), "".into()).unwrap();
-        let before = app.get_doc(id.clone()).unwrap().updated_at;
-        std::thread::sleep(std::time::Duration::from_millis(2));
-        app.append_doc_update_inner(id.clone(), vec![7]).unwrap();
-        let after = app.get_doc(id).unwrap().updated_at;
-        assert!(after > before);
-    }
-
-    // ---- DocRecord BorshDeserialize forward-compat (clean EOF vs corruption) ----
-
-    use calimero_sdk::borsh::{self, BorshSerialize};
-
-    /// Serialize just the six pre-collab fields (the layout an OLD record was
-    /// written with, before `content_updates` existed). Mirrors `DocRecord`'s
-    /// derived `BorshSerialize` field order exactly, minus the trailing set.
-    fn serialize_pre_collab_prefix(rec: &DocRecord) -> Vec<u8> {
-        let mut bytes = Vec::new();
-        BorshSerialize::serialize(&rec.title, &mut bytes).unwrap();
-        BorshSerialize::serialize(&rec.content, &mut bytes).unwrap();
-        BorshSerialize::serialize(&rec.tags, &mut bytes).unwrap();
-        BorshSerialize::serialize(&rec.archived, &mut bytes).unwrap();
-        BorshSerialize::serialize(&rec.created_at, &mut bytes).unwrap();
-        BorshSerialize::serialize(&rec.updated_at, &mut bytes).unwrap();
-        bytes
-    }
-
-    #[test]
-    fn doc_record_roundtrips_with_content_updates_field() {
-        // A NEW record (field present) must round-trip byte-for-byte through
-        // borsh: serialize → deserialize → identical projected fields.
-        let mut app = DocsState::init();
-        let id = app.create_doc_inner("t".into(), "body".into()).unwrap();
-        let rec = app.docs.get(&id).unwrap().unwrap();
-        let bytes = borsh::to_vec(&*rec).unwrap();
-        let back: DocRecord = borsh::from_slice(&bytes).unwrap();
-        assert_eq!(back.title.get(), "t");
-        assert_eq!(back.content.get(), "body");
-    }
-
-    #[test]
-    fn doc_record_deserialize_old_record_seeds_empty_set_on_clean_eof() {
-        // An OLD record was serialized WITHOUT `content_updates`. Decoding it
-        // must hit a CLEAN field-boundary EOF and seed a fresh empty set rather
-        // than erroring.
-        let mut app = DocsState::init();
-        let id = app.create_doc_inner("legacy".into(), "old".into()).unwrap();
-        let rec = app.docs.get(&id).unwrap().unwrap();
-        let old_bytes = serialize_pre_collab_prefix(&rec);
-
-        let back: DocRecord = borsh::from_slice(&old_bytes).unwrap();
-        assert_eq!(back.title.get(), "legacy");
-        assert_eq!(back.content.get(), "old");
-        // No field bytes → empty update log.
-        assert_eq!(back.content_updates.iter().unwrap().count(), 0);
-    }
-
-    #[test]
-    fn doc_record_deserialize_partial_field_is_corruption_not_empty() {
-        // A record WITH a (partially-written / truncated) `content_updates`
-        // field is genuine corruption: the decoder must propagate the error,
-        // NOT swallow it into an empty set. Construct prefix + a single stray
-        // field byte so the probe reads data (Ok(1)) and the full field decode
-        // then hits a mid-field EOF.
-        let mut app = DocsState::init();
-        let id = app.create_doc_inner("t".into(), "body".into()).unwrap();
-        let rec = app.docs.get(&id).unwrap().unwrap();
-        let mut corrupt = serialize_pre_collab_prefix(&rec);
-        // One leftover byte where the field starts: not a clean boundary EOF,
-        // but too short to decode the field → must error.
-        corrupt.push(0x01);
-
-        let result: Result<DocRecord, _> = borsh::from_slice(&corrupt);
-        assert!(
-            result.is_err(),
-            "a partial content_updates field must error, not seed an empty set",
-        );
-    }
-
-    #[test]
-    fn doc_record_deserialize_trailing_garbage_after_field_is_rejected() {
-        // borsh's `from_slice` rejects trailing bytes — proving the field
-        // boundary is exact and the probe-byte chaining doesn't lose track of
-        // where the field ends.
-        let mut app = DocsState::init();
-        let id = app.create_doc_inner("t".into(), "body".into()).unwrap();
-        let rec = app.docs.get(&id).unwrap().unwrap();
-        let mut bytes = borsh::to_vec(&*rec).unwrap();
-        bytes.push(0xFF); // extra trailing byte
-        let result: Result<DocRecord, _> = borsh::from_slice(&bytes);
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn edit_doc_preserves_content_updates() {
-        // The legacy LWW snapshot path (edit_doc) and the Yjs op-log coexist;
-        // editing the snapshot must not drop accumulated updates.
-        let mut app = DocsState::init();
-        let id = app.create_doc_inner("t".into(), "".into()).unwrap();
-        app.append_doc_update_inner(id.clone(), vec![1, 1]).unwrap();
-        app.edit_doc_inner(id.clone(), Some("new".into()), Some("snap".into()))
-            .unwrap();
-        assert_eq!(app.get_doc_updates(id.clone()).unwrap(), vec![vec![1, 1]]);
-        assert_eq!(app.get_doc(id).unwrap().content, "snap");
     }
 }

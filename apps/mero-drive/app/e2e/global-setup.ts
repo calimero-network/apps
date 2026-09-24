@@ -177,7 +177,22 @@ async function provision(url: string, mpk: string) {
   };
 }
 
+/** `scripts/local-rig.sh up` owns its nodes; this run only borrows their env. */
+function loadRigEnv(): boolean {
+  const envFile = path.resolve(__dirname, '..', '.env.integration');
+  if (!existsSync(envFile)) return false;
+  for (const line of readFileSync(envFile, 'utf-8').split('\n')) {
+    const match = /^([A-Z0-9_]+)=(.*)$/.exec(line.trim());
+    if (match) process.env[match[1]] = match[2];
+  }
+  return true;
+}
+
 export default async function globalSetup(): Promise<(() => void) | undefined> {
+  if (loadRigEnv()) {
+    console.log('[setup] using the rig nodes from app/.env.integration');
+    return undefined;
+  }
   const merod = resolveMerod();
   const mpk = resolveMpk();
   if (!merod || !existsSync(mpk)) {

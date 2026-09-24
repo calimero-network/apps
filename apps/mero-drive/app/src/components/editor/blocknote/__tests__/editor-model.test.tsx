@@ -8,8 +8,7 @@
 //   2. `serializeBlocks(editor.document)` round-trips through
 //      `parseStoredContent` → `replaceBlocks` unchanged (the storage
 //      contract DocumentEditor persists).
-//   3. The custom `fontSize` inline style is registered on the schema and
-//      survives serialization (the PR1 feature, re-implemented).
+//   3. The schema is the restricted set the document CRDT round-trips.
 
 import { describe, it, expect, vi } from 'vitest';
 import { renderHook } from '@testing-library/react';
@@ -52,24 +51,16 @@ describe('BlockNote editor model (headless)', () => {
     expect(serializeBlocks(editor.document)).toBe(serialized);
   });
 
-  it('schema registers the custom fontSize inline style', () => {
-    expect(schema.styleSchema.fontSize).toBeDefined();
-    expect(schema.styleSchema.fontSize.propSchema).toBe('string');
-  });
-
-  it('a fontSize-styled inline node persists through serialization', () => {
-    const { result } = renderHook(() => useCreateBlockNote({ schema }));
-    const editor = result.current;
-
-    editor.replaceBlocks(editor.document, [
-      {
-        type: 'paragraph',
-        content: [{ type: 'text', text: 'big', styles: { fontSize: '28px' } }],
-      },
+  it('offers only the block kinds and marks the CRDT round-trips', () => {
+    expect(Object.keys(schema.blockSchema).sort()).toEqual([
+      'bulletListItem',
+      'heading',
+      'paragraph',
     ]);
-
-    const serialized = serializeBlocks(editor.document);
-    expect(serialized).toContain('fontSize');
-    expect(serialized).toContain('28px');
+    expect(Object.keys(schema.styleSchema).sort()).toEqual(['bold', 'italic']);
+    expect(Object.keys(schema.inlineContentSchema).sort()).toEqual([
+      'link',
+      'text',
+    ]);
   });
 });

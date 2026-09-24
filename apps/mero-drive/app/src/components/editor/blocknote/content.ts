@@ -1,18 +1,18 @@
 // Storage format layer for the BlockNote editor.
 //
-// Docs are persisted through the Calimero CRDT as an opaque `content`
-// string (see DocsClient / useDocs.edit — the WASM never parses it).
-// With BlockNote we store the editor's native lossless format:
-//   content === JSON.stringify(editor.document)
-// a serialized `Block[]`. This keeps the whole autosave / SSE / seq-guard
-// machinery in DocumentEditor unchanged — it only ever compares opaque
-// strings, which now happen to be JSON instead of HTML.
+// EditorShell carries the document in and out as one opaque serialized
+// `Block[]`; the CRDT hooks parse that string into the block diff. Keeping the
+// editor's own lossless format here is what lets the shell stay editor-shaped
+// and the persistence layer stay CRDT-shaped.
 //
 // This module is intentionally free of any live-editor / React / DOM
 // dependency so the round-trip and text-extraction logic can be unit
 // tested in isolation.
 
-import type { Block, PartialBlock } from '@blocknote/core';
+import type { schema } from './schema';
+
+type Block = typeof schema.Block;
+type PartialBlock = typeof schema.PartialBlock;
 
 // Serialize the current document to the string we persist.
 export function serializeBlocks(blocks: Block[]): string {

@@ -41,15 +41,15 @@ pnpm dev
 ```
 Use this for **frontend-only development** without registry integration.
 
-### Mode 3: Merobox Network (App + Watcher + Merobox)
+### Mode 3: Local rig (three nodes + App + Watcher)
 ```bash
-# Terminal 1: Start merobox network
-pnpm network:bootstrap
+# Terminal 1: three merod nodes, the bundle, the mesh and app/.env.integration
+scripts/local-rig.sh up
 
 # Terminal 2: Dev with app
 pnpm dev
 ```
-Use this for **network testing** with multiple nodes.
+Use this for **network testing** with multiple nodes; see the rig section of the README for the offline switch and `?node=<n>`.
 
 ---
 
