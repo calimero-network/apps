@@ -30,15 +30,33 @@ export default function ScreensPanel({ contextId, readOnly = false }: Props) {
       })),
     );
   const screens = useMemo(() => listScreens(elements, elementLabels), [elements, elementLabels]);
-  const { createScreen, renameScreen, unmarkScreen } = useScreenActions(contextId, readOnly);
+  const { createScreen, renameScreen, unmarkScreen, moveScreen } = useScreenActions(contextId, readOnly);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
+  // Drag to reorder: which row is being dragged, and where it would land.
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [drop, setDrop] = useState<{ index: number; edge: "before" | "after" } | null>(null);
 
   const selected = useMemo(() => {
     const ids = new Set(selectedElementIds);
     return elements.filter((e) => ids.has(e.id));
   }, [elements, selectedElementIds]);
   const startScreen = screenForSelection(screens, selected);
+
+  function endDrag() {
+    setDragIndex(null);
+    setDrop(null);
+  }
+
+  function handleDrop() {
+    if (dragIndex !== null && drop) {
+      const insertAt = drop.edge === "before" ? drop.index : drop.index + 1;
+      // Removing the dragged row first shifts every later slot up by one.
+      const to = insertAt > dragIndex ? insertAt - 1 : insertAt;
+      if (to !== dragIndex) void moveScreen(dragIndex, to);
+    }
+    endDrag();
+  }
 
   function commitRename() {
     const id = editingId;
@@ -74,16 +92,31 @@ export default function ScreensPanel({ contextId, readOnly = false }: Props) {
           </p>
           <p className={styles.hint}>
             Everything inside a screen’s area is part of it. Screens play left to right,
-            then top to bottom; a tall screen scrolls.
+            then top to bottom — drag them in this list to change the order. A tall
+            screen scrolls.
           </p>
         </div>
       ) : (
-        <ol className={styles.list}>
+        <ol className={styles.list} onDragLeave={(e) => {
+          // Only when the pointer leaves the list itself, not a row inside it.
+          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDrop(null);
+        }}>
           {screens.map((s, i) => (
             <ScreenRow
               key={s.id}
               screen={s}
               index={i}
+              count={screens.length}
+              dragging={dragIndex === i}
+              dropEdge={drop && dragIndex !== null && drop.index === i ? drop.edge : null}
+              onDragStart={() => setDragIndex(i)}
+              onDragOverEdge={(edge) => {
+                if (dragIndex === null) return;
+                if (!drop || drop.index !== i || drop.edge !== edge) setDrop({ index: i, edge });
+              }}
+              onDrop={handleDrop}
+              onDragEnd={endDrag}
+              onMove={(delta) => void moveScreen(i, i + delta)}
               active={selectedElementIds.includes(s.id)}
               editing={editingId === s.id}
               draft={draft}
@@ -107,6 +140,14 @@ export default function ScreensPanel({ contextId, readOnly = false }: Props) {
 interface RowProps {
   screen: Screen;
   index: number;
+  count: number;
+  dragging: boolean;
+  dropEdge: "before" | "after" | null;
+  onDragStart: () => void;
+  onDragOverEdge: (edge: "before" | "after") => void;
+  onDrop: () => void;
+  onDragEnd: () => void;
+  onMove: (delta: number) => void;
   active: boolean;
   editing: boolean;
   draft: string;
@@ -127,14 +168,46 @@ function ScreenRow(p: RowProps) {
   );
   const url = useScreenImage(p.screen, elements, background, imageCache);
   const { screen } = p;
+  const canMove = !p.readOnly && !p.editing;
   return (
     <li
-      className={`${styles.row} ${p.active ? styles.rowActive : ""}`}
+      className={[
+        styles.row,
+        p.active ? styles.rowActive : "",
+        p.dragging ? styles.rowDragging : "",
+        p.dropEdge === "before" ? styles.dropBefore : "",
+        p.dropEdge === "after" ? styles.dropAfter : "",
+      ].filter(Boolean).join(" ")}
       data-testid={`screen-row-${screen.id}`}
+      data-drop={p.dropEdge ?? undefined}
+      tabIndex={0}
+      draggable={canMove}
       onClick={p.onSelect}
       onDoubleClick={p.onPresent}
-      title="Click to select · double-click to present from here"
+      onKeyDown={(e) => {
+        if (!canMove || !e.altKey || (e.key !== "ArrowUp" && e.key !== "ArrowDown")) return;
+        e.preventDefault();
+        p.onMove(e.key === "ArrowUp" ? -1 : 1);
+      }}
+      onDragStart={(e) => {
+        e.dataTransfer.effectAllowed = "move";
+        // Firefox starts no drag without data.
+        e.dataTransfer.setData("text/plain", screen.id);
+        p.onDragStart();
+      }}
+      onDragOver={(e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+        const box = e.currentTarget.getBoundingClientRect();
+        p.onDragOverEdge(e.clientY < box.top + box.height / 2 ? "before" : "after");
+      }}
+      onDrop={(e) => { e.preventDefault(); p.onDrop(); }}
+      onDragEnd={p.onDragEnd}
+      title={canMove
+        ? "Drag to reorder (or Alt+↑/↓) · click to select · double-click to present from here"
+        : "Click to select · double-click to present from here"}
     >
+      {canMove && <span className={styles.handle} aria-hidden="true">⠿</span>}
       <span className={styles.thumb}>
         {url && <img src={url} alt="" draggable={false} />}
         <span className={styles.number}>{p.index + 1}</span>
@@ -165,6 +238,8 @@ function ScreenRow(p: RowProps) {
           testId={`screen-menu-${screen.id}`}
           actions={[
             { label: "Present from here", onSelect: p.onPresent, testId: `screen-present-${screen.id}` },
+            { label: "Move up", onSelect: () => p.onMove(-1), disabled: p.readOnly || p.index === 0, testId: `screen-move-up-${screen.id}` },
+            { label: "Move down", onSelect: () => p.onMove(1), disabled: p.readOnly || p.index === p.count - 1, testId: `screen-move-down-${screen.id}` },
             { label: "Rename", onSelect: p.onRename, disabled: p.readOnly, testId: `screen-rename-${screen.id}` },
             { label: "Select contents", onSelect: p.onSelectContents },
             { label: "Remove screen", onSelect: p.onUnmark, disabled: p.readOnly, danger: true, testId: `screen-unmark-${screen.id}` },

@@ -1,12 +1,16 @@
 import { describe, it, expect } from "vitest";
 import type { Element } from "../types";
 import starter from "../starter/starter-project.json";
+import { nameOf, renameElement } from "./groups";
 import {
   elementsInScreen,
   fitScreen,
   isScreen,
   listScreens,
   nextScreenName,
+  nextScreenOrder,
+  parseScreenName,
+  reorderScreens,
   screenForSelection,
   screenLabel,
   screenToSvg,
@@ -153,5 +157,102 @@ describe("naming", () => {
 
   it("keeps the separator out of a screen's name", () => {
     expect(screenLabel("A/B")).toBe("screen/A-B");
+  });
+});
+
+describe("changing the order", () => {
+  // Four screens in a row: reading order is 1-2-3-4.
+  const row = () => [
+    screen("s1", "One", 0, 0), screen("s2", "Two", 500, 0),
+    screen("s3", "Three", 1000, 0), screen("s4", "Four", 1500, 0),
+  ];
+  const ids = (els: Element[], labels: Record<string, string> = {}) => listScreens(els, labels).map((s) => s.id);
+
+  it("reads the order off the end of a screen's name, and hides it", () => {
+    expect(parseScreenName("Home @3")).toEqual({ name: "Home", order: 3 });
+    expect(parseScreenName("Home")).toEqual({ name: "Home", order: null });
+    // A name that is ONLY a number keeps it as its name.
+    expect(parseScreenName("@2")).toEqual({ name: "@2", order: null });
+    expect(listScreens([screen("a", "Home @3", 0, 0)])[0]).toMatchObject({ name: "Home", order: 3 });
+  });
+
+  it("moves 4 to second place: 1-2-3-4 becomes 1-4-2-3", () => {
+    const board = row();
+    const patch = reorderScreens(listScreens(board), 3, 1);
+    expect(patch).toEqual({
+      s1: "screen/One @1",
+      s4: "screen/Four @2",
+      s2: "screen/Two @3",
+      s3: "screen/Three @4",
+    });
+    expect(ids(board, patch)).toEqual(["s1", "s4", "s2", "s3"]);
+  });
+
+  it("beats reading order once numbered — the board layout no longer decides", () => {
+    const board = [
+      screen("s1", "One @2", 0, 0),
+      screen("s2", "Two @1", 500, 0),
+    ];
+    expect(ids(board)).toEqual(["s2", "s1"]);
+  });
+
+  it("only rewrites the screens whose place changed, once the deck is numbered", () => {
+    const board = [
+      screen("s1", "One @1", 0, 0), screen("s2", "Two @2", 500, 0),
+      screen("s3", "Three @3", 1000, 0), screen("s4", "Four @4", 1500, 0),
+    ];
+    // Swap the last two: the first two keep their labels untouched.
+    expect(reorderScreens(listScreens(board), 3, 2)).toEqual({
+      s4: "screen/Four @3",
+      s3: "screen/Three @4",
+    });
+  });
+
+  it("writes nothing for a move to where it already is, or from nowhere", () => {
+    const screens = listScreens(row());
+    expect(reorderScreens(screens, 2, 2)).toEqual({});
+    expect(reorderScreens(screens, 9, 0)).toEqual({});
+  });
+
+  it("clamps a move past either end", () => {
+    const board = row();
+    expect(ids(board, reorderScreens(listScreens(board), 0, 99))).toEqual(["s2", "s3", "s4", "s1"]);
+    expect(ids(board, reorderScreens(listScreens(board), 3, -5))).toEqual(["s4", "s1", "s2", "s3"]);
+  });
+
+  it("plays an unnumbered screen after the numbered ones — where a peer's new screen lands", () => {
+    const board = [
+      screen("new", "Just made", 0, 0),
+      screen("a", "A @1", 500, 0),
+      screen("b", "B @2", 1000, 0),
+    ];
+    expect(ids(board)).toEqual(["a", "b", "new"]);
+  });
+
+  it("breaks a tie between two screens given the same number by reading order", () => {
+    // Two people reordering at once can both write @2.
+    const board = [screen("right", "R @2", 900, 0), screen("left", "L @2", 0, 0)];
+    expect(ids(board)).toEqual(["left", "right"]);
+  });
+
+  it("numbers a new screen after the last, but only once there is an order", () => {
+    expect(nextScreenOrder(listScreens(row()))).toBeNull();
+    expect(nextScreenOrder(listScreens([screen("a", "A @1", 0, 0), screen("b", "B @4", 500, 0)]))).toBe(5);
+  });
+
+  it("keeps the order through a rename, and hides it in the layers tree", () => {
+    const numbered = screen("a", "Home @3", 0, 0);
+    expect(nameOf(numbered)).toBe("Home");
+    expect(renameElement(numbered, "Welcome")).toBe("screen/Welcome @3");
+    // Ordinary layers are untouched by any of this.
+    const plain = el("p", { label: "card/price @3" });
+    expect(nameOf(plain)).toBe("price @3");
+    expect(renameElement(plain, "cost")).toBe("card/cost");
+  });
+
+  it("puts the order on a screen's label and nowhere else", () => {
+    expect(screenLabel("Home", 2)).toBe("screen/Home @2");
+    // A name that already carries a number is not given a second one.
+    expect(screenLabel("Home @7", 2)).toBe("screen/Home @2");
   });
 });

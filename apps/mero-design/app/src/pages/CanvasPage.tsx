@@ -18,6 +18,7 @@ import CursorsOverlay from "../components/CursorsOverlay";
 import UsernameModal from "../components/UsernameModal";
 import PresentationView from "../components/PresentationView";
 import { listScreens, screenForSelection } from "../utils/screens";
+import { loadStarter, type StarterId } from "../starter/starters";
 import { exportProject, importProject, validateSnapshot, type ProjectSnapshot } from "../utils/projectFile";
 import { extractErrorMessage } from "../utils/errorMessage";
 import { useToast } from "../contexts/ToastContext";
@@ -506,25 +507,27 @@ export default function CanvasPage() {
   }
 
   /**
-   * Loads the bundled starter project and persists it into contract state: the
+   * Loads a bundled starter project and persists it into contract state: the
    * same path as Open (.mero-design), so every element lands in WASM via
    * add_element and reaches every other member, rather than living in local
-   * canvas state. The JSON is imported dynamically so its ~170 kB stays out of
-   * the initial bundle, and validated before use so a bad asset cannot wipe a
-   * board and leave nothing behind.
+   * canvas state. Each file is imported on demand (see `starters.ts`), and
+   * validated before use so a bad asset cannot wipe a board and leave nothing
+   * behind.
    */
-  async function handleOpenStarter() {
+  async function handleOpenStarter(id: StarterId) {
     if (!projectId || !isAdmin) return;
     try {
-      const raw = (await import("../starter/starter-project.json?raw")).default;
-      const snapshot: unknown = JSON.parse(raw);
+      const snapshot: unknown = JSON.parse(await loadStarter(id));
       if (!validateSnapshot(snapshot)) {
         showToast("Starter project is malformed — nothing was changed", "error");
         return;
       }
       showToast(`Loading ${snapshot.elements.length} elements…`, "info");
       await handleImportProject(snapshot);
-      showToast("Starter project loaded", "success");
+      showToast(
+        id === "presentation" ? "Presentation loaded — press ▶ Present to play it" : "Starter project loaded",
+        "success",
+      );
     } catch (e) {
       showToast(extractErrorMessage(e, "Could not load the starter project"), "error");
     }

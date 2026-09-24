@@ -70,9 +70,13 @@ inside it is shown, clipped at its edge, exactly like a Figma frame.
   and choose **Create screen from selection**. A backdrop sized to the selection
   is added behind it. Select a single rectangle instead and that rectangle
   becomes the screen.
-- **Present:** **▶ Present** in the toolbar (or the Screens tab) plays screens in
-  reading order — left to right, then top to bottom — so reorder them by moving
-  them on the board. It starts from the screen the selection is on.
+- **Present:** **▶ Present** in the toolbar (or the Screens tab) plays the
+  screens, starting from the one the selection is on.
+- **Order:** screens play in reading order — left to right, then top to bottom —
+  until you **drag them into a different order** in the Screens tab (or use
+  *Move up / Move down* in a row's ⋯ menu, or Alt+↑/↓ on a focused row). A
+  reordered screen carries its place on the end of its name
+  (`screen/Pricing @3`); the suffix is hidden in the UI and survives a rename.
 - **Navigate:** → / Space / PageDown forward, ← / Shift+Space / PageUp back,
   Home / End, F for full screen, Esc to leave. **All screens** shows a filmstrip.
 - **Long screens scroll:** a screen much taller than the window is shown at a
@@ -80,8 +84,20 @@ inside it is shown, clipped at its edge, exactly like a Figma frame.
   can also be set to *Fill width* or *100%*.
 
 Screens ride the element `label` like groups do, so there is no contract change:
-every member sees the same screens, and the bundled starter project (whose five
-screens were already labelled this way) presents out of the box. The
+every member sees the same screens and the same order, and the web design
+starter (whose five screens were already labelled this way) presents out of the
+box.
+
+## Starter projects
+
+**Options → Starter projects** loads one into the board (an admin action; an
+occupied board asks once before it is replaced):
+
+- **Web design** — five app screens and a design system (`scripts/build-starter.mjs`).
+- **Presentation** — an 8-slide deck about Calimero, one of them a tall
+  scrolling screen; press **▶ Present** (`scripts/build-starter-presentation.mjs`).
+
+`pnpm starter` regenerates both into `app/src/starter/`. The
 presentation reads the live board, so a teammate's edit lands on the slide
 being shown.
 

@@ -9,6 +9,7 @@ import Logo from "./Logo";
 import styles from "./Toolbar.module.css";
 import type { Member, CursorState } from "../types";
 import type { ProjectSnapshot } from "../utils/projectFile";
+import { STARTERS, type StarterId } from "../starter/starters";
 
 /* ── SVG tool icons ────────────────────────────────────────────── */
 const IconCursor = () => (
@@ -117,8 +118,8 @@ interface Props {
   memberList?: Member[];
   onSaveProject?: () => void;
   onImportProject?: (snapshot: ProjectSnapshot) => void;
-  /** Loads the bundled starter project into this board and persists it. */
-  onOpenStarter?: () => void | Promise<void>;
+  /** Loads one of the bundled starter projects into this board and persists it. */
+  onOpenStarter?: (id: StarterId) => void | Promise<void>;
   /** Drives the confirm step: replacing a board that already has work needs one. */
   boardHasContent?: boolean;
   /** Viewer (no editor/admin role): hide creation tools + commenting. */
@@ -164,7 +165,7 @@ export default function Toolbar({
   // Loading the starter clears the board, so an occupied board asks once. Kept as
   // in-menu state rather than window.confirm: a native dialog cannot be driven in
   // the Tauri webview e2e project.
-  const [starterArmed, setStarterArmed] = useState(false);
+  const [starterArmed, setStarterArmed] = useState<StarterId | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const importFileInputRef = useRef<HTMLInputElement>(null);
   const optionsRef = useRef<HTMLDivElement>(null);
@@ -292,21 +293,32 @@ export default function Toolbar({
                   <button className={styles.optionsItem} onClick={() => { importFileInputRef.current?.click(); setOptionsOpen(false); }} data-testid="open-project">Open (.mero-design)</button>
                 )}
                 {canImport && onOpenStarter && (
-                  <button
-                    className={styles.optionsItem}
-                    data-testid={starterArmed ? "open-starter-confirm" : "open-starter"}
-                    onClick={() => {
-                      if (boardHasContent && !starterArmed) {
-                        setStarterArmed(true);
-                        return;
-                      }
-                      setStarterArmed(false);
-                      setOptionsOpen(false);
-                      void onOpenStarter();
-                    }}
-                  >
-                    {starterArmed ? "Replace board — confirm" : "Open starter project"}
-                  </button>
+                  <>
+                    <p className={styles.optionsGroupLabel}>Starter projects</p>
+                    {STARTERS.map((starter) => {
+                      const armed = starterArmed === starter.id;
+                      return (
+                        <button
+                          key={starter.id}
+                          className={styles.optionsItem}
+                          title={starter.hint}
+                          data-testid={armed ? `${starter.testId}-confirm` : starter.testId}
+                          onClick={() => {
+                            if (boardHasContent && !armed) {
+                              setStarterArmed(starter.id);
+                              return;
+                            }
+                            setStarterArmed(null);
+                            setOptionsOpen(false);
+                            void onOpenStarter(starter.id);
+                          }}
+                        >
+                          {armed ? `Replace board with “${starter.label}” — confirm` : starter.label}
+                          <span className={styles.optionsHint}>{starter.hint}</span>
+                        </button>
+                      );
+                    })}
+                  </>
                 )}
               </>
             )}

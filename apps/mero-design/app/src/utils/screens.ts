@@ -1,6 +1,6 @@
 import type { Element } from "../types";
 import { boundsOf, elementsToSvg, type Bounds } from "./svgExport";
-import { labelFor, sanitizeName, splitPath } from "./groups";
+import { labelFor, sanitizeName, splitPath, SCREEN_ORDER_SUFFIX, type LabelPatch } from "./groups";
 
 /**
  * Screens — the unit presentation mode plays, Figma's top-level frame.
@@ -18,6 +18,14 @@ import { labelFor, sanitizeName, splitPath } from "./groups";
  * because they live in contract state. It also means a screen cannot be empty
  * of a backdrop — the rect IS the screen.
  *
+ * Order. By default screens play in reading order across the board. Once
+ * someone drags them into a different order in the Screens tab, each screen's
+ * place is written onto the end of its name — `screen/Home @3` — and that wins.
+ * The suffix is hidden everywhere a name is shown. Being a label, it syncs to
+ * every member like any rename; two people reordering at once can leave two
+ * screens with the same number, which then fall back to reading order between
+ * themselves rather than failing.
+ *
  * Why a region and not "the elements I selected": a slide is judged by what it
  * shows. A member list goes stale the moment someone drops a new layer onto the
  * screen, and would render an element that was dragged off it. Bounds cannot
@@ -31,6 +39,10 @@ export interface Screen {
   /** Id of the backdrop rect that defines the screen. */
   id: string;
   name: string;
+  /** Explicit place in the presentation (1-based), or null for reading order. */
+  order: number | null;
+  /** The label this screen was read from, with any local override applied. */
+  label: string;
   x: number;
   y: number;
   width: number;
@@ -38,9 +50,18 @@ export interface Screen {
   element: Element;
 }
 
-/** Label for a screen called `name`. */
-export function screenLabel(name: string): string {
-  return labelFor(SCREEN_GROUP, name);
+/** Label for a screen called `name`, optionally at an explicit place. */
+export function screenLabel(name: string, order: number | null = null): string {
+  const base = labelFor(SCREEN_GROUP, name.replace(SCREEN_ORDER_SUFFIX, ""));
+  return order === null ? base : `${base} @${order}`;
+}
+
+/** A screen label's last segment → the name to show, and its order if any. */
+export function parseScreenName(segment: string): { name: string; order: number | null } {
+  const m = segment.match(SCREEN_ORDER_SUFFIX);
+  if (!m) return { name: segment, order: null };
+  const name = segment.slice(0, m.index).trim();
+  return { name: name || segment, order: name ? Number(m[1]) : null };
 }
 
 /**
@@ -56,9 +77,12 @@ export function isScreen(el: Element, labelOverride?: string): boolean {
 }
 
 function toScreen(el: Element, label: string): Screen {
+  const { name, order } = parseScreenName(splitPath(label)[1] ?? "Screen");
   return {
     id: el.id,
-    name: splitPath(label)[1] ?? "Screen",
+    name,
+    order,
+    label,
     x: el.x,
     y: el.y,
     width: Math.max(1, el.width),
@@ -88,7 +112,11 @@ export function orderScreens(screens: Screen[]): Screen[] {
   return rows.flatMap((row) => row.sort((a, b) => a.x - b.x || a.y - b.y));
 }
 
-/** Every screen on the board, in presentation order. */
+/**
+ * Every screen on the board, in presentation order: explicitly numbered
+ * screens first, by number, then any without a number in reading order — which
+ * is where a screen someone just made on another client lands.
+ */
 export function listScreens(
   elements: Element[],
   labelOverrides: Record<string, string> = {},
@@ -98,7 +126,41 @@ export function listScreens(
     const label = labelOverrides[el.id] ?? el.label ?? "";
     if (isScreen(el, label)) out.push(toScreen(el, label));
   }
-  return orderScreens(out);
+  const reading = orderScreens(out);
+  const rank = new Map(reading.map((s, i) => [s.id, i]));
+  return reading.sort((a, b) => {
+    if (a.order !== null && b.order !== null && a.order !== b.order) return a.order - b.order;
+    if ((a.order === null) !== (b.order === null)) return a.order === null ? 1 : -1;
+    return rank.get(a.id)! - rank.get(b.id)!;
+  });
+}
+
+/**
+ * Moves the screen at `from` to `to` and numbers every screen 1…n in the new
+ * order. Only labels that actually change are returned, so a move within an
+ * already-numbered deck touches just the screens whose place changed — and a
+ * move to where it already is writes nothing, rather than numbering a deck
+ * that was never numbered.
+ */
+export function reorderScreens(screens: Screen[], from: number, to: number): LabelPatch {
+  if (from < 0 || from >= screens.length) return {};
+  const target = Math.max(0, Math.min(screens.length - 1, to));
+  if (target === from) return {};
+  const next = [...screens];
+  const [moved] = next.splice(from, 1);
+  next.splice(target, 0, moved);
+  const patch: LabelPatch = {};
+  next.forEach((s, i) => {
+    const label = screenLabel(s.name, i + 1);
+    if (label !== s.label) patch[s.id] = label;
+  });
+  return patch;
+}
+
+/** The number a new screen takes: after the last one, once the deck is numbered. */
+export function nextScreenOrder(screens: Screen[]): number | null {
+  const numbered = screens.map((s) => s.order).filter((o): o is number => o !== null);
+  return numbered.length === 0 ? null : Math.max(...numbered) + 1;
 }
 
 function intersects(a: Bounds, b: Bounds): boolean {

@@ -218,3 +218,171 @@ test.describe("the Screens tab", () => {
     await expect(page.getByTestId("presentation-title")).toHaveText("First");
   });
 });
+
+test.describe("reordering screens", () => {
+  // Four in a row, so reading order is One-Two-Three-Four.
+  const ROW = [
+    screen("s1", "One", 0, 0),
+    screen("s2", "Two", 600, 0),
+    screen("s3", "Three", 1200, 0),
+    screen("s4", "Four", 1800, 0),
+  ];
+  const names = (page: Page) => page.locator('[data-testid^="screen-name-"]');
+
+  async function presentedOrder(page: Page): Promise<string[]> {
+    await page.getByTestId("screens-present").click();
+    await page.keyboard.press("Home");
+    const seen: string[] = [];
+    for (let i = 0; i < 4; i++) {
+      seen.push((await page.getByTestId("presentation-title").textContent()) ?? "");
+      await page.keyboard.press("ArrowRight");
+    }
+    await page.keyboard.press("Escape");
+    return seen;
+  }
+
+  test("dragging 4 above 2 turns 1-2-3-4 into 1-4-2-3 — in the tab, the presentation, and the contract", async ({ page }) => {
+    const board = await openBoard(page, { elements: ROW });
+    await openScreensTab(page);
+    await expect(names(page)).toHaveText(["One", "Two", "Three", "Four"]);
+
+    // Drop on the top half of "Two": lands before it.
+    await page.getByTestId("screen-row-s4").dragTo(page.getByTestId("screen-row-s2"), {
+      targetPosition: { x: 40, y: 4 },
+    });
+    await expect(names(page)).toHaveText(["One", "Four", "Two", "Three"]);
+    expect(await presentedOrder(page)).toEqual(["One", "Four", "Two", "Three"]);
+
+    await expect
+      .poll(() => Object.fromEntries(board.calledWith("update_element_label").map((c) => [c.args.id, c.args.label])))
+      .toEqual({ s1: "screen/One @1", s4: "screen/Four @2", s2: "screen/Two @3", s3: "screen/Three @4" });
+
+    // It is contract state, not a local sort: a reload reads the same order back.
+    await page.reload();
+    await page.waitForSelector('[data-testid="fabric-canvas"]');
+    await openScreensTab(page);
+    await expect(names(page)).toHaveText(["One", "Four", "Two", "Three"]);
+  });
+
+  test("dropping on the lower half of a row lands after it", async ({ page }) => {
+    await openBoard(page, { elements: ROW });
+    await openScreensTab(page);
+    const target = page.getByTestId("screen-row-s3");
+    const box = (await target.boundingBox())!;
+    await page.getByTestId("screen-row-s1").dragTo(target, { targetPosition: { x: 40, y: box.height - 4 } });
+    await expect(names(page)).toHaveText(["Two", "Three", "One", "Four"]);
+  });
+
+  test("the drop indicator shows where the screen will land", async ({ page }) => {
+    await openBoard(page, { elements: ROW });
+    await openScreensTab(page);
+    const source = page.getByTestId("screen-row-s4");
+    const target = page.getByTestId("screen-row-s2");
+    const from = (await source.boundingBox())!;
+    const to = (await target.boundingBox())!;
+    await page.mouse.move(from.x + 40, from.y + from.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(to.x + 40, to.y + 6, { steps: 8 });
+    await expect(target).toHaveAttribute("data-drop", "before");
+    await page.mouse.move(to.x + 40, to.y + to.height - 6, { steps: 4 });
+    await expect(target).toHaveAttribute("data-drop", "after");
+    await page.mouse.up();
+    await expect(names(page)).toHaveText(["One", "Two", "Four", "Three"]);
+  });
+
+  test("Move up / Move down in the row menu", async ({ page }) => {
+    await openBoard(page, { elements: ROW });
+    await openScreensTab(page);
+    await page.getByTestId("screen-menu-s3").click();
+    await page.getByTestId("screen-move-up-s3").click();
+    await expect(names(page)).toHaveText(["One", "Three", "Two", "Four"]);
+
+    await page.getByTestId("screen-menu-s1").click();
+    await expect(page.getByTestId("screen-move-up-s1")).toBeDisabled();
+    await page.getByTestId("screen-move-down-s1").click();
+    await expect(names(page)).toHaveText(["Three", "One", "Two", "Four"]);
+  });
+
+  test("Alt+↑ / Alt+↓ on a focused row, for the keyboard", async ({ page }) => {
+    await openBoard(page, { elements: ROW });
+    await openScreensTab(page);
+    await page.getByTestId("screen-row-s4").focus();
+    await page.keyboard.press("Alt+ArrowUp");
+    await page.keyboard.press("Alt+ArrowUp");
+    await expect(names(page)).toHaveText(["One", "Four", "Two", "Three"]);
+    await page.getByTestId("screen-row-s1").focus();
+    await page.keyboard.press("Alt+ArrowDown");
+    await expect(names(page)).toHaveText(["Four", "One", "Two", "Three"]);
+  });
+
+  test("renaming a reordered screen keeps its place", async ({ page }) => {
+    await openBoard(page, { elements: ROW });
+    await openScreensTab(page);
+    await page.getByTestId("screen-menu-s4").click();
+    await page.getByTestId("screen-move-up-s4").click();
+    await expect(names(page)).toHaveText(["One", "Two", "Four", "Three"]);
+
+    await page.getByTestId("screen-menu-s4").click();
+    await page.getByTestId("screen-rename-s4").click();
+    await page.getByTestId("screen-name-input-s4").fill("Pricing");
+    await page.getByTestId("screen-name-input-s4").press("Enter");
+    await expect(names(page)).toHaveText(["One", "Two", "Pricing", "Three"]);
+  });
+
+  test("a new screen joins the end of an ordered deck", async ({ page }) => {
+    const board = await openBoard(page, {
+      elements: [
+        screen("s1", "One @2", 0, 0),
+        screen("s2", "Two @1", 600, 0),
+        element({ id: "loose", x: -900, y: 0, width: 100, height: 100, layerIndex: 5 }),
+      ],
+    });
+    await page.getByText("Layers", { exact: true }).click();
+    await page.getByTestId("layer-item-loose").click();
+    await openScreensTab(page);
+    await page.getByTestId("screens-create").click();
+    // Leftmost on the board, but last in the deck.
+    await expect(names(page)).toHaveText(["Two", "One", "Screen 1"]);
+    // A single selected rect becomes the screen itself, numbered after the rest.
+    await expect
+      .poll(() => board.calledWith("update_element_label").map((c) => [c.args.id, c.args.label]))
+      .toEqual([["loose", "screen/Screen 1 @3"]]);
+  });
+
+  test("a viewer can see the order but not change it", async ({ page }) => {
+    await openBoard(page, { elements: ROW, role: "viewer" });
+    await openScreensTab(page);
+    await expect(page.getByTestId("screen-row-s2")).toHaveAttribute("draggable", "false");
+    await page.getByTestId("screen-menu-s2").click();
+    await expect(page.getByTestId("screen-move-up-s2")).toBeDisabled();
+  });
+});
+
+test.describe("the presentation starter", () => {
+  test("loads from the Options menu and plays eight slides", async ({ page }) => {
+    const board = await openBoard(page, { role: "admin" });
+    await page.getByTestId("options-btn").click();
+    await expect(page.getByTestId("open-starter")).toContainText("Web design");
+    await page.getByTestId("open-starter-presentation").click();
+    await expect.poll(() => board.calledWith("add_element").length, { timeout: 60000 }).toBe(206);
+
+    await page.getByTestId("toolbar-present").click();
+    await expect(page.getByTestId("presentation-title")).toHaveText("Calimero");
+    await expect(page.getByTestId("presentation-counter")).toHaveText("1 / 8");
+    for (let i = 0; i < 6; i++) await page.keyboard.press("ArrowRight");
+    await expect(page.getByTestId("presentation-title")).toHaveText("One edit, end to end");
+    await expect(page.getByTestId("presentation-stage")).toHaveAttribute("data-scrolls", "true");
+  });
+
+  test("an occupied board asks before the presentation replaces it", async ({ page }) => {
+    const board = await openBoard(page, { role: "admin", elements: [element({ id: "mine" })] });
+    await page.getByTestId("options-btn").click();
+    await page.getByTestId("open-starter-presentation").click();
+    await expect(page.getByTestId("open-starter-presentation-confirm")).toBeVisible();
+    // Arming one starter does not arm the other.
+    await expect(page.getByTestId("open-starter")).toBeVisible();
+    expect(board.calledWith("clear_elements")).toHaveLength(0);
+    await page.getByTestId("open-starter-presentation-confirm").click();
+    await expect.poll(() => board.calledWith("clear_elements").length, { timeout: 60000 }).toBe(1);
+  });
+});

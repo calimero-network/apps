@@ -53,6 +53,23 @@
 }
 .row:hover { background: #f0f0f3; }
 .rowActive { background: #e8efff; }
+.row:focus-visible { outline: 2px solid #2563eb; outline-offset: -2px; }
+.row[draggable="true"] { cursor: grab; }
+.rowDragging { opacity: 0.4; }
+/* The drop indicator: a 2px bar on the edge the row would land against. */
+.dropBefore { box-shadow: inset 0 2px 0 #2563eb; }
+.dropAfter { box-shadow: inset 0 -2px 0 #2563eb; }
+
+.handle {
+  flex-shrink: 0;
+  width: 10px;
+  margin-right: -4px;
+  color: #b4b4bd;
+  font-size: 12px;
+  line-height: 1;
+  text-align: center;
+}
+.row:hover .handle { color: #6b6b76; }
 .rowActive:hover { background: #dde7ff; }
 
 .thumb {

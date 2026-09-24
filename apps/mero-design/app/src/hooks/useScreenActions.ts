@@ -12,6 +12,9 @@ import {
   isScreen,
   listScreens,
   nextScreenName,
+  nextScreenOrder,
+  parseScreenName,
+  reorderScreens,
   screenLabel,
 } from "../utils/screens";
 import type { Element } from "../types";
@@ -56,6 +59,8 @@ export function useScreenActions(contextId: string, readOnly = false) {
     }
     const screens = listScreens(store.elements, store.elementLabels);
     const name = nextScreenName(screens);
+    // In a deck someone has already put in order, a new screen goes last.
+    const order = nextScreenOrder(screens);
 
     const [only] = selected;
     if (selected.length === 1 && only.data.kind === "rect") {
@@ -66,7 +71,7 @@ export function useScreenActions(contextId: string, readOnly = false) {
       // A rect somebody already named keeps its name as the screen's.
       const own = only.label ? nameOf(only) : "";
       const screenName = cleanScreenName(own, name);
-      await applyLabelPatch({ [only.id]: screenLabel(screenName) }, deps());
+      await applyLabelPatch({ [only.id]: screenLabel(screenName, order) }, deps());
       showToast(`“${screenName}” is now a screen`, "success");
       return only.id;
     }
@@ -85,7 +90,7 @@ export function useScreenActions(contextId: string, readOnly = false) {
       // no slot below it, so the contract's send_to_back makes one (below).
       layerIndex: Math.max(0, back - 1),
       createdBy: "", createdAt: now, updatedAt: now,
-      label: screenLabel(name),
+      label: screenLabel(name, order),
     };
 
     store.snapshot();
@@ -112,7 +117,21 @@ export function useScreenActions(contextId: string, readOnly = false) {
     if (readOnly) return;
     const clean = cleanScreenName(name, "");
     if (!clean) return;
-    await applyLabelPatch({ [id]: screenLabel(clean) }, deps());
+    const { elements, elementLabels } = useCanvasStore.getState();
+    // Renaming a slide keeps its place in the deck.
+    const order = listScreens(elements, elementLabels).find((s) => s.id === id)?.order ?? null;
+    await applyLabelPatch({ [id]: screenLabel(clean, order) }, deps());
+  }, [deps, readOnly]);
+
+  /**
+   * Moves the screen at `from` to `to` in the presentation order. The whole deck
+   * is numbered in one patch, so the order every member sees is the order here.
+   */
+  const moveScreen = useCallback(async (from: number, to: number) => {
+    if (readOnly) return;
+    const { elements, elementLabels } = useCanvasStore.getState();
+    const patch = reorderScreens(listScreens(elements, elementLabels), from, to);
+    await applyLabelPatch(patch, deps());
   }, [deps, readOnly]);
 
   /** Stops presenting a screen. The rect stays on the board as a plain layer. */
@@ -122,10 +141,10 @@ export function useScreenActions(contextId: string, readOnly = false) {
     const el = store.elements.find((e) => e.id === id);
     if (!el) return;
     const label = store.elementLabels[id] ?? el.label ?? "";
-    const name = label.split("/").pop()?.trim() || "rect";
+    const name = parseScreenName(label.split("/").pop()?.trim() ?? "").name || "rect";
     await applyLabelPatch({ [id]: name }, deps());
     showToast(`“${name}” is no longer a screen`, "info");
   }, [deps, readOnly, showToast]);
 
-  return { createScreen, renameScreen, unmarkScreen };
+  return { createScreen, renameScreen, unmarkScreen, moveScreen };
 }
