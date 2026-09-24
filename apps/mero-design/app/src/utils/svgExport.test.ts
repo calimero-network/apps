@@ -137,3 +137,51 @@ describe("elementsToSvg", () => {
     expect(svg.indexOf("#111111")).toBeLessThan(svg.indexOf("#eeeeee"));
   });
 });
+
+describe("plan2: shapes, dashes, boxes and stickies in SVG", () => {
+  const baseEl = {
+    x: 10, y: 20, width: 120, height: 80, rotation: 0, fill: "transparent", stroke: "#1e1e1e",
+    strokeWidth: 4, opacity: 100, layerIndex: 0, createdBy: "", createdAt: 1, updatedAt: 1,
+  };
+
+  it("a dashed rect carries the canvas's dash pattern", () => {
+    const svg = elementToSvgNode({ ...baseEl, id: "r", data: { kind: "rect" }, strokeStyle: "dashed" } as Element);
+    expect(svg).toContain('stroke-dasharray="12 8"');
+  });
+
+  it("a dotted outline gets a round cap, or its dots would vanish", () => {
+    const svg = elementToSvgNode({ ...baseEl, id: "r", data: { kind: "rect" }, strokeStyle: "dotted" } as Element);
+    expect(svg).toContain('stroke-dasharray="0 8"');
+    expect(svg).toContain('stroke-linecap="round"');
+  });
+
+  it("a star is regenerated at its current size, not drawn from stale points", () => {
+    const svg = elementToSvgNode({
+      ...baseEl, id: "s", data: { kind: "path", points: "M 0 0 L 1 1 Z" }, shape: "star",
+    } as Element);
+    expect(svg).not.toContain('d="M 0 0 L 1 1 Z"');
+    expect(svg).toContain("translate(10 20)");
+    expect((svg.match(/[ML] /g) ?? []).length).toBe(10);
+  });
+
+  it("a text box paints its container and its words in the ink colour, clipped", () => {
+    const svg = elementToSvgNode({
+      ...baseEl, id: "b", fill: "#1971c2", box: "box",
+      data: { kind: "text", content: "Hello", fontSize: 16, fontFamily: "sans-serif", bold: false, italic: false, text_align: "center", vertical_align: "middle" },
+    } as Element);
+    expect(svg).toContain('fill="#1971c2"');
+    expect(svg).toContain(">Hello</tspan>");
+    expect(svg).toContain('fill="#ffffff"');
+    expect(svg).toContain('text-anchor="middle"');
+    expect(svg).toContain("clip-path=");
+  });
+
+  it("an empty sticky is just its note", () => {
+    const svg = elementToSvgNode({
+      ...baseEl, id: "n", fill: "#FFE27A", stroke: "transparent", strokeWidth: 0, box: "sticky",
+      data: { kind: "text", content: "", fontSize: 18 },
+    } as Element);
+    expect(svg.startsWith("<rect")).toBe(true);
+    expect(svg).not.toContain("<text");
+  });
+});

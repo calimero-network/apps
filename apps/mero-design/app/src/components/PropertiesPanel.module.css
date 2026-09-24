@@ -3,38 +3,46 @@
      disclosure triangle, a count and a menu that would not otherwise fit. */
   width: 264px;
   flex-shrink: 0;
-  background: #f7f7f8;
-  border-left: 1px solid #e2e2e6;
+  background: #ffffff;
+  border-left: 1px solid #e7e7ec;
+  font-size: 12px;
+  color: #1b1c20;
   display: flex;
   flex-direction: column;
   overflow: hidden;
 }
 
 /* ── Tab bar ─────────────────────────────────────────────────────── */
+/* Tabs as one segmented pill, like the rest of the kit. */
 .tabBar {
   display: flex;
-  border-bottom: 1px solid #e2e2e6;
-  background: #efefef;
+  gap: 2px;
+  margin: 10px 12px 4px;
+  padding: 3px;
+  border-radius: 9px;
+  background: #f1f1f4;
   flex-shrink: 0;
 }
 
 .tabBtn {
   flex: 1;
-  padding: 7px 4px;
-  font-size: 10px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  padding: 5px 4px;
+  font-size: 11.5px;
+  font-weight: 500;
   background: none;
   border: none;
-  color: #999;
+  border-radius: 6px;
+  color: #6f707b;
   cursor: pointer;
-  transition: color 0.15s;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
+  transition: color 0.15s, background 0.15s, box-shadow 0.15s;
 }
-.tabBtn:hover { color: #444; }
-.tabBtnActive { color: #2563eb; border-bottom-color: #2563eb; background: #f7f7f8; }
+.tabBtn:hover { color: #1b1c20; }
+.tabBtnActive {
+  color: #1b1c20;
+  font-weight: 600;
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(16, 18, 27, 0.1), 0 0 0 1px rgba(16, 18, 27, 0.04);
+}
 
 /* ── Tab content wrapper ─────────────────────────────────────────── */
 .tabContent {
@@ -78,19 +86,36 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 12px 6px;
-  border-bottom: 1px solid #e8e8eb;
+  gap: 6px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #f0f0f3;
 }
 
+/* The selection's name, as a heading — not a grey uppercase tag. */
 .kindBadge {
-  font-size: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  font-size: 13px;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.4px;
-  color: #777;
-  background: #ebebeb;
-  border-radius: 4px;
-  padding: 2px 7px;
+  letter-spacing: -0.01em;
+  color: #1b1c20;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.kindIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+  border-radius: 6px;
+  background: #eef3ff;
+  color: #2563eb;
+  font-size: 12px;
 }
 
 .layerBtns {
@@ -100,32 +125,31 @@
 
 /* Group box */
 .group {
-  padding: 8px 12px;
-  border-bottom: 1px solid #ebebeb;
+  padding: 12px 12px 14px;
+  border-bottom: 1px solid #f0f0f3;
 }
 
+/* Section headings: sentence case, dark, readable — the old 10px grey
+   uppercase labels were what made the panel read as unstyled. */
 .groupTitle {
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.4px;
-  color: #aaa;
-  margin-bottom: 7px;
+  letter-spacing: -0.005em;
+  color: #1b1c20;
+  margin-bottom: 9px;
 }
 
 /* 2-column grid for position/size fields */
 .grid2 {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 5px;
+  gap: 6px;
 }
 
 .fieldLabel {
-  font-size: 9px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
-  color: #b0b0b0;
+  font-size: 11px;
+  font-weight: 500;
+  color: #7c7d88;
 }
 
 /* Textarea */
@@ -150,9 +174,22 @@
 .colorRow {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
   padding: 3px 0;
 }
+
+.swatchLine { padding: 4px 0 8px 23px; }
+
+.wideButton { width: 100%; height: 30px; font-size: 12px; font-weight: 500; }
+
+/* A stroke-width preset drawn as a bar of that weight. */
+.weight {
+  display: block;
+  width: 16px;
+  border-radius: 2px;
+  background: currentColor;
+}
+.widthNumber { flex: 0 0 64px; }
 
 .colorNone {
   font-size: 11px;

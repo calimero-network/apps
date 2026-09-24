@@ -27,7 +27,11 @@ import Select from "./ui/Select";
 import Slider from "./ui/Slider";
 import ColorField from "./ui/ColorField";
 import { Checkbox, Segmented, Switch } from "./ui/Toggle";
+import { StrokeStylePicker, SwatchRow } from "./ui/Pickers";
 import LayerRowMenu from "./LayerRowMenu";
+import { STICKY_COLORS, SWATCHES } from "../utils/shapes";
+import { inkOf, isBoxText, rectToBox } from "../utils/boxText";
+import type { StrokeStyle } from "../types";
 import ScreensPanel from "./ScreensPanel";
 import { useGroupActions } from "../hooks/useGroupActions";
 import type { Element } from "../types";
@@ -63,7 +67,7 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
   const {
     selectedElementId, selectedElementIds, elements, elementLabels, imageCache, background,
     collapsedGroups, upsertElement, removeElement, selectElement, selectElements, toggleSelected,
-    setElementLabel, setElementLabels, toggleGroupCollapsed, cacheImage, snapshot,
+    setElementLabel, setElementLabels, toggleGroupCollapsed, cacheImage, snapshot, startTextEdit,
   } = useCanvasStore(
     useShallow((s) => ({
       selectedElementId: s.selectedElementId,
@@ -83,6 +87,7 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
       toggleGroupCollapsed: s.toggleGroupCollapsed,
       cacheImage: s.cacheImage,
       snapshot: s.snapshot,
+      startTextEdit: s.startTextEdit,
     })),
   );
   const el = elements.find((e) => e.id === selectedElementId);
@@ -113,22 +118,68 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
     rpcDebounceRef.current = setTimeout(fn, 2000);
   }
 
+  /**
+   * Edits waiting on the debounce, merged. The timer used to be replaced with
+   * only the LATEST patch, so picking a fill and then a stroke width inside two
+   * seconds saved the width and silently threw the fill away — the swatch rows
+   * make exactly that sequence the common one.
+   */
+  const pendingRef = useRef<{ id: string; patch: Record<string, unknown>; updatedAt: number } | null>(null);
+
+  function flushPending() {
+    const pending = pendingRef.current;
+    pendingRef.current = null;
+    if (!pending) return;
+    rpcCall(contextId, "update_element", {
+      id: pending.id,
+      x: null, y: null, width: null, height: null,
+      rotation: null, fill: null, stroke: null,
+      stroke_width: null, opacity: null, corner_radius: null,
+      updated_at: pending.updatedAt,
+      ...Object.fromEntries(
+        Object.entries(pending.patch).map(([k, v]) => [toSnake(k), v]),
+      ),
+    }).catch((e) => reportFailure.current("update_element", e));
+  }
+
   function update(patch: Record<string, unknown>) {
     if (readOnly || !el) return;
     const updated = { ...el, ...patch, updatedAt: Date.now() };
     upsertElement(updated);
-    scheduleRpc(() =>
-      rpcCall(contextId, "update_element", {
-        id: el.id,
-        x: null, y: null, width: null, height: null,
-        rotation: null, fill: null, stroke: null,
-        stroke_width: null, opacity: null, corner_radius: null,
-        updated_at: updated.updatedAt,
-        ...Object.fromEntries(
-          Object.entries(patch).map(([k, v]) => [toSnake(k), v]),
-        ),
-      }).catch((e) => reportFailure.current("update_element", e)),
-    );
+    // A different element's edits go out now, not merged into this one's.
+    if (pendingRef.current && pendingRef.current.id !== el.id) flushPending();
+    pendingRef.current = {
+      id: el.id,
+      patch: { ...(pendingRef.current?.patch ?? {}), ...patch },
+      updatedAt: updated.updatedAt,
+    };
+    scheduleRpc(flushPending);
+  }
+
+  /**
+   * Change a client-side extra (stroke style, text colour). They live in the
+   * label (utils/elementMeta), so they are saved with `update_element_label`,
+   * handing the updated element over explicitly so the packer sees the change.
+   */
+  function updateMeta(patch: { strokeStyle?: StrokeStyle; textColor?: string | undefined }) {
+    if (readOnly || !el) return;
+    const updated = { ...el, ...patch, updatedAt: Date.now() };
+    if (patch.strokeStyle === "solid") delete updated.strokeStyle;
+    if ("textColor" in patch && !patch.textColor) delete updated.textColor;
+    upsertElement(updated);
+    rpcCall(contextId, "update_element_label", {
+      id: el.id, label: el.label ?? null, updated_at: updated.updatedAt, __element: updated,
+    }).catch((e) => reportFailure.current("update_element_label", e));
+  }
+
+  /** Put text in a rectangle: it becomes a box, and the editor opens on it. */
+  async function addTextToRect() {
+    if (readOnly || !el || el.data.kind !== "rect") return;
+    const box = rectToBox(el);
+    snapshot();
+    upsertElement(box);
+    startTextEdit(box.id);
+    await rpcCall(contextId, "add_element", { element: box }).catch((e) => reportFailure.current("add_element", e));
   }
 
   /** Same shape as `update`, but for one specific element (bulk edits). */
@@ -376,6 +427,7 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
     const map: Record<string, string> = {
       rect: "▭", circle: "◯", line: "╱", arrow: "→",
       path: "✏", text: "T", image: "⬜", svg: "S",
+      triangle: "△", diamond: "◇", star: "☆", cloud: "☁", sticky: "▤", box: "▣",
     };
     return map[kind] ?? "?";
   }
@@ -390,7 +442,10 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
     const rotation = e.rotation ? ` rotate(${e.rotation}deg)` : "";
     const fill = escapeCss(e.fill && e.fill !== "transparent" ? e.fill : "transparent");
     const strokeColor = escapeCss(e.stroke && e.stroke !== "transparent" && e.stroke !== "none" ? e.stroke : "");
-    const border = strokeColor ? `${e.strokeWidth ?? 1}px solid ${strokeColor}` : "none";
+    // CSS has three dash styles; map ours onto the nearest.
+    const borderStyle = !e.strokeStyle || e.strokeStyle === "solid" ? "solid"
+      : e.strokeStyle === "dotted" || e.strokeStyle === "dotted3" ? "dotted" : "dashed";
+    const border = strokeColor ? `${e.strokeWidth ?? 1}px ${borderStyle} ${strokeColor}` : "none";
     const shadowColor = escapeCss(e.shadowColor ?? "rgba(0,0,0,0.3)");
     const shadow = (e.shadowBlur ?? 0) > 0
       ? `box-shadow: ${e.shadowOffsetX ?? 0}px ${e.shadowOffsetY ?? 4}px ${e.shadowBlur}px ${shadowColor};`
@@ -416,6 +471,14 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
       return `<svg style="position: absolute; left: ${left - pad}px; top: ${top - pad}px; opacity: ${opacity}; overflow: visible;" width="${Math.abs(e.width) + pad * 2}" height="${Math.abs(e.height) + pad * 2}" viewBox="${-pad} ${-pad} ${Math.abs(e.width) + pad * 2} ${Math.abs(e.height) + pad * 2}"><line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${colour}" stroke-width="${w}" stroke-linecap="round" />${head}</svg>`;
     }
 
+    if (isBoxText(e)) {
+      // A box keeps its background and border; the words take the ink colour.
+      const ta = e.data.text_align ?? "left";
+      const va = e.data.vertical_align ?? "top";
+      const justify = va === "middle" ? "center" : va === "bottom" ? "flex-end" : "flex-start";
+      const pad = e.box === "sticky" ? 16 : 10;
+      return `<div style="${base} box-sizing: border-box; padding: ${pad}px; font-family: ${escapeCss(e.data.fontFamily ?? "sans-serif")}; font-size: ${e.data.fontSize ?? 16}px; font-weight: ${e.data.bold ? "bold" : "normal"}; font-style: ${e.data.italic ? "italic" : "normal"}; color: ${escapeCss(inkOf(e))}; white-space: pre-wrap; overflow-wrap: anywhere; display: flex; flex-direction: column; justify-content: ${justify}; text-align: ${ta};"><span>${escapeHtml(e.data.content ?? "")}</span></div>`;
+    }
     if (e.data.kind === "text") {
       const fw = e.data.bold ? "bold" : "normal";
       const fi = e.data.italic ? "italic" : "normal";
@@ -580,7 +643,7 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
         data-testid={`layer-item-${node.id}`}
         onClick={(e) => selectNode(node, e)}
       >
-        <span className={styles.layerIcon}>{getKindIcon(element.data.kind)}</span>
+        <span className={styles.layerIcon}>{getKindIcon(element.box ?? element.shape ?? element.data.kind)}</span>
         {editingLabelId === node.id ? (
           <input
             autoFocus
@@ -813,7 +876,10 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
 
       {/* Kind badge */}
       <div className={styles.kindRow}>
-        <span className={styles.kindBadge}>{el.data.kind}</span>
+        <span className={styles.kindBadge} data-testid="element-kind">
+          <span className={styles.kindIcon} aria-hidden="true">{getKindIcon(el.box ?? el.shape ?? el.data.kind)}</span>
+          {kindTitle(el)}
+        </span>
         <div className={styles.layerBtns}>
           <button className={controls.iconButton} title="Bring to Front" data-testid="bring-to-front" onClick={() => handleBringToFront()}>↑ Front</button>
           <button className={controls.iconButton} title="Send to Back" data-testid="send-to-back" onClick={() => handleSendToBack()}>↓ Back</button>
@@ -855,7 +921,7 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
           <NumberField label="∠" suffix="°" value={el.rotation} disabled={readOnly} testId="prop-rotation"
             onChange={(v) => update({ rotation: v })} />
           {/* item 14: corner radius, clamped so a large value cannot invert the shape */}
-          {el.data.kind === "rect" && (
+          {(el.data.kind === "rect" || isBoxText(el)) && (
             <NumberField
               label="⌒"
               min={0}
@@ -869,6 +935,36 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
           )}
         </div>
       </div>
+
+      {/* Sticky note colour */}
+      {el.box === "sticky" && (
+        <div className={styles.group}>
+          <div className={styles.groupTitle}>Note colour</div>
+          <SwatchRow
+            large
+            colors={STICKY_COLORS}
+            value={el.fill}
+            disabled={readOnly}
+            testId="sticky-color"
+            ariaLabel="Sticky note colour"
+            onChange={(c) => update({ fill: c })}
+          />
+        </div>
+      )}
+
+      {/* A plain rectangle can take text — it becomes a box */}
+      {el.data.kind === "rect" && !readOnly && (
+        <div className={styles.group}>
+          <button
+            className={`${controls.iconButton} ${styles.wideButton}`}
+            data-testid="add-text-to-rect"
+            onClick={() => { void addTextToRect(); }}
+            title="Type inside this rectangle (or double-click it)"
+          >
+            <span aria-hidden="true">T</span> Add text
+          </button>
+        </div>
+      )}
 
       {/* Text */}
       {el.data.kind === "text" && (
@@ -943,6 +1039,30 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
               onChange={(a) => updateTextStyle({ vertical_align: a })}
             />
           </div>
+
+          {isBoxText(el) && (
+            <div className={styles.fieldStack} style={{ marginTop: 8 }}>
+              <label className={styles.fieldLabel}>Text colour</label>
+              <div className={styles.colorRow}>
+                <ColorField
+                  value={inkOf(el)}
+                  disabled={readOnly}
+                  testId="text-color"
+                  title="Text colour"
+                  onChange={(c) => updateMeta({ textColor: c })}
+                />
+                {el.textColor && (
+                  <button
+                    className={controls.iconButton}
+                    disabled={readOnly}
+                    title="Pick automatically for contrast"
+                    data-testid="text-color-auto"
+                    onClick={() => updateMeta({ textColor: undefined })}
+                  >Auto</button>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -965,6 +1085,18 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
             <span className={styles.colorNone}>—</span>
           )}
         </div>
+        {el.box !== "sticky" && (
+          <div className={styles.swatchLine}>
+            <SwatchRow
+              colors={SWATCHES.map((c) => ({ value: c }))}
+              value={el.fill}
+              disabled={readOnly}
+              testId="fill-swatch"
+              ariaLabel="Quick fill colours"
+              onChange={(c) => update({ fill: c })}
+            />
+          </div>
+        )}
 
         <div className={styles.colorRow}>
           <Checkbox
@@ -983,13 +1115,47 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
         </div>
 
         {el.stroke && el.stroke !== "transparent" && el.stroke !== "none" && (
-          <div className={styles.fieldRow}>
-            <label className={styles.fieldLabel}>Width</label>
-            <NumberField
-              min={1} max={50} value={el.strokeWidth} disabled={readOnly} testId="prop-stroke-width"
-              onChange={(v) => update({ strokeWidth: v })}
-            />
-          </div>
+          <>
+            <div className={styles.swatchLine}>
+              <SwatchRow
+                colors={SWATCHES.map((c) => ({ value: c }))}
+                value={el.stroke}
+                disabled={readOnly}
+                testId="stroke-swatch"
+                ariaLabel="Quick stroke colours"
+                onChange={(c) => update({ stroke: c })}
+              />
+            </div>
+            <div className={styles.fieldRow}>
+              <label className={styles.fieldLabel}>Width</label>
+              <Segmented
+                value={([1, 2, 4, 8].includes(el.strokeWidth) ? String(el.strokeWidth) : null) as "1" | "2" | "4" | "8" | null}
+                ariaLabel="Stroke width presets"
+                testId="stroke-width-presets"
+                disabled={readOnly}
+                segments={[
+                  { value: "1", content: <span className={styles.weight} style={{ height: 1 }} />, title: "Thin (1px)", testId: "stroke-width-1" },
+                  { value: "2", content: <span className={styles.weight} style={{ height: 2 }} />, title: "Regular (2px)", testId: "stroke-width-2" },
+                  { value: "4", content: <span className={styles.weight} style={{ height: 4 }} />, title: "Bold (4px)", testId: "stroke-width-4" },
+                  { value: "8", content: <span className={styles.weight} style={{ height: 7 }} />, title: "Extra bold (8px)", testId: "stroke-width-8" },
+                ]}
+                onChange={(v) => update({ strokeWidth: Number(v) })}
+              />
+              <NumberField
+                min={1} max={50} value={el.strokeWidth} disabled={readOnly} testId="prop-stroke-width"
+                className={styles.widthNumber}
+                onChange={(v) => update({ strokeWidth: v })}
+              />
+            </div>
+            <div className={styles.fieldStack} style={{ marginTop: 4 }}>
+              <label className={styles.fieldLabel}>Style</label>
+              <StrokeStylePicker
+                value={el.strokeStyle}
+                disabled={readOnly}
+                onChange={(style) => updateMeta({ strokeStyle: style })}
+              />
+            </div>
+          </>
         )}
 
         <div className={styles.opacityRow}>
@@ -1122,6 +1288,19 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
       </div>
     </div>
   );
+}
+
+/** What the inspector calls the selected element. */
+function kindTitle(el: Element): string {
+  if (el.box === "sticky") return "Sticky note";
+  if (el.box === "box") return "Text box";
+  if (el.data.kind === "path" && el.shape) return el.shape[0].toUpperCase() + el.shape.slice(1);
+  if (el.data.kind === "rect" && (el.cornerRadius ?? 0) > 0) return "Rounded rectangle";
+  const names: Record<string, string> = {
+    rect: "Rectangle", circle: "Circle", line: "Line", arrow: "Arrow",
+    path: "Drawing", text: "Text", image: "Image", svg: "Vector",
+  };
+  return names[el.data.kind] ?? el.data.kind;
 }
 
 function toSnake(camel: string): string {

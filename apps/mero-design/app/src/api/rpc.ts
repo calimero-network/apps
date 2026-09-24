@@ -1,6 +1,9 @@
 import axios from "axios";
 import { getNodeUrl, clearAllStorage } from "@calimero-network/mero-react";
 import { getCachedBlob, setCachedBlob } from "../utils/blobCache";
+import { fromWire, metaOf, packLabel, toWire } from "../utils/elementMeta";
+import { useCanvasStore } from "../store/canvasStore";
+import type { Element } from "../types";
 
 interface RpcResponse<T> {
   data: T;
@@ -38,7 +41,49 @@ axios.interceptors.response.use(
   },
 );
 
+/**
+ * Fold the client-side element extras into `label` on the way out.
+ *
+ * Only the two methods that write a label carry them — see
+ * `utils/elementMeta.ts`. A label rename looks the element up in the store so a
+ * rename never strips its dash style or sticky-ness; a caller that is changing
+ * the extras themselves passes the updated element as `__element`, because the
+ * store write it just made may not be the one this reads.
+ */
+export function packArgs(method: string, args: Record<string, unknown>): Record<string, unknown> {
+  if (method === "add_element" && args.element && typeof args.element === "object") {
+    return { ...args, element: toWire(args.element as Element) };
+  }
+  if (method === "update_element_label") {
+    const { __element, ...rest } = args as { __element?: Element } & Record<string, unknown>;
+    const source = __element
+      ?? useCanvasStore.getState().elements.find((e) => e.id === rest.id);
+    const label = (rest.label as string | null | undefined) ?? null;
+    return { ...rest, label: source ? packLabel(label, metaOf(source)) : label };
+  }
+  return args;
+}
+
+/** Unpack every element a read returns — the inverse of `packArgs`. */
+export function unpackResult<T>(method: string, value: T): T {
+  if (method === "get_elements" && Array.isArray(value)) {
+    return value.map((el) => fromWire(el as Element)) as T;
+  }
+  if (method === "get_element" && value && typeof value === "object") {
+    return fromWire(value as unknown as Element) as T;
+  }
+  return value;
+}
+
 export async function rpcCall<T>(
+  contextId: string,
+  method: string,
+  args: Record<string, unknown>,
+): Promise<T> {
+  return unpackResult(method, await rawRpcCall<T>(contextId, method, packArgs(method, args)));
+}
+
+async function rawRpcCall<T>(
   contextId: string,
   method: string,
   args: Record<string, unknown>,

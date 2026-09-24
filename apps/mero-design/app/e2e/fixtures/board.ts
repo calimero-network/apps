@@ -212,6 +212,8 @@ export async function openBoard(page: Page, opts: BoardOptions = {}): Promise<Bo
           if (a.font_family != null) data.fontFamily = a.font_family as string;
           if (a.bold != null) data.bold = a.bold as boolean;
           if (a.italic != null) data.italic = a.italic as boolean;
+          if (a.text_align != null) data.text_align = a.text_align as "left" | "center" | "right";
+          if (a.vertical_align != null) data.vertical_align = a.vertical_align as "top" | "middle" | "bottom";
           return { ...e, data } as Element;
         });
         value = null;
