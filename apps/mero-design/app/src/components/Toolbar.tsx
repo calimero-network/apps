@@ -107,6 +107,8 @@ interface Props {
   onExportPng: () => void;
   onExportSvg: () => void;
   onPreview: () => void;
+  /** Starts presentation mode over the board's screens. */
+  onPresent?: () => void;
   addingComment?: boolean;
   onToggleComment?: () => void;
   onImageUpload: (file: File, dataUrl: string, width: number, height: number) => void;
@@ -131,6 +133,7 @@ export default function Toolbar({
   onBack, onLogout,
   onExportPng, onExportSvg,
   onPreview,
+  onPresent,
   onImageUpload,
   addingComment = false,
   onToggleComment,
@@ -386,6 +389,16 @@ export default function Toolbar({
       <button className={styles.previewBtn} onClick={onPreview} title="Preview canvas (Esc to exit)">
         Preview
       </button>
+      {onPresent && (
+        <button
+          className={`${styles.previewBtn} ${styles.presentBtn}`}
+          onClick={onPresent}
+          title="Present the board's screens as a slideshow (Esc to exit)"
+          data-testid="toolbar-present"
+        >
+          ▶ Present
+        </button>
+      )}
 
       <div className={styles.divider} />
 

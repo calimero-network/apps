@@ -149,6 +149,8 @@
 }
 .previewBtn:hover { background: #2563eb; color: #fff; }
 .previewBtnActive { background: #2563eb; color: #fff; }
+.presentBtn { margin-left: 6px; background: #2563eb; color: #fff; }
+.presentBtn:hover { background: #1d4ed8; border-color: #1d4ed8; }
 
 .exportSep {
   display: block;

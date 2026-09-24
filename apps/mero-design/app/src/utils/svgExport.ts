@@ -23,6 +23,11 @@ export interface SvgOptions {
   background?: string;
   /** Extra space around the content box. */
   padding?: number;
+  /**
+   * An explicit viewport instead of the content box. Anything outside it is
+   * clipped by the viewBox — how a screen is cut out of the board.
+   */
+  bounds?: Bounds;
 }
 
 export interface Bounds {
@@ -207,7 +212,7 @@ export function elementToSvgNode(el: Element, options: SvgOptions = {}): string 
 /** Elements → a complete `<svg>` document, sorted back-to-front. */
 export function elementsToSvg(elements: Element[], options: SvgOptions = {}): string {
   const sorted = [...elements].sort((a, b) => a.layerIndex - b.layerIndex);
-  const box = boundsOf(sorted, options.padding ?? 0);
+  const box = options.bounds ?? boundsOf(sorted, options.padding ?? 0);
   const defs = sorted.filter((el) => (el.shadowBlur ?? 0) > 0).map(shadowFilter).join("");
   const background = options.background
     ? `<rect ${attrs({ x: box.x, y: box.y, width: box.width, height: box.height, fill: options.background })}/>`

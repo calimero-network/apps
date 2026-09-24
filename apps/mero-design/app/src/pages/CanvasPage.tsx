@@ -16,6 +16,8 @@ import PropertiesPanel from "../components/PropertiesPanel";
 import CommentsOverlay from "../components/CommentsOverlay";
 import CursorsOverlay from "../components/CursorsOverlay";
 import UsernameModal from "../components/UsernameModal";
+import PresentationView from "../components/PresentationView";
+import { listScreens, screenForSelection } from "../utils/screens";
 import { exportProject, importProject, validateSnapshot, type ProjectSnapshot } from "../utils/projectFile";
 import { extractErrorMessage } from "../utils/errorMessage";
 import { useToast } from "../contexts/ToastContext";
@@ -34,7 +36,10 @@ export default function CanvasPage() {
   // so selecting a shape — which touches nothing this page renders — used to
   // re-render CanvasPage and, through it, the canvas, the toolbar and the whole
   // layers tree. Measured at 300 elements: 309ms p95 for a click. See e2e/perf/.
-  const { setElements, upsertElement, removeElement, cacheImage, selectWithPointer, elements, imageCache, previewMode, setPreviewMode } =
+  const {
+    setElements, upsertElement, removeElement, cacheImage, selectWithPointer, elements, imageCache,
+    previewMode, setPreviewMode, presenting, startPresentation,
+  } =
     useCanvasStore(
       useShallow((s) => ({
         setElements: s.setElements,
@@ -46,6 +51,8 @@ export default function CanvasPage() {
         imageCache: s.imageCache,
         previewMode: s.previewMode,
         setPreviewMode: s.setPreviewMode,
+        presenting: s.presentation !== null,
+        startPresentation: s.startPresentation,
       })),
     );
   const { showToast } = useToast();
@@ -148,6 +155,9 @@ export default function CanvasPage() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (showUsernameModal) return;
+      // Presentation mode owns the keyboard (PresentationView): Escape there
+      // leaves the presentation, and must not also reach the checks below.
+      if (presenting) return;
 
       const mod = e.metaKey || e.ctrlKey;
       const tag = (document.activeElement as HTMLElement | null)?.tagName?.toLowerCase();
@@ -184,7 +194,7 @@ export default function CanvasPage() {
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [setPreviewMode, showUsernameModal, previewMode, addingComment, groupSelection, ungroupSelection]);
+  }, [setPreviewMode, showUsernameModal, previewMode, addingComment, groupSelection, ungroupSelection, presenting]);
 
   // Load initial data. Retries every 3 s if the context isn't available yet on
   // this node (e.g. the project was created on a peer and sync is in progress).
@@ -596,6 +606,14 @@ export default function CanvasPage() {
     );
   }
 
+  /** Present from the screen holding the selection, else from the first. */
+  function handlePresent() {
+    const { elements: els, elementLabels, selectedElementIds } = useCanvasStore.getState();
+    const ids = new Set(selectedElementIds);
+    const start = screenForSelection(listScreens(els, elementLabels), els.filter((e) => ids.has(e.id)));
+    startPresentation(start?.id ?? null);
+  }
+
   if (previewMode) {
     return (
       <div className={styles.previewOverlay}>
@@ -622,6 +640,7 @@ export default function CanvasPage() {
         onExportPng={() => canvasRef.current?.exportPng()}
         onExportSvg={() => canvasRef.current?.exportSvg()}
         onPreview={() => setPreviewMode(true)}
+        onPresent={handlePresent}
         onImageUpload={handleImageUpload}
         addingComment={addingComment}
         onToggleComment={() => setAddingComment((v) => !v)}
@@ -665,6 +684,9 @@ export default function CanvasPage() {
         </div>
         <PropertiesPanel contextId={projectId ?? ""} readOnly={!canEdit} />
       </div>
+      {/* Over the board, not instead of it: the canvas keeps its zoom, pan and
+          selection, and a peer's edit still lands on the slide being shown. */}
+      {presenting && <PresentationView />}
     </div>
   );
 }

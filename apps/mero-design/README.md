@@ -10,6 +10,7 @@ A collaborative design tool built on the Calimero p2p network. Think Figma — b
 - Text elements with font controls
 - Multi-member projects — invite teammates via Calimero group invitations
 - Export canvas to PNG or SVG
+- Screens + presentation mode (Figma-style "Present") — see below
 - Real-time sync via SSE (no central server)
 - White-label landing page with team (namespace) selector
 
@@ -58,6 +59,31 @@ make stop        # tear everything down
 | `make test` | Unit + e2e tests |
 | `make workflows` | merobox workflow tests |
 | `make clean` | Remove all build artifacts |
+
+## Screens and presenting
+
+A **screen** is one slide: a rectangle whose layer name sits in the top-level
+`screen` group (`screen/01 Sign in`). Its area is the slide — everything painted
+inside it is shown, clipped at its edge, exactly like a Figma frame.
+
+- **Make one:** select the layers that belong together, open the **Screens** tab
+  and choose **Create screen from selection**. A backdrop sized to the selection
+  is added behind it. Select a single rectangle instead and that rectangle
+  becomes the screen.
+- **Present:** **▶ Present** in the toolbar (or the Screens tab) plays screens in
+  reading order — left to right, then top to bottom — so reorder them by moving
+  them on the board. It starts from the screen the selection is on.
+- **Navigate:** → / Space / PageDown forward, ← / Shift+Space / PageUp back,
+  Home / End, F for full screen, Esc to leave. **All screens** shows a filmstrip.
+- **Long screens scroll:** a screen much taller than the window is shown at a
+  readable width and scrolls; Space pages through it before moving on. Zoom
+  can also be set to *Fill width* or *100%*.
+
+Screens ride the element `label` like groups do, so there is no contract change:
+every member sees the same screens, and the bundled starter project (whose five
+screens were already labelled this way) presents out of the box. The
+presentation reads the live board, so a teammate's edit lands on the slide
+being shown.
 
 ## Data Model
 
