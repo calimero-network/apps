@@ -1,8 +1,8 @@
 // Blocking "set your name" overlay. State-driven: it appears whenever
 // the active namespace has no display name for the current member —
 // which covers just-created, just-joined, and older nameless
-// workspaces alike, with no per-event wiring. Gating on !loading
-// avoids a flash for a name that is merely slow to resolve.
+// workspaces alike, with no per-event wiring. It decides only once the
+// name read has answered, and a background refetch never hides it.
 //
 // Rendered INSIDE the workspace body (an `absolute inset-0` overlay
 // over sidebar + main), NOT over the top bar — so the namespace
@@ -54,7 +54,7 @@ function NameGate({
   selfIdentity: string;
 }) {
   const { namespaceMemberNames } = useDriveWorkspace();
-  const { name, loading, error, setName } = useMemberDisplayName(
+  const { name, loaded, error, setName } = useMemberDisplayName(
     namespaceId,
     selfIdentity,
   );
@@ -62,9 +62,7 @@ function NameGate({
   // namespace GroupMember rows (keyed by identity), which reliably carry
   // the name even when `useMemberDisplayName` returns null on a cold load
   // (mero-react rehydration gap #42). This is the same source the members
-  // list + the settings panel use, so the gate agrees with them. By the
-  // time the gate mounts, the workspace stage is past `loading-*` (which
-  // gates on membersLoading), so these rows are already populated.
+  // list + the settings panel use, so the gate agrees with them.
   const memberRowName = namespaceMemberNames[selfIdentity] ?? null;
   // The effective name from ANY reliable source.
   const effectiveName = name ?? memberRowName;
@@ -103,7 +101,7 @@ function NameGate({
   // localStorage marker is gone (new device, cleared storage) AND the
   // hook returns null (#42), the member rows still show the name, so we
   // must not ask the user to set it again.
-  if (loading || effectiveName !== null || dismissed || knownSet) return null;
+  if (!loaded || effectiveName !== null || dismissed || knownSet) return null;
 
   const trimmed = draft.trim();
   const canSave =

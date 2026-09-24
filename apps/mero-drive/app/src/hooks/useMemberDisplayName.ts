@@ -9,7 +9,7 @@
 // shouldn't even offer the API — defense-in-depth). Admin "rename any
 // member" is an explicit follow-up surface, not this hook.
 
-import { useCallback } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   useMemberMetadata,
   useSetMemberMetadata,
@@ -27,6 +27,9 @@ export interface MemberDisplayName {
   /** Display name or null when none is set. */
   name: string | null;
   loading: boolean;
+  /** True once the first read for this member has answered; stays true while
+   *  later refetches run, so a caller can tell "no name" from "not read yet". */
+  loaded: boolean;
   error: Error | null;
   /** Sets the current caller's display name in this namespace. Throws if
    *  trimmed input is empty or the caller's identity isn't resolved yet.
@@ -56,6 +59,10 @@ export function useMemberDisplayName(
     memberId ?? null,
   );
   const { setMemberMetadata } = useSetMemberMetadata();
+  const loaded = useFirstReadAnswered(
+    `${namespaceId ?? ''}:${memberId ?? ''}`,
+    loading,
+  );
 
   // Metadata changes without a context event; the registry's sync run is the tick.
   const onMetadataEvent = useCallback(() => {
@@ -95,5 +102,17 @@ export function useMemberDisplayName(
     [namespaceId, memberId, selfIdentity, setMemberMetadata, refetch],
   );
 
-  return { name, loading, error, setName, refetch };
+  return { name, loading, loaded, error, setName, refetch };
+}
+
+// useMemberMetadata is idle (loading=false, no metadata) until its mount
+// effect issues the read, so `loading` alone cannot mark the first answer.
+function useFirstReadAnswered(key: string, loading: boolean): boolean {
+  const [issuedKey, setIssuedKey] = useState<string | null>(null);
+  const [answeredKey, setAnsweredKey] = useState<string | null>(null);
+  useEffect(() => setIssuedKey(key), [key]);
+  useEffect(() => {
+    if (issuedKey === key && !loading) setAnsweredKey(key);
+  }, [issuedKey, key, loading]);
+  return answeredKey === key;
 }

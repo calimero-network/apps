@@ -11,7 +11,7 @@ export function MyDisplayNamePanel() {
     useDriveWorkspace();
   const {
     name: hookName,
-    loading,
+    loaded,
     error,
     setName,
   } = useMemberDisplayName(namespaceId, selfIdentity);
@@ -67,12 +67,12 @@ export function MyDisplayNamePanel() {
             onChange={(e) => setDraft(e.target.value)}
             placeholder={name ?? 'Not set yet'}
             maxLength={64}
-            disabled={loading || saving}
+            disabled={!loaded || saving}
             className="h-9 flex-1 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
           />
           <Button
             size="sm"
-            disabled={!dirty || saving || loading}
+            disabled={!dirty || saving || !loaded}
             onClick={() => void onSave()}
           >
             {saving ? 'Saving…' : 'Save'}
