@@ -150,18 +150,10 @@ export interface Event_MarkApplied {
 export interface Event_TextChanged {
   doc: string;
   block: string;
-  ids: Run[];
 }
 
 export interface Event_TitleChanged {
   doc: string;
-  ids: Run[];
-}
-
-export interface Run {
-  replica: string;
-  counter: number;
-  len: number;
 }
 
 export interface Span {
@@ -593,16 +585,6 @@ export class DocsClient {
   }
 
   /**
-   * title_digest
-   *
-   * @intent read_only
-   */
-  public async titleDigest(params: { doc: string }): Promise<string> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'title_digest', argsJson: params });
-    return response as string;
-  }
-
-  /**
    * title_resolve
    *
    * @intent read_only
@@ -639,16 +621,6 @@ export class DocsClient {
    */
   public async undo(params: { doc: string; block: string; token: string }): Promise<string> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'undo', argsJson: params });
-    return response as string;
-  }
-
-  /**
-   * unmark
-   *
-   * @intent mutating
-   */
-  public async unmark(params: { doc: string; block: string; start: number; end: number; key: string }): Promise<string> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'unmark', argsJson: params });
     return response as string;
   }
 

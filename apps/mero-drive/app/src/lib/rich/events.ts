@@ -2,26 +2,19 @@
 // a StateMutation batch whose payloads are JSON bytes, and a single tagged
 // variant. Every field is checked, so a stray payload is dropped, not guessed.
 
-import type { Run } from './echo';
-
-export type RichEvent =
-  | { kind: 'TitleChanged'; doc: string; ids: Run[] }
-  | { kind: 'TextChanged'; doc: string; block: string; ids: Run[] }
-  | {
-      kind: 'BlockInserted' | 'BlockDeleted' | 'BlockMoved' | 'BlockChanged';
-      doc: string;
-      block: string;
-    }
-  | { kind: 'MarkApplied'; doc: string; block: string; markId: string };
-
-const BLOCK_KINDS = [
+const RICH_KINDS = [
+  'TitleChanged',
+  'TextChanged',
   'BlockInserted',
   'BlockDeleted',
   'BlockMoved',
   'BlockChanged',
+  'MarkApplied',
 ] as const;
 
-type BlockKind = (typeof BLOCK_KINDS)[number];
+type RichKind = (typeof RICH_KINDS)[number];
+
+export type RichEvent = { kind: RichKind; doc: string };
 
 /** Every rich-document event in one delivered SSE payload. */
 export function parseRichEvents(data: unknown): RichEvent[] {
@@ -55,41 +48,11 @@ function decodePayload(data: unknown): unknown {
 }
 
 function parseVariant(kind: string, value: unknown): RichEvent | null {
-  const body = asRecord(value);
-  const doc = body && typeof body.doc === 'string' ? body.doc : null;
-  if (!body || !doc) return null;
-  const block = typeof body.block === 'string' ? body.block : null;
-
-  if (kind === 'TitleChanged') return { kind, doc, ids: parseRuns(body.ids) };
-  if (!block) return null;
-  if (kind === 'TextChanged') {
-    return { kind, doc, block, ids: parseRuns(body.ids) };
+  const doc = asRecord(value)?.doc;
+  if (typeof doc !== 'string' || !RICH_KINDS.includes(kind as RichKind)) {
+    return null;
   }
-  if (kind === 'MarkApplied') {
-    return typeof body.mark_id === 'string'
-      ? { kind, doc, block, markId: body.mark_id }
-      : null;
-  }
-  return BLOCK_KINDS.includes(kind as BlockKind)
-    ? { kind: kind as BlockKind, doc, block }
-    : null;
-}
-
-function parseRuns(value: unknown): Run[] {
-  if (!Array.isArray(value)) return [];
-  const runs: Run[] = [];
-  for (const entry of value) {
-    const run = asRecord(entry);
-    if (
-      run &&
-      typeof run.replica === 'string' &&
-      typeof run.counter === 'number' &&
-      typeof run.len === 'number'
-    ) {
-      runs.push({ replica: run.replica, counter: run.counter, len: run.len });
-    }
-  }
-  return runs;
+  return { kind: kind as RichKind, doc };
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {

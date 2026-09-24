@@ -43,8 +43,6 @@ export interface UseFugueBodyResult {
   error: Error | null;
   undo: () => void;
   redo: () => void;
-  /** Re-read the whole document; the dev inspector and a retry both use it. */
-  refresh: () => Promise<void>;
 }
 
 const asError = (cause: unknown): Error =>
@@ -357,6 +355,5 @@ export function useFugueBody({
     error,
     undo,
     redo,
-    refresh,
   };
 }

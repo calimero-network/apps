@@ -25,19 +25,8 @@ die() {
 
 node_name() { echo "$NODE_PREFIX-$1"; }
 p2p_port() { echo $((BASE_PORT + 2 * ($1 - 1))); }
+rpc_port() { echo $((BASE_PORT + 2 * $1 - 1)); }
 node_home() { echo "$RIG_DIR/data/$(node_name "$1")/$(node_name "$1")"; }
-
-# The port a node actually listens on, read back from the home it will restart
-# with, so a restart never re-derives it from BASE_PORT.
-rpc_port() {
-  local config
-  config="$(node_home "$1")/$(node_name "$1")/config.toml"
-  [ -f "$config" ] || die "no config for node $1 at $config; run \`up\` first"
-  local port
-  port="$(awk '/^\[server\]/ { in_server = 1; next } /^\[/ { in_server = 0 } in_server && /^listen/ { match($0, /tcp\/[0-9]+/); print substr($0, RSTART + 4, RLENGTH - 4); exit }' "$config")"
-  [ -n "$port" ] || die "no listen port in $config"
-  echo "$port"
-}
 
 node_url() { echo "http://localhost:$(rpc_port "$1")"; }
 
@@ -156,7 +145,7 @@ YAML
       cat <<YAML
   $(node_name "$index"):
     port: $(p2p_port "$index")
-    rpc_port: $((BASE_PORT + 2 * (index - 1) + 1))
+    rpc_port: $(rpc_port "$index")
 YAML
     done
     echo "steps:"

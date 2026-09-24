@@ -31,8 +31,8 @@ use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use calimero_sdk::serde::{Deserialize, Serialize};
 use calimero_sdk::types::Error as AppError;
 use calimero_storage::collections::crdt_meta::MergeError;
-use calimero_storage::collections::fugue_text::{Anchor, Bias, IdRange, Removed, TextOp, Undo};
-use calimero_storage::collections::rich_text::{Attrs, DeltaOp, DeltaUndo, UndoStep};
+use calimero_storage::collections::fugue_text::{Anchor, Bias, TextOp, Undo};
+use calimero_storage::collections::rich_text::{Attrs, DeltaOp, DeltaUndo};
 use calimero_storage::collections::{
     AuthoredMap, BlockId, BlockView, Counter, Expand, FugueText, LwwRegister, MarkId, MarkSchema,
     Mergeable, RichDocument, Span, UnorderedMap, ValueRef,
@@ -74,27 +74,6 @@ type Body = RichDocument<DriveMarks>;
 // ---------------------------------------------------------------------------
 // Wire types
 // ---------------------------------------------------------------------------
-
-/// A run of character ids, mirroring `IdRange`, which has no `AbiType`.
-/// `replica` is decimal text because it is a full `u64` and a JSON number loses
-/// the top bits in a browser.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, AbiType)]
-#[serde(crate = "calimero_sdk::serde")]
-pub struct Run {
-    pub replica: String,
-    pub counter: u32,
-    pub len: u32,
-}
-
-impl From<IdRange> for Run {
-    fn from(range: IdRange) -> Self {
-        Self {
-            replica: range.start.0.to_string(),
-            counter: range.start.1,
-            len: range.len,
-        }
-    }
-}
 
 /// One rendered block, mirroring `BlockView` so its id is the same bs58 token
 /// every other method takes and returns.
@@ -177,36 +156,6 @@ fn encode_token<T: calimero_sdk::borsh::BorshSerialize>(value: &T) -> app::Resul
 fn decode_token<T: calimero_sdk::borsh::BorshDeserialize>(token: &str) -> app::Result<T> {
     let bytes = bs58::decode(token).into_vec()?;
     Ok(calimero_sdk::borsh::from_slice(&bytes)?)
-}
-
-/// The ids one delta touched, taken off the undo it returned: a `Delete` step
-/// names what the delta minted, an `Insert` step names what it took out.
-fn touched(undo: &DeltaUndo) -> Vec<Run> {
-    let mut out = Vec::new();
-    for step in &undo.0 {
-        match *step {
-            UndoStep::Delete(ids) => out.push(ids.into()),
-            UndoStep::Insert { ref removed, .. } => {
-                out.extend(removed.ids.iter().copied().map(Run::from));
-            }
-            UndoStep::Mark { .. } => {}
-        }
-    }
-    out
-}
-
-/// [`touched`] for the plain-text title, whose undo steps are `Undo`.
-fn touched_text(steps: &[Undo]) -> Vec<Run> {
-    let mut out = Vec::new();
-    for step in steps {
-        match *step {
-            Undo::Inserted(ids) => out.push(ids.into()),
-            Undo::Removed(Removed { ref ids, .. }) => {
-                out.extend(ids.iter().copied().map(Run::from));
-            }
-        }
-    }
-    out
 }
 
 /// One block as a line of the document digest.
@@ -461,10 +410,7 @@ impl DocsState {
             .map(Change::into_text_op)
             .collect::<app::Result<_>>()?;
         let steps = self.write(&doc)?.title.apply_delta(&ops)?;
-        app::emit!(Event::TitleChanged {
-            doc: &doc,
-            ids: touched_text(&steps)
-        });
+        app::emit!(Event::TitleChanged { doc: &doc });
         encode_token(&steps)
     }
 
@@ -472,10 +418,7 @@ impl DocsState {
     pub fn title_undo(&mut self, doc: String, token: String) -> app::Result<String> {
         let steps: Vec<Undo> = decode_token(&token)?;
         let redo = self.write(&doc)?.title.undo(&steps)?;
-        app::emit!(Event::TitleChanged {
-            doc: &doc,
-            ids: touched_text(&redo)
-        });
+        app::emit!(Event::TitleChanged { doc: &doc });
         encode_token(&redo)
     }
 
@@ -506,12 +449,6 @@ impl DocsState {
             .iter()
             .map(|token| Ok(record.title.resolve(&decode_token::<Anchor>(token)?).ok()))
             .collect()
-    }
-
-    /// The title text, so a scenario can assert it literally.
-    #[app::view]
-    pub fn title_digest(&self, doc: String) -> app::Result<String> {
-        self.get_title(doc)
     }
 
     // ---- body structure ---------------------------------------------------
@@ -644,8 +581,7 @@ impl DocsState {
         let undo = self.write(&doc)?.body.apply_delta(id, &ops)?;
         app::emit!(Event::TextChanged {
             doc: &doc,
-            block: &block,
-            ids: touched(&undo)
+            block: &block
         });
         encode_token(&undo)
     }
@@ -657,8 +593,7 @@ impl DocsState {
         let redo = self.write(&doc)?.body.apply_undo(id, &undo)?;
         app::emit!(Event::TextChanged {
             doc: &doc,
-            block: &block,
-            ids: touched(&redo)
+            block: &block
         });
         encode_token(&redo)
     }
@@ -679,19 +614,6 @@ impl DocsState {
             .write(&doc)?
             .body
             .mark(id, start, end, &key, value.as_deref())?;
-        self.emit_mark(&doc, &block, minted)
-    }
-
-    pub fn unmark(
-        &mut self,
-        doc: String,
-        block: String,
-        start: usize,
-        end: usize,
-        key: String,
-    ) -> app::Result<Option<String>> {
-        let id = decode_token(&block)?;
-        let minted = self.write(&doc)?.body.mark(id, start, end, &key, None)?;
         self.emit_mark(&doc, &block, minted)
     }
 
@@ -1198,10 +1120,6 @@ mod tests {
         let app = host("Roadmap");
         assert_eq!(title(&app), "Roadmap");
         assert_eq!(
-            app.view(|s| s.title_digest(DOC.to_owned())).unwrap(),
-            "Roadmap"
-        );
-        assert_eq!(
             app.view(|s| s.get_doc(DOC.to_owned())).unwrap().title,
             "Roadmap"
         );
@@ -1532,29 +1450,6 @@ mod tests {
                 "{kind} ships a position, which indexes the EMITTING node only"
             );
         }
-    }
-
-    /// `TitleChanged` carries the ids the delta minted, so a subscriber replays
-    /// it without a position the emitting node alone can read.
-    #[test]
-    fn a_title_change_carries_its_ids() {
-        use calimero_sdk::serde_json::{from_slice, json, Value};
-
-        let mut app = host("hello");
-        let _ignored = app.take_events();
-        let _undo = app
-            .call(|s| s.title_apply_delta(DOC.to_owned(), vec![retain(5), insert(" world")]))
-            .unwrap();
-
-        let events = app.events();
-        assert_eq!(events.len(), 1);
-        assert_eq!(events[0].kind, "TitleChanged");
-        let payload: Value = from_slice(&events[0].data).expect("JSON payload");
-        assert_eq!(payload["doc"], json!(DOC));
-        let ids = payload["ids"].as_array().expect("one run");
-        assert_eq!(ids.len(), 1);
-        assert_eq!(ids[0]["counter"], json!(5));
-        assert_eq!(ids[0]["len"], json!(6));
     }
 
     // ---- documents -------------------------------------------------------

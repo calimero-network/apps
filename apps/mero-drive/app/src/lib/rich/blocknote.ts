@@ -77,10 +77,7 @@ export function backendBlocks(rows: BackendBlock[]): EditorBlock[] {
     kind: row.kind,
     depth: row.depth,
     attrs: { ...row.attrs },
-    inline: row.spans.map((span) => ({
-      text: span.text,
-      attributes: { ...(span.attributes ?? {}) },
-    })),
+    inline: backendSpans(row.spans),
   }));
 }
 

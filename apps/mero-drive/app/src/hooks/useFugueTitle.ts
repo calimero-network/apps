@@ -1,22 +1,15 @@
 // Binds a plain text input to the document title CRDT: a keystroke becomes one
-// scalar-indexed delta, a peer's TitleChanged becomes a re-read with the caret
-// carried across on an anchor, and the caret is published as live presence.
+// scalar-indexed delta, and a peer's TitleChanged becomes a re-read with the
+// caret carried across on an anchor.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  useEphemeral,
   useSubscription,
   type SubscriptionEventData,
 } from '@calimero-network/mero-react';
 import { diffText } from '@/lib/rich/delta';
 import { parseRichEvents } from '@/lib/rich/events';
-import { utf16ToScalar } from '@/lib/rich/offsets';
-import {
-  peersOnDoc,
-  presenceColour,
-  type DocPresence,
-} from '@/lib/rich/presence';
-import { mapScalarSelection } from '@/lib/rich/remote';
+import { scalarToUtf16, utf16ToScalar } from '@/lib/rich/offsets';
 import { UndoHistory } from '@/lib/rich/undo';
 import type { ChangePayload, DocsClient } from '@/generated/docs/DocsClient';
 import { isContextEvent } from './useContextEvents';
@@ -28,8 +21,6 @@ export interface UseFugueTitleOptions {
   client: DocsClient | null;
   docId: string | null;
   contextId: string | null;
-  /** Who peers see on this caret; presence is published only when given. */
-  identity?: { id: string; name: string } | null;
 }
 
 export interface UseFugueTitleResult {
@@ -41,7 +32,6 @@ export interface UseFugueTitleResult {
   onSelect: () => void;
   undo: () => void;
   redo: () => void;
-  peers: Map<string, DocPresence>;
   error: Error | null;
 }
 
@@ -52,7 +42,6 @@ export function useFugueTitle({
   client,
   docId,
   contextId,
-  identity,
 }: UseFugueTitleOptions): UseFugueTitleResult {
   const [title, showTitle] = useState('');
   const [error, setError] = useState<Error | null>(null);
@@ -67,11 +56,6 @@ export function useFugueTitle({
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const contextIds = useMemo(() => (contextId ? [contextId] : []), [contextId]);
-  const { peers, setPresence } = useEphemeral<DocPresence>(contextId, {
-    throttleMs: CARET_DEBOUNCE_MS,
-  });
-  const publishRef = useRef(setPresence);
-  publishRef.current = setPresence;
 
   useEffect(() => {
     historyRef.current.reset(docId);
@@ -115,19 +99,10 @@ export function useFugueTitle({
         })
         .then((anchor) => {
           anchorRef.current = anchor;
-          if (!identity) return;
-          publishRef.current({
-            docId,
-            blockId: null,
-            anchor,
-            head: anchor,
-            name: identity.name,
-            colour: presenceColour(identity.id),
-          });
         })
         .catch((cause) => setError(asError(cause)));
     }, CARET_DEBOUNCE_MS);
-  }, [client, docId, identity]);
+  }, [client, docId]);
 
   const refresh = useCallback(async () => {
     if (!client || !docId) return;
@@ -140,10 +115,8 @@ export function useFugueTitle({
           doc: docId,
           anchors: [anchor],
         });
-        caretRef.current = mapScalarSelection(
-          text,
-          resolved as (number | null)[],
-        )[0];
+        caretRef.current =
+          resolved[0] == null ? null : scalarToUtf16(text, resolved[0]);
       }
       localRef.current = text;
       showTitle(text);
@@ -219,11 +192,6 @@ export function useFugueTitle({
   const undo = useCallback(() => step('undo'), [step]);
   const redo = useCallback(() => step('redo'), [step]);
 
-  const visiblePeers = useMemo(
-    () => peersOnDoc(peers, docId ?? ''),
-    [peers, docId],
-  );
-
   return {
     title,
     setTitle: write,
@@ -232,7 +200,6 @@ export function useFugueTitle({
     onSelect: publishCaret,
     undo,
     redo,
-    peers: visiblePeers,
     error,
   };
 }

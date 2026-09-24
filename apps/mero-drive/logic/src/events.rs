@@ -4,8 +4,6 @@
 //! Ids, never positions: the payload is replayed on the RECEIVING node, where a
 //! concurrent edit has already moved everything the author counted.
 
-use crate::Run;
-
 #[calimero_sdk::app::event]
 pub enum Event<'a> {
     DocCreated {
@@ -28,7 +26,6 @@ pub enum Event<'a> {
     },
     TitleChanged {
         doc: &'a str,
-        ids: Vec<Run>,
     },
     BlockInserted {
         doc: &'a str,
@@ -50,7 +47,6 @@ pub enum Event<'a> {
     TextChanged {
         doc: &'a str,
         block: &'a str,
-        ids: Vec<Run>,
     },
     MarkApplied {
         doc: &'a str,

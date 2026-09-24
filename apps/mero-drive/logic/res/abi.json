@@ -601,15 +601,6 @@
           "type": {
             "kind": "string"
           }
-        },
-        {
-          "name": "ids",
-          "type": {
-            "kind": "list",
-            "items": {
-              "$ref": "Run"
-            }
-          }
         }
       ]
     },
@@ -620,38 +611,6 @@
           "name": "doc",
           "type": {
             "kind": "string"
-          }
-        },
-        {
-          "name": "ids",
-          "type": {
-            "kind": "list",
-            "items": {
-              "$ref": "Run"
-            }
-          }
-        }
-      ]
-    },
-    "Run": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "replica",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "counter",
-          "type": {
-            "kind": "u32"
-          }
-        },
-        {
-          "name": "len",
-          "type": {
-            "kind": "u32"
           }
         }
       ]
@@ -1520,21 +1479,6 @@
       "intent": "mutating"
     },
     {
-      "name": "title_digest",
-      "params": [
-        {
-          "name": "doc",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "string"
-      },
-      "intent": "read_only"
-    },
-    {
       "name": "title_resolve",
       "params": [
         {
@@ -1614,45 +1558,6 @@
         },
         {
           "name": "token",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "string"
-      },
-      "intent": "mutating"
-    },
-    {
-      "name": "unmark",
-      "params": [
-        {
-          "name": "doc",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "block",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "start",
-          "type": {
-            "kind": "u32"
-          }
-        },
-        {
-          "name": "end",
-          "type": {
-            "kind": "u32"
-          }
-        },
-        {
-          "name": "key",
           "type": {
             "kind": "string"
           }

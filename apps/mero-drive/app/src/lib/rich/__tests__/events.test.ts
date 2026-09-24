@@ -11,28 +11,21 @@ describe('parseRichEvents', () => {
       events: [
         {
           kind: 'TitleChanged',
-          data: bytes({
-            doc: 'doc-1',
-            ids: [{ replica: '7', counter: 1, len: 3 }],
-          }),
+          data: bytes({ doc: 'doc-1' }),
         },
         { kind: 'BlockInserted', data: bytes({ doc: 'doc-1', block: 'blk' }) },
       ],
     };
     expect(parseRichEvents(data)).toEqual([
-      {
-        kind: 'TitleChanged',
-        doc: 'doc-1',
-        ids: [{ replica: '7', counter: 1, len: 3 }],
-      },
-      { kind: 'BlockInserted', doc: 'doc-1', block: 'blk' },
+      { kind: 'TitleChanged', doc: 'doc-1' },
+      { kind: 'BlockInserted', doc: 'doc-1' },
     ]);
   });
 
   it('decodes a tagged single-variant payload', () => {
     expect(
-      parseRichEvents({ TextChanged: { doc: 'doc-1', block: 'blk', ids: [] } }),
-    ).toEqual([{ kind: 'TextChanged', doc: 'doc-1', block: 'blk', ids: [] }]);
+      parseRichEvents({ TextChanged: { doc: 'doc-1', block: 'blk' } }),
+    ).toEqual([{ kind: 'TextChanged', doc: 'doc-1' }]);
   });
 
   it('decodes a mark event', () => {
@@ -40,9 +33,7 @@ describe('parseRichEvents', () => {
       parseRichEvents({
         MarkApplied: { doc: 'doc-1', block: 'blk', mark_id: 'mk' },
       }),
-    ).toEqual([
-      { kind: 'MarkApplied', doc: 'doc-1', block: 'blk', markId: 'mk' },
-    ]);
+    ).toEqual([{ kind: 'MarkApplied', doc: 'doc-1' }]);
   });
 
   it('drops the document events this decoder does not describe', () => {
@@ -50,16 +41,8 @@ describe('parseRichEvents', () => {
   });
 
   it('drops a variant whose payload is missing its document', () => {
-    expect(parseRichEvents({ TitleChanged: { ids: [] } })).toEqual([]);
-    expect(parseRichEvents({ BlockMoved: { doc: 'doc-1' } })).toEqual([]);
-  });
-
-  it('drops a run that is not three numbers and a replica', () => {
-    expect(
-      parseRichEvents({
-        TitleChanged: { doc: 'doc-1', ids: [{ replica: 7, counter: 1 }] },
-      }),
-    ).toEqual([{ kind: 'TitleChanged', doc: 'doc-1', ids: [] }]);
+    expect(parseRichEvents({ TitleChanged: {} })).toEqual([]);
+    expect(parseRichEvents({ BlockMoved: { block: 'blk' } })).toEqual([]);
   });
 
   it('is empty for anything that is not an event payload', () => {
@@ -76,7 +59,7 @@ describe('parseRichEvents', () => {
       ],
     };
     expect(parseRichEvents(data)).toEqual([
-      { kind: 'BlockDeleted', doc: 'doc-1', block: 'blk' },
+      { kind: 'BlockDeleted', doc: 'doc-1' },
     ]);
   });
 });

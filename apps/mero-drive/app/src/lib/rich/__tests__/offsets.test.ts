@@ -1,11 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-  scalarLength,
-  utf16ToScalar,
-  scalarToUtf16,
-  utf16RangeToScalar,
-  scalarRangeToUtf16,
-} from '../offsets';
+import { scalarLength, utf16ToScalar, scalarToUtf16 } from '../offsets';
 
 const FAMILY = '\u{1F468}‍\u{1F469}‍\u{1F467}'; // man ZWJ woman ZWJ girl
 const COMBINING = 'é'; // e + combining acute
@@ -80,20 +74,5 @@ describe('scalarToUtf16', () => {
   it('clamps a scalar index past the end', () => {
     expect(scalarToUtf16('a\u{1F44B}b', 99)).toBe(4);
     expect(scalarToUtf16('abc', -1)).toBe(0);
-  });
-});
-
-describe('range helpers', () => {
-  it('converts a UTF-16 range spanning an emoji to scalars', () => {
-    expect(utf16RangeToScalar('a\u{1F44B}b', 1, 4)).toEqual([1, 3]);
-  });
-
-  it('converts a scalar range back to UTF-16 units', () => {
-    expect(scalarRangeToUtf16('a\u{1F44B}b', 1, 3)).toEqual([1, 4]);
-  });
-
-  it('orders a reversed range', () => {
-    expect(utf16RangeToScalar('hello', 4, 1)).toEqual([1, 4]);
-    expect(scalarRangeToUtf16('hello', 4, 1)).toEqual([1, 4]);
   });
 });

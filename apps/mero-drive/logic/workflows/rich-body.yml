@@ -213,7 +213,7 @@ steps:
     type: call
     node: drive-node-1
     context_id: '{{docs_ctx}}'
-    method: title_digest
+    method: get_title
     executor_public_key: '{{alice_key}}'
     args:
       doc: '{{title_doc}}'
@@ -413,7 +413,7 @@ steps:
     type: call
     node: drive-node-1
     context_id: '{{docs_ctx}}'
-    method: unmark
+    method: mark
     executor_public_key: '{{alice_key}}'
     args:
       doc: '{{body_doc}}'
@@ -421,6 +421,7 @@ steps:
       start: 0
       end: 3
       key: bold
+      value: null
 
   - name: Alice makes the block a heading, indents it and aligns it
     type: call
@@ -812,7 +813,7 @@ steps:
     timeout: 180
     trigger_sync: true
     expect:
-      method: title_digest
+      method: get_title
       args:
         doc: '{{title_doc}}'
       equals:

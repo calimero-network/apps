@@ -21,8 +21,7 @@ interface Props {
 }
 
 export function DocumentEditor({ folderId, docId, onClose }: Props) {
-  const { namespaceId, selfIdentity, namespaceMemberNames } =
-    useDriveWorkspace();
+  const { namespaceId } = useDriveWorkspace();
   const perms = useFolderPermissions(namespaceId ?? '', folderId);
   // Doc-edit ability is the registry Role, gated through useFolderPermissions.
   // A caps-fetch failure leaves this false, so the editor opens read-only
@@ -42,18 +41,10 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
   const [doc, setDoc] = useState<DocDto | null>(null);
   const [loadError, setLoadError] = useState<Error | null>(null);
 
-  const identity = selfIdentity
-    ? {
-        id: selfIdentity,
-        name: namespaceMemberNames[selfIdentity] || 'Anonymous',
-      }
-    : null;
-
   const title = useFugueTitle({
     client,
     docId: docsContextId ? docId : null,
     contextId: docsContextId,
-    identity,
   });
   const body = useFugueBody({
     client,

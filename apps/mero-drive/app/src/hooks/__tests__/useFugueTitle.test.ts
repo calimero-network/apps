@@ -7,20 +7,12 @@ import type { ChangeEvent } from 'react';
 import type { DocsClient } from '@/generated/docs/DocsClient';
 import { useFugueTitle } from '../useFugueTitle';
 
-const setPresence = vi.fn();
-let peers = new Map<string, unknown>();
 let deliver: ((event: unknown) => void) | null = null;
 
 vi.mock('@calimero-network/mero-react', () => ({
   useSubscription: (_ids: string[], handler: (event: unknown) => void) => {
     deliver = handler;
   },
-  useEphemeral: () => ({
-    peers,
-    setPresence,
-    ageOf: () => undefined,
-    error: null,
-  }),
 }));
 
 const DOC = 'doc-1';
@@ -63,21 +55,18 @@ const settle = async (ms = 400) => {
   });
 };
 
-function mount(client: FakeClient, identity?: { id: string; name: string }) {
+function mount(client: FakeClient) {
   return renderHook(() =>
     useFugueTitle({
       client: client as unknown as DocsClient,
       docId: DOC,
       contextId: CTX,
-      identity,
     }),
   );
 }
 
 beforeEach(() => {
   vi.useFakeTimers();
-  setPresence.mockClear();
-  peers = new Map();
   deliver = null;
 });
 
@@ -154,40 +143,6 @@ describe('useFugueTitle', () => {
     });
   });
 
-  it('publishes the caret anchor as presence for this document', async () => {
-    const client = fakeClient();
-    const { result } = mount(client, { id: 'alice', name: 'Ada' });
-    await settle();
-    const input = document.createElement('input');
-    document.body.appendChild(input);
-    input.value = 'Notes';
-    input.setSelectionRange(2, 2);
-    result.current.inputRef.current = input;
-
-    act(() => result.current.onSelect());
-    await settle();
-    expect(setPresence).toHaveBeenCalledWith({
-      docId: DOC,
-      blockId: null,
-      anchor: 'anc-1',
-      head: 'anc-1',
-      name: 'Ada',
-      colour: '#3b82f6',
-    });
-  });
-
-  it('publishes nothing when there is no identity to publish as', async () => {
-    const client = fakeClient();
-    const { result } = mount(client);
-    await settle();
-    const input = document.createElement('input');
-    document.body.appendChild(input);
-    result.current.inputRef.current = input;
-    act(() => result.current.onSelect());
-    await settle();
-    expect(setPresence).not.toHaveBeenCalled();
-  });
-
   it('re-reads on a peer TitleChanged and restores the caret through the anchor', async () => {
     const client = fakeClient();
     const { result } = mount(client);
@@ -251,17 +206,6 @@ describe('useFugueTitle', () => {
     });
     await settle();
     expect(client.getTitle).toHaveBeenCalledTimes(1);
-  });
-
-  it('keeps only the peers editing this document', async () => {
-    peers = new Map([
-      ['alice', { docId: DOC, name: 'Ada' }],
-      ['bob', { docId: 'doc-2', name: 'Bo' }],
-    ]);
-    const client = fakeClient();
-    const { result } = mount(client);
-    await settle();
-    expect([...result.current.peers.keys()]).toEqual(['alice']);
   });
 
   it('surfaces a failed write as an error', async () => {
