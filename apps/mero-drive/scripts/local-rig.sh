@@ -4,6 +4,7 @@
 set -euo pipefail
 
 RIG_DIR="${MERODRIVE_RIG_DIR:-/tmp/merodrive-rig}" # wiped by `up`; holds node homes, logs and the pid file
+RIG_BUNDLE="${RIG_BUNDLE:-}"                       # a prebuilt .mpk for `up`; unset builds one with logic:build
 NODE_COUNT=3                                      # node n listens on 3918+2n (p2p) and 3919+2n (rpc)
 BASE_PORT=3920
 NODE_PREFIX=drive-rig-node
@@ -114,10 +115,14 @@ start_node() {
   home="$(node_home "$index")"
   merod="$(resolve_merod)"
   [ -d "$home" ] || die "no home for node $index at $home; run \`up\` first"
+  # Its own process group: Playwright stops the dev server that ran this by
+  # killing that server's whole group, which would take the node with it.
+  set -m
   CALIMERO_HOME="$home" NODE_NAME="$name" RUST_LOG="$LOG_LEVEL" \
     MERO_AUTH_ADMIN_USER="$ADMIN_USER" MERO_AUTH_ADMIN_PASSWORD="$ADMIN_PASSWORD" \
     nohup "$merod" --home "$home" --node "$name" run \
     >>"$RIG_DIR/data/$name/logs/$name.log" 2>&1 &
+  set +m
   write_pid "$index" $!
   wait_healthy "$index"
 }
@@ -290,16 +295,23 @@ YAML
 }
 
 cmd_up() {
-  local merod bundle package token app_id index
+  local merod bundle package token app_id index tool
   merod="$(resolve_merod)"
-  command -v merobox >/dev/null || die "no merobox on PATH"
-  command -v jq >/dev/null || die "no jq on PATH"
+  for tool in merobox jq openssl lsof curl python3; do
+    command -v "$tool" >/dev/null || die "no $tool on PATH"
+  done
 
-  package="$(sed -n 's/^package *= *"\(.*\)"/\1/p' "$DRIVE_DIR/logic/Cargo.toml" | head -1)"
-  [ -n "$package" ] || die "no [package.metadata.calimero] package in logic/Cargo.toml"
-  bundle="$DRIVE_DIR/logic/dist/$package.mpk"
-  pnpm --dir "$DRIVE_DIR" logic:build
-  [ -f "$bundle" ] || die "logic:build produced no $bundle"
+  if [ -n "$RIG_BUNDLE" ]; then
+    [ -f "$RIG_BUNDLE" ] || die "RIG_BUNDLE $RIG_BUNDLE is not a file"
+    # Absolute, because merobox runs from $RIG_DIR.
+    bundle="$(cd "$(dirname "$RIG_BUNDLE")" && pwd)/$(basename "$RIG_BUNDLE")"
+  else
+    package="$(sed -n 's/^package *= *"\(.*\)"/\1/p' "$DRIVE_DIR/logic/Cargo.toml" | head -1)"
+    [ -n "$package" ] || die "no [package.metadata.calimero] package in logic/Cargo.toml"
+    bundle="$DRIVE_DIR/logic/dist/$package.mpk"
+    pnpm --dir "$DRIVE_DIR" logic:build
+    [ -f "$bundle" ] || die "logic:build produced no $bundle"
+  fi
 
   rm -rf "$RIG_DIR"
   mkdir -p "$RIG_DIR/bin"

@@ -712,6 +712,87 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
+  browser-e2e-rich:
+    name: Browser E2E rich (mero-drive)
+    needs: [changes, wasm]
+    # The `browser` gate, narrowed to mero-drive: the `rich` project needs the
+    # three-node rig, which the `browser` job's own two nodes cannot stand in for.
+    if: (needs.changes.outputs.frontend == 'true' || needs.changes.outputs.logic == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.tooling == 'true' || needs.changes.outputs.js_deps == 'true') && contains(fromJSON(needs.changes.outputs.apps), 'mero-drive')
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: mpk-mero-drive-${{ github.sha }}
+          path: bundle
+
+      - name: Verify the bundle arrived
+        run: |
+          set -euo pipefail
+          mpk=$(find bundle -name '*.mpk' -print -quit)
+          if [ -z "$mpk" ]; then
+            echo "::error::no .mpk in the downloaded artifact - the rig would install nothing"
+            ls -la bundle || true
+            exit 1
+          fi
+          echo "RIG_BUNDLE=$PWD/$mpk" >> "$GITHUB_ENV"
+          echo "using $mpk ($(wc -c <"$mpk") bytes)"
+
+      - uses: ./.github/actions/setup-merod
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ runner.os }}-${{ hashFiles('requirements-e2e.txt') }}
+
+      - run: pip install -r requirements-e2e.txt && merobox --version
+
+      - name: Enable corepack (pnpm)
+        run: corepack enable
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # Capped because `playwright install --with-deps` has no timeout of its own.
+      - uses: ./.github/actions/setup-playwright
+        timeout-minutes: 15
+        with:
+          working-directory: apps/mero-drive/app
+
+      - name: Bring the three-node rig up
+        id: rig
+        run: apps/mero-drive/scripts/local-rig.sh up
+
+      - name: Run the rich project
+        working-directory: apps/mero-drive/app
+        run: npx playwright test --project=rich
+
+      - name: Take the rig down
+        if: always() && steps.rig.outcome != 'skipped'
+        run: apps/mero-drive/scripts/local-rig.sh down
+
+      - name: Upload the report and node logs
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-e2e-rich-mero-drive-${{ github.sha }}
+          path: |
+            apps/mero-drive/app/playwright-report
+            apps/mero-drive/app/test-results
+            /tmp/merodrive-rig/data/*/logs/*.log
+          retention-days: 7
+          if-no-files-found: ignore
+
   e2e:
     name: E2E (${{ matrix.app }})
     # BLOCKING again. It was made advisory when the namespace joins looked like
