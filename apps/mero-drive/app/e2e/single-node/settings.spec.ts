@@ -44,17 +44,13 @@ test.describe('Settings + sharing (single-node)', () => {
   }) => {
     await alice.createFolder({ name: 'Settled', visibility: 'Open' });
     await alice.openFolderInfo('Settled');
-    const restrictCount = await alice.page
-      .getByRole('dialog')
-      .getByRole('button', { name: /Make restricted/i })
-      .count();
-    const openCount = await alice.page
-      .getByRole('dialog')
-      .getByRole('button', { name: /Make open/i })
-      .count();
-    // For an Open folder we expect "Make restricted" (and only it).
-    expect(restrictCount + openCount).toBe(1);
-    expect(restrictCount).toBe(1);
+    const dialog = alice.page.getByRole('dialog');
+    // For an Open folder we expect "Make restricted" (and only it). The toggle
+    // waits on a permission fetch, so wait for it before counting.
+    await expect(
+      dialog.getByRole('button', { name: /Make restricted/i }),
+    ).toHaveCount(1, { timeout: 30_000 });
+    await expect(dialog.getByRole('button', { name: /Make open/i })).toHaveCount(0);
     await alice.closeFolderInfo();
   });
 });
