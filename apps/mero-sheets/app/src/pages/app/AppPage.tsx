@@ -43,6 +43,8 @@ import JoinModal from '../../components/JoinModal';
 import NicknameModal from '../../components/NicknameModal';
 import ContextMenu from '../../components/ContextMenu';
 import NamesModal from '../../components/NamesModal';
+import ActivityPanel from '../../components/ActivityPanel';
+import { ago, nsToMs } from '../../lib/time';
 import { sheetsToCsv } from '../../spreadsheet/download';
 import { idsToNames, namesToIds } from '../../spreadsheet/sheetref';
 import StatusBar from '../../components/StatusBar';
@@ -170,6 +172,7 @@ export default function AppPage() {
   const [showHelp, setShowHelp] = useState(false);
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
   const [showNames, setShowNames] = useState(false);
+  const [showActivity, setShowActivity] = useState(false);
   const [namesSaving, setNamesSaving] = useState(false);
   const [namesError, setNamesError] = useState<string | null>(null);
   const formulaInputRef = useRef<HTMLInputElement>(null);
@@ -988,6 +991,10 @@ export default function AppPage() {
   const collaborators = distinctCollaborators(presence.cursors, ss.selfId, C.green, roster);
   const peers = peerCount(presence.cursors, ss.selfId);
   const cursorLabel = (author: string) => avatarLabel(roster.get(author)?.label ?? author);
+  const personName = (memberId: string) =>
+    memberId === ss.selfId ? 'You' : roster.get(memberId)?.label ?? `${memberId.slice(0, 8)}…`;
+  const editedBy = (c: { last_editor: string; last_edited_at: number }) =>
+    c.last_editor ? `Edited by ${personName(c.last_editor)}, ${ago(nsToMs(c.last_edited_at))}` : null;
   const connected = ss.ready && ss.loaded;
   const synced = ss.loaded && !ss.mutating;
 
@@ -1091,6 +1098,14 @@ export default function AppPage() {
           </svg>
         </IconBtn>
 
+        <ToolBtn onClick={() => setShowActivity(true)} title="Who changed what" aria-label="Open activity" data-testid="action-activity">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" />
+          </svg>
+          <span>Activity</span>
+        </ToolBtn>
+
         <ToolBtn onClick={() => setShowHelp(true)} title="Function reference" aria-label="Open function reference">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
             stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1154,6 +1169,7 @@ export default function AppPage() {
         cells={ss.cells}
         cursors={presence.cursors}
         cursorLabel={cursorLabel}
+        editedBy={editedBy}
         selectedCell={pickingForeignSheet ? null : selectedCell}
         selectionRange={pickingForeignSheet ? null : selectionRange}
         editingValue={pickingForeignSheet ? null : isDirty ? formulaInput : null}
@@ -1227,6 +1243,32 @@ export default function AppPage() {
           onSelect={(fmt) => void applyFormat(fmt)}
           sections={menuSections}
           onClose={() => setCtxMenu(null)}
+        />
+      )}
+      {showActivity && (
+        <ActivityPanel
+          load={ss.loadActivity}
+          revision={ss.cells}
+          nameOf={personName}
+          sheetName={idToName}
+          refOf={(sheetId, rowId, colId) => {
+            const at = ss.refOf(sheetId, rowId, colId);
+            return at ? cellRef(at.row, at.col) : null;
+          }}
+          showRaw={(sheetId, raw) => idsToNames(ss.displayRaw(sheetId, raw), idToName)}
+          selected={(() => {
+            const ids = activeSheetId && selectedCell ? ss.idsOf(activeSheetId, selectedCell.row, selectedCell.col) : null;
+            return ids && activeSheetId ? { sheetId: activeSheetId, rowId: ids.row_id, colId: ids.col_id } : null;
+          })()}
+          onJump={(sheetId, rowId, colId) => {
+            const at = ss.refOf(sheetId, rowId, colId);
+            if (!at) return;
+            setShowActivity(false);
+            setActiveSheetId(sheetId);
+            setSelectedCell(at);
+            setSelectionRange(null);
+          }}
+          onClose={() => setShowActivity(false)}
         />
       )}
       {showNames && (

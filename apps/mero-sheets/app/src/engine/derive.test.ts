@@ -8,7 +8,7 @@ import type { Cell } from '../api/spreadsheet/SpreadsheetClient';
 
 const cell = (sheet: string, row: string, col: string, raw: string, computed = raw, format = ''): Cell => ({
   id: `${sheet}|${row}|${col}`, sheet_id: sheet, row_id: row, col_id: col,
-  raw_value: raw, computed_value: computed, format, updated_at: 0,
+  raw_value: raw, computed_value: computed, format, updated_at: 0, last_editor: '', last_edited_at: 0,
 });
 const ov = (sheet: string, row: string, col: string, raw: string, format = ''): OverlayEntry =>
   ({ sheet_id: sheet, row_id: row, col_id: col, raw_value: raw, format });

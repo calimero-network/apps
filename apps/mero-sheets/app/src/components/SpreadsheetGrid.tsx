@@ -35,6 +35,8 @@ interface SpreadsheetGridProps {
   cursors: PeerCursor[];
   /** The badge shown on a peer's cursor, from their member id. */
   cursorLabel: (author: string) => string;
+  /** "Edited by Ada, 5 min ago" for a cell, or null when unknown. */
+  editedBy: (cell: Cell) => string | null;
   selectedCell: CellCoord | null;
   /** Committed multi-cell selection (column/row/range), highlighted. */
   selectionRange: Rect | null;
@@ -67,6 +69,7 @@ function SpreadsheetGrid({
   cells,
   cursors,
   cursorLabel,
+  editedBy,
   selectedCell,
   selectionRange,
   editingValue,
@@ -450,7 +453,7 @@ function SpreadsheetGrid({
                       e.preventDefault();
                       onCellContextMenu(row, col, e.clientX, e.clientY);
                     }}
-                    title={cell ? `${columnLabel(col)}${row + 1}: ${cell.raw_value}` : undefined}
+                    title={cell ? [`${columnLabel(col)}${row + 1}: ${cell.raw_value}`, editedBy(cell)].filter(Boolean).join('\n') : undefined}
                   >
                     <CellValue $isFormula={shownIsFormula}>{shownValue}</CellValue>
                     {cursor && !isSelected && (

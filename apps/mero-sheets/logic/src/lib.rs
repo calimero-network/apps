@@ -11,7 +11,7 @@ use calimero_sdk::env;
 use calimero_sdk::serde::{Deserialize, Serialize};
 use calimero_sdk::types::Error as AppError;
 use calimero_storage::collections::crdt_meta::MergeError;
-use calimero_storage::collections::{AuthoredMap, LwwRegister, Mergeable, UnorderedMap};
+use calimero_storage::collections::{AuthoredMap, LwwRegister, Mergeable, SortedMap, UnorderedMap};
 use calimero_storage::env as storage_env;
 use std::collections::{BTreeMap, HashSet};
 
@@ -257,6 +257,72 @@ impl Mergeable for NamedRangeData {
     }
 }
 
+/// Who last changed a cell and when, keyed like the cell.
+#[app::mergeable(id = "mero_sheets::CellMeta")]
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, AbiType)]
+#[borsh(crate = "calimero_sdk::borsh")]
+pub struct CellMeta {
+    /// Member id (`whoami`).
+    pub author: String,
+    pub at: u64,
+}
+
+impl Mergeable for CellMeta {
+    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        if (other.at, &other.author) > (self.at, &self.author) {
+            self.author = other.author.clone();
+            self.at = other.at;
+        }
+        Ok(())
+    }
+}
+
+/// One cell's change within an activity entry: its raw value and format
+/// before and after.
+#[derive(
+    Debug, Clone, PartialEq, BorshSerialize, BorshDeserialize, Serialize, Deserialize, AbiType,
+)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct CellChange {
+    pub row_id: String,
+    pub col_id: String,
+    pub before_raw: String,
+    pub before_format: String,
+    pub after_raw: String,
+    pub after_format: String,
+}
+
+/// One entry of the workbook's activity log: who did what, when. Keyed by
+/// `"{at:020}|{author}|{nonce}"`, so the log reads in time order and a
+/// "since" query is a range seek.
+#[app::mergeable(id = "mero_sheets::ActivityData")]
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, AbiType)]
+#[borsh(crate = "calimero_sdk::borsh")]
+pub struct ActivityData {
+    pub author: String,
+    pub at: u64,
+    /// Empty for workbook-level actions (a named range).
+    pub sheet_id: String,
+    /// `cells`, `rows`, `cols`, `sheet` or `name`.
+    pub kind: String,
+    pub summary: String,
+    /// How many cells changed; `changes` holds at most [`MAX_LOGGED_CHANGES`].
+    pub count: u32,
+    pub changes: Vec<CellChange>,
+}
+
+impl Mergeable for ActivityData {
+    fn merge(&mut self, _other: &Self) -> Result<(), MergeError> {
+        // Entries are written once under a unique key and never changed.
+        Ok(())
+    }
+}
+
+/// How many cell changes one activity entry keeps (a 200-cell paste logs
+/// its first 50 and the count).
+pub const MAX_LOGGED_CHANGES: usize = 50;
+
 // ---------------------------------------------------------------------------
 // View types returned to callers (must derive Serialize + Deserialize)
 // ---------------------------------------------------------------------------
@@ -311,6 +377,24 @@ pub struct Cell {
     pub computed_value: String,
     pub format: String,
     pub updated_at: u64,
+    /// Member id of whoever last changed the cell; empty for a cell last
+    /// written before the activity log existed.
+    pub last_editor: String,
+    pub last_edited_at: u64,
+}
+
+/// An activity-log entry, newest first from `get_activity`.
+#[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct ActivityEntry {
+    pub id: String,
+    pub author: String,
+    pub at: u64,
+    pub sheet_id: String,
+    pub kind: String,
+    pub summary: String,
+    pub count: u32,
+    pub changes: Vec<CellChange>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
@@ -390,12 +474,14 @@ pub struct FunctionDef {
 }
 
 /// The most ops one `apply_cell_ops` call accepts; see its doc. Measured on a
-/// real node: 500 inserts fit the execution's gas budget and 600 do not, and a
-/// 200-op commit costs the same (~115 ms) whether the context holds 0 or 4000
-/// cells, so 200 keeps a wide margin without adding round trips. The client's
-/// `MAX_OPS_PER_APPLY` (app/src/spreadsheet/ops.ts) and the perf harness's
-/// `APPLY_CHUNK` split batches to this size.
-pub const MAX_OPS_PER_APPLY: usize = 200;
+/// 0.11.0-rc.43 node, with every op also stamping the cell's last editor: the
+/// costliest op (a format on an empty cell: cell, format and editor writes)
+/// fits 160 to a call and not 200, so 100 keeps a wide margin. A commit's cost
+/// does not grow with the context's size (a 200-op commit took ~115 ms at 0
+/// and at 4000 cells). The client's `MAX_OPS_PER_APPLY`
+/// (app/src/spreadsheet/ops.ts) and the perf harness's `APPLY_CHUNK` split
+/// batches to this size.
+pub const MAX_OPS_PER_APPLY: usize = 100;
 
 // ---------------------------------------------------------------------------
 // State
@@ -444,6 +530,12 @@ pub struct Spreadsheet {
     /// Named ranges keyed by upper-case name.
     #[migrate(new = UnorderedMap::new_with_field_name("spreadsheet:names"))]
     names: UnorderedMap<String, NamedRangeData>,
+    /// Who last changed each cell, keyed like `cells`.
+    #[migrate(new = UnorderedMap::new_with_field_name("spreadsheet:cell_meta"))]
+    cell_meta: UnorderedMap<String, CellMeta>,
+    /// The activity log, in time order.
+    #[migrate(new = SortedMap::new_with_field_name("spreadsheet:activity"))]
+    activity: SortedMap<String, ActivityData>,
 }
 
 /// The v1 state, read once by the v2 migration.
@@ -474,6 +566,8 @@ impl Spreadsheet {
             axes: UnorderedMap::new_with_field_name("spreadsheet:axes"),
             formats: UnorderedMap::new_with_field_name("spreadsheet:formats"),
             names: UnorderedMap::new_with_field_name("spreadsheet:names"),
+            cell_meta: UnorderedMap::new_with_field_name("spreadsheet:cell_meta"),
+            activity: SortedMap::new_with_field_name("spreadsheet:activity"),
         }
     }
 
@@ -637,6 +731,7 @@ impl Spreadsheet {
         self.sheets
             .insert(id.clone(), data)
             .map_err(|e| AppError::msg(format!("sheets.insert: {e}")))?;
+        self.log(&id, "sheet", format!("added sheet {name}"), 0, Vec::new())?;
         app::emit!(Event::SheetCreated {
             id: &id,
             name: &name,
@@ -672,6 +767,13 @@ impl Spreadsheet {
         // Cross-sheet references are id-based ([id]!...), so a rename changes
         // no formula and no computed value: nothing to rewrite, nothing to
         // recompute.
+        self.log(
+            &sheet_id,
+            "sheet",
+            format!("renamed a sheet to {new_name}"),
+            0,
+            Vec::new(),
+        )?;
         app::emit!(Event::SheetRenamed {
             id: &sheet_id,
             name: &new_name,
@@ -684,9 +786,16 @@ impl Spreadsheet {
             .sheets
             .remove(&sheet_id)
             .map_err(|e| AppError::msg(format!("sheets.remove: {e}")))?;
-        if removed.is_none() {
+        let Some(removed) = removed else {
             return Err(AppError::from(Error::NotFound(sheet_id.clone())));
-        }
+        };
+        self.log(
+            &sheet_id,
+            "sheet",
+            format!("deleted sheet {}", removed.name),
+            0,
+            Vec::new(),
+        )?;
         // The sheet's cells are left in storage and skipped on every read:
         // removing them one by one costs gas per cell, and a big sheet would
         // not fit one execution.
@@ -859,8 +968,15 @@ impl Spreadsheet {
         col_id: String,
         raw_value: String,
     ) -> app::Result<String> {
-        self.require_sheet(&sheet_id)?;
-        let key = self.store_value(&sheet_id, &row_id, &col_id, raw_value)?;
+        let key = Spreadsheet::cell_key(&sheet_id, &row_id, &col_id);
+        self.edit_cells(
+            &sheet_id,
+            vec![CellOp::Set {
+                row_id,
+                col_id,
+                raw_value,
+            }],
+        )?;
         app::emit!(Event::CellUpdated {
             id: &key,
             sheet_id: &sheet_id
@@ -877,8 +993,15 @@ impl Spreadsheet {
         col_id: String,
         format: String,
     ) -> app::Result<String> {
-        self.require_sheet(&sheet_id)?;
-        let key = self.store_format(&sheet_id, &row_id, &col_id, format)?;
+        let key = Spreadsheet::cell_key(&sheet_id, &row_id, &col_id);
+        self.edit_cells(
+            &sheet_id,
+            vec![CellOp::Format {
+                row_id,
+                col_id,
+                format,
+            }],
+        )?;
         app::emit!(Event::CellUpdated {
             id: &key,
             sheet_id: &sheet_id
@@ -892,7 +1015,13 @@ impl Spreadsheet {
         row_id: String,
         col_id: String,
     ) -> app::Result<()> {
-        self.store_clear(&sheet_id, &row_id, &col_id)?;
+        self.edit_cells(
+            &sheet_id,
+            vec![CellOp::Clear {
+                row_id: row_id.clone(),
+                col_id: col_id.clone(),
+            }],
+        )?;
         app::emit!(Event::CellCleared {
             sheet_id: &sheet_id,
             row_id: &row_id,
@@ -905,9 +1034,9 @@ impl Spreadsheet {
     /// ONE `CellsChanged` event for the whole batch.
     ///
     /// At most [`MAX_OPS_PER_APPLY`] ops. One execution has a fixed gas budget
-    /// (1e9 points on 0.11.0-rc.43), which runs out between 500 and 600 cell
-    /// writes, and a batch that exhausts it fails as a whole with nothing
-    /// written. Refusing early says why; callers split larger range ops.
+    /// (1e9 points on 0.11.0-rc.43), and a batch that exhausts it fails as a
+    /// whole with nothing written. Refusing early says why; callers split
+    /// larger range ops.
     pub fn apply_cell_ops(&mut self, sheet_id: String, ops: Vec<CellOp>) -> app::Result<()> {
         if ops.len() > MAX_OPS_PER_APPLY {
             return Err(AppError::from(Error::Invalid(format!(
@@ -915,8 +1044,50 @@ impl Spreadsheet {
                 ops.len()
             ))));
         }
-        self.require_sheet(&sheet_id)?;
         let count = ops.len() as u32;
+        self.edit_cells(&sheet_id, ops)?;
+        app::emit!(Event::CellsChanged {
+            sheet_id: &sheet_id,
+            count
+        });
+        Ok(())
+    }
+
+    /// A cell's raw value and effective format.
+    fn cell_state(&self, key: &str) -> app::Result<(String, String)> {
+        let cell = self
+            .cells
+            .get(key)
+            .map_err(|e| AppError::msg(format!("cells.get: {e}")))?;
+        let format = self
+            .formats
+            .get(key)
+            .map_err(|e| AppError::msg(format!("formats.get: {e}")))?;
+        Ok(match (cell, format) {
+            (Some(c), Some(f)) => (c.raw_value.clone(), f.format.clone()),
+            (Some(c), None) => (c.raw_value.clone(), c.format.clone()),
+            (None, Some(f)) => (String::new(), f.format.clone()),
+            (None, None) => (String::new(), String::new()),
+        })
+    }
+
+    /// Apply cell ops and record them: each changed cell's last editor, and
+    /// one activity entry for the whole batch.
+    fn edit_cells(&mut self, sheet_id: &str, ops: Vec<CellOp>) -> app::Result<()> {
+        self.require_sheet(sheet_id)?;
+        let mut touched: BTreeMap<String, (String, String, (String, String))> = BTreeMap::new();
+        for op in &ops {
+            let (row_id, col_id) = match op {
+                CellOp::Set { row_id, col_id, .. }
+                | CellOp::Format { row_id, col_id, .. }
+                | CellOp::Clear { row_id, col_id } => (row_id, col_id),
+            };
+            let key = Spreadsheet::cell_key(sheet_id, row_id, col_id);
+            if !touched.contains_key(&key) {
+                let before = self.cell_state(&key)?;
+                touched.insert(key, (row_id.clone(), col_id.clone(), before));
+            }
+        }
         for op in ops {
             match op {
                 CellOp::Set {
@@ -924,25 +1095,141 @@ impl Spreadsheet {
                     col_id,
                     raw_value,
                 } => {
-                    self.store_value(&sheet_id, &row_id, &col_id, raw_value)?;
+                    self.store_value(sheet_id, &row_id, &col_id, raw_value)?;
                 }
                 CellOp::Format {
                     row_id,
                     col_id,
                     format,
                 } => {
-                    self.store_format(&sheet_id, &row_id, &col_id, format)?;
+                    self.store_format(sheet_id, &row_id, &col_id, format)?;
                 }
                 CellOp::Clear { row_id, col_id } => {
-                    self.store_clear(&sheet_id, &row_id, &col_id)?;
+                    self.store_clear(sheet_id, &row_id, &col_id)?;
                 }
             }
         }
-        app::emit!(Event::CellsChanged {
-            sheet_id: &sheet_id,
-            count
-        });
+        let author = self.caller_hex();
+        let at = storage_env::time_now();
+        let mut changes = Vec::new();
+        for (key, (row_id, col_id, before)) in touched {
+            let after = self.cell_state(&key)?;
+            if after == before {
+                continue;
+            }
+            let meta = CellMeta {
+                author: author.clone(),
+                at,
+            };
+            self.put(|s| &mut s.cell_meta, key, meta)?;
+            changes.push(CellChange {
+                row_id,
+                col_id,
+                before_raw: before.0,
+                before_format: before.1,
+                after_raw: after.0,
+                after_format: after.1,
+            });
+        }
+        if changes.is_empty() {
+            return Ok(());
+        }
+        let count = changes.len() as u32;
+        let summary = match changes.as_slice() {
+            [one] if one.after_raw.is_empty() && one.after_format.is_empty() => {
+                "cleared a cell".to_string()
+            }
+            [one] if one.before_raw == one.after_raw => {
+                format!("formatted a cell as {}", display_format(&one.after_format))
+            }
+            [_] => "edited a cell".to_string(),
+            _ => format!("changed {count} cells"),
+        };
+        changes.truncate(MAX_LOGGED_CHANGES);
+        self.log(sheet_id, "cells", summary, count, changes)
+    }
+
+    /// Insert or replace a map entry.
+    fn put<V>(
+        &mut self,
+        map: impl Fn(&mut Self) -> &mut UnorderedMap<String, V>,
+        key: String,
+        value: V,
+    ) -> app::Result<()>
+    where
+        V: BorshSerialize + BorshDeserialize + Mergeable,
+    {
+        let exists = map(self)
+            .get(&key)
+            .map_err(|e| AppError::msg(format!("get: {e}")))?
+            .is_some();
+        if exists {
+            if let Some(mut guard) = map(self)
+                .get_mut(&key)
+                .map_err(|e| AppError::msg(format!("get_mut: {e}")))?
+            {
+                *guard = value;
+            }
+        } else {
+            map(self)
+                .insert(key, value)
+                .map_err(|e| AppError::msg(format!("insert: {e}")))?;
+        }
         Ok(())
+    }
+
+    /// Append an activity entry.
+    fn log(
+        &mut self,
+        sheet_id: &str,
+        kind: &str,
+        summary: String,
+        count: u32,
+        changes: Vec<CellChange>,
+    ) -> app::Result<()> {
+        let author = self.caller_hex();
+        let at = storage_env::time_now();
+        let mut nonce = [0u8; 4];
+        env::random_bytes(&mut nonce);
+        let key = format!("{at:020}|{author}|{}", hex::encode(nonce));
+        self.activity
+            .insert(
+                key,
+                ActivityData {
+                    author,
+                    at,
+                    sheet_id: sheet_id.to_string(),
+                    kind: kind.to_string(),
+                    summary,
+                    count,
+                    changes,
+                },
+            )
+            .map_err(|e| AppError::msg(format!("activity.insert: {e}")))?;
+        Ok(())
+    }
+
+    /// Activity since `since` (nanoseconds), newest first, at most `limit`
+    /// (capped at 500) entries.
+    pub fn get_activity(&self, since: u64, limit: u32) -> app::Result<Vec<ActivityEntry>> {
+        let mut out: Vec<ActivityEntry> = self
+            .activity
+            .range(format!("{since:020}")..)
+            .map_err(|e| AppError::msg(format!("activity.range: {e}")))?
+            .map(|(id, d)| ActivityEntry {
+                id,
+                author: d.author,
+                at: d.at,
+                sheet_id: d.sheet_id,
+                kind: d.kind,
+                summary: d.summary,
+                count: d.count,
+                changes: d.changes,
+            })
+            .collect();
+        out.reverse();
+        out.truncate(limit.min(500) as usize);
+        Ok(out)
     }
 
     // ---- Rows and columns ----
@@ -964,6 +1251,29 @@ impl Spreadsheet {
         self.require_sheet(&sheet_id)?;
         let count = ops.len() as u32;
         let now = storage_env::time_now();
+        // "inserted 2 rows, deleted 1 column", for the activity log.
+        let mut tally: BTreeMap<(&str, &str), u32> = BTreeMap::new();
+        for op in &ops {
+            let entry = match op {
+                AxisOp::InsertRow { .. } => ("inserted", "row"),
+                AxisOp::InsertCol { .. } => ("inserted", "column"),
+                AxisOp::DeleteRow { .. } => ("deleted", "row"),
+                AxisOp::DeleteCol { .. } => ("deleted", "column"),
+                AxisOp::RestoreRow { .. } => ("restored", "row"),
+                AxisOp::RestoreCol { .. } => ("restored", "column"),
+            };
+            *tally.entry(entry).or_default() += 1;
+        }
+        let summary = tally
+            .iter()
+            .map(|((verb, noun), n)| format!("{verb} {n} {noun}{}", if *n == 1 { "" } else { "s" }))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let kind = if tally.keys().any(|(_, noun)| *noun == "row") {
+            "rows"
+        } else {
+            "cols"
+        };
         for op in ops {
             let (axis, id, insert_pos, deleted) = match op {
                 AxisOp::InsertRow { id, pos } => ('r', id, Some(pos), false),
@@ -1038,6 +1348,7 @@ impl Spreadsheet {
                 }
             }
         }
+        self.log(&sheet_id, kind, summary, 0, Vec::new())?;
         app::emit!(Event::AxesChanged {
             sheet_id: &sheet_id,
             count
@@ -1110,6 +1421,7 @@ impl Spreadsheet {
 
     fn store_name(&mut self, name: String, target: String) -> app::Result<()> {
         let key = name.to_ascii_uppercase();
+        let entry_target_empty = target.is_empty();
         let entry = NamedRangeData {
             name: name.clone(),
             target,
@@ -1133,6 +1445,12 @@ impl Spreadsheet {
                 .insert(key, entry)
                 .map_err(|e| AppError::msg(format!("names.insert: {e}")))?;
         }
+        let summary = if entry_target_empty {
+            format!("deleted the name {name}")
+        } else {
+            format!("defined the name {name}")
+        };
+        self.log("", "name", summary, 0, Vec::new())?;
         app::emit!(Event::NamedRangesChanged { name: &name });
         Ok(())
     }
@@ -1211,6 +1529,11 @@ impl Spreadsheet {
             .map_err(|e| AppError::msg(format!("formats.entries: {e}")))?
             .map(|(k, f)| (k, f.format))
             .collect();
+        let meta: BTreeMap<String, CellMeta> = self
+            .cell_meta
+            .entries()
+            .map_err(|e| AppError::msg(format!("cell_meta.entries: {e}")))?
+            .collect();
         let mut out = Vec::new();
         for d in stored {
             let format = formats.get(&d.id).cloned().unwrap_or(d.format);
@@ -1229,6 +1552,9 @@ impl Spreadsheet {
                 })
                 .cloned()
                 .unwrap_or_else(|| d.raw_value.clone());
+            let edited = meta.get(&d.id);
+            let last_editor = edited.map(|m| m.author.clone()).unwrap_or_default();
+            let last_edited_at = edited.map_or(d.updated_at, |m| m.at);
             out.push(Cell {
                 id: d.id,
                 sheet_id: d.sheet_id,
@@ -1238,6 +1564,8 @@ impl Spreadsheet {
                 computed_value,
                 format,
                 updated_at: d.updated_at,
+                last_editor,
+                last_edited_at,
             });
         }
         Ok(out)
@@ -1359,6 +1687,15 @@ impl Spreadsheet {
 
     fn cell_key(sheet_id: &str, row_id: &str, col_id: &str) -> String {
         format!("{sheet_id}|{row_id}|{col_id}")
+    }
+}
+
+/// A format keyword as the activity log says it.
+fn display_format(format: &str) -> &str {
+    if format.is_empty() {
+        "Automatic"
+    } else {
+        format
     }
 }
 
@@ -2512,5 +2849,93 @@ mod tests {
             .call(|s| s.set_named_range("Tax".into(), "A1+1".into()))
             .is_err());
         assert!(app.call(|s| s.delete_named_range("Nope".into())).is_err());
+    }
+
+    #[test]
+    fn edits_are_logged_with_before_and_after_and_stamp_the_editor() {
+        let mut app = make_app();
+        let sid = new_sheet(&mut app);
+        let me = app.view(|s| s.whoami()).unwrap();
+        app.call(|s| s.set_cell(sid.clone(), "0".into(), "0".into(), "5".into()))
+            .unwrap();
+        app.call(|s| s.set_cell(sid.clone(), "0".into(), "0".into(), "7".into()))
+            .unwrap();
+        app.call(|s| s.set_cell_format(sid.clone(), "0".into(), "0".into(), "currency".into()))
+            .unwrap();
+        // Writing the same value again changes nothing and logs nothing.
+        app.call(|s| s.set_cell(sid.clone(), "0".into(), "0".into(), "7".into()))
+            .unwrap();
+        let log = app.view(|s| s.get_activity(0, 100)).unwrap();
+        let cell_entries: Vec<&ActivityEntry> = log.iter().filter(|e| e.kind == "cells").collect();
+        assert_eq!(cell_entries.len(), 3, "{log:?}");
+        // Newest first.
+        assert_eq!(cell_entries[0].summary, "formatted a cell as currency");
+        let edit = &cell_entries[1].changes[0];
+        assert_eq!(
+            (edit.before_raw.as_str(), edit.after_raw.as_str()),
+            ("5", "7")
+        );
+        assert!(cell_entries.iter().all(|e| e.author == me));
+        let cells = app.view(|s| s.get_cells(sid.clone())).unwrap();
+        assert_eq!(cell_at(&cells, "0", "0").unwrap().last_editor, me);
+        // The sheet creation was logged too.
+        assert!(log
+            .iter()
+            .any(|e| e.kind == "sheet" && e.summary == "added sheet S"));
+    }
+
+    #[test]
+    fn a_big_batch_logs_one_entry_with_the_count() {
+        let mut app = make_app();
+        let sid = new_sheet(&mut app);
+        let ops: Vec<CellOp> = (0..90)
+            .map(|i| CellOp::Set {
+                row_id: i.to_string(),
+                col_id: "0".into(),
+                raw_value: "1".into(),
+            })
+            .collect();
+        app.call(|s| s.apply_cell_ops(sid.clone(), ops)).unwrap();
+        let log = app.view(|s| s.get_activity(0, 100)).unwrap();
+        let entry = log.iter().find(|e| e.kind == "cells").unwrap();
+        assert_eq!(entry.count, 90);
+        assert_eq!(entry.summary, "changed 90 cells");
+        assert_eq!(entry.changes.len(), MAX_LOGGED_CHANGES);
+    }
+
+    #[test]
+    fn structural_and_name_actions_are_logged() {
+        let mut app = make_app();
+        let sid = new_sheet(&mut app);
+        app.call(|s| {
+            s.apply_axis_ops(
+                sid.clone(),
+                vec![
+                    AxisOp::InsertRow {
+                        id: "na".into(),
+                        pos: "4".into(),
+                    },
+                    AxisOp::InsertRow {
+                        id: "nb".into(),
+                        pos: "3".into(),
+                    },
+                    AxisOp::DeleteCol { id: "2".into() },
+                ],
+            )
+        })
+        .unwrap();
+        app.call(|s| s.set_named_range("Tax".into(), "A1".into()))
+            .unwrap();
+        let summaries: Vec<String> = app
+            .view(|s| s.get_activity(0, 100))
+            .unwrap()
+            .into_iter()
+            .map(|e| e.summary)
+            .collect();
+        assert!(
+            summaries.contains(&"deleted 1 column, inserted 2 rows".to_string()),
+            "{summaries:?}"
+        );
+        assert!(summaries.contains(&"defined the name Tax".to_string()));
     }
 }

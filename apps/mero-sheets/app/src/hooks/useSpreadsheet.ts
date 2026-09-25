@@ -25,7 +25,7 @@ import { useMero, useSubscription } from '@calimero-network/mero-react';
 import { useStreamReconnect } from './useStreamReconnect';
 import { SpreadsheetClient } from '../api/spreadsheet/SpreadsheetClient';
 import type {
-  Sheet, FunctionDef, Member, Project, NamedRange, SheetLayout, AxisOpPayload,
+  Sheet, FunctionDef, Member, Project, NamedRange, SheetLayout, AxisOpPayload, ActivityEntry,
 } from '../api/spreadsheet/SpreadsheetClient';
 import { AxisOp as AxisOpWire, CellOp as CellOpWire } from '../api/spreadsheet/SpreadsheetClient';
 import { chunkOps, MAX_OPS_PER_APPLY, type CellOp } from '../spreadsheet/ops';
@@ -58,7 +58,7 @@ type IdOp =
 const EVENT_COALESCE_MS = 60;
 
 // Re-export domain types so components import from one place
-export type { Sheet, FunctionDef, Member, Project, NamedRange };
+export type { Sheet, FunctionDef, Member, Project, NamedRange, ActivityEntry };
 
 // ── Hook interfaces ──────────────────────────────────────────────────────────
 
@@ -122,6 +122,14 @@ export interface UseSpreadsheetReturn {
   deleteAxis: (sheetId: string, axis: Axis, positions: number[]) => Promise<void>;
   /** Named ranges, targets in display form (`[sheet-id]!A1:B4`). */
   namedRanges: NamedRange[];
+  /** The activity log for the last `days` days, newest first. */
+  loadActivity: (days: number) => Promise<ActivityEntry[]>;
+  /** Where a cell id sits now (`null` when its row/column is gone). */
+  refOf: (sheetId: string, rowId: string, colId: string) => { row: number; col: number } | null;
+  /** The ids at a position (`null` past the sheet's edge). */
+  idsOf: (sheetId: string, row: number, col: number) => { row_id: string; col_id: string } | null;
+  /** A stored raw value as shown: formulas by position, not id. */
+  displayRaw: (sheetId: string, raw: string) => string;
   /** Undo / redo this user's own edits (see spreadsheet/undo.ts). */
   undo: () => Promise<void>;
   redo: () => Promise<void>;
@@ -730,6 +738,20 @@ export function useSpreadsheet({
 
   const getSheetCells = useCallback((sheetId: string) => sheetCells(sheetId), [sheetCells]);
 
+  const loadActivity = useCallback(async (days: number): Promise<ActivityEntry[]> => {
+    if (!client) return [];
+    // Nanoseconds; a float's precision loss here is well under a second.
+    const since = (Date.now() - days * 86_400_000) * 1_000_000;
+    return client.getActivity({ since, limit: 300 });
+  }, [client]);
+
+  const refOf = useCallback((sheetId: string, rowId: string, colId: string) => {
+    const order = visibleOrder(sheetId);
+    const row = order.rows.indexOf(rowId);
+    const col = order.cols.indexOf(colId);
+    return row < 0 || col < 0 ? null : { row, col };
+  }, []);
+
   const searchFunctions = useCallback(
     (prefix: string): FunctionDef[] => {
       if (!prefix) return functions;
@@ -772,6 +794,10 @@ export function useSpreadsheet({
     deleteName,
     exportAll,
     getSheetCells,
+    loadActivity,
+    refOf,
+    idsOf: idsAt,
+    displayRaw: (sheetId: string, raw: string) => toDisplay(raw, sheetId),
     searchFunctions,
     refresh,
   };

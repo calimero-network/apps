@@ -19,6 +19,9 @@ export interface GridCell {
   computed_value: string;
   format: string;
   updated_at: number;
+  /** Member id of whoever last changed it ('' when unknown). */
+  last_editor: string;
+  last_edited_at: number;
 }
 
 export type OverlayEntry = {
@@ -153,6 +156,8 @@ export function deriveSheetCells(
       computed_value: computed.get(key) ?? e.raw_value,
       format: e.format,
       updated_at: base?.updated_at ?? 0,
+      last_editor: base?.last_editor ?? '',
+      last_edited_at: base?.last_edited_at ?? 0,
     });
   }
   out.sort((a, b) => a.row - b.row || a.col - b.col);

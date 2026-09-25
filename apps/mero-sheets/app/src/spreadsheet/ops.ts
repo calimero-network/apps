@@ -7,11 +7,11 @@
 
 /**
  * The most ops one `apply_cell_ops` call may carry. One node execution has a
- * fixed gas budget that runs out between 500 and 600 cell writes, failing the
- * whole batch. Mirrors `MAX_OPS_PER_APPLY` in the contract, which refuses
+ * fixed gas budget, and the costliest op fits 160 to a call; a batch past it
+ * fails as a whole. Mirrors `MAX_OPS_PER_APPLY` in the contract, which refuses
  * anything larger with a clear error.
  */
-export const MAX_OPS_PER_APPLY = 200;
+export const MAX_OPS_PER_APPLY = 100;
 export type CellOp =
   | { kind: 'Set'; row: number; col: number; raw_value: string }
   | { kind: 'Format'; row: number; col: number; format: string }

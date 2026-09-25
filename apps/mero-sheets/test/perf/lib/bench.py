@@ -55,8 +55,8 @@ def timed_execute(client, cid, method, args):
 
 
 # `apply_cell_ops` refuses more than MAX_OPS_PER_APPLY ops (logic/src/lib.rs):
-# one execution's gas budget runs out between 500 and 600 cell writes.
-APPLY_CHUNK = 200
+# one execution's gas budget fits 160 of the costliest cell op.
+APPLY_CHUNK = 100
 
 
 def wire_op(op):

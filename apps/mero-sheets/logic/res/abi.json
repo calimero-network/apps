@@ -1,6 +1,112 @@
 {
   "schema_version": "wasm-abi/1",
   "types": {
+    "ActivityData": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "author",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "kind",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "summary",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "count",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "changes",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "CellChange"
+            }
+          }
+        }
+      ]
+    },
+    "ActivityEntry": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "author",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "kind",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "summary",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "count",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "changes",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "CellChange"
+            }
+          }
+        }
+      ]
+    },
     "AxisData": {
       "kind": "record",
       "fields": [
@@ -216,6 +322,59 @@
           "type": {
             "kind": "u64"
           }
+        },
+        {
+          "name": "last_editor",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "last_edited_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "CellChange": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "before_raw",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "before_format",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "after_raw",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "after_format",
+          "type": {
+            "kind": "string"
+          }
         }
       ]
     },
@@ -260,6 +419,23 @@
         },
         {
           "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "CellMeta": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "author",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "at",
           "type": {
             "kind": "u64"
           }
@@ -923,6 +1099,32 @@
             },
             "crdt_type": "unordered_map"
           }
+        },
+        {
+          "name": "cell_meta",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "CellMeta"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "activity",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "ActivityData"
+            },
+            "crdt_type": "sorted_map"
+          }
         }
       ]
     }
@@ -1055,6 +1257,30 @@
         "kind": "list",
         "items": {
           "$ref": "Sheet"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_activity",
+      "params": [
+        {
+          "name": "since",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "limit",
+          "type": {
+            "kind": "u32"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "ActivityEntry"
         }
       },
       "intent": "read_only"

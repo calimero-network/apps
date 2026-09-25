@@ -6,6 +6,27 @@ import {
 
 // Generated types
 
+export interface ActivityData {
+  author: string;
+  at: number;
+  sheet_id: string;
+  kind: string;
+  summary: string;
+  count: number;
+  changes: CellChange[];
+}
+
+export interface ActivityEntry {
+  id: string;
+  author: string;
+  at: number;
+  sheet_id: string;
+  kind: string;
+  summary: string;
+  count: number;
+  changes: CellChange[];
+}
+
 export interface AxisData {
   pos: string;
   deleted: boolean;
@@ -70,6 +91,17 @@ export interface Cell {
   computed_value: string;
   format: string;
   updated_at: number;
+  last_editor: string;
+  last_edited_at: number;
+}
+
+export interface CellChange {
+  row_id: string;
+  col_id: string;
+  before_raw: string;
+  before_format: string;
+  after_raw: string;
+  after_format: string;
 }
 
 export interface CellData {
@@ -80,6 +112,11 @@ export interface CellData {
   raw_value: string;
   format: string;
   updated_at: number;
+}
+
+export interface CellMeta {
+  author: string;
+  at: number;
 }
 
 export type CellOpPayload =
@@ -243,6 +280,8 @@ export interface Spreadsheet {
   axes: Record<string, AxisData>;
   formats: Record<string, FormatData>;
   names: Record<string, NamedRangeData>;
+  cell_meta: Record<string, CellMeta>;
+  activity: Record<string, ActivityData>;
 }
 
 
@@ -350,6 +389,16 @@ export class SpreadsheetClient {
   public async exportAll(): Promise<Sheet[]> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'export_all', argsJson: {} });
     return response as Sheet[];
+  }
+
+  /**
+   * get_activity
+   *
+   * @intent read_only
+   */
+  public async getActivity(params: { since: number; limit: number }): Promise<ActivityEntry[]> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_activity', argsJson: params });
+    return response as ActivityEntry[];
   }
 
   /**

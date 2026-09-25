@@ -57,6 +57,21 @@ rewriting cells one by one would exhaust its gas budget past a few hundred of
 them. It also drops v1's contract-stored cursors, which are ephemeral presence
 now.
 
+## Who changed what
+
+Every change is recorded in the workbook itself. Each cell carries its last
+editor and time (`cell_meta`), and an activity log (`activity`, a `SortedMap`
+keyed by time) holds one entry per change: the author, a summary, and for cell
+edits each cell's raw value and format before and after (up to 50 per entry,
+with the total). Row/column, sheet and named-range actions are logged too.
+Reading "the last two weeks" is an index-backed range seek, so the log's
+length does not slow it down. The app shows it as the Activity panel (whole
+workbook, or one cell's history) and as "Edited by …" on each cell.
+
+Recording costs one extra write per cell (the editor stamp) and one per call.
+That is why a single `apply_cell_ops` call is capped at 100 ops: the costliest
+op, a format on an empty cell, fits 160 to one execution's gas budget.
+
 ## Derive-on-read
 
 If values aren't stored, they have to be produced somehow when a peer asks
