@@ -11,128 +11,109 @@
 @tailwind utilities;
 
 @layer base {
+  /* Calimero green on MeroDesign neutrals. --primary (#a5ff11) is a fill only,
+     under --primary-foreground; green text, icons and rings use --primary-ink. */
   :root {
-    --background: 220 20% 97%;
-    --foreground: 220 25% 10%;
+    --background: 0 0% 98%;
+    --foreground: 0 0% 7%;
 
     --card: 0 0% 100%;
-    --card-foreground: 220 25% 10%;
+    --card-foreground: 0 0% 7%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 220 25% 10%;
+    --popover-foreground: 0 0% 7%;
 
-    --primary: 175 70% 35%;
-    --primary-foreground: 0 0% 100%;
+    --primary: 83 100% 53%;
+    --primary-foreground: 260 8% 8%;
+    --primary-ink: 82 100% 24%;
 
-    --secondary: 220 15% 92%;
-    --secondary-foreground: 220 25% 20%;
+    /* The current selection: a lime wash, pre-blended so it stays opaque. */
+    --selected: 83 100% 85%;
+    --selected-foreground: 260 8% 8%;
 
-    --muted: 220 15% 94%;
-    --muted-foreground: 220 15% 45%;
+    --secondary: 0 0% 96%;
+    --secondary-foreground: 0 0% 20%;
 
-    --accent: 175 60% 92%;
-    --accent-foreground: 175 70% 25%;
+    --muted: 0 0% 96%;
+    --muted-foreground: 0 0% 40%;
 
-    --destructive: 0 72% 51%;
+    --accent: 0 0% 94%;
+    --accent-foreground: 0 0% 7%;
+
+    --destructive: 6 63% 46%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 220 15% 88%;
-    --input: 220 15% 88%;
-    --ring: 175 70% 35%;
+    --border: 0 0% 88%;
+    --input: 0 0% 88%;
+    --ring: var(--primary-ink);
 
-    --radius: 0.625rem;
+    --radius: 0.5rem;
 
     /* Custom tokens */
-    --surface-elevated: 0 0% 100%;
-    --surface-sunken: 220 20% 95%;
-    --text-primary: 220 25% 10%;
-    --text-secondary: 220 15% 40%;
-    --text-tertiary: 220 10% 55%;
-    --success: 160 70% 40%;
+    --success: var(--primary-ink);
     --success-foreground: 0 0% 100%;
     --warning: 38 92% 50%;
     --warning-foreground: 0 0% 100%;
-    --info: 200 80% 50%;
-    --info-foreground: 0 0% 100%;
 
     /* Encryption/Security accent */
-    --secure: 175 70% 35%;
+    --secure: 82 100% 19%;
     --secure-foreground: 0 0% 100%;
-    --secure-muted: 175 40% 92%;
+    --secure-muted: 83 100% 91%;
 
     /* Sync status */
-    --synced: 160 70% 40%;
+    --synced: var(--primary);
     --syncing: 38 92% 50%;
-    --offline: 220 15% 50%;
-
-    --sidebar-background: 0 0% 100%;
-    --sidebar-foreground: 220 25% 10%;
-    --sidebar-primary: 175 70% 35%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 175 60% 92%;
-    --sidebar-accent-foreground: 175 70% 25%;
-    --sidebar-border: 220 15% 90%;
-    --sidebar-ring: 175 70% 35%;
+    --offline: 0 0% 53%;
   }
 
+  /* Neutral near-blacks, not blue-greys. The lime needs no deepening here, so
+     ink and fill are the same green. */
   .dark {
-    --background: 220 25% 8%;
-    --foreground: 220 15% 95%;
+    --background: 240 7% 6%;
+    --foreground: 0 0% 93%;
 
-    --card: 220 25% 11%;
-    --card-foreground: 220 15% 95%;
+    --card: 240 5% 9%;
+    --card-foreground: 0 0% 93%;
 
-    --popover: 220 25% 11%;
-    --popover-foreground: 220 15% 95%;
+    --popover: 240 5% 9%;
+    --popover-foreground: 0 0% 93%;
 
-    --primary: 175 65% 45%;
-    --primary-foreground: 220 25% 8%;
+    --primary: 83 100% 53%;
+    --primary-foreground: 260 8% 8%;
+    --primary-ink: 83 100% 53%;
 
-    --secondary: 220 20% 16%;
-    --secondary-foreground: 220 15% 85%;
+    --selected: 84 48% 13%;
+    --selected-foreground: 83 100% 88%;
 
-    --muted: 220 20% 14%;
-    --muted-foreground: 220 15% 55%;
+    --secondary: 240 5% 12%;
+    --secondary-foreground: 0 0% 85%;
 
-    --accent: 175 50% 15%;
-    --accent-foreground: 175 65% 70%;
+    --muted: 240 5% 12%;
+    --muted-foreground: 240 3% 64%;
 
-    --destructive: 0 65% 55%;
-    --destructive-foreground: 0 0% 100%;
+    --accent: 240 6% 13%;
+    --accent-foreground: 0 0% 93%;
 
-    --border: 220 20% 18%;
-    --input: 220 20% 18%;
-    --ring: 175 65% 45%;
+    --destructive: 0 100% 71%;
+    --destructive-foreground: 260 8% 8%;
+
+    --border: 240 5% 17%;
+    --input: 240 5% 17%;
+    --ring: var(--primary-ink);
 
     /* Custom tokens - dark */
-    --surface-elevated: 220 25% 13%;
-    --surface-sunken: 220 25% 6%;
-    --text-primary: 220 15% 95%;
-    --text-secondary: 220 15% 65%;
-    --text-tertiary: 220 10% 50%;
-    --success: 160 60% 50%;
-    --success-foreground: 220 25% 8%;
+    --success: var(--primary-ink);
+    --success-foreground: 260 8% 8%;
     --warning: 38 85% 55%;
-    --warning-foreground: 220 25% 8%;
-    --info: 200 75% 55%;
-    --info-foreground: 220 25% 8%;
+    --warning-foreground: 260 8% 8%;
 
-    --secure: 175 65% 45%;
-    --secure-foreground: 220 25% 8%;
-    --secure-muted: 175 40% 18%;
+    --secure: var(--primary-ink);
+    --secure-foreground: 260 8% 8%;
+    --secure-muted: 85 33% 13%;
 
-    --synced: 160 60% 50%;
+    --synced: var(--primary);
     --syncing: 38 85% 55%;
-    --offline: 220 15% 45%;
-
-    --sidebar-background: 220 25% 10%;
-    --sidebar-foreground: 220 15% 95%;
-    --sidebar-primary: 175 65% 45%;
-    --sidebar-primary-foreground: 220 25% 8%;
-    --sidebar-accent: 175 50% 15%;
-    --sidebar-accent-foreground: 175 65% 70%;
-    --sidebar-border: 220 20% 16%;
-    --sidebar-ring: 175 65% 45%;
+    --offline: 240 2% 44%;
   }
 }
 
@@ -143,65 +124,32 @@
 
   body {
     @apply bg-background text-foreground font-sans antialiased;
+    accent-color: hsl(var(--primary));
     font-family: 'Inter Variable', 'Inter', system-ui, sans-serif;
   }
 
   h1, h2, h3, h4, h5, h6 {
     @apply font-semibold tracking-tight;
   }
+
+  ::selection {
+    background: hsl(var(--selected));
+  }
 }
 
 @layer components {
-  .text-gradient {
-    @apply bg-clip-text text-transparent bg-gradient-to-r from-primary to-primary/70;
-  }
-
-  .surface-elevated {
-    @apply bg-card shadow-sm border border-border/50;
-  }
-
-  .surface-sunken {
-    background: hsl(var(--surface-sunken));
-  }
-
-  .glass {
-    @apply backdrop-blur-xl bg-background/80 border border-border/30;
-  }
 
   .security-badge {
     @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium;
     background: hsl(var(--secure-muted));
     color: hsl(var(--secure));
   }
-
-  .sync-indicator {
-    @apply w-2 h-2 rounded-full;
-  }
-
-  .sync-indicator.synced {
-    background: hsl(var(--synced));
-    box-shadow: 0 0 8px hsl(var(--synced) / 0.5);
-  }
-
-  .sync-indicator.syncing {
-    background: hsl(var(--syncing));
-    animation: pulse 1.5s ease-in-out infinite;
-  }
-
-  .sync-indicator.offline {
-    background: hsl(var(--offline));
-  }
-
-  .editor-content {
-    font-family: 'Inter Variable', 'Inter', system-ui, sans-serif;
-    @apply text-foreground;
-  }
 }
 
 /* ── BlockNote editor theming ──────────────────────────────────────
    BlockNote ships its own complete styling (@blocknote/mantine/style.css);
    here we only re-point its CSS custom properties at our design tokens so
-   the editor inherits the teal accent + light/dark system. Both
+   the editor inherits the green accent + light/dark system. Both
    data-color-scheme values map to the SAME hsl(var(--token)) — those
    tokens already flip with the `.dark` class, so the editor follows the
    app theme automatically. The leading `html` raises specificity above
@@ -238,72 +186,6 @@ html .bn-container[data-color-scheme='dark'] {
 }
 
 
-@layer utilities {
-  .animate-fade-in {
-    animation: fadeIn 0.5s ease-out forwards;
-  }
-
-  .animate-slide-up {
-    animation: slideUp 0.6s ease-out forwards;
-  }
-
-  .animate-scale-in {
-    animation: scaleIn 0.3s ease-out forwards;
-  }
-
-  .animate-glow {
-    animation: glow 2s ease-in-out infinite alternate;
-  }
-}
-
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-@keyframes slideUp {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes scaleIn {
-  from {
-    opacity: 0;
-    transform: scale(0.95);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
-@keyframes glow {
-  from {
-    box-shadow: 0 0 20px hsl(var(--primary) / 0.2);
-  }
-  to {
-    box-shadow: 0 0 40px hsl(var(--primary) / 0.4);
-  }
-}
-
-@keyframes pulse {
-  0%, 100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.5;
-  }
-}
 
 /* Remote carets. The name shows when the peer moves, then fades, so a busy
    document does not turn into a wall of names. */

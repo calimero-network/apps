@@ -51,7 +51,7 @@ export class RichRig {
     const page = await context.newPage();
     await page.goto(`/app?node=${node}`);
     const ws = new WorkspaceDriver(page, { label: `node${node}` });
-    await expect(page.locator('select').first()).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByTestId('workspace-switcher')).toBeVisible({ timeout: 30_000 });
     // A fresh member is asked for a display name before the workspace is usable.
     await ws.dismissNameGateIfPresent(`node${node}`);
     const window: RichWindow = {
@@ -60,7 +60,7 @@ export class RichRig {
       ws,
       reopen: async () => {
         await page.reload();
-        await expect(page.locator('select').first()).toBeVisible({ timeout: 60_000 });
+        await expect(page.getByTestId('workspace-switcher')).toBeVisible({ timeout: 60_000 });
         await ws.dismissNameGateIfPresent(`node${node}`);
         // A node that has just restarted serves the folder tree slowly.
         await ws.tree.expectFolderVisible(this.folder, { timeout: 120_000 });

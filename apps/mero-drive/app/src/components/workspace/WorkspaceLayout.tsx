@@ -188,7 +188,7 @@ export function WorkspaceLayout() {
               <Circle
                 className={`h-2 w-2 ${
                   isOnline
-                    ? 'fill-[hsl(var(--synced))] text-[hsl(var(--synced))]'
+                    ? 'fill-sync-synced text-sync-synced'
                     : 'fill-destructive text-destructive'
                 }`}
               />
@@ -198,7 +198,7 @@ export function WorkspaceLayout() {
           <ThemeToggle />
           {namespaceId && (
             <Button
-              variant={showSettings ? 'default' : 'ghost'}
+              variant={showSettings ? 'selected' : 'ghost'}
               size="sm"
               className="gap-1.5"
               aria-pressed={showSettings}
@@ -222,7 +222,7 @@ export function WorkspaceLayout() {
       </header>
 
       {/* Main grid */}
-      <div className="relative flex flex-1">
+      <div className="relative flex min-h-0 flex-1">
         {!sidebarCollapsed && (
           <WorkspaceSidebar width={sidebarWidth} onWidthChange={setSidebarWidth}>
             <FolderTree selectedDocId={selectedDocId} onOpenDoc={openDoc} />
@@ -385,7 +385,7 @@ function SyncingWorkspaceState({
     <div className="flex h-full items-center justify-center p-8">
       <div className="w-full max-w-md text-center">
         {!stalled && (
-          <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-b-2 border-t-2 border-primary" />
+          <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-b-2 border-t-2 border-primary-ink" />
         )}
         <h2 className="text-xl font-semibold text-foreground">{title}</h2>
         <p className="mt-2 text-sm text-muted-foreground">{body}</p>

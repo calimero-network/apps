@@ -13,6 +13,7 @@ import React, { useMemo, useState } from 'react';
 import { UserPlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
+import { namespaceLabel } from '@/lib/namespaceLabel';
 import { useFolderMembership } from '@/hooks/useFolderMembership';
 import { useNamespacePermissions } from '@/hooks/useNamespacePermissions';
 import { NamespaceMemberRow } from '@/components/admin/NamespaceMemberRow';
@@ -66,9 +67,9 @@ export function NamespaceMembersPanel() {
   const currentNamespace = namespaces.find(
     (n) => n.namespaceId === namespaceId,
   );
-  const aliasLabel =
-    currentNamespace?.name ??
-    (namespaceId ? `${namespaceId.slice(0, 8)}…` : 'this workspace');
+  const aliasLabel = namespaceId
+    ? namespaceLabel(namespaceId, currentNamespace?.name)
+    : 'this workspace';
 
   // Read-only viewers see the panel but can't mutate. We don't
   // hide the whole panel because knowing who's in the workspace

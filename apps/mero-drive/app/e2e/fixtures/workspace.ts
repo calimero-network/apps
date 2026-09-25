@@ -53,18 +53,17 @@ export class WorkspaceDriver {
     await this.page.goto('/app');
     // Wait for either the top bar (workspace shell) or a redirect to
     // landing/login. The Settings button only renders when a
-    // namespace is selected; the NamespaceSwitcher select renders as
+    // namespace is selected; the NamespaceSwitcher trigger renders as
     // soon as the shell mounts.
-    await expect(this.page.locator('select').first()).toBeVisible({
+    await expect(this.page.getByTestId('workspace-switcher')).toBeVisible({
       timeout: 30_000,
     });
   }
 
   // Private: performs the dialog steps only (no gate dismiss).
   private async createNamespaceRaw(name: string): Promise<void> {
-    await this.page
-      .getByRole('button', { name: /New workspace/i })
-      .click();
+    await this.page.getByTestId('workspace-switcher').click();
+    await this.page.getByRole('menuitem', { name: /New workspace/i }).click();
     // Scope to the creation dialog specifically (the one holding the
     // "Workspace name" input). The instant Create succeeds, the
     // DisplayNameGate — also role="dialog" — appears, so an unscoped
@@ -79,9 +78,10 @@ export class WorkspaceDriver {
     await dialog.getByRole('button', { name: /^Create$/ }).click();
     // Creation dialog closes (the name gate may now be showing).
     await expect(dialog).toBeHidden({ timeout: 15_000 });
-    await expect(
-      this.page.locator('select').first().locator('option:checked'),
-    ).toHaveText(name, { timeout: 15_000 });
+    await expect(this.page.getByTestId('workspace-switcher')).toContainText(
+      name,
+      { timeout: 15_000 },
+    );
   }
 
   // Dismiss the required display-name gate by setting a name. The gate
@@ -119,16 +119,14 @@ export class WorkspaceDriver {
     await this.createNamespaceRaw(name);
   }
 
-  // Selects a namespace from the top-bar select. Use the namespace
-  // name (matched as the visible option label) — switching by id is
-  // brittle since ids are minted at runtime. `selectOption({ label })`
-  // wants a literal string; regex is rejected with "expected string,
-  // got object".
+  // Selects a namespace from the top-bar switcher by its visible name —
+  // switching by id is brittle since ids are minted at runtime.
   async switchNamespace(name: string): Promise<void> {
+    await this.page.getByTestId('workspace-switcher').click();
     await this.page
-      .locator('select')
-      .first()
-      .selectOption({ label: name });
+      .getByRole('menuitemradio')
+      .filter({ has: this.page.getByText(name, { exact: true }) })
+      .click();
   }
 
   // Open the invite like the deep-link landing does, accept, land on
@@ -149,7 +147,7 @@ export class WorkspaceDriver {
 
   // Opens the namespace settings pane.
   async openSettings(): Promise<void> {
-    await this.page.getByRole('button', { name: /Settings/i }).click();
+    await this.page.getByRole('button', { name: 'Settings', exact: true }).click();
     await expect(
       this.page.getByText(/Your display name/i).first(),
     ).toBeVisible({ timeout: 10_000 });
@@ -157,11 +155,11 @@ export class WorkspaceDriver {
 
   async closeSettings(): Promise<void> {
     // Settings button is a toggle; clicking again collapses.
-    await this.page.getByRole('button', { name: /Settings/i }).click();
+    await this.page.getByRole('button', { name: 'Settings', exact: true }).click();
   }
 
   async logout(): Promise<void> {
-    await this.page.getByRole('button', { name: /Log out/i }).click();
+    await this.page.getByRole('button', { name: 'Log out', exact: true }).click();
   }
 
   // ─── folder creation ───────────────────────────────────────────
@@ -403,7 +401,7 @@ export class SharingDriver {
     await this.page
       .getByRole('combobox', { name: /identity pubkey/i })
       .fill(name);
-    // Scoped to the picker: the workspace switcher's options can match the name too.
+    // Scoped to the picker's listbox so no other option on the page can match.
     await this.page
       .getByRole('listbox')
       .getByRole('option', { name: new RegExp(escapeRegex(name), 'i') })

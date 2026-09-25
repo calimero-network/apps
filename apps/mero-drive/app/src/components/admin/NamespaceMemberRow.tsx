@@ -71,7 +71,7 @@ interface Props {
 function roleBadgeClasses(role: string | undefined): string {
   switch (role) {
     case 'Admin':
-      return 'bg-primary/10 text-primary border-primary/30';
+      return 'bg-selected text-selected-foreground border-transparent';
     case 'ReadOnly':
       return 'bg-muted text-muted-foreground border-border';
     case 'Member':
@@ -266,7 +266,7 @@ export function NamespaceMemberRow({
           title={isPresent ? 'Here now' : 'Away'}
           className={`h-2 w-2 shrink-0 rounded-full border ${
             isPresent
-              ? 'border-[hsl(var(--synced))] bg-[hsl(var(--synced))]'
+              ? 'border-sync-synced bg-sync-synced'
               : 'border-muted-foreground/60 bg-transparent'
           }`}
         />

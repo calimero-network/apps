@@ -46,7 +46,7 @@ test.describe('Theme toggle (single-node)', () => {
 
     // Reload and wait for the shell to remount.
     await alice.page.reload();
-    await expect(alice.page.locator('select').first()).toBeVisible({
+    await expect(alice.page.getByTestId('workspace-switcher')).toBeVisible({
       timeout: 30_000,
     });
 

@@ -7,6 +7,7 @@
 
 import React from 'react';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
+import { namespaceLabel } from '@/lib/namespaceLabel';
 import { NamespaceMembersPanel } from './NamespaceMembersPanel';
 import { MemberDefaultsPanel } from '@/components/admin/MemberDefaultsPanel';
 import { MyDisplayNamePanel } from '@/components/admin/MyDisplayNamePanel';
@@ -23,7 +24,7 @@ export function NamespaceSettingsPanel() {
           Workspace settings
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          {ns?.name ?? namespaceId?.slice(0, 12) ?? 'Unknown workspace'}
+          {namespaceId ? namespaceLabel(namespaceId, ns?.name) : 'Unknown workspace'}
           {ns && (
             <>
               {' '}

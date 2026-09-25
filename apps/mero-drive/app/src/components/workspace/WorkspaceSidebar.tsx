@@ -77,7 +77,7 @@ export function WorkspaceSidebar({
           document.body.style.cursor = 'col-resize';
           document.body.style.userSelect = 'none';
         }}
-        className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-primary/40 focus-visible:bg-primary/60 focus-visible:outline-none"
+        className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-ring/40 focus-visible:bg-ring focus-visible:outline-none"
       />
     </aside>
   );

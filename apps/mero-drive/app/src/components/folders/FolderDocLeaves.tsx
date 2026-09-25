@@ -53,7 +53,7 @@ export function FolderDocLeaves({
               onClick={() => onOpenDoc(folderId, d.id)}
               className={`flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-sm transition-colors ${
                 isSelected
-                  ? 'bg-primary/10 text-primary font-medium'
+                  ? 'bg-selected text-selected-foreground font-medium'
                   : 'text-foreground hover:bg-muted/60'
               }`}
             >
@@ -62,7 +62,7 @@ export function FolderDocLeaves({
               <span className="h-4 w-4 shrink-0" aria-hidden />
               <FileText
                 className={`h-3.5 w-3.5 shrink-0 ${
-                  isSelected ? 'text-primary' : 'text-muted-foreground'
+                  isSelected ? 'text-primary-ink' : 'text-muted-foreground'
                 }`}
                 aria-hidden
               />

@@ -220,7 +220,7 @@ export function NewFolderDialog({ parentFolderId, onClose }: Props) {
                       disabled={submitting}
                       className={`rounded-md border px-3 py-2 text-left transition disabled:cursor-not-allowed disabled:opacity-50 ${
                         selected
-                          ? 'border-ring bg-accent'
+                          ? 'border-ring bg-selected'
                           : 'border-input hover:border-ring/60'
                       }`}
                     >

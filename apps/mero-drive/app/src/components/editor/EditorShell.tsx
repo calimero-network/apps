@@ -266,7 +266,7 @@ export const EditorShell: React.FC<EditorShellProps> = ({
     return (
       <div className="flex items-center justify-center h-full bg-background">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-primary mx-auto mb-4"></div>
+          <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-primary-ink mx-auto mb-4"></div>
           <p className="text-muted-foreground">Loading document...</p>
         </div>
       </div>
