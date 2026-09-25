@@ -5,9 +5,8 @@ import userEvent from '@testing-library/user-event';
 import { JoinInviteCard } from '../JoinInviteCard';
 import type { ParsedInvite } from '@/hooks/useNamespaceInvitation';
 
-// JoinInviteCard reads useMero + useApplicationId directly; stub both to a
-// stable authenticated state so the accept button is reachable without a
-// real Mero client.
+// JoinInviteCard reads useMero + useApplicationId directly; stub both so the
+// accept button is reachable without a real Mero client.
 vi.mock('@calimero-network/mero-react', () => ({
   useSubscription: vi.fn(),
   useMero: () => ({

@@ -131,8 +131,9 @@ export function NewFolderDialog({ parentFolderId, onClose }: Props) {
     }
     setSubmitting(false);
     if (failedMembers.length > 0) {
+      const verb = failedMembers.length === 1 ? "wasn't" : "weren't";
       toast.error("Some members weren't added", {
-        description: `${describeFailedMembers(failedMembers, namespaceMemberNames)} weren't added to the folder.`,
+        description: `${describeFailedMembers(failedMembers, namespaceMemberNames)} ${verb} added to the folder.`,
       });
     }
     onClose();

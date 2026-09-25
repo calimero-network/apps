@@ -132,7 +132,7 @@ export function FolderContextMenu({
             <MoreHorizontal className="h-4 w-4" />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+        <DropdownMenuContent align="end">
           {perms.canEditDocs && (
             <DropdownMenuItem onClick={onNewDocument}>
               <FilePlus className="mr-2 h-4 w-4" />

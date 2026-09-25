@@ -290,7 +290,7 @@ export class FolderTreeDriver {
     // Target the row <div> (direct child of <li>), not the <li> itself.
     // When a folder is expanded, the <li>'s textContent accumulates all
     // descendant doc/subfolder names — the anchored regex would no longer
-    // match. The row <div> holds only the chevron, icon, name span, and
+    // match. The row <div> holds only the chevron, icon, name button, and
     // actions button, so its textContent stays stable regardless of
     // expansion state.
     return this.page

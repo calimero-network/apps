@@ -6,9 +6,8 @@ import { NamespaceJoinDialog } from '../NamespaceJoinDialog';
 import { buildInviteUrl } from '@/hooks/useNamespaceInvitation';
 import type { SignedGroupOpenInvitation } from '@calimero-network/mero-react';
 
-// The mid-join gate is the dialog's own responsibility; stub the card
-// so this file can flip "joining" without driving a real join through
-// mero.
+// The mid-join gate is the dialog's own responsibility; stub the card so
+// this file can flip "joining" without driving a real join through mero.
 vi.mock('../JoinInviteCard', () => ({
   JoinInviteCard: ({
     onJoiningChange,

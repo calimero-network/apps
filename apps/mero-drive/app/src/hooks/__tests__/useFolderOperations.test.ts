@@ -19,9 +19,8 @@ vi.mock('@calimero-network/mero-react', () => ({
   useDeleteContext: () => ({ deleteContext }),
   useDeleteGroup: () => ({ deleteGroup }),
   useSetSubgroupVisibility: () => ({ setSubgroupVisibility }),
-  // setGroupMetadata / addGroupMembers go through the raw admin client
-  // (see useFolderOperations' file header) rather than a mero-react hook,
-  // so the mock lives on `mero.admin`, not on its own `use*` export.
+  // setGroupMetadata / addGroupMembers go through the raw admin client,
+  // so they're mocked on `mero.admin` rather than their own `use*` export.
   useMero: () => ({
     nodeUrl: 'http://node',
     mero: { admin: { setGroupMetadata, addGroupMembers } },
@@ -127,8 +126,7 @@ describe('useFolderOperations.create — members', () => {
     });
     expect(outcome.groupId).toBe('new-folder');
     // The caller (NewFolderDialog) needs to know which adds failed so
-    // it can tell the user, instead of the failure only reaching the
-    // console.
+    // it can tell the user, instead of only logging it.
     expect(outcome.failedMembers).toEqual(['member-a']);
 
     // Folder stays put (no rollback), rail is refreshed, and the failure

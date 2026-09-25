@@ -4,9 +4,8 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { NamespaceCreateDialog } from '../NamespaceCreateDialog';
 
-// createWorkspace flips its own `loading` via real useState, mirroring
-// what useDriveWorkspace does, so the dialog's submitting-gated close
-// can be exercised without a real create round-trip.
+// createWorkspace flips its own `loading` via real useState, so the dialog's
+// submitting-gated close can be exercised without a real create round-trip.
 vi.mock('@/hooks/useDriveWorkspace', () => ({
   useDriveWorkspace: () => {
     const [loading, setLoading] = React.useState(false);

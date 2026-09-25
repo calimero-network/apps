@@ -10,9 +10,8 @@
 //                  same component the `/join` route uses). On
 //                  success, refetches the namespace list and closes.
 //
-// The Cancel/backdrop/Escape paths just close, except while a join is
-// in flight (JoinInviteCard reports that via onJoiningChange) — closing
-// then would unmount the card mid-request and drop its result.
+// The Cancel/backdrop/Escape paths just close, except while a join is in
+// flight: closing then would unmount JoinInviteCard mid-request and drop its result.
 
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';

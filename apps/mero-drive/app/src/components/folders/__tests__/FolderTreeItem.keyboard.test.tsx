@@ -3,7 +3,8 @@
 
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { FolderTreeItem } from '../FolderTreeItem';
 
 vi.mock('sonner', () => ({ toast: { error: vi.fn() } }));
@@ -48,13 +49,14 @@ function renderRow(props: Partial<React.ComponentProps<typeof FolderTreeItem>> =
 beforeEach(() => vi.clearAllMocks());
 
 describe('folder row keyboard access', () => {
-  it('selects the folder when Enter is pressed on its name button', () => {
+  it('selects the folder when Enter is pressed on its name button', async () => {
     const onSelect = vi.fn();
     const onToggleExpanded = vi.fn();
     renderRow({ onSelect, onToggleExpanded });
 
     const nameButton = screen.getByRole('button', { name: 'Product' });
-    fireEvent.click(nameButton);
+    nameButton.focus();
+    await userEvent.keyboard('{Enter}');
 
     expect(onSelect).toHaveBeenCalledWith('f1');
     expect(onToggleExpanded).toHaveBeenCalledWith('f1');

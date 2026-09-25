@@ -4,9 +4,8 @@
 // previously lived in the main pane (FolderSharingPanel), and now have
 // their home here since the pane is the document editor.
 //
-// Centered modal rather than an anchored popover: the trigger is a
-// dropdown-menu item that closes its own menu on select, so a modal
-// avoids fighting the menu for focus.
+// Centered modal rather than an anchored popover: the trigger closes its
+// own dropdown menu on select, so a modal avoids fighting it for focus.
 
 import React, { useState } from 'react';
 import { X, Globe, Lock } from 'lucide-react';

@@ -109,6 +109,28 @@ describe('NewFolderDialog member-picker', () => {
     );
   });
 
+  it('uses singular wording when exactly one member fails', async () => {
+    create.mockResolvedValueOnce({
+      groupId: 'new-folder',
+      failedMembers: ['member-a'],
+    });
+    const onClose = vi.fn();
+    render(<NewFolderDialog parentFolderId={null} onClose={onClose} />);
+    fireEvent.click(screen.getByRole('button', { name: /Restricted/ }));
+    fireEvent.change(screen.getByPlaceholderText('Folder name'), {
+      target: { value: 'Secret' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(toastError).toHaveBeenCalledWith(
+      "Some members weren't added",
+      expect.objectContaining({
+        description: "Alice wasn't added to the folder.",
+      }),
+    );
+  });
+
   it('does not toast when every member is added cleanly', async () => {
     create.mockResolvedValueOnce({ groupId: 'new-folder', failedMembers: [] });
     const onClose = vi.fn();

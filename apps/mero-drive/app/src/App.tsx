@@ -192,9 +192,8 @@ export default function App() {
                   <Route
                     key={landingPath}
                     path={landingPath}
-                    // ⚠️ Only `/` bounces a signed-in visitor into the app. `/docs` and
-                    // `/preview` are reference pages, and somebody already signed in is
-                    // exactly the person most likely to want to read them.
+                    // Only `/` bounces a signed-in visitor into the app; `/docs` and
+                    // `/preview` are reference pages someone signed in may still want.
                     element={
                       landingPath === '/' ? (
                         <RedirectIfAuthed>
