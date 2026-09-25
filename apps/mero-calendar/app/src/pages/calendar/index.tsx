@@ -93,10 +93,13 @@ export default function CalendarPage() {
   }, [contextId]);
 
   // ── Live updates: re-fetch events + members on every context mutation ───────
-  useSse(contextId ?? null, () => {
+  // …and on every reconnect: whatever changed while the stream was down
+  // arrives as no event at all.
+  const refreshCalendar = () => {
     getEvents();
     getMembers();
-  });
+  };
+  useSse(contextId ?? null, refreshCalendar, refreshCalendar);
 
   async function handleUsernameSubmit(name: string) {
     const trimmed = name.trim();

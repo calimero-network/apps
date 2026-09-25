@@ -24,6 +24,7 @@ vi.mock('../useDriveWorkspace', () => ({
 }));
 vi.mock('@calimero-network/mero-react', () => ({
   useSubscription: vi.fn(),
+  useMero: () => ({ mero: null }),
 }));
 
 describe('useFolderRole', () => {

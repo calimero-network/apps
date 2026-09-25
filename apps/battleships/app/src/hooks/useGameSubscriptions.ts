@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSubscription } from '@calimero-network/mero-react';
 import type { SubscriptionEventData } from '@calimero-network/mero-react';
+import { useStreamReconnect } from './useStreamReconnect';
 import type { AllGameEvents } from '../types/events';
 import { isLobbyEvent } from '../types/events';
 
@@ -348,6 +349,14 @@ export function useGameSubscriptions({
   }, [contextIds]);
 
   useSubscription(contextIds, eventCallback);
+
+  // A shot or a turn taken while the stream was down sends no event we will
+  // ever see, so re-read both once it is back.
+  useStreamReconnect(() => {
+    if (contextIds.length === 0) return;
+    onBoardUpdate?.();
+    onTurnUpdate?.();
+  });
 
   useEffect(() => {
     return () => {

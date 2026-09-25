@@ -34,6 +34,7 @@ import {
   type Namespace,
 } from '@calimero-network/mero-react';
 import { useSubscription } from '@calimero-network/mero-react';
+import { useStreamReconnect } from './useStreamReconnect';
 import { PRIMARY_SERVICE } from '../config';
 import { decodeInvitation } from '../utils/invitation';
 import {
@@ -388,6 +389,8 @@ export function useWorkspace(): UseWorkspaceReturn {
     { groupIds: activeNs ? [activeNs] : [] },
     (ev) => { if ('groupId' in ev && ev.groupId) void refetchMembers(); },
   );
+  // A join or leave during a stream outage sends no event we will ever see.
+  useStreamReconnect(() => { if (activeNs) void refetchMembers(); });
 
   const members = useMemo(() => nsMembers.map((m) => m.identity), [nsMembers]);
   const memberNames = useMemo(

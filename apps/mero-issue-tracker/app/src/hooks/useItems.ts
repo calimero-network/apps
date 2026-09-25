@@ -12,6 +12,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMero, useSubscription } from '@calimero-network/mero-react';
+import { useStreamReconnect } from './useStreamReconnect';
 import {
   IssueTrackerClient,
   IssueView,
@@ -189,6 +190,8 @@ export function useIssues({
       void refreshRef.current();
     }, SYNC_COALESCE_MS);
   });
+  // …and after the stream reconnects: nothing replays what changed while it was down.
+  useStreamReconnect(() => { void refreshRef.current(); });
 
   const createIssue = useCallback(
     async (

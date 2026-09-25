@@ -339,10 +339,13 @@ export default function EditorPage() {
   }, []);
 
   // ── SSE: debounced refetch on any contract event ──────────────────────────
-  useSse(ctxId || null, () => {
+  // A reconnect refetches too: whatever changed while the stream was down
+  // arrives as no event at all.
+  const scheduleRefetch = () => {
     if (refetchTimer.current) clearTimeout(refetchTimer.current);
     refetchTimer.current = setTimeout(() => { refetch(); }, 300);
-  });
+  };
+  useSse(ctxId || null, scheduleRefetch, scheduleRefetch);
 
   // ── Join / username ───────────────────────────────────────────────────────
   const handleJoin = useCallback(async (username: string) => {

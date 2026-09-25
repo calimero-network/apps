@@ -24,6 +24,7 @@ import {
   type SubscriptionEventData,
 } from '@calimero-network/mero-react';
 import { parseSyncStatusEvent } from './useSyncStatus';
+import { useStreamReconnect } from './useStreamReconnect';
 
 /**
  * Narrow a subscription event to the CONTEXT family.
@@ -151,4 +152,12 @@ export function useContextEvents(
   );
 
   useSubscription(ids, handler);
+
+  // Every consumer here refetches on `onChange`, so a reconnect is one more
+  // reason to: nothing replays what changed while the stream was down.
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+  useStreamReconnect(() => {
+    if (idsKey.length > 0) onChangeRef.current();
+  });
 }

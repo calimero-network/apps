@@ -1,84 +1,129 @@
 import { renderHook } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { useReconnectResync } from "./useReconnectResync";
+import { useReconnectResync, type ConnectSource } from "./useReconnectResync";
+
+/** A stand-in for `SseClient`'s `connect` notifications. */
+function fakeStream() {
+  const handlers = new Set<(id: string) => void>();
+  const events: ConnectSource = {
+    on: (_, h) => { handlers.add(h); },
+    off: (_, h) => { handlers.delete(h); },
+  };
+  return {
+    events,
+    handlers,
+    connect: () => { for (const h of handlers) h("session"); },
+  };
+}
+
+beforeEach(() => { vi.useFakeTimers(); });
+afterEach(() => { vi.useRealTimers(); });
 
 describe("useReconnectResync", () => {
   it("does not resync on the first connect", () => {
     // The initial load is already fetching. Resyncing on top of it would
     // double every startup.
+    const s = fakeStream();
     const onReconnect = vi.fn();
-    renderHook(({ online }) => useReconnectResync(online, onReconnect), {
-      initialProps: { online: true },
-    });
+    renderHook(() => useReconnectResync(s.events, false, onReconnect));
 
+    s.connect();
+    vi.advanceTimersByTime(1000);
     expect(onReconnect).not.toHaveBeenCalled();
   });
 
-  it("resyncs when the stream comes back", () => {
+  it("resyncs when the stream comes back, after the re-subscribe", () => {
+    const s = fakeStream();
+    const onReconnect = vi.fn();
+    renderHook(() => useReconnectResync(s.events, false, onReconnect));
+
+    s.connect();
+    s.connect();
+    expect(onReconnect).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(500);
+    expect(onReconnect).toHaveBeenCalledTimes(1);
+  });
+
+  it("resyncs while isOnline never changed — the desktop's clean stream end", () => {
+    // Tauri's SSE proxy closes a dropped stream without an error, so
+    // `isOnline` stays true across the whole outage. Only `connect` says the
+    // stream came back.
+    const s = fakeStream();
     const onReconnect = vi.fn();
     const { rerender } = renderHook(
-      ({ online }) => useReconnectResync(online, onReconnect),
+      ({ online }) => useReconnectResync(s.events, online, onReconnect),
       { initialProps: { online: true } },
     );
 
-    rerender({ online: false });
-    expect(onReconnect).not.toHaveBeenCalled();
-
     rerender({ online: true });
+    s.connect();
+    vi.advanceTimersByTime(500);
     expect(onReconnect).toHaveBeenCalledTimes(1);
   });
 
   it("resyncs once per drop, not once per render", () => {
-    // The caller's callback is rebuilt every render in practice. If the effect
-    // depended on it, every render while online would resync.
+    // The caller's callback is rebuilt every render in practice. If the
+    // listener depended on it, it would be re-armed each time.
+    const s = fakeStream();
     let onReconnect = vi.fn();
     const { rerender } = renderHook(
-      ({ online }) => useReconnectResync(online, onReconnect),
-      { initialProps: { online: true } },
+      () => useReconnectResync(s.events, true, onReconnect),
     );
 
-    rerender({ online: false });
-    rerender({ online: true });
+    s.connect();
+    vi.advanceTimersByTime(500);
     expect(onReconnect).toHaveBeenCalledTimes(1);
 
     onReconnect = vi.fn();
-    rerender({ online: true });
-    rerender({ online: true });
+    rerender();
+    rerender();
+    vi.advanceTimersByTime(500);
     expect(onReconnect).not.toHaveBeenCalled();
+    expect(s.handlers.size).toBe(1);
   });
 
   it("resyncs again after a second drop", () => {
     // A flaky connection drops more than once, and each hole needs filling.
+    const s = fakeStream();
     const onReconnect = vi.fn();
-    const { rerender } = renderHook(
-      ({ online }) => useReconnectResync(online, onReconnect),
-      { initialProps: { online: true } },
-    );
+    renderHook(() => useReconnectResync(s.events, true, onReconnect));
 
-    rerender({ online: false });
-    rerender({ online: true });
-    rerender({ online: false });
-    rerender({ online: true });
-
+    s.connect();
+    vi.advanceTimersByTime(500);
+    s.connect();
+    vi.advanceTimersByTime(500);
     expect(onReconnect).toHaveBeenCalledTimes(2);
   });
 
-  it("does not resync when the app starts offline and connects", () => {
-    // Starting offline then connecting is a FIRST connect, not a reconnect —
-    // there was never a stream to miss events on, and whatever mounts on
-    // connect will do its own initial fetch.
+  it("coalesces a flapping stream into one resync", () => {
+    const s = fakeStream();
     const onReconnect = vi.fn();
-    const { rerender } = renderHook(
-      ({ online }) => useReconnectResync(online, onReconnect),
-      { initialProps: { online: false } },
-    );
+    renderHook(() => useReconnectResync(s.events, true, onReconnect));
 
-    rerender({ online: true });
-
-    // wasOffline was set by the initial false, so this DOES fire. Documented
-    // rather than asserted away: an app that started offline has no data, and
-    // a resync is the right answer even if the name "reconnect" is generous.
+    s.connect();
+    vi.advanceTimersByTime(200);
+    s.connect();
+    vi.advanceTimersByTime(500);
     expect(onReconnect).toHaveBeenCalledTimes(1);
+  });
+
+  it("stops listening, and drops a pending resync, on unmount", () => {
+    const s = fakeStream();
+    const onReconnect = vi.fn();
+    const { unmount } = renderHook(() => useReconnectResync(s.events, true, onReconnect));
+
+    s.connect();
+    unmount();
+    vi.advanceTimersByTime(500);
+    expect(onReconnect).not.toHaveBeenCalled();
+    expect(s.handlers.size).toBe(0);
+  });
+
+  it("does nothing without a stream", () => {
+    const onReconnect = vi.fn();
+    renderHook(() => useReconnectResync(null, true, onReconnect));
+    vi.advanceTimersByTime(500);
+    expect(onReconnect).not.toHaveBeenCalled();
   });
 });

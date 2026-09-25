@@ -9,6 +9,7 @@ const memberMetadataMock = vi.fn();
 const setMemberMetadataFn = vi.fn();
 vi.mock('@calimero-network/mero-react', () => ({
   useSubscription: vi.fn(),
+  useMero: () => ({ mero: null }),
   useMemberMetadata: (...args: unknown[]) => memberMetadataMock(...args),
   useSetMemberMetadata: () => ({
     setMemberMetadata: setMemberMetadataFn,

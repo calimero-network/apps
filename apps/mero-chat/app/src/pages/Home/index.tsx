@@ -1061,7 +1061,7 @@ export default function Home({ isConfigSet }: { isConfigSet: boolean }) {
   // Re-read the same surface an open re-reads: the conversation on screen, and
   // the lists that decide what is on screen. This is what makes "fresh for what
   // you are looking at" true rather than true-while-connected.
-  useReconnectResync(isOnline, () => {
+  useReconnectResync(app?.events, isOnline, () => {
     log.info("Home", "[SSE] stream reconnected — resyncing");
 
     const active = activeChatRef.current;
