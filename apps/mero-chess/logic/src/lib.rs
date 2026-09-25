@@ -200,21 +200,26 @@ impl MergeableTrait for Seat {
     }
 }
 
-/// One played move. `uci` is the move; `san` is how it reads.
+/// One played move.
 ///
-/// SAN is computed here, once, by the node that played the move — it depends on
-/// the position ("which knight?"), so two clients recomputing it from a replay
-/// could word the same move differently.
+/// Deliberately two fields. The game, the ply, the author and the notation were
+/// all in here once, and every one of them was a field a forger could set while
+/// the reader worked the same thing out for itself — the game and ply from the
+/// key, the author from the key and core's owner stamp, the SAN from the
+/// position during the replay. A stored value that nothing reads is not
+/// harmless: it is an invitation for the next reader to trust it.
 #[app::mergeable(id = "mero-chess::MoveRecord")]
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, AbiType, Clone, Debug)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct MoveRecord {
-    pub game: u32,
-    pub ply: u32,
+    /// The move, and the only thing here a reader cannot work out for itself.
     pub uci: String,
-    pub san: String,
-    pub by: MemberId,
+    /// When its author says they played it.
+    ///
+    /// Orders that author's own rows for one ply and nothing else — they are
+    /// the only person who can write them, so a wrong clock here can cost them
+    /// a retry and can cost nobody else anything.
     pub at: u64,
 }
 
@@ -243,7 +248,6 @@ pub struct Ending {
     pub result: String,
     /// `resignation`, `agreement`, `threefold`, `fiftyMove`.
     pub reason: String,
-    pub by: MemberId,
     /// The ply the game stood at when this was written.
     ///
     /// Load-bearing, not bookkeeping: it is what lets the reader re-check a
@@ -301,9 +305,10 @@ impl MergeableTrait for DrawOffer {
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct GameRecord {
+    /// Which game this claims to start — checked against the game the reader
+    /// is counting towards, so a row cannot claim a different one.
     pub index: u32,
     pub started_at: u64,
-    pub started_by: MemberId,
 }
 
 impl MergeableTrait for GameRecord {
@@ -477,6 +482,11 @@ pub enum Event {
 /// docs for why that split is the whole security model.
 #[app::state(emits = Event)]
 pub struct MeroChess {
+    /// The two plain registers, and the only two writes at this table that are
+    /// not authored. Any context member can last-write them, and that is
+    /// deliberate rather than overlooked: both are captions. Nothing about a
+    /// game's legality, result, turn order or history reads either one, so the
+    /// worst a member can do with them is relabel the table.
     title: LwwRegister<String>,
     created_at: LwwRegister<u64>,
     /// `<account>` -> that person's presence row.
@@ -591,7 +601,7 @@ impl MeroChess {
             // Truncated to what the REPLAY applied and labelled with the SAN
             // it derived. A stored row past the stopping point is not a move
             // that happened, and a stored `san` is a string its writer chose.
-            moves: move_views(&moves, &replayed),
+            moves: move_views(&moves, &replayed, &white_seat.member, &black_seat.member),
             // Withheld once the game is over, so a client cannot offer a move
             // in a finished game and get a refusal it could have predicted.
             legal_moves: if unfinished {
@@ -633,10 +643,7 @@ impl MeroChess {
             let moves = self.moves_of(index)?;
             let replayed = game::replay(&moves.iter().map(|m| m.uci.clone()).collect::<Vec<_>>());
             let (result, reason) = self.result_of(index, &replayed)?;
-            let started_at = self
-                .games
-                .get(&game_key(index))?
-                .map_or(0, |g| g.started_at);
+            let started_at = self.started_at_of(index)?;
             out.push(GameSummary {
                 index,
                 started_at,
@@ -839,13 +846,7 @@ impl MeroChess {
 
         let san = notation::san(&replayed.position, chosen);
         let record = MoveRecord {
-            game: index,
-            ply,
             uci: notation::move_to_uci(chosen),
-            // Stored for a reader that wants it cheaply, never TRUSTED: every
-            // view recomputes SAN from the position during the replay.
-            san: san.clone(),
-            by: id.clone(),
             at: now,
         };
         let key = Self::free_key(&self.moves, &id, now, |nonce| {
@@ -1075,7 +1076,6 @@ impl MeroChess {
             GameRecord {
                 index: next,
                 started_at: now,
-                started_by: id.clone(),
             },
         )?;
         app::emit!(Event::GameStarted { game: next });
@@ -1126,6 +1126,35 @@ impl MeroChess {
             }
         }
         Ok(false)
+    }
+
+    /// When game `index` began.
+    ///
+    /// Game 0 began when the table did; a later game began when the rematch
+    /// that opened it was claimed — the earliest valid claim, which is the same
+    /// row `rematch_is_valid` counts. This used to read `games.get(game_key)`,
+    /// a key that stopped existing when keys grew an author and a nonce, so
+    /// every game silently reported the epoch. The compiler cannot catch a
+    /// lookup that simply misses, which is the argument for deriving a value
+    /// wherever there is something to derive it from.
+    fn started_at_of(&self, index: u32) -> app::Result<u64> {
+        if index == 0 {
+            return Ok(*self.created_at.get());
+        }
+        let mut claims = Vec::new();
+        for color in [Color::White, Color::Black] {
+            let holder = self.seat_member(self.seat_for_color(index - 1, color))?;
+            if holder.is_empty() {
+                continue;
+            }
+            claims.extend(
+                Self::valid_rows(&self.games, &claim_prefix(index, &holder))?
+                    .into_iter()
+                    .filter(|(_, record)| record.index == index),
+            );
+        }
+        Ok(Self::elect(claims, |record| record.started_at, true)
+            .map_or(0, |record| record.started_at))
     }
 
     /// The moves of one game, in ply order — reconstructed, never sorted.
@@ -1673,7 +1702,6 @@ impl MeroChess {
             Ending {
                 result: result.to_owned(),
                 reason: reason.to_owned(),
-                by: by.to_owned(),
                 ply,
                 at: now,
             },
@@ -1841,13 +1869,17 @@ fn describe_outcome(outcome: Outcome) -> (String, String) {
 }
 
 /// The move list a client sees: exactly the plies the replay applied, numbered
-/// by their position in it, and named by the SAN the replay derived.
+/// by their position in it, named by the SAN the replay derived, and credited
+/// to the player whose ply each one is.
 ///
-/// Nothing here is taken from the stored row except the move itself and who
-/// wrote it — and both of those were already established by the reader, since a
-/// row only reaches this point if it sat at the key for that ply and carried
-/// the owner stamp of the player whose turn it was.
-fn move_views(records: &[MoveRecord], replayed: &game::Replay) -> Vec<MoveView> {
+/// The only thing taken from a stored row is the move itself — which the replay
+/// has already accepted as legal in the position it lands in.
+fn move_views(
+    records: &[MoveRecord],
+    replayed: &game::Replay,
+    white: &str,
+    black: &str,
+) -> Vec<MoveView> {
     records
         .iter()
         .take(replayed.applied)
@@ -1860,7 +1892,12 @@ fn move_views(records: &[MoveRecord], replayed: &game::Replay) -> Vec<MoveView> 
                 .get(ply)
                 .cloned()
                 .unwrap_or_else(|| record.uci.clone()),
-            by: record.by.clone(),
+            // The player whose ply this is, not a name the row carries. A row
+            // only reaches this point because it sat under that ply's prefix
+            // and core's owner stamp named this account, so the attribution is
+            // the one the reader already verified — where a stored `by` was
+            // free text its author chose, and could credit the opponent.
+            by: if ply % 2 == 0 { white } else { black }.to_owned(),
             at: record.at,
         })
         .collect()

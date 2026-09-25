@@ -37,16 +37,15 @@ export function rememberName(name: string): void {
  * `tsc -b` says so rather than the node returning a 500 at play time.
  */
 export function useChessClient(contextId: string): MeroChessClient | null {
-  const { mero, contextIdentity } = useMero();
+  const { mero } = useMero();
   return useMemo(() => {
     if (!mero) return null;
-    // The third argument is `executorPublicKey`, which mero-js marks
-    // `@deprecated  No longer used by the server. Ignored if provided.` — the
-    // node derives the caller from the bearer token. The generated constructor
-    // still requires it, so pass what the session has and expect it to be
-    // ignored.
-    return new MeroChessClient(mero, contextId, contextIdentity ?? "");
-  }, [mero, contextIdentity, contextId]);
+    // No executor key is passed: the node derives the caller from the bearer
+    // token, and the generated client no longer takes one. The UI never tells
+    // the contract who it is — it reads back who the contract says it is, in
+    // `TableView.me`.
+    return new MeroChessClient(mero, contextId);
+  }, [mero, contextId]);
 }
 
 export interface ChessTable {

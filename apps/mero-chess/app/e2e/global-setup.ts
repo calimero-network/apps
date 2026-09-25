@@ -30,6 +30,7 @@ import nacl from "tweetnacl";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const APP_DIR = path.resolve(__dirname, "..");
+const REPO_ROOT = path.resolve(APP_DIR, "..", "..", "..");
 const LOGIC_DIR = path.resolve(APP_DIR, "..", "logic");
 
 export const DATA_DIR = path.resolve(APP_DIR, ".playwright-data");
@@ -87,15 +88,22 @@ function resolveMpk(): string {
   // change here.
   const fromEnv = process.env["APP_MPK_PATH"] ?? process.env["KV_MPK_PATH"];
   if (fromEnv) return fromEnv;
+  // Two directories, because `cargo mero bundle` resolves a relative --output
+  // against the WORKSPACE root rather than the manifest it was given. So a
+  // bare `cargo mero bundle` in `logic/` writes `<repo>/dist/`, and looking
+  // only under `logic/dist/` makes the error below tell you to run the command
+  // you just ran.
   const dist = path.resolve(LOGIC_DIR, "dist");
   const exact = path.resolve(dist, "com.calimero.mero-chess.mpk");
   if (existsSync(exact)) return exact;
-  const newest = existsSync(dist)
-    ? readdirSync(dist)
-        .filter((f) => f.endsWith(".mpk"))
-        .map((f) => path.resolve(dist, f))
-        .sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs)[0]
-    : undefined;
+  const newest = [dist, path.resolve(REPO_ROOT, "dist")]
+    .filter((dir) => existsSync(dir))
+    .flatMap((dir) =>
+      readdirSync(dir)
+        .filter((f) => f.startsWith("com.calimero.mero-chess") && f.endsWith(".mpk"))
+        .map((f) => path.resolve(dir, f)),
+    )
+    .sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs)[0];
   if (newest) {
     console.log(`[setup] using newest bundle ${path.basename(newest)}`);
     return newest;

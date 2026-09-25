@@ -46,12 +46,6 @@
           }
         },
         {
-          "name": "by",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
           "name": "ply",
           "type": {
             "kind": "u32"
@@ -209,12 +203,6 @@
           "name": "started_at",
           "type": {
             "kind": "u64"
-          }
-        },
-        {
-          "name": "started_by",
-          "type": {
-            "kind": "string"
           }
         }
       ]
@@ -375,31 +363,7 @@
       "kind": "record",
       "fields": [
         {
-          "name": "game",
-          "type": {
-            "kind": "u32"
-          }
-        },
-        {
-          "name": "ply",
-          "type": {
-            "kind": "u32"
-          }
-        },
-        {
           "name": "uci",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "san",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "by",
           "type": {
             "kind": "string"
           }

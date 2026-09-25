@@ -44,13 +44,21 @@ in the room, and it is the only way to use the app before anyone else has a node
 ## The design, in three decisions
 
 **Moves are stored; a board never is.** State is
-`UnorderedMap<"<game>/<ply>", MoveRecord>`, and every position in the app is
-derived by replaying it. That is what makes a chess game a CRDT: two nodes that
-concurrently write the same ply — both players moving in the same instant, each
-valid against the state their own node could see — merge to ONE record by a
-total order over (timestamp, encoded bytes), so both replicas elect the same
-winner and the game continues from it. A stored board could not do this; it
-would merge field by field into a position no game ever reached.
+`AuthoredMap<"<game>/<ply>/<author>/<nonce>", MoveRecord>`, and every position in
+the app is derived by replaying it. That is what makes a chess game a CRDT: two
+nodes that concurrently write the same ply — both players moving in the same
+instant, each valid against the state their own node could see — land on
+different keys, and the READER elects one of them by a total order over
+(timestamp, encoded bytes). Both replicas elect the same winner and the game
+continues from it. A stored board could not do this; it would merge field by
+field into a position no game ever reached.
+
+The record itself is two fields, `{ uci, at }`, and that is deliberate. Which
+game a move belongs to, which ply it is, who played it and how it reads in
+notation were all stored once — and every one of them was a value a forger could
+set while the reader was working the same thing out for itself. A stored value
+that nothing reads is not harmless; it is an invitation for the next reader to
+trust it.
 
 **The contract hands out the legal moves.** `table()` returns the position AND
 every legal move in it, so the frontend contains no chess engine at all — it
@@ -97,6 +105,7 @@ the key the next move needs and wedge the table permanently).
 | attempt | what stops it |
 |---|---|
 | an illegal move | the replay re-validates every move in the position it would be played in |
+| a row that describes a different game than the one it is in | there is nothing on it to lie with: the ply, the notation and the attribution are all the reader's arithmetic |
 | a move authored for the other player | they cannot sign as that account; the key/stamp mismatch drops the row |
 | moving twice, or slotting a row in at any ply | the ply sequence is the reader's arithmetic, and each ply expects one specific author |
 | a forged resignation, draw or result | endings are re-derived: a resignation must lose, an agreement needs the offer it answered, a claimed draw must be available in that position |
@@ -113,7 +122,7 @@ from a board looks like. Nothing above lets anyone change a result.
 | `cargo test -p mero-chess` | the rules, the contract, perft, and forged rows written straight into storage | no |
 | `pnpm -F mero-chess test` | the board helpers and the generated client vs the ABI | no |
 | `pnpm -F mero-chess test:e2e` | the UI playing a whole game against a real node | a local `merod` |
-| `merobox bootstrap run workflows/play-a-game.yml` | two real nodes playing to mate | yes (Docker) |
+| `merobox bootstrap run workflows/play-a-game.yml` | two real nodes across five games: a mate, a declined offer then an agreed draw, a claimed threefold, a resignation, a chair given up | yes (Docker) |
 
 **`tests/perft.rs` is the one worth knowing about.** Counting the leaf nodes of
 the move tree from the five standard positions is the only test that catches the
@@ -127,7 +136,8 @@ The byzantine tests at the bottom of `src/tests.rs` cover the other half. They
 write rows directly into the contract's maps under another account — which is
 what a patched node does — and assert no reader is fooled: a move written for
 the player to move by somebody else, a row at a ply the game has not reached, a
-lying SAN, a forged resignation, a rematch claimed by a spectator.
+squatted key, a forged resignation, a draw agreed with nobody, a seat claimed on
+another player's behalf, a rematch claimed by a spectator.
 
 They are in-crate rather than a `converge_app` suite because that harness cannot
 carry authored entries at all — *"`Shared` / `Authored` / `User` / `Frozen`

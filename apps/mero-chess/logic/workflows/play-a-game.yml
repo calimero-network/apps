@@ -549,6 +549,665 @@ steps:
     statements:
       - 'json_subset({{n1_two_games}}, {"output": {"games_played": 2, "game": 1, "result": "*"}})'
 
+  # ─── presence ─────────────────────────────────────────────────────────────
+  #
+  # `heartbeat` is the only method here with no game-rule content: it says "I am
+  # still at the board". Worth a leg anyway, because presence is the one piece
+  # of table state that is a function of the CLOCK as well as of the writes —
+  # each node's row has to have replicated for the other node to call it online.
+
+  - name: node-1 says it is still here
+    type: call
+    node: chess-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: heartbeat
+    args:
+      now: 1700000023000
+
+  - name: node-2 says it is still here
+    type: call
+    node: chess-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_chess-node-2}}"
+    method: heartbeat
+    args:
+      now: 1700000023500
+
+  - name: Wait for both heartbeats to converge
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - chess-node-1
+      - chess-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: node-1 reads presence
+    type: call
+    node: chess-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: table
+    args:
+      now: 1700000024000
+    outputs:
+      n1_presence: result
+
+  # Its OWN row would be online without any replication at all; the other seat
+  # is the one that proves a heartbeat crossed the wire. Both are asserted so a
+  # regression that made presence local-only cannot pass half of this.
+  - name: Assert both players are seen as online
+    type: json_assert
+    statements:
+      - 'json_subset({{n1_presence}}, {"output": {"white": {"online": true}, "black": {"online": true}}})'
+
+  - name: node-1 reads presence long after the heartbeats
+    type: call
+    node: chess-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: table
+    args:
+      now: 1700000099000
+    outputs:
+      n1_stale: result
+
+  # `now` is an argument, so the same state read with a later clock has to go
+  # quiet: presence EXPIRES rather than latching. A row that never went stale
+  # would leave a crashed node showing as online forever.
+  - name: Assert presence expires rather than latching
+    type: json_assert
+    statements:
+      - 'json_subset({{n1_stale}}, {"output": {"white": {"online": false}, "black": {"online": false}}})'
+
+  # ─── the draw offer ───────────────────────────────────────────────────────
+  #
+  # Game 1, nobody has moved, and node-2 holds White. An offer is a row written
+  # by one player and ANSWERED by the other, which is the only two-sided
+  # handshake in this contract — so it is the one that can only really be
+  # tested across two nodes.
+
+  - name: White offers a draw
+    type: call
+    node: chess-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_chess-node-2}}"
+    method: offer_draw
+    args:
+      now: 1700000025000
+
+  - name: Wait for the offer to reach node-1
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - chess-node-1
+      - chess-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: node-1 sees an offer standing against it
+    type: call
+    node: chess-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: table
+    args:
+      now: 1700000026000
+    outputs:
+      n1_offer_from: result.output.draw_offer_from
+      n1_white_member: result.output.white.member
+      n1_me: result.output.me
+
+  # The offer is attributed to node-2's member id, which this scenario never
+  # learns as a literal — but node-1's own id it does, as `me`, and White's as
+  # `white.member`. So the property is asserted rather than the value: the
+  # offer is the OTHER seat's, and it is not the reader's own. A bug that
+  # credited the reader would turn the acceptance below into a self-accept,
+  # and `is_set` on a non-empty string would not notice.
+  - name: Assert the offer is White's and not node-1's own
+    type: assert
+    statements:
+      - "{{n1_offer_from}} == {{n1_white_member}}"
+      - "{{n1_offer_from}} != {{n1_me}}"
+
+  # Not `expected_failure`: this MUST succeed, and it can only succeed if the
+  # offer replicated — `decline_draw` bails with "there is no draw offer to
+  # decline" when nothing stands. The step passing is the assertion.
+  - name: node-1 declines it
+    type: call
+    node: chess-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: decline_draw
+    args:
+      now: 1700000027000
+
+  # ⚠️ A decline cannot DELETE the offer: the row belongs to node-2 and only its
+  # owner may write it (AuthoredMap, enforced by core at apply). node-1 records
+  # its own answer instead, and the READER stops counting an offer once the
+  # other player has answered it at the same ply. So this step is what proves
+  # the answer is honoured — if the reader only looked at the offer row, the
+  # declined offer would still be acceptable.
+  - name: node-1 tries to accept the offer it just declined
+    type: call
+    node: chess-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: accept_draw
+    args:
+      now: 1700000028000
+    expected_failure: true
+    outputs:
+      declined_offer_error: error
+
+  - name: Assert a declined offer cannot be accepted
+    type: assert
+    statements:
+      - "is_set({{declined_offer_error}})"
+
+  # ─── the agreed draw ──────────────────────────────────────────────────────
+  #
+  # An offer is tied to the POSITION it was made in, so a move retires it and
+  # the next offer is a new one. White moves, then Black offers and White
+  # accepts.
+
+  - name: White opens game 1
+    type: call
+    node: chess-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_chess-node-2}}"
+    method: play
+    args:
+      uci: "g1f3"
+      now: 1700000029000
+    outputs:
+      san_nf3: result
+
+  - name: Assert the knight move
+    type: json_assert
+    statements:
+      - 'json_equal({{san_nf3}}, {"output": "Nf3"})'
+
+  - name: Wait for Nf3 to reach node-1
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - chess-node-1
+      - chess-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Black offers a draw in the new position
+    type: call
+    node: chess-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: offer_draw
+    args:
+      now: 1700000030000
+
+  - name: Wait for the second offer to reach node-2
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - chess-node-1
+      - chess-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: White accepts
+    type: call
+    node: chess-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_chess-node-2}}"
+    method: accept_draw
+    args:
+      now: 1700000031000
+
+  - name: Wait for the agreement to reach node-1
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - chess-node-1
+      - chess-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: node-1 reads the agreed draw
+    type: call
+    node: chess-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: table
+    args:
+      now: 1700000032000
+    outputs:
+      n1_agreed: result
+
+  # node-1 did not write this ending — node-2 did — and node-1 reaches the same
+  # verdict because it can see BOTH halves of the handshake and re-check that
+  # the accepted offer really stood at that ply.
+  - name: Assert both nodes call it a draw by agreement
+    type: json_assert
+    statements:
+      - 'json_subset({{n1_agreed}}, {"output": {"status": "finished", "result": "1/2-1/2", "reason": "agreement", "game": 1}})'
+
+  # ─── the claimed draw ─────────────────────────────────────────────────────
+  #
+  # Game 2, and the colours are back the way they started: node-1 is White.
+  # Knights out and back twice over, so the STARTING position occurs a third
+  # time. A threefold draw is claimable, never automatic — the game goes on
+  # until a player says otherwise, which is what FIDE says and what the two
+  # assertions below check in order.
+
+  - name: node-1 starts game 2
+    type: call
+    node: chess-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: rematch
+    args:
+      now: 1700000033000
+    outputs:
+      third_game: result
+
+  - name: Assert the rematch is game 2
+    type: json_assert
+    statements:
+      - 'json_equal({{third_game}}, {"output": 2})'
+
+  - name: Wait for game 2 to reach node-2
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - chess-node-1
+      - chess-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Shuffle ply 0 (Nf3)
+    type: call
+    node: chess-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: play
+    args:
+      uci: "g1f3"
+      now: 1700000034000
+  - name: Wait for shuffle ply 0 to converge
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - chess-node-1
+      - chess-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Shuffle ply 1 (Nf6)
+    type: call
+    node: chess-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_chess-node-2}}"
+    method: play
+    args:
+      uci: "g8f6"
+      now: 1700000035000
+  - name: Wait for shuffle ply 1 to converge
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - chess-node-1
+      - chess-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Shuffle ply 2 (Ng1)
+    type: call
+    node: chess-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: play
+    args:
+      uci: "f3g1"
+      now: 1700000036000
+  - name: Wait for shuffle ply 2 to converge
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - chess-node-1
+      - chess-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Shuffle ply 3 (Ng8)
+    type: call
+    node: chess-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_chess-node-2}}"
+    method: play
+    args:
+      uci: "f6g8"
+      now: 1700000037000
+  - name: Wait for shuffle ply 3 to converge
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - chess-node-1
+      - chess-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Shuffle ply 4 (Nf3)
+    type: call
+    node: chess-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: play
+    args:
+      uci: "g1f3"
+      now: 1700000038000
+  - name: Wait for shuffle ply 4 to converge
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - chess-node-1
+      - chess-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Shuffle ply 5 (Nf6)
+    type: call
+    node: chess-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_chess-node-2}}"
+    method: play
+    args:
+      uci: "g8f6"
+      now: 1700000039000
+  - name: Wait for shuffle ply 5 to converge
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - chess-node-1
+      - chess-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Shuffle ply 6 (Ng1)
+    type: call
+    node: chess-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: play
+    args:
+      uci: "f3g1"
+      now: 1700000040000
+  - name: Wait for shuffle ply 6 to converge
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - chess-node-1
+      - chess-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Shuffle ply 7 (Ng8)
+    type: call
+    node: chess-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_chess-node-2}}"
+    method: play
+    args:
+      uci: "f6g8"
+      now: 1700000041000
+  - name: Wait for shuffle ply 7 to converge
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - chess-node-1
+      - chess-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: node-2 reads the repeated position
+    type: call
+    node: chess-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_chess-node-2}}"
+    method: table
+    args:
+      now: 1700000042000
+    outputs:
+      n2_repetition: result
+
+  # Claimable, and NOT claimed — on the node that did not make the last move,
+  # so the repetition count is one both nodes reached from the same replayed
+  # move list. An implementation that ended the game here would be wrong in a
+  # way that costs a player a win they were playing for.
+  - name: Assert the repetition is claimable but the game is still on
+    type: json_assert
+    statements:
+      - 'json_subset({{n2_repetition}}, {"output": {"claimable_draw": "threefold", "result": "*", "status": "inProgress"}})'
+
+  - name: node-1 claims the threefold draw
+    type: call
+    node: chess-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: claim_draw
+    args:
+      now: 1700000043000
+
+  - name: Wait for the claim to reach node-2
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - chess-node-1
+      - chess-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: node-2 reads the claimed draw
+    type: call
+    node: chess-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_chess-node-2}}"
+    method: table
+    args:
+      now: 1700000044000
+    outputs:
+      n2_claimed: result
+
+  # node-2 believes the claim because it can re-derive it: the row says
+  # "threefold at ply 8" and node-2 replays its own copy of those eight moves
+  # and finds the repetition. A claim it could not re-derive is one it drops.
+  - name: Assert the claimed draw is believed on the other node
+    type: json_assert
+    statements:
+      - 'json_subset({{n2_claimed}}, {"output": {"status": "finished", "result": "1/2-1/2", "reason": "threefold", "game": 2}})'
+
+  # ─── the resignation ──────────────────────────────────────────────────────
+  #
+  # Game 3, so the colours swap again and node-2 has White. A resignation is
+  # the one ending with no board evidence at all — there is nothing to
+  # re-derive but WHO wrote it, which is exactly what the authored key carries.
+
+  - name: node-2 starts game 3
+    type: call
+    node: chess-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_chess-node-2}}"
+    method: rematch
+    args:
+      now: 1700000045000
+    outputs:
+      fourth_game: result
+
+  - name: Assert the rematch is game 3
+    type: json_assert
+    statements:
+      - 'json_equal({{fourth_game}}, {"output": 3})'
+
+  - name: Wait for game 3 to reach node-1
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - chess-node-1
+      - chess-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: node-1 resigns game 3
+    type: call
+    node: chess-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: resign
+    args:
+      now: 1700000046000
+
+  - name: Wait for the resignation to reach node-2
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - chess-node-1
+      - chess-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: node-2 reads the resignation
+    type: call
+    node: chess-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_chess-node-2}}"
+    method: table
+    args:
+      now: 1700000047000
+    outputs:
+      n2_resigned: result
+
+  # node-1 holds White's CHAIR but plays Black in the odd games, so its
+  # resignation is a win for White — i.e. `1-0`. Getting the colour swap wrong
+  # anywhere would award this game to the player who gave it up.
+  - name: Assert the resignation went the right way
+    type: json_assert
+    statements:
+      - 'json_subset({{n2_resigned}}, {"output": {"status": "finished", "result": "1-0", "reason": "resignation", "game": 3}})'
+
+  # ─── standing up ──────────────────────────────────────────────────────────
+  #
+  # A chair is given up, not taken away, and only before the game it is in has
+  # started. `stand` removes the claims the caller wrote — which it can only do
+  # because they are the caller's own rows; core refuses a `remove` on someone
+  # else's authored entry.
+
+  - name: node-1 starts game 4
+    type: call
+    node: chess-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: rematch
+    args:
+      now: 1700000048000
+
+  - name: Wait for game 4 to reach node-2
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - chess-node-1
+      - chess-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: node-1 leaves the board
+    type: call
+    node: chess-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{node1_key}}"
+    method: stand
+    args:
+      now: 1700000049000
+
+  - name: Wait for the empty chair to reach node-2
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - chess-node-1
+      - chess-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: node-2 reads the half-empty table
+    type: call
+    node: chess-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_chess-node-2}}"
+    method: table
+    args:
+      now: 1700000050000
+    outputs:
+      n2_vacated: result
+
+  # Game 4 is even, so the vacated chair is White's. The table falls back to
+  # `awaitingPlayers` on BOTH nodes — a removal that replicated as an absence
+  # rather than as a tombstone would leave node-2 still seeing an opponent.
+  - name: Assert the chair is empty on the other node too
+    type: json_assert
+    statements:
+      - 'json_subset({{n2_vacated}}, {"output": {"status": "awaitingPlayers", "game": 4, "white": {"member": "", "name": "", "online": false}}})'
+      - 'json_subset({{n2_vacated}}, {"output": {"black": {"name": "Node Two"}}})'
+
+  # And the chair is genuinely free rather than merely blank: node-2 takes it,
+  # which the "seat is taken" rule refused at the top of this scenario.
+  - name: node-2 takes the empty chair
+    type: call
+    node: chess-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_chess-node-2}}"
+    method: sit
+    args:
+      seat: "white"
+      name: "Node Two"
+      now: 1700000051000
+
+  - name: node-2 reads the table it now owns both sides of
+    type: call
+    node: chess-node-2
+    context_id: "{{context_id}}"
+    executor_public_key: "{{public_key_chess-node-2}}"
+    method: table
+    args:
+      now: 1700000052000
+    outputs:
+      n2_both_seats: result
+
+  # One player on both sides is allowed on purpose — it is how a position gets
+  # analysed, and how the app is usable before a second person has a node.
+  - name: Assert one player may hold both chairs
+    type: json_assert
+    statements:
+      - 'json_subset({{n2_both_seats}}, {"output": {"status": "inProgress", "my_turn": true, "white": {"name": "Node Two"}, "black": {"name": "Node Two"}}})'
+
 stop_all_nodes: false
 restart: false
 wait_timeout: 180
