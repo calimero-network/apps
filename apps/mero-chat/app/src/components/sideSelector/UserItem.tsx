@@ -180,7 +180,7 @@ function UserItem({
             )}
             <ConfirmPopup
               title="Join DM"
-              message={`Join the private DM context with ${displayName}?`}
+              message={`Join the direct message with ${displayName}?`}
               confirmLabel="Join DM"
               cancelLabel="Cancel"
               onConfirm={confirmJoin}

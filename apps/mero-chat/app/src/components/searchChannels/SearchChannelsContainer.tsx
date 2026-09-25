@@ -104,6 +104,11 @@ const SearchContainer = styled.div`
     font-weight: 400;
     line-height: 150%;
     padding-left: 6px;
+    /* The hash is an inline svg followed by bare text, so nothing separated
+       them: the list read "#launch-planning" with the glyph on the name. */
+    display: flex;
+    align-items: center;
+    gap: 6px;
   }
   .creatorText {
     color: #777583;

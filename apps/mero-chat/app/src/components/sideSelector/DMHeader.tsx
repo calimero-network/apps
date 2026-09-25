@@ -125,7 +125,7 @@ const DMHeader = memo(function DMHeader({
       {!isCollapsed && <TextBold>{"Direct Messages"}</TextBold>}
       {canShowCreate && (
         <StartDMPopup
-          title="Create a new private DM context"
+          title="New direct message"
           placeholder="Enter username"
           buttonText="Next"
           toggle={

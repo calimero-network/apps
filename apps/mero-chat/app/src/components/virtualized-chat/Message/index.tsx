@@ -398,14 +398,18 @@ const Message = (props: MessageProps) => {
     props.setOpenMobileReactions(props.message.id);
   });
 
-  // Memoize message status icon to prevent recreating on every render
+  // Sending/sent is a receipt for the AUTHOR: it says whether their own write
+  // reached the node. On somebody else's message it asserted a delivery state
+  // this node knows nothing about, so every row carried the same tick.
+  // `editable` is the renderer's "is this mine?" (`isSelfSender`).
   const statusIcon = useMemo(() => {
+    if (!props.editable) return null;
     return props.message.id.includes("temp-") ? (
       <MessageSendingIcon />
     ) : (
       <MessageSentIcon />
     );
-  }, [props.message.status]);
+  }, [props.message.id, props.editable]);
 
   // Memoize formatted time to avoid recalculating on every render
   // The name is resolved from the account, every render. Messages carry an

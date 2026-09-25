@@ -11,7 +11,7 @@ const Container = styled.div`
 
 const MessageSendingIcon: React.FC = () => {
   return (
-    <Container>
+    <Container role="img" aria-label="Sending">
       <svg
         xmlns="http://www.w3.org/2000/svg"
         width="20"
