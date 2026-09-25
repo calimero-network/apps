@@ -23,7 +23,7 @@ import type {
   Sheet, Cell, Cursor, FunctionDef, Member, Project,
 } from '../api/spreadsheet/SpreadsheetClient';
 import { CellOp as CellOpWire } from '../api/spreadsheet/SpreadsheetClient';
-import type { CellOp } from '../spreadsheet/ops';
+import { chunkOps, type CellOp } from '../spreadsheet/ops';
 import { initEngine, engineReady, evaluate as engineEvaluate, functionCatalog } from '../engine/engine';
 import {
   snapshotFromCells, retireOverlay, deriveActiveCells, diffComputed, cellKey,
@@ -378,13 +378,19 @@ export function useSpreadsheet({
         : op.kind === 'Format' ? { row: op.row, col: op.col, format: op.format }
         : { row: op.row, col: op.col, clear: true },
       ));
-      const wire = ops.map((op) =>
+      const wire = (chunk: CellOp[]) => chunk.map((op) =>
         op.kind === 'Set'
           ? CellOpWire.Set({ row: op.row, col: op.col, raw_value: op.raw_value })
           : op.kind === 'Format'
             ? CellOpWire.Format({ row: op.row, col: op.col, format: op.format })
             : CellOpWire.Clear({ row: op.row, col: op.col }));
-      await enqueue(() => client.applyCellOps({ sheet_id: sheetId, ops: wire }));
+      // One queue slot for the whole batch, so no other write lands between
+      // its commits; each commit stays under the node's per-commit caps.
+      await enqueue(async () => {
+        for (const chunk of chunkOps(ops)) {
+          await client.applyCellOps({ sheet_id: sheetId, ops: wire(chunk) });
+        }
+      });
     },
     [client, applyOverlay, enqueue],
   );

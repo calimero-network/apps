@@ -69,7 +69,7 @@ test/perf/
    Python. The driver gets an (unauthenticated — these local nodes have no
    embedded auth) client per node via `bench.node_client`, then for each size:
    generates the batch from `generators.py`, applies it via `bench.apply_ops`
-   (chunked to `APPLY_CHUNK = 40` to stay under the node's per-commit caps),
+   (chunked to `APPLY_CHUNK = 200`, the contract's `MAX_OPS_PER_APPLY`),
    derives, polls node 2 for convergence, and asserts the invariant.
 3. **Report.** The driver prints a `bench.format_summary` table and writes the
    per-scenario results JSON; `run-perf.sh` orchestrates which scenarios run.

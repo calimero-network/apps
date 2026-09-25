@@ -275,6 +275,14 @@ pub struct FunctionDef {
     pub example: String,
 }
 
+/// The most ops one `apply_cell_ops` call accepts; see its doc. Measured on a
+/// real node: 500 inserts fit the execution's gas budget and 600 do not, and a
+/// 200-op commit costs the same (~115 ms) whether the context holds 0 or 4000
+/// cells, so 200 keeps a wide margin without adding round trips. The client's
+/// `MAX_OPS_PER_APPLY` (app/src/spreadsheet/ops.ts) and the perf harness's
+/// `APPLY_CHUNK` split batches to this size.
+pub const MAX_OPS_PER_APPLY: usize = 200;
+
 // ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
@@ -754,10 +762,21 @@ impl Spreadsheet {
     }
 
     /// Apply a batch of cell operations to one sheet in a single mutation. One
-    /// CRDT commit for the whole range op; values are derived on read. Emits ONE
-    /// `CellsChanged` event for the whole batch (not one per cell) so an arbitrarily
-    /// large batch stays under the runtime's per-commit event cap.
+    /// CRDT commit for the batch; values are derived on read. Emits ONE
+    /// `CellsChanged` event for the whole batch (not one per cell) so it stays
+    /// under the runtime's per-commit event cap.
+    ///
+    /// At most [`MAX_OPS_PER_APPLY`] ops. One execution has a fixed gas
+    /// budget (1e9 points on 0.11.0-rc.43), which runs out between 500 and 600
+    /// cell writes, and a batch that exhausts it fails as a whole with nothing
+    /// written. Refusing early says why; callers split larger range ops.
     pub fn apply_cell_ops(&mut self, sheet_id: String, ops: Vec<CellOp>) -> app::Result<()> {
+        if ops.len() > MAX_OPS_PER_APPLY {
+            return Err(AppError::from(Error::Invalid(format!(
+                "{} cell ops in one apply_cell_ops; the limit is {MAX_OPS_PER_APPLY}, split the batch",
+                ops.len()
+            ))));
+        }
         self.require_sheet(&sheet_id)?;
         let count = ops.len() as u32;
         for op in ops {
@@ -1522,6 +1541,30 @@ mod tests {
             "cell missing after re-write of a cleared cell"
         );
         assert_eq!(a1.unwrap().raw_value, "second");
+    }
+
+    #[test]
+    fn apply_cell_ops_refuses_an_oversized_batch() {
+        let mut app = make_app();
+        app.call(|s| s.init_project("P".into())).unwrap();
+        let sid = app.call(|s| s.create_sheet("S".into())).unwrap();
+        let ops = |n: usize| -> Vec<CellOp> {
+            (0..n)
+                .map(|i| CellOp::Set {
+                    row: i as u32,
+                    col: 0,
+                    raw_value: "1".into(),
+                })
+                .collect()
+        };
+        let err = app
+            .call(|s| s.apply_cell_ops(sid.clone(), ops(MAX_OPS_PER_APPLY + 1)))
+            .unwrap_err();
+        assert!(format!("{err:?}").contains("split the batch"), "{err:?}");
+        app.call(|s| s.apply_cell_ops(sid.clone(), ops(MAX_OPS_PER_APPLY)))
+            .unwrap();
+        let cells = app.view(|s| s.get_cells(sid)).unwrap();
+        assert_eq!(cells.len(), MAX_OPS_PER_APPLY);
     }
 
     #[test]

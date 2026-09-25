@@ -1,4 +1,4 @@
-from bench import chunked, format_summary
+from bench import chunked, format_summary, wire_op
 
 
 def test_chunked_splits_evenly_and_remainder():
@@ -17,3 +17,8 @@ def test_format_summary_is_markdown_table_with_rows():
     assert "| size | input_cells |" in out          # header
     assert "| small | 12 |" in out                    # row
     assert len(out.splitlines()) == 3                  # header + separator + 1 row
+
+
+def test_wire_op_is_the_contracts_tagged_form():
+    op = {"kind": "Set", "row": 1, "col": 2, "raw_value": "7"}
+    assert wire_op(op) == {"name": "Set", "payload": {"row": 1, "col": 2, "raw_value": "7"}}

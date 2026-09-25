@@ -54,20 +54,25 @@ def timed_execute(client, cid, method, args):
     return _output(res), ms
 
 
-# The node caps events per commit (core runtime `max_events` = 100; the
-# spreadsheet app emits ~1 event per cell op), so an apply_cell_ops batch larger
-# than that fails with "events overflow". Chunk well under the cap.
-APPLY_CHUNK = 40
+# `apply_cell_ops` refuses more than MAX_OPS_PER_APPLY ops (logic/src/lib.rs):
+# one execution's gas budget runs out between 500 and 600 cell writes.
+APPLY_CHUNK = 200
+
+
+def wire_op(op):
+    """A generator op (flat `{"kind": "Set", "row": ..}`) in the contract's
+    adjacently tagged `CellOp` wire form, `{"name": "Set", "payload": {..}}`."""
+    return {"name": op["kind"], "payload": {k: v for k, v in op.items() if k != "kind"}}
 
 
 def apply_ops(client, cid, sheet_id, ops, chunk_size=APPLY_CHUNK):
-    """Apply ops via apply_cell_ops in commits of <= chunk_size (to stay under the
-    node's per-commit event cap). Total wall-clock summed. Returns (ms, n_chunks)."""
+    """Apply ops via apply_cell_ops in commits of <= chunk_size (the contract
+    refuses larger ones). Total wall-clock summed. Returns (ms, n_chunks)."""
     batches = chunked(ops, chunk_size) if chunk_size and len(ops) > chunk_size else [ops]
     total = 0.0
     for batch in batches:
         _, ms = timed_execute(client, cid, "apply_cell_ops",
-                              {"sheet_id": sheet_id, "ops": batch})
+                              {"sheet_id": sheet_id, "ops": [wire_op(o) for o in batch]})
         total += ms
     return total, len(batches)
 
