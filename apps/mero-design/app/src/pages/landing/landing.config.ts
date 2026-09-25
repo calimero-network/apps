@@ -114,6 +114,7 @@ export const CONFIG: LandingConfig = {
       ],
     },
     openSource: {
+      license: "MIT",
       commands: [
         "# fork calimero-network/apps on GitHub, then",
         "git clone https://github.com/<you>/apps",

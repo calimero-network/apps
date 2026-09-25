@@ -597,7 +597,7 @@ export default function LandingPage({
           <div className="cal-lp-footerbase">
             <span>{CONFIG.packageId}</span>
             <span className="cal-lp-trustdot" />
-            <span>Open source, MIT</span>
+            <span>Open source, {CONFIG.overview?.openSource?.license ?? 'MIT'}</span>
             <span className="cal-lp-trustdot" />
             <span>Built on Calimero</span>
             {/* The theme switch lives here, not in the header. The header's job
@@ -901,7 +901,7 @@ function Showcase({ showcase }: { showcase: NonNullable<OverviewExtras['showcase
 const FORK_STEPS = [
   {
     title: 'Fork it',
-    body: 'Everything is in calimero-network/apps: the front end and the Rust contract behind it, MIT-licensed.',
+    body: 'Everything is in calimero-network/apps: the front end and the Rust contract behind it.',
   },
   {
     title: 'Make it yours',
@@ -913,7 +913,7 @@ const FORK_STEPS = [
   },
 ];
 
-function OpenSource({ commands }: { commands: string[] }) {
+function OpenSource({ license, commands }: { license: string; commands: string[] }) {
   const ref = useReveal();
   return (
     <section id="open-source" className="cal-lp-section">
@@ -923,8 +923,8 @@ function OpenSource({ commands }: { commands: string[] }) {
             <div className="cal-lp-kicker">Open source</div>
             <h2 className="cal-lp-h2">Fork it and make it yours</h2>
             <p className="cal-lp-sectionsub">
-              {CONFIG.name} is open source under the MIT licence. Anybody can fork it, customise it however they
-              like, and run or ship their own version — no permission, no licence fee.
+              {CONFIG.name} is open source under the {license} licence. Anybody can fork it, customise it however
+              they like, and run or ship their own version — no permission, no licence fee.
             </p>
             <ol className="cal-lp-forksteps">
               {FORK_STEPS.map((st, i) => (
@@ -1091,7 +1091,7 @@ function OverviewExtrasSections({ ConnectCta, desktopOnly }: ViewShared) {
         </section>
       )}
 
-      {openSource && <OpenSource commands={openSource.commands} />}
+      {openSource && <OpenSource license={openSource.license} commands={openSource.commands} />}
 
       {alwaysOn && (
         <section id="always-on" className="cal-lp-section cal-lp-section--alt">

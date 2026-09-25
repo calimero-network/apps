@@ -717,7 +717,10 @@
 .cal-lp-code .cal-lp-codeline {
   display: block;
   font-family: inherit;
-  white-space: pre;
+  /* Wrapped, not scrolled: a command whose end is out of sight is a command
+     someone copies half of. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 .cal-lp-code .cal-lp-codeprompt {
   font-family: inherit;

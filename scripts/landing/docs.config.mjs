@@ -641,10 +641,11 @@ export const DOCS = {
       },
     ],
     previewSteps: [
-      { title: 'A filled grid', body: 'Cells are individual records keyed by sheet and coordinate — not one document blob.' },
-      { title: 'Two cursors', body: 'Every collaborator in their own colour, carried as presence beside the data.' },
-      { title: 'A formula recalculates', body: 'The formula is stored raw. Each peer re-evaluates it, so nobody sees a total computed somewhere else.' },
-      { title: 'Edits merge', body: 'Different cells never contend; the same cell converges on the later write.' },
+      // Beats of the recorded hero loop (public/landing/hero.webm), in order.
+      { title: 'Two people, one workbook', body: 'You and Ada have the same Q3 budget open. Her cursor is on Travel.' },
+      { title: 'You fill in a number', body: 'You type Travel for Q2, and its row and column totals recompute.' },
+      { title: 'She edits at the same time', body: 'Ada walks up to Wages and changes Q3 while you type. Neither waits for the other.' },
+      { title: 'Every total agrees', body: 'Formulas are stored raw and recomputed from the latest cells, so both totals reflect both edits.' },
     ],
   },
 

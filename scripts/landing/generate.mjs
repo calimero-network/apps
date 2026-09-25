@@ -530,6 +530,7 @@ function renderOverview(o) {
   }
   if (o.openSource) {
     lines.push('    openSource: {');
+    lines.push(`      license: ${q(o.openSource.license)},`);
     lines.push('      commands: [');
     for (const c of o.openSource.commands) lines.push(`        ${q(c)},`);
     lines.push('      ],');

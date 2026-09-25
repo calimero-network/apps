@@ -115,9 +115,10 @@ export interface OverviewExtras {
   };
   /**
    * "Open source — fork it and make it yours". The copy is shared; the app
-   * supplies the commands that get a fork running, because they differ per app.
+   * supplies its licence and the commands that get a fork running, because
+   * both differ per app.
    */
-  openSource?: { commands: string[] };
+  openSource?: { license: string; commands: string[] };
   /** "Why it is different" — this app against what people use today. */
   comparison?: {
     heading: string;

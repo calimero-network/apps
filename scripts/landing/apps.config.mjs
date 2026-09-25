@@ -224,6 +224,7 @@ export const APPS = {
         ],
       },
       openSource: {
+        license: 'MIT',
         // Checked against apps/mero-design/Makefile: `make dev` is the whole stack
         // (two nodes, invite, then the app), not the frontend alone.
         commands: [
@@ -344,19 +345,110 @@ export const APPS = {
     // same key so the choice carries through sign-in instead of resetting.
     themeStorageKey: 'app:theme',
     availability: 'web+desktop',
-    trust: ['Live cursors', 'Formulas recompute for all peers', 'Sheet on your node'],
+    trust: ['Live collaboration', 'Formulas recompute for all peers', 'Sheet on your node'],
     explainer: [
       'A collaborative spreadsheet where you can see everyone’s cursor and nobody can see your data except the people you invited. The sheet lives in a Calimero context on your own node.',
       'Formulas are stored raw and re-evaluated for every peer whenever a cell they reference changes, so nobody is looking at a stale total — which is the failure that makes shared spreadsheets untrustworthy in the first place.',
     ],
     features: [
       { icon: 'Lock', title: 'Truly private sheets', body: 'The data lives in a context you control. It never passes through a central server.' },
-      { icon: 'Zap', title: 'Live cursors', body: 'Every collaborator in their own colour, so you can see who is about to overwrite what.' },
+      { icon: 'Zap', title: 'Live collaboration', body: 'Every collaborator’s cursor in their own colour, and their edits on your screen as they make them.' },
       { icon: 'BarChart', title: 'Formulas that always compute', body: 'SUM, AVERAGE, MIN, MAX, COUNT and IF, re-evaluated per peer whenever a referenced cell changes.' },
       { icon: 'Table', title: 'Multiple sheet tabs', body: 'Split a workbook the way you would expect, with tabs that sync like everything else.' },
       { icon: 'FileText', title: 'Formula autocomplete', body: 'With a built-in function reference, so you do not have to remember the argument order.' },
       { icon: 'Download', title: 'Download your data', body: 'Export whenever you want. Nothing here is designed to keep your numbers hostage.' },
     ],
+    overview: {
+      headline: 'The spreadsheet your team actually owns.',
+      // Recorded from the real app on a real node by `pnpm landing:media` in
+      // apps/mero-sheets/app. The chapter times match CHAPTERS in
+      // e2e/media/capture-landing-media.spec.ts.
+      showcase: {
+        heading: 'A budget, filled in together',
+        sub: 'Recorded from the real app, running on a real node — the totals are the app’s own formula engine at work.',
+        video: {
+          src: '/landing/demo.webm',
+          poster: '/landing/demo-poster.jpg',
+          chapters: [
+            { at: 0, title: 'Open a workbook', body: 'A Q3 budget on your node, with Ada from your team already in it.' },
+            { at: 3, title: 'Type a number', body: 'Fill in a cell and every total that reads it recomputes.' },
+            { at: 8, title: 'Write a formula', body: 'Start typing =AV and autocomplete offers AVERAGE, with its arguments.' },
+            { at: 14.5, title: 'Ada edits, live', body: 'Her cursor walks up to Wages, her number lands, and the totals update on your screen.' },
+          ],
+        },
+      },
+      comparison: {
+        heading: 'A spreadsheet, without the landlord',
+        sub: 'Everything you expect from a shared spreadsheet. The difference is who holds the numbers.',
+        themLabel: 'A typical cloud spreadsheet',
+        rows: [
+          { label: 'Where the sheet lives', them: 'On the vendor’s servers', us: 'On your node, and the nodes of the people you invite' },
+          { label: 'Who can read it', them: 'The vendor, and whoever it grants access', us: 'Only members of the workbook’s namespace' },
+          { label: 'Adding a collaborator', them: 'Another seat on the monthly bill', us: 'An invite. The app is open source and free' },
+          { label: 'Formulas', them: 'Computed on their servers', us: 'Stored raw and recomputed on every peer, so nobody sees a stale total' },
+          { label: 'If the vendor goes away', them: 'Your data may go with it', us: 'Your node still has every workbook, and you can download it any time' },
+        ],
+      },
+      collaboration: {
+        heading: 'Live collaboration, cell by cell',
+        sub: 'Everyone in a workbook sees each other’s cursors and edits as they happen, and two people can work in it at the same moment without either losing work — because of how a sheet is stored.',
+        points: [
+          { title: 'Every cell is its own record', body: 'Two people typing in different cells never queue behind each other.' },
+          { title: 'Value, formula and format are separate', body: 'Formatting a cell never fights with someone typing in it.' },
+          { title: 'Formulas recompute on every peer', body: 'Change a number and every total that reads it updates on everyone’s screen, from the raw formula.' },
+          { title: 'Cursors in colour', body: 'See who is where, in their own colour. Presence is kept out of the data.' },
+        ],
+      },
+      audiences: {
+        heading: 'Made for numbers that are nobody else’s business',
+        items: [
+          {
+            label: 'Finance & operations',
+            title: 'Budgets and forecasts that never leave your nodes',
+            body: 'Plan the quarter together, live, without the figures sitting on a third party’s servers.',
+            uses: ['Budgets', 'Forecasts', 'CSV export'],
+          },
+          {
+            label: 'Founders & small teams',
+            title: 'Metrics and cap tables, shared only with who you choose',
+            body: 'Invite a co-founder, an accountant or an investor into one workbook, and nobody else.',
+            uses: ['KPI trackers', 'Cap tables', 'Multiple sheet tabs'],
+          },
+          {
+            label: 'Research & classrooms',
+            title: 'Collect data together, in the same sheet, at the same time',
+            body: 'Everyone types into their own rows while the totals update for the whole group.',
+            uses: ['Shared data entry', 'Live cursors', 'SUM, AVERAGE, COUNT'],
+          },
+          {
+            label: 'Regulated & public sector',
+            title: 'Live collaboration on infrastructure you already control',
+            body: 'For finance, health and government data that cannot leave your own servers, without giving up working together in real time.',
+            uses: ['Self-hosted nodes', 'Works offline', 'No third-party cloud'],
+          },
+        ],
+      },
+      openSource: {
+        // The workspace licence logic/Cargo.toml inherits (the app README still
+        // says TBD). Commands run and checked: without the app's wasm-rustflags
+        // the build fails in wasm-opt on `i64.trunc_sat_f64_s` (see ci.yml);
+        // the dev server uses the app's own vite port.
+        license: 'MIT or Apache-2.0',
+        commands: [
+          '# fork calimero-network/apps on GitHub, then',
+          'git clone https://github.com/<you>/apps',
+          'cd apps && pnpm install',
+          'export RUSTFLAGS="$(cat apps/mero-sheets/logic/wasm-rustflags)"',
+          'cargo mero build -p mero-sheets',
+          'pnpm -F mero-sheets dev   # app on :5185',
+        ],
+      },
+      alwaysOn: true,
+      closing: {
+        title: 'Start your first workbook',
+        body: 'Connect a node, or install the desktop app that bundles one, then invite the people you work with.',
+      },
+    },
   },
 
   'mero-sign': {
