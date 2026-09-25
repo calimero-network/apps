@@ -1,0 +1,81 @@
+[package]
+name = "curb"
+description = "Calimero chat"
+version = "3.1.1"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+base64 = "0.23.0"
+borsh = "1.6.1"
+borsh-derive = "1.6.1"
+bs58 = "0.5.1"
+# Message ids are a digest, not a transcript — see `get_message_id`. Already in
+# the tree via the SDK, so this adds no code to the wasm.
+sha2 = { version = "0.10", default-features = false }
+# Pinned to a real release TAG — this does NOT track master, whatever the old
+# comment here said. Cargo.lock records which commit the tag resolved to, so a
+# bump is a deliberate `cargo update` reviewed as its own diff.
+calimero-sdk = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.42" }
+calimero-storage = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.42" }
+calimero-storage-macros = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.42" }
+thiserror = "1.0.56"
+
+# ABI description is a host-build concern: the manifest is extracted by running
+# the app natively. Linking it into the wasm only bloats the module.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+calimero-wasm-abi = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.42" }
+
+[dev-dependencies]
+# Enables register_crdt_merge + the native mock host so TestHost can drive the
+# AccessControl writer-set state under `cargo test`.
+calimero-storage = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.42", features = ["testing"] }
+
+[profile.app-release]
+inherits = "release"
+codegen-units = 1
+opt-level = "z"
+lto = true
+debug = false
+panic = "abort"
+overflow-checks = true
+
+[package.metadata.calimero]
+package     = "com.calimero.chat"
+name        = "Mero Chat"
+description = "Mero Chat v2 - group-based context management. Each context is one channel or DM."
+author      = "Calimero"
+icon        = "../app/public/icons/icon-512x512.png"
+frontend    = "https://mero-chat-pwa.vercel.app/"
+slug        = "com.calimero.chat"
+# Equal to the SDK tag above, always — it is the floor a node checks before it
+# will accept the bundle at all. Without it cargo-mero advertises the
+# placeholder `0.1.0`, which tells every node "any version will do" while the
+# wasm calls host functions an old node does not have.
+#
+# THREE places move together, and a bump that changes only this file is why
+# every bot PR here is red:
+#   1. the `calimero-*` git tags above (including the `[dev-dependencies]` copy)
+#   2. this line
+#   3. `image: ghcr.io/calimero-network/merod:<tag>` in EVERY `workflows/*.yml`,
+#      plus `RELEASE` in `scripts/setup-cargo-mero.sh`
+#
+# "Equal", not "at least", because the guest<->host payload is not stable across
+# releases even when the signatures are. core#3633 (rc.26) added `order` to
+# `Metadata`, which rides inside `Action` across that boundary: a contract built
+# on the newer SDK writes actions an older node cannot decode, and it surfaces
+# as a peer that never replicates rather than as an error — measured on this
+# branch, not assumed.
+#
+# rc.28 -> rc.41 crossed four more breaking releases, each of which had to be
+# worked through rather than pinned past:
+#   rc.29  invitations carry non-empty `admitters` and are clamped to 24h
+#   rc.31  an `http` registry node serves no bytecode to peers, so the app is
+#          installed on EVERY node in `workflows/integration-setup.yml`
+#   rc.32  `#[app::mergeable]` — a type implementing `Mergeable` must declare
+#          how, or it does not compile (see `src/lib.rs`)
+#   rc.38  37 admin request bodies closed: an extra key is now a 400/422
+#   rc.39  the blob DHT is gone; `?context_id=` is the only discovery path
+min-runtime-version = "0.11.0-rc.42"

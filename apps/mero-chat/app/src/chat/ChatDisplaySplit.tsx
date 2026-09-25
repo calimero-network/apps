@@ -1,0 +1,536 @@
+import { styled } from "styled-components";
+import type {
+  ActiveChat,
+  ChatMessagesData,
+  ChatMessagesDataWithOlder,
+  MessageRendererProps,
+  SendMessagePayload,
+  UpdatedMessages,
+} from "../types/Common";
+import { useEffect, useState, useRef, memo, useMemo } from "react";
+import MessageInput from "./MessageInput";
+import {
+  messageRenderer,
+  VirtualizedChat,
+  type CurbMessage,
+} from "../components/virtualized-chat";
+import type { ChannelInfo } from "../api/clientApi";
+import {
+  getContextId as getGlobalContextId,
+  getContextIdentity as getExecutorPublicKey,
+} from "@calimero-network/mero-react";
+import EmojiSelectorPopup from "../emojiSelector/EmojiSelectorPopup";
+import { ClientApiDataSource } from "../api/dataSource/clientApiDataSource";
+import { scrollbarStyles } from "../styles/scrollbar";
+import { log } from "../utils/logger";
+import { useMyChannelRole } from "../hooks/useMyChannelRole";
+import { isSelfSender } from "../utils/selfIdentity";
+import {
+  getMessengerDisplayName,
+  setMessengerDisplayName,
+} from "../utils/messengerName";
+
+interface ChatDisplaySplitProps {
+  readMessage: (message: CurbMessage) => void;
+  handleReaction: (
+    message: CurbMessage,
+    emoji: string,
+    isThread: boolean,
+  ) => void;
+  openThread: CurbMessage | undefined;
+  setOpenThread: (message: CurbMessage) => void;
+  closeThread?: () => void;
+  activeChat: ActiveChat;
+  updatedMessages: UpdatedMessages[];
+  resetImage: () => void;
+  sendMessage: (payload: SendMessagePayload) => void | Promise<void>;
+  getIconFromCache: (accountId: string) => Promise<string | null>;
+  isThread: boolean;
+  isReadOnly: boolean;
+  toggleEmojiSelector: (message: CurbMessage) => void;
+  channelMeta: ChannelInfo;
+  //channelUserList: User[];
+  setOpenMobileReactions: (reactions: string) => void;
+  openMobileReactions: string;
+  onMessageDeletion: (message: CurbMessage, isThread: boolean) => void;
+  onEditModeRequested: (message: CurbMessage, isThread: boolean) => void;
+  onEditModeCancelled: (message: CurbMessage, isThread: boolean) => void;
+  onMessageUpdated: (message: CurbMessage, isThread: boolean) => void;
+  loadInitialChatMessages: () => Promise<ChatMessagesData>;
+  incomingMessages: CurbMessage[];
+  loadPrevMessages: (id: string) => Promise<ChatMessagesDataWithOlder>;
+  currentOpenThreadRef?: React.RefObject<CurbMessage | undefined>;
+  isEmojiSelectorVisible: boolean;
+  setIsEmojiSelectorVisible: (isVisible: boolean) => void;
+  messageWithEmojiSelector: CurbMessage | null;
+  /** Id of the message a permalink pointed at, if this view was opened by one. */
+  focusMessageId?: string | null;
+  /** Copy a shareable link to a message. */
+  copyMessageLink?: (message: CurbMessage) => void;
+  /**
+   * Leave a permalink's window and return to the newest messages.
+   *
+   * Needed because arriving by link leaves the view in the middle of the
+   * history: scrolling up loads older messages, but nothing loads newer ones,
+   * so without this the reader is stranded in the past with no way forward.
+   */
+  onJumpToPresent?: () => void;
+  /** Bump to reload the newest window without changing channel. */
+  reloadKey?: number;
+}
+
+/**
+ * Shown while the view is parked on a permalink's window.
+ *
+ * Arriving by link leaves the reader in the middle of the history with no way
+ * forward — scrolling up loads older messages, nothing loads newer ones. This
+ * is the way back, and saying so explicitly is better than letting someone
+ * discover the dead end by scrolling at it.
+ */
+const PermalinkBanner = styled.div`
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background-color: #1d1d21;
+  border: 1px solid #2f2f35;
+  color: #fff;
+  font-size: 12px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+`;
+
+const PermalinkBannerButton = styled.button`
+  background: none;
+  border: none;
+  padding: 0;
+  color: #a0ff5a;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  &:hover {
+    text-decoration: underline;
+  }
+`;
+
+const ContainerPadding = styled.div<{ $isThread?: boolean }>`
+  @media (max-width: 1024px) {
+    height: ${props => props.$isThread 
+      ? 'calc(100% - 188px)' 
+      : 'calc(100dvh - 230px)'
+    } !important;
+    padding-left: 0px !important;
+    padding-right: 0px !important;
+  }
+
+  /* Apply shared scrollbar styles */
+  ${scrollbarStyles}
+
+  /* Optimize scrolling performance */
+  contain: layout style paint;
+  overflow-anchor: none;
+`;
+
+const ThreadTitle = styled.div`
+  color: #fff;
+  font-size: 18px;
+  font-style: normal;
+  font-weight: 500;
+  line-height: 120%;
+`;
+
+const ThreadContainer = styled.div`
+  position: relative;
+  padding-bottom: 20px;
+  margin-right: 16px;
+  border-bottom: 2px solid #282933;
+  display: flex;
+  justify-content: space-between;
+  @media (max-width: 1024px) {
+    margin-right: 16px;
+    margin-left: 16px;
+    padding-top: 42px;
+  }
+`;
+
+const CloseSvg = styled.svg`
+  fill: #777583;
+  :hover {
+    fill: #fff;
+  }
+  cursor: pointer;
+`;
+
+const Wrapper = styled.div`
+  display: flex;
+  flex-direction: column;
+  height: calc(100% - 20px);
+  /* GPU acceleration for smoother rendering */
+  transform: translateZ(0);
+  backface-visibility: hidden;
+
+  @media (max-width: 1024px) {
+    width: 100% !important;
+    height: 100%;
+  }
+`;
+
+const containerPaddingStyle: React.CSSProperties = {
+  display: "flex",
+  flexDirection: "row",
+  paddingTop: "1rem",
+  paddingLeft: "2.5rem",
+  paddingRight: "2.5rem",
+  paddingBottom: "0px",
+  scrollBehavior: "smooth",
+  height: "100%",
+  width: "",
+};
+const chatStyle: React.CSSProperties = {
+  height: "",
+  width: "",
+  overflow: "",
+};
+
+const wrapperStyle: React.CSSProperties = {
+  height: "100%",
+  width: "100%",
+  overflow: "",
+};
+
+const CloseButtonSvg = ({ onClose }: { onClose: () => void }) => (
+  <CloseSvg
+    onClick={onClose}
+    xmlns="http://www.w3.org/2000/svg"
+    width="24"
+    height="24"
+    className="bi bi-x-circle"
+    viewBox="0 0 16 16"
+  >
+    <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z" />
+    <path d="M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708z" />
+  </CloseSvg>
+);
+
+const ThreadHeader = ({ onClose }: { onClose: () => void }) => (
+  <ThreadContainer>
+    <ThreadTitle>Thread</ThreadTitle>
+    <CloseButtonSvg onClose={onClose} />
+  </ThreadContainer>
+);
+
+const ChatDisplaySplit = memo(function ChatDisplaySplit({
+  readMessage,
+  handleReaction,
+  openThread,
+  setOpenThread,
+  closeThread,
+  activeChat,
+  updatedMessages,
+  resetImage,
+  sendMessage,
+  getIconFromCache,
+  isThread,
+  isReadOnly,
+  toggleEmojiSelector,
+  channelMeta,
+  //channelUserList,
+  setOpenMobileReactions,
+  openMobileReactions,
+  onMessageDeletion,
+  onEditModeRequested,
+  onEditModeCancelled,
+  onMessageUpdated,
+  loadInitialChatMessages,
+  incomingMessages,
+  loadPrevMessages,
+  currentOpenThreadRef,
+  isEmojiSelectorVisible,
+  setIsEmojiSelectorVisible,
+  messageWithEmojiSelector,
+  focusMessageId,
+  copyMessageLink,
+  onJumpToPresent,
+  reloadKey,
+}: ChatDisplaySplitProps) {
+  const [accountId, setAccountId] = useState<string | undefined>(undefined);
+  const [username, setUsername] = useState<string>("");
+  const hasLoadedUsername = useRef(false);
+
+  useEffect(() => {
+    // Update accountId whenever activeChat changes (DM vs Channel have different IDs)
+    const isDM = activeChat?.type === "direct_message";
+    const currentAccountId = isDM
+      ? activeChat?.contextIdentity || getExecutorPublicKey() || ""
+      : getExecutorPublicKey() || "";
+    setAccountId(currentAccountId);
+
+    // Only fetch username once, not on every render
+    if (hasLoadedUsername.current) return;
+
+    const setUserInfo = async () => {
+      const executorId = getExecutorPublicKey() ?? "";
+
+      // Check if we already have the username in storage
+      const cachedUsername =
+        getMessengerDisplayName();
+      if (cachedUsername) {
+        const normalizedClass = cachedUsername
+          .replace(/\s+/g, "")
+          .toLowerCase()
+          .replace(/\./g, "\\.")
+          .replace(/_/g, "\\_");
+        setUsername(normalizedClass);
+        hasLoadedUsername.current = true;
+        return;
+      }
+
+      // Fetch from API if not cached
+      const response = await new ClientApiDataSource().getUsername({
+        userId: executorId ?? "",
+      });
+      if (response.data) {
+        setMessengerDisplayName(response.data);
+        const normalizedClass = response.data
+          .replace(/\s+/g, "")
+          .toLowerCase()
+          .replace(/\./g, "\\.")
+          .replace(/_/g, "\\_");
+        setUsername(normalizedClass);
+        hasLoadedUsername.current = true;
+      }
+    };
+    setUserInfo();
+  }, [activeChat]);
+
+  // const isModerator = useMemo(
+  //   () =>
+  //     //channelUserList?.some(
+  //     channelMeta.moderators?.some(
+  //       (user) => user.id === accountId && user.moderator === true
+  //     ),
+  //   [channelMeta, accountId]
+  // );
+  const isModerator = false;
+
+  const isOwner = accountId === channelMeta.created_by;
+
+  const currentChatStyle = { ...chatStyle };
+  const currentContainerPaddingStyle = { ...containerPaddingStyle };
+  const currentWrapperStyle = { ...wrapperStyle };
+
+  if (openThread && isThread) {
+    currentChatStyle.height = "100%";
+    currentChatStyle.width = "100%";
+    currentChatStyle.overflow = "hidden";
+    currentContainerPaddingStyle.flexDirection = "column";
+    currentContainerPaddingStyle.paddingLeft = "0px";
+    currentContainerPaddingStyle.paddingRight = "0px";
+    currentContainerPaddingStyle.height = "100%";
+    currentContainerPaddingStyle.width = "100%";
+    currentWrapperStyle.width = "100%";
+    currentWrapperStyle.height = "100%";
+  } else if (openThread && !isThread) {
+    currentChatStyle.height = "100%";
+    currentChatStyle.width = "100%";
+    currentContainerPaddingStyle.paddingRight = "0px";
+    currentWrapperStyle.width = "60%";
+  } else {
+    currentChatStyle.height = "100%";
+    currentChatStyle.width = "100%";
+    currentChatStyle.overflow = "hidden";
+  }
+
+  // Debug logging for incomingMessages
+  useEffect(() => {
+    if (isThread) {
+      log.debug(
+        "ChatDisplaySplit",
+        `Thread component received incomingMessages:`,
+        incomingMessages,
+      );
+    }
+  }, [incomingMessages, isThread]);
+
+  const resolvedContextId = useMemo(() => {
+    if (activeChat.contextId && activeChat.contextId.length > 0) {
+      return activeChat.contextId;
+    }
+    return getGlobalContextId() ?? "";
+  }, [activeChat.contextId]);
+
+  // App-level moderation role for THIS channel. `Banned` users are blocked
+  // from posting via the MessageInput banner below; the rest of the chat
+  // still renders so they can read. Admins and Mods can delete anyone's messages.
+  const myChannelRole = useMyChannelRole(resolvedContextId, accountId);
+  const isBanned = myChannelRole === "Banned";
+  const canDeleteAny = myChannelRole === "Admin" || myChannelRole === "Mod";
+
+  const renderMessage = (message: CurbMessage, prevMessage?: CurbMessage) => {
+    const params: MessageRendererProps = {
+      accountId: username,
+      isThread: isThread,
+      handleReaction: (message: CurbMessage, reaction: string) =>
+        handleReaction(message, reaction, isThread),
+      setThread: setOpenThread,
+      getIconFromCache: getIconFromCache,
+      toggleEmojiSelector: toggleEmojiSelector,
+      openMobileReactions: openMobileReactions,
+      setOpenMobileReactions: setOpenMobileReactions,
+      // `message.sender` is an ACCOUNT id (the contract stamps it with
+      // `env::account_id()`), while `getExecutorPublicKey()` is a bs58 DEVICE
+      // key. Comparing them directly can never match, so "is this mine?" was
+      // always false and the Edit/Delete entries never rendered on your own
+      // messages. Same defect #14 fixed for DM counterparts, at a call site
+      // that was missed. `isSelfSender` checks every identity this node owns,
+      // account ids included; the DM's context identity rides along as a hint.
+      editable: (message: CurbMessage) =>
+        isSelfSender(
+          message.sender,
+          resolvedContextId,
+          activeChat.contextIdentity,
+          getExecutorPublicKey(),
+        ),
+      deleteable: (message: CurbMessage) =>
+        canDeleteAny ||
+        isSelfSender(
+          message.sender,
+          resolvedContextId,
+          activeChat.contextIdentity,
+          getExecutorPublicKey(),
+        ),
+      onEditModeRequested: (message: CurbMessage) =>
+        onEditModeRequested(message, isThread),
+      onEditModeCancelled: (message: CurbMessage) =>
+        onEditModeCancelled(message, isThread),
+      onMessageUpdated: (message: CurbMessage) =>
+        onMessageUpdated(message, isThread),
+      onDeleteMessageRequested: (message: CurbMessage) =>
+        onMessageDeletion(message, isThread),
+      fetchAccounts: (_prefix: string) => {},
+      autocompleteAccounts: [],
+      authToken: undefined,
+      privateIpfsEndpoint: "https://ipfs.io",
+      contextId: resolvedContextId,
+      focusMessageId,
+      copyMessageLink,
+    };
+    return messageRenderer(params)(message, prevMessage);
+  };
+
+  return (
+    <>
+      <Wrapper style={currentWrapperStyle}>
+        <ContainerPadding 
+          style={currentContainerPaddingStyle}
+          $isThread={isThread && !!openThread}
+        >
+          {focusMessageId && onJumpToPresent && !isThread && (
+            <PermalinkBanner>
+              <span>Viewing a linked message</span>
+              <PermalinkBannerButton type="button" onClick={onJumpToPresent}>
+                Jump to present
+              </PermalinkBannerButton>
+            </PermalinkBanner>
+          )}
+          {openThread && isThread && (
+            <ThreadHeader
+              onClose={() => {
+                if (closeThread) {
+                  closeThread();
+                }
+                if (currentOpenThreadRef) {
+                  currentOpenThreadRef.current = undefined;
+                }
+              }}
+            />
+          )}
+          <VirtualizedChat
+            loadInitialMessages={loadInitialChatMessages}
+            loadPrevMessages={loadPrevMessages}
+            incomingMessages={incomingMessages}
+            updatedMessages={updatedMessages}
+            onItemNewItemRender={readMessage}
+            shouldTriggerNewItemIndicator={(message: CurbMessage) =>
+              message.sender !== accountId
+            }
+            render={renderMessage}
+            focusMessageId={focusMessageId}
+            reloadKey={reloadKey}
+            chatId={
+              isThread && openThread?.id ? openThread.id : activeChat.id || ""
+            }
+            style={currentChatStyle}
+          />
+        </ContainerPadding>
+        <MessageInput
+          selectedChat={
+            activeChat.type === "channel"
+              ? activeChat.name
+              : activeChat.username || activeChat.name
+          }
+          // A channel's name IS its identity in the contract, so it keys the
+          // draft directly. A DM's displayed name is a person's chosen label —
+          // rename yourself and the old key becomes unreachable, orphaning the
+          // draft with no error. Its context is the stable thing: one per
+          // conversation, and never renamed.
+          draftKey={
+            activeChat.type === "channel"
+              ? activeChat.name
+              : resolvedContextId || activeChat.id
+          }
+          isChannel={activeChat.type === "channel"}
+          contextId={resolvedContextId}
+          sendMessage={sendMessage}
+          resetImage={resetImage}
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          openThread={openThread as any}
+          isThread={isThread}
+          isReadOnly={isReadOnly}
+          isOwner={isOwner}
+          isModerator={isModerator}
+          isBanned={isBanned}
+        />
+      </Wrapper>
+      {isEmojiSelectorVisible && (
+        <EmojiSelectorPopup
+          onEmojiSelected={(emoji: string) => {
+            handleReaction(messageWithEmojiSelector!, emoji, isThread);
+            setIsEmojiSelectorVisible(false);
+          }}
+          onClose={() => setIsEmojiSelectorVisible(false)}
+          key="chat-emojis-component"
+        />
+      )}
+    </>
+  );
+});
+
+// Custom comparison to prevent re-renders from function reference changes
+export default memo(ChatDisplaySplit, (prevProps, nextProps) => {
+  // Only re-render if these critical values change.
+  //
+  // Hand-maintained, like `ChatContainer`'s: a prop missing from this list is
+  // frozen at its first value with nothing to indicate it. Both comparators
+  // silently swallowed the permalink props — the parent re-rendered with the
+  // new value, this component kept the old one, and "Jump to present" appeared
+  // to do nothing at all.
+  return (
+    prevProps.activeChat.id === nextProps.activeChat.id &&
+    prevProps.activeChat.contextId === nextProps.activeChat.contextId &&
+    prevProps.incomingMessages === nextProps.incomingMessages &&
+    prevProps.updatedMessages === nextProps.updatedMessages &&
+    prevProps.openThread?.id === nextProps.openThread?.id &&
+    prevProps.isEmojiSelectorVisible === nextProps.isEmojiSelectorVisible &&
+    prevProps.openMobileReactions === nextProps.openMobileReactions &&
+    prevProps.focusMessageId === nextProps.focusMessageId &&
+    prevProps.reloadKey === nextProps.reloadKey &&
+    prevProps.onJumpToPresent === nextProps.onJumpToPresent &&
+    prevProps.copyMessageLink === nextProps.copyMessageLink
+  );
+});

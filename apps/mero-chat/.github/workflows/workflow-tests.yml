@@ -1,0 +1,175 @@
+# Runs merobox workflow tests when logic or workflow files change.
+# Builds curb.wasm, then validates all merobox workflow definitions against
+# real merod nodes (e2e.yml = 3-node comprehensive, integration-setup.yml =
+# 2-node setup for Playwright).
+
+name: Workflow Tests
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - 'logic/**'
+      - 'workflows/**'
+  pull_request:
+    branches: [main, master]
+    paths:
+      - 'logic/**'
+      - 'workflows/**'
+
+concurrency:
+  group: workflow-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  workflow-tests:
+    name: merobox Workflow Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.89.0"
+          targets: wasm32-unknown-unknown
+
+      - name: Cache Cargo registry + build
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            logic/target
+          key: cargo-${{ runner.os }}-${{ hashFiles('logic/Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-
+
+      - name: Install cargo-mero
+        uses: ./.github/actions/setup-cargo-mero
+
+      # Builds res/curb.wasm (ABI embedded, wasm-opt'd) AND the signed .mpk, then
+      # stages the .mpk at the fixed `logic/dist/curb.mpk` the scenarios install
+      # from. `cargo mero bundle` alone is NOT enough any more: it names the file
+      # after `[package] version`, and since rc.41 the node refuses a raw
+      # `res/curb.wasm` outright ("not a signed application bundle"), which
+      # merobox reports as a bare 500 on the install step. See logic/stage-bundle.sh.
+      - name: Build curb WASM and stage the bundle
+        working-directory: logic
+        run: ./stage-bundle.sh
+
+      - name: Install merobox
+      # ⚠️ calimero-client-py MUST be pinned, not just merobox. It is the layer
+      # that actually builds the admin-API request, merobox only requires a
+      # floor, and it tracks core master — so an unpinned install silently picks
+      # up whatever landed today.
+      #
+      # That is not hypothetical here. Leaving it unpinned resolved to 0.6.33,
+      # which expects rc.25's renamed `namespaceId`, against the rc.24 node these
+      # scenarios started:
+      #
+      #     Join namespace failed: Client error: missing field `namespaceId`
+      #
+      # 0.6.66/0.6.33 is the pair that ran green against rc.26 nodes. The rc.41
+      # node below needs 0.6.75/0.7.0, which is the pair mero-ar and mero-tag run
+      # against rc.38+ — 0.6.33 predates client-py #102/#105, which stopped the
+      # client dropping `admitters` and the admitter addresses from an invitation
+      # on re-encode, and rc.29 made `admitters` non-empty. A dropped `admitters`
+      # is refused by the node, so the two-node join in integration-setup.yml
+      # cannot pass on the old pair whatever the scenario says.
+      #
+      # Bump BOTH together and in this order: client-py 0.7.0 dropped a kwarg
+      # older merobox passes, so 0.6.66 + 0.7.0 does not work either.
+        run: pip install merobox==0.6.75 calimero-client-py==0.7.0 && merobox --version
+
+      # ⚠️ `merobox nuke` does NOT wipe the node data, and says so only if you
+      # read its output closely:
+      #
+      #     Found 3 Calimero node data directory(ies)
+      #     Deleting 3 data directory(ies)...
+      #     No data directories were deleted.
+      #
+      # The rocksdb under `workflows/data/calimero-node-N` is written by the
+      # container as root, and the runner user cannot remove it. So it survives
+      # `nuke`, and the NEXT scenario boots node-1 and node-2 straight onto the
+      # previous scenario's database. On rc.41 that is fatal and the message
+      # names nothing useful:
+      #
+      #     Namespace creation failed on calimero-node-1:
+      #       create_namespace failed: Client error: HTTP 500
+      #     ERROR failed to mint this node's account
+      #
+      # It reads as a flaky node — the 3-node scenario that ran first passed,
+      # and re-running the 2-node one fails again identically. `sudo` is what
+      # makes the wipe actually happen, and it has to run between EVERY
+      # scenario and before every retry, not just at the end.
+      - name: Reset merobox state
+        working-directory: workflows
+        run: |
+          merobox stop --all 2>/dev/null || true
+          merobox nuke --force 2>/dev/null || true
+          sudo rm -rf data
+          ls -la . || true
+
+      - name: Run E2E workflow (3-node)
+        working-directory: workflows
+        run: |
+          reset() {
+            merobox stop --all 2>/dev/null || true
+            merobox nuke --force 2>/dev/null || true
+            # The bit `nuke` cannot do. See "Reset merobox state" above.
+            sudo rm -rf data
+          }
+          max_attempts=2
+          attempt=1
+          success=false
+          while [ $attempt -le $max_attempts ]; do
+            if [ $attempt -gt 1 ]; then
+              reset
+              sleep 2
+            fi
+            # See integration-ci.yml for why --e2e-mode is required here.
+            if merobox bootstrap run e2e.yml --e2e-mode; then
+              success=true
+              break
+            fi
+            attempt=$((attempt + 1))
+          done
+          reset
+          [ "$success" = true ] || exit 1
+
+      - name: Run integration-setup workflow (2-node)
+        working-directory: workflows
+        run: |
+          reset() {
+            merobox stop --all 2>/dev/null || true
+            merobox nuke --force 2>/dev/null || true
+            # This scenario reuses calimero-node-1/2, the names the 3-node run
+            # above just used, so it is the one that inherits their rocksdb
+            # when the wipe is skipped. See "Reset merobox state".
+            sudo rm -rf data
+          }
+          # Unconditional, because the previous step's cleanup ran in a
+          # DIFFERENT shell — a failure there must not leave state here.
+          reset
+          max_attempts=2
+          attempt=1
+          success=false
+          while [ $attempt -le $max_attempts ]; do
+            if [ $attempt -gt 1 ]; then
+              reset
+              sleep 2
+            fi
+            if merobox bootstrap run integration-setup.yml --e2e-mode; then
+              success=true
+              break
+            fi
+            attempt=$((attempt + 1))
+          done
+          reset
+          [ "$success" = true ] || exit 1

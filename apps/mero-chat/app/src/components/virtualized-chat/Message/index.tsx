@@ -1,0 +1,800 @@
+import { useLongPress } from "@uidotdev/usehooks";
+import { useEffect, useState, useMemo, memo, useCallback } from "react";
+import styled from "styled-components";
+
+import { MessageActions } from "..";
+import type { AccountData, CurbMessage, CurbFile } from "../types/curbTypes";
+import { ElementPosition } from "../types/curbTypes";
+import { formatTimeAgo } from "../utils";
+import { downloadBlob } from "../../../api/meroJsClient";
+import { useDisplayName } from "../../../repositories/names/useNames";
+
+import { POPUP_POSITION_SWITCH_HEIGHT } from "./AutocompleteList";
+import { IdentityAvatar } from "../../IdentityAvatar";
+import DeletedMessage from "./DeletedMessage";
+import MessageSendingIcon from "./Icons/MessageSendingIcon";
+import MessageSentIcon from "./Icons/MessageSentIcon";
+import MessageEditor from "./MessageEditor";
+import MessageEditorMobile from "./MessageEditorMobile";
+import MessageFileField from "../../../chat/MessageFileField";
+import MessageImageField from "../../../chat/MessageImageField";
+import MessageReactionsField from "./MessageReactionsField";
+import RenderHtml from "./RenderHtml";
+import LinkPreview from "./LinkPreview";
+import ReplyContainerButton from "./ReplyContainerButton";
+import type { FileObject } from "../../../types/Common";
+
+const ActionsContainer = styled.div`
+  position: absolute;
+  z-index: 30;
+  top: 0rem;
+  right: 1rem;
+  visibility: hidden;
+  opacity: 0;
+`;
+
+const ActionsContainerMobile = styled.div<{ $addPadding: boolean }>`
+  display: none;
+  @media (max-width: 1024px) {
+    display: flex;
+    position: absolute;
+    z-index: 30;
+    top: ${({ $addPadding }) => ($addPadding ? "-1rem" : "0rem")};
+    right: 1rem;
+  }
+`;
+
+const MessageContainer = styled.div<{ $editmode: boolean; $focused?: boolean }>`
+  width: 100%;
+  border-radius: 4px;
+  box-sizing: border-box;
+  padding: 6px 0;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  @media (max-width: 1024px) {
+    max-width: 1024px;
+    font-size: 12px;
+    font-style: normal;
+    font-weight: 400;
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+  ${({ $editmode }) => $editmode && "background-color: #0A131E;"}
+  /* A message arrived at by link: marked so the reader can see WHICH message
+     the link meant, rather than landing mid-conversation and guessing. Fades
+     rather than latching, so it does not look like persistent state. */
+  ${({ $focused }) =>
+    $focused &&
+    `background-color: rgba(160, 255, 90, 0.10);
+     box-shadow: inset 2px 0 0 #A0FF5A;
+     transition: background-color 1.2s ease-out;`}
+  @media (min-width: 1025px) {
+    &:hover ${ActionsContainer} {
+      visibility: visible;
+      ${({ $editmode }) => !$editmode && "opacity: 1;"}
+    }
+    &:hover {
+      ${({ $editmode }) => !$editmode && "background-color: #1e1e1e;"}
+    }
+  }
+`;
+
+const SenderInfoContainer = styled.div`
+  width: 100%;
+  display: flex;
+  align-items: center;
+  column-gap: 0.5rem;
+  display: flex;
+  justify-content: flex-start;
+`;
+
+interface ProfileIconContainerProps {
+  id?: string;
+}
+
+const ProfileIconContainerMsg = styled.div<ProfileIconContainerProps>`
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  ${({ id }: ProfileIconContainerProps) => id && `background-color: #111;`}
+  text-align: center;
+  /* Body/Small */
+  font-family: Helvetica Neue;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 400;
+  line-height: 150%; /* 18px */
+`;
+
+const NameContainerSender = styled.div`
+  display: flex;
+  justify-content: start;
+  align-items: center;
+  width: 100%;
+  color: #6c757d;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 400;
+  line-height: 100%;
+`;
+
+export interface MessageTextProps {
+  $globalMention: boolean;
+  $accountId: string;
+}
+
+export const MessageText = styled.div<MessageTextProps>`
+  flex-grow: 1;
+  flex-shrink: 1;
+  overflow: hidden;
+  word-wrap: break-word;
+  padding-top: 0px;
+  padding-left: 2rem;
+  padding-right: 2rem;
+  color: #fff;
+  font-family: Helvetica Neue;
+  font-size: 14px;
+  font-style: normal;
+  font-weight: 400;
+  line-height: 150%;
+  -webkit-font-smoothing: antialiased applied;
+
+  @media (max-width: 1024px) {
+    font-size: 12px;
+    padding-right: 0;
+  }
+
+  background-color: ${(props) => props.$globalMention && "#ecfc910d"};
+
+  .mention-everyone,
+  .mention-here {
+    background-color: #ecfc910d !important;
+    color: #73b30c !important;
+  }
+
+  .mention-user-${(props: MessageTextProps) =>
+    props.$accountId && `${props.$accountId}`} {
+    color: #73b30c !important;
+    background-color: #ecfc910d !important;
+  }
+
+  .mention {
+    background-color: #73b30c;
+  }
+
+  .msg-content p {
+    margin: 0 0 6px 0;
+    padding: 0;
+  }
+  .msg-content ul,
+  .msg-content ol {
+    margin: 4px 0 6px 16px;
+    padding: 0;
+  }
+  .msg-content li {
+    margin: 2px 0;
+    padding: 0;
+  }
+  .msg-content code {
+    background: #1e1e1e;
+    padding: 1px 4px;
+    border-radius: 4px;
+  }
+  .msg-content pre {
+    background: #111;
+    padding: 8px;
+    border-radius: 6px;
+    overflow: auto;
+  }
+  .msg-content blockquote {
+    margin: 6px 0;
+    padding: 6px 10px 6px 10px;
+    border-left: 3px solid #a5ff11;
+    background: #111;
+  }
+
+  /* URL Link Styles */
+  a,
+  .url-link,
+  .rich-text-link {
+    cursor: pointer;
+    text-decoration: none;
+    color: #a5ff11;
+    word-break: break-all;
+  }
+
+  a:hover,
+  .url-link:hover,
+  .rich-text-link:hover {
+    color: #c4ff66;
+    text-decoration: underline;
+  }
+
+  a:visited,
+  .url-link:visited,
+  .rich-text-link:visited {
+    color: #8fd60e;
+  }
+  span {
+    color: #fff !important;
+  }
+`;
+
+const Tick = styled.div`
+  padding-right: 2rem;
+  width: 24px;
+  text-align: right;
+  align-self: flex-end;
+  display: flex;
+  /* flex-end, not center: the box is 24px and "(edited)" is wider, so centred
+     it hung out on both sides. Right-aligned, it overflows leftward and ends
+     where the tick column does, with or without a tick beside it. */
+  justify-content: flex-end;
+  align-items: center;
+  gap: 2px;
+  color: #777583;
+  font-family: Helvetica Neue;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 400;
+  line-height: 150%;
+`;
+
+const AttachmentsContainer = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 2rem;
+  margin-top: 8px;
+  align-items: flex-end;
+`;
+
+const MessageContentContainer = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+`;
+
+const MessageTime = styled.div`
+  padding-right: 2rem;
+  color: #777583;
+  font-family: Helvetica Neue;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 400;
+  line-height: 100%;
+  @media (max-width: 1024px) {
+    bottom: -1rem;
+    right: 4px;
+  }
+`;
+
+const FullScreenWrapper = styled.div`
+  @media (min-width: 1025px) {
+    display: none;
+  }
+  @media (max-width: 1024px) {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 20;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    -khtml-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+  }
+`;
+
+const ClosableBackground = styled.div`
+  width: 100%;
+  height: 100%;
+  pointer-events: auto;
+`;
+
+const shouldShowHeader = (message: CurbMessage, prevMessage?: CurbMessage) => {
+  if (!prevMessage) {
+    return true; // No previous message
+  }
+  if (prevMessage.sender !== message.sender) {
+    return true; // Different sender
+  }
+  if (
+    (prevMessage.files.length === 0 &&
+      prevMessage.images.length === 0 &&
+      !prevMessage.text &&
+      prevMessage.editedOn) ||
+    prevMessage.deleted
+  ) {
+    return true; // Previous message was deleted or empty
+  }
+  // Group messages from same sender within 1 minute
+  const timeDiff = message.timestamp - prevMessage.timestamp;
+  return timeDiff >= 60000; // 1 minute or more between messages
+};
+
+interface MessageProps {
+  message: CurbMessage;
+  prevMessage?: CurbMessage;
+  accountId: string;
+  deletable?: boolean;
+  editable?: boolean;
+  handleReaction: (reaction: string) => void;
+  openThread: () => void;
+  getIconFromCache: (accountId: string) => Promise<string | null>;
+  isThread: boolean;
+  toggleEmojiSelector: () => void;
+  editMessage: () => void;
+  cancelEditMessage: () => void;
+  deleteMessage: () => void;
+  /** True for the message a permalink pointed at. */
+  isFocused?: boolean;
+  /** Copy a shareable link to this message; omitted where linking is unavailable. */
+  copyLink?: () => void;
+  openMobileReactions: string;
+  setOpenMobileReactions: (messageId: string) => void;
+  submitEditedMessage: (text: string) => void;
+  fetchAccounts: (prefix: string) => void;
+  autocompleteAccounts: AccountData[];
+  authToken: string | undefined;
+  privateIpfsEndpoint: string;
+  contextId?: string;
+}
+
+const Message = (props: MessageProps) => {
+  const text = props.message.text;
+  const [screenSize, setScreenSize] = useState(0);
+  const [isOpen, setIsOpen] = useState(false);
+  const [isMessageRectionListVisible, setIsMessageReactionListVisible] =
+    useState(false);
+  const [isMoreActionVisible, setIsMoreActionVisible] = useState(false);
+  const [popupPosition, setPopupPosition] = useState<ElementPosition>(
+    ElementPosition.TOP,
+  );
+
+  // Memoize the shouldShowHeader result to prevent multiple calculations
+  const showHeader = useMemo(() => {
+    return shouldShowHeader(props.message, props.prevMessage);
+  }, [
+    props.message.id,
+    props.message.sender,
+    props.message.timestamp,
+    props.prevMessage?.id,
+    props.prevMessage?.sender,
+    props.prevMessage?.timestamp,
+  ]);
+
+  const [selectedReaction, setSelectedReaction] = useState<
+    | {
+        reaction: string;
+        accounts: string[];
+      }
+    | undefined
+  >(undefined);
+
+  function openMessageReactionsList(
+    reaction:
+      | {
+          reaction: string;
+          accounts: string[];
+        }
+      | undefined,
+  ) {
+    setIsMessageReactionListVisible(true);
+    setSelectedReaction(reaction);
+  }
+
+  function closeMessageReactionsList() {
+    setIsMessageReactionListVisible(false);
+    setSelectedReaction(undefined);
+  }
+  const attrs = useLongPress(() => {
+    setIsOpen(!isOpen);
+    props.setOpenMobileReactions(props.message.id);
+  });
+
+  // Sending/sent is a receipt for the AUTHOR: it says whether their own write
+  // reached the node. On somebody else's message it asserted a delivery state
+  // this node knows nothing about, so every row carried the same tick.
+  // `editable` is the renderer's "is this mine?" (`isSelfSender`).
+  const statusIcon = useMemo(() => {
+    if (!props.editable) return null;
+    return props.message.id.includes("temp-") ? (
+      <MessageSendingIcon />
+    ) : (
+      <MessageSentIcon />
+    );
+  }, [props.message.id, props.editable]);
+
+  // Memoize formatted time to avoid recalculating on every render
+  // The name is resolved from the account, every render. Messages carry an
+  // account and nothing else — a display name belongs to the person, not to
+  // the message they sent, so a rename applies to everything they have ever
+  // said rather than only to what they say next.
+  //
+  // A sender with no metadata yet (or who has left the namespace) falls back to
+  // a truncated account, which is at least true, rather than to a stale name.
+  const senderDisplayName = useDisplayName(props.message.sender);
+
+  const formattedTime = useMemo(() => {
+    return formatTimeAgo(props.message.timestamp / 1000, false);
+  }, [props.message.timestamp]);
+
+  // Memoize accountId transformation for CSS class names
+  const escapedAccountId = useMemo(() => {
+    return props.accountId.replace(/\./g, "\\.").replace(/_/g, "\\_");
+  }, [props.accountId]);
+
+  // Memoize global mention check
+  const hasGlobalMention = useMemo(() => {
+    return (
+      text?.includes("mention-everyone") ||
+      text?.includes("mention-here") ||
+      text?.includes(`mention-user-${props.accountId}`)
+    );
+  }, [text, props.accountId]);
+
+  const toFileObject = useCallback(
+    (attachment: CurbFile): FileObject => ({
+      blobId: attachment.ipfs_cid,
+      name: attachment.name ?? "Attachment",
+      size: attachment.size ?? 0,
+      type: attachment.mime_type ?? "application/octet-stream",
+      uploadedAt: attachment.uploaded_at,
+    }),
+    [],
+  );
+
+  const imageAttachments = useMemo(
+    () =>
+      (props.message.images ?? []).map((attachment, index) => ({
+        key: `${attachment.ipfs_cid}-${index}`,
+        file: toFileObject(attachment),
+        previewUrl: attachment.preview_url,
+      })),
+    [props.message.images, toFileObject],
+  );
+
+  const fileAttachments = useMemo(
+    () =>
+      (props.message.files ?? []).map((attachment, index) => ({
+        key: `${attachment.ipfs_cid}-${index}`,
+        attachment,
+        file: toFileObject(attachment),
+      })),
+    [props.message.files, toFileObject],
+  );
+
+  const hasAttachments =
+    imageAttachments.length > 0 || fileAttachments.length > 0;
+
+  const handleFileDownload = useCallback(
+    async (attachment: CurbFile) => {
+      if (!props.contextId || props.contextId.length === 0) {
+        console.warn("Message", "Missing contextId for file download");
+        return;
+      }
+
+      try {
+        const blob = await downloadBlob(
+          attachment.ipfs_cid,
+          props.contextId,
+        );
+
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = attachment.name ?? "attachment";
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      } catch (error) {
+        console.error("Message", "Failed to download file attachment", error);
+      }
+    },
+    [props.contextId],
+  );
+
+  useEffect(() => {
+    const handleResize = () => {
+      setScreenSize(window.innerWidth);
+    };
+
+    // Set initial size
+    setScreenSize(window.innerWidth);
+
+    // Add resize listener
+    window.addEventListener("resize", handleResize);
+
+    // Cleanup
+    return () => {
+      window.removeEventListener("resize", handleResize);
+    };
+  }, []); // Empty deps - only run once on mount
+
+  useEffect(() => {
+    const container = document.getElementById(
+      `actions-container-${props.message.id}`,
+    );
+    if (container) {
+      const containerPositions = container.getBoundingClientRect();
+      if (containerPositions.top < POPUP_POSITION_SWITCH_HEIGHT) {
+        setPopupPosition(ElementPosition.BOTTOM);
+      } else {
+        setPopupPosition(ElementPosition.TOP);
+      }
+    }
+  }, []);
+
+  if (
+    (props.message.files.length === 0 &&
+      props.message.images.length === 0 &&
+      !props.message.text &&
+      props.message.editedOn) ||
+    props.message.deleted
+  ) {
+    return <DeletedMessage />;
+  }
+
+  return (
+    <>
+      <MessageContainer
+        {...attrs}
+        $editmode={props.message?.editMode ? true : false}
+        $focused={props.isFocused}
+      >
+        <ActionsContainer id={`actions-container-${props.message.id}`}>
+          <MessageActions
+            editable={props.editable}
+            deletable={props.deletable}
+            toggleReaction={props.handleReaction}
+            setThread={props.openThread}
+            toggleEmojiSelector={props.toggleEmojiSelector}
+            editMessage={props.editMessage}
+            deleteMessage={props.deleteMessage}
+            openMessageReactionsList={() => openMessageReactionsList(undefined)}
+            copyLink={props.copyLink}
+            isThread={props.isThread}
+            isMoreActionVisible={isMoreActionVisible}
+            setIsMoreActionVisible={setIsMoreActionVisible}
+            popupPosition={popupPosition}
+          />
+        </ActionsContainer>
+        {isOpen && props.openMobileReactions === props.message.id && (
+          <FullScreenWrapper>
+            <ClosableBackground
+              onClick={() => {
+                setIsOpen(false);
+                props.setOpenMobileReactions("");
+              }}
+            ></ClosableBackground>
+          </FullScreenWrapper>
+        )}
+        {isOpen && props.openMobileReactions === props.message.id && (
+          <ActionsContainerMobile
+            $addPadding={!shouldShowHeader(props.message, props.prevMessage)}
+            id={`actions-container-${props.message.id}`}
+          >
+            <MessageActions
+              editable={props.editable}
+              deletable={props.deletable}
+              toggleReaction={(emoji) => {
+                props.handleReaction(emoji);
+                setIsOpen(false);
+              }}
+              setThread={props.openThread}
+              toggleEmojiSelector={props.toggleEmojiSelector}
+              editMessage={props.editMessage}
+              deleteMessage={props.deleteMessage}
+              openMessageReactionsList={() =>
+                openMessageReactionsList(undefined)
+              }
+              isThread={props.isThread}
+              isMoreActionVisible={isMoreActionVisible}
+              setIsMoreActionVisible={setIsMoreActionVisible}
+              popupPosition={popupPosition}
+            />
+          </ActionsContainerMobile>
+        )}
+        {showHeader && (
+          <SenderInfoContainer>
+            <ProfileIconContainerMsg>
+              <IdentityAvatar size="sm" identity={props.message.sender} contextId={props.contextId} name={senderDisplayName} />
+            </ProfileIconContainerMsg>
+            <NameContainerSender>
+              {senderDisplayName}
+            </NameContainerSender>
+            <MessageTime>{formattedTime}</MessageTime>
+          </SenderInfoContainer>
+        )}
+        {((props.message?.editMode && screenSize > 1024) ?? false) ? (
+          <MessageEditor
+            text={text}
+            onSubmit={props.submitEditedMessage}
+            onCancelEdit={props.cancelEditMessage}
+            deleteMessage={props.deleteMessage}
+            getIconFromCache={props.getIconFromCache}
+            fetchAccounts={props.fetchAccounts}
+            autocompleteAccounts={props.autocompleteAccounts}
+          />
+        ) : (
+          <MessageContentContainer>
+            <MessageText
+              $globalMention={hasGlobalMention}
+              $accountId={escapedAccountId}
+            >
+              <RenderHtml html={text} />
+              <LinkPreview html={text} />
+            </MessageText>
+            <Tick>
+              {props.message.editedOn && "(edited) "}
+              {statusIcon}
+            </Tick>
+          </MessageContentContainer>
+        )}
+        {hasAttachments && (
+          <AttachmentsContainer>
+            {imageAttachments.map(({ key, file, previewUrl }) => (
+              <MessageImageField
+                key={key}
+                file={file}
+                previewUrl={previewUrl}
+                contextId={props.contextId}
+                containerSize={80}
+                isInput={false}
+              />
+            ))}
+            {fileAttachments.map(({ key, file, attachment }) => (
+              <MessageFileField
+                key={key}
+                file={file}
+                truncate={false}
+                onDownload={() => handleFileDownload(attachment)}
+              />
+            ))}
+          </AttachmentsContainer>
+        )}
+        {props.message.reactions && (
+          <MessageReactionsField
+            reactions={props.message.reactions}
+            handleReaction={props.handleReaction}
+            selectedReaction={selectedReaction}
+            openMessageReactionsList={openMessageReactionsList}
+            closeMessageReactionsList={closeMessageReactionsList}
+            isMessageRectionListVisible={isMessageRectionListVisible}
+          />
+        )}
+      </MessageContainer>
+      {!props.isThread && (props.message.threadCount || 0) > 0 && (
+        <ReplyContainerButton
+          replyCount={props.message.threadCount ?? 0}
+          lastTimestamp={(props.message.threadLastTimestamp ?? 0)}
+          onClick={() => {
+            props.openThread();
+          }}
+        />
+      )}
+      {props.message?.editMode && screenSize < 1025 && (
+        <MessageEditorMobile
+          text={text}
+          onSubmit={props.submitEditedMessage}
+          onCancelEdit={props.cancelEditMessage}
+          deleteMessage={props.deleteMessage}
+          getIconFromCache={props.getIconFromCache}
+          fetchAccounts={props.fetchAccounts}
+          autocompleteAccounts={props.autocompleteAccounts}
+        />
+      )}
+    </>
+  );
+};
+
+/**
+ * Custom comparison function for React.memo
+ * Only re-render if relevant props have changed
+ */
+const arePropsEqual = (
+  prevProps: MessageProps,
+  nextProps: MessageProps,
+): boolean => {
+  // If message IDs are different, definitely re-render
+  if (prevProps.message.id !== nextProps.message.id) {
+    return false;
+  }
+
+  // Check if message content changed
+  if (
+    prevProps.message.text !== nextProps.message.text ||
+    prevProps.message.editMode !== nextProps.message.editMode ||
+    prevProps.message.deleted !== nextProps.message.deleted ||
+    prevProps.message.editedOn !== nextProps.message.editedOn ||
+    prevProps.message.status !== nextProps.message.status ||
+    prevProps.message.threadCount !== nextProps.message.threadCount ||
+    prevProps.message.threadLastTimestamp !==
+      nextProps.message.threadLastTimestamp
+  ) {
+    return false;
+  }
+
+  // Check reactions - deep comparison needed
+  // Reactions is HashMap<string, string[]> (e.g., { "👍": ["user1", "user2"] })
+  if (prevProps.message.reactions !== nextProps.message.reactions) {
+    // If one is undefined/null and the other isn't
+    if (!prevProps.message.reactions !== !nextProps.message.reactions) {
+      return false;
+    }
+    // If both exist, check if they're different objects
+    if (prevProps.message.reactions && nextProps.message.reactions) {
+      const prevKeys = Object.keys(prevProps.message.reactions);
+      const nextKeys = Object.keys(nextProps.message.reactions);
+
+      // Check if number of reactions changed
+      if (prevKeys.length !== nextKeys.length) {
+        return false;
+      }
+
+      // Check if any reaction emoji or accounts changed
+      for (const emoji of prevKeys) {
+        const prevAccounts = prevProps.message.reactions[emoji];
+        const nextAccounts = nextProps.message.reactions[emoji];
+
+        if (!nextAccounts || prevAccounts.length !== nextAccounts.length) {
+          return false;
+        }
+      }
+    }
+  }
+
+  // Check if previous message changed (affects header display)
+  if (
+    prevProps.prevMessage?.id !== nextProps.prevMessage?.id ||
+    prevProps.prevMessage?.sender !== nextProps.prevMessage?.sender ||
+    prevProps.prevMessage?.timestamp !== nextProps.prevMessage?.timestamp ||
+    prevProps.prevMessage?.deleted !== nextProps.prevMessage?.deleted
+  ) {
+    return false;
+  }
+
+  // Check if mobile reactions state changed for this message
+  const prevIsOpen = prevProps.openMobileReactions === prevProps.message.id;
+  const nextIsOpen = nextProps.openMobileReactions === nextProps.message.id;
+  if (prevIsOpen !== nextIsOpen) {
+    return false;
+  }
+
+  // Check if editable/deletable permissions changed
+  if (
+    prevProps.editable !== nextProps.editable ||
+    prevProps.deletable !== nextProps.deletable
+  ) {
+    return false;
+  }
+
+  // Check if accountId changed (affects mentions)
+  if (prevProps.accountId !== nextProps.accountId) {
+    return false;
+  }
+
+  // Check if autocompleteAccounts changed (for edit mode)
+  if (
+    prevProps.autocompleteAccounts.length !==
+    nextProps.autocompleteAccounts.length
+  ) {
+    return false;
+  }
+
+  // All other props are callbacks that should be stable
+  // Don't compare them to avoid unnecessary re-renders
+  return true;
+};
+
+export default memo(Message, arePropsEqual);
