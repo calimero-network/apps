@@ -10,6 +10,23 @@ test.describe('Document CRUD (single-node)', () => {
     await alice.tree.openFolder('Drafts');
   });
 
+  for (const via of ['row', 'menu'] as const) {
+    test(`new document from the sidebar ${via} while a doc is open`, async ({
+      alice,
+    }) => {
+      await alice.createDoc('Existing');
+      await alice.openDoc('Existing');
+      await alice.tree.newDocument('Drafts', via);
+      await alice.editor.expectMounted();
+      await expect(alice.page.getByTestId('doc-title-input')).toHaveValue(
+        'Untitled',
+        { timeout: 15_000 },
+      );
+      await alice.docs.expectDocVisible('Untitled');
+      await alice.docs.expectDocVisible('Existing');
+    });
+  }
+
   test('create doc appears in the sidebar', async ({ alice }) => {
     await alice.createDoc('Hello World');
     await alice.docs.expectDocVisible('Hello World');

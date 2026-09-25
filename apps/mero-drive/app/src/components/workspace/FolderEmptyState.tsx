@@ -3,12 +3,13 @@
 // creates an Untitled doc and opens it inline. Read-only members get
 // guidance to pick a doc from the sidebar instead.
 
-import React, { useState } from 'react';
+import React from 'react';
 import { FileText, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useDocs } from '@/hooks/useDocs';
 import { useFolderPermissions } from '@/hooks/useFolderPermissions';
+import { useCreateDocument } from '@/hooks/useCreateDocument';
 
 interface Props {
   folderId: string;
@@ -19,21 +20,11 @@ export function FolderEmptyState({ folderId, onOpenDoc }: Props) {
   const { namespaceId } = useDriveWorkspace();
   const perms = useFolderPermissions(namespaceId ?? '', folderId);
   const docs = useDocs(folderId);
-  const [creating, setCreating] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const onCreate = async () => {
-    setCreating(true);
-    setError(null);
-    try {
-      const id = await docs.create({ title: 'Untitled' });
-      onOpenDoc(folderId, id);
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setCreating(false);
-    }
-  };
+  const { create: onCreate, creating, error } = useCreateDocument(
+    docs,
+    folderId,
+    onOpenDoc,
+  );
 
   return (
     <div className="flex h-full items-center justify-center p-8">

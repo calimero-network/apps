@@ -46,6 +46,7 @@ export function FolderTreeItem({
   const isHighlighted = isSelected && !selectedDocId;
   const isExpanded = expanded.has(node.id);
   const [renaming, setRenaming] = useState(false);
+  const [newDocRequest, setNewDocRequest] = useState(0);
   const [renameValue, setRenameValue] = useState('');
   // Re-entry guard for submitRename. Without this, pressing Enter
   // starts the async rename, and if the input loses focus before
@@ -64,6 +65,11 @@ export function FolderTreeItem({
     applicationId,
     refetch,
   );
+
+  const requestNewDoc = useCallback(() => {
+    if (!isExpanded) onToggleExpanded(node.id);
+    setNewDocRequest((n) => n + 1);
+  }, [isExpanded, onToggleExpanded, node.id]);
 
   const startRename = useCallback(() => {
     setRenameValue(folder?.alias ?? '');
@@ -175,6 +181,7 @@ export function FolderTreeItem({
             onNewSubfolder={() => {
               if (!isExpanded) onToggleExpanded(node.id);
             }}
+            onNewDocument={requestNewDoc}
           />
         )}
       </div>
@@ -190,6 +197,7 @@ export function FolderTreeItem({
             // Doc ids are per-folder counters, so only the open doc's folder may match.
             selectedDocId={isSelected ? selectedDocId : null}
             onOpenDoc={onOpenDoc}
+            createRequest={newDocRequest}
           />
           {node.children.map((c) => (
             <FolderTreeItem

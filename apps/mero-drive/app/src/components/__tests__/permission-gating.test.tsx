@@ -250,6 +250,7 @@ describe('permission-gating', () => {
         currentVisibility="Open"
         onRename={() => undefined}
         onNewSubfolder={() => undefined}
+        onNewDocument={() => undefined}
       />,
     );
     // Trigger always renders so read-only members can open Info.
@@ -265,6 +266,31 @@ describe('permission-gating', () => {
     expect(screen.queryByRole('menuitem', { name: /Rename/ })).toBeNull();
     expect(screen.queryByRole('menuitem', { name: /Delete/ })).toBeNull();
     expect(screen.queryByRole('menuitem', { name: /New subfolder/ })).toBeNull();
+    expect(screen.queryByRole('menuitem', { name: /New document/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'New document' })).toBeNull();
+  });
+
+  it('FolderContextMenu offers New document from the row and the menu to doc editors', () => {
+    (useFolderPermissions as ReturnType<typeof vi.fn>).mockReturnValue({
+      ...noFolderPerms,
+      canEditDocs: true,
+    });
+    const onNewDocument = vi.fn();
+    render(
+      <FolderContextMenu
+        folderId="f1"
+        currentVisibility="Open"
+        onRename={() => undefined}
+        onNewSubfolder={() => undefined}
+        onNewDocument={onNewDocument}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'New document' }));
+    const trigger = screen.getByLabelText('Folder actions');
+    fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false });
+    fireEvent.click(trigger);
+    fireEvent.click(screen.getByRole('menuitem', { name: /New document/ }));
+    expect(onNewDocument).toHaveBeenCalledTimes(2);
   });
 
   it('FolderContextMenu renders the ⋯ trigger when the caller has any cap', () => {
@@ -278,6 +304,7 @@ describe('permission-gating', () => {
         currentVisibility="Open"
         onRename={() => undefined}
         onNewSubfolder={() => undefined}
+        onNewDocument={() => undefined}
       />,
     );
     expect(screen.getByLabelText('Folder actions')).toBeTruthy();
@@ -295,6 +322,7 @@ describe('permission-gating', () => {
         currentVisibility="Open"
         onRename={() => undefined}
         onNewSubfolder={onNewSubfolder}
+        onNewDocument={() => undefined}
       />,
     );
     const trigger = screen.getByLabelText('Folder actions');

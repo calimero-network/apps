@@ -22,7 +22,14 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
 import { useConfirm } from '@/components/ui/confirm-dialog';
-import { Info, MoreHorizontal, Pencil, Plus, Trash2 } from 'lucide-react';
+import {
+  FilePlus,
+  Info,
+  MoreHorizontal,
+  Pencil,
+  Plus,
+  Trash2,
+} from 'lucide-react';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useFolderOperations } from '@/hooks/useFolderOperations';
 import { useFolderPermissions } from '@/hooks/useFolderPermissions';
@@ -37,6 +44,8 @@ interface Props {
   onRename: () => void;
   /** Reveals the folder's children so the one about to be created shows up. */
   onNewSubfolder: () => void;
+  /** Creates an Untitled doc in this folder and opens it. */
+  onNewDocument: () => void;
 }
 
 export function FolderContextMenu({
@@ -44,6 +53,7 @@ export function FolderContextMenu({
   currentVisibility,
   onRename,
   onNewSubfolder,
+  onNewDocument,
 }: Props) {
   const {
     namespaceId,
@@ -93,6 +103,21 @@ export function FolderContextMenu({
 
   return (
     <>
+      {perms.canEditDocs && (
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-6 w-6 shrink-0 text-muted-foreground opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+          aria-label="New document"
+          title="New document"
+          onClick={(e) => {
+            e.stopPropagation();
+            onNewDocument();
+          }}
+        >
+          <Plus className="h-4 w-4" />
+        </Button>
+      )}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
@@ -109,6 +134,12 @@ export function FolderContextMenu({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+          {perms.canEditDocs && (
+            <DropdownMenuItem onClick={onNewDocument}>
+              <FilePlus className="mr-2 h-4 w-4" />
+              New document
+            </DropdownMenuItem>
+          )}
           {perms.canRename && (
             <DropdownMenuItem onClick={onRename}>
               <Pencil className="mr-2 h-4 w-4" />
