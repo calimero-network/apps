@@ -12,9 +12,10 @@ description: >
   What it cannot do is cast a VALID ballot. Every proof binds the poll id (a
   content hash only known at run time) and the voter's account, and merobox has
   no way to compute a sigma-protocol proof mid-scenario. The cryptographic happy
-  path — key ceremony, encrypted ballots, close, threshold decryption, audit,
-  anchor, across three accounts — is covered in-process by
-  `logic/src/tests.rs::a_poll_runs_end_to_end_and_audits_clean`, and against a
+  path — t-of-n key ceremony, encrypted ballots, close and seal, threshold
+  decryption, audit, anchor, across three accounts — is covered in-process by
+  `logic/src/tests.rs` (2-of-3 with a trustee missing, and a cheating dealer
+  disqualified by complaint), and against a
   real node through the real JSON-RPC wire by the Playwright spec
   `app/e2e/mero-vote.spec.ts`, where the browser builds the proofs.
 
@@ -154,6 +155,7 @@ steps:
       min_choices: 1
       max_choices: 1
       trustees: ["{{n1_account}}", "{{n2_account}}"]
+      threshold: 2
       voters: []
       closes_at: null
     outputs:
@@ -207,6 +209,16 @@ steps:
     outputs:
       n2_transcript: result
 
+  - name: node-2 reads the key ceremony
+    type: call
+    node: vote-node-2
+    context_id: "{{context_id}}"
+    method: ceremony
+    args:
+      poll_id: "{{poll_id}}"
+    outputs:
+      n2_ceremony: result
+
   - name: Assert the poll arrived intact and is in its key ceremony
     type: assert
     statements:
@@ -215,7 +227,8 @@ steps:
       - "contains({{n2_poll}}, Tallinn)"
       - "contains({{n2_poll}}, KeyCeremony)"
       - "contains({{n2_report}}, KeyCeremony)"
-      - "contains({{n2_transcript}}, mero-vote/v1/)"
+      - "contains({{n2_transcript}}, mero-vote/v2/)"
+      - "contains({{n2_ceremony}}, {{n2_account}})"
 
   # ─── refusals ─────────────────────────────────────────────────────────────
 
@@ -241,22 +254,57 @@ steps:
     outputs:
       err_open_early: error
 
-  # The ristretto255 base point with a made-up proof: a well-formed share the
-  # caller cannot prove knowledge of. This is the rogue-key attack's shape.
-  - name: Refuse — a key share without a valid proof of knowledge
+  # The ristretto255 base point with a made-up proof: a well-formed key the
+  # caller cannot prove knowledge of.
+  - name: Refuse — a transport key without a valid proof of knowledge
     type: call
     node: vote-node-2
     context_id: "{{context_id}}"
-    method: publish_key_share
+    method: publish_transport_key
     args:
       poll_id: "{{poll_id}}"
-      share: "e2f2ae0a6abc4e71a884a961c500515f58e30b6aa582dd8db6a65945e08d2d76"
+      key: "e2f2ae0a6abc4e71a884a961c500515f58e30b6aa582dd8db6a65945e08d2d76"
       proof:
         c: "0100000000000000000000000000000000000000000000000000000000000000"
         z: "0200000000000000000000000000000000000000000000000000000000000000"
     expected_failure: true
     outputs:
-      err_bad_share: error
+      err_bad_transport: error
+
+  # Refused before its proofs are even looked at: no transport keys yet, so
+  # there is nobody to encrypt shares to.
+  - name: Refuse — a dealing before every transport key is in
+    type: call
+    node: vote-node-2
+    context_id: "{{context_id}}"
+    method: publish_dealing
+    args:
+      poll_id: "{{poll_id}}"
+      dealing:
+        commitments: ["e2f2ae0a6abc4e71a884a961c500515f58e30b6aa582dd8db6a65945e08d2d76"]
+        proof:
+          c: "0100000000000000000000000000000000000000000000000000000000000000"
+          z: "0200000000000000000000000000000000000000000000000000000000000000"
+        shares: []
+    expected_failure: true
+    outputs:
+      err_early_dealing: error
+
+  - name: Refuse — a complaint about a dealer who has not dealt
+    type: call
+    node: vote-node-2
+    context_id: "{{context_id}}"
+    method: file_complaint
+    args:
+      poll_id: "{{poll_id}}"
+      dealer: "{{n1_account}}"
+      secret: "e2f2ae0a6abc4e71a884a961c500515f58e30b6aa582dd8db6a65945e08d2d76"
+      proof:
+        c: "0100000000000000000000000000000000000000000000000000000000000000"
+        z: "0200000000000000000000000000000000000000000000000000000000000000"
+    expected_failure: true
+    outputs:
+      err_bad_complaint: error
 
   - name: Refuse — a ballot before voting opens
     type: call
@@ -282,6 +330,17 @@ steps:
     expected_failure: true
     outputs:
       err_close_early: error
+
+  - name: Refuse — sealing a poll that was never closed
+    type: call
+    node: vote-node-1
+    context_id: "{{context_id}}"
+    method: seal_poll
+    args:
+      poll_id: "{{poll_id}}"
+    expected_failure: true
+    outputs:
+      err_seal_early: error
 
   - name: Refuse — tally inputs before the close
     type: call
@@ -324,7 +383,10 @@ steps:
     statements:
       - "is_set({{err_open_not_creator}})"
       - "is_set({{err_open_early}})"
-      - "is_set({{err_bad_share}})"
+      - "is_set({{err_bad_transport}})"
+      - "is_set({{err_early_dealing}})"
+      - "is_set({{err_bad_complaint}})"
+      - "is_set({{err_seal_early}})"
       - "is_set({{err_early_ballot}})"
       - "is_set({{err_close_early}})"
       - "is_set({{err_tally_early}})"

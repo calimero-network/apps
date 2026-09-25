@@ -34,45 +34,108 @@ fn ballot_json(b: &Ballot) -> Value {
     })
 }
 
+fn b(x: &Branch) -> Value {
+    json!({ "c": encode_scalar(&x.c), "z": encode_scalar(&x.z) })
+}
+
+fn dealing_json(d: &Dealing) -> Value {
+    json!({
+        "commitments": d.commitments.iter().map(encode_point).collect::<Vec<_>>(),
+        "proof": b(&d.proof),
+        "shares": d.shares.iter().map(|s| json!({ "r": encode_point(&s.r), "v": encode_scalar(&s.v) })).collect::<Vec<_>>(),
+    })
+}
+
 fn render() -> Value {
     let poll_id = "c0ffee00c0ffee00c0ffee00c0ffee00c0ffee00c0ffee00c0ffee00c0ffee00";
     let trustees = [
-        (
-            "1111111111111111111111111111111111111111111111111111111111111111",
-            b"trustee-1".as_slice(),
-        ),
-        (
-            "2222222222222222222222222222222222222222222222222222222222222222",
-            b"trustee-2".as_slice(),
-        ),
+        "1111111111111111111111111111111111111111111111111111111111111111",
+        "2222222222222222222222222222222222222222222222222222222222222222",
+        "3333333333333333333333333333333333333333333333333333333333333333",
     ];
+    let threshold = 2u32;
     let rules = Rules {
         options: 3,
         min: 1,
         max: 2,
     };
 
-    let mut shares = vec![];
-    let mut secrets = vec![];
-    for (account, seed) in trustees {
-        let mut rng = seeded_rng(seed);
-        let x = rng();
-        let (h, proof) = make_key_share(poll_id, account, &x, &mut rng);
-        assert!(verify_key_share(poll_id, account, &h, &proof));
-        secrets.push(x);
-        shares.push(json!({
-            "trustee": account,
-            "seed": String::from_utf8_lossy(seed),
-            "secret": encode_scalar(&x),
-            "share": encode_point(&h),
-            "proof": { "c": encode_scalar(&proof.c), "z": encode_scalar(&proof.z) },
+    // Round 1: transport keys.
+    let mut transport = vec![];
+    let mut es = vec![];
+    for (i, t) in trustees.iter().enumerate() {
+        let seed = format!("transport-{i}");
+        let mut rng = seeded_rng(seed.as_bytes());
+        let e = rng();
+        let (key, proof) = make_transport_key(poll_id, t, &e, &mut rng);
+        assert!(verify_transport_key(poll_id, t, &key, &proof));
+        es.push(e);
+        transport.push(json!({
+            "trustee": t, "seed": seed, "secret": encode_scalar(&e),
+            "key": encode_point(&key), "proof": b(&proof),
         }));
     }
-    let share_points: Vec<_> = shares
+    let keys: Vec<_> = es
         .iter()
-        .map(|s| decode_point(s["share"].as_str().unwrap(), "share").unwrap())
+        .map(|e| e * curve25519_dalek::constants::RISTRETTO_BASEPOINT_POINT)
         .collect();
-    let pk = combine_keys(&share_points);
+
+    // Round 2: dealings.
+    let mut dealings = vec![];
+    let mut dealings_json = vec![];
+    for (i, t) in trustees.iter().enumerate() {
+        let seed = format!("dealing-{i}");
+        let mut rng = seeded_rng(seed.as_bytes());
+        let d = deal(poll_id, t, threshold, &keys, &mut rng).unwrap();
+        verify_dealing(poll_id, t, threshold, trustees.len(), &d).unwrap();
+        dealings_json.push(json!({ "dealer": t, "seed": seed, "dealing": dealing_json(&d) }));
+        dealings.push(d);
+    }
+    let refs: Vec<&Dealing> = dealings.iter().collect();
+    let pk = joint_key(&refs);
+
+    // Each trustee's combined key, and its public half.
+    let xs: Vec<_> = (0..trustees.len())
+        .map(|j| {
+            dealings
+                .iter()
+                .zip(&trustees)
+                .map(|(d, dealer)| open_share(poll_id, dealer, j as u32 + 1, &es[j], d).unwrap())
+                .sum::<curve25519_dalek::scalar::Scalar>()
+        })
+        .collect();
+    let vkeys: Vec<_> = (1..=trustees.len() as u32)
+        .map(|j| encode_point(&verification_key(&refs, j)))
+        .collect();
+
+    // A cheating dealer and the complaint that exposes it.
+    let mut rng = seeded_rng(b"cheater");
+    let mut cheat = deal(poll_id, trustees[0], threshold, &keys, &mut rng).unwrap();
+    cheat.shares[2].v += curve25519_dalek::scalar::Scalar::ONE;
+    let (secret, proof) = make_complaint(
+        poll_id,
+        trustees[2],
+        trustees[0],
+        3,
+        &es[2],
+        &cheat,
+        &mut rng,
+    )
+    .unwrap();
+    assert!(complaint_is_valid(
+        poll_id,
+        trustees[2],
+        trustees[0],
+        3,
+        &keys[2],
+        &cheat,
+        &secret,
+        &proof
+    ));
+    let complaint = json!({
+        "seed": "cheater", "dealer": trustees[0], "recipient": trustees[2], "index": 3,
+        "dealing": dealing_json(&cheat), "secret": encode_point(&secret), "proof": b(&proof),
+    });
 
     let votes: [(&str, [bool; 3]); 3] = [
         (
@@ -99,42 +162,41 @@ fn render() -> Value {
             aggregate[j] = aggregate[j].add(&c.ct);
         }
         ballots.push(json!({
-            "voter": voter,
-            "seed": seed,
-            "selection": selection,
+            "voter": voter, "seed": seed, "selection": selection,
             "ballot": ballot_json(&ballot),
             "digest": hex::encode(ballot_digest(poll_id, voter, &ballot)),
         }));
     }
 
+    // Trustees #1 and #3 decrypt; #2 never shows up.
     let mut partials = vec![];
-    for ((account, _), x) in trustees.iter().zip(&secrets) {
-        let seed = format!("partial-{account}");
+    let mut picked: Vec<Vec<(u32, curve25519_dalek::ristretto::RistrettoPoint)>> =
+        vec![vec![]; rules.options];
+    for k in [0usize, 2] {
+        let seed = format!("partial-{k}");
         let mut rng = seeded_rng(seed.as_bytes());
         let mut per_option = vec![];
         for (j, ct) in aggregate.iter().enumerate() {
-            let (d, proof) = partial_decrypt(poll_id, account, j as u32, x, &ct.a, &mut rng);
-            per_option.push(json!({
-                "d": encode_point(&d),
-                "proof": { "c": encode_scalar(&proof.c), "z": encode_scalar(&proof.z) },
-            }));
+            let (d, proof) =
+                partial_decrypt(poll_id, trustees[k], j as u32, &xs[k], &ct.a, &mut rng);
+            picked[j].push((k as u32 + 1, d));
+            per_option.push(json!({ "d": encode_point(&d), "proof": b(&proof) }));
         }
-        partials.push(json!({ "trustee": account, "seed": seed, "options": per_option }));
+        partials.push(
+            json!({ "trustee": trustees[k], "index": k + 1, "seed": seed, "options": per_option }),
+        );
     }
-
     let counts: Vec<u64> = aggregate
         .iter()
-        .enumerate()
-        .map(|(j, ct)| {
-            let ds: Vec<_> = partials
-                .iter()
-                .map(|p| decode_point(p["options"][j]["d"].as_str().unwrap(), "d").unwrap())
-                .collect();
-            open_count(ct, &ds, votes.len() as u64).unwrap()
-        })
+        .zip(&picked)
+        .map(|(ct, ps)| open_count(ct, ps, votes.len() as u64).unwrap())
         .collect();
     assert_eq!(counts, vec![2, 1, 1]);
 
+    let lagrange: Vec<String> = [1u32, 3, 4]
+        .iter()
+        .map(|i| encode_scalar(&lagrange_at_zero(*i, &[1, 3, 4])))
+        .collect();
     let mut rng = seeded_rng(b"abc");
     let rng_first_three = vec![
         encode_scalar(&rng()),
@@ -151,14 +213,22 @@ fn render() -> Value {
         },
         "rng_seed": "abc",
         "rng_first_three": rng_first_three,
+        "lagrange": {
+            "set": [1, 3, 4],
+            "coefficients": lagrange,
+        },
         "poll_id": poll_id,
+        "trustees": trustees,
+        "threshold": threshold,
         "rules": { "options": rules.options, "min": rules.min, "max": rules.max },
-        "shares": shares,
+        "transport": transport,
+        "dealings": dealings_json,
+        "combined_secrets": xs.iter().map(encode_scalar).collect::<Vec<_>>(),
+        "verification_keys": vkeys,
         "election_key": encode_point(&pk),
+        "complaint": complaint,
         "ballots": ballots,
-        "aggregate": aggregate.iter().map(|c| json!({
-            "a": encode_point(&c.a), "b": encode_point(&c.b)
-        })).collect::<Vec<_>>(),
+        "aggregate": aggregate.iter().map(|c| json!({ "a": encode_point(&c.a), "b": encode_point(&c.b) })).collect::<Vec<_>>(),
         "partials": partials,
         "counts": counts,
     })

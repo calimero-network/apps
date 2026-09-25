@@ -28,11 +28,16 @@ The cryptography is the Helios design, on ristretto255:
 
 - **Exponential ElGamal.** A ballot is one ciphertext per option, each encrypting 0 or 1.
   Ciphertexts add up, so only the per-option *totals* are ever decrypted. Individual ballots never are.
-- **Distributed key.** The election key is the sum of one share per trustee. Each share comes with
-  a Schnorr proof of knowledge, which blocks the rogue-key attack. Decryption needs every trustee.
+- **Threshold key (t-of-n).** The trustees run a Pedersen distributed key generation with
+  Feldman commitments. Each trustee deals shares of a random polynomial to the others, encrypted
+  to their transport keys, and proves knowledge of its constant term (which blocks the rogue-key
+  attack). A trustee sent a bad share files a public complaint that anyone can check, and the
+  cheater is left out. Any `t` trustees can decrypt the totals, fewer than `t` learn nothing, and
+  no one ever holds the whole key.
 - **Disjunctive Chaum–Pedersen proofs (CDS94).** Each option is proven to be 0 or 1, and the number
   chosen is proven to be within `[min, max]`.
-- **Chaum–Pedersen DLEQ proofs.** Each trustee's partial decryption is proven honest.
+- **Chaum–Pedersen DLEQ proofs.** Each trustee's partial decryption is proven against a
+  verification key that anyone can derive from the commitments. Complaints are proven the same way.
 - **Fiat–Shamir.** Every challenge binds the poll id, the author's account and the election key.
   This means a ballot cannot be replayed into another poll or re-cast under another voter's name.
 
@@ -50,8 +55,8 @@ None of those is needed for "secret ballot, public turnout, auditable count" in 
 | --- | --- |
 | every member | who voted, encrypted ballots, all proofs, the final counts |
 | a node operator | the same, and nothing more |
-| any single trustee | nothing more |
-| all trustees colluding off-protocol | individual ballots |
+| fewer than `t` trustees | nothing more |
+| `t` or more trustees colluding off-protocol | individual ballots |
 
 Out of scope: anonymity of *who* voted (turnout is public), and coercion resistance. A voter can
 prove how they voted by revealing their encryption randomness. Voting again replaces a ballot,
@@ -59,25 +64,38 @@ which helps a little against coercion.
 
 ## Lifecycle
 
-1. **Key ceremony.** The creator names trustees (default: themselves) and optionally a voter roll.
-   Each trustee's browser generates a secret and publishes the public share with a proof. The
-   secret stays in that browser (with a downloadable backup) and never touches a node. When
-   every trustee has published, the creator **opens voting** and the election key is frozen.
+1. **Key ceremony.** The creator names `n` trustees and a threshold `t` (the default is a
+   majority), plus an optional voter roll. Each trustee's browser then:
+   1. publishes a **transport key**;
+   2. once all transport keys are in, **deals**: a fresh random polynomial of degree `t−1`, its
+      public commitments, and one share encrypted to each trustee;
+   3. **checks the shares it received** against the commitments, and files a **complaint** if one
+      is bad.
+
+   The creator **opens voting** once at least `t` honest dealings are in. The election key is the
+   sum of those dealers' constant terms, and it is frozen together with the dealings. The only
+   secret a trustee's browser keeps is its transport key (with a downloadable backup). Its combined
+   decryption key is re-derived from the frozen dealings when it's needed.
 2. **Voting.** The browser encrypts, proves and submits. The contract verifies before storing and
    returns the ballot digest, which is the voter's **receipt**. Voting again replaces the ballot.
-3. **Close.** The creator freezes the set of ballots to count: `(voter, digest)` pairs, each
-   re-verified. A voter checks that their receipt is in the set.
-4. **Tally.** Each trustee publishes a partial decryption of the per-option aggregates. When all
-   of them are in, the counts are decrypted.
-5. **Audit.** `get_result` re-checks everything on your node: share proofs, the key sum, every
+3. **Close.** The creator closes the poll. Each node refuses new ballots once it sees the close,
+   but ballots cast before that keep syncing in.
+4. **Seal.** The creator freezes the set of ballots to count, each one re-verified. A voter checks
+   that their receipt is in the set.
+5. **Tally.** Any `t` trustees publish partial decryptions of the per-option aggregates. The
+   counts come from Lagrange-combining the `t` lowest-indexed proven partials, so every verifier
+   combines the same set. Late or extra partials don't change the result.
+6. **Audit.** `get_result` re-checks everything on your node: dealings (proven, and endorsed by
+   each dealer's signed slot), complaints (every disqualification backed by a proven one), the key, every
    ballot proof and digest, voter endorsement (the voter's signed slot still points at the counted
    ballot), every partial, and the decryption. **Re-verify in this browser** runs a second,
    independent TypeScript implementation over `get_transcript` and compares its counts and digest
    with the node's.
-6. **Public anchor (optional).** The canonical transcript has a SHA-256 digest. Publish it
+7. **Public anchor (optional).** The canonical transcript has a SHA-256 digest. Publish it
    somewhere outside the context (a transaction memo, a signed git tag, a post), then record where
    with `anchor_result`. The contract only accepts the digest it computes itself, and every later
-   audit re-checks it.
+   audit re-checks it. The digest covers the key, dealings, ballots and counts, but not the
+   partials. That way a trustee who decrypts after the anchor was recorded can't move it.
 
 ## Layout
 
@@ -117,11 +135,16 @@ MEROD_BINARY=… pnpm -F mero-vote test:e2e
 
 ## Known limits
 
-- **n-of-n trustees.** One missing trustee blocks the tally, and a lost browser key does too
-  unless a backup was kept. A threshold scheme (Pedersen DKG, t-of-n) is the natural next step.
-- **Closing is the creator's view.** A ballot still in flight when the creator closes is not
+- **Setup needs every trustee's transport key.** Dealing can't start until all `n` are in. After
+  that, only `t` dealings are needed to open voting, and only `t` trustees to count.
+- **Closing is still the creator's view.** Close → seal narrows the window: ballots that were
+  already cast arrive before the seal. But a ballot still in flight when the creator seals isn't
   counted. The voter can see this, because their receipt is missing from the counted set.
 - **Ballot stuffing by the creator is detectable, not preventable.** A creator can put a
-  self-made ballot for another account into the closure. The audit flags it, because that
-  account's signed slot does not endorse it, and the victim sees a receipt they never cast.
+  self-made ballot for another account into the seal. The audit flags it, because that account's
+  signed slot doesn't endorse it, and the victim sees a receipt they never cast. Preventing it
+  outright would need voters to sign ballots with a key the creator can't reach. Calimero's
+  signed slots already play that role for everything except the seal itself.
 - **Deadlines are informational.** Node clocks are not a consensus source.
+- **Coercion resistance is out of scope.** A voter can prove how they voted by revealing their
+  encryption randomness.

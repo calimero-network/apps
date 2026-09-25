@@ -29,6 +29,8 @@ export function CreatePoll({
   const [mode, setMode] = useState<Mode>("single");
   const [maxChoices, setMaxChoices] = useState(2);
   const [trustees, setTrustees] = useState<Set<string>>(new Set([me]));
+  // null = the default, a majority of however many trustees are picked.
+  const [thresholdPick, setThresholdPick] = useState<number | null>(null);
   const [everyone, setEveryone] = useState(true);
   const [voters, setVoters] = useState<Set<string>>(new Set(roster.map((m) => m.account)));
   const [closesAt, setClosesAt] = useState("");
@@ -38,6 +40,8 @@ export function CreatePoll({
   const people = roster.some((m) => m.account === me) ? roster : [{ account: me, name: "You" }, ...roster];
   const filled = options.map((o) => o.trim()).filter(Boolean);
   const maxC = Math.min(Math.max(1, maxChoices), Math.max(filled.length, 1));
+  const nT = trustees.size;
+  const threshold = Math.min(Math.max(1, thresholdPick ?? Math.floor(nT / 2) + 1), Math.max(nT, 1));
   const valid =
     title.trim() &&
     filled.length >= 2 &&
@@ -64,6 +68,7 @@ export function CreatePoll({
         min_choices: mode === "single" ? 1 : 0,
         max_choices: mode === "single" ? 1 : maxC,
         trustees: [...trustees],
+        threshold,
         voters: everyone ? [] : [...voters],
         closes_at: closesAt ? new Date(closesAt).getTime() : null,
       });
@@ -136,9 +141,9 @@ export function CreatePoll({
         <fieldset>
           <legend>Trustees — hold the decryption key together</legend>
           <p className="hint">
-            The election key is the sum of one share per trustee, and every trustee must take part to decrypt the
-            tally. No single trustee — including you — can read a ballot. More trustees means more privacy, and more
-            people who must show up to count.
+            Trustees generate the election key together, so no one ever holds all of it. Any threshold of them can
+            decrypt the totals; fewer learn nothing. A higher threshold means more privacy and more people who must
+            show up to count.
           </p>
           <div className="chips">
             {people.map((m) => (
@@ -148,12 +153,31 @@ export function CreatePoll({
               </label>
             ))}
           </div>
-          {trustees.size === 1 && trustees.has(me) && (
+          {nT > 1 && (
+            <label className="inline">
+              Any{" "}
+              <input
+                type="number"
+                className="narrow"
+                aria-label="Threshold"
+                min={1}
+                max={nT}
+                value={threshold}
+                onChange={(e) => setThresholdPick(Number(e.target.value))}
+              />{" "}
+              of the {nT} trustees can decrypt the totals.
+            </label>
+          )}
+          {nT === 1 && trustees.has(me) ? (
             <p className="hint warn">
               With yourself as the only trustee, you alone could decrypt individual ballots. Fine for a quick poll —
-              add a second trustee for a secret one.
+              add trustees for a secret one.
             </p>
-          )}
+          ) : threshold === 1 && nT > 1 ? (
+            <p className="hint warn">A threshold of 1 lets any single trustee decrypt individual ballots.</p>
+          ) : threshold === nT && nT > 1 ? (
+            <p className="hint">All {nT} must take part to count: most private, least available.</p>
+          ) : null}
         </fieldset>
 
         <fieldset>

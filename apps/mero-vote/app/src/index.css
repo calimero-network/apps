@@ -146,6 +146,7 @@ textarea { resize: vertical; width: 100%; }
   padding: 3px 8px; border-radius: 999px; border: 1px solid var(--border); white-space: nowrap; }
 .phase-KeyCeremony { color: var(--warn); }
 .phase-Voting { color: var(--accent); }
+.phase-Closing { color: var(--warn); }
 .phase-Closed { color: var(--text-dim); }
 
 .poll-list { list-style: none; margin: 0; padding: 0; }
@@ -205,3 +206,7 @@ input.narrow { flex: 0 0 64px; width: 64px; }
 .local-audit.ok { border-color: #1f7a45; }
 .local-audit.bad { border-color: var(--danger); }
 .digest { word-break: break-all; }
+.received { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 0.86rem; }
+.received li { display: flex; gap: 8px; align-items: center; }
+.received li.ok { color: var(--accent); }
+.received li.bad { color: var(--danger); }

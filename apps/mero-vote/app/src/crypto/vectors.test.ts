@@ -19,20 +19,30 @@ import {
   ballotFromWire,
   ballotToWire,
   castBallot,
-  combineKeys,
+  complaintIsValid,
+  deal,
+  dealingFromWire,
+  dealingToWire,
   decodePoint,
   decodeScalar,
   encodePoint,
   encodeScalar,
   hashToScalar,
-  makeKeyShare,
+  jointKey,
+  lagrangeAtZero,
+  makeComplaint,
+  makeTransportKey,
   openCount,
+  openShare,
   partialDecrypt,
   seededRng,
+  verificationKey,
   verifyBallot,
-  verifyKeyShare,
+  verifyDealing,
   verifyPartial,
+  verifyTransportKey,
   zeroCt,
+  type Point,
   type Rules,
 } from "./protocol";
 
@@ -41,27 +51,62 @@ const V = JSON.parse(
   readFileSync(resolve(HERE, "..", "..", "..", "logic", "crates", "crypto", "vectors.json"), "utf8"),
 );
 const enc = new TextEncoder();
+const br = (b: { c: bigint; z: bigint }) => ({ c: encodeScalar(b.c), z: encodeScalar(b.z) });
 
 describe("cross-implementation vectors", () => {
-  it("hashes and draws randomness identically", () => {
+  it("hashes, draws randomness and interpolates identically", () => {
     const h = V.hash_to_scalar;
     expect(encodeScalar(hashToScalar(h.domain, h.parts.map((p: string) => enc.encode(p))))).toBe(h.scalar);
     const rng = seededRng(V.rng_seed);
     expect([rng(), rng(), rng()].map(encodeScalar)).toEqual(V.rng_first_three);
+    const set: number[] = V.lagrange.set;
+    expect(set.map((i) => encodeScalar(lagrangeAtZero(i, set)))).toEqual(V.lagrange.coefficients);
   });
 
   it("reproduces the key ceremony", () => {
-    for (const s of V.shares) {
-      const rng = seededRng(s.seed);
-      const x = rng();
-      expect(encodeScalar(x)).toBe(s.secret);
-      const [h, proof] = makeKeyShare(V.poll_id, s.trustee, x, rng);
-      expect(encodePoint(h)).toBe(s.share);
-      expect({ c: encodeScalar(proof.c), z: encodeScalar(proof.z) }).toEqual(s.proof);
-      expect(verifyKeyShare(V.poll_id, s.trustee, h, proof)).toBe(true);
+    const keys: Point[] = [];
+    for (const t of V.transport) {
+      const rng = seededRng(t.seed);
+      const e = rng();
+      expect(encodeScalar(e)).toBe(t.secret);
+      const [key, proof] = makeTransportKey(V.poll_id, t.trustee, e, rng);
+      expect(encodePoint(key)).toBe(t.key);
+      expect(br(proof)).toEqual(t.proof);
+      expect(verifyTransportKey(V.poll_id, t.trustee, key, proof)).toBe(true);
+      keys.push(key);
     }
-    const pk = combineKeys(V.shares.map((s: { share: string }) => decodePoint(s.share)));
-    expect(encodePoint(pk)).toBe(V.election_key);
+    const dealings = V.dealings.map((d: { dealer: string; seed: string; dealing: unknown }) => {
+      const mine = deal(V.poll_id, d.dealer, V.threshold, keys, seededRng(d.seed));
+      expect(dealingToWire(mine)).toEqual(d.dealing);
+      expect(() => verifyDealing(V.poll_id, d.dealer, V.threshold, V.trustees.length, mine)).not.toThrow();
+      return mine;
+    });
+    expect(encodePoint(jointKey(dealings))).toBe(V.election_key);
+    V.trustees.forEach((_: string, j: number) => {
+      const e = decodeScalar(V.transport[j].secret);
+      const x = dealings.reduce(
+        (acc: bigint, d: ReturnType<typeof deal>, i: number) => acc + openShare(V.poll_id, V.trustees[i], j + 1, e, d)!,
+        0n,
+      );
+      expect(encodeScalar(x)).toBe(V.combined_secrets[j]);
+      expect(encodePoint(verificationKey(dealings, j + 1))).toBe(V.verification_keys[j]);
+    });
+  });
+
+  it("reproduces and adjudicates the complaint", () => {
+    const c = V.complaint;
+    const d = dealingFromWire(c.dealing);
+    const e = decodeScalar(V.transport[c.index - 1].secret);
+    expect(openShare(V.poll_id, c.dealer, c.index, e, d)).toBeNull();
+    const rng = seededRng(c.seed);
+    // The fixture's rng was also used to deal first: t coefficients, a nonce, one k per trustee.
+    for (let i = 0; i < V.threshold + 1 + V.trustees.length; i++) rng();
+    const [secret, proof] = makeComplaint(V.poll_id, c.recipient, c.dealer, c.index, e, d, rng);
+    expect(encodePoint(secret)).toBe(c.secret);
+    expect(br(proof)).toEqual(c.proof);
+    const key = decodePoint(V.transport[c.index - 1].key);
+    expect(complaintIsValid(V.poll_id, c.recipient, c.dealer, c.index, key, d, secret, proof)).toBe(true);
+    expect(complaintIsValid(V.poll_id, c.recipient, c.dealer, c.index, decodePoint(V.transport[0].key), d, secret, proof)).toBe(false);
   });
 
   it("reproduces every ballot, digest, partial and count", () => {
@@ -72,7 +117,6 @@ describe("cross-implementation vectors", () => {
       const ballot = castBallot(pk, V.poll_id, b.voter, rules, b.selection, seededRng(b.seed));
       expect(ballotToWire(ballot)).toEqual(b.ballot);
       expect(ballotDigest(V.poll_id, b.voter, ballot)).toBe(b.digest);
-      // And the Rust-made one verifies here.
       const theirs = ballotFromWire(b.ballot);
       expect(() => verifyBallot(pk, V.poll_id, b.voter, rules, theirs)).not.toThrow();
       expect(() => verifyBallot(pk, V.poll_id, "someone-else", rules, theirs)).toThrow();
@@ -80,19 +124,19 @@ describe("cross-implementation vectors", () => {
     }
     expect(agg.map((c) => ({ a: encodePoint(c.a), b: encodePoint(c.b) }))).toEqual(V.aggregate);
 
-    const masks: ReturnType<typeof decodePoint>[][] = agg.map(() => []);
-    V.partials.forEach((p: { trustee: string; seed: string; options: { d: string; proof: { c: string; z: string } }[] }, t: number) => {
-      const x = decodeScalar(V.shares[t].secret);
-      const share = decodePoint(V.shares[t].share);
+    const picked: [number, Point][][] = agg.map(() => []);
+    for (const p of V.partials) {
+      const x = decodeScalar(V.combined_secrets[p.index - 1]);
+      const vkey = decodePoint(V.verification_keys[p.index - 1]);
       const rng = seededRng(p.seed);
       agg.forEach((ct, j) => {
         const [d, proof] = partialDecrypt(V.poll_id, p.trustee, j, x, ct.a, rng);
-        expect(encodePoint(d)).toBe(p.options[j]!.d);
-        expect({ c: encodeScalar(proof.c), z: encodeScalar(proof.z) }).toEqual(p.options[j]!.proof);
-        expect(verifyPartial(V.poll_id, p.trustee, j, share, ct.a, d, proof)).toBe(true);
-        masks[j]!.push(d);
+        expect(encodePoint(d)).toBe(p.options[j].d);
+        expect(br(proof)).toEqual(p.options[j].proof);
+        expect(verifyPartial(V.poll_id, p.trustee, j, vkey, ct.a, d, proof)).toBe(true);
+        picked[j]!.push([p.index, d]);
       });
-    });
-    expect(agg.map((ct, j) => openCount(ct, masks[j]!, V.ballots.length))).toEqual(V.counts);
+    }
+    expect(agg.map((ct, j) => openCount(ct, picked[j]!, V.ballots.length))).toEqual(V.counts);
   });
 });

@@ -73,6 +73,35 @@
         }
       ]
     },
+    "Complaint": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "poll_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "dealer",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "secret",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "proof",
+          "type": {
+            "$ref": "WireBranch"
+          }
+        }
+      ]
+    },
     "CountedBallot": {
       "kind": "record",
       "fields": [
@@ -106,11 +135,35 @@
           }
         },
         {
-          "name": "shares",
+          "name": "threshold",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "transport",
           "type": {
             "kind": "list",
             "items": {
-              "$ref": "KeyShare"
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "qualified",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "QualifiedDealing"
+            }
+          }
+        },
+        {
+          "name": "disqualified",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
             }
           }
         },
@@ -118,29 +171,6 @@
           "name": "opened_at",
           "type": {
             "kind": "u64"
-          }
-        }
-      ]
-    },
-    "KeyShare": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "trustee",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "share",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "proof",
-          "type": {
-            "$ref": "WireBranch"
           }
         }
       ]
@@ -178,7 +208,7 @@
           }
         },
         {
-          "name": "shares",
+          "name": "transport",
           "type": {
             "kind": "map",
             "key": {
@@ -189,7 +219,43 @@
               "fields": [],
               "crdt_type": "lww_register",
               "inner_type": {
-                "$ref": "KeyShare"
+                "$ref": "TransportKey"
+              }
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "dealings",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "record",
+              "fields": [],
+              "crdt_type": "lww_register",
+              "inner_type": {
+                "$ref": "WireDealing"
+              }
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "complaints",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "record",
+              "fields": [],
+              "crdt_type": "lww_register",
+              "inner_type": {
+                "$ref": "Complaint"
               }
             },
             "crdt_type": "unordered_map"
@@ -284,6 +350,9 @@
           "name": "Voting"
         },
         {
+          "name": "Closing"
+        },
+        {
           "name": "Closed"
         }
       ]
@@ -334,6 +403,12 @@
           }
         },
         {
+          "name": "threshold",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
           "name": "voters",
           "type": {
             "kind": "list",
@@ -380,6 +455,13 @@
           "nullable": true
         },
         {
+          "name": "closing_at",
+          "type": {
+            "kind": "u64"
+          },
+          "nullable": true
+        },
+        {
           "name": "closure",
           "type": {
             "$ref": "Closure"
@@ -392,6 +474,23 @@
             "$ref": "Anchor"
           },
           "nullable": true
+        }
+      ]
+    },
+    "QualifiedDealing": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "dealer",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "dealing",
+          "type": {
+            "$ref": "WireDealing"
+          }
         }
       ]
     },
@@ -428,6 +527,23 @@
             "items": {
               "$ref": "WirePartial"
             }
+          }
+        }
+      ]
+    },
+    "TransportKey": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "key",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "proof",
+          "type": {
+            "$ref": "WireBranch"
           }
         }
       ]
@@ -494,6 +610,52 @@
             "items": {
               "$ref": "WireBranch"
             }
+          }
+        }
+      ]
+    },
+    "WireDealing": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "commitments",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "proof",
+          "type": {
+            "$ref": "WireBranch"
+          }
+        },
+        {
+          "name": "shares",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "WireEncShare"
+            }
+          }
+        }
+      ]
+    },
+    "WireEncShare": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "r",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "v",
+          "type": {
+            "kind": "string"
           }
         }
       ]

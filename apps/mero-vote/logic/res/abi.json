@@ -77,6 +77,15 @@
           }
         },
         {
+          "name": "decrypted_by",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        },
+        {
           "name": "transcript_digest",
           "type": {
             "kind": "string"
@@ -112,6 +121,66 @@
           "type": {
             "kind": "u64"
           }
+        }
+      ]
+    },
+    "Ceremony": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "threshold",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "trustees",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "CeremonyTrustee"
+            }
+          }
+        },
+        {
+          "name": "complaints",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "ComplaintView"
+            }
+          }
+        }
+      ]
+    },
+    "CeremonyTrustee": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "account",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "index",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "transport",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "dealing",
+          "type": {
+            "$ref": "WireDealing"
+          },
+          "nullable": true
         }
       ]
     },
@@ -158,6 +227,58 @@
         }
       ]
     },
+    "Complaint": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "poll_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "dealer",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "secret",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "proof",
+          "type": {
+            "$ref": "WireBranch"
+          }
+        }
+      ]
+    },
+    "ComplaintView": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "recipient",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "dealer",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "valid",
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ]
+    },
     "CountedBallot": {
       "kind": "record",
       "fields": [
@@ -191,11 +312,35 @@
           }
         },
         {
-          "name": "shares",
+          "name": "threshold",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "transport",
           "type": {
             "kind": "list",
             "items": {
-              "$ref": "KeyShare"
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "qualified",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "QualifiedDealing"
+            }
+          }
+        },
+        {
+          "name": "disqualified",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
             }
           }
         },
@@ -235,7 +380,30 @@
         }
       ]
     },
-    "Event_KeySharePublished": {
+    "Event_ComplaintFiled": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "poll_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "recipient",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "dealer",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_DealingPublished": {
       "kind": "record",
       "fields": [
         {
@@ -280,7 +448,29 @@
         }
       ]
     },
-    "Event_PollClosed": {
+    "Event_PollClosing": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "poll_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_PollCreated": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "poll_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_PollSealed": {
       "kind": "record",
       "fields": [
         {
@@ -297,11 +487,17 @@
         }
       ]
     },
-    "Event_PollCreated": {
+    "Event_TransportKeyPublished": {
       "kind": "record",
       "fields": [
         {
           "name": "poll_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "trustee",
           "type": {
             "kind": "string"
           }
@@ -326,29 +522,6 @@
           "name": "account",
           "type": {
             "kind": "string"
-          }
-        }
-      ]
-    },
-    "KeyShare": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "trustee",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "share",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "proof",
-          "type": {
-            "$ref": "WireBranch"
           }
         }
       ]
@@ -403,7 +576,7 @@
           }
         },
         {
-          "name": "shares",
+          "name": "transport",
           "type": {
             "kind": "map",
             "key": {
@@ -414,7 +587,43 @@
               "fields": [],
               "crdt_type": "lww_register",
               "inner_type": {
-                "$ref": "KeyShare"
+                "$ref": "TransportKey"
+              }
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "dealings",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "record",
+              "fields": [],
+              "crdt_type": "lww_register",
+              "inner_type": {
+                "$ref": "WireDealing"
+              }
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "complaints",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "record",
+              "fields": [],
+              "crdt_type": "lww_register",
+              "inner_type": {
+                "$ref": "Complaint"
               }
             },
             "crdt_type": "unordered_map"
@@ -509,6 +718,9 @@
           "name": "Voting"
         },
         {
+          "name": "Closing"
+        },
+        {
           "name": "Closed"
         }
       ]
@@ -559,6 +771,12 @@
           }
         },
         {
+          "name": "threshold",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
           "name": "voters",
           "type": {
             "kind": "list",
@@ -601,6 +819,13 @@
           "name": "election",
           "type": {
             "$ref": "Election"
+          },
+          "nullable": true
+        },
+        {
+          "name": "closing_at",
+          "type": {
+            "kind": "u64"
           },
           "nullable": true
         },
@@ -711,6 +936,23 @@
           "name": "can_vote",
           "type": {
             "kind": "bool"
+          }
+        }
+      ]
+    },
+    "QualifiedDealing": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "dealer",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "dealing",
+          "type": {
+            "$ref": "WireDealing"
           }
         }
       ]
@@ -864,12 +1106,35 @@
           }
         },
         {
+          "name": "index",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
           "name": "options",
           "type": {
             "kind": "list",
             "items": {
               "$ref": "WirePartial"
             }
+          }
+        }
+      ]
+    },
+    "TransportKey": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "key",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "proof",
+          "type": {
+            "$ref": "WireBranch"
           }
         }
       ]
@@ -884,10 +1149,35 @@
           }
         },
         {
-          "name": "share_published",
+          "name": "index",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "transport_published",
           "type": {
             "kind": "bool"
           }
+        },
+        {
+          "name": "dealing_published",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "complaints_against",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "qualified",
+          "type": {
+            "kind": "bool"
+          },
+          "nullable": true
         },
         {
           "name": "partial_published",
@@ -1003,6 +1293,52 @@
         }
       ]
     },
+    "WireDealing": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "commitments",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "proof",
+          "type": {
+            "$ref": "WireBranch"
+          }
+        },
+        {
+          "name": "shares",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "WireEncShare"
+            }
+          }
+        }
+      ]
+    },
+    "WireEncShare": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "r",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "v",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
     "WirePartial": {
       "kind": "record",
       "fields": [
@@ -1071,6 +1407,21 @@
       "intent": "mutating"
     },
     {
+      "name": "ceremony",
+      "params": [
+        {
+          "name": "poll_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "Ceremony"
+      },
+      "intent": "read_only"
+    },
+    {
       "name": "close_poll",
       "params": [
         {
@@ -1081,7 +1432,7 @@
         }
       ],
       "returns": {
-        "kind": "u32"
+        "kind": "unit"
       },
       "intent": "mutating"
     },
@@ -1131,6 +1482,12 @@
           }
         },
         {
+          "name": "threshold",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
           "name": "voters",
           "type": {
             "kind": "list",
@@ -1149,6 +1506,39 @@
       ],
       "returns": {
         "kind": "string"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "file_complaint",
+      "params": [
+        {
+          "name": "poll_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "dealer",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "secret",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "proof",
+          "type": {
+            "$ref": "WireBranch"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
       },
       "intent": "mutating"
     },
@@ -1231,7 +1621,7 @@
       "intent": "mutating"
     },
     {
-      "name": "publish_key_share",
+      "name": "publish_dealing",
       "params": [
         {
           "name": "poll_id",
@@ -1240,15 +1630,9 @@
           }
         },
         {
-          "name": "share",
+          "name": "dealing",
           "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "proof",
-          "type": {
-            "$ref": "WireBranch"
+            "$ref": "WireDealing"
           }
         }
       ],
@@ -1282,6 +1666,33 @@
       "intent": "mutating"
     },
     {
+      "name": "publish_transport_key",
+      "params": [
+        {
+          "name": "poll_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "key",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "proof",
+          "type": {
+            "$ref": "WireBranch"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
       "name": "roster",
       "params": [],
       "returns": {
@@ -1291,6 +1702,21 @@
         }
       },
       "intent": "read_only"
+    },
+    {
+      "name": "seal_poll",
+      "params": [
+        {
+          "name": "poll_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "u32"
+      },
+      "intent": "mutating"
     },
     {
       "name": "set_name",
@@ -1345,9 +1771,15 @@
       }
     },
     {
-      "name": "KeySharePublished",
+      "name": "ComplaintFiled",
       "payload": {
-        "$ref": "Event_KeySharePublished"
+        "$ref": "Event_ComplaintFiled"
+      }
+    },
+    {
+      "name": "DealingPublished",
+      "payload": {
+        "$ref": "Event_DealingPublished"
       }
     },
     {
@@ -1363,15 +1795,27 @@
       }
     },
     {
-      "name": "PollClosed",
+      "name": "PollClosing",
       "payload": {
-        "$ref": "Event_PollClosed"
+        "$ref": "Event_PollClosing"
       }
     },
     {
       "name": "PollCreated",
       "payload": {
         "$ref": "Event_PollCreated"
+      }
+    },
+    {
+      "name": "PollSealed",
+      "payload": {
+        "$ref": "Event_PollSealed"
+      }
+    },
+    {
+      "name": "TransportKeyPublished",
+      "payload": {
+        "$ref": "Event_TransportKeyPublished"
       }
     },
     {

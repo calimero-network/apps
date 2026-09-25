@@ -7,6 +7,7 @@ import { errText, short, useLiveRefresh, useMeroVote } from "./useMeroVote";
 const PHASE_LABEL: Record<PollSummary["phase"], string> = {
   KeyCeremony: "Key ceremony",
   Voting: "Voting",
+  Closing: "Closing",
   Closed: "Closed",
 };
 

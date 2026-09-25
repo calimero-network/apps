@@ -1,20 +1,25 @@
 //! # mero-vote — private polls with verifiable tallies
 //!
-//! A context is a group that votes. A poll in it moves through three phases:
+//! A context is a group that votes. A poll in it moves through four phases:
 //!
-//! 1. **Key ceremony.** The creator names the trustees. Each trustee's browser
-//!    generates a secret `xᵢ`, publishes `hᵢ = xᵢ·G` with a proof of knowledge,
-//!    and keeps `xᵢ`. When every trustee has published, the creator opens the
-//!    poll and the election key `H = Σ hᵢ` is frozen.
+//! 1. **Key ceremony** (t-of-n). The creator names `n` trustees and a threshold
+//!    `t`. Each trustee's browser publishes a transport key, then *deals*: a
+//!    random polynomial of degree `t−1`, public commitments to it, and one
+//!    share encrypted to every trustee. A trustee sent a bad share files a
+//!    public, verifiable complaint and the cheating dealer is left out. The
+//!    creator opens voting once at least `t` honest dealings are in, and the
+//!    election key — the sum of the qualified dealers' constant terms — is
+//!    frozen. Nobody ever holds the whole decryption key.
 //! 2. **Voting.** Each voter's *browser* encrypts one 0/1 ciphertext per option
-//!    under `H` and proves, in zero knowledge, that each is 0 or 1 and that the
-//!    count chosen is within the poll's bounds. The node never sees a
-//!    plaintext — which is what makes the ballot secret from a node operator as
-//!    well as from the other members. Voting again replaces the ballot.
-//! 3. **Closed.** The creator freezes the set of ballots to count. Every
-//!    trustee publishes a partial decryption of the per-option *aggregate*
-//!    (never of a ballot) with a proof it is honest. With all of them in, the
-//!    counts fall out.
+//!    under that key and proves, in zero knowledge, that each is 0 or 1 and
+//!    that the count chosen is within the poll's bounds. The node never sees a
+//!    plaintext. Voting again replaces the ballot.
+//! 3. **Closing.** The creator announces the close. Every node refuses new
+//!    ballots from the moment it sees the announcement, but ballots cast before
+//!    that still arrive by sync — which is why the count is not frozen yet.
+//! 4. **Closed.** The creator seals the count, freezing the set of ballots.
+//!    Any `t` trustees publish partial decryptions of the per-option
+//!    *aggregates* (never of a ballot) with proofs; the counts fall out.
 //!
 //! ## Who can see what
 //!
@@ -22,33 +27,29 @@
 //! | --- | --- |
 //! | every member | who voted, the encrypted ballots, every proof, the final counts |
 //! | a node operator | the same — nothing more, because encryption happens in the browser |
-//! | all trustees together | could decrypt individual ballots if they colluded off-protocol |
-//! | any one trustee | nothing |
+//! | `t` or more trustees colluding off-protocol | individual ballots |
+//! | fewer than `t` trustees | nothing |
 //!
 //! ## Why the tally is verifiable
 //!
-//! Nothing in [`MeroVote::get_result`] trusts a stored conclusion. It reloads
-//! the frozen ballots, re-checks every proof, recomputes the aggregate,
-//! re-checks every partial decryption and solves for the counts — on the
-//! reader's own node, every time. The same inputs come out of
-//! [`MeroVote::get_transcript`] for an independent verifier (the frontend ships
-//! one in TypeScript), and the transcript digest can be anchored publicly.
+//! Nothing in [`MeroVote::get_result`] trusts a stored conclusion. It re-checks
+//! the dealings, the complaints, the key, every ballot proof, every partial
+//! decryption, and solves for the counts — on the reader's own node, every
+//! time. The same inputs come out of [`MeroVote::get_transcript`] for an
+//! independent verifier (the frontend ships one in TypeScript), and the
+//! transcript digest can be anchored publicly.
 //!
 //! ## What Calimero provides and what it doesn't
 //!
-//! * **Authorship** — ballots, key shares and partials live in the author's
-//!   [`UserStorage`] slot, and polls in an [`AuthoredMap`] owned by their
-//!   creator. Both are signed and checked at MERGE, so a modified node cannot
-//!   write into someone else's slot. That is what makes "one account, one
-//!   ballot" hold without any signature code in this contract.
-//! * **Immutability** — ballot bodies are content-addressed in
-//!   [`FrozenStorage`], so a ballot counted at close cannot be altered or
-//!   removed afterwards, even by its author.
-//! * **Replication** — every member holds the whole ballot box, so every member
-//!   can audit it.
-//! * **Secrecy from co-members** — NOT provided. Replicated means replicated to
-//!   everyone. That is the one property this app adds with cryptography
-//!   (`mero-vote-crypto`), and it needs no SNARK: sigma-protocol proofs suffice.
+//! * **Authorship** — ballots, transport keys, dealings, complaints and
+//!   partials live in the author's [`UserStorage`] slot, and polls in an
+//!   [`AuthoredMap`] owned by their creator. Both are signed and checked at
+//!   MERGE, so a modified node cannot write into someone else's slot.
+//! * **Immutability** — ballot bodies and poll definitions are
+//!   content-addressed in [`FrozenStorage`].
+//! * **Replication** — every member holds the whole ballot box.
+//! * **Secrecy from co-members** — NOT provided. That is what the
+//!   cryptography in `mero-vote-crypto` adds, with sigma protocols — no SNARK.
 
 #![allow(clippy::len_without_is_empty)]
 
@@ -64,317 +65,197 @@ use mero_vote_crypto as crypto;
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
-/// Upper bound on trustees. Each one costs every verifier a DLEQ check per
-/// option, and n-of-n decryption means each one is also a party who can stall
-/// the tally by never showing up.
+/// Upper bound on trustees. Every dealing carries one encrypted share per
+/// trustee, so the ceremony is quadratic in this.
 pub const MAX_TRUSTEES: usize = 8;
 /// Upper bound on an explicit voter roll.
 pub const MAX_VOTERS: usize = 1024;
 
-// ── wire types (what the browser sends and reads) ───────────────────────────
-
-/// One `(c, z)` pair of a proof, as 64-hex scalars.
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    BorshSerialize,
-    BorshDeserialize,
-    Serialize,
-    Deserialize,
-    calimero_sdk::abi::AbiType,
-)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
-pub struct WireBranch {
-    pub c: String,
-    pub z: String,
+/// Everything that crosses the wire or is stored: borsh for storage, serde for
+/// JSON-RPC, `AbiType` for the generated client.
+macro_rules! wire {
+    ($($item:item)*) => {$(
+        #[derive(
+            Debug, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, Serialize, Deserialize,
+            calimero_sdk::abi::AbiType,
+        )]
+        #[borsh(crate = "calimero_sdk::borsh")]
+        #[serde(crate = "calimero_sdk::serde")]
+        $item
+    )*};
 }
 
-/// One option's ciphertext and its 0-or-1 proof.
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    BorshSerialize,
-    BorshDeserialize,
-    Serialize,
-    Deserialize,
-    calimero_sdk::abi::AbiType,
-)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
-pub struct WireChoice {
-    pub a: String,
-    pub b: String,
-    pub proof: Vec<WireBranch>,
+/// Read-only views: serde + ABI only.
+macro_rules! view {
+    ($($item:item)*) => {$(
+        #[derive(Debug, Clone, Serialize, calimero_sdk::abi::AbiType)]
+        #[serde(crate = "calimero_sdk::serde")]
+        $item
+    )*};
 }
 
-/// An encrypted ballot exactly as the browser built it.
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    BorshSerialize,
-    BorshDeserialize,
-    Serialize,
-    Deserialize,
-    calimero_sdk::abi::AbiType,
-)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
-pub struct WireBallot {
-    pub choices: Vec<WireChoice>,
-    pub sum_proof: Vec<WireBranch>,
-}
+// ── wire types ──────────────────────────────────────────────────────────────
 
-/// A trustee's partial decryption of one option's aggregate.
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    BorshSerialize,
-    BorshDeserialize,
-    Serialize,
-    Deserialize,
-    calimero_sdk::abi::AbiType,
-)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
-pub struct WirePartial {
-    pub d: String,
-    pub proof: WireBranch,
-}
+wire! {
+    /// One `(c, z)` pair of a proof, as 64-hex scalars.
+    pub struct WireBranch {
+        pub c: String,
+        pub z: String,
+    }
 
-/// A ciphertext pair.
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    BorshSerialize,
-    BorshDeserialize,
-    Serialize,
-    Deserialize,
-    calimero_sdk::abi::AbiType,
-)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
-pub struct WireCiphertext {
-    pub a: String,
-    pub b: String,
-}
+    /// One option's ciphertext and its 0-or-1 proof.
+    pub struct WireChoice {
+        pub a: String,
+        pub b: String,
+        pub proof: Vec<WireBranch>,
+    }
 
-// ── stored types ────────────────────────────────────────────────────────────
+    /// An encrypted ballot exactly as the browser built it.
+    pub struct WireBallot {
+        pub choices: Vec<WireChoice>,
+        pub sum_proof: Vec<WireBranch>,
+    }
 
-/// The immutable part of a poll. Stored content-addressed; its SHA-256 IS the
-/// poll id, so the options voters saw can never be edited under them.
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    BorshSerialize,
-    BorshDeserialize,
-    Serialize,
-    Deserialize,
-    calimero_sdk::abi::AbiType,
-)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
-pub struct PollDefinition {
-    pub title: String,
-    pub description: String,
-    pub options: Vec<String>,
-    pub min_choices: u32,
-    pub max_choices: u32,
-    /// Accounts whose key shares make up the election key. All of them must
-    /// publish a partial decryption before the result exists.
-    pub trustees: Vec<String>,
-    /// Accounts allowed to vote. Empty means any member of the context.
-    pub voters: Vec<String>,
-    pub creator: String,
-    /// Milliseconds. Also makes two otherwise identical polls distinct.
-    pub created_at: u64,
-    /// Informational deadline in milliseconds. Closing is an explicit act of
-    /// the creator: node clocks are not a consensus source.
-    pub closes_at: Option<u64>,
-}
+    /// A trustee's partial decryption of one option's aggregate.
+    pub struct WirePartial {
+        pub d: String,
+        pub proof: WireBranch,
+    }
 
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    BorshSerialize,
-    BorshDeserialize,
-    Serialize,
-    Deserialize,
-    calimero_sdk::abi::AbiType,
-)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
-pub enum Phase {
-    KeyCeremony,
-    Voting,
-    Closed,
-}
+    pub struct WireCiphertext {
+        pub a: String,
+        pub b: String,
+    }
 
-/// A trustee's published share, as frozen into the election at open.
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    BorshSerialize,
-    BorshDeserialize,
-    Serialize,
-    Deserialize,
-    calimero_sdk::abi::AbiType,
-)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
-pub struct KeyShare {
-    pub trustee: String,
-    pub share: String,
-    pub proof: WireBranch,
-}
+    /// One share of a dealing, encrypted to its recipient's transport key.
+    pub struct WireEncShare {
+        pub r: String,
+        pub v: String,
+    }
 
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    BorshSerialize,
-    BorshDeserialize,
-    Serialize,
-    Deserialize,
-    calimero_sdk::abi::AbiType,
-)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
-pub struct Election {
-    pub key: String,
-    pub shares: Vec<KeyShare>,
-    pub opened_at: u64,
-}
+    /// A trustee's contribution to the distributed key.
+    pub struct WireDealing {
+        /// `t` Feldman commitments, constant term first.
+        pub commitments: Vec<String>,
+        /// Proof of knowledge of the constant term.
+        pub proof: WireBranch,
+        /// One per trustee, in the poll's trustee order.
+        pub shares: Vec<WireEncShare>,
+    }
 
-/// One ballot the closure commits to count.
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    BorshSerialize,
-    BorshDeserialize,
-    Serialize,
-    Deserialize,
-    calimero_sdk::abi::AbiType,
-)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
-pub struct CountedBallot {
-    pub voter: String,
-    /// The protocol digest — the voter's receipt.
-    pub digest: String,
-    /// Where the body lives in `ballot_bodies`.
-    pub frozen: String,
-}
+    /// A trustee's transport key and its proof of knowledge.
+    pub struct TransportKey {
+        pub key: String,
+        pub proof: WireBranch,
+    }
 
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    BorshSerialize,
-    BorshDeserialize,
-    Serialize,
-    Deserialize,
-    calimero_sdk::abi::AbiType,
-)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
-pub struct Closure {
-    pub counted: Vec<CountedBallot>,
-    pub closed_at: u64,
-}
+    /// "Dealer X sent me a share that does not match its commitments", with
+    /// the ECDH secret for that one share and a DLEQ proof it is genuine.
+    pub struct Complaint {
+        pub poll_id: String,
+        pub dealer: String,
+        pub secret: String,
+        pub proof: WireBranch,
+    }
 
-/// A pointer from the context to a public record of the transcript digest —
-/// a transaction hash, a signed tag, a URL. The anchoring itself happens
-/// outside Calimero; this records where, and which digest.
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    BorshSerialize,
-    BorshDeserialize,
-    Serialize,
-    Deserialize,
-    calimero_sdk::abi::AbiType,
-)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
-pub struct Anchor {
-    pub digest: String,
-    pub network: String,
-    pub reference: String,
-    pub anchored_at: u64,
-}
+    /// The immutable part of a poll. Stored content-addressed; its SHA-256 IS
+    /// the poll id, so nothing voters relied on can be edited under them.
+    pub struct PollDefinition {
+        pub title: String,
+        pub description: String,
+        pub options: Vec<String>,
+        pub min_choices: u32,
+        pub max_choices: u32,
+        /// Accounts that hold the decryption key between them, in index order
+        /// (trustee `i` in this list has Shamir index `i + 1`).
+        pub trustees: Vec<String>,
+        /// How many trustees it takes to decrypt. 1..=trustees.len().
+        pub threshold: u32,
+        /// Accounts allowed to vote. Empty means any member of the context.
+        pub voters: Vec<String>,
+        pub creator: String,
+        /// Milliseconds. Also makes two otherwise identical polls distinct.
+        pub created_at: u64,
+        /// Informational deadline in milliseconds. Node clocks are not a
+        /// consensus source, so closing is an explicit act of the creator.
+        pub closes_at: Option<u64>,
+    }
 
-/// The mutable part of a poll, owned by its creator.
-#[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    BorshSerialize,
-    BorshDeserialize,
-    Serialize,
-    Deserialize,
-    calimero_sdk::abi::AbiType,
-)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
-pub struct PollState {
-    pub phase: Phase,
-    pub election: Option<Election>,
-    pub closure: Option<Closure>,
-    pub anchor: Option<Anchor>,
-}
+    pub enum Phase {
+        KeyCeremony,
+        Voting,
+        Closing,
+        Closed,
+    }
 
-/// A ballot body, content-addressed.
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, calimero_sdk::abi::AbiType)]
-#[borsh(crate = "calimero_sdk::borsh")]
-pub struct StoredBallot {
-    pub poll_id: String,
-    pub voter: String,
-    pub ballot: WireBallot,
-}
+    pub struct QualifiedDealing {
+        pub dealer: String,
+        pub dealing: WireDealing,
+    }
 
-/// What a voter's slot holds for a poll: which body is theirs.
-#[derive(
-    Debug, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, calimero_sdk::abi::AbiType,
-)]
-#[borsh(crate = "calimero_sdk::borsh")]
-pub struct BallotPointer {
-    pub digest: String,
-    pub frozen: String,
-    pub cast_at: u64,
-}
+    /// The key ceremony's outcome, frozen at open.
+    pub struct Election {
+        pub key: String,
+        pub threshold: u32,
+        /// Transport keys, in trustee order. Frozen because complaints are
+        /// adjudicated against them.
+        pub transport: Vec<String>,
+        /// Dealings that make up the key, in trustee order.
+        pub qualified: Vec<QualifiedDealing>,
+        /// Dealers left out because a complaint proved they cheated.
+        pub disqualified: Vec<String>,
+        pub opened_at: u64,
+    }
 
-/// A trustee's partial decryptions for every option of one poll.
-#[derive(
-    Debug, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, calimero_sdk::abi::AbiType,
-)]
-#[borsh(crate = "calimero_sdk::borsh")]
-pub struct StoredPartials {
-    pub options: Vec<WirePartial>,
+    /// One ballot the seal commits to count.
+    pub struct CountedBallot {
+        pub voter: String,
+        /// The protocol digest — the voter's receipt.
+        pub digest: String,
+        /// Where the body lives in `ballot_bodies`.
+        pub frozen: String,
+    }
+
+    pub struct Closure {
+        pub counted: Vec<CountedBallot>,
+        pub closed_at: u64,
+    }
+
+    /// A pointer from the context to a public record of the transcript digest.
+    pub struct Anchor {
+        pub digest: String,
+        pub network: String,
+        pub reference: String,
+        pub anchored_at: u64,
+    }
+
+    /// The mutable part of a poll, owned by its creator.
+    pub struct PollState {
+        pub phase: Phase,
+        pub election: Option<Election>,
+        /// When the close was announced (phase Closing onward).
+        pub closing_at: Option<u64>,
+        pub closure: Option<Closure>,
+        pub anchor: Option<Anchor>,
+    }
+
+    /// A ballot body, content-addressed.
+    pub struct StoredBallot {
+        pub poll_id: String,
+        pub voter: String,
+        pub ballot: WireBallot,
+    }
+
+    /// What a voter's slot holds for a poll: which body is theirs.
+    pub struct BallotPointer {
+        pub digest: String,
+        pub frozen: String,
+        pub cast_at: u64,
+    }
+
+    pub struct StoredPartials {
+        pub options: Vec<WirePartial>,
+    }
 }
 
 /// Everything one account authors. Lives in [`UserStorage`], so only that
@@ -386,142 +267,185 @@ pub struct StoredPartials {
 pub struct MemberSlot {
     name: LwwRegister<String>,
     ballots: UnorderedMap<String, LwwRegister<BallotPointer>>,
-    shares: UnorderedMap<String, LwwRegister<KeyShare>>,
+    transport: UnorderedMap<String, LwwRegister<TransportKey>>,
+    dealings: UnorderedMap<String, LwwRegister<WireDealing>>,
+    /// Keyed `"{poll_id}/{dealer}"`.
+    complaints: UnorderedMap<String, LwwRegister<Complaint>>,
     partials: UnorderedMap<String, LwwRegister<StoredPartials>>,
 }
 
 // ── views ───────────────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Serialize, calimero_sdk::abi::AbiType)]
-#[serde(crate = "calimero_sdk::serde")]
-pub struct Member {
-    pub account: String,
-    pub name: String,
-}
+view! {
+    pub struct Member {
+        pub account: String,
+        pub name: String,
+    }
 
-#[derive(Debug, Clone, Serialize, calimero_sdk::abi::AbiType)]
-#[serde(crate = "calimero_sdk::serde")]
-pub struct PollSummary {
-    pub poll_id: String,
-    pub title: String,
-    pub creator: String,
-    pub phase: Phase,
-    pub created_at: u64,
-    pub ballots: u32,
-}
+    pub struct PollSummary {
+        pub poll_id: String,
+        pub title: String,
+        pub creator: String,
+        pub phase: Phase,
+        pub created_at: u64,
+        pub ballots: u32,
+    }
 
-#[derive(Debug, Clone, Serialize, calimero_sdk::abi::AbiType)]
-#[serde(crate = "calimero_sdk::serde")]
-pub struct TrusteeStatus {
-    pub account: String,
-    pub share_published: bool,
-    pub partial_published: bool,
-}
+    pub struct TrusteeStatus {
+        pub account: String,
+        /// 1-based Shamir index.
+        pub index: u32,
+        pub transport_published: bool,
+        pub dealing_published: bool,
+        /// Valid complaints filed against this trustee's dealing.
+        pub complaints_against: u32,
+        /// Whether this trustee's dealing is part of the key (after open).
+        pub qualified: Option<bool>,
+        pub partial_published: bool,
+    }
 
-/// Who has voted — never what.
-#[derive(Debug, Clone, Serialize, calimero_sdk::abi::AbiType)]
-#[serde(crate = "calimero_sdk::serde")]
-pub struct Turnout {
-    pub voter: String,
-    pub digest: String,
-    pub cast_at: u64,
-}
+    /// Who has voted — never what.
+    pub struct Turnout {
+        pub voter: String,
+        pub digest: String,
+        pub cast_at: u64,
+    }
 
-#[derive(Debug, Clone, Serialize, calimero_sdk::abi::AbiType)]
-#[serde(crate = "calimero_sdk::serde")]
-pub struct PollView {
-    pub poll_id: String,
-    pub definition: PollDefinition,
-    pub state: PollState,
-    pub trustees: Vec<TrusteeStatus>,
-    pub turnout: Vec<Turnout>,
-    /// The caller's own receipt, if they have voted.
-    pub my_digest: Option<String>,
-    pub can_vote: bool,
-}
+    pub struct PollView {
+        pub poll_id: String,
+        pub definition: PollDefinition,
+        pub state: PollState,
+        pub trustees: Vec<TrusteeStatus>,
+        pub turnout: Vec<Turnout>,
+        /// The caller's own receipt, if they have voted.
+        pub my_digest: Option<String>,
+        pub can_vote: bool,
+    }
 
-/// What a trustee's browser needs to compute its partial decryptions.
-#[derive(Debug, Clone, Serialize, calimero_sdk::abi::AbiType)]
-#[serde(crate = "calimero_sdk::serde")]
-pub struct TallyInputs {
-    pub aggregate: Vec<WireCiphertext>,
-    pub counted: u32,
-}
+    pub struct CeremonyTrustee {
+        pub account: String,
+        pub index: u32,
+        pub transport: Option<String>,
+        pub dealing: Option<WireDealing>,
+    }
 
-/// One named check of the audit and whether it held.
-#[derive(Debug, Clone, Serialize, calimero_sdk::abi::AbiType)]
-#[serde(crate = "calimero_sdk::serde")]
-pub struct Check {
-    pub name: String,
-    pub ok: bool,
-    pub detail: String,
-}
+    pub struct ComplaintView {
+        pub recipient: String,
+        pub dealer: String,
+        /// Proves the dealer cheated. An invalid complaint disqualifies no one.
+        pub valid: bool,
+    }
 
-/// Result of re-verifying a poll from its raw inputs.
-#[derive(Debug, Clone, Serialize, calimero_sdk::abi::AbiType)]
-#[serde(crate = "calimero_sdk::serde")]
-pub struct AuditReport {
-    pub poll_id: String,
-    pub phase: Phase,
-    /// Every check held. A poll is only as good as its worst check.
-    pub verified: bool,
-    pub checks: Vec<Check>,
-    /// Per-option counts, once every trustee has published and all checks hold.
-    pub counts: Option<Vec<u64>>,
-    pub counted_ballots: u32,
-    /// Digest of the canonical transcript. What gets anchored.
-    pub transcript_digest: Option<String>,
-    pub anchor: Option<Anchor>,
-}
+    /// What a trustee's browser needs during the key ceremony.
+    pub struct Ceremony {
+        pub threshold: u32,
+        pub trustees: Vec<CeremonyTrustee>,
+        pub complaints: Vec<ComplaintView>,
+    }
 
-#[derive(Debug, Clone, Serialize, calimero_sdk::abi::AbiType)]
-#[serde(crate = "calimero_sdk::serde")]
-pub struct TranscriptBallot {
-    pub voter: String,
-    pub digest: String,
-    pub ballot: WireBallot,
-    /// Whether the voter's own signed slot still points at this ballot.
-    pub endorsed: bool,
-}
+    /// What a trustee's browser needs to compute its partial decryptions.
+    pub struct TallyInputs {
+        pub aggregate: Vec<WireCiphertext>,
+        pub counted: u32,
+    }
 
-#[derive(Debug, Clone, Serialize, calimero_sdk::abi::AbiType)]
-#[serde(crate = "calimero_sdk::serde")]
-pub struct TranscriptPartial {
-    pub trustee: String,
-    pub options: Vec<WirePartial>,
-}
+    pub struct Check {
+        pub name: String,
+        pub ok: bool,
+        pub detail: String,
+    }
 
-/// Every input of the tally, for verification somewhere other than this node.
-#[derive(Debug, Clone, Serialize, calimero_sdk::abi::AbiType)]
-#[serde(crate = "calimero_sdk::serde")]
-pub struct Transcript {
-    pub protocol: String,
-    pub poll_id: String,
-    pub definition: PollDefinition,
-    pub state: PollState,
-    pub ballots: Vec<TranscriptBallot>,
-    pub partials: Vec<TranscriptPartial>,
-    pub report: AuditReport,
-}
+    /// Result of re-verifying a poll from its raw inputs.
+    pub struct AuditReport {
+        pub poll_id: String,
+        pub phase: Phase,
+        /// Every check held. A poll is only as good as its worst check.
+        pub verified: bool,
+        pub checks: Vec<Check>,
+        /// Per-option counts, once `t` trustees have published and all checks hold.
+        pub counts: Option<Vec<u64>>,
+        pub counted_ballots: u32,
+        /// Trustees whose partials were combined, in index order.
+        pub decrypted_by: Vec<String>,
+        /// Digest of the canonical transcript. What gets anchored.
+        pub transcript_digest: Option<String>,
+        pub anchor: Option<Anchor>,
+    }
 
-#[derive(Debug, Clone, Serialize, calimero_sdk::abi::AbiType)]
-#[serde(crate = "calimero_sdk::serde")]
-pub struct Identity {
-    pub account: String,
+    pub struct TranscriptBallot {
+        pub voter: String,
+        pub digest: String,
+        pub ballot: WireBallot,
+        /// Whether the voter's own signed slot still points at this ballot.
+        pub endorsed: bool,
+    }
+
+    pub struct TranscriptPartial {
+        pub trustee: String,
+        pub index: u32,
+        pub options: Vec<WirePartial>,
+    }
+
+    /// Every input of the tally, for verification somewhere other than this node.
+    pub struct Transcript {
+        pub protocol: String,
+        pub poll_id: String,
+        pub definition: PollDefinition,
+        pub state: PollState,
+        pub ballots: Vec<TranscriptBallot>,
+        pub partials: Vec<TranscriptPartial>,
+        pub report: AuditReport,
+    }
+
+    pub struct Identity {
+        pub account: String,
+    }
 }
 
 // ── events & errors ─────────────────────────────────────────────────────────
 
 #[app::event]
 pub enum Event {
-    PollCreated { poll_id: String },
-    KeySharePublished { poll_id: String, trustee: String },
-    VotingOpened { poll_id: String },
-    BallotCast { poll_id: String, voter: String },
-    PollClosed { poll_id: String, counted: u32 },
-    PartialPublished { poll_id: String, trustee: String },
-    Anchored { poll_id: String },
-    MemberNamed { account: String },
+    PollCreated {
+        poll_id: String,
+    },
+    TransportKeyPublished {
+        poll_id: String,
+        trustee: String,
+    },
+    DealingPublished {
+        poll_id: String,
+        trustee: String,
+    },
+    ComplaintFiled {
+        poll_id: String,
+        recipient: String,
+        dealer: String,
+    },
+    VotingOpened {
+        poll_id: String,
+    },
+    BallotCast {
+        poll_id: String,
+        voter: String,
+    },
+    PollClosing {
+        poll_id: String,
+    },
+    PollSealed {
+        poll_id: String,
+        counted: u32,
+    },
+    PartialPublished {
+        poll_id: String,
+        trustee: String,
+    },
+    Anchored {
+        poll_id: String,
+    },
+    MemberNamed {
+        account: String,
+    },
 }
 
 #[derive(Debug, Error, Serialize)]
@@ -583,6 +507,10 @@ fn parse_hash(s: &str) -> Result<[u8; 32], VoteError> {
         .ok_or_else(|| VoteError::Invalid(format!("not a 64-hex id: {s}")))
 }
 
+fn complaint_key(poll_id: &str, dealer: &str) -> String {
+    format!("{poll_id}/{dealer}")
+}
+
 fn branch(w: &WireBranch, what: &'static str) -> Result<crypto::Branch, crypto::CryptoError> {
     Ok(crypto::Branch {
         c: crypto::decode_scalar(&w.c, what)?,
@@ -618,6 +546,27 @@ pub fn decode_ballot(w: &WireBallot) -> Result<crypto::Ballot, crypto::CryptoErr
     })
 }
 
+pub fn decode_dealing(w: &WireDealing) -> Result<crypto::Dealing, crypto::CryptoError> {
+    Ok(crypto::Dealing {
+        commitments: w
+            .commitments
+            .iter()
+            .map(|c| crypto::decode_point(c, "commitment"))
+            .collect::<Result<_, _>>()?,
+        proof: branch(&w.proof, "dealing proof")?,
+        shares: w
+            .shares
+            .iter()
+            .map(|s| {
+                Ok(crypto::EncryptedShare {
+                    r: crypto::decode_point(&s.r, "share")?,
+                    v: crypto::decode_scalar(&s.v, "share")?,
+                })
+            })
+            .collect::<Result<_, crypto::CryptoError>>()?,
+    })
+}
+
 fn rules(def: &PollDefinition) -> crypto::Rules {
     crypto::Rules {
         options: def.options.len(),
@@ -630,18 +579,59 @@ fn eligible(def: &PollDefinition, account: &str) -> bool {
     def.voters.is_empty() || def.voters.iter().any(|v| v == account)
 }
 
+fn trustee_index(def: &PollDefinition, account: &str) -> Option<u32> {
+    def.trustees
+        .iter()
+        .position(|t| t == account)
+        .map(|i| i as u32 + 1)
+}
+
+/// Verify a complaint against the given dealing and transport key.
+fn complaint_holds(
+    poll_id: &str,
+    def: &PollDefinition,
+    recipient: &str,
+    complaint: &Complaint,
+    dealing: &crypto::Dealing,
+    transport: &str,
+) -> bool {
+    let (Some(index), Ok(key), Ok(secret), Ok(proof)) = (
+        trustee_index(def, recipient),
+        crypto::decode_point(transport, "transport"),
+        crypto::decode_point(&complaint.secret, "complaint"),
+        branch(&complaint.proof, "complaint proof"),
+    ) else {
+        return false;
+    };
+    crypto::complaint_is_valid(
+        poll_id,
+        recipient,
+        &complaint.dealer,
+        index,
+        &key,
+        dealing,
+        &secret,
+        &proof,
+    )
+}
+
 /// The canonical transcript text. One line per fact, free text hex-encoded so
 /// a newline in a title cannot forge a line. Its SHA-256 is the digest a poll
 /// is anchored by; the TypeScript verifier rebuilds it byte for byte.
+///
+/// Partial decryptions are deliberately NOT in it. Any `t` honest partials
+/// give the same counts, and a trustee publishing late changes which `t` get
+/// combined — so a digest over them would move after it had been anchored. The
+/// digest commits to the key, the ballots and the counts; the partials that
+/// prove the counts travel in the transcript and are verified from there.
 pub fn transcript_text(
     poll_id: &str,
     def: &PollDefinition,
     election: &Election,
     counted: &[CountedBallot],
-    partials: &[(String, Vec<WirePartial>)],
     counts: &[u64],
 ) -> String {
-    let mut out = String::from("mero-vote/v1/transcript\n");
+    let mut out = String::from("mero-vote/v2/transcript\n");
     out.push_str(&format!("poll {poll_id}\n"));
     out.push_str(&format!("title {}\n", hex::encode(def.title.as_bytes())));
     for (i, o) in def.options.iter().enumerate() {
@@ -653,17 +643,27 @@ pub fn transcript_text(
         def.min_choices,
         def.max_choices
     ));
-    out.push_str(&format!("key {}\n", election.key));
-    for s in &election.shares {
-        out.push_str(&format!("share {} {}\n", s.trustee, s.share));
+    out.push_str(&format!(
+        "threshold {} {}\n",
+        election.threshold,
+        def.trustees.len()
+    ));
+    for (i, t) in def.trustees.iter().enumerate() {
+        out.push_str(&format!("trustee {} {t}\n", i + 1));
     }
+    for q in &election.qualified {
+        out.push_str(&format!(
+            "dealer {} {}\n",
+            q.dealer,
+            q.dealing.commitments.join(" ")
+        ));
+    }
+    for d in &election.disqualified {
+        out.push_str(&format!("disqualified {d}\n"));
+    }
+    out.push_str(&format!("key {}\n", election.key));
     for b in counted {
         out.push_str(&format!("ballot {} {}\n", b.voter, b.digest));
-    }
-    for (trustee, ps) in partials {
-        for (j, p) in ps.iter().enumerate() {
-            out.push_str(&format!("partial {trustee} {j} {}\n", p.d));
-        }
     }
     for (j, n) in counts.iter().enumerate() {
         out.push_str(&format!("count {j} {n}\n"));
@@ -736,6 +736,7 @@ impl MeroVote {
                 account: account.to_string(),
                 name: slot.name.get().clone(),
             })
+            .filter(|m| !m.name.is_empty())
             .collect();
         out.sort_by(|a, b| a.name.cmp(&b.name).then(a.account.cmp(&b.account)));
         Ok(out)
@@ -752,6 +753,7 @@ impl MeroVote {
         min_choices: u32,
         max_choices: u32,
         trustees: Vec<String>,
+        threshold: u32,
         voters: Vec<String>,
         closes_at: Option<u64>,
     ) -> app::Result<String> {
@@ -808,6 +810,12 @@ impl MeroVote {
                 "a poll needs at least one trustee".into()
             ));
         }
+        if threshold == 0 || threshold as usize > trustees.len() {
+            app::bail!(VoteError::Invalid(format!(
+                "the threshold must be 1..={} (the number of trustees)",
+                trustees.len()
+            )));
+        }
         let voters = dedup(voters, "voters", MAX_VOTERS)?;
 
         let def = PollDefinition {
@@ -817,6 +825,7 @@ impl MeroVote {
             min_choices,
             max_choices,
             trustees,
+            threshold,
             voters,
             creator: me(),
             created_at: now_ms(),
@@ -828,6 +837,7 @@ impl MeroVote {
             LwwRegister::new(PollState {
                 phase: Phase::KeyCeremony,
                 election: None,
+                closing_at: None,
                 closure: None,
                 anchor: None,
             }),
@@ -869,15 +879,25 @@ impl MeroVote {
 
     pub fn get_poll(&self, poll_id: String) -> app::Result<PollView> {
         let (def, state) = self.load(&poll_id)?;
+        let ceremony = self.ceremony_of(&poll_id, &def)?;
         let mut trustees = Vec::new();
-        for t in &def.trustees {
+        for (i, t) in def.trustees.iter().enumerate() {
             let slot = self.slot_of(t)?;
+            let complaints_against = ceremony
+                .complaints
+                .iter()
+                .filter(|c| &c.dealer == t && c.valid)
+                .count() as u32;
             trustees.push(TrusteeStatus {
                 account: t.clone(),
-                share_published: match &slot {
-                    Some(s) => s.shares.contains(&poll_id)?,
-                    None => false,
-                },
+                index: i as u32 + 1,
+                transport_published: ceremony.trustees[i].transport.is_some(),
+                dealing_published: ceremony.trustees[i].dealing.is_some(),
+                complaints_against,
+                qualified: state
+                    .election
+                    .as_ref()
+                    .map(|e| e.qualified.iter().any(|q| &q.dealer == t)),
                 partial_published: match &slot {
                     Some(s) => s.partials.contains(&poll_id)?,
                     None => false,
@@ -911,81 +931,198 @@ impl MeroVote {
 
     // ── key ceremony ───────────────────────────────────────────────────────
 
-    /// A trustee publishes `h = x·G` and a Schnorr proof of knowledge of `x`.
-    /// The proof is what prevents a rogue-key attack: without it, the last
-    /// trustee could publish `h_evil − Σ others` and decrypt everything alone.
-    pub fn publish_key_share(
+    /// Transport keys, dealings and complaints as they stand.
+    pub fn ceremony(&self, poll_id: String) -> app::Result<Ceremony> {
+        let (def, _) = self.load(&poll_id)?;
+        self.ceremony_of(&poll_id, &def)
+    }
+
+    /// Round 1: a trustee publishes the key dealers will encrypt its shares
+    /// to. Write-once — dealings are addressed to it.
+    pub fn publish_transport_key(
         &mut self,
         poll_id: String,
-        share: String,
+        key: String,
         proof: WireBranch,
     ) -> app::Result<()> {
         let (def, state) = self.load(&poll_id)?;
         let caller = me();
-        if !def.trustees.contains(&caller) {
-            app::bail!(VoteError::Forbidden(
-                "only a named trustee can publish a key share".into()
-            ));
-        }
-        if state.phase != Phase::KeyCeremony {
+        self.require_trustee_in_ceremony(&def, &state, &caller)?;
+        if self.transport_of(&caller, &poll_id)?.is_some() {
             app::bail!(VoteError::Phase(
-                "the election key is already frozen".into()
+                "your transport key is already published".into()
             ));
         }
-        let h = crypto::decode_point(&share, "share").map_err(VoteError::from)?;
-        let p = branch(&proof, "share proof").map_err(VoteError::from)?;
-        if !crypto::verify_key_share(&poll_id, &caller, &h, &p) {
+        let k = crypto::decode_point(&key, "transport key").map_err(VoteError::from)?;
+        let p = branch(&proof, "transport proof").map_err(VoteError::from)?;
+        if !crypto::verify_transport_key(&poll_id, &caller, &k, &p) {
             app::bail!(VoteError::Crypto(
-                "key share proof of knowledge does not verify".into()
+                "transport key proof of knowledge does not verify".into()
             ));
         }
         let mut slot = self.slots.get()?.unwrap_or_default();
-        slot.shares.insert(
+        slot.transport.insert(
             poll_id.clone(),
-            LwwRegister::new(KeyShare {
-                trustee: caller.clone(),
-                share,
-                proof,
-            }),
+            LwwRegister::new(TransportKey { key, proof }),
         )?;
         self.slots.insert(slot)?;
-        app::emit!(Event::KeySharePublished {
+        app::emit!(Event::TransportKeyPublished {
             poll_id,
             trustee: caller
         });
         Ok(())
     }
 
-    /// Freeze the election key from every trustee's share and open voting.
+    /// Round 2: a trustee deals shares of its polynomial to every trustee.
+    /// The contract checks the shape and the proof of knowledge; whether each
+    /// encrypted share matches the commitments only its recipient can tell,
+    /// which is what complaints are for. Write-once.
+    pub fn publish_dealing(&mut self, poll_id: String, dealing: WireDealing) -> app::Result<()> {
+        let (def, state) = self.load(&poll_id)?;
+        let caller = me();
+        self.require_trustee_in_ceremony(&def, &state, &caller)?;
+        if self.dealing_of(&caller, &poll_id)?.is_some() {
+            app::bail!(VoteError::Phase("your dealing is already published".into()));
+        }
+        for t in &def.trustees {
+            if self.transport_of(t, &poll_id)?.is_none() {
+                app::bail!(VoteError::Phase(format!(
+                    "trustee {t} has not published a transport key yet"
+                )));
+            }
+        }
+        let d = decode_dealing(&dealing).map_err(VoteError::from)?;
+        crypto::verify_dealing(&poll_id, &caller, def.threshold, def.trustees.len(), &d)
+            .map_err(VoteError::from)?;
+        let mut slot = self.slots.get()?.unwrap_or_default();
+        slot.dealings
+            .insert(poll_id.clone(), LwwRegister::new(dealing))?;
+        self.slots.insert(slot)?;
+        app::emit!(Event::DealingPublished {
+            poll_id,
+            trustee: caller
+        });
+        Ok(())
+    }
+
+    /// A trustee proves `dealer` sent it a share that does not match the
+    /// dealer's commitments. Refused unless the proof holds AND the share is
+    /// really bad — so a complaint can never frame an honest dealer.
+    pub fn file_complaint(
+        &mut self,
+        poll_id: String,
+        dealer: String,
+        secret: String,
+        proof: WireBranch,
+    ) -> app::Result<()> {
+        let (def, state) = self.load(&poll_id)?;
+        let caller = me();
+        self.require_trustee_in_ceremony(&def, &state, &caller)?;
+        let Some(wire) = self.dealing_of(&dealer, &poll_id)? else {
+            app::bail!(VoteError::Invalid(format!("{dealer} has not dealt")));
+        };
+        let Some(transport) = self.transport_of(&caller, &poll_id)? else {
+            app::bail!(VoteError::Phase("publish your transport key first".into()));
+        };
+        let d = decode_dealing(&wire).map_err(VoteError::from)?;
+        let complaint = Complaint {
+            poll_id: poll_id.clone(),
+            dealer: dealer.clone(),
+            secret,
+            proof,
+        };
+        if !complaint_holds(&poll_id, &def, &caller, &complaint, &d, &transport.key) {
+            app::bail!(VoteError::Crypto(
+                "the complaint does not prove a bad share".into()
+            ));
+        }
+        let mut slot = self.slots.get()?.unwrap_or_default();
+        slot.complaints.insert(
+            complaint_key(&poll_id, &dealer),
+            LwwRegister::new(complaint),
+        )?;
+        self.slots.insert(slot)?;
+        app::emit!(Event::ComplaintFiled {
+            poll_id,
+            recipient: caller,
+            dealer
+        });
+        Ok(())
+    }
+
+    /// Freeze the election key and open voting. The qualified set is every
+    /// verified dealing with no valid complaint against it, and it must hold
+    /// at least `t` dealers — otherwise fewer than `t` colluders could know
+    /// the whole key.
     pub fn open_voting(&mut self, poll_id: String) -> app::Result<String> {
         let (def, mut state) = self.load(&poll_id)?;
         self.require_creator(&def)?;
         if state.phase != Phase::KeyCeremony {
             app::bail!(VoteError::Phase("voting is already open".into()));
         }
-        let mut shares = Vec::new();
-        let mut points = Vec::new();
-        for t in &def.trustees {
-            let Some(share) = self.share_of(t, &poll_id)? else {
+        let ceremony = self.ceremony_of(&poll_id, &def)?;
+        let mut transport = Vec::new();
+        for t in &ceremony.trustees {
+            let Some(k) = &t.transport else {
                 app::bail!(VoteError::Phase(format!(
-                    "trustee {t} has not published a key share"
+                    "trustee {} has not published a transport key",
+                    t.account
                 )));
             };
-            let h = crypto::decode_point(&share.share, "share").map_err(VoteError::from)?;
-            let p = branch(&share.proof, "share proof").map_err(VoteError::from)?;
-            if share.trustee != *t || !crypto::verify_key_share(&poll_id, t, &h, &p) {
-                app::bail!(VoteError::Crypto(format!(
-                    "trustee {t}'s key share does not verify"
-                )));
-            }
-            points.push(h);
-            shares.push(share);
+            transport.push(k.clone());
         }
-        let key = crypto::encode_point(&crypto::combine_keys(&points));
+        let mut qualified = Vec::new();
+        let mut disqualified = Vec::new();
+        for t in &ceremony.trustees {
+            let Some(dealing) = &t.dealing else {
+                continue;
+            };
+            let valid = decode_dealing(dealing)
+                .ok()
+                .filter(|d| {
+                    crypto::verify_dealing(
+                        &poll_id,
+                        &t.account,
+                        def.threshold,
+                        def.trustees.len(),
+                        d,
+                    )
+                    .is_ok()
+                })
+                .is_some();
+            let accused = ceremony
+                .complaints
+                .iter()
+                .any(|c| c.dealer == t.account && c.valid);
+            if valid && !accused {
+                qualified.push(QualifiedDealing {
+                    dealer: t.account.clone(),
+                    dealing: dealing.clone(),
+                });
+            } else if accused {
+                disqualified.push(t.account.clone());
+            }
+        }
+        if qualified.len() < def.threshold as usize {
+            app::bail!(VoteError::Phase(format!(
+                "{} honest dealings; the threshold needs at least {}",
+                qualified.len(),
+                def.threshold
+            )));
+        }
+        let decoded: Vec<crypto::Dealing> = qualified
+            .iter()
+            .map(|q| decode_dealing(&q.dealing))
+            .collect::<Result<_, _>>()
+            .map_err(VoteError::from)?;
+        let key = crypto::encode_point(&crypto::joint_key(&decoded.iter().collect::<Vec<_>>()));
         state.phase = Phase::Voting;
         state.election = Some(Election {
             key: key.clone(),
-            shares,
+            threshold: def.threshold,
+            transport,
+            qualified,
+            disqualified,
             opened_at: now_ms(),
         });
         self.polls.update(&poll_id, LwwRegister::new(state))?;
@@ -1036,17 +1173,36 @@ impl MeroVote {
         Ok(digest)
     }
 
-    /// Freeze the ballots to count: every eligible voter's current ballot, as
-    /// this node sees it now. A ballot still in flight from another node is
-    /// not in the set — which the voter can see, because their receipt is
-    /// either in `closure.counted` or it is not.
-    pub fn close_poll(&mut self, poll_id: String) -> app::Result<u32> {
+    /// Step one of closing: stop accepting ballots. Each node refuses new
+    /// ballots once it sees this; ballots cast before that keep syncing in,
+    /// and the seal is what freezes the count.
+    pub fn close_poll(&mut self, poll_id: String) -> app::Result<()> {
         let (def, mut state) = self.load(&poll_id)?;
         self.require_creator(&def)?;
         if state.phase != Phase::Voting {
             app::bail!(VoteError::Phase("only an open poll can be closed".into()));
         }
-        let election = state.election.as_ref().expect("voting implies an election");
+        state.phase = Phase::Closing;
+        state.closing_at = Some(now_ms());
+        self.polls.update(&poll_id, LwwRegister::new(state))?;
+        app::emit!(Event::PollClosing { poll_id });
+        Ok(())
+    }
+
+    /// Step two: freeze the ballots to count — every eligible voter's
+    /// current, re-verified ballot as this node sees it now.
+    pub fn seal_poll(&mut self, poll_id: String) -> app::Result<u32> {
+        let (def, mut state) = self.load(&poll_id)?;
+        self.require_creator(&def)?;
+        if state.phase != Phase::Closing {
+            app::bail!(VoteError::Phase(
+                "close the poll before sealing the count".into()
+            ));
+        }
+        let election = state
+            .election
+            .as_ref()
+            .expect("closing implies an election");
         let pk = crypto::decode_point(&election.key, "election key").map_err(VoteError::from)?;
         let r = rules(&def);
 
@@ -1085,7 +1241,7 @@ impl MeroVote {
             closed_at: now_ms(),
         });
         self.polls.update(&poll_id, LwwRegister::new(state))?;
-        app::emit!(Event::PollClosed {
+        app::emit!(Event::PollSealed {
             poll_id,
             counted: n
         });
@@ -1099,7 +1255,7 @@ impl MeroVote {
     pub fn tally_inputs(&self, poll_id: String) -> app::Result<TallyInputs> {
         let (def, state) = self.load(&poll_id)?;
         let Some(closure) = &state.closure else {
-            app::bail!(VoteError::Phase("the poll is not closed yet".into()));
+            app::bail!(VoteError::Phase("the count is not sealed yet".into()));
         };
         let aggregate = self.aggregate(&def, closure)?;
         Ok(TallyInputs {
@@ -1114,8 +1270,9 @@ impl MeroVote {
         })
     }
 
-    /// A trustee publishes `Dⱼ = x·Aⱼ` for every option's aggregate `Aⱼ`, each
-    /// with a DLEQ proof tying it to their frozen share.
+    /// A trustee publishes `Dⱼ = xⱼ·Aⱼ` for every option's aggregate, each
+    /// with a DLEQ proof against its verification key `hⱼ`, which anyone can
+    /// derive from the qualified commitments.
     pub fn publish_partial(
         &mut self,
         poll_id: String,
@@ -1124,10 +1281,10 @@ impl MeroVote {
         let (def, state) = self.load(&poll_id)?;
         let caller = me();
         let Some(closure) = &state.closure else {
-            app::bail!(VoteError::Phase("the poll is not closed yet".into()));
+            app::bail!(VoteError::Phase("the count is not sealed yet".into()));
         };
         let election = state.election.as_ref().expect("closed implies an election");
-        let Some(share) = election.shares.iter().find(|s| s.trustee == caller) else {
+        let Some(index) = trustee_index(&def, &caller) else {
             app::bail!(VoteError::Forbidden(
                 "only a trustee can publish a partial decryption".into()
             ));
@@ -1137,12 +1294,12 @@ impl MeroVote {
                 "one partial decryption per option".into()
             ));
         }
-        let h = crypto::decode_point(&share.share, "share").map_err(VoteError::from)?;
+        let vkey = self.verification_key(election, index)?;
         let aggregate = self.aggregate(&def, closure)?;
         for (j, (p, ct)) in partials.iter().zip(&aggregate).enumerate() {
             let d = crypto::decode_point(&p.d, "partial").map_err(VoteError::from)?;
             let proof = branch(&p.proof, "partial proof").map_err(VoteError::from)?;
-            if !crypto::verify_partial(&poll_id, &caller, j as u32, &h, &ct.a, &d, &proof) {
+            if !crypto::verify_partial(&poll_id, &caller, j as u32, &vkey, &ct.a, &d, &proof) {
                 app::bail!(VoteError::Crypto(format!(
                     "partial decryption for option {j} does not verify"
                 )));
@@ -1161,7 +1318,7 @@ impl MeroVote {
         Ok(())
     }
 
-    /// Re-verify everything and, if every trustee has published, the counts.
+    /// Re-verify everything and, once `t` trustees have published, the counts.
     pub fn get_result(&self, poll_id: String) -> app::Result<AuditReport> {
         Ok(self.audit(&poll_id)?.0)
     }
@@ -1182,8 +1339,7 @@ impl MeroVote {
     }
 
     /// Record where the transcript digest was published. Only for a fully
-    /// verified result, and only with the digest this node computes — so an
-    /// anchor can never point at a tally the context does not reproduce.
+    /// verified result, and only with the digest this node computes.
     pub fn anchor_result(
         &mut self,
         poll_id: String,
@@ -1251,6 +1407,25 @@ impl MeroVote {
         Ok(())
     }
 
+    fn require_trustee_in_ceremony(
+        &self,
+        def: &PollDefinition,
+        state: &PollState,
+        caller: &str,
+    ) -> app::Result<()> {
+        if trustee_index(def, caller).is_none() {
+            app::bail!(VoteError::Forbidden(
+                "only a named trustee takes part in the key ceremony".into()
+            ));
+        }
+        if state.phase != Phase::KeyCeremony {
+            app::bail!(VoteError::Phase(
+                "the key ceremony is over — the election key is frozen".into()
+            ));
+        }
+        Ok(())
+    }
+
     fn slot_of(&self, account: &str) -> app::Result<Option<MemberSlot>> {
         let Ok(bytes) = parse_hash(account) else {
             return Ok(None);
@@ -1258,10 +1433,20 @@ impl MeroVote {
         Ok(self.slots.get_for_user(&AccountId::from(bytes))?)
     }
 
-    fn share_of(&self, account: &str, poll_id: &str) -> app::Result<Option<KeyShare>> {
+    fn transport_of(&self, account: &str, poll_id: &str) -> app::Result<Option<TransportKey>> {
         match self.slot_of(account)? {
             Some(slot) => Ok(slot
-                .shares
+                .transport
+                .get(&poll_id.to_owned())?
+                .map(|s| s.get().clone())),
+            None => Ok(None),
+        }
+    }
+
+    fn dealing_of(&self, account: &str, poll_id: &str) -> app::Result<Option<WireDealing>> {
+        match self.slot_of(account)? {
+            Some(slot) => Ok(slot
+                .dealings
                 .get(&poll_id.to_owned())?
                 .map(|s| s.get().clone())),
             None => Ok(None),
@@ -1276,6 +1461,63 @@ impl MeroVote {
                 .map(|s| s.get().clone())),
             None => Ok(None),
         }
+    }
+
+    /// The ceremony from live slots, with every complaint adjudicated.
+    fn ceremony_of(&self, poll_id: &str, def: &PollDefinition) -> app::Result<Ceremony> {
+        let mut trustees = Vec::new();
+        for (i, t) in def.trustees.iter().enumerate() {
+            trustees.push(CeremonyTrustee {
+                account: t.clone(),
+                index: i as u32 + 1,
+                transport: self.transport_of(t, poll_id)?.map(|k| k.key),
+                dealing: self.dealing_of(t, poll_id)?,
+            });
+        }
+        let mut complaints = Vec::new();
+        for recipient in &trustees {
+            let Some(slot) = self.slot_of(&recipient.account)? else {
+                continue;
+            };
+            for dealer in &trustees {
+                let Some(c) = slot
+                    .complaints
+                    .get(&complaint_key(poll_id, &dealer.account))?
+                else {
+                    continue;
+                };
+                let c = c.get().clone();
+                let valid = match (&dealer.dealing, &recipient.transport) {
+                    (Some(w), Some(key)) => decode_dealing(w).is_ok_and(|d| {
+                        complaint_holds(poll_id, def, &recipient.account, &c, &d, key)
+                    }),
+                    _ => false,
+                };
+                complaints.push(ComplaintView {
+                    recipient: recipient.account.clone(),
+                    dealer: dealer.account.clone(),
+                    valid,
+                });
+            }
+        }
+        Ok(Ceremony {
+            threshold: def.threshold,
+            trustees,
+            complaints,
+        })
+    }
+
+    fn verification_key(&self, election: &Election, index: u32) -> app::Result<crypto::Point> {
+        let decoded: Vec<crypto::Dealing> = election
+            .qualified
+            .iter()
+            .map(|q| decode_dealing(&q.dealing))
+            .collect::<Result<_, _>>()
+            .map_err(VoteError::from)?;
+        Ok(crypto::verification_key(
+            &decoded.iter().collect::<Vec<_>>(),
+            index,
+        ))
     }
 
     /// Every account's current ballot pointer for a poll, by account.
@@ -1343,17 +1585,25 @@ impl MeroVote {
         let mut partials_out = Vec::new();
         let mut counts = None;
         let mut digest = None;
+        let mut decrypted_by = Vec::new();
 
-        let finish = |c: Checks, counts, digest, counted: u32, ballots, partials| {
+        let finish = |c: Checks,
+                      counts,
+                      digest,
+                      decrypted_by: Vec<String>,
+                      counted: u32,
+                      ballots,
+                      partials| {
             let verified = c.all_ok();
             Ok((
                 AuditReport {
                     poll_id: poll_id.to_owned(),
-                    phase: state.phase,
+                    phase: state.phase.clone(),
                     verified,
                     checks: c.checks,
                     counts: if verified { counts } else { None },
                     counted_ballots: counted,
+                    decrypted_by: if verified { decrypted_by } else { Vec::new() },
                     transcript_digest: if verified { digest } else { None },
                     anchor: state.anchor.clone(),
                 },
@@ -1362,67 +1612,147 @@ impl MeroVote {
             ))
         };
 
+        let n_trustees = def.trustees.len();
         c.push(
             "definition",
-            rules(&def).check().is_ok() && !def.trustees.is_empty(),
+            rules(&def).check().is_ok()
+                && n_trustees > 0
+                && def.threshold >= 1
+                && def.threshold as usize <= n_trustees,
             format!(
-                "{} options, choose {}..={}",
+                "{} options, choose {}..={}; {}-of-{} trustees",
                 def.options.len(),
                 def.min_choices,
-                def.max_choices
+                def.max_choices,
+                def.threshold,
+                n_trustees
             ),
         );
 
-        // 1. The election key is the sum of trustee shares, each proven.
+        // 1. The key ceremony.
         let Some(election) = &state.election else {
             c.push("election key", true, "key ceremony in progress");
-            return finish(c, None, None, 0, ballots_out, partials_out);
+            return finish(c, None, None, decrypted_by, 0, ballots_out, partials_out);
         };
-        let mut share_points = BTreeMap::new();
-        let mut shares_ok = election.shares.len() == def.trustees.len();
-        for t in &def.trustees {
-            let Some(s) = election.shares.iter().find(|s| &s.trustee == t) else {
-                shares_ok = false;
-                continue;
-            };
-            let proven = crypto::decode_point(&s.share, "share")
-                .ok()
-                .zip(branch(&s.proof, "share proof").ok())
-                .filter(|(h, p)| crypto::verify_key_share(poll_id, t, h, p));
-            match proven {
-                Some((h, _)) => {
-                    share_points.insert(t.clone(), h);
+        let mut dealings = Vec::new();
+        let mut dealings_ok = election.threshold == def.threshold
+            && election.transport.len() == n_trustees
+            && election.qualified.len() >= def.threshold as usize;
+        let mut last_index = 0;
+        for q in &election.qualified {
+            // In trustee order, each dealer at most once.
+            let idx = trustee_index(&def, &q.dealer).unwrap_or(0);
+            dealings_ok &= idx > last_index;
+            last_index = idx;
+            match decode_dealing(&q.dealing) {
+                Ok(d)
+                    if crypto::verify_dealing(
+                        poll_id,
+                        &q.dealer,
+                        def.threshold,
+                        n_trustees,
+                        &d,
+                    )
+                    .is_ok() =>
+                {
+                    dealings.push(d)
                 }
-                None => shares_ok = false,
+                _ => dealings_ok = false,
             }
-            // The trustee's own signed slot must still hold the same share —
-            // that is what shows the trustee, not the creator, made it.
-            if self.share_of(t, poll_id)?.as_ref().map(|x| &x.share) != Some(&s.share) {
-                shares_ok = false;
+            // The dealer's own signed slot must hold the same dealing — that
+            // is what shows the dealer, not the creator, made it.
+            if self.dealing_of(&q.dealer, poll_id)?.as_ref() != Some(&q.dealing) {
+                dealings_ok = false;
             }
         }
         c.push(
-            "trustee shares",
-            shares_ok,
+            "dealings",
+            dealings_ok,
             format!(
-                "{} of {} shares proven and endorsed",
-                share_points.len(),
-                def.trustees.len()
+                "{} qualified dealings (threshold {}), each proven and endorsed by its dealer",
+                election.qualified.len(),
+                def.threshold
             ),
         );
-        let points: Vec<_> = share_points.values().copied().collect();
-        let key_ok =
-            shares_ok && crypto::encode_point(&crypto::combine_keys(&points)) == election.key;
-        c.push("election key", key_ok, "key = sum of trustee shares");
+
+        // Complaints, against the frozen dealings and transport keys: every
+        // disqualified dealer must stand accused by a valid complaint, and no
+        // qualified dealer may be.
+        let mut complaints_ok = true;
+        let mut valid_against: BTreeSet<String> = BTreeSet::new();
+        for (ri, recipient) in def.trustees.iter().enumerate() {
+            let Some(slot) = self.slot_of(recipient)? else {
+                continue;
+            };
+            for dealer in &def.trustees {
+                let Some(cm) = slot.complaints.get(&complaint_key(poll_id, dealer))? else {
+                    continue;
+                };
+                let frozen = election
+                    .qualified
+                    .iter()
+                    .find(|q| &q.dealer == dealer)
+                    .map(|q| q.dealing.clone())
+                    .or(self.dealing_of(dealer, poll_id)?);
+                let holds = frozen.is_some_and(|w| {
+                    decode_dealing(&w).is_ok_and(|d| {
+                        complaint_holds(
+                            poll_id,
+                            &def,
+                            recipient,
+                            cm.get(),
+                            &d,
+                            &election.transport[ri],
+                        )
+                    })
+                });
+                if holds {
+                    valid_against.insert(dealer.clone());
+                }
+            }
+        }
+        for q in &election.qualified {
+            complaints_ok &= !valid_against.contains(&q.dealer);
+        }
+        for d in &election.disqualified {
+            complaints_ok &= valid_against.contains(d);
+        }
+        c.push(
+            "complaints",
+            complaints_ok,
+            if election.disqualified.is_empty() && valid_against.is_empty() {
+                "no dealer was accused".to_owned()
+            } else {
+                format!(
+                    "disqualified by proven complaint: {}",
+                    election.disqualified.join(", ")
+                )
+            },
+        );
+
+        let refs: Vec<&crypto::Dealing> = dealings.iter().collect();
+        let key_ok = dealings_ok && crypto::encode_point(&crypto::joint_key(&refs)) == election.key;
+        c.push(
+            "election key",
+            key_ok,
+            "key = sum of qualified constant terms",
+        );
         let Ok(pk) = crypto::decode_point(&election.key, "election key") else {
-            return finish(c, None, None, 0, ballots_out, partials_out);
+            return finish(c, None, None, decrypted_by, 0, ballots_out, partials_out);
         };
 
-        // 2. Every counted ballot: present, unaltered, well-formed, proven,
-        //    eligible, and endorsed by its voter's signed slot.
+        // 2. Every counted ballot.
         let Some(closure) = &state.closure else {
-            c.push("ballots", true, "voting in progress");
-            return finish(c, None, None, 0, ballots_out, partials_out);
+            c.push(
+                "ballots",
+                true,
+                if state.phase == Phase::Closing {
+                    "closing — the count is not sealed yet"
+                } else {
+                    "voting in progress"
+                },
+            );
+            return finish(c, None, None, decrypted_by, 0, ballots_out, partials_out);
         };
         let r = rules(&def);
         let mut agg = vec![crypto::Ciphertext::zero(); def.options.len()];
@@ -1489,20 +1819,23 @@ impl MeroVote {
             },
         );
 
-        // 3. Partial decryptions, and the counts.
-        let mut partial_rows = Vec::new();
-        let mut masks = vec![Vec::new(); def.options.len()];
-        let mut partials_ok = true;
-        let mut published = 0usize;
-        for t in &def.trustees {
+        // 3. Partial decryptions. Robust: a bad partial (which the contract
+        //    refuses, so only a modified node can produce one) is set aside and
+        //    named, and any `t` good ones decrypt.
+        let mut good: Vec<(u32, String, Vec<crypto::Point>)> = Vec::new();
+        let mut rejected = Vec::new();
+        for (i, t) in def.trustees.iter().enumerate() {
+            let index = i as u32 + 1;
             let Some(ps) = self.partials_of(t, poll_id)? else {
                 continue;
             };
-            published += 1;
-            let Some(h) = share_points.get(t) else {
-                partials_ok = false;
-                continue;
-            };
+            partials_out.push(TranscriptPartial {
+                trustee: t.clone(),
+                index,
+                options: ps.options.clone(),
+            });
+            let vkey = crypto::verification_key(&refs, index);
+            let mut ds = Vec::new();
             let ok = ps.options.len() == agg.len()
                 && ps.options.iter().zip(&agg).enumerate().all(|(j, (p, ct))| {
                     match (
@@ -1511,36 +1844,48 @@ impl MeroVote {
                     ) {
                         (Ok(d), Ok(proof))
                             if crypto::verify_partial(
-                                poll_id, t, j as u32, h, &ct.a, &d, &proof,
+                                poll_id, t, j as u32, &vkey, &ct.a, &d, &proof,
                             ) =>
                         {
-                            masks[j].push(d);
+                            ds.push(d);
                             true
                         }
                         _ => false,
                     }
                 });
-            partials_ok &= ok;
-            partial_rows.push((t.clone(), ps.options.clone()));
-            partials_out.push(TranscriptPartial {
-                trustee: t.clone(),
-                options: ps.options,
-            });
+            if ok {
+                good.push((index, t.clone(), ds));
+            } else {
+                rejected.push(t.clone());
+            }
         }
+        let t = def.threshold as usize;
         c.push(
             "partial decryptions",
-            partials_ok,
+            true,
             format!(
-                "{published} of {} trustees published; every published one proven",
-                def.trustees.len()
+                "{} of {} needed{}",
+                good.len(),
+                t,
+                if rejected.is_empty() {
+                    String::new()
+                } else {
+                    format!("; set aside as unproven: {}", rejected.join(", "))
+                }
             ),
         );
 
-        if published == def.trustees.len() && c.all_ok() {
+        if good.len() >= t && c.all_ok() {
+            // The `t` lowest indices, so every verifier combines the same set.
+            let used = &good[..t];
             let opened: Option<Vec<u64>> = agg
                 .iter()
-                .zip(&masks)
-                .map(|(ct, ds)| crypto::open_count(ct, ds, n as u64))
+                .enumerate()
+                .map(|(j, ct)| {
+                    let ps: Vec<(u32, crypto::Point)> =
+                        used.iter().map(|(i, _, ds)| (*i, ds[j])).collect();
+                    crypto::open_count(ct, &ps, n as u64)
+                })
                 .collect();
             let sum_ok = opened.as_ref().is_some_and(|cs| {
                 let total: u64 = cs.iter().sum();
@@ -1553,14 +1898,7 @@ impl MeroVote {
                 "every option decrypts to a count within 0..=ballots",
             );
             if let (true, Some(cs)) = (sum_ok, opened) {
-                let text = transcript_text(
-                    poll_id,
-                    &def,
-                    election,
-                    &closure.counted,
-                    &partial_rows,
-                    &cs,
-                );
+                let text = transcript_text(poll_id, &def, election, &closure.counted, &cs);
                 let d = transcript_digest(&text);
                 if let Some(a) = &state.anchor {
                     c.push(
@@ -1569,11 +1907,20 @@ impl MeroVote {
                         format!("anchored on {}: {}", a.network, a.reference),
                     );
                 }
+                decrypted_by = used.iter().map(|(_, tr, _)| tr.clone()).collect();
                 digest = Some(d);
                 counts = Some(cs);
             }
         }
-        finish(c, counts, digest, n as u32, ballots_out, partials_out)
+        finish(
+            c,
+            counts,
+            digest,
+            decrypted_by,
+            n as u32,
+            ballots_out,
+            partials_out,
+        )
     }
 }
 

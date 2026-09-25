@@ -44,6 +44,7 @@ fn polls_created_concurrently_all_survive() {
                 1,
                 1,
                 vec![me],
+                1,
                 vec![],
                 None,
             );

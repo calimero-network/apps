@@ -40,7 +40,7 @@ export const IDENTITY = RP.ZERO as unknown as Point;
 export const L = RP.Fn.ORDER;
 const G = BASE;
 
-export const PROTOCOL = "mero-vote/v1/";
+export const PROTOCOL = "mero-vote/v2/";
 export const MAX_OPTIONS = 16;
 
 const utf8 = new TextEncoder();
@@ -394,25 +394,156 @@ export function ballotDigest(pollId: string, voter: string, ballot: Ballot): str
   );
 }
 
-export function makeKeyShare(pollId: string, trustee: string, x: bigint, rng: Rng): [Point, Branch] {
-  return proveKnowledge("keyshare", [utf8.encode(pollId), utf8.encode(trustee)], x, rng);
+// ── distributed key generation (see the Rust for the protocol notes) ───────
+
+export function makeTransportKey(pollId: string, trustee: string, e: bigint, rng: Rng): [Point, Branch] {
+  return proveKnowledge("transport", [utf8.encode(pollId), utf8.encode(trustee)], e, rng);
 }
 
-export function verifyKeyShare(pollId: string, trustee: string, h: Point, p: Branch): boolean {
-  return verifyKnowledge("keyshare", [utf8.encode(pollId), utf8.encode(trustee)], h, p);
+export function verifyTransportKey(pollId: string, trustee: string, key: Point, p: Branch): boolean {
+  return verifyKnowledge("transport", [utf8.encode(pollId), utf8.encode(trustee)], key, p);
 }
 
+export interface EncryptedShare {
+  r: Point;
+  v: bigint;
+}
+
+export interface Dealing {
+  commitments: Point[];
+  proof: Branch;
+  shares: EncryptedShare[];
+}
+
+function shareMask(pollId: string, dealer: string, index: number, r: Point, secret: Point): bigint {
+  return hashToScalar("sharemask", [utf8.encode(pollId), utf8.encode(dealer), u32le(index), r.toBytes(), secret.toBytes()]);
+}
+
+export function evalCommitments(commitments: Point[], x: number): Point {
+  let acc = IDENTITY;
+  let pow = 1n;
+  for (const c of commitments) {
+    acc = acc.add(mulPublic(c, pow));
+    pow = mod(pow * BigInt(x));
+  }
+  return acc;
+}
+
+/** rng order: `threshold` coefficients, the proof nonce, then one k per recipient. */
+export function deal(pollId: string, dealer: string, threshold: number, recipients: Point[], rng: Rng): Dealing {
+  if (threshold < 1 || threshold > recipients.length) throw new Error("threshold must be 1..=trustees");
+  const coeffs: bigint[] = [];
+  for (let i = 0; i < threshold; i++) coeffs.push(rng());
+  const [, proof] = proveKnowledge("keyshare", [utf8.encode(pollId), utf8.encode(dealer)], coeffs[0]!, rng);
+  const commitments = coeffs.map((a) => mulSecret(G, a));
+  const shares = recipients.map((e, pos) => {
+    const index = pos + 1;
+    const x = BigInt(index);
+    const f = coeffs.reduceRight((acc, a) => mod(acc * x + a), 0n);
+    const k = rng();
+    const r = mulSecret(G, k);
+    return { r, v: mod(f + shareMask(pollId, dealer, index, r, mulSecret(e, k))) };
+  });
+  return { commitments, proof, shares };
+}
+
+export function verifyDealing(pollId: string, dealer: string, threshold: number, trustees: number, d: Dealing): void {
+  if (threshold < 1 || d.commitments.length !== threshold || d.shares.length !== trustees) {
+    throw new Error("a dealing has t commitments and one share per trustee");
+  }
+  if (!verifyKnowledge("keyshare", [utf8.encode(pollId), utf8.encode(dealer)], d.commitments[0]!, d.proof)) {
+    throw new Error("dealing: no proof of knowledge of the constant term");
+  }
+}
+
+/** Decrypt and check share `index`; null means the dealer cheated this recipient. */
+export function openShare(pollId: string, dealer: string, index: number, e: bigint, d: Dealing): bigint | null {
+  const enc = d.shares[index - 1];
+  if (!enc) return null;
+  const s = mod(enc.v - shareMask(pollId, dealer, index, enc.r, mulSecret(enc.r, e)));
+  return mulPublic(G, s).equals(evalCommitments(d.commitments, index)) ? s : null;
+}
+
+export function makeComplaint(
+  pollId: string,
+  recipient: string,
+  dealer: string,
+  index: number,
+  e: bigint,
+  d: Dealing,
+  rng: Rng,
+): [Point, Branch] {
+  const enc = d.shares[index - 1];
+  if (!enc) throw new Error("no such share");
+  const [, secret, proof] = proveDleq("complaint", [utf8.encode(pollId), utf8.encode(recipient), utf8.encode(dealer)], enc.r, e, rng);
+  return [secret, proof];
+}
+
+export function complaintIsValid(
+  pollId: string,
+  recipient: string,
+  dealer: string,
+  index: number,
+  transport: Point,
+  d: Dealing,
+  secret: Point,
+  proof: Branch,
+): boolean {
+  const enc = d.shares[index - 1];
+  if (!enc) return false;
+  const ctx = [utf8.encode(pollId), utf8.encode(recipient), utf8.encode(dealer)];
+  if (!verifyDleq("complaint", ctx, enc.r, transport, secret, proof)) return false;
+  const s = mod(enc.v - shareMask(pollId, dealer, index, enc.r, secret));
+  return !mulPublic(G, s).equals(evalCommitments(d.commitments, index));
+}
+
+export function jointKey(qualified: Dealing[]): Point {
+  return qualified.reduce((acc, d) => acc.add(d.commitments[0]!), IDENTITY);
+}
+
+export function verificationKey(qualified: Dealing[], index: number): Point {
+  return qualified.reduce((acc, d) => acc.add(evalCommitments(d.commitments, index)), IDENTITY);
+}
+
+function invert(x: bigint): bigint {
+  // Fermat: x^(ℓ−2) mod ℓ.
+  let result = 1n;
+  let base = mod(x);
+  let e = L - 2n;
+  while (e > 0n) {
+    if (e & 1n) result = mod(result * base);
+    base = mod(base * base);
+    e >>= 1n;
+  }
+  return result;
+}
+
+export function lagrangeAtZero(index: number, set: number[]): bigint {
+  let num = 1n;
+  let den = 1n;
+  for (const m of set) {
+    if (m === index) continue;
+    num = mod(num * BigInt(m));
+    den = mod(den * BigInt(m - index));
+  }
+  return mod(num * invert(den));
+}
+
+/** Under the trustee's combined key xⱼ. */
 export function partialDecrypt(pollId: string, trustee: string, option: number, x: bigint, aggA: Point, rng: Rng): [Point, Branch] {
   const [, d, proof] = proveDleq("partial", [utf8.encode(pollId), utf8.encode(trustee), u32le(option)], aggA, x, rng);
   return [d, proof];
 }
 
-export function verifyPartial(pollId: string, trustee: string, option: number, share: Point, aggA: Point, d: Point, p: Branch): boolean {
-  return verifyDleq("partial", [utf8.encode(pollId), utf8.encode(trustee), u32le(option)], aggA, share, d, p);
+/** `vkey` is the trustee's verificationKey. */
+export function verifyPartial(pollId: string, trustee: string, option: number, vkey: Point, aggA: Point, d: Point, p: Branch): boolean {
+  return verifyDleq("partial", [utf8.encode(pollId), utf8.encode(trustee), u32le(option)], aggA, vkey, d, p);
 }
 
-export function openCount(agg: Ciphertext, partials: Point[], max: number): number | null {
-  const mask = partials.reduce((acc, d) => acc.add(d), IDENTITY);
+/** Combine exactly `t` partials `[index, Dⱼ]` with Lagrange coefficients. */
+export function openCount(agg: Ciphertext, partials: [number, Point][], max: number): number | null {
+  const set = partials.map(([i]) => i);
+  const mask = partials.reduce((acc, [i, d]) => acc.add(mulPublic(d, lagrangeAtZero(i, set))), IDENTITY);
   return smallDlog(agg.b.subtract(mask), max);
 }
 
@@ -460,5 +591,27 @@ export function ballotFromWire(w: WireBallot): Ballot {
       proof: ch.proof.map((p) => branchFromWire(p, "choice proof")),
     })),
     sumProof: w.sum_proof.map((p) => branchFromWire(p, "sum proof")),
+  };
+}
+
+export interface WireDealing {
+  commitments: string[];
+  proof: WireBranch;
+  shares: { r: string; v: string }[];
+}
+
+export function dealingToWire(d: Dealing): WireDealing {
+  return {
+    commitments: d.commitments.map(encodePoint),
+    proof: branchToWire(d.proof),
+    shares: d.shares.map((s) => ({ r: encodePoint(s.r), v: encodeScalar(s.v) })),
+  };
+}
+
+export function dealingFromWire(w: WireDealing): Dealing {
+  return {
+    commitments: w.commitments.map((c) => decodePoint(c, "commitment")),
+    proof: branchFromWire(w.proof, "dealing proof"),
+    shares: w.shares.map((s) => ({ r: decodePoint(s.r, "share"), v: decodeScalar(s.v, "share") })),
   };
 }

@@ -1,7 +1,7 @@
 /**
- * A whole poll through the UI, against a real merod: key ceremony, encrypted
- * ballot, close, threshold decryption, audit on the node, independent re-audit
- * in the browser, public anchor.
+ * A whole poll through the UI, against a real merod: key ceremony (transport
+ * key, dealing, share check), encrypted ballot, close, seal, decryption, audit
+ * on the node, independent re-audit in the browser, public anchor.
  *
  * One account plays every role (creator, sole trustee, voter), which is the one
  * configuration a single node can host. What it proves is the part no other
@@ -58,8 +58,12 @@ test.describe("mero-vote", () => {
     await expect(page.getByRole("heading", { name: title })).toBeVisible({ timeout: TIMEOUT });
 
     // Key ceremony.
-    await btn(page, "Generate & publish my key share").click();
-    await expect(page.getByText("Key share published.")).toBeVisible({ timeout: TIMEOUT });
+    await btn(page, "Publish my transport key").click();
+    await expect(page.getByText("Transport key published.")).toBeVisible({ timeout: TIMEOUT });
+    await btn(page, "Deal my key shares").click();
+    await expect(page.getByText("Shares dealt.")).toBeVisible({ timeout: TIMEOUT });
+    // With one trustee the only share is your own, and it checks out.
+    await expect(page.locator(".received li.ok")).toHaveCount(1, { timeout: TIMEOUT });
     await expect(btn(page, "Download key backup")).toBeVisible();
     await btn(page, "Open voting").click();
     await expect(page.getByText("Voting is open.")).toBeVisible({ timeout: TIMEOUT });
@@ -84,7 +88,10 @@ test.describe("mero-vote", () => {
 
     // Close and decrypt.
     await btn(page, "Close poll").click();
-    await expect(page.getByText("Poll closed.")).toBeVisible({ timeout: TIMEOUT });
+    await expect(page.getByText("Poll closed to new ballots.")).toBeVisible({ timeout: TIMEOUT });
+    await expect(page.getByText("Closing", { exact: true }).first()).toBeVisible();
+    await btn(page, "Seal the count").click();
+    await expect(page.getByText("Count sealed.")).toBeVisible({ timeout: TIMEOUT });
     await expect(page.getByText(/is in the counted set/)).toBeVisible();
     await btn(page, "Publish my decryption share").click();
     await expect(page.getByText("Decryption share published.")).toBeVisible({ timeout: TIMEOUT });

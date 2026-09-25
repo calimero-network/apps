@@ -18,7 +18,9 @@ export function AuditPanel({
   options,
   report,
   isCreator,
-  pending,
+  threshold,
+  published,
+  label,
   onChanged,
   download,
 }: {
@@ -27,7 +29,9 @@ export function AuditPanel({
   options: string[];
   report: AuditReport;
   isCreator: boolean;
-  pending: string[];
+  threshold: number;
+  published: number;
+  label: (account: string) => string;
   onChanged: () => void;
   download: (name: string, text: string) => void;
 }) {
@@ -98,13 +102,13 @@ export function AuditPanel({
             ))}
             <p className="empty">
               {report.counted_ballots} ballot{report.counted_ballots === 1 ? "" : "s"} · {total} selection
-              {total === 1 ? "" : "s"} · decrypted from the totals only
+              {total === 1 ? "" : "s"} · decrypted from the totals only, by {report.decrypted_by.map(label).join(" + ")}
             </p>
           </div>
         ) : report.verified ? (
           <p className="empty">
-            {report.counted_ballots} ballot{report.counted_ballots === 1 ? "" : "s"} counted. Waiting for {pending.length} trustee
-            {pending.length === 1 ? "" : "s"} to publish a decryption share{pending.length ? `: ${pending.join(", ")}` : ""}.
+            {report.counted_ballots} ballot{report.counted_ballots === 1 ? "" : "s"} counted. {published} of the{" "}
+            {threshold} decryption share{threshold === 1 ? "" : "s"} needed are in.
           </p>
         ) : (
           <p className="hint warn">This poll does not verify — see the audit below. No result is shown for it.</p>

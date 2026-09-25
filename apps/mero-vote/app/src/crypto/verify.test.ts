@@ -10,74 +10,78 @@ const V = JSON.parse(
   readFileSync(resolve(HERE, "..", "..", "..", "logic", "crates", "crypto", "vectors.json"), "utf8"),
 );
 
+
 describe("transcript text", () => {
   it("matches the contract's digest for the pinned inputs", () => {
     // Same inputs as `transcript_digest_is_pinned` in logic/src/tests.rs.
-    const def = {
-      title: "Lunch\nnext: forged line",
-      options: ["Pizza", "Sushi 🍣", "Tacos"],
-      min_choices: 1,
-      max_choices: 2,
-    } as Transcript["definition"];
+    const dealing = (c: string) => ({ commitments: [c.repeat(32), `${c}ff`.repeat(16)] });
     const text = transcriptText(
       "00".repeat(32),
-      def,
-      "aa".repeat(32),
-      [
-        { trustee: "11".repeat(32), share: "bb".repeat(32) },
-        { trustee: "22".repeat(32), share: "cc".repeat(32) },
-      ],
+      {
+        title: "Lunch\nnext: forged line",
+        options: ["Pizza", "Sushi 🍣", "Tacos"],
+        min_choices: 1,
+        max_choices: 2,
+        trustees: ["11".repeat(32), "22".repeat(32), "44".repeat(32)],
+      },
+      {
+        key: "aa".repeat(32),
+        threshold: 2,
+        qualified: [
+          { dealer: "11".repeat(32), dealing: dealing("b1") },
+          { dealer: "22".repeat(32), dealing: dealing("b2") },
+        ],
+        disqualified: ["44".repeat(32)],
+      },
       [{ voter: "33".repeat(32), digest: "dd".repeat(32) }],
-      [
-        { trustee: "11".repeat(32), options: ["e1", "e2", "e3"].map((d) => ({ d: d.repeat(32) })) },
-        { trustee: "22".repeat(32), options: ["f1", "f2", "f3"].map((d) => ({ d: d.repeat(32) })) },
-      ],
       [1, 0, 1],
     );
-    expect(transcriptDigest(text)).toBe("54f905551c4dbf1a70ac8f6d87a3063ec15f5cef3f6b550ff9fb0e173c3b6195");
+    expect(transcriptDigest(text)).toBe("e14b512be7a2a5580cbc247fd7851682f435b0b32a91045708848c29cea5abdc");
   });
 });
 
-/** A transcript shaped exactly like `get_transcript`, built from the vectors. */
+/** A transcript shaped exactly like `get_transcript`, built from the vectors:
+ *  a 2-of-3 election decrypted by trustees #1 and #3. */
 function buildTranscript(): Transcript {
-  const trustees = V.shares.map((s: { trustee: string }) => s.trustee);
   const definition = {
     title: "Vectors",
     description: "",
     options: ["a", "b", "c"],
     min_choices: V.rules.min,
     max_choices: V.rules.max,
-    trustees,
+    trustees: V.trustees,
+    threshold: V.threshold,
     voters: [],
-    creator: trustees[0],
+    creator: V.trustees[0],
     created_at: 0,
     closes_at: null,
   };
   const counted = V.ballots.map((b: { voter: string; digest: string }) => ({ voter: b.voter, digest: b.digest, frozen: "" }));
-  const partials = V.partials.map((p: { trustee: string; options: unknown[] }) => ({ trustee: p.trustee, options: p.options }));
-  const shares = V.shares.map((s: { trustee: string; share: string; proof: unknown }) => ({
-    trustee: s.trustee,
-    share: s.share,
-    proof: s.proof,
-  }));
-  const text = transcriptText(V.poll_id, definition as Transcript["definition"], V.election_key, shares, counted, partials, V.counts);
+  const election = {
+    key: V.election_key,
+    threshold: V.threshold,
+    transport: V.transport.map((t: { key: string }) => t.key),
+    qualified: V.dealings.map((d: { dealer: string; dealing: unknown }) => ({ dealer: d.dealer, dealing: d.dealing })),
+    disqualified: [] as string[],
+    opened_at: 0,
+  };
+  const text = transcriptText(V.poll_id, definition as Transcript["definition"], election, counted, V.counts);
   return {
-    protocol: "mero-vote/v1/",
+    protocol: "mero-vote/v2/",
     poll_id: V.poll_id,
     definition,
-    state: {
-      phase: "Closed",
-      election: { key: V.election_key, shares, opened_at: 0 },
-      closure: { counted, closed_at: 0 },
-      anchor: null,
-    },
+    state: { phase: "Closed", election, closing_at: 0, closure: { counted, closed_at: 0 }, anchor: null },
     ballots: V.ballots.map((b: { voter: string; digest: string; ballot: unknown }) => ({
       voter: b.voter,
       digest: b.digest,
       ballot: b.ballot,
       endorsed: true,
     })),
-    partials,
+    partials: V.partials.map((p: { trustee: string; index: number; options: unknown[] }) => ({
+      trustee: p.trustee,
+      index: p.index,
+      options: p.options,
+    })),
     report: {
       poll_id: V.poll_id,
       phase: "Closed",
@@ -85,6 +89,7 @@ function buildTranscript(): Transcript {
       checks: [],
       counts: V.counts,
       counted_ballots: V.ballots.length,
+      decrypted_by: [V.trustees[0], V.trustees[2]],
       transcript_digest: transcriptDigest(text),
       anchor: null,
     },
@@ -119,10 +124,19 @@ describe("verifyTranscript", () => {
     expect(verifyTranscript(t).agreesWithNode).toBe(false);
   });
 
-  it("catches a forged partial decryption", () => {
+  it("sets a forged partial aside, and withholds the count if that leaves fewer than t", () => {
     const t = vectorTranscript();
     const p = t.partials[0]!;
     [p.options[0], p.options[1]] = [p.options[1]!, p.options[0]!];
+    const audit = verifyTranscript(t);
+    expect(audit.counts).toBeNull();
+    expect(audit.checks.find((c) => c.name === "partial decryptions")?.detail).toContain("set aside");
+  });
+
+  it("rejects a dealing whose constant term is swapped for a rogue key", () => {
+    const t = vectorTranscript();
+    const q = t.state.election!.qualified;
+    q[1]!.dealing.commitments[0] = q[0]!.dealing.commitments[0]!;
     expect(verifyTranscript(t).verified).toBe(false);
   });
 
@@ -132,7 +146,7 @@ describe("verifyTranscript", () => {
     expect(verifyTranscript(t).checks.find((c) => c.name === "anchor")?.ok).toBe(false);
   });
 
-  it("withholds the count while a trustee is missing", () => {
+  it("withholds the count below the threshold", () => {
     const t = vectorTranscript();
     t.partials = t.partials.slice(0, 1);
     t.report.counts = null;

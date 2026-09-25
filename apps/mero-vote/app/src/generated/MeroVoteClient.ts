@@ -20,6 +20,7 @@ export interface AuditReport {
   checks: Check[];
   counts: number[] | null;
   counted_ballots: number;
+  decrypted_by: string[];
   transcript_digest: string | null;
   anchor: Anchor | null;
 }
@@ -28,6 +29,19 @@ export interface BallotPointer {
   digest: string;
   frozen: string;
   cast_at: number;
+}
+
+export interface Ceremony {
+  threshold: number;
+  trustees: CeremonyTrustee[];
+  complaints: ComplaintView[];
+}
+
+export interface CeremonyTrustee {
+  account: string;
+  index: number;
+  transport: string | null;
+  dealing: WireDealing | null;
 }
 
 export interface Check {
@@ -41,6 +55,19 @@ export interface Closure {
   closed_at: number;
 }
 
+export interface Complaint {
+  poll_id: string;
+  dealer: string;
+  secret: string;
+  proof: WireBranch;
+}
+
+export interface ComplaintView {
+  recipient: string;
+  dealer: string;
+  valid: boolean;
+}
+
 export interface CountedBallot {
   voter: string;
   digest: string;
@@ -49,7 +76,10 @@ export interface CountedBallot {
 
 export interface Election {
   key: string;
-  shares: KeyShare[];
+  threshold: number;
+  transport: string[];
+  qualified: QualifiedDealing[];
+  disqualified: string[];
   opened_at: number;
 }
 
@@ -62,7 +92,13 @@ export interface Event_BallotCast {
   voter: string;
 }
 
-export interface Event_KeySharePublished {
+export interface Event_ComplaintFiled {
+  poll_id: string;
+  recipient: string;
+  dealer: string;
+}
+
+export interface Event_DealingPublished {
   poll_id: string;
   trustee: string;
 }
@@ -76,13 +112,22 @@ export interface Event_PartialPublished {
   trustee: string;
 }
 
-export interface Event_PollClosed {
+export interface Event_PollClosing {
   poll_id: string;
-  counted: number;
 }
 
 export interface Event_PollCreated {
   poll_id: string;
+}
+
+export interface Event_PollSealed {
+  poll_id: string;
+  counted: number;
+}
+
+export interface Event_TransportKeyPublished {
+  poll_id: string;
+  trustee: string;
 }
 
 export interface Event_VotingOpened {
@@ -93,12 +138,6 @@ export interface Identity {
   account: string;
 }
 
-export interface KeyShare {
-  trustee: string;
-  share: string;
-  proof: WireBranch;
-}
-
 export interface Member {
   account: string;
   name: string;
@@ -107,7 +146,9 @@ export interface Member {
 export interface MemberSlot {
   name: string;
   ballots: Record<string, BallotPointer>;
-  shares: Record<string, KeyShare>;
+  transport: Record<string, TransportKey>;
+  dealings: Record<string, WireDealing>;
+  complaints: Record<string, Complaint>;
   partials: Record<string, StoredPartials>;
 }
 
@@ -118,7 +159,7 @@ export interface MeroVote {
   slots: Record<string, MemberSlot>;
 }
 
-export type Phase = 'KeyCeremony' | 'Voting' | 'Closed';
+export type Phase = 'KeyCeremony' | 'Voting' | 'Closing' | 'Closed';
 
 export interface PollDefinition {
   title: string;
@@ -127,6 +168,7 @@ export interface PollDefinition {
   min_choices: number;
   max_choices: number;
   trustees: string[];
+  threshold: number;
   voters: string[];
   creator: string;
   created_at: number;
@@ -136,6 +178,7 @@ export interface PollDefinition {
 export interface PollState {
   phase: Phase;
   election: Election | null;
+  closing_at: number | null;
   closure: Closure | null;
   anchor: Anchor | null;
 }
@@ -157,6 +200,11 @@ export interface PollView {
   turnout: Turnout[];
   my_digest: string | null;
   can_vote: boolean;
+}
+
+export interface QualifiedDealing {
+  dealer: string;
+  dealing: WireDealing;
 }
 
 export interface StoredBallot {
@@ -193,12 +241,22 @@ export interface TranscriptBallot {
 
 export interface TranscriptPartial {
   trustee: string;
+  index: number;
   options: WirePartial[];
+}
+
+export interface TransportKey {
+  key: string;
+  proof: WireBranch;
 }
 
 export interface TrusteeStatus {
   account: string;
-  share_published: boolean;
+  index: number;
+  transport_published: boolean;
+  dealing_published: boolean;
+  complaints_against: number;
+  qualified: boolean | null;
   partial_published: boolean;
 }
 
@@ -229,6 +287,17 @@ export interface WireCiphertext {
   b: string;
 }
 
+export interface WireDealing {
+  commitments: string[];
+  proof: WireBranch;
+  shares: WireEncShare[];
+}
+
+export interface WireEncShare {
+  r: string;
+  v: string;
+}
+
 export interface WirePartial {
   d: string;
   proof: WireBranch;
@@ -242,14 +311,20 @@ export interface WirePartial {
 
 
 
+
+
+
 export type AbiEvent =
   | { name: "Anchored"; payload: Event_Anchored }
   | { name: "BallotCast"; payload: Event_BallotCast }
-  | { name: "KeySharePublished"; payload: Event_KeySharePublished }
+  | { name: "ComplaintFiled"; payload: Event_ComplaintFiled }
+  | { name: "DealingPublished"; payload: Event_DealingPublished }
   | { name: "MemberNamed"; payload: Event_MemberNamed }
   | { name: "PartialPublished"; payload: Event_PartialPublished }
-  | { name: "PollClosed"; payload: Event_PollClosed }
+  | { name: "PollClosing"; payload: Event_PollClosing }
   | { name: "PollCreated"; payload: Event_PollCreated }
+  | { name: "PollSealed"; payload: Event_PollSealed }
+  | { name: "TransportKeyPublished"; payload: Event_TransportKeyPublished }
   | { name: "VotingOpened"; payload: Event_VotingOpened }
 ;
 
@@ -284,13 +359,23 @@ export class MeroVoteClient {
   }
 
   /**
+   * ceremony
+   *
+   * @intent read_only
+   */
+  public async ceremony(params: { poll_id: string }): Promise<Ceremony> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'ceremony', argsJson: params });
+    return response as Ceremony;
+  }
+
+  /**
    * close_poll
    *
    * @intent mutating
    */
-  public async closePoll(params: { poll_id: string }): Promise<number> {
+  public async closePoll(params: { poll_id: string }): Promise<void> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'close_poll', argsJson: params });
-    return response as number;
+    return response as void;
   }
 
   /**
@@ -298,9 +383,19 @@ export class MeroVoteClient {
    *
    * @intent mutating
    */
-  public async createPoll(params: { title: string; description: string; options: string[]; min_choices: number; max_choices: number; trustees: string[]; voters: string[]; closes_at: number | null }): Promise<string> {
+  public async createPoll(params: { title: string; description: string; options: string[]; min_choices: number; max_choices: number; trustees: string[]; threshold: number; voters: string[]; closes_at: number | null }): Promise<string> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'create_poll', argsJson: params });
     return response as string;
+  }
+
+  /**
+   * file_complaint
+   *
+   * @intent mutating
+   */
+  public async fileComplaint(params: { poll_id: string; dealer: string; secret: string; proof: WireBranch }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'file_complaint', argsJson: params });
+    return response as void;
   }
 
   /**
@@ -362,12 +457,12 @@ export class MeroVoteClient {
   }
 
   /**
-   * publish_key_share
+   * publish_dealing
    *
    * @intent mutating
    */
-  public async publishKeyShare(params: { poll_id: string; share: string; proof: WireBranch }): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'publish_key_share', argsJson: params });
+  public async publishDealing(params: { poll_id: string; dealing: WireDealing }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'publish_dealing', argsJson: params });
     return response as void;
   }
 
@@ -382,6 +477,16 @@ export class MeroVoteClient {
   }
 
   /**
+   * publish_transport_key
+   *
+   * @intent mutating
+   */
+  public async publishTransportKey(params: { poll_id: string; key: string; proof: WireBranch }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'publish_transport_key', argsJson: params });
+    return response as void;
+  }
+
+  /**
    * roster
    *
    * @intent read_only
@@ -389,6 +494,16 @@ export class MeroVoteClient {
   public async roster(): Promise<Member[]> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'roster', argsJson: {} });
     return response as Member[];
+  }
+
+  /**
+   * seal_poll
+   *
+   * @intent mutating
+   */
+  public async sealPoll(params: { poll_id: string }): Promise<number> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'seal_poll', argsJson: params });
+    return response as number;
   }
 
   /**

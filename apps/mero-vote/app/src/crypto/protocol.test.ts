@@ -7,13 +7,13 @@ import {
   decodeScalar,
   encodePoint,
   encrypt,
-  makeKeyShare,
+  makeTransportKey,
   BASE,
   proveMembership,
   secureRng,
   seededRng,
   verifyBallot,
-  verifyKeyShare,
+  verifyTransportKey,
   verifyMembership,
 } from "./protocol";
 
@@ -47,10 +47,10 @@ describe("protocol", () => {
     expect(() => castBallot(pk, "p", "v", { options: 3, min: 1, max: 1 }, [true, true, false], secureRng)).toThrow();
   });
 
-  it("binds a key share to its trustee", () => {
-    const [h, p] = makeKeyShare("poll", "t1", 42n, seededRng("k"));
-    expect(verifyKeyShare("poll", "t1", h, p)).toBe(true);
-    expect(verifyKeyShare("poll", "t2", h, p)).toBe(false);
+  it("binds a transport key to its trustee", () => {
+    const [h, p] = makeTransportKey("poll", "t1", 42n, seededRng("k"));
+    expect(verifyTransportKey("poll", "t1", h, p)).toBe(true);
+    expect(verifyTransportKey("poll", "t2", h, p)).toBe(false);
   });
 
   it("only accepts canonical encodings", () => {

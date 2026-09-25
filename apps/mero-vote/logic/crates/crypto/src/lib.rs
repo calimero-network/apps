@@ -18,14 +18,17 @@
 //!   `(A, B) = (r·G, m·G + r·H)` under the election key `H`. Ciphertexts add, so
 //!   the product of every ballot's ciphertext for an option encrypts that
 //!   option's count, and no single ballot is ever decrypted.
-//! * **Distributed key.** `H = Σ hᵢ` over the trustees' shares `hᵢ = xᵢ·G`, each
-//!   published with a Schnorr proof of knowledge (which is what stops a trustee
-//!   choosing a share that cancels the others). Decrypting needs every trustee.
+//! * **Threshold key (t-of-n).** A Pedersen distributed key generation with
+//!   Feldman commitments: every trustee deals shares of a random polynomial to
+//!   the others, encrypted to their transport keys; a trustee sent a bad share
+//!   can prove it with a public complaint. Any `t` trustees can decrypt the
+//!   totals, fewer than `t` learn nothing, and no one ever holds the whole key.
 //! * **Disjunctive Chaum–Pedersen proofs** (CDS94) that each ciphertext encrypts
 //!   0 or 1, and that the ballot's sum lies in `[min, max]`. Without them one
 //!   voter could encrypt `1000` and nobody could tell.
 //! * **Chaum–Pedersen DLEQ proofs** that each trustee's partial decryption
-//!   `Dᵢ = xᵢ·A` uses the same `xᵢ` as their published share.
+//!   `Dⱼ = xⱼ·A` uses the key share `hⱼ` everyone can derive from the
+//!   commitments, and that a complaint reveals the right secret.
 //!
 //! All proofs are made non-interactive with Fiat–Shamir over SHA-512, and every
 //! challenge binds the poll id, the author's account and the election key, so a
@@ -61,7 +64,7 @@ pub use curve25519_dalek::scalar::Scalar as FieldScalar;
 
 /// Prefix of every hash this protocol computes. Bump the version and every
 /// proof, digest and transcript changes with it.
-pub const PROTOCOL: &[u8] = b"mero-vote/v1/";
+pub const PROTOCOL: &[u8] = b"mero-vote/v2/";
 
 /// Largest option list a poll may carry. Bounds the work a single ballot can
 /// demand of every verifier.
@@ -202,14 +205,6 @@ pub fn encrypt(pk: &RistrettoPoint, m: u64, r: &Scalar) -> Ciphertext {
         a: r * G,
         b: Scalar::from(m) * G + r * pk,
     }
-}
-
-/// Sum of the trustees' shares. Order-independent, so every member derives the
-/// same key from the same set.
-pub fn combine_keys(shares: &[RistrettoPoint]) -> RistrettoPoint {
-    shares
-        .iter()
-        .fold(RistrettoPoint::identity(), |acc, h| acc + h)
 }
 
 /// Recover `m` from `m·G` by walking `0..=max`. `max` is the number of counted
@@ -577,32 +572,267 @@ pub fn ballot_digest(poll_id: &str, voter: &str, ballot: &Ballot) -> [u8; 32] {
     hash_to_digest("ballot", &parts)
 }
 
-/// A trustee's key share and its proof of knowledge. `rng` is consumed once.
-pub fn make_key_share(
+// ── distributed key generation (Pedersen, with Feldman commitments) ────────
+//
+// t-of-n: any `t` trustees can decrypt a tally, fewer than `t` learn nothing.
+//
+// 1. Every trustee publishes a TRANSPORT key `Eⱼ = eⱼ·G` (with a proof of
+//    knowledge). It exists only so dealers can send them shares privately.
+// 2. Every trustee DEALS: a random polynomial `fᵢ` of degree `t−1`, Feldman
+//    commitments `Cᵢₖ = aᵢₖ·G` to its coefficients, a proof of knowledge of
+//    `aᵢ₀`, and `fᵢ(j)` encrypted to each trustee `j`'s transport key.
+// 3. A trustee whose share does not match the dealer's commitments files a
+//    COMPLAINT: it reveals the ECDH secret for that one share with a DLEQ
+//    proof, and anyone can then see the dealer cheated. Cheating dealers are
+//    left out of the qualified set.
+// 4. Election key `H = Σ_{i∈QUAL} Cᵢ₀`. Trustee `j`'s decryption key is
+//    `xⱼ = Σ_{i∈QUAL} fᵢ(j)`, and anyone can compute its public half
+//    `hⱼ = Σ_{i∈QUAL} Σₖ jᵏ·Cᵢₖ` from the commitments alone — which is what a
+//    partial decryption is proven against.
+//
+// Trustee indices are 1-based positions in the poll's trustee list; index 0
+// is where the secret lives, so it is never anyone's.
+
+/// A trustee's transport key and its proof of knowledge. `rng` once.
+pub fn make_transport_key(
     poll_id: &str,
     trustee: &str,
-    x: &Scalar,
+    e: &Scalar,
     rng: &mut dyn FnMut() -> Scalar,
 ) -> (RistrettoPoint, Branch) {
     prove_knowledge(
-        "keyshare",
+        "transport",
         &[poll_id.as_bytes(), trustee.as_bytes()],
-        x,
+        e,
         rng,
     )
 }
 
-pub fn verify_key_share(poll_id: &str, trustee: &str, h: &RistrettoPoint, proof: &Branch) -> bool {
+pub fn verify_transport_key(
+    poll_id: &str,
+    trustee: &str,
+    key: &RistrettoPoint,
+    proof: &Branch,
+) -> bool {
     verify_knowledge(
-        "keyshare",
+        "transport",
         &[poll_id.as_bytes(), trustee.as_bytes()],
-        h,
+        key,
         proof,
     )
 }
 
-/// A trustee's share of the decryption of one option's aggregate. `rng` is
-/// consumed once.
+/// One share, hashed-ElGamal encrypted to its recipient's transport key:
+/// `R = k·G`, `v = fᵢ(j) + H(R, k·Eⱼ)`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct EncryptedShare {
+    pub r: RistrettoPoint,
+    pub v: Scalar,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Dealing {
+    /// `t` Feldman commitments, constant term first.
+    pub commitments: Vec<RistrettoPoint>,
+    /// Proof of knowledge of the constant term. Blocks the rogue-key attack:
+    /// without it, the last dealer could publish `H_evil − Σ others`.
+    pub proof: Branch,
+    /// One per trustee, in trustee order (the dealer's own included).
+    pub shares: Vec<EncryptedShare>,
+}
+
+fn share_mask(
+    poll_id: &str,
+    dealer: &str,
+    index: u32,
+    r: &RistrettoPoint,
+    secret: &RistrettoPoint,
+) -> Scalar {
+    let idx = index.to_le_bytes();
+    hash_to_scalar(
+        "sharemask",
+        &[
+            poll_id.as_bytes(),
+            dealer.as_bytes(),
+            &idx,
+            &point_bytes(r),
+            &point_bytes(secret),
+        ],
+    )
+}
+
+/// `Σₖ xᵏ·Cₖ` — the public image of `f(x)`.
+pub fn eval_commitments(commitments: &[RistrettoPoint], x: u32) -> RistrettoPoint {
+    let x = Scalar::from(x);
+    let mut acc = RistrettoPoint::identity();
+    let mut pow = Scalar::ONE;
+    for c in commitments {
+        acc += pow * c;
+        pow *= x;
+    }
+    acc
+}
+
+/// Deal a fresh polynomial of degree `threshold − 1` to `recipients`
+/// (transport keys, in trustee order).
+///
+/// `rng` order: the `threshold` coefficients, constant first; the proof
+/// nonce; then one `k` per recipient in order.
+pub fn deal(
+    poll_id: &str,
+    dealer: &str,
+    threshold: u32,
+    recipients: &[RistrettoPoint],
+    rng: &mut dyn FnMut() -> Scalar,
+) -> Result<Dealing, CryptoError> {
+    if threshold == 0 || threshold as usize > recipients.len() {
+        return Err(CryptoError::Shape("threshold must be 1..=trustees"));
+    }
+    let coeffs: Vec<Scalar> = (0..threshold).map(|_| rng()).collect();
+    let (_, proof) = prove_knowledge(
+        "keyshare",
+        &[poll_id.as_bytes(), dealer.as_bytes()],
+        &coeffs[0],
+        rng,
+    );
+    let commitments = coeffs.iter().map(|a| a * G).collect();
+    let shares = recipients
+        .iter()
+        .enumerate()
+        .map(|(pos, e)| {
+            let index = pos as u32 + 1;
+            let x = Scalar::from(index);
+            let f = coeffs.iter().rev().fold(Scalar::ZERO, |acc, a| acc * x + a);
+            let k = rng();
+            let r = k * G;
+            EncryptedShare {
+                r,
+                v: f + share_mask(poll_id, dealer, index, &r, &(k * e)),
+            }
+        })
+        .collect();
+    Ok(Dealing {
+        commitments,
+        proof,
+        shares,
+    })
+}
+
+/// The checks anyone can make on a dealing without any secret: its shape and
+/// the proof of knowledge of its constant term.
+pub fn verify_dealing(
+    poll_id: &str,
+    dealer: &str,
+    threshold: u32,
+    trustees: usize,
+    d: &Dealing,
+) -> Result<(), CryptoError> {
+    if d.commitments.len() != threshold as usize || d.shares.len() != trustees || threshold == 0 {
+        return Err(CryptoError::Shape(
+            "a dealing has t commitments and one share per trustee",
+        ));
+    }
+    if !verify_knowledge(
+        "keyshare",
+        &[poll_id.as_bytes(), dealer.as_bytes()],
+        &d.commitments[0],
+        &d.proof,
+    ) {
+        return Err(CryptoError::Proof(
+            "dealing: no proof of knowledge of the constant term",
+        ));
+    }
+    Ok(())
+}
+
+/// Recipient side: decrypt share `index` with the transport secret `e`, and
+/// check it against the commitments. `None` means the dealer cheated.
+pub fn open_share(
+    poll_id: &str,
+    dealer: &str,
+    index: u32,
+    e: &Scalar,
+    d: &Dealing,
+) -> Option<Scalar> {
+    let enc = d.shares.get(index.checked_sub(1)? as usize)?;
+    let s = enc.v - share_mask(poll_id, dealer, index, &enc.r, &(e * enc.r));
+    (s * G == eval_commitments(&d.commitments, index)).then_some(s)
+}
+
+/// A complaint: the recipient reveals `S = eⱼ·R` for one share, proven with a
+/// DLEQ against its transport key, so anyone can decrypt that share and see it
+/// does not match. `rng` once.
+pub fn make_complaint(
+    poll_id: &str,
+    recipient: &str,
+    dealer: &str,
+    index: u32,
+    e: &Scalar,
+    d: &Dealing,
+    rng: &mut dyn FnMut() -> Scalar,
+) -> Option<(RistrettoPoint, Branch)> {
+    let enc = d.shares.get(index.checked_sub(1)? as usize)?;
+    let ctx: [&[u8]; 3] = [poll_id.as_bytes(), recipient.as_bytes(), dealer.as_bytes()];
+    let (_, secret, proof) = prove_dleq("complaint", &ctx, &enc.r, e, rng);
+    Some((secret, proof))
+}
+
+/// Whether a complaint proves the dealer cheated the recipient at `index`.
+/// `false` for a complaint whose proof fails *or* whose share turns out fine —
+/// either way it does not disqualify anyone.
+#[allow(clippy::too_many_arguments)]
+pub fn complaint_is_valid(
+    poll_id: &str,
+    recipient: &str,
+    dealer: &str,
+    index: u32,
+    transport: &RistrettoPoint,
+    d: &Dealing,
+    secret: &RistrettoPoint,
+    proof: &Branch,
+) -> bool {
+    let Some(enc) = index.checked_sub(1).and_then(|i| d.shares.get(i as usize)) else {
+        return false;
+    };
+    let ctx: [&[u8]; 3] = [poll_id.as_bytes(), recipient.as_bytes(), dealer.as_bytes()];
+    if !verify_dleq("complaint", &ctx, &enc.r, transport, secret, proof) {
+        return false;
+    }
+    let s = enc.v - share_mask(poll_id, dealer, index, &enc.r, secret);
+    s * G != eval_commitments(&d.commitments, index)
+}
+
+/// Election key from the qualified dealings.
+pub fn joint_key(qualified: &[&Dealing]) -> RistrettoPoint {
+    qualified
+        .iter()
+        .fold(RistrettoPoint::identity(), |acc, d| acc + d.commitments[0])
+}
+
+/// Trustee `index`'s public verification key `hⱼ`.
+pub fn verification_key(qualified: &[&Dealing], index: u32) -> RistrettoPoint {
+    qualified.iter().fold(RistrettoPoint::identity(), |acc, d| {
+        acc + eval_commitments(&d.commitments, index)
+    })
+}
+
+/// Lagrange coefficient at 0 for `index` within `set` (all 1-based, distinct).
+pub fn lagrange_at_zero(index: u32, set: &[u32]) -> Scalar {
+    let xi = Scalar::from(index);
+    let (mut num, mut den) = (Scalar::ONE, Scalar::ONE);
+    for &m in set {
+        if m == index {
+            continue;
+        }
+        let xm = Scalar::from(m);
+        num *= xm;
+        den *= xm - xi;
+    }
+    num * den.invert()
+}
+
+/// A trustee's share of the decryption of one option's aggregate, under its
+/// combined key `xⱼ`. `rng` is consumed once.
 pub fn partial_decrypt(
     poll_id: &str,
     trustee: &str,
@@ -617,25 +847,34 @@ pub fn partial_decrypt(
     (d, proof)
 }
 
+/// `vkey` is the trustee's [`verification_key`].
 pub fn verify_partial(
     poll_id: &str,
     trustee: &str,
     option: u32,
-    share: &RistrettoPoint,
+    vkey: &RistrettoPoint,
     aggregate_a: &RistrettoPoint,
     d: &RistrettoPoint,
     proof: &Branch,
 ) -> bool {
     let idx = option.to_le_bytes();
     let ctx: [&[u8]; 3] = [poll_id.as_bytes(), trustee.as_bytes(), &idx];
-    verify_dleq("partial", &ctx, aggregate_a, share, d, proof)
+    verify_dleq("partial", &ctx, aggregate_a, vkey, d, proof)
 }
 
-/// `B − Σ Dᵢ = m·G`; solve for `m ≤ max`.
-pub fn open_count(aggregate: &Ciphertext, partials: &[RistrettoPoint], max: u64) -> Option<u64> {
+/// `B − Σ λⱼ·Dⱼ = m·G` over exactly `threshold` partials `(index, Dⱼ)`; solve
+/// for `m ≤ max`. Any `t` honest partials give the same `m`.
+pub fn open_count(
+    aggregate: &Ciphertext,
+    partials: &[(u32, RistrettoPoint)],
+    max: u64,
+) -> Option<u64> {
+    let set: Vec<u32> = partials.iter().map(|(i, _)| *i).collect();
     let mask = partials
         .iter()
-        .fold(RistrettoPoint::identity(), |acc, d| acc + d);
+        .fold(RistrettoPoint::identity(), |acc, (i, d)| {
+            acc + lagrange_at_zero(*i, &set) * d
+        });
     small_dlog(&(aggregate.b - mask), max)
 }
 
@@ -731,14 +970,48 @@ mod tests {
         }
     }
 
+    /// A whole DKG among `n` trustees with threshold `t`: returns each
+    /// trustee's transport secret, the dealings, and each combined key `xⱼ`.
+    fn ceremony(n: usize, t: u32) -> (Vec<Scalar>, Vec<Dealing>, Vec<Scalar>) {
+        let names: Vec<String> = (0..n).map(|i| format!("t{i}")).collect();
+        let mut rng = seeded_rng(b"ceremony");
+        let es: Vec<Scalar> = (0..n).map(|_| rng()).collect();
+        let transports: Vec<_> = es.iter().map(|e| e * G).collect();
+        let dealings: Vec<Dealing> = names
+            .iter()
+            .map(|d| deal("p", d, t, &transports, &mut rng).unwrap())
+            .collect();
+        for (d, name) in dealings.iter().zip(&names) {
+            verify_dealing("p", name, t, n, d).unwrap();
+        }
+        let xs = (0..n)
+            .map(|j| {
+                dealings
+                    .iter()
+                    .zip(&names)
+                    .map(|(d, name)| open_share("p", name, j as u32 + 1, &es[j], d).unwrap())
+                    .sum()
+            })
+            .collect();
+        (es, dealings, xs)
+    }
+
     #[test]
-    fn two_trustees_decrypt_a_tally_neither_could_alone() {
-        let (x1, h1) = keypair(b"t1");
-        let (x2, h2) = keypair(b"t2");
-        let pk = combine_keys(&[h1, h2]);
+    fn any_threshold_of_trustees_decrypts_and_fewer_cannot() {
+        let (n, t) = (4, 3);
+        let (_, dealings, xs) = ceremony(n, t);
+        let refs: Vec<&Dealing> = dealings.iter().collect();
+        let pk = joint_key(&refs);
+        for (j, x) in xs.iter().enumerate() {
+            assert_eq!(
+                x * G,
+                verification_key(&refs, j as u32 + 1),
+                "hⱼ is derivable from commitments"
+            );
+        }
+
         let r = rules(3, 1, 1);
         let mut rng = seeded_rng(b"election");
-
         let votes = [
             [true, false, false],
             [false, false, true],
@@ -749,39 +1022,126 @@ mod tests {
         for (i, v) in votes.iter().enumerate() {
             let voter = format!("voter-{i}");
             let ballot = cast_ballot(&pk, "p", &voter, &r, v, &mut rng).unwrap();
-            verify_ballot(&pk, "p", &voter, &r, &ballot).unwrap();
             for (j, c) in ballot.choices.iter().enumerate() {
                 agg[j] = agg[j].add(&c.ct);
             }
         }
 
-        let mut counts = vec![];
-        for (j, ct) in agg.iter().enumerate() {
-            let (d1, p1) = partial_decrypt("p", "t1", j as u32, &x1, &ct.a, &mut rng);
-            let (d2, p2) = partial_decrypt("p", "t2", j as u32, &x2, &ct.a, &mut rng);
-            assert!(verify_partial("p", "t1", j as u32, &h1, &ct.a, &d1, &p1));
-            assert!(verify_partial("p", "t2", j as u32, &h2, &ct.a, &d2, &p2));
-            // A partial is bound to its trustee's share.
-            assert!(!verify_partial("p", "t1", j as u32, &h2, &ct.a, &d1, &p1));
-            // One trustee alone recovers nothing meaningful.
-            assert_ne!(open_count(ct, &[d1], 4), Some([3, 0, 1][j]));
-            counts.push(open_count(ct, &[d1, d2], 4).unwrap());
+        let partials: Vec<Vec<(u32, RistrettoPoint)>> = agg
+            .iter()
+            .enumerate()
+            .map(|(j, ct)| {
+                xs.iter()
+                    .enumerate()
+                    .map(|(k, x)| {
+                        let name = format!("t{k}");
+                        let (d, proof) = partial_decrypt("p", &name, j as u32, x, &ct.a, &mut rng);
+                        let vk = verification_key(&refs, k as u32 + 1);
+                        assert!(verify_partial("p", &name, j as u32, &vk, &ct.a, &d, &proof));
+                        assert!(!verify_partial("p", "t9", j as u32, &vk, &ct.a, &d, &proof));
+                        (k as u32 + 1, d)
+                    })
+                    .collect()
+            })
+            .collect();
+
+        let expected = [3, 0, 1];
+        for subset in [[0usize, 1, 2], [1, 2, 3], [0, 2, 3]] {
+            for (j, ct) in agg.iter().enumerate() {
+                let picked: Vec<_> = subset.iter().map(|&k| partials[j][k]).collect();
+                assert_eq!(
+                    open_count(ct, &picked, 4),
+                    Some(expected[j]),
+                    "subset {subset:?}"
+                );
+            }
         }
-        assert_eq!(counts, vec![3, 0, 1]);
+        // t−1 partials: the Lagrange combination is over the wrong set and the
+        // mask does not cancel.
+        let short: Vec<_> = partials[0][..2].to_vec();
+        assert_ne!(open_count(&agg[0], &short, 4), Some(3));
     }
 
     #[test]
-    fn key_share_proof_rejects_a_rogue_key() {
-        let (x1, h1) = keypair(b"t1");
-        let mut rng = seeded_rng(b"r");
-        let (h, proof) = make_key_share("p", "t1", &x1, &mut rng);
-        assert_eq!(h, h1);
-        assert!(verify_key_share("p", "t1", &h, &proof));
-        assert!(!verify_key_share("p", "t2", &h, &proof));
-        // The rogue-key attack: t2 publishes h_evil - h1 so the joint key is
-        // h_evil. Without x for that point, no proof can be made.
+    fn one_of_one_is_the_degenerate_case() {
+        let (_, dealings, xs) = ceremony(1, 1);
+        let refs: Vec<&Dealing> = dealings.iter().collect();
+        assert_eq!(joint_key(&refs), xs[0] * G);
+    }
+
+    #[test]
+    fn a_cheating_dealer_is_caught_by_a_public_complaint() {
+        let mut rng = seeded_rng(b"cheat");
+        let es: Vec<Scalar> = (0..3).map(|_| rng()).collect();
+        let transports: Vec<_> = es.iter().map(|e| e * G).collect();
+        let mut bad = deal("p", "mallory", 2, &transports, &mut rng).unwrap();
+        bad.shares[1].v += Scalar::ONE; // corrupt trustee #2's share
+        verify_dealing("p", "mallory", 2, 3, &bad).unwrap(); // looks fine from outside
+
+        assert!(open_share("p", "mallory", 1, &es[0], &bad).is_some());
+        assert!(open_share("p", "mallory", 2, &es[1], &bad).is_none());
+
+        let (secret, proof) =
+            make_complaint("p", "t2", "mallory", 2, &es[1], &bad, &mut rng).unwrap();
+        assert!(complaint_is_valid(
+            "p",
+            "t2",
+            "mallory",
+            2,
+            &transports[1],
+            &bad,
+            &secret,
+            &proof
+        ));
+        // Someone else cannot complain in t2's name (wrong transport key)…
+        assert!(!complaint_is_valid(
+            "p",
+            "t2",
+            "mallory",
+            2,
+            &transports[0],
+            &bad,
+            &secret,
+            &proof
+        ));
+        // …and a complaint about a GOOD share proves nothing.
+        let (s1, p1) = make_complaint("p", "t1", "mallory", 1, &es[0], &bad, &mut rng).unwrap();
+        assert!(!complaint_is_valid(
+            "p",
+            "t1",
+            "mallory",
+            1,
+            &transports[0],
+            &bad,
+            &s1,
+            &p1
+        ));
+    }
+
+    #[test]
+    fn a_dealing_needs_a_proof_of_its_constant_term() {
+        let mut rng = seeded_rng(b"rogue");
+        let transports = vec![rng() * G, rng() * G];
+        let honest = deal("p", "t1", 1, &transports, &mut rng).unwrap();
+        // The rogue-key attack: publish H_evil − C_honest as your constant term.
         let (_, h_evil) = keypair(b"evil");
-        assert!(!verify_key_share("p", "t2", &(h_evil - h1), &proof));
+        let mut rogue = deal("p", "t2", 1, &transports, &mut rng).unwrap();
+        rogue.commitments[0] = h_evil - honest.commitments[0];
+        assert!(verify_dealing("p", "t2", 1, 2, &rogue).is_err());
+        assert!(
+            verify_dealing("p", "t3", 1, 2, &honest).is_err(),
+            "bound to its dealer"
+        );
+        assert!(deal("p", "t1", 3, &transports, &mut rng).is_err(), "t > n");
+    }
+
+    #[test]
+    fn transport_keys_are_proven() {
+        let mut rng = seeded_rng(b"tk");
+        let e = rng();
+        let (key, proof) = make_transport_key("p", "t1", &e, &mut rng);
+        assert!(verify_transport_key("p", "t1", &key, &proof));
+        assert!(!verify_transport_key("p", "t2", &key, &proof));
     }
 
     #[test]
