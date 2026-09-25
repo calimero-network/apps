@@ -38,7 +38,7 @@ icon        = "../app/public/icon-512.png"
 category = "social"
 tags        = ["forum", "social", "discussion"]
 github      = "https://github.com/calimero-network/apps"
-min-runtime-version = "0.11.0-rc.43"
+min-runtime-version = "0.11.0-rc.44"
 frontend    = "https://mero-forum.vercel.app"
 
 [dependencies]
