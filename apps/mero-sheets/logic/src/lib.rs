@@ -194,14 +194,17 @@ pub struct AxisData {
 
 impl Mergeable for AxisData {
     fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        // A delete is final: once any replica deleted the row, it stays gone.
-        self.deleted |= other.deleted;
+        // Deleted or not is last-writer-wins, so an undo can restore a row;
+        // an exact clock tie keeps it deleted.
+        if (other.updated_at, other.deleted) > (self.updated_at, self.deleted) {
+            self.deleted = other.deleted;
+            self.updated_at = other.updated_at;
+        }
         // A position is fixed when the id is created; the smaller string wins
         // so two replicas can never disagree on it.
         if self.pos.is_empty() || (!other.pos.is_empty() && other.pos < self.pos) {
             self.pos = other.pos.clone();
         }
-        self.updated_at = self.updated_at.max(other.updated_at);
         Ok(())
     }
 }
@@ -334,8 +337,9 @@ pub enum CellOp {
     },
 }
 
-/// A structural edit: add a row or column at a fractional position, or delete
-/// one by id. Every op is one write, however many cells the sheet holds.
+/// A structural edit: add a row or column at a fractional position, delete
+/// one by id, or restore a deleted one (an undo). Every op is one write,
+/// however many cells the sheet holds.
 #[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
 #[serde(crate = "calimero_sdk::serde")]
 #[serde(tag = "name", content = "payload")]
@@ -344,6 +348,8 @@ pub enum AxisOp {
     InsertCol { id: String, pos: String },
     DeleteRow { id: String },
     DeleteCol { id: String },
+    RestoreRow { id: String },
+    RestoreCol { id: String },
 }
 
 /// One explicit row or column entry of a sheet.
@@ -959,11 +965,13 @@ impl Spreadsheet {
         let count = ops.len() as u32;
         let now = storage_env::time_now();
         for op in ops {
-            let (axis, id, insert_pos) = match op {
-                AxisOp::InsertRow { id, pos } => ('r', id, Some(pos)),
-                AxisOp::InsertCol { id, pos } => ('c', id, Some(pos)),
-                AxisOp::DeleteRow { id } => ('r', id, None),
-                AxisOp::DeleteCol { id } => ('c', id, None),
+            let (axis, id, insert_pos, deleted) = match op {
+                AxisOp::InsertRow { id, pos } => ('r', id, Some(pos), false),
+                AxisOp::InsertCol { id, pos } => ('c', id, Some(pos), false),
+                AxisOp::DeleteRow { id } => ('r', id, None, true),
+                AxisOp::DeleteCol { id } => ('c', id, None, true),
+                AxisOp::RestoreRow { id } => ('r', id, None, false),
+                AxisOp::RestoreCol { id } => ('c', id, None, false),
             };
             Spreadsheet::check_id(&id)?;
             let key = format!("{sheet_id}|{axis}|{id}");
@@ -1007,10 +1015,12 @@ impl Spreadsheet {
                         .get_mut(&key)
                         .map_err(|e| AppError::msg(format!("axes.get_mut: {e}")))?
                     {
-                        guard.deleted = true;
+                        guard.deleted = deleted;
                         guard.updated_at = now;
                     }
                 }
+                // A legacy row that was never deleted is already there.
+                None if !deleted => {}
                 // Deleting a legacy row writes its tombstone at its fixed position.
                 None => {
                     let k = layout::legacy_index(&id)
@@ -2410,7 +2420,7 @@ mod tests {
     }
 
     #[test]
-    fn axis_merge_keeps_deletes_and_the_smaller_position() {
+    fn axis_merge_is_last_writer_wins_and_keeps_the_smaller_position() {
         let mut a = AxisData {
             pos: "0000000015".into(),
             deleted: false,
@@ -2430,8 +2440,35 @@ mod tests {
             updated_at: 3,
         })
         .unwrap();
-        assert!(a.deleted);
+        // A newer restore wins over the delete.
+        assert!(!a.deleted);
         assert_eq!(a.pos, "0000000014");
+        // An older delete does not.
+        a.merge(&AxisData {
+            pos: "0000000014".into(),
+            deleted: true,
+            updated_at: 2,
+        })
+        .unwrap();
+        assert!(!a.deleted);
+    }
+
+    #[test]
+    fn a_restored_row_is_back_with_its_cells() {
+        let mut app = make_app();
+        let sid = new_sheet(&mut app);
+        app.call(|s| s.set_cell(sid.clone(), "1".into(), "0".into(), "5".into()))
+            .unwrap();
+        app.call(|s| s.set_cell(sid.clone(), "0".into(), "1".into(), "=A2".into()))
+            .unwrap();
+        app.call(|s| s.apply_axis_ops(sid.clone(), vec![AxisOp::DeleteRow { id: "1".into() }]))
+            .unwrap();
+        let cells = app.view(|s| s.get_cells(sid.clone())).unwrap();
+        assert_eq!(cell_at(&cells, "0", "1").unwrap().computed_value, "#REF!");
+        app.call(|s| s.apply_axis_ops(sid.clone(), vec![AxisOp::RestoreRow { id: "1".into() }]))
+            .unwrap();
+        let cells = app.view(|s| s.get_cells(sid.clone())).unwrap();
+        assert_eq!(cell_at(&cells, "0", "1").unwrap().computed_value, "5");
     }
 
     #[test]

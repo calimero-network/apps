@@ -23,12 +23,16 @@ export type AxisOpPayload =
   | { name: 'InsertCol'; payload: AxisOp_InsertCol }
   | { name: 'DeleteRow'; payload: AxisOp_DeleteRow }
   | { name: 'DeleteCol'; payload: AxisOp_DeleteCol }
+  | { name: 'RestoreRow'; payload: AxisOp_RestoreRow }
+  | { name: 'RestoreCol'; payload: AxisOp_RestoreCol }
 
 export const AxisOp = {
   InsertRow: (insertrow: AxisOp_InsertRow): AxisOpPayload => ({ name: 'InsertRow', payload: insertrow }),
   InsertCol: (insertcol: AxisOp_InsertCol): AxisOpPayload => ({ name: 'InsertCol', payload: insertcol }),
   DeleteRow: (deleterow: AxisOp_DeleteRow): AxisOpPayload => ({ name: 'DeleteRow', payload: deleterow }),
   DeleteCol: (deletecol: AxisOp_DeleteCol): AxisOpPayload => ({ name: 'DeleteCol', payload: deletecol }),
+  RestoreRow: (restorerow: AxisOp_RestoreRow): AxisOpPayload => ({ name: 'RestoreRow', payload: restorerow }),
+  RestoreCol: (restorecol: AxisOp_RestoreCol): AxisOpPayload => ({ name: 'RestoreCol', payload: restorecol }),
 } as const;
 
 export interface AxisOp_DeleteCol {
@@ -47,6 +51,14 @@ export interface AxisOp_InsertCol {
 export interface AxisOp_InsertRow {
   id: string;
   pos: string;
+}
+
+export interface AxisOp_RestoreCol {
+  id: string;
+}
+
+export interface AxisOp_RestoreRow {
+  id: string;
 }
 
 export interface Cell {

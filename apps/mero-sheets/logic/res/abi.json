@@ -73,6 +73,18 @@
           "payload": {
             "$ref": "AxisOp_DeleteCol"
           }
+        },
+        {
+          "name": "RestoreRow",
+          "payload": {
+            "$ref": "AxisOp_RestoreRow"
+          }
+        },
+        {
+          "name": "RestoreCol",
+          "payload": {
+            "$ref": "AxisOp_RestoreCol"
+          }
         }
       ]
     },
@@ -126,6 +138,28 @@
         },
         {
           "name": "pos",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "AxisOp_RestoreCol": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "AxisOp_RestoreRow": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
           "type": {
             "kind": "string"
           }

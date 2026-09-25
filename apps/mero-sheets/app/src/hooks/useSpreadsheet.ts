@@ -31,6 +31,7 @@ import { AxisOp as AxisOpWire, CellOp as CellOpWire } from '../api/spreadsheet/S
 import { chunkOps, MAX_OPS_PER_APPLY, type CellOp } from '../spreadsheet/ops';
 import { isNoop, mergePlans, planFor, type RefreshPlan } from '../spreadsheet/events';
 import { newAxisId, positionOf, positionsBetween, type AxisEntry } from '../spreadsheet/axis';
+import { applicable, invert, pushBounded, type CellState, type UndoEntry } from '../spreadsheet/undo';
 import { rangeRef, type Rect } from '../spreadsheet/refs';
 import {
   initEngine, engineReady, evaluate as engineEvaluate, functionCatalog,
@@ -46,6 +47,12 @@ export type Cell = GridCell;
 
 /** Rows or columns. */
 export type Axis = 'row' | 'col';
+
+/** A cell op by id, raw value in stored form. */
+type IdOp =
+  | { kind: 'Set'; row_id: string; col_id: string; raw_value: string }
+  | { kind: 'Format'; row_id: string; col_id: string; format: string }
+  | { kind: 'Clear'; row_id: string; col_id: string };
 
 /** How long events are gathered before one round of reads. */
 const EVENT_COALESCE_MS = 60;
@@ -115,6 +122,11 @@ export interface UseSpreadsheetReturn {
   deleteAxis: (sheetId: string, axis: Axis, positions: number[]) => Promise<void>;
   /** Named ranges, targets in display form (`[sheet-id]!A1:B4`). */
   namedRanges: NamedRange[];
+  /** Undo / redo this user's own edits (see spreadsheet/undo.ts). */
+  undo: () => Promise<void>;
+  redo: () => Promise<void>;
+  canUndo: boolean;
+  canRedo: boolean;
   defineName: (name: string, sheetId: string, rect: Rect) => Promise<void>;
   deleteName: (name: string) => Promise<void>;
   // Export
@@ -453,69 +465,105 @@ export function useSpreadsheet({
     await refresh();
   }, [client, refresh, enqueue]);
 
-  const setCell = useCallback(
-    async (sheetId: string, row: number, col: number, rawValue: string) => {
-      const at = idsAt(sheetId, row, col);
-      if (!client || !at) return;
-      const raw_value = toStored(rawValue, sheetId);
-      applyOverlay(sheetId, [{ ...at, raw_value }]);
-      await enqueue(() => client.setCell({ sheet_id: sheetId, ...at, raw_value }));
-      // No await refresh() here — the subscription refresh reconciles + retires.
-    },
-    [client, applyOverlay, enqueue],
-  );
+  // ── Undo ──────────────────────────────────────────────────────────────
+  const undoStack = useRef<UndoEntry[]>([]);
+  const redoStack = useRef<UndoEntry[]>([]);
+  const [depth, setDepth] = useState({ undo: 0, redo: 0 });
+  const syncDepth = () => setDepth({ undo: undoStack.current.length, redo: redoStack.current.length });
+  const record = useCallback((entry: UndoEntry) => {
+    undoStack.current = pushBounded(undoStack.current, entry);
+    redoStack.current = [];
+    setDepth({ undo: undoStack.current.length, redo: 0 });
+  }, []);
+  useEffect(() => {
+    undoStack.current = [];
+    redoStack.current = [];
+    syncDepth();
+  }, [client]);
 
-  const clearCell = useCallback(async (sheetId: string, row: number, col: number) => {
-    const at = idsAt(sheetId, row, col);
-    if (!client || !at) return;
-    applyOverlay(sheetId, [{ ...at, clear: true }]);
-    await enqueue(() => client.clearCell({ sheet_id: sheetId, ...at }));
-  }, [client, applyOverlay, enqueue]);
+  /** A cell's current raw value (stored form) and format, overlay first. */
+  const stateAt = (sheetId: string, rowId: string, colId: string): CellState => {
+    const key = cellKey(sheetId, rowId, colId);
+    const e = overlayRef.current.get(key) ?? snapshotRef.current.get(key);
+    return { raw_value: e?.raw_value ?? '', format: e?.format ?? '' };
+  };
 
-  const setCellFormat = useCallback(
-    async (sheetId: string, row: number, col: number, format: string) => {
-      const at = idsAt(sheetId, row, col);
-      if (!client || !at) return;
-      applyOverlay(sheetId, [{ ...at, format }]);
-      await enqueue(() => client.setCellFormat({ sheet_id: sheetId, ...at, format }));
-    },
-    [client, applyOverlay, enqueue],
-  );
-
-  const applyCellOps = useCallback(
-    async (sheetId: string, ops: CellOp[]) => {
+  // Every cell write goes through here, by id with raw values in stored form:
+  // paint through the overlay, optionally record the undo step, then send in
+  // node-sized commits under one queue slot.
+  const writeCells = useCallback(
+    async (sheetId: string, ops: IdOp[], track: boolean) => {
       if (!client || ops.length === 0) return;
-      // Positions and typed formulas → ids and stored formulas, once, before
-      // anything is painted or sent.
-      const byId = ops.flatMap((op) => {
-        const at = idsAt(sheetId, op.row, op.col);
-        if (!at) return [];
-        return [op.kind === 'Set'
-          ? { kind: 'Set' as const, ...at, raw_value: toStored(op.raw_value, sheetId) }
-          : op.kind === 'Format'
-            ? { kind: 'Format' as const, ...at, format: op.format }
-            : { kind: 'Clear' as const, ...at }];
-      });
-      applyOverlay(sheetId, byId.map((op) =>
+      if (track) {
+        const changes = new Map<string, { row_id: string; col_id: string; before: CellState; after: CellState }>();
+        for (const op of ops) {
+          const key = cellKey(sheetId, op.row_id, op.col_id);
+          const prev = changes.get(key)
+            ?? { row_id: op.row_id, col_id: op.col_id, before: stateAt(sheetId, op.row_id, op.col_id), after: stateAt(sheetId, op.row_id, op.col_id) };
+          const after = op.kind === 'Set' ? { ...prev.after, raw_value: op.raw_value }
+            : op.kind === 'Format' ? { ...prev.after, format: op.format }
+            : { raw_value: '', format: '' };
+          changes.set(key, { ...prev, after });
+        }
+        record({ kind: 'cells', sheetId, changes: [...changes.values()] });
+      }
+      applyOverlay(sheetId, ops.map((op) =>
         op.kind === 'Set' ? { row_id: op.row_id, col_id: op.col_id, raw_value: op.raw_value }
         : op.kind === 'Format' ? { row_id: op.row_id, col_id: op.col_id, format: op.format }
         : { row_id: op.row_id, col_id: op.col_id, clear: true },
       ));
-      const wire = byId.map((op) =>
+      const wire = ops.map((op) =>
         op.kind === 'Set'
           ? CellOpWire.Set({ row_id: op.row_id, col_id: op.col_id, raw_value: op.raw_value })
           : op.kind === 'Format'
             ? CellOpWire.Format({ row_id: op.row_id, col_id: op.col_id, format: op.format })
             : CellOpWire.Clear({ row_id: op.row_id, col_id: op.col_id }));
-      // One queue slot for the whole batch, so no other write lands between
-      // its commits; each commit stays under the node's per-commit caps.
       await enqueue(async () => {
         for (const chunk of chunkOps(wire)) {
           await client.applyCellOps({ sheet_id: sheetId, ops: chunk });
         }
       });
+      // No refresh() here — the subscription refresh reconciles + retires.
     },
-    [client, applyOverlay, enqueue],
+    [client, applyOverlay, enqueue, record],
+  );
+
+  const setCell = useCallback(
+    async (sheetId: string, row: number, col: number, rawValue: string) => {
+      const at = idsAt(sheetId, row, col);
+      if (at) await writeCells(sheetId, [{ kind: 'Set', ...at, raw_value: toStored(rawValue, sheetId) }], true);
+    },
+    [writeCells],
+  );
+
+  const clearCell = useCallback(async (sheetId: string, row: number, col: number) => {
+    const at = idsAt(sheetId, row, col);
+    if (at) await writeCells(sheetId, [{ kind: 'Clear', ...at }], true);
+  }, [writeCells]);
+
+  const setCellFormat = useCallback(
+    async (sheetId: string, row: number, col: number, format: string) => {
+      const at = idsAt(sheetId, row, col);
+      if (at) await writeCells(sheetId, [{ kind: 'Format', ...at, format }], true);
+    },
+    [writeCells],
+  );
+
+  const applyCellOps = useCallback(
+    async (sheetId: string, ops: CellOp[]) => {
+      // Positions and typed formulas → ids and stored formulas, once.
+      const byId = ops.flatMap((op): IdOp[] => {
+        const at = idsAt(sheetId, op.row, op.col);
+        if (!at) return [];
+        return [op.kind === 'Set'
+          ? { kind: 'Set', ...at, raw_value: toStored(op.raw_value, sheetId) }
+          : op.kind === 'Format'
+            ? { kind: 'Format', ...at, format: op.format }
+            : { kind: 'Clear', ...at }];
+      });
+      await writeCells(sheetId, byId, true);
+    },
+    [writeCells],
   );
 
   // ── Rows and columns ─────────────────────────────────────────────────────
@@ -528,8 +576,11 @@ export function useSpreadsheet({
 
   /** Add entries to the local structure at once, then send the ops. */
   const commitAxis = useCallback(
-    async (sheetId: string, axis: Axis, added: AxisEntry[], ops: AxisOpPayload[]) => {
+    async (sheetId: string, axis: Axis, added: AxisEntry[], ops: AxisOpPayload[], track: boolean) => {
       if (!client || ops.length === 0) return;
+      if (track) {
+        record({ kind: 'axis', sheetId, axis, ids: added.map((e) => e.id), inserted: !added[0]?.deleted });
+      }
       const layouts = layoutsRef.current.some((l) => l.sheet_id === sheetId)
         ? layoutsRef.current
         : [...layoutsRef.current, { sheet_id: sheetId, rows: [], cols: [] }];
@@ -549,7 +600,7 @@ export function useSpreadsheet({
         }
       });
     },
-    [client, enqueue, deriveAndSet, applyStructureTo],
+    [client, enqueue, deriveAndSet, applyStructureTo, record],
   );
 
   const insertAxis = useCallback(
@@ -563,7 +614,7 @@ export function useSpreadsheet({
         .map((pos) => ({ id: newAxisId(), pos, deleted: false }));
       const ops = added.map(({ id, pos }) =>
         axis === 'row' ? AxisOpWire.InsertRow({ id, pos }) : AxisOpWire.InsertCol({ id, pos }));
-      await commitAxis(sheetId, axis, added, ops);
+      await commitAxis(sheetId, axis, added, ops, true);
     },
     [commitAxis],
   );
@@ -580,10 +631,63 @@ export function useSpreadsheet({
       });
       const ops = added.map(({ id }) =>
         axis === 'row' ? AxisOpWire.DeleteRow({ id }) : AxisOpWire.DeleteCol({ id }));
-      await commitAxis(sheetId, axis, added, ops);
+      await commitAxis(sheetId, axis, added, ops, true);
     },
     [commitAxis],
   );
+
+  /** Delete (`deleted`) or restore rows/columns by id, as an undo or redo. */
+  const setAxisDeleted = useCallback(
+    async (sheetId: string, axis: Axis, ids: string[], deleted: boolean) => {
+      const entries = axisEntries(sheetId, axis);
+      const changed = ids.flatMap((id) => {
+        const pos = positionOf(id, entries);
+        return pos === null ? [] : [{ id, pos, deleted }];
+      });
+      const ops = changed.map(({ id }) => deleted
+        ? (axis === 'row' ? AxisOpWire.DeleteRow({ id }) : AxisOpWire.DeleteCol({ id }))
+        : (axis === 'row' ? AxisOpWire.RestoreRow({ id }) : AxisOpWire.RestoreCol({ id })));
+      await commitAxis(sheetId, axis, changed, ops, false);
+    },
+    [commitAxis],
+  );
+
+  /**
+   * Take `entry` back to its "before" side, where nobody else has changed it
+   * since, and return the step that was actually taken (for the other stack).
+   */
+  const applyEntry = useCallback(async (entry: UndoEntry): Promise<UndoEntry> => {
+    if (entry.kind === 'axis') {
+      await setAxisDeleted(entry.sheetId, entry.axis, entry.ids, entry.inserted);
+      return invert(entry);
+    }
+    const changes = applicable(entry.changes, (r, c) => stateAt(entry.sheetId, r, c));
+    const ops = changes.flatMap((c): IdOp[] =>
+      c.before.raw_value === '' && c.before.format === ''
+        ? [{ kind: 'Clear', row_id: c.row_id, col_id: c.col_id }]
+        : [
+            { kind: 'Set', row_id: c.row_id, col_id: c.col_id, raw_value: c.before.raw_value },
+            { kind: 'Format', row_id: c.row_id, col_id: c.col_id, format: c.before.format },
+          ]);
+    await writeCells(entry.sheetId, ops, false);
+    return invert({ ...entry, changes });
+  }, [setAxisDeleted, writeCells]);
+
+  const undo = useCallback(async () => {
+    const entry = undoStack.current[undoStack.current.length - 1];
+    if (!entry) return;
+    undoStack.current = undoStack.current.slice(0, -1);
+    redoStack.current = pushBounded(redoStack.current, await applyEntry(entry));
+    syncDepth();
+  }, [applyEntry]);
+
+  const redo = useCallback(async () => {
+    const entry = redoStack.current[redoStack.current.length - 1];
+    if (!entry) return;
+    redoStack.current = redoStack.current.slice(0, -1);
+    undoStack.current = pushBounded(undoStack.current, await applyEntry(entry));
+    syncDepth();
+  }, [applyEntry]);
 
   // ── Named ranges ─────────────────────────────────────────────────────────
 
@@ -660,6 +764,10 @@ export function useSpreadsheet({
     insertAxis,
     deleteAxis,
     namedRanges,
+    undo,
+    redo,
+    canUndo: depth.undo > 0,
+    canRedo: depth.redo > 0,
     defineName,
     deleteName,
     exportAll,

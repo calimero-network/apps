@@ -313,6 +313,26 @@ export default function AppPage() {
     }
   }, [activeSheetId, selectedCell]);
 
+  // ── Undo / redo: Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z, Ctrl+Y ────────────
+  // While the formula bar holds an uncommitted edit, the keys belong to the
+  // text field's own undo; otherwise they undo this user's sheet edits.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+      const key = e.key.toLowerCase();
+      const isUndo = key === 'z' && !e.shiftKey;
+      const isRedo = (key === 'z' && e.shiftKey) || (key === 'y' && !e.metaKey);
+      if (!isUndo && !isRedo) return;
+      if (isDirty) return;
+      const target = e.target as HTMLElement | null;
+      if (target?.closest('[role="dialog"]')) return;
+      e.preventDefault();
+      void (isUndo ? ss.undo() : ss.redo());
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isDirty, ss]);
+
   // ── Presence: where you are, for everyone else's grid ─────────────
   const presence = useSheetPresence(ws.contextId, ss.selfId);
   const { publish: publishPresence } = presence;
@@ -1058,6 +1078,19 @@ export default function AppPage() {
           <span>Download</span>
         </ToolBtn>
 
+        <IconBtn onClick={() => void ss.undo()} disabled={!ss.canUndo} title="Undo your last edit (Ctrl/⌘+Z)" aria-label="Undo" data-testid="action-undo">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M9 14 4 9l5-5" /><path d="M4 9h11a5 5 0 0 1 0 10h-4" />
+          </svg>
+        </IconBtn>
+        <IconBtn onClick={() => void ss.redo()} disabled={!ss.canRedo} title="Redo (Ctrl/⌘+Shift+Z)" aria-label="Redo" data-testid="action-redo">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="m15 14 5-5-5-5" /><path d="M20 9H9a5 5 0 0 0 0 10h4" />
+          </svg>
+        </IconBtn>
+
         <ToolBtn onClick={() => setShowHelp(true)} title="Function reference" aria-label="Open function reference">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
             stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1348,7 +1381,8 @@ const IconBtn = styled.button`
   border-radius: 8px;
   cursor: pointer;
   transition: background 0.14s, color 0.14s;
-  &:hover { background: ${C.paper2}; color: ${C.ink}; }
+  &:hover:not(:disabled) { background: ${C.paper2}; color: ${C.ink}; }
+  &:disabled { opacity: 0.35; cursor: default; }
 `;
 
 const BackBtn = styled.button`
