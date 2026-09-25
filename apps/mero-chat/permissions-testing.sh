@@ -42,7 +42,7 @@ N3_URL="http://127.0.0.1:${N3_PORT}"
 
 ADMIN_USER="${E2E_ADMIN_USER:-admin}"
 ADMIN_PASS="${E2E_ADMIN_PASS:-calimero1234}"
-WASM="${SCRIPT_DIR}/logic/res/curb.wasm"
+WASM="${SCRIPT_DIR}/logic/res/mero_chat.wasm"
 
 STOP=false; CLEAN=false
 for arg in "$@"; do
@@ -110,8 +110,8 @@ section "Prerequisites"
 for cmd in merod meroctl jq curl python3 cargo-mero; do
   command -v "$cmd" &>/dev/null && ok "$cmd" || die "$cmd not in PATH"
 done
-[ -f "$WASM" ] || die "curb.wasm not found — run: cd logic && cargo mero build"
-ok "curb.wasm: $WASM"
+[ -f "$WASM" ] || die "mero_chat.wasm not found — run: cd logic && cargo mero build"
+ok "mero_chat.wasm: $WASM"
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 

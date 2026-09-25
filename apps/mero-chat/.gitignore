@@ -1,14 +1,32 @@
-/node_modules
-.DS_Store
+# Rust / WASM
+logic/target/
+# NOT `logic/res/` — the standalone repo ignored it wholesale (`**/res/`), which
+# hides res/abi.json and res/state-schema.json, and ci.yml's ABI gate then has
+# nothing to diff and passes while checking nothing.
+logic/res/*.wasm
+logic/res/*.mpk
+logic/res/bundle-temp/
+logic/dist/
 
+# Frontend
+app/node_modules/
+app/dist/
+app/dev-dist/
+app/playwright-report/
+app/test-results/
+app/blob-report/
+
+# merobox runtime data (~400 MB of node state)
+logic/workflows/data/
+logic/workflows/**/.pids/
+
+# misc
+.DS_Store
+*.log
+/data/
 .idea/
-data/
-**/target/
-**/res/
-**/build/
-**/dist/
-**/node_modules/
+.vercel/
 calimero.json
 .local-signing-key.json
-# local-only: vercel CLI scratch
-.vercel/
+logic/key.json
+logic/*-key.json

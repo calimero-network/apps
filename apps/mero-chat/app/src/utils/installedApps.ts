@@ -1,8 +1,9 @@
 import axios from "axios";
 import { getNodeUrl } from "@calimero-network/mero-react";
 
-import { getAuthConfig } from "../api/meroJsClient";
-import { getApplicationId, getApplicationPath } from "../constants/config";
+import { getAuthConfig, getMeroJs } from "../api/meroJsClient";
+import { getApplicationId } from "../constants/config";
+import { APP_SLUG } from "./invitation";
 
 const DEFAULT_ENDPOINT = "http://localhost:2428";
 
@@ -65,21 +66,33 @@ export async function resolveInstalledAppId(
   return preferred;
 }
 
+/** The registry chat publishes to — the same one `main.tsx` hands the login flow. */
+const REGISTRY_URL = "https://apps.calimero.network";
+
 /**
- * Install the configured app on the node from its published WASM URL.
+ * Install chat on the node from the registry, by coordinates.
  *
- * Returns the application id the node derived from the installed bytes. That
- * id is a hash over the wasm AND its metadata, so it only equals
- * `getApplicationId()` when both match what produced the configured id —
- * callers must compare and report a mismatch rather than assuming success.
+ * Since rc.31 the node installs a PUBLISHED bundle by `{ package, version }` and
+ * nothing else: every admin request body is `deny_unknown_fields`, so the old
+ * `{ url, metadata }` body was refused outright, and a raw wasm URL is not a
+ * signed bundle the node would accept anyway. The version is the newest one the
+ * registry lists; a node older than that bundle's `minRuntimeVersion` refuses
+ * it, which surfaces as the install error rather than a silent mismatch.
+ *
+ * Returns the application id the node derived — hash(package, signer). Callers
+ * must still compare it with `getApplicationId()` and report a mismatch rather
+ * than assuming success: a dev bundle signed by another key derives another id.
  */
 export async function installConfiguredApp(): Promise<string> {
-  const res = await axios.post(
-    `${nodeBase()}/admin-api/install-application`,
-    { url: getApplicationPath(), metadata: [] },
-    { headers: authHeaders() },
-  );
-  const installed = res.data?.data?.applicationId ?? "";
-  if (!installed) throw new Error("Node did not return an application id.");
-  return installed;
+  const admin = getMeroJs().admin;
+  const [version] = await admin.getRegistryVersions(REGISTRY_URL, APP_SLUG);
+  if (!version) {
+    throw new Error(`The registry lists no published version of ${APP_SLUG}.`);
+  }
+  const { applicationId } = await admin.installApplication({
+    package: APP_SLUG,
+    version,
+  });
+  if (!applicationId) throw new Error("Node did not return an application id.");
+  return applicationId;
 }

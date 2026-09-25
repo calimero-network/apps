@@ -23,7 +23,8 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 export const AUTH_FILE = path.join(__dirname, ".auth/state.json");
-const APP_URL = process.env.VITE_APP_URL ?? "http://localhost:5173";
+const APP_URL =
+  process.env.VITE_APP_URL ?? `http://localhost:${process.env.PW_PORT ?? "5189"}`;
 const NODE_URL = process.env.E2E_NODE_URL ?? "";
 const USERNAME = process.env.E2E_USERNAME ?? "admin";
 const PASSWORD = process.env.E2E_PASSWORD ?? "password";
@@ -53,7 +54,7 @@ function isSessionComplete(): boolean {
       localStorage: Array<{ name: string; value: string }>;
     }> = state.origins ?? [];
     const ls =
-      origins.find((o) => o.origin.includes("localhost:5173"))?.localStorage ??
+      origins.find((o) => o.origin === new URL(APP_URL).origin)?.localStorage ??
       [];
 
     const meroTokens = ls.find((e) => e.name === "mero-tokens")?.value;

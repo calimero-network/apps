@@ -7,6 +7,12 @@ description: >
 
 force_pull_image: true
 
+# The chat repo's CI ran this scenario with `merobox bootstrap run --e2e-mode`;
+# the monorepo runs `bootstrap run <file>` with no flags, so the mode lives here.
+# Without it `merod init`'s default bootstrap.nodes (the PUBLIC devnet boot
+# node) survives, and the namespace join dies on `KeyDelivery timed out`.
+e2e_mode: true
+
 nodes:
   chain_id: testnet-1
   count: 3
@@ -18,7 +24,7 @@ steps:
   - name: Install Application on Node 1
     type: install_application
     node: calimero-node-1
-    path: "../logic/dist/curb.mpk"
+    path: dist/com.calimero.chat.mpk
     dev: true
     outputs:
       app_id: applicationId
@@ -26,13 +32,13 @@ steps:
   - name: Install Application on Node 2
     type: install_application
     node: calimero-node-2
-    path: "../logic/dist/curb.mpk"
+    path: dist/com.calimero.chat.mpk
     dev: true
 
   - name: Install Application on Node 3
     type: install_application
     node: calimero-node-3
-    path: "../logic/dist/curb.mpk"
+    path: dist/com.calimero.chat.mpk
     dev: true
 
   - name: Create Namespace
@@ -105,11 +111,25 @@ steps:
       - "is_set({{invite_carol}})"
       - "{{invite_carol}} != ''"
 
+  # core gives the group key a 5s gossip window, which on a loaded runner has to
+  # cover peer discovery too; a join that races it loses KeyDelivery and the whole
+  # scenario. 12s is the fleet's measured settle (scripts/tests/mesh-settle-test.py).
+  - name: Settle before the join (cold-join KeyDelivery)
+    type: wait
+    seconds: 12
+
   - name: Node 2 Joins Namespace (Private Invite)
     type: join_group
     node: calimero-node-2
     group_id: "{{namespace_id}}"
     invitation: "{{invite_bob}}"
+
+  # core gives the group key a 5s gossip window, which on a loaded runner has to
+  # cover peer discovery too; a join that races it loses KeyDelivery and the whole
+  # scenario. 12s is the fleet's measured settle (scripts/tests/mesh-settle-test.py).
+  - name: Settle before the join (cold-join KeyDelivery)
+    type: wait
+    seconds: 12
 
   - name: Node 3 Joins Namespace (Open Invite)
     type: join_group

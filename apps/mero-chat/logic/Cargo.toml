@@ -1,46 +1,45 @@
 [package]
-name = "curb"
+# Renamed from `curb`, the app's pre-release codename. Directory == cargo package
+# == npm package, which publish-bundle.yml relies on (it uses one value as both
+# `apps/$APP/logic` and `pnpm -F $APP`). The rename is free where it matters:
+# the registry id is `package` below, and an ApplicationId is hash(package,
+# signer) — the crate name reaches neither. It does move the built module from
+# `res/curb.wasm` to `res/mero_chat.wasm`, and the scenarios install the bundle,
+# not the wasm, so none of them name it.
+name        = "mero-chat"
 description = "Calimero chat"
-version = "3.1.1"
-edition = "2021"
+# The REGISTRY owns the published version (publish-bundle.yml asks it for the
+# next one); this is the lineage cargo-mero stamps on a local dev bundle.
+version     = "3.1.1"
+edition.workspace    = true
+authors.workspace    = true
+license.workspace    = true
+repository.workspace = true
 
 [lib]
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-base64 = "0.23.0"
-borsh = "1.6.1"
-borsh-derive = "1.6.1"
-bs58 = "0.5.1"
+calimero-sdk            = { workspace = true }
+calimero-storage        = { workspace = true }
+calimero-storage-macros = { workspace = true }
+borsh                   = { workspace = true }
+bs58                    = { workspace = true }
+thiserror               = { workspace = true }
 # Message ids are a digest, not a transcript — see `get_message_id`. Already in
 # the tree via the SDK, so this adds no code to the wasm.
-sha2 = { version = "0.10", default-features = false }
-# Pinned to a real release TAG — this does NOT track master, whatever the old
-# comment here said. Cargo.lock records which commit the tag resolved to, so a
-# bump is a deliberate `cargo update` reviewed as its own diff.
-calimero-sdk = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.42" }
-calimero-storage = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.42" }
-calimero-storage-macros = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.42" }
-thiserror = "1.0.56"
+sha2                    = { workspace = true }
 
 # ABI description is a host-build concern: the manifest is extracted by running
-# the app natively. Linking it into the wasm only bloats the module.
+# the app natively. Linking it into the wasm only bloats the module. Used for
+# `impl_bytes32_abi!` on the id newtypes in `src/types/id.rs`.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-calimero-wasm-abi = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.42" }
+calimero-wasm-abi = { workspace = true }
 
 [dev-dependencies]
 # Enables register_crdt_merge + the native mock host so TestHost can drive the
 # AccessControl writer-set state under `cargo test`.
-calimero-storage = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.42", features = ["testing"] }
-
-[profile.app-release]
-inherits = "release"
-codegen-units = 1
-opt-level = "z"
-lto = true
-debug = false
-panic = "abort"
-overflow-checks = true
+calimero-storage = { workspace = true, features = ["testing"] }
 
 [package.metadata.calimero]
 package     = "com.calimero.chat"
@@ -48,29 +47,27 @@ name        = "Mero Chat"
 description = "Mero Chat v2 - group-based context management. Each context is one channel or DM."
 author      = "Calimero"
 icon        = "../app/public/icons/icon-512x512.png"
-frontend    = "https://mero-chat-pwa.vercel.app/"
+# The existing deployment. It is also the login callback's registered origin, so
+# the Vercel project is relinked to Root Directory `apps/mero-chat/app` rather
+# than replaced.
+frontend    = "https://mero-chat-pwa.vercel.app"
 slug        = "com.calimero.chat"
-# Equal to the SDK tag above, always — it is the floor a node checks before it
-# will accept the bundle at all. Without it cargo-mero advertises the
-# placeholder `0.1.0`, which tells every node "any version will do" while the
-# wasm calls host functions an old node does not have.
-#
-# THREE places move together, and a bump that changes only this file is why
-# every bot PR here is red:
-#   1. the `calimero-*` git tags above (including the `[dev-dependencies]` copy)
-#   2. this line
-#   3. `image: ghcr.io/calimero-network/merod:<tag>` in EVERY `workflows/*.yml`,
-#      plus `RELEASE` in `scripts/setup-cargo-mero.sh`
+category    = "social"
+tags        = ["chat", "messaging", "social"]
+github      = "https://github.com/calimero-network/apps"
+# Equal to [workspace.metadata.mero-apps] in the root Cargo.toml, always —
+# scripts/check-app-metadata.sh asserts it, and core's fleet-bump rewrites every
+# app's copy on a release. It is the floor a node checks before it will accept
+# the bundle at all.
 #
 # "Equal", not "at least", because the guest<->host payload is not stable across
 # releases even when the signatures are. core#3633 (rc.26) added `order` to
 # `Metadata`, which rides inside `Action` across that boundary: a contract built
 # on the newer SDK writes actions an older node cannot decode, and it surfaces
-# as a peer that never replicates rather than as an error — measured on this
-# branch, not assumed.
+# as a peer that never replicates rather than as an error.
 #
-# rc.28 -> rc.41 crossed four more breaking releases, each of which had to be
-# worked through rather than pinned past:
+# rc.28 -> rc.42 crossed five breaking releases, each of which had to be worked
+# through rather than pinned past:
 #   rc.29  invitations carry non-empty `admitters` and are clamped to 24h
 #   rc.31  an `http` registry node serves no bytecode to peers, so the app is
 #          installed on EVERY node in `workflows/integration-setup.yml`
@@ -79,3 +76,6 @@ slug        = "com.calimero.chat"
 #   rc.38  37 admin request bodies closed: an extra key is now a 400/422
 #   rc.39  the blob DHT is gone; `?context_id=` is the only discovery path
 min-runtime-version = "0.11.0-rc.42"
+
+# NOTE: no [profile.*] — cargo ignores profiles in a workspace member and
+# `cargo mero build` then fails with `profile 'app-release' is not defined`.

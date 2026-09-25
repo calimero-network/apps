@@ -13,6 +13,8 @@ const {
   mockSetGroupId,
   mockSetGroupMemberIdentity,
   mockSerializeGroupInvitationPayload,
+  mockGetRegistryVersions,
+  mockInstallApplication,
 } = vi.hoisted(() => ({
   mockAxiosGet: vi.fn(),
   mockAxiosPost: vi.fn(),
@@ -24,6 +26,8 @@ const {
   mockSetGroupId: vi.fn(),
   mockSetGroupMemberIdentity: vi.fn(),
   mockSerializeGroupInvitationPayload: vi.fn(),
+  mockGetRegistryVersions: vi.fn(),
+  mockInstallApplication: vi.fn(),
 }));
 
 vi.mock("axios", () => ({
@@ -60,6 +64,12 @@ vi.mock("@calimero-network/mero-react", () => ({
 
 vi.mock("../../api/meroJsClient", () => ({
   getAuthConfig: () => ({ jwtToken: "token" }),
+  getMeroJs: () => ({
+    admin: {
+      getRegistryVersions: mockGetRegistryVersions,
+      installApplication: mockInstallApplication,
+    },
+  }),
 }));
 
 vi.mock("../../api/dataSource/groupApiDataSource", () => ({
@@ -79,12 +89,12 @@ vi.mock("../../api/dataSource/nodeApiDataSource", () => ({
 
 vi.mock("../../constants/config", () => ({
   getApplicationId: () => "app-1",
-  getApplicationPath: () => "https://example.test/chat.wasm",
   setGroupId: mockSetGroupId,
   setGroupMemberIdentity: mockSetGroupMemberIdentity,
 }));
 
 vi.mock("../../utils/invitation", () => ({
+  APP_SLUG: "com.calimero.chat",
   serializeGroupInvitationPayload: mockSerializeGroupInvitationPayload,
 }));
 
@@ -121,6 +131,8 @@ describe("CreateWorkspacePopup", () => {
     mockSetGroupId.mockReset();
     mockSetGroupMemberIdentity.mockReset();
     mockSerializeGroupInvitationPayload.mockReset();
+    mockGetRegistryVersions.mockReset();
+    mockInstallApplication.mockReset();
 
     mockAxiosGet.mockResolvedValue({
       data: {
@@ -224,9 +236,8 @@ describe("CreateWorkspacePopup", () => {
     mockAxiosGet
       .mockResolvedValueOnce({ data: { data: { apps: [] } } })
       .mockResolvedValue({ data: { data: { apps: [{ id: "app-1" }] } } });
-    mockAxiosPost.mockResolvedValue({
-      data: { data: { applicationId: "app-1" } },
-    });
+    mockGetRegistryVersions.mockResolvedValue(["3.1.2", "3.1.1"]);
+    mockInstallApplication.mockResolvedValue({ applicationId: "app-1" });
 
     const onSuccess = vi.fn();
     render(<CreateWorkspacePopup onSuccess={onSuccess} onCancel={vi.fn()} />);
@@ -241,11 +252,12 @@ describe("CreateWorkspacePopup", () => {
     fireEvent.click(screen.getByRole("button", { name: /^install$/i }));
 
     await waitFor(() => {
-      expect(mockAxiosPost).toHaveBeenCalledWith(
-        "http://localhost:2428/admin-api/install-application",
-        { url: "https://example.test/chat.wasm", metadata: [] },
-        expect.anything(),
-      );
+      // By registry coordinates — the newest published version. The node
+      // refuses the old `{ url, metadata }` body (deny_unknown_fields).
+      expect(mockInstallApplication).toHaveBeenCalledWith({
+        package: "com.calimero.chat",
+        version: "3.1.2",
+      });
     });
     await waitFor(() => {
       expect(onSuccess).toHaveBeenCalledWith("group-1");
@@ -254,9 +266,8 @@ describe("CreateWorkspacePopup", () => {
 
   it("reports a mismatch when the installed app id is not the configured one", async () => {
     mockAxiosGet.mockResolvedValue({ data: { data: { apps: [] } } });
-    mockAxiosPost.mockResolvedValue({
-      data: { data: { applicationId: "different-app" } },
-    });
+    mockGetRegistryVersions.mockResolvedValue(["3.1.2"]);
+    mockInstallApplication.mockResolvedValue({ applicationId: "different-app" });
 
     render(<CreateWorkspacePopup onSuccess={vi.fn()} onCancel={vi.fn()} />);
     fireEvent.change(screen.getByRole("textbox", { name: /namespace name/i }), {

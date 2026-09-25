@@ -1,5 +1,5 @@
 /**
- * Full-stack integration tests — frontend + real Calimero node + curb.wasm.
+ * Full-stack integration tests — frontend + real Calimero node + the mero-chat contract.
  *
  * Prerequisites (run once before this suite):
  *   ./scripts/setup-nodes.sh

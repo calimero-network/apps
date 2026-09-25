@@ -8,6 +8,24 @@
     "heartbeat",
     "leave"
   ],
+  "mero-chat": [
+    "delete_draft",
+    "delete_message",
+    "edit_message",
+    "get_channel_info",
+    "get_draft",
+    "get_member_role",
+    "get_message_count",
+    "get_messages_from",
+    "get_unread_count",
+    "get_unread_mentions",
+    "list_roles",
+    "mark_as_read",
+    "mark_messages_as_read",
+    "save_draft",
+    "search_all_messages",
+    "set_member_role"
+  ],
   "mero-design": [
     "add_comment",
     "add_reply",

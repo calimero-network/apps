@@ -1,6 +1,6 @@
+use calimero_sdk::abi::AbiType;
 use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use calimero_sdk::serde::{Deserialize, Serialize};
-use calimero_sdk::abi::AbiType;
 use calimero_sdk::{app, env, AccountId, BlobId};
 use calimero_storage::collections::crdt_meta::MergeError;
 use calimero_storage::collections::{
@@ -115,11 +115,10 @@ impl MergeableTrait for Attachment {
     /// they merge. `blob_id` is compared as its hex string, which is what the
     /// wire carries since rc.27.
     fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        if other.uploaded_at > self.uploaded_at {
-            *self = other.clone();
-        } else if other.uploaded_at == self.uploaded_at
-            && other.tie_break_key() > self.tie_break_key()
-        {
+        let newer = other.uploaded_at > self.uploaded_at;
+        let wins_tie =
+            other.uploaded_at == self.uploaded_at && other.tie_break_key() > self.tie_break_key();
+        if newer || wins_tie {
             *self = other.clone();
         }
         Ok(())
@@ -193,7 +192,9 @@ pub enum Event {
 }
 
 /// "channel" or "dm" — stored in app state so it's mutable (supports renames).
-#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, PartialEq, Eq, Clone, AbiType)]
+#[derive(
+    BorshDeserialize, BorshSerialize, Serialize, Deserialize, PartialEq, Eq, Clone, AbiType,
+)]
 #[serde(crate = "calimero_sdk::serde")]
 #[borsh(crate = "calimero_sdk::borsh")]
 pub enum ContextType {
@@ -210,21 +211,27 @@ pub enum ContextType {
 /// - `Mod`      can flip a User to Banned (and back)
 /// - `Admin`    can change anyone's role; creator starts here
 /// - `Banned`   cannot perform any state-mutating action
-#[derive(Debug, Clone, Copy, PartialEq, Eq,
-    BorshDeserialize, BorshSerialize, Serialize, Deserialize, AbiType)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    BorshDeserialize,
+    BorshSerialize,
+    Serialize,
+    Deserialize,
+    AbiType,
+)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
+#[derive(Default)]
 pub enum Role {
+    #[default]
     User,
     Mod,
     Admin,
     Banned,
-}
-
-impl Default for Role {
-    fn default() -> Self {
-        Role::User
-    }
 }
 
 /// Named role inside `AccessControl` for moderators. `Admin` is the admin tier
@@ -615,7 +622,9 @@ impl MeroChat {
     /// an SSE notification on any subscriber.
     pub fn mark_as_read(&mut self, timestamp: u64) -> app::Result<String> {
         let caller = Self::executor_id();
-        let _ = self.read_receipts.insert(caller, LwwRegister::new(timestamp));
+        let _ = self
+            .read_receipts
+            .insert(caller, LwwRegister::new(timestamp));
         Ok("ok".to_string())
     }
 
@@ -641,7 +650,10 @@ impl MeroChat {
                     continue;
                 }
                 let deleted = msg.deleted.as_ref().map(|r| **r).unwrap_or(false)
-                    || self.deleted_messages.contains(msg.id.get()).unwrap_or(false);
+                    || self
+                        .deleted_messages
+                        .contains(msg.id.get())
+                        .unwrap_or(false);
                 if deleted {
                     continue;
                 }
@@ -673,7 +685,10 @@ impl MeroChat {
                     continue;
                 }
                 let deleted = msg.deleted.as_ref().map(|r| **r).unwrap_or(false)
-                    || self.deleted_messages.contains(msg.id.get()).unwrap_or(false);
+                    || self
+                        .deleted_messages
+                        .contains(msg.id.get())
+                        .unwrap_or(false);
                 if deleted {
                     continue;
                 }
@@ -734,11 +749,7 @@ impl MeroChat {
     /// for the same identity and write different usernames concurrently
     /// will still converge via `LwwRegister` semantics. In practice the
     /// initial set happens on one device, so this is rare.
-    pub fn set_profile(
-        &mut self,
-        username: String,
-        avatar: Option<String>,
-    ) -> app::Result<String> {
+    pub fn set_profile(&mut self, username: String, avatar: Option<String>) -> app::Result<String> {
         self.require_not_banned()?;
         if username.trim().is_empty() {
             app::bail!("Username cannot be empty");
@@ -751,9 +762,14 @@ impl MeroChat {
 
         // Announce avatar blob to this context so it replicates to other nodes.
         let avatar_register: Option<LwwRegister<String>> = if let Some(ref blob_id_str) = avatar {
-            let blob_id: BlobId = blob_id_str.parse().map_err(|e| app::err!("Invalid avatar blob ID: {e}"))?;
+            let blob_id: BlobId = blob_id_str
+                .parse()
+                .map_err(|e| app::err!("Invalid avatar blob ID: {e}"))?;
             if !env::blob_announce_to_context(blob_id.as_ref(), &env::context_id()) {
-                app::log!("Warning: failed to announce avatar blob {} to context", blob_id_str);
+                app::log!(
+                    "Warning: failed to announce avatar blob {} to context",
+                    blob_id_str
+                );
             }
             Some(LwwRegister::new(blob_id_str.clone()))
         } else {
@@ -857,21 +873,30 @@ impl MeroChat {
         let mut ids: Vec<UserId> = Vec::new();
         if let Ok(entries) = self.banned.entries() {
             for (id, flag) in entries {
-                if *flag.get() && !ids.contains(&id) { ids.push(id); }
+                if *flag.get() && !ids.contains(&id) {
+                    ids.push(id);
+                }
             }
         }
         for who in self.roles.admins() {
             let id = UserId::new(*who.as_bytes());
-            if !ids.contains(&id) { ids.push(id); }
+            if !ids.contains(&id) {
+                ids.push(id);
+            }
         }
         if let Ok(mods) = self.roles.members_of(ROLE_MOD) {
             for who in mods {
                 let id = UserId::new(*who.as_bytes());
-                if !ids.contains(&id) { ids.push(id); }
+                if !ids.contains(&id) {
+                    ids.push(id);
+                }
             }
         }
         ids.into_iter()
-            .map(|id| { let r = self.role_of(&id); (id, r) })
+            .map(|id| {
+                let r = self.role_of(&id);
+                (id, r)
+            })
             .filter(|(_, r)| *r != Role::User)
             .collect()
     }
@@ -886,11 +911,7 @@ impl MeroChat {
     /// merge if forged). Ban/unban writes the separate `banned` set so a
     /// moderator — who is not an admin — can still moderate; that path performs
     /// no admin-gated `AccessControl` call.
-    pub fn set_member_role(
-        &mut self,
-        target: UserId,
-        role: Role,
-    ) -> app::Result<String> {
+    pub fn set_member_role(&mut self, target: UserId, role: Role) -> app::Result<String> {
         let me = Self::executor_id();
         let actor_role = self.role_of(&me);
         let target_role = self.role_of(&target);
@@ -910,18 +931,22 @@ impl MeroChat {
         // underlying admin/mod grant if the ban map and `AccessControl` diverged
         // across a merge. Only an admin may revoke; a moderator's sole permitted
         // transition is User<->Banned on a plain User, which holds no grants.
-        let has_mod   = self.roles.has_role(ROLE_MOD, &who).unwrap_or(false);
+        let has_mod = self.roles.has_role(ROLE_MOD, &who).unwrap_or(false);
         let has_admin = self.roles.is_admin(&who);
         match role {
             Role::Admin => {
-                if has_mod { self.revoke_mod(&who)?; }
+                if has_mod {
+                    self.revoke_mod(&who)?;
+                }
                 self.set_banned(&target, false);
                 self.roles
                     .grant_admin(who)
                     .map_err(|e| app::err!("grant admin failed: {e}"))?;
             }
             Role::Mod => {
-                if has_admin { self.revoke_admin_member(&who)?; }
+                if has_admin {
+                    self.revoke_admin_member(&who)?;
+                }
                 self.set_banned(&target, false);
                 self.roles
                     .grant(ROLE_MOD, who)
@@ -929,15 +954,23 @@ impl MeroChat {
             }
             Role::Banned => {
                 if actor_is_admin {
-                    if has_mod   { self.revoke_mod(&who)?; }
-                    if has_admin { self.revoke_admin_member(&who)?; }
+                    if has_mod {
+                        self.revoke_mod(&who)?;
+                    }
+                    if has_admin {
+                        self.revoke_admin_member(&who)?;
+                    }
                 }
                 self.set_banned(&target, true);
             }
             Role::User => {
                 if actor_is_admin {
-                    if has_mod   { self.revoke_mod(&who)?; }
-                    if has_admin { self.revoke_admin_member(&who)?; }
+                    if has_mod {
+                        self.revoke_mod(&who)?;
+                    }
+                    if has_admin {
+                        self.revoke_admin_member(&who)?;
+                    }
                 }
                 self.set_banned(&target, false);
             }
@@ -1031,12 +1064,7 @@ impl MeroChat {
     /// The digest covers the same four fields, so ids stay unique for the same
     /// reasons they were before: the counter separates two identical messages
     /// sent by the same account in the same millisecond.
-    fn get_message_id(
-        &self,
-        account: &UserId,
-        message: &str,
-        timestamp: u64,
-    ) -> MessageId {
+    fn get_message_id(&self, account: &UserId, message: &str, timestamp: u64) -> MessageId {
         use sha2::{Digest, Sha256};
 
         let message_counter = self.messages.len().unwrap_or(0) as u64 + 1;
@@ -1072,6 +1100,9 @@ impl MeroChat {
         }
     }
 
+    // Eight arguments are the ABI: every one is a named parameter the frontend
+    // sends. Collapsing them into a struct would change the JSON-RPC shape.
+    #[allow(clippy::too_many_arguments)]
     pub fn send_message(
         &mut self,
         message: String,
@@ -1114,7 +1145,10 @@ impl MeroChat {
         };
 
         if let Some(parent_id) = parent_message {
-            let mut entry = self.threads.entry(parent_id)?.or_insert(AuthoredVector::new())?;
+            let mut entry = self
+                .threads
+                .entry(parent_id)?
+                .or_insert(AuthoredVector::new())?;
             let _ = entry.push(msg.clone());
             drop(entry);
 
@@ -1275,7 +1309,7 @@ impl MeroChat {
             }
         }
 
-        all.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+        all.sort_by_key(|m| std::cmp::Reverse(m.timestamp));
         Ok(Self::paginate(all, limit, offset))
     }
 
@@ -1320,12 +1354,12 @@ impl MeroChat {
         } else {
             Vec::new()
         };
-        let mentions_usernames_vec: Vec<String> = if let Ok(iter) = message.mentions_usernames.iter()
-        {
-            iter.map(|r| r.get().clone()).collect()
-        } else {
-            Vec::new()
-        };
+        let mentions_usernames_vec: Vec<String> =
+            if let Ok(iter) = message.mentions_usernames.iter() {
+                iter.map(|r| r.get().clone()).collect()
+            } else {
+                Vec::new()
+            };
 
         let msg_id = message.id.get().clone();
         let is_deleted = message.deleted.as_ref().map(|r| **r).unwrap_or(false)
@@ -1421,10 +1455,7 @@ impl MeroChat {
     ///
     /// Accounts, not names: the client resolves them, so a rename is reflected
     /// on reactions already given rather than only on new ones.
-    fn get_reactions_for_message(
-        &self,
-        message_id: &str,
-    ) -> Option<HashMap<String, Vec<UserId>>> {
+    fn get_reactions_for_message(&self, message_id: &str) -> Option<HashMap<String, Vec<UserId>>> {
         match self.reactions.get(message_id) {
             Ok(Some(reactions)) => {
                 let mut hashmap = HashMap::new();
@@ -1433,7 +1464,7 @@ impl MeroChat {
                         let mut user_vec = Vec::new();
                         if let Ok(iter) = users.iter() {
                             for user in iter {
-                                user_vec.push(user.clone());
+                                user_vec.push(user);
                             }
                         }
                         hashmap.insert(emoji, user_vec);
@@ -1522,8 +1553,13 @@ impl MeroChat {
 
         let executor_id = Self::executor_id();
 
-        let mut reactions_entry = self.reactions.entry(message_id.clone())?.or_insert(UnorderedMap::new())?;
-        let mut emoji_entry = reactions_entry.entry(emoji.clone())?.or_insert(UnorderedSet::new())?;
+        let mut reactions_entry = self
+            .reactions
+            .entry(message_id.clone())?
+            .or_insert(UnorderedMap::new())?;
+        let mut emoji_entry = reactions_entry
+            .entry(emoji.clone())?
+            .or_insert(UnorderedSet::new())?;
         if add {
             let _ = emoji_entry.insert(executor_id);
         } else {
@@ -1572,7 +1608,7 @@ impl MeroChat {
                 app::bail!("Thread not found")
             };
             let updated = Self::find_and_edit(
-                &mut *thread_entry,
+                &mut thread_entry,
                 &message_id,
                 &new_message,
                 timestamp,
@@ -1649,7 +1685,7 @@ impl MeroChat {
             let Some(mut thread_entry) = self.threads.get_mut(&parent_message_id)? else {
                 app::bail!("Thread not found")
             };
-            Self::find_and_delete(&mut *thread_entry, &message_id, &executor_id, actor_role)?;
+            Self::find_and_delete(&mut thread_entry, &message_id, &executor_id, actor_role)?;
             drop(thread_entry);
 
             let _ = self.deleted_messages.insert(message_id.clone());
@@ -1745,17 +1781,7 @@ mod tests {
         let mut app = new_chat();
 
         let sent = app
-            .call(|c| {
-                c.send_message(
-                    "hello".to_owned(),
-                    vec![],
-                    vec![],
-                    None,
-                    0,
-                    None,
-                    None,
-                )
-            })
+            .call(|c| c.send_message("hello".to_owned(), vec![], vec![], None, 0, None, None))
             .expect("send");
         let id = sent.id.to_string();
 
@@ -1768,7 +1794,7 @@ mod tests {
         let reacted = with_reaction
             .messages
             .iter()
-            .find(|m| m.id.to_string() == id)
+            .find(|m| m.id == id)
             .expect("message present");
         assert!(
             reacted
@@ -1787,7 +1813,7 @@ mod tests {
         let cleared = after
             .messages
             .iter()
-            .find(|m| m.id.to_string() == id)
+            .find(|m| m.id == id)
             .expect("message present");
 
         let leftover = cleared
@@ -1835,14 +1861,18 @@ mod tests {
         assert_eq!(app.view(|s| s.get_member_role(modr)), Role::Mod);
 
         // The moderator may ban a user (separate exclusion set, no admin grant).
-        app.call_as_account(MODR, MODR, |s| s.set_member_role(user, Role::Banned)).unwrap();
+        app.call_as_account(MODR, MODR, |s| s.set_member_role(user, Role::Banned))
+            .unwrap();
         assert_eq!(app.view(|s| s.get_member_role(user)), Role::Banned);
 
         // …but may not escalate a user to Admin.
-        assert!(app.call_as_account(MODR, MODR, |s| s.set_member_role(user, Role::Admin)).is_err());
+        assert!(app
+            .call_as_account(MODR, MODR, |s| s.set_member_role(user, Role::Admin))
+            .is_err());
 
         // …and may unban (Banned → User).
-        app.call_as_account(MODR, MODR, |s| s.set_member_role(user, Role::User)).unwrap();
+        app.call_as_account(MODR, MODR, |s| s.set_member_role(user, Role::User))
+            .unwrap();
         assert_eq!(app.view(|s| s.get_member_role(user)), Role::User);
     }
 
@@ -1852,7 +1882,9 @@ mod tests {
         let user = UserId::new(USER);
         app.call(|s| s.set_member_role(user, Role::Banned)).unwrap();
         // A banned caller's state-mutating action is rejected by the ban gate.
-        let r = app.call_as_account(USER, USER, |s| s.save_draft("general".to_owned(), "hi".to_owned()));
+        let r = app.call_as_account(USER, USER, |s| {
+            s.save_draft("general".to_owned(), "hi".to_owned())
+        });
         assert!(r.is_err());
     }
 
@@ -1873,7 +1905,7 @@ mod tests {
         .unwrap();
 
         let reactors = app
-            .view(|s| s.get_reactions_for_message(&"msg-1".to_owned()))
+            .view(|s| s.get_reactions_for_message("msg-1"))
             .unwrap_or_default();
         let thumbs = reactors.get("\u{1f44d}").cloned().unwrap_or_default();
 
@@ -1904,7 +1936,7 @@ mod tests {
         .unwrap();
 
         let reactors = app
-            .view(|s| s.get_reactions_for_message(&"msg-1".to_owned()))
+            .view(|s| s.get_reactions_for_message("msg-1"))
             .unwrap_or_default();
         let mut thumbs = reactors.get("\u{1f44d}").cloned().unwrap_or_default();
         thumbs.sort();
@@ -1919,7 +1951,7 @@ mod tests {
         })
         .unwrap();
         let after = app
-            .view(|s| s.get_reactions_for_message(&"msg-1".to_owned()))
+            .view(|s| s.get_reactions_for_message("msg-1"))
             .unwrap_or_default();
         assert_eq!(
             after.get("\u{1f44d}").cloned().unwrap_or_default(),
@@ -1938,18 +1970,28 @@ mod tests {
     fn an_oversized_search_term_is_refused() {
         let mut app = new_chat();
         app.call(|s| {
-            s.send_message("hello".to_owned(), Vec::new(), Vec::new(), None, 1, None, None)
+            s.send_message(
+                "hello".to_owned(),
+                Vec::new(),
+                Vec::new(),
+                None,
+                1,
+                None,
+                None,
+            )
         })
         .unwrap();
 
         let huge = "x".repeat(MAX_SEARCH_TERM_LEN + 1);
 
         assert!(
-            app.view(|s| s.search_all_messages(huge.clone(), None, None)).is_err(),
+            app.view(|s| s.search_all_messages(huge.clone(), None, None))
+                .is_err(),
             "search_all_messages accepted an oversized term",
         );
         assert!(
-            app.view(|s| s.get_messages(None, None, None, Some(huge))).is_err(),
+            app.view(|s| s.get_messages(None, None, None, Some(huge)))
+                .is_err(),
             "get_messages accepted an oversized search term",
         );
     }
@@ -2123,15 +2165,7 @@ mod tests {
 
         let send = |app: &mut TestHost<MeroChat>, n: u64| {
             app.call(|s| {
-                s.send_message(
-                    format!("m{n}"),
-                    Vec::new(),
-                    Vec::new(),
-                    None,
-                    n,
-                    None,
-                    None,
-                )
+                s.send_message(format!("m{n}"), Vec::new(), Vec::new(), None, n, None, None)
             })
             .unwrap();
         };
@@ -2380,10 +2414,9 @@ mod tests {
     #[test]
     fn blob_id_roundtrip_typical() {
         let original = BlobId::from([
-            0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef,
-            0xfe, 0xdc, 0xba, 0x98, 0x76, 0x54, 0x32, 0x10,
-            0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef,
-            0xfe, 0xdc, 0xba, 0x98, 0x76, 0x54, 0x32, 0x10,
+            0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0xfe, 0xdc, 0xba, 0x98, 0x76, 0x54,
+            0x32, 0x10, 0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0xfe, 0xdc, 0xba, 0x98,
+            0x76, 0x54, 0x32, 0x10,
         ]);
         let encoded = original.to_string();
         let decoded: BlobId = encoded.parse().expect("roundtrip should succeed");
@@ -2471,7 +2504,10 @@ mod tests {
 
     #[test]
     fn draft_key_contains_user_and_channel() {
-        assert_eq!(draft_key("SomeBase58UserId", "general"), "SomeBase58UserId:general");
+        assert_eq!(
+            draft_key("SomeBase58UserId", "general"),
+            "SomeBase58UserId:general"
+        );
     }
 
     #[test]

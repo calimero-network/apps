@@ -15,7 +15,7 @@ help:
 	@echo ""
 	@echo "  Build"
 	@echo "    build          Build Rust WASM logic + frontend"
-	@echo "    logic-build    Compile logic/src → logic/res/curb.wasm"
+	@echo "    logic-build    Compile logic/src → logic/res/mero_chat.wasm"
 	@echo "    app-build      Bundle frontend (dist/)"
 	@echo ""
 	@echo "  Dev"

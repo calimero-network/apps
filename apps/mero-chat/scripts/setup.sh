@@ -82,12 +82,17 @@ fi
 
 # ── 4. Build Rust WASM logic ──────────────────────────────────────────────────
 step "Building Rust WASM logic…"
-info "Installing the pinned cargo-mero release…"
-bash "$REPO_ROOT/scripts/setup-cargo-mero.sh"
+# cargo-mero must come from the same core release as the SDK in the workspace
+# root Cargo.toml — an older one emits an ABI the node does not share. core's
+# fleet-bump rewrites the tag below on every release.
+# Install it with:  cargo install --git https://github.com/calimero-network/core \
+#                     --tag 0.11.0-rc.42 cargo-mero --locked
+command -v cargo-mero >/dev/null 2>&1 \
+  || { err "cargo-mero not found — install it (see comment above)"; exit 1; }
 info "Running cargo mero build — this may take a few minutes on a cold build"
 cd "$REPO_ROOT/logic"
 cargo mero build
-ok "logic/res/curb.wasm built"
+ok "logic/res/mero_chat.wasm built"
 
 # ── 5. Install frontend dependencies ─────────────────────────────────────────
 step "Installing frontend dependencies…"

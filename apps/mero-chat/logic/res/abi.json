@@ -1,0 +1,1255 @@
+{
+  "schema_version": "wasm-abi/1",
+  "types": {
+    "Attachment": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "mime_type",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "size",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "blob_id",
+          "type": {
+            "kind": "bytes",
+            "size": 32
+          }
+        },
+        {
+          "name": "uploaded_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "AttachmentInput": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "mime_type",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "size",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "blob_id_str",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "AttachmentPublic": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "mime_type",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "size",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "blob_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "uploaded_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "ContextInfo": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "context_type",
+          "type": {
+            "$ref": "ContextType"
+          }
+        },
+        {
+          "name": "description",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "creator",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "ContextType": {
+      "kind": "variant",
+      "variants": [
+        {
+          "name": "Channel"
+        },
+        {
+          "name": "Dm"
+        }
+      ]
+    },
+    "FullMessageResponse": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "total_count",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "messages",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "MessageWithReactions"
+            }
+          }
+        },
+        {
+          "name": "start_position",
+          "type": {
+            "kind": "u32"
+          }
+        }
+      ]
+    },
+    "MeroChat": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "context_type",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "$ref": "ContextType"
+            }
+          }
+        },
+        {
+          "name": "description",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "u64"
+            }
+          }
+        },
+        {
+          "name": "creator",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "messages",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "Message"
+            },
+            "crdt_type": "authored_vector"
+          }
+        },
+        {
+          "name": "threads",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "list",
+              "items": {
+                "$ref": "Message"
+              },
+              "crdt_type": "authored_vector"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "reactions",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "map",
+              "key": {
+                "kind": "string"
+              },
+              "value": {
+                "kind": "list",
+                "items": {
+                  "kind": "bytes",
+                  "size": 32
+                },
+                "crdt_type": "unordered_set"
+              },
+              "crdt_type": "unordered_map"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "profiles",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "StoredProfile"
+            },
+            "crdt_type": "authored_map"
+          }
+        },
+        {
+          "name": "roles",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "bool"
+            },
+            "crdt_type": "shared_storage"
+          }
+        },
+        {
+          "name": "banned",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "record",
+              "fields": [],
+              "crdt_type": "lww_register",
+              "inner_type": {
+                "kind": "bool"
+              }
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "read_receipts",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "record",
+              "fields": [],
+              "crdt_type": "lww_register",
+              "inner_type": {
+                "kind": "u64"
+              }
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "deleted_messages",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            },
+            "crdt_type": "unordered_set"
+          }
+        }
+      ]
+    },
+    "Message": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "timestamp",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "u64"
+            }
+          }
+        },
+        {
+          "name": "sender",
+          "type": {
+            "kind": "bytes",
+            "size": 32
+          }
+        },
+        {
+          "name": "mentions",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "bytes",
+              "size": 32
+            },
+            "crdt_type": "unordered_set"
+          }
+        },
+        {
+          "name": "mentions_usernames",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "record",
+              "fields": [],
+              "crdt_type": "lww_register",
+              "inner_type": {
+                "kind": "string"
+              }
+            },
+            "crdt_type": "vector"
+          }
+        },
+        {
+          "name": "files",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "Attachment"
+            },
+            "crdt_type": "vector"
+          }
+        },
+        {
+          "name": "images",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "Attachment"
+            },
+            "crdt_type": "vector"
+          }
+        },
+        {
+          "name": "id",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "text",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "edited_on",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "u64"
+            }
+          },
+          "nullable": true
+        },
+        {
+          "name": "deleted",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "bool"
+            }
+          },
+          "nullable": true
+        }
+      ]
+    },
+    "MessageSentEvent": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "message_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "MessageWithReactions": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "index",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "timestamp",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "sender",
+          "type": {
+            "kind": "bytes",
+            "size": 32
+          }
+        },
+        {
+          "name": "mentions",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "bytes",
+              "size": 32
+            }
+          }
+        },
+        {
+          "name": "mentions_usernames",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "files",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "AttachmentPublic"
+            }
+          }
+        },
+        {
+          "name": "images",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "AttachmentPublic"
+            }
+          }
+        },
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "text",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "edited_on",
+          "type": {
+            "kind": "u64"
+          },
+          "nullable": true
+        },
+        {
+          "name": "reactions",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "list",
+              "items": {
+                "kind": "bytes",
+                "size": 32
+              }
+            }
+          },
+          "nullable": true
+        },
+        {
+          "name": "deleted",
+          "type": {
+            "kind": "bool"
+          },
+          "nullable": true
+        },
+        {
+          "name": "thread_count",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "thread_last_timestamp",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "parent_message_id",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        }
+      ]
+    },
+    "Role": {
+      "kind": "variant",
+      "variants": [
+        {
+          "name": "User"
+        },
+        {
+          "name": "Mod"
+        },
+        {
+          "name": "Admin"
+        },
+        {
+          "name": "Banned"
+        }
+      ]
+    },
+    "StoredProfile": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "username",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "avatar",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          },
+          "nullable": true
+        }
+      ]
+    },
+    "UserProfile": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "identity",
+          "type": {
+            "kind": "bytes",
+            "size": 32
+          }
+        },
+        {
+          "name": "username",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "avatar",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        }
+      ]
+    }
+  },
+  "methods": [
+    {
+      "name": "delete_draft",
+      "params": [
+        {
+          "name": "channel",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "delete_message",
+      "params": [
+        {
+          "name": "message_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "parent_id",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "edit_message",
+      "params": [
+        {
+          "name": "message_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "new_message",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "timestamp",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "parent_id",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        }
+      ],
+      "returns": {
+        "$ref": "Message"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "get_channel_info",
+      "params": [
+        {
+          "name": "_channel",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        }
+      ],
+      "returns": {
+        "$ref": "ContextInfo"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_draft",
+      "params": [
+        {
+          "name": "channel",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_info",
+      "params": [],
+      "returns": {
+        "$ref": "ContextInfo"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_member_role",
+      "params": [
+        {
+          "name": "identity",
+          "type": {
+            "kind": "bytes",
+            "size": 32
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "Role"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_message_count",
+      "params": [],
+      "returns": {
+        "kind": "u64"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_messages",
+      "params": [
+        {
+          "name": "parent_message",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "limit",
+          "type": {
+            "kind": "u32"
+          },
+          "nullable": true
+        },
+        {
+          "name": "offset",
+          "type": {
+            "kind": "u32"
+          },
+          "nullable": true
+        },
+        {
+          "name": "search_term",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        }
+      ],
+      "returns": {
+        "$ref": "FullMessageResponse"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_messages_from",
+      "params": [
+        {
+          "name": "start",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "limit",
+          "type": {
+            "kind": "u32"
+          },
+          "nullable": true
+        }
+      ],
+      "returns": {
+        "$ref": "FullMessageResponse"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_profiles",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "UserProfile"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_unread_count",
+      "params": [],
+      "returns": {
+        "kind": "u32"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_unread_mentions",
+      "params": [],
+      "returns": {
+        "kind": "u32"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "init",
+      "params": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "context_type",
+          "type": {
+            "$ref": "ContextType"
+          }
+        },
+        {
+          "name": "description",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "creator_username",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "list_roles",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "kind": "tuple",
+          "elements": [
+            {
+              "kind": "bytes",
+              "size": 32
+            },
+            {
+              "$ref": "Role"
+            }
+          ]
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "mark_as_read",
+      "params": [
+        {
+          "name": "timestamp",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "mark_messages_as_read",
+      "params": [
+        {
+          "name": "_channel",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "_timestamp",
+          "type": {
+            "kind": "u64"
+          },
+          "nullable": true
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "save_draft",
+      "params": [
+        {
+          "name": "channel",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "text",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "search_all_messages",
+      "params": [
+        {
+          "name": "search_term",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "limit",
+          "type": {
+            "kind": "u32"
+          },
+          "nullable": true
+        },
+        {
+          "name": "offset",
+          "type": {
+            "kind": "u32"
+          },
+          "nullable": true
+        }
+      ],
+      "returns": {
+        "$ref": "FullMessageResponse"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "send_message",
+      "params": [
+        {
+          "name": "message",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "mentions",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "bytes",
+              "size": 32
+            }
+          }
+        },
+        {
+          "name": "mentions_usernames",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "parent_message",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "timestamp",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "files",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "AttachmentInput"
+            }
+          },
+          "nullable": true
+        },
+        {
+          "name": "images",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "AttachmentInput"
+            }
+          },
+          "nullable": true
+        }
+      ],
+      "returns": {
+        "$ref": "Message"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "set_member_role",
+      "params": [
+        {
+          "name": "target",
+          "type": {
+            "kind": "bytes",
+            "size": 32
+          }
+        },
+        {
+          "name": "role",
+          "type": {
+            "$ref": "Role"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "set_profile",
+      "params": [
+        {
+          "name": "username",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "avatar",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "update_info",
+      "params": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "description",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "update_reaction",
+      "params": [
+        {
+          "name": "message_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "emoji",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "add",
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "mutating"
+    }
+  ],
+  "events": [
+    {
+      "name": "InfoUpdated"
+    },
+    {
+      "name": "Initialized"
+    },
+    {
+      "name": "MessageEdited",
+      "payload": {
+        "kind": "string"
+      }
+    },
+    {
+      "name": "MessageSent",
+      "payload": {
+        "$ref": "MessageSentEvent"
+      }
+    },
+    {
+      "name": "MessageSentThread",
+      "payload": {
+        "$ref": "MessageSentEvent"
+      }
+    },
+    {
+      "name": "ProfileUpdated",
+      "payload": {
+        "kind": "string"
+      }
+    },
+    {
+      "name": "ReactionUpdated",
+      "payload": {
+        "kind": "string"
+      }
+    },
+    {
+      "name": "RoleUpdated",
+      "payload": {
+        "kind": "string"
+      }
+    }
+  ],
+  "state_root": "MeroChat",
+  "state_version": 1
+}

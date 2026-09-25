@@ -5,6 +5,13 @@ import fs from "fs";
 const __dirname = import.meta.dirname;
 const AUTH_FILE = path.join(__dirname, "e2e/.auth/state.json");
 
+// Its own port, not Vite's 5173. With `reuseExistingServer` locally, whatever
+// already answers on a shared port is what gets tested — a stale dev server of
+// another app included — and nothing errors. `--strictPort` makes a clash fail
+// loudly instead of drifting to the next free port.
+const PORT = process.env.PW_PORT ?? "5189";
+const APP_URL = process.env.VITE_APP_URL ?? `http://localhost:${PORT}`;
+
 // Load app/.env.integration into process.env so integration test workers can
 // read E2E_* vars via getIntegrationEnv() without any extra setup in CI.
 const integrationEnvPath = path.join(__dirname, ".env.integration");
@@ -34,7 +41,7 @@ export default defineConfig({
     ["html", { open: "never", outputFolder: "e2e-report" }],
   ],
   use: {
-    baseURL: process.env.VITE_APP_URL ?? "http://localhost:5173",
+    baseURL: APP_URL,
     trace: "on-first-retry",
     screenshot: "only-on-failure",
     video: "retain-on-failure",
@@ -126,8 +133,8 @@ export default defineConfig({
   webServer: process.env.SKIP_DEV_SERVER
     ? undefined
     : {
-        command: "pnpm dev",
-        url: "http://localhost:5173",
+        command: `pnpm exec vite --port ${PORT} --strictPort`,
+        url: APP_URL,
         reuseExistingServer: !process.env.CI,
         timeout: 60_000,
       },

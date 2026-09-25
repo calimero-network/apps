@@ -13,6 +13,17 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
+// `Blob.arrayBuffer()` is missing from the jsdom the workspace catalog pins
+// (25.x), so read through FileReader, which every jsdom has. Browsers have both.
+function bytesOf(blob: Blob): Promise<Uint8Array> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(new Uint8Array(reader.result as ArrayBuffer));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsArrayBuffer(blob);
+  });
+}
+
 const admin = {
   uploadBlob: vi.fn(),
   getBlob: vi.fn(),
@@ -185,7 +196,7 @@ describe("downloadBlob", () => {
     // local-only read.
     expect(admin.getBlob).toHaveBeenCalledWith(HEX, { contextId: CTX });
     expect(blob).toBeInstanceOf(Blob);
-    expect(new Uint8Array(await blob.arrayBuffer())).toEqual(bytes);
+    expect(await bytesOf(blob)).toEqual(bytes);
   });
 
   it("converts a legacy base58 id before asking the node", async () => {

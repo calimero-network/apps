@@ -44,7 +44,7 @@ ADMIN_PASS="${E2E_ADMIN_PASS:-calimero1234}"
 # `logic/stage-bundle.sh` puts it here; the merobox scenarios install the same
 # file. Override to test a different bundle:
 #   CURB_BUNDLE_PATH=$REPO_ROOT/logic/dist/com.calimero.chat-3.1.1.mpk
-BUNDLE_PATH="${CURB_BUNDLE_PATH:-${CURB_WASM_PATH:-$REPO_ROOT/logic/dist/curb.mpk}}"
+BUNDLE_PATH="${CURB_BUNDLE_PATH:-${CURB_WASM_PATH:-$REPO_ROOT/logic/dist/com.calimero.chat.mpk}}"
 ENV_OUT="$REPO_ROOT/app/.env.integration"
 
 USE_MEROBOX=false
@@ -320,7 +320,7 @@ green "All tools found"
 
 step "Checking bundle build"
 if [ ! -f "$BUNDLE_PATH" ]; then
-  yellow "curb.mpk not found — building (first run is slow)…"
+  yellow "com.calimero.chat.mpk not found — building (first run is slow)…"
   # stage-bundle.sh, not `cargo mero build`: the latter emits only the raw
   # wasm, which the node now refuses. See its header.
   "$REPO_ROOT/logic/stage-bundle.sh"

@@ -82,7 +82,7 @@ ADMIN_PASS="${E2E_ADMIN_PASS:-calimero1234}"
 # version defaulted to 0.1.0 regardless of what Cargo.toml said and which needs
 # `mero-sign` plus a signing key from a sibling `core` checkout. `cargo mero
 # bundle --dev` needs neither.
-BUNDLE_PATH="${CURB_BUNDLE_PATH:-$REPO_ROOT/logic/dist/curb.mpk}"
+BUNDLE_PATH="${CURB_BUNDLE_PATH:-$REPO_ROOT/logic/dist/com.calimero.chat.mpk}"
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 

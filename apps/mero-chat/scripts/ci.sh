@@ -8,7 +8,7 @@
 #   ./scripts/ci.sh --help
 #
 # The script:
-#   1. Optionally builds logic/res/curb.wasm
+#   1. Optionally builds logic/res/mero_chat.wasm
 #   2. Starts two merod nodes via setup-nodes.sh (writes .env.integration)
 #   3. Runs: pnpm exec playwright test --project=rpc-logic --project=rpc-admin
 #   4. Always stops nodes on exit (success or failure)

@@ -52,6 +52,10 @@ repository = "https://github.com/calimero-network/apps"
 calimero-sdk            = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.42" }
 calimero-storage        = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.42" }
 calimero-storage-macros = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.42" }
+# Host-build only, for apps that describe their own id newtypes with
+# `impl_bytes32_abi!` (mero-chat). Same tag as the SDK, always — fleet-bump
+# rewrites every core git tag in this table together.
+calimero-wasm-abi       = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.42" }
 
 thiserror = "1.0.56"
 bs58      = "0.5.1"

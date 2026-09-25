@@ -33,7 +33,7 @@ steps:
   - name: Install application on Node 1
     type: install_application
     node: calimero-node-1
-    path: "../logic/dist/curb.mpk"
+    path: dist/com.calimero.chat.mpk
     dev: true
     outputs:
       app_id: applicationId
@@ -41,7 +41,7 @@ steps:
   - name: Install application on Node 2
     type: install_application
     node: calimero-node-2
-    path: "../logic/dist/curb.mpk"
+    path: dist/com.calimero.chat.mpk
     dev: true
 
   - name: Create namespace
@@ -73,6 +73,13 @@ steps:
     group_id: "{{namespace_id}}"
     outputs:
       invite_bob: invitation
+
+  # core gives the group key a 5s gossip window, which on a loaded runner has to
+  # cover peer discovery too; a join that races it loses KeyDelivery and the whole
+  # scenario. 12s is the fleet's measured settle (scripts/tests/mesh-settle-test.py).
+  - name: Settle before the join (cold-join KeyDelivery)
+    type: wait
+    seconds: 12
 
   - name: Node 2 joins namespace
     type: join_namespace

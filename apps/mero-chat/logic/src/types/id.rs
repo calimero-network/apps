@@ -35,7 +35,12 @@ impl<const N: usize, const S: usize> Id<N, S> {
     };
 
     pub const fn new(id: [u8; N]) -> Self {
-        let _guard = Self::SIZE_GUARD;
+        // Naming the const is what makes the compiler evaluate it, and its
+        // evaluation IS the check: `S - expected_size` underflows at compile
+        // time for a string buffer too small for the encoding. The `let ()`
+        // is deliberate, not a unit value clippy can shave off.
+        #[allow(clippy::let_unit_value)]
+        let () = Self::SIZE_GUARD;
 
         Self {
             bytes: id,
@@ -118,7 +123,7 @@ impl<'de, const N: usize, const S: usize> Deserialize<'de> for Id<N, S> {
 
         let encoded = Container::deserialize(deserializer)?;
 
-        Self::from_str(&*encoded.0).map_err(de::Error::custom)
+        Self::from_str(&encoded.0).map_err(de::Error::custom)
     }
 }
 
