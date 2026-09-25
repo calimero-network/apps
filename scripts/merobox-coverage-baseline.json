@@ -48,7 +48,7 @@
     "update_member_username",
     "update_shadow"
   ],
-  "mero-drive": [
+  "mero-docs": [
     "comment_schema_version",
     "delete_comment",
     "edit_comment",

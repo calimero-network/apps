@@ -73,7 +73,7 @@ check(
     expect_key="applicationId",
 )
 
-# A call that builds the URL from a base variable. mero-drive's reparent is
+# A call that builds the URL from a base variable. mero-docs's reparent is
 # spelled this way, and it was invisible while the matcher required the string
 # to START with a slash — the same blind spot as the literal-route bug, one
 # spelling over.
