@@ -9,6 +9,7 @@
 // after typing and submitting.
 
 import React, { useState } from 'react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -33,6 +34,17 @@ interface Props {
   onClose: () => void;
 }
 
+// Names the members a failed addGroupMembers call dropped. Falls back to a
+// bare count rather than a truncated key when a display name is missing.
+function describeFailedMembers(
+  ids: string[],
+  names: Record<string, string>,
+): string {
+  const known = ids.map((id) => names[id]).filter((n): n is string => !!n);
+  if (known.length === ids.length) return known.join(', ');
+  return `${ids.length} member${ids.length === 1 ? '' : 's'}`;
+}
+
 export function NewFolderDialog({ parentFolderId, onClose }: Props) {
   const {
     namespaceId,
@@ -42,6 +54,7 @@ export function NewFolderDialog({ parentFolderId, onClose }: Props) {
     applicationId,
     refetch,
     selfIdentity,
+    namespaceMemberNames,
   } = useDriveWorkspace();
   const ops = useFolderOperations(
     registryClient,
@@ -98,8 +111,9 @@ export function NewFolderDialog({ parentFolderId, onClose }: Props) {
     }
     setSubmitting(true);
     setError(null);
+    let failedMembers: string[] = [];
     try {
-      await ops.create({
+      ({ failedMembers } = await ops.create({
         namespaceId,
         parentGroupId: parentFolderId ?? rootGroupId,
         alias,
@@ -108,7 +122,7 @@ export function NewFolderDialog({ parentFolderId, onClose }: Props) {
         // Open folders inherit members from the namespace, so only
         // Restricted folders carry an explicit member list.
         members: visibility === 'Restricted' ? members : [],
-      });
+      }));
     } catch (e: unknown) {
       const err = e instanceof Error ? e : new Error(String(e));
       setError(err.message);
@@ -116,6 +130,11 @@ export function NewFolderDialog({ parentFolderId, onClose }: Props) {
       return;
     }
     setSubmitting(false);
+    if (failedMembers.length > 0) {
+      toast.error("Some members weren't added", {
+        description: `${describeFailedMembers(failedMembers, namespaceMemberNames)} weren't added to the folder.`,
+      });
+    }
     onClose();
   };
 

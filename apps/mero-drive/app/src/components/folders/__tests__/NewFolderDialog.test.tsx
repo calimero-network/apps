@@ -6,10 +6,15 @@ import userEvent from '@testing-library/user-event';
 // dependencies declared below.
 import { NewFolderDialog } from '../NewFolderDialog';
 
-const create = vi.fn().mockResolvedValue('new-folder');
+const create = vi.fn().mockResolvedValue({ groupId: 'new-folder', failedMembers: [] });
+const toastError = vi.hoisted(() => vi.fn());
 
 vi.mock('@/hooks/useFolderOperations', () => ({
   useFolderOperations: () => ({ create, rename: vi.fn(), remove: vi.fn() }),
+}));
+
+vi.mock('sonner', () => ({
+  toast: { error: toastError },
 }));
 
 vi.mock('@/hooks/useDriveWorkspace', () => ({
@@ -21,6 +26,7 @@ vi.mock('@/hooks/useDriveWorkspace', () => ({
     applicationId: 'app-1',
     refetch: vi.fn(),
     selfIdentity: 'me',
+    namespaceMemberNames: { 'member-a': 'Alice', 'member-b': 'Bob' },
   }),
 }));
 
@@ -81,6 +87,38 @@ describe('NewFolderDialog member-picker', () => {
         expect.objectContaining({ visibility: 'Open', members: [] }),
       ),
     );
+  });
+
+  it('toasts the display names of members that failed to be added', async () => {
+    create.mockResolvedValueOnce({
+      groupId: 'new-folder',
+      failedMembers: ['member-a', 'member-b'],
+    });
+    const onClose = vi.fn();
+    render(<NewFolderDialog parentFolderId={null} onClose={onClose} />);
+    fireEvent.click(screen.getByRole('button', { name: /Restricted/ }));
+    fireEvent.change(screen.getByPlaceholderText('Folder name'), {
+      target: { value: 'Secret' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(toastError).toHaveBeenCalledWith(
+      "Some members weren't added",
+      expect.objectContaining({ description: expect.stringContaining('Alice, Bob') }),
+    );
+  });
+
+  it('does not toast when every member is added cleanly', async () => {
+    create.mockResolvedValueOnce({ groupId: 'new-folder', failedMembers: [] });
+    const onClose = vi.fn();
+    render(<NewFolderDialog parentFolderId={null} onClose={onClose} />);
+    fireEvent.change(screen.getByPlaceholderText('Folder name'), {
+      target: { value: 'Public' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(toastError).not.toHaveBeenCalled();
   });
 });
 

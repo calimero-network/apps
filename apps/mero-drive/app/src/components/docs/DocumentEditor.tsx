@@ -4,6 +4,7 @@
 // event into a re-read. EditorShell owns every piece of visual chrome.
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { toast } from 'sonner';
 import { EditorShell } from '@/components/editor/EditorShell';
 import { useConfirm } from '@/components/ui/confirm-dialog';
 import type { DocDto } from '@/generated/docs/DocsClient';
@@ -137,6 +138,7 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
       onClose();
     } catch (cause) {
       console.error('delete failed', cause);
+      toast.error("Couldn't delete document");
     }
   }, [confirm, doc, docsRemove, onClose, title.title]);
 

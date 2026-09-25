@@ -9,6 +9,7 @@
 // the alias text is owned by this row's render.
 
 import React, { useCallback, useRef, useState } from 'react';
+import { toast } from 'sonner';
 import { ChevronRight, ChevronDown, Lock, Folder } from 'lucide-react';
 import type { TreeNode } from '@/utils/ancestry';
 import { safeColor } from '@/utils/validation';
@@ -96,6 +97,7 @@ export function FolderTreeItem({
       await ops.rename(node.id, next);
     } catch (e) {
       console.error('rename failed', e);
+      toast.error("Couldn't rename folder");
     } finally {
       submitRenameInFlightRef.current = false;
       setRenaming(false);

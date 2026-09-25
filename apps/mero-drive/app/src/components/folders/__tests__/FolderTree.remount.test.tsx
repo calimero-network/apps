@@ -38,6 +38,9 @@ const workspace = {
   refetch: vi.fn(),
 };
 
+vi.mock('sonner', () => ({
+  toast: { error: vi.fn() },
+}));
 vi.mock('@/hooks/useDriveWorkspace', () => ({
   useDriveWorkspace: () => workspace,
 }));

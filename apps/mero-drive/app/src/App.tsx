@@ -28,11 +28,11 @@ import {
   useNavigate,
 } from 'react-router-dom';
 import { AppMode, MeroProvider, useMero } from '@calimero-network/mero-react';
-import { ToastProvider } from '@calimero-network/mero-ui';
+import { Toaster } from 'sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { ConfirmProvider } from '@/components/ui/confirm-dialog';
 import { DriveWorkspaceProvider } from '@/hooks/useDriveWorkspace';
-import { ThemeProvider } from '@/components/theme/ThemeProvider';
+import { ThemeProvider, useTheme } from '@/components/theme/ThemeProvider';
 import { PACKAGE_NAME } from '@/constants/config';
 import { hasInvitePayload } from '@/hooks/useNamespaceInvitation';
 
@@ -44,6 +44,8 @@ import JoinPage from './pages/join';
 
 /** Every path the shared landing page serves. See src/pages/landing. */
 const LANDING_PATHS = ['/', '/docs', '/preview'];
+// Clears EditorStatusBar's bottom bar so a toast never covers "Saved • E2E Encrypted".
+const TOAST_BOTTOM_OFFSET = 64;
 
 
 // Deep-link landings arrive on the frontend ROOT with the forwarded query
@@ -138,6 +140,29 @@ function CatchAllRedirect() {
   return <Navigate to={search ? `/${search}` : '/'} replace />;
 }
 
+// Sonner's own default colours are light/dark-only and don't follow the
+// app's theme tokens, so every colour is forced with Tailwind's `!important`
+// modifier — sonner's built-in rules are otherwise more specific than a
+// plain utility class and would win.
+function AppToaster() {
+  const { theme } = useTheme();
+  return (
+    <Toaster
+      theme={theme}
+      position="bottom-right"
+      offset={{ bottom: TOAST_BOTTOM_OFFSET }}
+      toastOptions={{
+        classNames: {
+          toast: '!bg-card !text-card-foreground !border-border',
+          description: '!text-muted-foreground',
+          title: '!text-destructive',
+          icon: '!text-destructive',
+        },
+      }}
+    />
+  );
+}
+
 export default function App() {
   const packageName = PACKAGE_NAME || undefined;
   const registryUrl =
@@ -151,65 +176,64 @@ export default function App() {
         registryUrl={registryUrl}
         allowedNodeUrls={hashNodeUrl ? [hashNodeUrl] : undefined}
       >
-        <ToastProvider>
-          <TooltipProvider>
-            <ConfirmProvider>
-              <BrowserRouter
-                future={{
-                  v7_startTransition: true,
-                  v7_relativeSplatPath: true,
-                }}
-              >
-                <InviteRedirect />
-                <Routes>
-                  {/* The landing page is three pages: `/`, `/docs` and `/preview`. They are
-                      real URLs so they can be shared and opened cold, which needs a route
-                      here — otherwise this app's catch-all swallows the deep link before
-                      the page ever renders. */}
-                  {LANDING_PATHS.map((landingPath) => (
-                    <Route
-                      key={landingPath}
-                      path={landingPath}
-                      // ⚠️ Only `/` bounces a signed-in visitor into the app. `/docs` and
-                      // `/preview` are reference pages, and somebody already signed in is
-                      // exactly the person most likely to want to read them.
-                      element={
-                        landingPath === '/' ? (
-                          <RedirectIfAuthed>
-                            <LandingPage />
-                          </RedirectIfAuthed>
-                        ) : (
-                          <LandingPage />
-                        )
-                      }
-                    />
-                  ))}
-                  {/* The /login PAGE is gone — every app had one, every one looked
-                      different, and its whole content was a button the visitor had
-                      already pressed to get there. The path stays as a redirect so a
-                      bookmark lands on the front door instead of a blank route. */}
-                  <Route path="/login" element={<Navigate to="/" replace />} />
-                  <Route path="/join" element={<JoinPage />} />
+        <AppToaster />
+        <TooltipProvider>
+          <ConfirmProvider>
+            <BrowserRouter
+              future={{
+                v7_startTransition: true,
+                v7_relativeSplatPath: true,
+              }}
+            >
+              <InviteRedirect />
+              <Routes>
+                {/* The landing page is three pages: `/`, `/docs` and `/preview`. They are
+                    real URLs so they can be shared and opened cold, which needs a route
+                    here — otherwise this app's catch-all swallows the deep link before
+                    the page ever renders. */}
+                {LANDING_PATHS.map((landingPath) => (
                   <Route
-                    path="/app/*"
+                    key={landingPath}
+                    path={landingPath}
+                    // ⚠️ Only `/` bounces a signed-in visitor into the app. `/docs` and
+                    // `/preview` are reference pages, and somebody already signed in is
+                    // exactly the person most likely to want to read them.
                     element={
-                      <DriveWorkspaceProvider>
-                        <WorkspacePage />
-                      </DriveWorkspaceProvider>
+                      landingPath === '/' ? (
+                        <RedirectIfAuthed>
+                          <LandingPage />
+                        </RedirectIfAuthed>
+                      ) : (
+                        <LandingPage />
+                      )
                     }
                   />
-                  {/* The catch-all drops the query string, which for an invite
-                      deep link IS the invitation. InviteRedirect has already
-                      run by the time this renders, but its navigation is
-                      applied in an effect — so preserve the search here rather
-                      than racing it. */}
-                  <Route path="*" element={<CatchAllRedirect />} />
-                </Routes>
-              </BrowserRouter>
-              {import.meta.env.DEV && <DevPanel />}
-            </ConfirmProvider>
-          </TooltipProvider>
-        </ToastProvider>
+                ))}
+                {/* The /login PAGE is gone — every app had one, every one looked
+                    different, and its whole content was a button the visitor had
+                    already pressed to get there. The path stays as a redirect so a
+                    bookmark lands on the front door instead of a blank route. */}
+                <Route path="/login" element={<Navigate to="/" replace />} />
+                <Route path="/join" element={<JoinPage />} />
+                <Route
+                  path="/app/*"
+                  element={
+                    <DriveWorkspaceProvider>
+                      <WorkspacePage />
+                    </DriveWorkspaceProvider>
+                  }
+                />
+                {/* The catch-all drops the query string, which for an invite
+                    deep link IS the invitation. InviteRedirect has already
+                    run by the time this renders, but its navigation is
+                    applied in an effect — so preserve the search here rather
+                    than racing it. */}
+                <Route path="*" element={<CatchAllRedirect />} />
+              </Routes>
+            </BrowserRouter>
+            {import.meta.env.DEV && <DevPanel />}
+          </ConfirmProvider>
+        </TooltipProvider>
       </MeroProvider>
     </ThemeProvider>
   );

@@ -23,8 +23,9 @@ vi.mock('@calimero-network/mero-react', () => ({
   MeroProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   useMero: () => meroState,
 }));
-vi.mock('@calimero-network/mero-ui', () => ({
-  ToastProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+vi.mock('sonner', () => ({
+  Toaster: () => null,
+  toast: { error: vi.fn() },
 }));
 vi.mock('@/components/ui/tooltip', () => ({
   TooltipProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
@@ -34,6 +35,7 @@ vi.mock('@/components/ui/confirm-dialog', () => ({
 }));
 vi.mock('@/components/theme/ThemeProvider', () => ({
   ThemeProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  useTheme: () => ({ theme: 'dark', setTheme: vi.fn(), toggle: vi.fn() }),
 }));
 vi.mock('@/hooks/useDriveWorkspace', () => ({
   DriveWorkspaceProvider: ({ children }: { children: React.ReactNode }) => (
