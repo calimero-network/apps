@@ -1767,7 +1767,7 @@ impl<F: Fn(Option<&str>, &str, &str) -> Option<String>> Ctx<'_, F> {
     /// Which cells of the ranges in `(range, criterion)` pairs meet every
     /// criterion, and the ranges' shape.
     fn mask(&self, pairs: &[Expr]) -> Result<(Vec<bool>, (usize, usize)), ErrCode> {
-        if pairs.is_empty() || pairs.len() % 2 != 0 {
+        if pairs.is_empty() || !pairs.len().is_multiple_of(2) {
             return Err(E::Val);
         }
         let mut mask: Vec<bool> = Vec::new();
@@ -1952,7 +1952,7 @@ impl<F: Fn(Option<&str>, &str, &str) -> Option<String>> Ctx<'_, F> {
                 }
             }
             "SUMIFS" | "AVERAGEIFS" => {
-                if n < 3 || n % 2 == 0 {
+                if n < 3 || n.is_multiple_of(2) {
                     return Err(E::Val);
                 }
                 let (mask, shape) = self.mask(&a[1..])?;
@@ -2096,7 +2096,7 @@ impl<F: Fn(Option<&str>, &str, &str) -> Option<String>> Ctx<'_, F> {
                 }
             }
             "IFS" => {
-                if n == 0 || n % 2 != 0 {
+                if n == 0 || !n.is_multiple_of(2) {
                     return Err(E::Val);
                 }
                 for pair in a.chunks(2) {
