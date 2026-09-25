@@ -25,11 +25,11 @@ import { useMero, useSubscription } from '@calimero-network/mero-react';
 import { useStreamReconnect } from './useStreamReconnect';
 import { SpreadsheetClient } from '../api/spreadsheet/SpreadsheetClient';
 import type {
-  Sheet, FunctionDef, Member, Project, NamedRange, SheetLayout, AxisOpPayload, ActivityEntry,
+  Sheet, FunctionDef, Member, Project, NamedRange, SheetLayout, AxisOpPayload, ActivityEntry, Comment,
 } from '../api/spreadsheet/SpreadsheetClient';
 import { AxisOp as AxisOpWire, CellOp as CellOpWire } from '../api/spreadsheet/SpreadsheetClient';
 import { chunkOps, MAX_OPS_PER_APPLY, type CellOp } from '../spreadsheet/ops';
-import { isNoop, mergePlans, planFor, type RefreshPlan } from '../spreadsheet/events';
+import { isNoop, mentionsIn, mergePlans, planFor, type Mention, type RefreshPlan } from '../spreadsheet/events';
 import { newAxisId, positionOf, positionsBetween, type AxisEntry } from '../spreadsheet/axis';
 import { applicable, invert, pushBounded, type CellState, type UndoEntry } from '../spreadsheet/undo';
 import { rangeRef, type Rect } from '../spreadsheet/refs';
@@ -58,7 +58,7 @@ type IdOp =
 const EVENT_COALESCE_MS = 60;
 
 // Re-export domain types so components import from one place
-export type { Sheet, FunctionDef, Member, Project, NamedRange, ActivityEntry };
+export type { Sheet, FunctionDef, Member, Project, NamedRange, ActivityEntry, Comment };
 
 // ── Hook interfaces ──────────────────────────────────────────────────────────
 
@@ -122,6 +122,15 @@ export interface UseSpreadsheetReturn {
   deleteAxis: (sheetId: string, axis: Axis, positions: number[]) => Promise<void>;
   /** Named ranges, targets in display form (`[sheet-id]!A1:B4`). */
   namedRanges: NamedRange[];
+  /** Live comments, oldest first. */
+  comments: Comment[];
+  addComment: (sheetId: string, row: number, col: number, text: string, parent?: string) => Promise<void>;
+  editComment: (id: string, text: string) => Promise<void>;
+  resolveComment: (id: string, resolved: boolean) => Promise<void>;
+  deleteComment: (id: string) => Promise<void>;
+  /** Comments by others that mention this user, newest last, until dismissed. */
+  mentions: Mention[];
+  dismissMention: (commentId: string) => void;
   /** The activity log for the last `days` days, newest first. */
   loadActivity: (days: number) => Promise<ActivityEntry[]>;
   /** Where a cell id sits now (`null` when its row/column is gone). */
@@ -175,6 +184,8 @@ export function useSpreadsheet({
   const layoutsRef = useRef<SheetLayout[]>([]);
   const namesRef = useRef<NamedRange[]>([]);
   const [names, setNames] = useState<NamedRange[]>([]);
+  const [comments, setComments] = useState<Comment[]>([]);
+  const [mentions, setMentions] = useState<Mention[]>([]);
   const applyStructureTo = useCallback((layouts: SheetLayout[], named: NamedRange[]) => {
     layoutsRef.current = layouts;
     namesRef.current = named;
@@ -308,7 +319,7 @@ export function useSpreadsheet({
     try {
       const [
         fetchedSheets, allCells,
-        fetchedMembers, fetchedProject, me, layouts, named,
+        fetchedMembers, fetchedProject, me, layouts, named, fetchedComments,
       ] = await Promise.all([
         client.listSheets(),
         client.getAllCells(),
@@ -317,8 +328,10 @@ export function useSpreadsheet({
         client.whoami(),
         client.getLayouts(),
         client.getNamedRanges(),
+        client.getComments(),
       ]);
       applyStructureTo(layouts, named);
+      setComments(fetchedComments);
       snapshotRef.current = snapshotFromCells(allCells);
       overlayRef.current = retireOverlay(overlayRef.current, snapshotRef.current);
       setSheets(fetchedSheets.sort((a, b) => a.position - b.position));
@@ -374,13 +387,15 @@ export function useSpreadsheet({
     const active = activeSheetIdRef.current;
     if (sheetIds.size > 0 && active) sheetIds.add(active);
     const ids = [...sheetIds];
-    const [bySheet, fetchedSheets, fetchedMembers, layouts, named] = await Promise.all([
+    const [bySheet, fetchedSheets, fetchedMembers, layouts, named, fetchedComments] = await Promise.all([
       Promise.all(ids.map((id) => client.getCells({ sheet_id: id }))),
       plan.sheetList ? client.listSheets() : null,
       plan.members ? client.getMembers() : null,
       plan.layouts ? client.getLayouts() : null,
       plan.names ? client.getNamedRanges() : null,
+      plan.comments ? client.getComments() : null,
     ]);
+    if (fetchedComments) setComments(fetchedComments);
     if (layouts || named) applyStructureTo(layouts ?? layoutsRef.current, named ?? namesRef.current);
     if (ids.length > 0) {
       const next = new Map(snapshotRef.current);
@@ -428,7 +443,15 @@ export function useSpreadsheet({
     pendingPlan.current = null;
   }, [client]);
 
-  useSubscription(contextId ? [contextId] : [], (event) => schedule(planFor(event)));
+  const selfIdRef = useRef(selfId);
+  selfIdRef.current = selfId;
+  useSubscription(contextId ? [contextId] : [], (event) => {
+    schedule(planFor(event));
+    const me = selfIdRef.current;
+    const forMe = mentionsIn(event).filter((m) => me && m.author !== me && m.mentions.includes(me));
+    if (forMe.length) setMentions((prev) => [...prev, ...forMe.filter((m) => !prev.some((p) => p.commentId === m.commentId))]);
+  });
+  useEffect(() => { setMentions([]); setComments([]); }, [client]);
   // …and after the stream reconnects: nothing replays what changed while it was down.
   useStreamReconnect(() => schedule({ full: true }));
 
@@ -738,6 +761,40 @@ export function useSpreadsheet({
 
   const getSheetCells = useCallback((sheetId: string) => sheetCells(sheetId), [sheetCells]);
 
+  const addComment = useCallback(
+    async (sheetId: string, row: number, col: number, text: string, parent = '') => {
+      const at = idsAt(sheetId, row, col);
+      if (!client || !at) return;
+      await enqueue(() => client.addComment({ sheet_id: sheetId, ...at, text, parent }));
+      setComments(await client.getComments());
+    },
+    [client, enqueue],
+  );
+  const commentAction = useCallback(
+    async (write: () => Promise<unknown>) => {
+      if (!client) return;
+      await enqueue(write);
+      setComments(await client.getComments());
+    },
+    [client, enqueue],
+  );
+  const editComment = useCallback(
+    (id: string, text: string) => commentAction(() => client!.editComment({ id, text })),
+    [client, commentAction],
+  );
+  const resolveComment = useCallback(
+    (id: string, resolved: boolean) => commentAction(() => client!.setCommentResolved({ id, resolved })),
+    [client, commentAction],
+  );
+  const deleteComment = useCallback(
+    (id: string) => commentAction(() => client!.deleteComment({ id })),
+    [client, commentAction],
+  );
+  const dismissMention = useCallback(
+    (commentId: string) => setMentions((prev) => prev.filter((m) => m.commentId !== commentId)),
+    [],
+  );
+
   const loadActivity = useCallback(async (days: number): Promise<ActivityEntry[]> => {
     if (!client) return [];
     // Nanoseconds; a float's precision loss here is well under a second.
@@ -794,6 +851,13 @@ export function useSpreadsheet({
     deleteName,
     exportAll,
     getSheetCells,
+    comments,
+    addComment,
+    editComment,
+    resolveComment,
+    deleteComment,
+    mentions,
+    dismissMention,
     loadActivity,
     refOf,
     idsOf: idsAt,

@@ -26,6 +26,15 @@ pub enum Event<'a> {
     AxesChanged { sheet_id: &'a str, count: u32 },
     /// A named range was defined, redefined or deleted.
     NamedRangesChanged { name: &'a str },
+    /// A comment or reply was added; `mentions` are the member ids it names.
+    CommentAdded {
+        id: &'a str,
+        sheet_id: &'a str,
+        author: &'a str,
+        mentions: &'a [String],
+    },
+    /// A comment was edited, resolved, reopened or deleted.
+    CommentChanged { id: &'a str, sheet_id: &'a str },
     /// The state was migrated to a new schema.
     Migrated {
         from_version: &'a str,

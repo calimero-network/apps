@@ -11,7 +11,7 @@
 /** A decided plan: either everything, or exactly these parts. */
 export type RefreshPlan =
   | { full: true }
-  | { full: false; sheets: Set<string>; sheetList: boolean; members: boolean; layouts: boolean; names: boolean };
+  | { full: false; sheets: Set<string>; sheetList: boolean; members: boolean; layouts: boolean; names: boolean; comments: boolean };
 
 const empty = (): Extract<RefreshPlan, { full: false }> => ({
   full: false,
@@ -20,6 +20,7 @@ const empty = (): Extract<RefreshPlan, { full: false }> => ({
   members: false,
   layouts: false,
   names: false,
+  comments: false,
 });
 
 const FULL: RefreshPlan = { full: true };
@@ -107,6 +108,10 @@ export function planFor(event: NodeEvent): RefreshPlan | null {
       case 'NamedRangesChanged':
         plan.names = true;
         break;
+      case 'CommentAdded':
+      case 'CommentChanged':
+        plan.comments = true;
+        break;
       default:
         return FULL;
     }
@@ -126,10 +131,35 @@ export function mergePlans(a: RefreshPlan | null, b: RefreshPlan | null): Refres
     members: a.members || b.members,
     layouts: a.layouts || b.layouts,
     names: a.names || b.names,
+    comments: a.comments || b.comments,
   };
 }
 
 /** True when a plan reads nothing (every event was a no-op). */
 export function isNoop(plan: RefreshPlan): boolean {
-  return !plan.full && plan.sheets.size === 0 && !plan.sheetList && !plan.members && !plan.layouts && !plan.names;
+  return !plan.full && plan.sheets.size === 0 && !plan.sheetList && !plan.members && !plan.layouts && !plan.names && !plan.comments;
+}
+
+/** A comment that names someone: who wrote it, where, and whom it names. */
+export interface Mention {
+  commentId: string;
+  sheetId: string;
+  author: string;
+  mentions: string[];
+}
+
+/** The mentions an event carries (a `CommentAdded` naming anyone). */
+export function mentionsIn(event: NodeEvent): Mention[] {
+  if (event.type !== 'StateMutation') return [];
+  const events = (event.data as { events?: unknown } | undefined)?.events;
+  if (!Array.isArray(events)) return [];
+  return (events as ExecutionEvent[]).flatMap((e) => {
+    if (e.kind !== 'CommentAdded') return [];
+    const p = payload(e);
+    const { id, sheet_id, author, mentions } = p ?? {};
+    if (typeof id !== 'string' || typeof sheet_id !== 'string' || typeof author !== 'string' || !Array.isArray(mentions)) {
+      return [];
+    }
+    return [{ commentId: id, sheetId: sheet_id, author, mentions: mentions.filter((m): m is string => typeof m === 'string') }];
+  });
 }

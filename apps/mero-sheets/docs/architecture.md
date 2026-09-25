@@ -72,6 +72,20 @@ Recording costs one extra write per cell (the editor stamp) and one per call.
 That is why a single `apply_cell_ops` call is capped at 100 ops: the costliest
 op, a format on an empty cell, fits 160 to one execution's gas budget.
 
+## Comments and mentions
+
+Comments live in the workbook (`comments`, keyed by id) and are pinned to a
+cell by its row and column ids, so a thread follows its cell through inserts
+and deletes. A reply names its thread's first comment as `parent`; resolving
+and reopening is a flag on that first comment. Each comment merges
+last-writer-wins on `updated_at`, and only its author may edit or delete it.
+
+`@nickname` in the text is matched against the members' nicknames (longest
+first, so "@Ann Lee" beats "@Ann") and the matched member ids are stored with
+the comment. `CommentAdded` carries them, so a mentioned member's app shows a
+notice straight from the event, with no extra read. The app marks cells with
+an open thread and lists every open thread in the Comments panel.
+
 ## Derive-on-read
 
 If values aren't stored, they have to be produced somehow when a peer asks

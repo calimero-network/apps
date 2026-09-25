@@ -44,6 +44,7 @@ import NicknameModal from '../../components/NicknameModal';
 import ContextMenu from '../../components/ContextMenu';
 import NamesModal from '../../components/NamesModal';
 import ActivityPanel from '../../components/ActivityPanel';
+import CommentsPanel from '../../components/CommentsPanel';
 import { ago, nsToMs } from '../../lib/time';
 import { sheetsToCsv } from '../../spreadsheet/download';
 import { idsToNames, namesToIds } from '../../spreadsheet/sheetref';
@@ -173,6 +174,7 @@ export default function AppPage() {
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
   const [showNames, setShowNames] = useState(false);
   const [showActivity, setShowActivity] = useState(false);
+  const [showComments, setShowComments] = useState(false);
   const [namesSaving, setNamesSaving] = useState(false);
   const [namesError, setNamesError] = useState<string | null>(null);
   const formulaInputRef = useRef<HTMLInputElement>(null);
@@ -631,6 +633,13 @@ export default function AppPage() {
         ],
       },
       {
+        label: 'Comment',
+        actions: [
+          { label: 'Comment…', testId: 'open-comments',
+            onClick: () => { setCtxMenu(null); setShowComments(true); } },
+        ],
+      },
+      {
         label: 'Name',
         actions: [
           { label: 'Name this range…', testId: 'open-names',
@@ -996,6 +1005,34 @@ export default function AppPage() {
   const editedBy = (c: { last_editor: string; last_edited_at: number }) =>
     c.last_editor ? `Edited by ${personName(c.last_editor)}, ${ago(nsToMs(c.last_edited_at))}` : null;
   const connected = ss.ready && ss.loaded;
+
+  // Comments: the selected cell's ids, open threads on this sheet (grid
+  // marks), and where a comment lives for the panel's jump links.
+  const selectedIds = activeSheetId && selectedCell ? ss.idsOf(activeSheetId, selectedCell.row, selectedCell.col) : null;
+  const openComments = ss.comments.filter((c) => !c.parent && !c.resolved);
+  const commented = new Set(
+    openComments
+      .filter((c) => c.sheet_id === activeSheetId)
+      .map((c) => ss.refOf(c.sheet_id, c.row_id, c.col_id))
+      .filter((at): at is CellCoord => at !== null)
+      .map((at) => `${at.row}-${at.col}`),
+  );
+  const commentWhere = (c: { sheet_id: string; row_id: string; col_id: string }) => {
+    const at = ss.refOf(c.sheet_id, c.row_id, c.col_id);
+    if (!at) return null;
+    const name = c.sheet_id === activeSheetId ? null : idToName(c.sheet_id);
+    return `${name ? sheetPrefix(name) : ''}${cellRef(at.row, at.col)}`;
+  };
+  const jumpTo = (sheetId: string, rowId: string, colId: string) => {
+    const at = ss.refOf(sheetId, rowId, colId);
+    if (!at) return false;
+    setActiveSheetId(sheetId);
+    setSelectedCell(at);
+    setSelectionRange(null);
+    return true;
+  };
+  const mention = ss.mentions[ss.mentions.length - 1];
+  const mentionComment = mention ? ss.comments.find((c) => c.id === mention.commentId) : undefined;
   const synced = ss.loaded && !ss.mutating;
 
   return (
@@ -1098,6 +1135,14 @@ export default function AppPage() {
           </svg>
         </IconBtn>
 
+        <ToolBtn onClick={() => setShowComments(true)} title="Comments on cells" aria-label="Open comments" data-testid="action-comments">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+          </svg>
+          <span>Comments{openComments.length > 0 ? ` · ${openComments.length}` : ''}</span>
+        </ToolBtn>
+
         <ToolBtn onClick={() => setShowActivity(true)} title="Who changed what" aria-label="Open activity" data-testid="action-activity">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
             stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1170,6 +1215,7 @@ export default function AppPage() {
         cursors={presence.cursors}
         cursorLabel={cursorLabel}
         editedBy={editedBy}
+        commented={commented}
         selectedCell={pickingForeignSheet ? null : selectedCell}
         selectionRange={pickingForeignSheet ? null : selectionRange}
         editingValue={pickingForeignSheet ? null : isDirty ? formulaInput : null}
@@ -1256,20 +1302,44 @@ export default function AppPage() {
             return at ? cellRef(at.row, at.col) : null;
           }}
           showRaw={(sheetId, raw) => idsToNames(ss.displayRaw(sheetId, raw), idToName)}
-          selected={(() => {
-            const ids = activeSheetId && selectedCell ? ss.idsOf(activeSheetId, selectedCell.row, selectedCell.col) : null;
-            return ids && activeSheetId ? { sheetId: activeSheetId, rowId: ids.row_id, colId: ids.col_id } : null;
-          })()}
-          onJump={(sheetId, rowId, colId) => {
-            const at = ss.refOf(sheetId, rowId, colId);
-            if (!at) return;
-            setShowActivity(false);
-            setActiveSheetId(sheetId);
-            setSelectedCell(at);
-            setSelectionRange(null);
-          }}
+          selected={selectedIds && activeSheetId ? { sheetId: activeSheetId, rowId: selectedIds.row_id, colId: selectedIds.col_id } : null}
+          onJump={(sheetId, rowId, colId) => { if (jumpTo(sheetId, rowId, colId)) setShowActivity(false); }}
           onClose={() => setShowActivity(false)}
         />
+      )}
+      {showComments && (
+        <CommentsPanel
+          comments={ss.comments}
+          cell={selectedIds && activeSheetId && selectedCell
+            ? { sheetId: activeSheetId, rowId: selectedIds.row_id, colId: selectedIds.col_id, label: cellRef(selectedCell.row, selectedCell.col) }
+            : null}
+          selfId={ss.selfId}
+          nameOf={personName}
+          where={commentWhere}
+          onAdd={async (text, parent) => {
+            if (!activeSheetId || !selectedCell) throw new Error('Select a cell first');
+            await ss.addComment(activeSheetId, selectedCell.row, selectedCell.col, text, parent);
+          }}
+          onEdit={ss.editComment}
+          onResolve={ss.resolveComment}
+          onDelete={ss.deleteComment}
+          onJump={(c) => { jumpTo(c.sheet_id, c.row_id, c.col_id); }}
+          onClose={() => setShowComments(false)}
+        />
+      )}
+      {mention && (
+        <MentionToast role="status" data-testid="toast-mention">
+          <span>
+            <strong>{personName(mention.author)}</strong> mentioned you
+            {mentionComment && commentWhere(mentionComment) ? ` on ${commentWhere(mentionComment)}` : ''}
+          </span>
+          <button type="button" onClick={() => {
+            if (mentionComment) jumpTo(mentionComment.sheet_id, mentionComment.row_id, mentionComment.col_id);
+            ss.dismissMention(mention.commentId);
+            setShowComments(true);
+          }}>View</button>
+          <button type="button" aria-label="Dismiss" onClick={() => ss.dismissMention(mention.commentId)}>×</button>
+        </MentionToast>
       )}
       {showNames && (
         <NamesModal
@@ -1290,6 +1360,15 @@ export default function AppPage() {
 }
 
 // ── Styled components ────────────────────────────────────────────────────────
+
+const MentionToast = styled.div`
+  position: fixed; left: 50%; bottom: 44px; transform: translateX(-50%); z-index: 250;
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 14px; border-radius: 12px; font-size: 13px;
+  color: ${C.ink}; background: ${C.paper}; border: 1px solid ${C.line};
+  box-shadow: 0 12px 40px -12px rgba(14, 20, 15, 0.35);
+  button { font-size: 12.5px; font-weight: 600; color: ${C.greenDeep}; background: none; border: none; cursor: pointer; padding: 0; }
+`;
 
 const AppShell = styled.div`
   display: flex;

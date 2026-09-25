@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isNoop, mergePlans, planFor, type RefreshPlan } from './events';
+import { isNoop, mentionsIn, mergePlans, planFor, type RefreshPlan } from './events';
 
 const bytes = (v: unknown) => Array.from(new TextEncoder().encode(JSON.stringify(v)));
 const mutation = (...events: [string, unknown][]) => ({
@@ -67,5 +67,15 @@ describe('mergePlans', () => {
     expect(m.members).toBe(true);
     expect(mergePlans(m, { full: true })).toEqual({ full: true });
     expect(mergePlans(null, a)).toBe(a);
+  });
+});
+
+describe('comments', () => {
+  it('re-reads comments on comment events and reports who was mentioned', () => {
+    const ev = mutation(['CommentAdded', { id: 'c1', sheet_id: 's1', author: 'ada', mentions: ['sam'] }]);
+    expect(partial(planFor(ev)).comments).toBe(true);
+    expect(mentionsIn(ev)).toEqual([{ commentId: 'c1', sheetId: 's1', author: 'ada', mentions: ['sam'] }]);
+    expect(mentionsIn(mutation(['CommentChanged', { id: 'c1', sheet_id: 's1' }]))).toEqual([]);
+    expect(mentionsIn({ type: 'Ephemeral', data: {} })).toEqual([]);
   });
 });

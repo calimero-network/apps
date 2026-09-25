@@ -37,6 +37,8 @@ interface SpreadsheetGridProps {
   cursorLabel: (author: string) => string;
   /** "Edited by Ada, 5 min ago" for a cell, or null when unknown. */
   editedBy: (cell: Cell) => string | null;
+  /** "row-col" of cells with an open comment thread; they get a corner mark. */
+  commented: ReadonlySet<string>;
   selectedCell: CellCoord | null;
   /** Committed multi-cell selection (column/row/range), highlighted. */
   selectionRange: Rect | null;
@@ -70,6 +72,7 @@ function SpreadsheetGrid({
   cursors,
   cursorLabel,
   editedBy,
+  commented,
   selectedCell,
   selectionRange,
   editingValue,
@@ -456,6 +459,7 @@ function SpreadsheetGrid({
                     title={cell ? [`${columnLabel(col)}${row + 1}: ${cell.raw_value}`, editedBy(cell)].filter(Boolean).join('\n') : undefined}
                   >
                     <CellValue $isFormula={shownIsFormula}>{shownValue}</CellValue>
+                    {commented.has(`${row}-${col}`) && <CommentMark data-testid="comment-mark" aria-label="Has comments" />}
                     {cursor && !isSelected && (
                       <CursorTag style={{ background: cursor.color }}>
                         {cursorLabel(cursor.author)}
@@ -609,6 +613,13 @@ const DataCell = styled.td<{ $selected: boolean; $cursorColor?: string; $peerTin
   &:hover:not([aria-selected='true']) {
     background: ${C.paper2};
   }
+`;
+
+const CommentMark = styled.span`
+  position: absolute; top: 0; right: 0;
+  border-style: solid; border-width: 0 7px 7px 0;
+  border-color: transparent ${C.green} transparent transparent;
+  pointer-events: none;
 `;
 
 const FillHandle = styled.div`

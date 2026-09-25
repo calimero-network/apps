@@ -323,6 +323,47 @@ impl Mergeable for ActivityData {
 /// its first 50 and the count).
 pub const MAX_LOGGED_CHANGES: usize = 50;
 
+/// A comment on a cell, or a reply to one. Keyed by comment id.
+#[app::mergeable(id = "mero_sheets::CommentData")]
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, AbiType)]
+#[borsh(crate = "calimero_sdk::borsh")]
+pub struct CommentData {
+    pub sheet_id: String,
+    pub row_id: String,
+    pub col_id: String,
+    /// Member id of the author.
+    pub author: String,
+    pub text: String,
+    /// Member ids named with `@nickname` in the text.
+    pub mentions: Vec<String>,
+    /// The comment this replies to; empty for a thread's first comment.
+    pub parent: String,
+    pub resolved: bool,
+    pub deleted: bool,
+    pub created_at: u64,
+    pub updated_at: u64,
+}
+
+impl Mergeable for CommentData {
+    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        // Text, resolved and deleted change together, last writer wins; the
+        // rest is fixed when the comment is made.
+        if (other.updated_at, other.deleted, other.resolved, &other.text)
+            > (self.updated_at, self.deleted, self.resolved, &self.text)
+        {
+            self.text = other.text.clone();
+            self.mentions = other.mentions.clone();
+            self.resolved = other.resolved;
+            self.deleted = other.deleted;
+            self.updated_at = other.updated_at;
+        }
+        Ok(())
+    }
+}
+
+/// The longest comment accepted, in characters.
+pub const MAX_COMMENT_CHARS: usize = 2000;
+
 // ---------------------------------------------------------------------------
 // View types returned to callers (must derive Serialize + Deserialize)
 // ---------------------------------------------------------------------------
@@ -381,6 +422,23 @@ pub struct Cell {
     /// written before the activity log existed.
     pub last_editor: String,
     pub last_edited_at: u64,
+}
+
+/// A live (not deleted) comment.
+#[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct Comment {
+    pub id: String,
+    pub sheet_id: String,
+    pub row_id: String,
+    pub col_id: String,
+    pub author: String,
+    pub text: String,
+    pub mentions: Vec<String>,
+    pub parent: String,
+    pub resolved: bool,
+    pub created_at: u64,
+    pub updated_at: u64,
 }
 
 /// An activity-log entry, newest first from `get_activity`.
@@ -536,6 +594,9 @@ pub struct Spreadsheet {
     /// The activity log, in time order.
     #[migrate(new = SortedMap::new_with_field_name("spreadsheet:activity"))]
     activity: SortedMap<String, ActivityData>,
+    /// Cell comments and replies, keyed by comment id.
+    #[migrate(new = UnorderedMap::new_with_field_name("spreadsheet:comments"))]
+    comments: UnorderedMap<String, CommentData>,
 }
 
 /// The v1 state, read once by the v2 migration.
@@ -568,6 +629,7 @@ impl Spreadsheet {
             names: UnorderedMap::new_with_field_name("spreadsheet:names"),
             cell_meta: UnorderedMap::new_with_field_name("spreadsheet:cell_meta"),
             activity: SortedMap::new_with_field_name("spreadsheet:activity"),
+            comments: UnorderedMap::new_with_field_name("spreadsheet:comments"),
         }
     }
 
@@ -1230,6 +1292,186 @@ impl Spreadsheet {
         out.reverse();
         out.truncate(limit.min(500) as usize);
         Ok(out)
+    }
+
+    // ---- Comments ----
+
+    /// Comment on a cell, or reply to a comment (`parent`). `@nickname` in the
+    /// text mentions that member: the `CommentAdded` event carries their ids,
+    /// and their client tells them. Returns the comment id.
+    pub fn add_comment(
+        &mut self,
+        sheet_id: String,
+        row_id: String,
+        col_id: String,
+        text: String,
+        parent: String,
+    ) -> app::Result<String> {
+        self.require_sheet(&sheet_id)?;
+        Spreadsheet::check_id(&row_id)?;
+        Spreadsheet::check_id(&col_id)?;
+        let text = Spreadsheet::check_comment(text)?;
+        if !parent.is_empty() && self.live_comment(&parent)?.is_none() {
+            return Err(AppError::from(Error::NotFound(parent)));
+        }
+        let author = self.caller_hex();
+        let now = storage_env::time_now();
+        let mut nonce = [0u8; 4];
+        env::random_bytes(&mut nonce);
+        let id = generate_id("comment", now, &nonce);
+        let mentions = self.mentions_in(&text)?;
+        self.comments
+            .insert(
+                id.clone(),
+                CommentData {
+                    sheet_id: sheet_id.clone(),
+                    row_id,
+                    col_id,
+                    author: author.clone(),
+                    text,
+                    mentions: mentions.clone(),
+                    parent: parent.clone(),
+                    resolved: false,
+                    deleted: false,
+                    created_at: now,
+                    updated_at: now,
+                },
+            )
+            .map_err(|e| AppError::msg(format!("comments.insert: {e}")))?;
+        let summary = if parent.is_empty() {
+            "commented"
+        } else {
+            "replied to a comment"
+        };
+        self.log(&sheet_id, "comment", summary.to_string(), 0, Vec::new())?;
+        app::emit!(Event::CommentAdded {
+            id: &id,
+            sheet_id: &sheet_id,
+            author: &author,
+            mentions: &mentions,
+        });
+        Ok(id)
+    }
+
+    /// Change a comment's text. Only its author may.
+    pub fn edit_comment(&mut self, id: String, text: String) -> app::Result<()> {
+        let text = Spreadsheet::check_comment(text)?;
+        let mentions = self.mentions_in(&text)?;
+        self.change_comment(&id, true, |c| {
+            c.text = text;
+            c.mentions = mentions;
+        })
+    }
+
+    /// Resolve or reopen a comment thread. Anyone in the workbook may.
+    pub fn set_comment_resolved(&mut self, id: String, resolved: bool) -> app::Result<()> {
+        self.change_comment(&id, false, |c| c.resolved = resolved)
+    }
+
+    /// Delete a comment. Only its author may.
+    pub fn delete_comment(&mut self, id: String) -> app::Result<()> {
+        self.change_comment(&id, true, |c| c.deleted = true)
+    }
+
+    /// Every live comment, oldest first.
+    pub fn get_comments(&self) -> app::Result<Vec<Comment>> {
+        let mut out: Vec<Comment> = self
+            .comments
+            .entries()
+            .map_err(|e| AppError::msg(format!("comments.entries: {e}")))?
+            .filter(|(_, c)| !c.deleted)
+            .map(|(id, c)| Comment {
+                id,
+                sheet_id: c.sheet_id,
+                row_id: c.row_id,
+                col_id: c.col_id,
+                author: c.author,
+                text: c.text,
+                mentions: c.mentions,
+                parent: c.parent,
+                resolved: c.resolved,
+                created_at: c.created_at,
+                updated_at: c.updated_at,
+            })
+            .collect();
+        out.sort_by(|a, b| (a.created_at, &a.id).cmp(&(b.created_at, &b.id)));
+        Ok(out)
+    }
+
+    fn check_comment(text: String) -> app::Result<String> {
+        let text = text.trim().to_string();
+        if text.is_empty() || text.chars().count() > MAX_COMMENT_CHARS {
+            return Err(AppError::from(Error::Invalid(format!(
+                "a comment is 1 to {MAX_COMMENT_CHARS} characters"
+            ))));
+        }
+        Ok(text)
+    }
+
+    fn live_comment(&self, id: &str) -> app::Result<Option<CommentData>> {
+        Ok(self
+            .comments
+            .get(id)
+            .map_err(|e| AppError::msg(format!("comments.get: {e}")))?
+            .filter(|c| !c.deleted)
+            .map(|c| c.clone()))
+    }
+
+    /// Apply `f` to a live comment, as its author if `author_only`.
+    fn change_comment(
+        &mut self,
+        id: &str,
+        author_only: bool,
+        f: impl FnOnce(&mut CommentData),
+    ) -> app::Result<()> {
+        let Some(current) = self.live_comment(id)? else {
+            return Err(AppError::from(Error::NotFound(id.to_string())));
+        };
+        if author_only && current.author != self.caller_hex() {
+            return Err(AppError::from(Error::Forbidden(
+                "only its author can change a comment".into(),
+            )));
+        }
+        let sheet_id = current.sheet_id.clone();
+        if let Some(mut guard) = self
+            .comments
+            .get_mut(id)
+            .map_err(|e| AppError::msg(format!("comments.get_mut: {e}")))?
+        {
+            f(&mut guard);
+            guard.updated_at = storage_env::time_now();
+        }
+        app::emit!(Event::CommentChanged {
+            id,
+            sheet_id: &sheet_id
+        });
+        Ok(())
+    }
+
+    /// Members named in `text` as `@nickname` (longest nickname wins, case
+    /// ignored; a nickname may contain spaces).
+    fn mentions_in(&self, text: &str) -> app::Result<Vec<String>> {
+        let mut members: Vec<(String, String)> = self
+            .members
+            .entries()
+            .map_err(|e| AppError::msg(format!("members.entries: {e}")))?
+            .map(|(id, m)| (m.nickname.to_lowercase(), id))
+            .collect();
+        members.sort_by(|a, b| b.0.len().cmp(&a.0.len()).then(a.1.cmp(&b.1)));
+        let lower = text.to_lowercase();
+        let mut found = Vec::new();
+        for (at, _) in lower.match_indices('@') {
+            let rest = &lower[at + 1..];
+            if let Some((_, id)) = members.iter().find(|(nick, _)| {
+                rest.starts_with(nick.as_str())
+                    && !rest[nick.len()..].starts_with(|c: char| c.is_alphanumeric())
+            }) {
+                if !found.contains(id) {
+                    found.push(id.clone());
+                }
+            }
+        }
+        Ok(found)
     }
 
     // ---- Rows and columns ----
@@ -2937,5 +3179,78 @@ mod tests {
             "{summaries:?}"
         );
         assert!(summaries.contains(&"defined the name Tax".to_string()));
+    }
+
+    #[test]
+    fn comments_resolve_mentions_thread_and_resolve() {
+        let mut app = make_app();
+        let sid = new_sheet(&mut app);
+        let ada = [7u8; 32];
+        app.call_as(ada, |s| s.join("Ada Lovelace".into())).unwrap();
+        app.call(|s| s.join("Sam".into())).unwrap();
+        let ada_id = hex::encode(ada);
+        let id = app
+            .call(|s| {
+                s.add_comment(
+                    sid.clone(),
+                    "0".into(),
+                    "1".into(),
+                    "@ada lovelace can you check this? cc @Nobody".into(),
+                    String::new(),
+                )
+            })
+            .unwrap();
+        let reply = app
+            .call_as(ada, |s| {
+                s.add_comment(
+                    sid.clone(),
+                    "0".into(),
+                    "1".into(),
+                    "Looks right".into(),
+                    id.clone(),
+                )
+            })
+            .unwrap();
+        let comments = app.view(|s| s.get_comments()).unwrap();
+        assert_eq!(comments.len(), 2);
+        assert_eq!(comments[0].mentions, vec![ada_id.clone()]);
+        assert_eq!(comments[1].parent, id);
+        assert!(app.events().iter().any(|e| e.kind == "CommentAdded"));
+
+        // Anyone resolves; only the author edits or deletes.
+        app.call_as(ada, |s| s.set_comment_resolved(id.clone(), true))
+            .unwrap();
+        assert!(app.view(|s| s.get_comments()).unwrap()[0].resolved);
+        assert!(app
+            .call(|s| s.edit_comment(reply.clone(), "no".into()))
+            .is_err());
+        assert!(app.call(|s| s.delete_comment(reply.clone())).is_err());
+        app.call_as(ada, |s| s.delete_comment(reply.clone()))
+            .unwrap();
+        assert_eq!(app.view(|s| s.get_comments()).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn comments_reject_empty_text_and_unknown_parents() {
+        let mut app = make_app();
+        let sid = new_sheet(&mut app);
+        assert!(app
+            .call(|s| s.add_comment(
+                sid.clone(),
+                "0".into(),
+                "0".into(),
+                "   ".into(),
+                String::new()
+            ))
+            .is_err());
+        assert!(app
+            .call(|s| s.add_comment(
+                sid.clone(),
+                "0".into(),
+                "0".into(),
+                "hi".into(),
+                "nope".into()
+            ))
+            .is_err());
     }
 }

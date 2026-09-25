@@ -179,6 +179,80 @@
         }
       ]
     },
+    "CommentData": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "author",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "text",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "mentions",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "parent",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "resolved",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "deleted",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
     "FormatData": {
       "kind": "record",
       "fields": [
@@ -415,6 +489,19 @@
               "$ref": "ActivityData"
             },
             "crdt_type": "sorted_map"
+          }
+        },
+        {
+          "name": "comments",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "CommentData"
+            },
+            "crdt_type": "unordered_map"
           }
         }
       ]

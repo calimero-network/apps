@@ -147,6 +147,34 @@ export interface CellOp_Set {
   raw_value: string;
 }
 
+export interface Comment {
+  id: string;
+  sheet_id: string;
+  row_id: string;
+  col_id: string;
+  author: string;
+  text: string;
+  mentions: string[];
+  parent: string;
+  resolved: boolean;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface CommentData {
+  sheet_id: string;
+  row_id: string;
+  col_id: string;
+  author: string;
+  text: string;
+  mentions: string[];
+  parent: string;
+  resolved: boolean;
+  deleted: boolean;
+  created_at: number;
+  updated_at: number;
+}
+
 export interface Event_AxesChanged {
   sheet_id: string;
   count: number;
@@ -166,6 +194,18 @@ export interface Event_CellUpdated {
 export interface Event_CellsChanged {
   sheet_id: string;
   count: number;
+}
+
+export interface Event_CommentAdded {
+  id: string;
+  sheet_id: string;
+  author: string;
+  mentions: string[];
+}
+
+export interface Event_CommentChanged {
+  id: string;
+  sheet_id: string;
 }
 
 export interface Event_MemberJoined {
@@ -282,7 +322,10 @@ export interface Spreadsheet {
   names: Record<string, NamedRangeData>;
   cell_meta: Record<string, CellMeta>;
   activity: Record<string, ActivityData>;
+  comments: Record<string, CommentData>;
 }
+
+
 
 
 
@@ -301,6 +344,8 @@ export type AbiEvent =
   | { name: "CellCleared"; payload: Event_CellCleared }
   | { name: "CellUpdated"; payload: Event_CellUpdated }
   | { name: "CellsChanged"; payload: Event_CellsChanged }
+  | { name: "CommentAdded"; payload: Event_CommentAdded }
+  | { name: "CommentChanged"; payload: Event_CommentChanged }
   | { name: "MemberJoined"; payload: Event_MemberJoined }
   | { name: "MemberRenamed"; payload: Event_MemberRenamed }
   | { name: "Migrated"; payload: Event_Migrated }
@@ -319,6 +364,16 @@ export class SpreadsheetClient {
   constructor(mero: MeroJs, contextId: string) {
     this._mero = mero;
     this._contextId = contextId;
+  }
+
+  /**
+   * add_comment
+   *
+   * @intent mutating
+   */
+  public async addComment(params: { sheet_id: string; row_id: string; col_id: string; text: string; parent: string }): Promise<string> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'add_comment', argsJson: params });
+    return response as string;
   }
 
   /**
@@ -362,6 +417,16 @@ export class SpreadsheetClient {
   }
 
   /**
+   * delete_comment
+   *
+   * @intent mutating
+   */
+  public async deleteComment(params: { id: string }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'delete_comment', argsJson: params });
+    return response as void;
+  }
+
+  /**
    * delete_named_range
    *
    * @intent mutating
@@ -378,6 +443,16 @@ export class SpreadsheetClient {
    */
   public async deleteSheet(params: { sheet_id: string }): Promise<void> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'delete_sheet', argsJson: params });
+    return response as void;
+  }
+
+  /**
+   * edit_comment
+   *
+   * @intent mutating
+   */
+  public async editComment(params: { id: string; text: string }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'edit_comment', argsJson: params });
     return response as void;
   }
 
@@ -419,6 +494,16 @@ export class SpreadsheetClient {
   public async getCells(params: { sheet_id: string }): Promise<Cell[]> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_cells', argsJson: params });
     return response as Cell[];
+  }
+
+  /**
+   * get_comments
+   *
+   * @intent read_only
+   */
+  public async getComments(): Promise<Comment[]> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_comments', argsJson: {} });
+    return response as Comment[];
   }
 
   /**
@@ -547,6 +632,16 @@ export class SpreadsheetClient {
   public async setCellFormat(params: { sheet_id: string; row_id: string; col_id: string; format: string }): Promise<string> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_cell_format', argsJson: params });
     return response as string;
+  }
+
+  /**
+   * set_comment_resolved
+   *
+   * @intent mutating
+   */
+  public async setCommentResolved(params: { id: string; resolved: boolean }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_comment_resolved', argsJson: params });
+    return response as void;
   }
 
   /**

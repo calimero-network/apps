@@ -528,6 +528,154 @@
         }
       ]
     },
+    "Comment": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "author",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "text",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "mentions",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "parent",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "resolved",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "CommentData": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "author",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "text",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "mentions",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "parent",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "resolved",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "deleted",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
     "Event_AxesChanged": {
       "kind": "record",
       "fields": [
@@ -598,6 +746,55 @@
           "name": "count",
           "type": {
             "kind": "u32"
+          }
+        }
+      ]
+    },
+    "Event_CommentAdded": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "author",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "mentions",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        }
+      ]
+    },
+    "Event_CommentChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
           }
         }
       ]
@@ -1125,11 +1322,63 @@
             },
             "crdt_type": "sorted_map"
           }
+        },
+        {
+          "name": "comments",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "CommentData"
+            },
+            "crdt_type": "unordered_map"
+          }
         }
       ]
     }
   },
   "methods": [
+    {
+      "name": "add_comment",
+      "params": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "text",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "parent",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "mutating"
+    },
     {
       "name": "apply_axis_ops",
       "params": [
@@ -1221,6 +1470,21 @@
       "intent": "mutating"
     },
     {
+      "name": "delete_comment",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
       "name": "delete_named_range",
       "params": [
         {
@@ -1240,6 +1504,27 @@
       "params": [
         {
           "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "edit_comment",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "text",
           "type": {
             "kind": "string"
           }
@@ -1310,6 +1595,17 @@
         "kind": "list",
         "items": {
           "$ref": "Cell"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_comments",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "Comment"
         }
       },
       "intent": "read_only"
@@ -1520,6 +1816,27 @@
       "intent": "mutating"
     },
     {
+      "name": "set_comment_resolved",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "resolved",
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
       "name": "set_named_range",
       "params": [
         {
@@ -1572,6 +1889,18 @@
       "name": "CellsChanged",
       "payload": {
         "$ref": "Event_CellsChanged"
+      }
+    },
+    {
+      "name": "CommentAdded",
+      "payload": {
+        "$ref": "Event_CommentAdded"
+      }
+    },
+    {
+      "name": "CommentChanged",
+      "payload": {
+        "$ref": "Event_CommentChanged"
       }
     },
     {
