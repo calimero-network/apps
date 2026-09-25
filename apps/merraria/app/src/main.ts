@@ -186,7 +186,12 @@ async function boot(): Promise<void> {
     onPlayers,
     onToast: (msg) => hud.toast(msg),
   });
-  client.subscribe((ev) => sync?.handleEvent(ev));
+  client.subscribe(
+    (ev) => sync?.handleEvent(ev),
+    // Back from a dropped stream: pull the world and roster again, push
+    // anything still pending — the same reconcile as joining.
+    () => { void sync?.reconcile().catch(() => {}); },
+  );
   try {
     await sync.join(choice.name);
     await sync.reconcile();
