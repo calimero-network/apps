@@ -197,7 +197,8 @@ export function JoinInviteCard({
         <div className="mt-6 text-center text-xs text-muted-foreground">
           <button
             type="button"
-            className="underline hover:text-foreground"
+            className="underline hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50 disabled:no-underline"
+            disabled={joining}
             onClick={secondaryAction.onClick}
           >
             {secondaryAction.label}
