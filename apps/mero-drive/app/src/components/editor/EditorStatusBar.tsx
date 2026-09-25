@@ -4,8 +4,9 @@
 // file no longer imports Tiptap.
 
 import React from 'react';
-import { Shield, AlertCircle, Clock, FileText, WifiOff } from 'lucide-react';
+import { Shield, AlertCircle, FileText, WifiOff } from 'lucide-react';
 import type { SaveStatus } from './types';
+import { useSettledSaveStatus } from './useSettledSaveStatus';
 
 interface EditorStatusBarProps {
   documentName: string;
@@ -25,6 +26,8 @@ export const EditorStatusBar: React.FC<EditorStatusBarProps> = ({
   lastSavedAt,
   isAppReady = true,
 }) => {
+  const shownStatus = useSettledSaveStatus(saveStatus);
+
   const formatTime = (date: Date) => {
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
@@ -39,10 +42,14 @@ export const EditorStatusBar: React.FC<EditorStatusBarProps> = ({
       );
     }
 
-    switch (saveStatus) {
+    switch (shownStatus) {
       case 'saved':
         return (
-          <div className="flex items-center gap-1.5 text-success" data-testid="save-status">
+          <div
+            className="flex items-center gap-1.5 text-success"
+            data-testid="save-status"
+            title={lastSavedAt ? `Last saved ${formatTime(lastSavedAt)}` : undefined}
+          >
             <div className="w-2 h-2 rounded-full bg-current opacity-80" />
             <span>Saved</span>
           </div>
@@ -52,13 +59,6 @@ export const EditorStatusBar: React.FC<EditorStatusBarProps> = ({
           <div className="flex items-center gap-1.5 text-warning" data-testid="save-status">
             <div className="w-2 h-2 rounded-full bg-current animate-pulse" />
             <span>Saving…</span>
-          </div>
-        );
-      case 'unsaved':
-        return (
-          <div className="flex items-center gap-1.5 text-muted-foreground" data-testid="save-status">
-            <div className="w-2 h-2 rounded-full bg-current animate-pulse" />
-            <span>Unsaved changes</span>
           </div>
         );
       case 'error':
@@ -87,13 +87,6 @@ export const EditorStatusBar: React.FC<EditorStatusBarProps> = ({
       </div>
 
       <div className="flex items-center gap-4">
-        {lastSavedAt && (
-          <div className="hidden items-center gap-1.5 text-muted-foreground lg:flex">
-            <Clock className="w-3.5 h-3.5" />
-            <span>Last saved {formatTime(lastSavedAt)}</span>
-          </div>
-        )}
-
         {getSaveStatusDisplay()}
 
         <div className="security-badge">
