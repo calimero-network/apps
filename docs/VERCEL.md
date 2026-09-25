@@ -79,6 +79,7 @@ and republish the bundle if a domain changes.
 | `mero-chat` | `mero-chat-pwa` | `apps/mero-chat/app` | `dist` | https://mero-chat-pwa.vercel.app |
 | `mero-drive` | `mero-drive` | `apps/mero-drive/app` | `dist` | https://mero-drive.vercel.app |
 | `mero-forum` | `mero-forum` | `apps/mero-forum/app` | `dist` | https://mero-forum.vercel.app |
+| `mero-crm` | `mero-crm` (to create) | `apps/mero-crm/app` | `dist` | https://mero-crm.vercel.app |
 | `mero-issue-tracker` | `mero-issue-tracker-app` | `apps/mero-issue-tracker/app` | `dist` | https://mero-issue-tracker-app.vercel.app |
 | `mero-sign` | `mero-sign` | `apps/mero-sign/app` | `dist` | https://mero-sign.vercel.app |
 | `mero-stream` | `mero-stream-neon` | `apps/mero-stream/app` | `dist` | https://mero-stream-neon.vercel.app |
@@ -129,6 +130,7 @@ exceptions, noted below:
 | `mero-chat` | `com.calimero.chat` ⚠️ |
 | `mero-drive` | `com.calimero.mero-drive-docs` ⚠️ |
 | `mero-forum` | `com.calimero.mero-forum` |
+| `mero-crm` | `com.calimero.mero-crm` |
 | `mero-issue-tracker` | `com.calimero.mero-issue-tracker` |
 | `mero-sign` | `com.calimero.mero-sign` |
 | `mero-stream` | `com.calimero.mero-stream` |

@@ -1,0 +1,592 @@
+# Two-node smoke test for the CRM service.
+#
+# Exercises every contract method on real nodes, which the in-process TestHost
+# and converge harness cannot:
+#   - the `crm` service installed from the bundle and a pipeline context created
+#   - deals, people, activities and settings replicating between two peers
+#   - an automation firing INSIDE the contract when a deal enters a stage, and
+#     the scheduled activity replicating with the move
+#   - the author/creator gates rejecting a teammate on a real signed-delta path
+#
+# Usage, after `pnpm logic:build` (or CI's dry-run bundle) has produced
+# `logic/dist/com.calimero.mero-crm.mpk`:
+#   cd logic && merobox bootstrap run workflows/smoke.yml
+
+name: crm smoke
+description: Verify the CRM pipeline replicates deals, people, activities and automations across two nodes, with its authorship gates enforced.
+log_level: info
+# ⚠️ REQUIRED. Without it merod's default bootstrap nodes survive and the peers
+# never find each other; see apps/mero-issue-tracker/logic/workflows/smoke.yml.
+e2e_mode: true
+
+nodes:
+  count: 2
+  prefix: crm-node
+  # Matched to the SDK tag in the root Cargo.toml.
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.43
+  base_port: 12428
+  base_rpc_port: 12528
+nuke_on_start: true
+nuke_on_end: true
+wait_timeout: 90
+
+steps:
+  - type: install_application
+    name: Install the CRM bundle on node 1
+    node: crm-node-1
+    dev: true
+    path: dist/com.calimero.mero-crm.mpk
+    outputs:
+      app_id: applicationId
+
+  - type: install_application
+    name: Install the CRM bundle on node 2
+    node: crm-node-2
+    dev: true
+    path: dist/com.calimero.mero-crm.mpk
+
+  # Container health is not readiness: a cold `create_namespace` 500s otherwise.
+  - name: Settle before the first admin call
+    type: wait
+    seconds: 12
+
+  - type: create_namespace
+    name: Create the sales-team namespace on node 1
+    node: crm-node-1
+    application_id: '{{app_id}}'
+    outputs:
+      namespace_id: namespaceId
+
+  - type: create_context
+    name: Create a pipeline context on node 1
+    node: crm-node-1
+    application_id: '{{app_id}}'
+    group_id: '{{namespace_id}}'
+    service_name: crm
+    outputs:
+      ctx: contextId
+
+  - type: create_namespace_invitation
+    name: Invite node 2
+    node: crm-node-1
+    namespace_id: '{{namespace_id}}'
+    outputs:
+      invitation: invitation
+
+  # A join races core's KeyDelivery window; 12s matches the rest of the fleet.
+  - type: wait
+    seconds: 12
+
+  - type: join_namespace
+    name: Node 2 joins the namespace
+    node: crm-node-2
+    namespace_id: '{{namespace_id}}'
+    invitation: '{{invitation}}'
+
+  # --- settings ---
+
+  - type: call
+    name: Read the default settings
+    node: crm-node-1
+    context_id: '{{ctx}}'
+    method: get_settings
+    args: {}
+    outputs:
+      settings0: result.output
+
+  - type: json_assert
+    name: A new pipeline starts in USD with a 14-day rotting threshold
+    statements:
+      - 'json_subset({{settings0}}, {"currency": "USD", "rotting_days": 14})'
+
+  - type: call
+    name: Set the currency to EUR
+    node: crm-node-1
+    context_id: '{{ctx}}'
+    method: set_currency
+    args:
+      currency: "eur"
+
+  - type: call
+    name: Set the rotting threshold to 7 days
+    node: crm-node-1
+    context_id: '{{ctx}}'
+    method: set_rotting_days
+    args:
+      days: 7
+
+  # --- stages ---
+
+  - type: call
+    name: Add a stage
+    node: crm-node-1
+    context_id: '{{ctx}}'
+    method: add_stage
+    args:
+      name: "Contract sent"
+      probability: 90
+    outputs:
+      new_stage: result.output
+
+  - type: call
+    name: Re-weight the new stage
+    node: crm-node-1
+    context_id: '{{ctx}}'
+    method: update_stage
+    args:
+      stage_id: '{{new_stage}}'
+      name: "Contract out"
+      probability: 95
+
+  - type: call
+    name: Move the new stage to the front
+    node: crm-node-1
+    context_id: '{{ctx}}'
+    method: reorder_stages
+    args:
+      stage_ids: ['{{new_stage}}', 'stage-lead', 'stage-qualified', 'stage-meeting', 'stage-proposal', 'stage-negotiation']
+
+  # --- automation: entering Proposal schedules "Send proposal" ---
+
+  - type: call
+    name: Add an automation on the Proposal stage
+    node: crm-node-1
+    context_id: '{{ctx}}'
+    method: add_automation
+    args:
+      stage_id: "stage-proposal"
+      kind: "email"
+      subject: "Send proposal"
+      due_in_days: 1
+    outputs:
+      auto_id: result.output
+
+  - type: call
+    name: Toggle the automation off and on
+    node: crm-node-1
+    context_id: '{{ctx}}'
+    method: set_automation_enabled
+    args:
+      automation_id: '{{auto_id}}'
+      enabled: false
+
+  - type: call
+    name: Re-enable the automation
+    node: crm-node-1
+    context_id: '{{ctx}}'
+    method: set_automation_enabled
+    args:
+      automation_id: '{{auto_id}}'
+      enabled: true
+
+  # --- people ---
+
+  - type: call
+    name: Add a contact
+    node: crm-node-1
+    context_id: '{{ctx}}'
+    method: create_contact
+    args:
+      name: "Ada Lovelace"
+      email: "ada@example.com"
+      phone: ""
+      organization: "Analytical Engines"
+      job_title: "CTO"
+    outputs:
+      contact_id: result.output
+
+  - type: call
+    name: Edit the contact
+    node: crm-node-1
+    context_id: '{{ctx}}'
+    method: update_contact
+    args:
+      contact_id: '{{contact_id}}'
+      name: "Ada Lovelace"
+      email: "ada@example.com"
+      phone: "+44 20 0000"
+      organization: "Analytical Engines"
+      job_title: "CTO"
+
+  # --- deals ---
+
+  - type: call
+    name: Create a deal in the first default stage
+    node: crm-node-1
+    context_id: '{{ctx}}'
+    method: create_deal
+    args:
+      title: "Analytical Engines 50 seats"
+      value: 24000
+      organization: "Analytical Engines"
+      contact_id: '{{contact_id}}'
+      stage_id: "stage-lead"
+      owner: "alice"
+      expected_close: null
+      source: "Referral"
+    outputs:
+      deal_id: result.output
+
+  - type: call
+    name: Edit the deal value and close date
+    node: crm-node-1
+    context_id: '{{ctx}}'
+    method: update_deal
+    args:
+      deal_id: '{{deal_id}}'
+      title: "Analytical Engines 50 seats"
+      value: 30000
+      organization: "Analytical Engines"
+      contact_id: '{{contact_id}}'
+      owner: "alice"
+      expected_close: 1893456000000
+      source: "Referral"
+
+  - type: call
+    name: Move the deal to Proposal (fires the automation)
+    node: crm-node-1
+    context_id: '{{ctx}}'
+    method: move_deal
+    args:
+      deal_id: '{{deal_id}}'
+      stage_id: "stage-proposal"
+
+  - type: wait_for_sync
+    name: Wait for sync after the deal moved
+    context_id: '{{ctx}}'
+    nodes: [crm-node-1, crm-node-2]
+    timeout: 30
+    trigger_sync: true
+
+  - type: call
+    name: Node 2 sees the open deal
+    node: crm-node-2
+    context_id: '{{ctx}}'
+    method: list_deals
+    args:
+      status: "open"
+      stage_id: null
+      owner: null
+    outputs:
+      open_deal_0: result.output.0
+
+  - type: json_assert
+    name: The deal replicated with its edit, stage and contact name
+    statements:
+      - 'json_subset({{open_deal_0}}, {"title": "Analytical Engines 50 seats", "value": 30000, "stage_id": "stage-proposal", "probability": 60, "contact_name": "Ada Lovelace"})'
+
+  - type: call
+    name: Node 2 reads the deal page
+    node: crm-node-2
+    context_id: '{{ctx}}'
+    method: get_deal
+    args:
+      deal_id: '{{deal_id}}'
+    outputs:
+      auto_activity: result.output.activities.0
+
+  - type: json_assert
+    name: The automation scheduled its activity, owned by the deal owner
+    statements:
+      - 'json_subset({{auto_activity}}, {"kind": "email", "subject": "Send proposal", "owner": "alice", "done": false})'
+
+  - type: call
+    name: Node 2 reads the stages
+    node: crm-node-2
+    context_id: '{{ctx}}'
+    method: list_stages
+    args: {}
+    outputs:
+      first_stage: result.output.0
+
+  - type: json_assert
+    name: The reordered, re-weighted stage replicated first
+    statements:
+      - 'json_subset({{first_stage}}, {"name": "Contract out", "probability": 95})'
+
+  - type: call
+    name: Node 2 reads the settings
+    node: crm-node-2
+    context_id: '{{ctx}}'
+    method: get_settings
+    args: {}
+    outputs:
+      settings1: result.output
+
+  - type: json_assert
+    name: The settings replicated
+    statements:
+      - 'json_subset({{settings1}}, {"currency": "EUR", "rotting_days": 7})'
+
+  - type: call
+    name: Node 2 reads the automations
+    node: crm-node-2
+    context_id: '{{ctx}}'
+    method: list_automations
+    args: {}
+    outputs:
+      auto0: result.output.0
+
+  - type: json_assert
+    name: The automation replicated enabled
+    statements:
+      - 'json_subset({{auto0}}, {"stage_id": "stage-proposal", "enabled": true})'
+
+  - type: call
+    name: Node 2 reads the address book
+    node: crm-node-2
+    context_id: '{{ctx}}'
+    method: list_contacts
+    args: {}
+    outputs:
+      contact0: result.output.0
+
+  - type: json_assert
+    name: The contact replicated with its edit and open-deal count
+    statements:
+      - 'json_subset({{contact0}}, {"phone": "+44 20 0000", "open_deals": 1})'
+
+  # --- activities: a teammate schedules, completes and reschedules ---
+
+  - type: call
+    name: Node 2 schedules a call
+    node: crm-node-2
+    context_id: '{{ctx}}'
+    method: add_activity
+    args:
+      deal_id: '{{deal_id}}'
+      contact_id: null
+      kind: "call"
+      subject: "Pricing call"
+      due_at: 1893456000000
+      owner: "bob"
+      note: ""
+    outputs:
+      activity_id: result.output
+
+  - type: call
+    name: Node 2 reschedules it
+    node: crm-node-2
+    context_id: '{{ctx}}'
+    method: reschedule_activity
+    args:
+      activity_id: '{{activity_id}}'
+      due_at: 1893542400000
+
+  - type: call
+    name: Node 2 marks it done
+    node: crm-node-2
+    context_id: '{{ctx}}'
+    method: set_activity_done
+    args:
+      activity_id: '{{activity_id}}'
+      done: true
+
+  - type: wait_for_sync
+    name: Wait for sync after the call was completed
+    context_id: '{{ctx}}'
+    nodes: [crm-node-1, crm-node-2]
+    timeout: 30
+    trigger_sync: true
+
+  - type: call
+    name: Node 1 lists done activities
+    node: crm-node-1
+    context_id: '{{ctx}}'
+    method: list_activities
+    args:
+      deal_id: '{{deal_id}}'
+      done: true
+    outputs:
+      done0: result.output.0
+
+  - type: json_assert
+    name: The completed, rescheduled call replicated
+    statements:
+      - 'json_subset({{done0}}, {"subject": "Pricing call", "due_at": 1893542400000, "done": true})'
+
+  - type: call
+    name: Node 1 deletes the call
+    node: crm-node-1
+    context_id: '{{ctx}}'
+    method: delete_activity
+    args:
+      activity_id: '{{activity_id}}'
+
+  # --- notes: author-gated delete ---
+
+  - type: call
+    name: Node 1 adds a note
+    node: crm-node-1
+    context_id: '{{ctx}}'
+    method: add_note
+    args:
+      deal_id: '{{deal_id}}'
+      body: "Budget approved for Q3"
+    outputs:
+      note_id: result.output
+
+  - type: wait_for_sync
+    name: Wait for sync after the note
+    context_id: '{{ctx}}'
+    nodes: [crm-node-1, crm-node-2]
+    timeout: 30
+    trigger_sync: true
+
+  - type: call
+    name: Node 2 (not the author) cannot delete the note
+    node: crm-node-2
+    context_id: '{{ctx}}'
+    method: delete_note
+    args:
+      note_id: '{{note_id}}'
+    outputs:
+      note_delete_error: error
+    # `expected_failure` alone can never fail the run (a call that wrongly
+    # SUCCEEDS would still pass), so the captured error is asserted below.
+    expected_failure: true
+
+  - type: assert
+    name: The rejection must actually have happened
+    statements:
+      - "is_set({{note_delete_error}})"
+
+  - type: call
+    name: Node 1 (the author) deletes the note
+    node: crm-node-1
+    context_id: '{{ctx}}'
+    method: delete_note
+    args:
+      note_id: '{{note_id}}'
+
+  # --- closing: won, reopened, lost ---
+
+  - type: call
+    name: Win the deal
+    node: crm-node-1
+    context_id: '{{ctx}}'
+    method: mark_won
+    args:
+      deal_id: '{{deal_id}}'
+
+  - type: call
+    name: Reopen it
+    node: crm-node-1
+    context_id: '{{ctx}}'
+    method: reopen_deal
+    args:
+      deal_id: '{{deal_id}}'
+
+  - type: call
+    name: Lose it, with a reason
+    node: crm-node-1
+    context_id: '{{ctx}}'
+    method: mark_lost
+    args:
+      deal_id: '{{deal_id}}'
+      reason: "Price"
+
+  - type: wait_for_sync
+    name: Wait for sync after the deal was lost
+    context_id: '{{ctx}}'
+    nodes: [crm-node-1, crm-node-2]
+    timeout: 30
+    trigger_sync: true
+
+  - type: call
+    name: Node 2 reads the closed deal
+    node: crm-node-2
+    context_id: '{{ctx}}'
+    method: get_deal
+    args:
+      deal_id: '{{deal_id}}'
+    outputs:
+      lost_deal: result.output.deal
+
+  - type: json_assert
+    name: The loss and its reason replicated
+    statements:
+      - 'json_subset({{lost_deal}}, {"status": "lost", "lost_reason": "Price", "probability": 0})'
+
+  # --- cleanup, with the creator gates ---
+
+  - type: call
+    name: Delete the added stage (it holds no deals)
+    node: crm-node-1
+    context_id: '{{ctx}}'
+    method: delete_stage
+    args:
+      stage_id: '{{new_stage}}'
+
+  - type: call
+    name: Delete the automation
+    node: crm-node-1
+    context_id: '{{ctx}}'
+    method: delete_automation
+    args:
+      automation_id: '{{auto_id}}'
+
+  - type: wait_for_sync
+    name: Wait for sync after stage and automation cleanup
+    context_id: '{{ctx}}'
+    nodes: [crm-node-1, crm-node-2]
+    timeout: 30
+    trigger_sync: true
+
+  - type: call
+    name: Node 2 (not the creator) cannot delete the deal
+    node: crm-node-2
+    context_id: '{{ctx}}'
+    method: delete_deal
+    args:
+      deal_id: '{{deal_id}}'
+    outputs:
+      deal_delete_error: error
+    # `expected_failure` alone can never fail the run (a call that wrongly
+    # SUCCEEDS would still pass), so the captured error is asserted below.
+    expected_failure: true
+
+  - type: assert
+    name: The rejection must actually have happened
+    statements:
+      - "is_set({{deal_delete_error}})"
+
+  - type: call
+    name: Node 1 (the creator) deletes the deal
+    node: crm-node-1
+    context_id: '{{ctx}}'
+    method: delete_deal
+    args:
+      deal_id: '{{deal_id}}'
+
+  - type: call
+    name: Node 1 (the creator) deletes the contact
+    node: crm-node-1
+    context_id: '{{ctx}}'
+    method: delete_contact
+    args:
+      contact_id: '{{contact_id}}'
+
+  - type: wait_for_sync
+    name: Wait for sync after the deletes
+    context_id: '{{ctx}}'
+    nodes: [crm-node-1, crm-node-2]
+    timeout: 30
+    trigger_sync: true
+
+  - type: call
+    name: Node 2 lists deals after the delete
+    node: crm-node-2
+    context_id: '{{ctx}}'
+    method: list_deals
+    args:
+      status: null
+      stage_id: null
+      owner: null
+    outputs:
+      deals_after: result.output
+
+  - type: json_assert
+    name: The deal is gone on node 2
+    statements:
+      - 'json_equal({{deals_after}}, [])'

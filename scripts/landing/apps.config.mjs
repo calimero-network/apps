@@ -1,5 +1,5 @@
 /**
- * Per-app landing content for all fourteen user-facing apps.
+ * Per-app landing content for all fifteen user-facing apps.
  *
  * This is the ONLY place app-specific copy lives. `generate.mjs` renders each
  * entry into `apps/<app>/app/src/pages/landing/landing.config.ts` next to a
@@ -277,6 +277,27 @@ export const APPS = {
       { icon: 'Shield', title: 'Members are the namespace', body: 'Invite-only by construction. There is no public firehose and no lurking stranger.' },
       { icon: 'CloudX', title: 'No platform in the middle', body: 'Nothing ranks your feed, nothing advertises against it, and no account is required.' },
       { icon: 'Refresh', title: 'Real-time', body: 'New posts and replies appear as peers sync, without a refresh button.' },
+    ],
+  },
+
+  'mero-crm': {
+    displayName: 'Mero CRM',
+    e2eDir: 'e2e',
+    // Same light/dark key as the app shell, so the landing choice carries through sign-in.
+    themeStorageKey: 'app:theme',
+    availability: 'web+desktop',
+    trust: ['Pipeline on your nodes', 'Built-in deal assistant', 'No per-seat vendor'],
+    explainer: [
+      'A sales CRM with only the parts that close deals: a visual pipeline, deals with a value and a next step, the people behind them, and a to-do list that puts overdue follow-ups first. Everything a tool like Pipedrive is used for day to day, without the forty menus around it.',
+      'The pipeline lives in a Calimero context your team shares, replicated between your own nodes. Your customer list is the most sensitive thing a sales team owns, and here there is no vendor holding a copy of it.',
+    ],
+    features: [
+      { icon: 'Target', title: 'Visual pipeline', body: 'Drag deals between stages, or onto Won and Lost. Every column shows its count, value and weighted forecast.' },
+      { icon: 'Zap', title: 'Deal assistant', body: 'A health score for every deal, the next best step in one click, a follow-up email draft, and a ready prompt for your AI.' },
+      { icon: 'Clock', title: 'Never miss a follow-up', body: 'Calls, meetings, tasks and deadlines, grouped by overdue, today and upcoming. Idle deals are flagged as rotting.' },
+      { icon: 'Refresh', title: 'Automations', body: 'When a deal enters a stage, the follow-up is scheduled for its owner automatically.' },
+      { icon: 'BarChart', title: 'Insights', body: 'Open and weighted pipeline, win rate, sales cycle, forecast by close month, and why deals are lost.' },
+      { icon: 'Shield', title: 'Your customers stay yours', body: 'The pipeline replicates between your team’s nodes. There is no vendor database to breach or to price you out of.' },
     ],
   },
 

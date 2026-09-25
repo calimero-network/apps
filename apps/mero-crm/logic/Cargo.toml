@@ -1,0 +1,53 @@
+[package]
+# The DIRECTORY, the cargo package and the npm package are ONE value:
+# publish-bundle.yml uses it as both a path (`apps/$APP/logic`) and a package.
+name        = "mero-crm"
+description = "A simple, private sales CRM: pipeline, deals, contacts, activities and follow-up automation"
+version     = "0.1.0"
+edition.workspace    = true
+authors.workspace    = true
+license.workspace    = true
+repository.workspace = true
+
+[lib]
+# `cdylib` for the WASM artifact the bundle ships; `rlib` so the TestHost unit
+# tests and tests/converge.rs can link the crate as a normal Rust library.
+crate-type = ["cdylib", "rlib"]
+
+# Package-level metadata with `services`: the root Cargo.toml deliberately has
+# no `[workspace.metadata.calimero]` (cargo-mero would REPLACE this table with
+# it). See the note in apps/mero-issue-tracker/logic/Cargo.toml.
+[package.metadata.calimero]
+package     = "com.calimero.mero-crm"
+name        = "Mero CRM"
+description = "A simple, private sales CRM - track your pipeline, work your deals, and never lose a follow-up"
+author      = "Calimero"
+slug        = "com.calimero.mero-crm"
+icon        = "../app/public/icon-512.png"
+category    = "productivity"
+tags        = ["productivity", "crm", "sales", "collaboration"]
+github      = "https://github.com/calimero-network/apps"
+min-runtime-version = "0.11.0-rc.43"
+# A BARE https origin — it doubles as the login callback's registered redirect
+# URI and is compared by EXACT ORIGIN.
+frontend    = "https://mero-crm.vercel.app"
+
+# One service, named `crm`. Context creation passes `serviceName`, so the name
+# is part of how every pipeline is created.
+[[package.metadata.calimero.services]]
+name  = "crm"
+crate = "mero-crm"
+
+[dependencies]
+calimero-sdk            = { workspace = true }
+calimero-storage        = { workspace = true }
+calimero-storage-macros = { workspace = true }
+hex                     = { workspace = true }
+
+[dev-dependencies]
+calimero-storage = { workspace = true, features = ["testing"] }
+# converge_app clears/repopulates the process-global merge registry per run.
+serial_test = "3"
+
+# NOTE: no [profile.*]. Cargo ignores profiles in a workspace member and
+# `cargo mero build` then fails with `profile 'app-release' is not defined`.
