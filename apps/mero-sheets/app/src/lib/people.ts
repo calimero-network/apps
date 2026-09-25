@@ -95,9 +95,10 @@ export function labelMembers(
 /**
  * Index a roster by member id, for labelling something keyed the same way.
  *
- * The live cursors are authored by `hex(device_id)` and `Member.id` is the same
- * value, deliberately — so a cursor can be labelled with the name its author
- * chose without a translation step anywhere.
+ * A live cursor carries its publisher's member id (`whoami`, which is
+ * `hex(device_id)`) and `Member.id` is the same value, deliberately — so a
+ * cursor can be labelled with the name its author chose without a translation
+ * step anywhere.
  */
 export function labelsById(
   labels: readonly PersonLabel[],

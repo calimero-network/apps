@@ -3,6 +3,10 @@ import type { Cursor } from '../api/spreadsheet/SpreadsheetClient';
 import { labelsById, labelMembers } from '../lib/people';
 import {
   avatarLabel,
+  cursorsFromPresence,
+  presenceColor,
+  PRESENCE_STALE_MS,
+  type PresenceSlice,
   distinctCollaborators,
   peerCount,
   syncLabel,
@@ -162,5 +166,50 @@ describe('status labels', () => {
   it('cellsLabel singular/plural', () => {
     expect(cellsLabel(1)).toBe('1 cell');
     expect(cellsLabel(12)).toBe('12 cells');
+  });
+});
+
+describe('cursorsFromPresence', () => {
+  const now = 1_000_000;
+  const peers = (entries: [string, PresenceSlice][]) => new Map(entries);
+  const fresh = (authors: string[]) => new Map(authors.map((a) => [a, now]));
+
+  it('turns slices into cursors keyed by member id, with a stable colour and the range', () => {
+    const p = peers([
+      ['ctx-a', { d: 'dev-a', s: 's1', r: 2, c: 3, g: [2, 3, 4, 5], n: 1 }],
+      ['ctx-b', { d: 'dev-b', s: 's1', r: 0, c: 0, g: null, n: 7 }],
+    ]);
+    const out = cursorsFromPresence(p, fresh(['ctx-a', 'ctx-b']), now, null);
+    expect(out).toHaveLength(2);
+    const a = out.find((c) => c.author === 'dev-a')!;
+    expect(a).toMatchObject({ sheet_id: 's1', row: 2, col: 3, color: presenceColor('dev-a') });
+    expect(a.range).toEqual({ top: 2, left: 3, bottom: 4, right: 5 });
+    expect(out.find((c) => c.author === 'dev-b')!.range).toBeNull();
+  });
+
+  it('drops your own echo, malformed slices and a leave slice', () => {
+    const p = peers([
+      ['me', { d: 'self', s: 's1', r: 0, c: 0 }],
+      ['bad', { d: 'x', s: 's1', r: -1, c: 0 }],
+      ['gone', {}],
+    ]);
+    expect(cursorsFromPresence(p, fresh(['me', 'bad', 'gone']), now, 'self')).toEqual([]);
+  });
+
+  it('drops a slice that has not changed within the staleness window', () => {
+    const p = peers([['ctx-a', { d: 'dev-a', s: 's1', r: 0, c: 0 }]]);
+    const old = new Map([['ctx-a', now - PRESENCE_STALE_MS - 1]]);
+    expect(cursorsFromPresence(p, old, now, null)).toEqual([]);
+  });
+
+  it('shows the tab that moved last when one member has two open', () => {
+    const p = peers([
+      ['tab-1', { d: 'dev-a', s: 's1', r: 1, c: 1 }],
+      ['tab-2', { d: 'dev-a', s: 's1', r: 9, c: 9 }],
+    ]);
+    const at = new Map([['tab-1', now - 5_000], ['tab-2', now - 1_000]]);
+    const out = cursorsFromPresence(p, at, now, null);
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({ row: 9, col: 9 });
   });
 });

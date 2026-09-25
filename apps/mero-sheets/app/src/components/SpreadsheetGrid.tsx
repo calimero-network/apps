@@ -18,7 +18,8 @@
 import React, { memo, useCallback, useMemo, useRef, useState } from 'react';
 import styled from 'styled-components';
 import { C } from '../theme';
-import { type Cell, type Cursor } from '../hooks/useSpreadsheet';
+import { type Cell } from '../hooks/useSpreadsheet';
+import type { PeerCursor } from '../spreadsheet/presence';
 import { columnLabel, normalizeRect, type CellCoord, type Rect } from '../spreadsheet/refs';
 import { resolvePoint, type PointAction } from '../spreadsheet/pointing';
 import { formatValue } from '../spreadsheet/format';
@@ -31,7 +32,9 @@ const COLS = 26; // A–Z
 interface SpreadsheetGridProps {
   sheetId: string | null;
   cells: Cell[];
-  cursors: Cursor[];
+  cursors: PeerCursor[];
+  /** The badge shown on a peer's cursor, from their member id. */
+  cursorLabel: (author: string) => string;
   selectedCell: CellCoord | null;
   /** Committed multi-cell selection (column/row/range), highlighted. */
   selectionRange: Rect | null;
@@ -63,6 +66,7 @@ function SpreadsheetGrid({
   sheetId,
   cells,
   cursors,
+  cursorLabel,
   selectedCell,
   selectionRange,
   editingValue,
@@ -103,9 +107,24 @@ function SpreadsheetGrid({
   }, [cells, sheetId]);
 
   const cursorMap = useMemo(() => {
-    const m = new Map<string, Cursor>();
+    const m = new Map<string, PeerCursor>();
     for (const cur of cursors) {
       if (cur.sheet_id === sheetId) m.set(`${cur.row}-${cur.col}`, cur);
+    }
+    return m;
+  }, [cursors, sheetId]);
+
+  // Cells inside a peer's selected range, tinted in their colour. Clamped to
+  // the grid, so a whole-column selection costs at most one column of entries.
+  const peerRangeMap = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const cur of cursors) {
+      if (cur.sheet_id !== sheetId || !cur.range) continue;
+      for (let r = cur.range.top; r <= Math.min(cur.range.bottom, ROWS - 1); r++) {
+        for (let c = cur.range.left; c <= Math.min(cur.range.right, COLS - 1); c++) {
+          m.set(`${r}-${c}`, cur.color);
+        }
+      }
     }
     return m;
   }, [cursors, sheetId]);
@@ -420,6 +439,7 @@ function SpreadsheetGrid({
                     data-testid="item-cell"
                     $selected={isSelected}
                     $cursorColor={cursor?.color}
+                    $peerTint={peerRangeMap.get(key)}
                     $inRange={inRange && !isSelected}
                     $inFillTarget={inFillTarget}
                     $copied={copiedKind}
@@ -435,7 +455,7 @@ function SpreadsheetGrid({
                     <CellValue $isFormula={shownIsFormula}>{shownValue}</CellValue>
                     {cursor && !isSelected && (
                       <CursorTag style={{ background: cursor.color }}>
-                        {cursor.author.slice(0, 3)}
+                        {cursorLabel(cursor.author)}
                       </CursorTag>
                     )}
                     {isFillCorner && (
@@ -531,7 +551,7 @@ const RowTh = styled.td<{ $selected: boolean }>`
   &:hover { background: rgba(164,255,17,0.10); }
 `;
 
-const DataCell = styled.td<{ $selected: boolean; $cursorColor?: string; $inRange?: boolean; $inFillTarget?: boolean; $copied?: 'copy' | 'cut' }>`
+const DataCell = styled.td<{ $selected: boolean; $cursorColor?: string; $peerTint?: string; $inRange?: boolean; $inFillTarget?: boolean; $copied?: 'copy' | 'cut' }>`
   height: 24px;
   min-width: 60px;
   max-width: 200px;
@@ -564,6 +584,12 @@ const DataCell = styled.td<{ $selected: boolean; $cursorColor?: string; $inRange
     outline: 2px solid ${p.$cursorColor};
     outline-offset: -2px;
     z-index: 1;
+  `}
+
+  ${(p) =>
+    p.$peerTint && !p.$selected &&
+    `
+    background: color-mix(in srgb, ${p.$peerTint} 12%, ${C.paper});
   `}
 
   ${(p) =>

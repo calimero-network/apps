@@ -20,7 +20,7 @@ import { useMero, useSubscription } from '@calimero-network/mero-react';
 import { useStreamReconnect } from './useStreamReconnect';
 import { SpreadsheetClient } from '../api/spreadsheet/SpreadsheetClient';
 import type {
-  Sheet, Cell, Cursor, FunctionDef, Member, Project,
+  Sheet, Cell, FunctionDef, Member, Project,
 } from '../api/spreadsheet/SpreadsheetClient';
 import { CellOp as CellOpWire } from '../api/spreadsheet/SpreadsheetClient';
 import { chunkOps, type CellOp } from '../spreadsheet/ops';
@@ -31,7 +31,7 @@ import {
 } from '../engine/derive';
 
 // Re-export domain types so components import from one place
-export type { Sheet, Cell, Cursor, FunctionDef, Member, Project };
+export type { Sheet, Cell, FunctionDef, Member, Project };
 
 // ── Hook interfaces ──────────────────────────────────────────────────────────
 
@@ -45,11 +45,10 @@ export interface UseSpreadsheetArgs {
 export interface UseSpreadsheetReturn {
   sheets: Sheet[];
   cells: Cell[];
-  cursors: Cursor[];
   functions: FunctionDef[];
   /**
    * Everyone who has named themselves in this spreadsheet. Keyed by the same id
-   * `Cursor.author` carries, so a cursor can be labelled with its author's name.
+   * a live cursor carries (see useSheetPresence), so it can be labelled.
    */
   members: Member[];
   /**
@@ -61,7 +60,7 @@ export interface UseSpreadsheetReturn {
   /**
    * The id THIS node writes under, straight from the contract (`whoami`).
    *
-   * Asked rather than inferred: a cursor's author is a DEVICE key and
+   * Asked rather than inferred: a member id is a DEVICE key and
    * `executorPublicKey` is a CONTEXT identity. Both are 64 hex, so comparing
    * them type-checks and is false forever — which showed the local user as a
    * stranger in their own spreadsheet.
@@ -90,8 +89,6 @@ export interface UseSpreadsheetReturn {
   clearCell: (sheetId: string, row: number, col: number) => Promise<void>;
   setCellFormat: (sheetId: string, row: number, col: number, format: string) => Promise<void>;
   applyCellOps: (sheetId: string, ops: CellOp[]) => Promise<void>;
-  // Cursor (fire-and-forget)
-  updateCursor: (sheetId: string, row: number, col: number) => Promise<void>;
   // Export
   exportAll: () => Promise<Sheet[]>;
   /** Fetch one sheet's cells on demand (off the mutation queue) — used by download. */
@@ -111,7 +108,6 @@ export function useSpreadsheet({
   const { mero } = useMero();
   const [sheets, setSheets] = useState<Sheet[]>([]);
   const [cells, setCells] = useState<Cell[]>([]);
-  const [cursors, setCursors] = useState<Cursor[]>([]);
   const [functions, setFunctions] = useState<FunctionDef[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [membersLoaded, setMembersLoaded] = useState(false);
@@ -143,9 +139,8 @@ export function useSpreadsheet({
   );
 
   // Serialize state-changing rpc.execute calls. The node commits each mutation
-  // as a full-state snapshot, so two mutations issued concurrently (e.g. the
-  // fire-and-forget updateCursor from a cell selection racing the setCell of a
-  // paste) clobber each other — the last to commit wins and silently drops the
+  // as a full-state snapshot, so two mutations issued concurrently (e.g. a
+  // sheet rename racing the setCell of a paste) clobber each other — the last to commit wins and silently drops the
   // other's write. Chaining every mutation through one promise guarantees they
   // apply strictly one at a time. Reads (refresh) stay off the queue.
   const mutationQueue = useRef<Promise<unknown>>(Promise.resolve());
@@ -163,11 +158,11 @@ export function useSpreadsheet({
     return next;
   }, []);
 
-  // ── Refresh: fetch all sheets, their cells, cursors, and functions ────────
+  // ── Refresh: fetch all sheets, their cells, and the roster ────────────────
 
   // The active sheet is read through a ref so `refresh`'s identity stays stable
   // across tab switches — switching sheets refetches only cells (the effect
-  // below), never the sheet list / cursors / functions.
+  // below), never the sheet list / roster.
   const activeSheetIdRef = useRef(activeSheetId);
   activeSheetIdRef.current = activeSheetId;
 
@@ -232,11 +227,10 @@ export function useSpreadsheet({
     setError(null);
     try {
       const [
-        fetchedSheets, fetchedCursors, allCells,
+        fetchedSheets, allCells,
         fetchedMembers, fetchedProject, me,
       ] = await Promise.all([
         client.listSheets(),
-        client.getCursors(),
         client.getAllCells(),
         client.getMembers(),
         client.getProject(),
@@ -245,7 +239,6 @@ export function useSpreadsheet({
       snapshotRef.current = snapshotFromCells(allCells);
       overlayRef.current = retireOverlay(overlayRef.current, snapshotRef.current);
       setSheets(fetchedSheets.sort((a, b) => a.position - b.position));
-      setCursors(fetchedCursors);
       setMembers(fetchedMembers);
       setProject(fetchedProject);
       setSelfId(me);
@@ -291,13 +284,6 @@ export function useSpreadsheet({
   useSubscription(contextId ? [contextId] : [], () => { void refresh(); });
   // …and after the stream reconnects: nothing replays what changed while it was down.
   useStreamReconnect(() => { void refresh(); });
-
-  // Cursor cleanup on unmount
-  useEffect(() => {
-    return () => {
-      if (client) { void client.removeCursor(); }
-    };
-  }, [client]);
 
   // ── Mutations ─────────────────────────────────────────────────────────────
 
@@ -395,17 +381,6 @@ export function useSpreadsheet({
     [client, applyOverlay, enqueue],
   );
 
-  // Fire-and-forget cursor broadcast — never block the UI waiting for it, but
-  // still route it through the mutation queue so it can't clobber a concurrent
-  // cell write (both are full-state commits on the node).
-  const updateCursor = useCallback(
-    async (sheetId: string, row: number, col: number) => {
-      if (!client) return;
-      void enqueue(() => client.updateCursor({ sheet_id: sheetId, row, col }));
-    },
-    [client, enqueue],
-  );
-
   const exportAll = useCallback(async (): Promise<Sheet[]> => {
     if (!client) return sheets;
     return client.exportAll();
@@ -428,7 +403,6 @@ export function useSpreadsheet({
   return {
     sheets,
     cells,
-    cursors,
     functions,
     members,
     membersLoaded,
@@ -448,7 +422,6 @@ export function useSpreadsheet({
     clearCell,
     setCellFormat,
     applyCellOps,
-    updateCursor,
     exportAll,
     getSheetCells,
     searchFunctions,

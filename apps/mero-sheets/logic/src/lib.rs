@@ -953,6 +953,12 @@ impl Spreadsheet {
     }
 
     // ---- Cursors ----
+    //
+    // Superseded: the app now shares cursors and selections over the node's
+    // ephemeral presence channel (app/src/hooks/useSheetPresence.ts), so a
+    // cursor move is no longer a replicated commit. These stay only so a
+    // frontend from before that change keeps working against this contract;
+    // they and the `cursors` field go in the v2 state migration.
 
     pub fn update_cursor(&mut self, sheet_id: String, row: u32, col: u32) -> app::Result<()> {
         let author = self.caller_hex();

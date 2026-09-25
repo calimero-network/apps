@@ -131,10 +131,10 @@ export const CONFIG: LandingConfig = {
       ],
       concepts: [
         { term: "Namespace", def: "A project you own and invite collaborators into." },
-        { term: "Context", def: "One workbook: its sheets, its cells and its cursors." },
+        { term: "Context", def: "One workbook: its sheets and its cells." },
         { term: "Sheet", def: "A tab. Stored as a record; a workbook can hold several." },
         { term: "Cell", def: "One entry in a map keyed by sheet and coordinate. Value, formula and format are separate, so formatting a cell does not fight with typing in it." },
-        { term: "Cursor", def: "Where each collaborator is, in their own colour. Authored presence, kept out of the data." },
+        { term: "Cursor", def: "Where each collaborator is and what they have selected, in their own colour. Live presence, never stored in the workbook." },
       ],
     },
     {
@@ -162,7 +162,7 @@ export const CONFIG: LandingConfig = {
         "Project name and creation time.",
         "Sheets, keyed by id, with their names.",
         "Cells, keyed by sheet and coordinate, holding the raw value, the raw formula and the format separately.",
-        "Cursors, as authored presence — each one owned by the person it belongs to.",
+        "Not stored: cursors and selections. They travel on the node's ephemeral presence channel and vanish when you close the sheet.",
       ],
     },
     {

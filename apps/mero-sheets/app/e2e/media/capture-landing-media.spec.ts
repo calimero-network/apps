@@ -15,8 +15,9 @@ import { getNode, loginViaHash } from '../helpers';
  * recalc engine. The one stand-in is the teammate, Ada. A second member needs a
  * second node, and cross-node sync is what the multi-node e2e specs mark
  * `fixme`, so Ada lives on the same node: her edits are real `set_cell` writes
- * to it (arriving over the node's real event stream), and her cursor and name
- * are added to the node's `get_cursors` / `get_members` replies.
+ * to it (arriving over the node's real event stream), her name is added to the
+ * node's `get_members` reply, and her cursor is a presence slice injected into
+ * that same event stream, exactly as a peer's arrives.
  *
  * The story's chapters are padded to fixed lengths, so the chapter times in
  * scripts/landing/apps.config.mjs stay right on every re-run.
@@ -32,7 +33,7 @@ const OUT = process.env.MEDIA_OUT ?? 'public/landing';
 const FFMPEG = process.env.FFMPEG ?? '/opt/pw-browsers/ffmpeg-1011/ffmpeg-linux';
 const FPS = 25;
 
-const ADA = { id: 'Ada-teammate', nickname: 'Ada', color: '#3B82F6' };
+const ADA = { id: 'Ada-teammate', nickname: 'Ada' };
 
 /** A Q3 budget: labels, three quarters, and totals that are real formulas. */
 const BUDGET: [number, number, string][] = [];
@@ -125,6 +126,68 @@ async function showPointer(page: Page) {
   });
 }
 
+/**
+ * Passes the node's real `/sse` stream through untouched, and lets the test add
+ * frames to it (`window.__sse`) between the node's own. Installed before the
+ * app loads, so mero-js reads the tapped stream as the node's.
+ */
+async function tapEventStream(page: Page) {
+  await page.addInitScript(() => {
+    const enc = new TextEncoder();
+    const dec = new TextDecoder();
+    // Every open stream: React's dev double-mount opens two. A frame is only
+    // injected at a frame boundary, never inside a half-arrived node frame.
+    const taps = new Map<ReadableStreamDefaultController<Uint8Array>, { atBoundary: boolean; queued: Uint8Array[] }>();
+    const realFetch = window.fetch.bind(window);
+    window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      const res = await realFetch(input, init);
+      if (!/\/sse$/.test(url) || !res.body) return res;
+      const reader = res.body.getReader();
+      let self: ReadableStreamDefaultController<Uint8Array>;
+      const body = new ReadableStream<Uint8Array>({
+        start(c) {
+          self = c;
+          const tap = { atBoundary: true, queued: [] as Uint8Array[] };
+          taps.set(c, tap);
+          void (async () => {
+            try {
+              for (;;) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                c.enqueue(value);
+                tap.atBoundary = dec.decode(value.slice(-2)) === '\n\n';
+                if (tap.atBoundary) for (const q of tap.queued.splice(0)) c.enqueue(q);
+              }
+              c.close();
+            } catch {
+              /* the page went away */
+            } finally {
+              taps.delete(c);
+            }
+          })();
+        },
+        cancel() {
+          taps.delete(self);
+          void reader.cancel();
+        },
+      });
+      return new Response(body, { status: res.status, headers: res.headers });
+    };
+    (window as unknown as { __sse: (m: unknown) => void }).__sse = (m) => {
+      const bytes = enc.encode(`data: ${JSON.stringify(m)}\n\n`);
+      for (const [c, tap] of taps) {
+        try {
+          if (tap.atBoundary) c.enqueue(bytes);
+          else tap.queued.push(bytes);
+        } catch {
+          taps.delete(c);
+        }
+      }
+    };
+  });
+}
+
 /** The workbook this page opened, read off the app's own RPC traffic. */
 class Workbook {
   contextId = '';
@@ -135,23 +198,18 @@ class Workbook {
 
   async attach() {
     const node = getNode(0);
+    await tapEventStream(this.page);
     await this.page.route('**/jsonrpc', async (route) => {
       const body = route.request().postDataJSON() as { params?: { contextId?: string; method?: string } };
       const method = body?.params?.method;
       if (body?.params?.contextId) this.contextId = body.params.contextId;
-      if (method !== 'get_cursors' && method !== 'get_members' && method !== 'list_sheets') return route.fallback();
+      if (method !== 'get_members' && method !== 'list_sheets') return route.fallback();
       const res = await route.fetch();
       const json = await res.json();
       const out = json?.result?.output;
       if (method === 'list_sheets' && Array.isArray(out) && out[0]?.id && !this.sheetId) this.sheetId = out[0].id;
       if (method === 'get_members' && Array.isArray(out)) {
         out.push({ id: ADA.id, nickname: ADA.nickname, joined_at: 1, updated_at: 1 });
-      }
-      if (method === 'get_cursors' && Array.isArray(out) && this.ada && this.sheetId) {
-        out.push({
-          id: ADA.id, author: ADA.id, sheet_id: this.sheetId, ...this.ada,
-          color: ADA.color, updated_at: Date.now() * 1_000_000,
-        });
       }
       return route.fulfill({ response: res, json });
     });
@@ -175,19 +233,25 @@ class Workbook {
     await this.call('set_cell', { sheet_id: this.sheetId, row, col, raw_value });
   }
 
-  /**
-   * A real node event that changes nothing on screen: re-announcing yourself
-   * under the same nickname. The app refetches on it, and picks up Ada.
-   */
-  async nudge() {
-    await this.call('join', { nickname: 'Sam' });
+  private beat = 0;
+
+  /** Publishes Ada's cursor as the presence slice a peer's node would relay. */
+  async sendAda() {
+    const slice = this.ada
+      ? { d: ADA.id, s: this.sheetId, r: this.ada.row, c: this.ada.col, g: null, n: this.beat++ }
+      : {};
+    const state = Array.from(new TextEncoder().encode(JSON.stringify(slice)));
+    await this.page.evaluate(
+      (m) => (window as unknown as { __sse: (m: unknown) => void }).__sse(m),
+      { result: { contextId: this.contextId, type: 'Ephemeral', data: { author: 'ada-presence', state } } },
+    );
   }
 
-  /** Moves Ada one cell at a time, one node event per step. */
+  /** Moves Ada one cell at a time. */
   async moveAda(path: [number, number][], stepMs = 380) {
     for (const [row, col] of path) {
       this.ada = { row, col };
-      await this.nudge();
+      await this.sendAda();
       await this.page.waitForTimeout(stepMs);
     }
   }
@@ -231,7 +295,7 @@ test('demo video', async ({ page }) => {
   const client = await page.context().newCDPSession(page);
   await client.send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 800, deviceScaleFactor: 2, mobile: false });
   wb.ada = { row: 3, col: 3 };
-  await wb.nudge();
+  await wb.sendAda();
   await page.mouse.move(700, 600);
   await page.waitForTimeout(1200);
 
@@ -297,7 +361,7 @@ test('hero video', async ({ page }) => {
   const client = await page.context().newCDPSession(page);
   await client.send('Emulation.setDeviceMetricsOverride', { ...size, deviceScaleFactor: 3, mobile: false });
   wb.ada = { row: 5, col: 3 };
-  await wb.nudge();
+  await wb.sendAda();
   await page.mouse.move(size.width - 120, size.height - 80);
   await page.waitForTimeout(1200);
 

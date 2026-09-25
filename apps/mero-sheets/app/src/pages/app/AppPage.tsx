@@ -45,7 +45,8 @@ import ContextMenu from '../../components/ContextMenu';
 import { sheetsToCsv } from '../../spreadsheet/download';
 import { idsToNames, namesToIds } from '../../spreadsheet/sheetref';
 import StatusBar from '../../components/StatusBar';
-import { distinctCollaborators, peerCount } from '../../spreadsheet/presence';
+import { avatarLabel, distinctCollaborators, peerCount } from '../../spreadsheet/presence';
+import { useSheetPresence } from '../../hooks/useSheetPresence';
 import { labelMembers, labelsById } from '../../lib/people';
 import { rememberName, rememberedName } from '../../lib/displayName';
 
@@ -308,6 +309,17 @@ export default function AppPage() {
     }
   }, [activeSheetId, selectedCell]);
 
+  // ── Presence: where you are, for everyone else's grid ─────────────
+  const presence = useSheetPresence(ws.contextId, ss.selfId);
+  const { publish: publishPresence } = presence;
+  useEffect(() => {
+    publishPresence(
+      activeSheetId && selectedCell
+        ? { sheetId: activeSheetId, row: selectedCell.row, col: selectedCell.col, range: selectionRange }
+        : null,
+    );
+  }, [publishPresence, activeSheetId, selectedCell, selectionRange]);
+
   // ── Cell selection ──────────────────────────────────────────────
   const handleSelectCell = useCallback(
     async (row: number, col: number) => {
@@ -321,11 +333,8 @@ export default function AppPage() {
       setEditAnchor(null);
       autoRefRef.current = undefined;
       focusFormulaBar();
-      if (activeSheetId) {
-        void ss.updateCursor(activeSheetId, row, col);
-      }
     },
-    [isDirty, selectedCell, activeSheetId, ss, focusFormulaBar],
+    [isDirty, selectedCell, activeSheetId, focusFormulaBar],
   );
 
   // Drag-select a rectangular range; the focus (active) cell is the drag end.
@@ -876,8 +885,9 @@ export default function AppPage() {
   // `ws.executorPublicKey`, which is a context identity. Both are 64 hex, so the
   // old comparison type-checked, never matched, and rendered the local user as a
   // stranger in their own spreadsheet.
-  const collaborators = distinctCollaborators(ss.cursors, ss.selfId, C.green, roster);
-  const peers = peerCount(ss.cursors, ss.selfId);
+  const collaborators = distinctCollaborators(presence.cursors, ss.selfId, C.green, roster);
+  const peers = peerCount(presence.cursors, ss.selfId);
+  const cursorLabel = (author: string) => avatarLabel(roster.get(author)?.label ?? author);
   const connected = ss.ready && ss.loaded;
   const synced = ss.loaded && !ss.mutating;
 
@@ -1029,7 +1039,8 @@ export default function AppPage() {
       <SpreadsheetGrid
         sheetId={activeSheetId}
         cells={ss.cells}
-        cursors={ss.cursors}
+        cursors={presence.cursors}
+        cursorLabel={cursorLabel}
         selectedCell={pickingForeignSheet ? null : selectedCell}
         selectionRange={pickingForeignSheet ? null : selectionRange}
         editingValue={pickingForeignSheet ? null : isDirty ? formulaInput : null}
