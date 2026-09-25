@@ -705,7 +705,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "claim_draw",
@@ -719,7 +720,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "decline_draw",
@@ -733,7 +735,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "heartbeat",
@@ -747,7 +750,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "history",
@@ -757,7 +761,8 @@
         "items": {
           "$ref": "GameSummary"
         }
-      }
+      },
+      "intent": "read_only"
     },
     {
       "name": "init",
@@ -797,7 +802,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "offer_draw",
@@ -811,7 +817,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "play",
@@ -831,7 +838,8 @@
       ],
       "returns": {
         "kind": "string"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "rematch",
@@ -845,7 +853,8 @@
       ],
       "returns": {
         "kind": "u32"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "resign",
@@ -859,7 +868,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "sit",
@@ -885,7 +895,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "stand",
@@ -899,7 +910,8 @@
       ],
       "returns": {
         "kind": "unit"
-      }
+      },
+      "intent": "mutating"
     },
     {
       "name": "table",
@@ -913,7 +925,8 @@
       ],
       "returns": {
         "$ref": "TableView"
-      }
+      },
+      "intent": "read_only"
     }
   ],
   "events": [

@@ -87,6 +87,68 @@ export interface LoginPopupProps {
   onClose: () => void;
 }
 
+/**
+ * Optional extra sections for the overview page, for an app that wants a fuller
+ * pitch than hero + features. Every field is optional, and an app that sets none
+ * of them renders exactly the page every other app renders.
+ *
+ * None of these repeat `/docs`: the explainer, the four platform steps and the
+ * FAQ stay there. These are the reasons to click, not the manual.
+ */
+export interface OverviewExtras {
+  /** One value line under the H1. The H1 stays the app's name. */
+  headline?: string;
+  /**
+   * A clip recorded from the real app, served from its own `public/`, told as a
+   * few numbered chapters that follow the video as it plays. The hero animation
+   * is an illustration; this is the proof that the thing exists.
+   */
+  showcase?: {
+    heading: string;
+    sub?: string;
+    video: {
+      src: string;
+      poster: string;
+      /** In order. `at` is where the chapter starts, in seconds. */
+      chapters: { at: number; title: string; body: string }[];
+    };
+  };
+  /**
+   * "Open source — fork it and make it yours". The copy is shared; the app
+   * supplies its licence and the commands that get a fork running, because
+   * both differ per app.
+   */
+  openSource?: { license: string; commands: string[] };
+  /** "Why it is different" — this app against what people use today. */
+  comparison?: {
+    heading: string;
+    sub?: string;
+    /** Column title for the status quo, e.g. "A typical cloud design tool". */
+    themLabel: string;
+    rows: { label: string; them: string; us: string }[];
+  };
+  /** How several people work in it at once, and who may do what. */
+  collaboration?: {
+    heading: string;
+    sub?: string;
+    points: { title: string; body: string }[];
+    roles?: { name: string; can: string }[];
+    rolesNote?: string;
+  };
+  /**
+   * Who it is for, as concrete personas rather than icon cards: who they are,
+   * what it gets them, and the things in the app they would actually use.
+   */
+  audiences?: {
+    heading: string;
+    items: { label: string; title: string; body: string; uses: string[] }[];
+  };
+  /** The shared "free on your hardware, or always on with Calimero Cloud" block. */
+  alwaysOn?: boolean;
+  /** Replaces the low desktop band with a closing call to action. */
+  closing?: { title: string; body: string };
+}
+
 export interface LandingConfig {
   /** `name` from `[package.metadata.calimero]`. */
   name: string;
@@ -121,6 +183,8 @@ export interface LandingConfig {
   /** Two or three plain-language paragraphs: what this is, who for, why it differs. */
   explainer: string[];
   features: Feature[];
+  /** Extra overview sections. Absent for most apps. */
+  overview?: OverviewExtras;
   /** Appended to the shared FAQ. */
   faq?: FaqItem[];
   /** Per-app hero animation. Falls back to the shared peer-sync animation. */

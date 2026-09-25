@@ -188,6 +188,8 @@ export class MeroChessClient {
 
   /**
    * accept_draw
+   *
+   * @intent mutating
    */
   public async acceptDraw(params: { now: number }): Promise<void> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'accept_draw', argsJson: params, executorPublicKey: this._executorPublicKey });
@@ -196,6 +198,8 @@ export class MeroChessClient {
 
   /**
    * claim_draw
+   *
+   * @intent mutating
    */
   public async claimDraw(params: { now: number }): Promise<void> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'claim_draw', argsJson: params, executorPublicKey: this._executorPublicKey });
@@ -204,6 +208,8 @@ export class MeroChessClient {
 
   /**
    * decline_draw
+   *
+   * @intent mutating
    */
   public async declineDraw(params: { now: number }): Promise<void> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'decline_draw', argsJson: params, executorPublicKey: this._executorPublicKey });
@@ -212,6 +218,8 @@ export class MeroChessClient {
 
   /**
    * heartbeat
+   *
+   * @intent mutating
    */
   public async heartbeat(params: { now: number }): Promise<void> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'heartbeat', argsJson: params, executorPublicKey: this._executorPublicKey });
@@ -220,6 +228,8 @@ export class MeroChessClient {
 
   /**
    * history
+   *
+   * @intent read_only
    */
   public async history(): Promise<GameSummary[]> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'history', argsJson: {}, executorPublicKey: this._executorPublicKey });
@@ -236,6 +246,8 @@ export class MeroChessClient {
 
   /**
    * join
+   *
+   * @intent mutating
    */
   public async join(params: { name: string; now: number }): Promise<void> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'join', argsJson: params, executorPublicKey: this._executorPublicKey });
@@ -244,6 +256,8 @@ export class MeroChessClient {
 
   /**
    * offer_draw
+   *
+   * @intent mutating
    */
   public async offerDraw(params: { now: number }): Promise<void> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'offer_draw', argsJson: params, executorPublicKey: this._executorPublicKey });
@@ -252,6 +266,8 @@ export class MeroChessClient {
 
   /**
    * play
+   *
+   * @intent mutating
    */
   public async play(params: { uci: string; now: number }): Promise<string> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'play', argsJson: params, executorPublicKey: this._executorPublicKey });
@@ -260,6 +276,8 @@ export class MeroChessClient {
 
   /**
    * rematch
+   *
+   * @intent mutating
    */
   public async rematch(params: { now: number }): Promise<number> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'rematch', argsJson: params, executorPublicKey: this._executorPublicKey });
@@ -268,6 +286,8 @@ export class MeroChessClient {
 
   /**
    * resign
+   *
+   * @intent mutating
    */
   public async resign(params: { now: number }): Promise<void> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'resign', argsJson: params, executorPublicKey: this._executorPublicKey });
@@ -276,6 +296,8 @@ export class MeroChessClient {
 
   /**
    * sit
+   *
+   * @intent mutating
    */
   public async sit(params: { seat: string; name: string; now: number }): Promise<void> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'sit', argsJson: params, executorPublicKey: this._executorPublicKey });
@@ -284,6 +306,8 @@ export class MeroChessClient {
 
   /**
    * stand
+   *
+   * @intent mutating
    */
   public async stand(params: { now: number }): Promise<void> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'stand', argsJson: params, executorPublicKey: this._executorPublicKey });
@@ -292,6 +316,8 @@ export class MeroChessClient {
 
   /**
    * table
+   *
+   * @intent read_only
    */
   public async table(params: { now: number }): Promise<TableView> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'table', argsJson: params, executorPublicKey: this._executorPublicKey });

@@ -40,7 +40,7 @@ nodes:
   # to it by scripts/check-app-metadata.sh. The wasm imports host functions that
   # only exist from that release on; an older node installs it happily and then
   # dies at context creation with `link error: unknown import`.
-  image: ghcr.io/calimero-network/merod:0.11.0-rc.37
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.43
   prefix: chess-node
   # Stated, not inherited. core 0.11.0-rc.26 made mDNS opt-in (core#3620), so
   # `merod init` now writes `discovery.mdns = false` where every earlier release
