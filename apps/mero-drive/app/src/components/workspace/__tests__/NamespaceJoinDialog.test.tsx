@@ -1,6 +1,7 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { NamespaceJoinDialog } from '../NamespaceJoinDialog';
 import { buildInviteUrl } from '@/hooks/useNamespaceInvitation';
 import type { SignedGroupOpenInvitation } from '@calimero-network/mero-react';
@@ -122,10 +123,10 @@ describe('NamespaceJoinDialog', () => {
     expect(onClose).toHaveBeenCalledOnce();
   });
 
-  it('clicking the backdrop closes the dialog', () => {
+  it('closes on Escape', async () => {
     const onClose = vi.fn();
     render(<NamespaceJoinDialog onClose={onClose} onJoined={noop} />);
-    fireEvent.click(screen.getByRole('dialog'));
+    await userEvent.setup().keyboard('{Escape}');
     expect(onClose).toHaveBeenCalledOnce();
   });
 

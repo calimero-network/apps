@@ -14,6 +14,25 @@ test.describe('Namespace (single-node)', () => {
     );
   });
 
+  test('New workspace dialog takes keyboard input without clicking the field', async ({
+    alice,
+  }) => {
+    await alice.goToWorkspace();
+    await alice.page.getByTestId('workspace-switcher').click();
+    await alice.page.getByRole('menuitem', { name: /New workspace/i }).click();
+    const dialog = alice.page
+      .getByRole('dialog')
+      .filter({ has: alice.page.getByPlaceholder(/Workspace name/i) });
+    await expect(dialog).toBeVisible();
+    // No click on the input: the dropdown item that opened this dialog
+    // must not keep stealing focus back from it.
+    await alice.page.keyboard.type('Typed Without Clicking');
+    await expect(dialog.getByPlaceholder(/Workspace name/i)).toHaveValue(
+      'Typed Without Clicking',
+    );
+    await dialog.getByRole('button', { name: /^Cancel$/ }).click();
+  });
+
   test('switch between namespaces', async ({ alice }) => {
     await alice.goToWorkspace();
     await alice.createNamespace('Phoenix A');

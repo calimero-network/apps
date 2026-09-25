@@ -7,6 +7,13 @@
 
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Copy, Check, Link2 } from 'lucide-react';
 import type { InviteCreation } from '@/hooks/useNamespaceInvitation';
 
@@ -71,26 +78,14 @@ export function InviteDialog({
   };
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="invite-dialog-title"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-      onClick={onClose}
-    >
-      <div
-        className="w-[28rem] max-w-[calc(100vw-2rem)] rounded-lg border border-border bg-card p-5 shadow-xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h2
-          id="invite-dialog-title"
-          className="mb-1 text-base font-semibold"
-        >
-          {title}
-        </h2>
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent aria-describedby={undefined} className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+        </DialogHeader>
         <p className="mb-4 text-sm text-muted-foreground">{description}</p>
 
-        {!url && !error && (
+        {!url && (
           <Button
             onClick={onGenerate}
             disabled={creating}
@@ -98,7 +93,11 @@ export function InviteDialog({
             size="sm"
           >
             <Link2 className="mr-2 h-3.5 w-3.5" />
-            {creating ? 'Generating…' : 'Generate invite link'}
+            {creating
+              ? 'Generating…'
+              : error
+                ? 'Try again'
+                : 'Generate invite link'}
           </Button>
         )}
 
@@ -153,12 +152,12 @@ export function InviteDialog({
           </div>
         )}
 
-        <div className="mt-5 flex justify-end">
+        <DialogFooter>
           <Button variant="ghost" size="sm" onClick={onClose}>
             Close
           </Button>
-        </div>
-      </div>
-    </div>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
