@@ -39,6 +39,8 @@ interface SpreadsheetGridProps {
   editedBy: (cell: Cell) => string | null;
   /** "row-col" of cells with an open comment thread; they get a corner mark. */
   commented: ReadonlySet<string>;
+  /** "row-col" → the start of that cell's note; noted cells get a mark. */
+  notes: ReadonlyMap<string, string>;
   selectedCell: CellCoord | null;
   /** Committed multi-cell selection (column/row/range), highlighted. */
   selectionRange: Rect | null;
@@ -53,6 +55,7 @@ interface SpreadsheetGridProps {
   onSelectColumn: (col: number) => void;
   onSelectRow: (row: number) => void;
   onEditCell: (row: number, col: number) => void;
+  onOpenNote: (row: number, col: number) => void;
   onCommitAndMove: (direction: 'down' | 'right' | 'none') => void;
   onCellContextMenu?: (row: number, col: number, x: number, y: number) => void;
   onFill?: (source: Rect, target: Rect) => void;
@@ -73,6 +76,7 @@ function SpreadsheetGrid({
   cursorLabel,
   editedBy,
   commented,
+  notes,
   selectedCell,
   selectionRange,
   editingValue,
@@ -83,6 +87,7 @@ function SpreadsheetGrid({
   onSelectColumn,
   onSelectRow,
   onEditCell,
+  onOpenNote,
   onCommitAndMove,
   onCellContextMenu,
   onFill,
@@ -306,7 +311,9 @@ function SpreadsheetGrid({
           break;
         case 'F2':
           e.preventDefault();
-          onEditCell(row, col);
+          // Shift+F2 opens the cell's note, as in other spreadsheets.
+          if (e.shiftKey) onOpenNote(row, col);
+          else onEditCell(row, col);
           break;
         case 'Enter':
           e.preventDefault();
@@ -328,7 +335,7 @@ function SpreadsheetGrid({
           break;
       }
     },
-    [selectedCell, onSelectCell, onEditCell, onCommitAndMove, onDelete, onClearClipboard],
+    [selectedCell, onSelectCell, onEditCell, onOpenNote, onCommitAndMove, onDelete, onClearClipboard],
   );
 
   // The rectangle to highlight: the live drag while dragging, else the
@@ -456,10 +463,11 @@ function SpreadsheetGrid({
                       e.preventDefault();
                       onCellContextMenu(row, col, e.clientX, e.clientY);
                     }}
-                    title={cell ? [`${columnLabel(col)}${row + 1}: ${cell.raw_value}`, editedBy(cell)].filter(Boolean).join('\n') : undefined}
+                    title={cellTitle(`${columnLabel(col)}${row + 1}`, cell, editedBy, notes.get(key))}
                   >
                     <CellValue $isFormula={shownIsFormula}>{shownValue}</CellValue>
-                    {commented.has(`${row}-${col}`) && <CommentMark data-testid="comment-mark" aria-label="Has comments" />}
+                    {notes.has(key) && <NoteMark data-testid="note-mark" aria-label="Has a note" />}
+                    {commented.has(key) && <CommentMark data-testid="comment-mark" aria-label="Has comments" />}
                     {cursor && !isSelected && (
                       <CursorTag style={{ background: cursor.color }}>
                         {cursorLabel(cursor.author)}
@@ -484,6 +492,16 @@ function SpreadsheetGrid({
 }
 
 export default memo(SpreadsheetGrid);
+
+/** A cell's tooltip: its raw value, who last edited it, and its note. */
+function cellTitle(ref: string, cell: Cell | undefined, editedBy: (cell: Cell) => string | null, note: string | undefined) {
+  const lines = [
+    cell && `${ref}: ${cell.raw_value}`,
+    cell && editedBy(cell),
+    note && `Note: ${note}`,
+  ].filter(Boolean);
+  return lines.length ? lines.join('\n') : undefined;
+}
 
 // ── Styled components ────────────────────────────────────────────────────────
 
@@ -613,6 +631,13 @@ const DataCell = styled.td<{ $selected: boolean; $cursorColor?: string; $peerTin
   &:hover:not([aria-selected='true']) {
     background: ${C.paper2};
   }
+`;
+
+const NoteMark = styled.span`
+  position: absolute; top: 0; left: 0;
+  border-style: solid; border-width: 6px 6px 0 0;
+  border-color: ${C.muted} transparent transparent transparent;
+  pointer-events: none;
 `;
 
 const CommentMark = styled.span`

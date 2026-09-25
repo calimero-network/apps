@@ -11,7 +11,7 @@
 /** A decided plan: either everything, or exactly these parts. */
 export type RefreshPlan =
   | { full: true }
-  | { full: false; sheets: Set<string>; sheetList: boolean; members: boolean; layouts: boolean; names: boolean; comments: boolean };
+  | { full: false; sheets: Set<string>; sheetList: boolean; members: boolean; layouts: boolean; names: boolean; comments: boolean; notes: boolean };
 
 const empty = (): Extract<RefreshPlan, { full: false }> => ({
   full: false,
@@ -21,6 +21,7 @@ const empty = (): Extract<RefreshPlan, { full: false }> => ({
   layouts: false,
   names: false,
   comments: false,
+  notes: false,
 });
 
 const FULL: RefreshPlan = { full: true };
@@ -112,6 +113,9 @@ export function planFor(event: NodeEvent): RefreshPlan | null {
       case 'CommentChanged':
         plan.comments = true;
         break;
+      case 'NoteChanged':
+        plan.notes = true;
+        break;
       default:
         return FULL;
     }
@@ -132,12 +136,13 @@ export function mergePlans(a: RefreshPlan | null, b: RefreshPlan | null): Refres
     layouts: a.layouts || b.layouts,
     names: a.names || b.names,
     comments: a.comments || b.comments,
+    notes: a.notes || b.notes,
   };
 }
 
 /** True when a plan reads nothing (every event was a no-op). */
 export function isNoop(plan: RefreshPlan): boolean {
-  return !plan.full && plan.sheets.size === 0 && !plan.sheetList && !plan.members && !plan.layouts && !plan.names && !plan.comments;
+  return !plan.full && plan.sheets.size === 0 && !plan.sheetList && !plan.members && !plan.layouts && !plan.names && !plan.comments && !plan.notes;
 }
 
 /** A comment that names someone: who wrote it, where, and whom it names. */

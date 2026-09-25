@@ -79,3 +79,12 @@ describe('comments', () => {
     expect(mentionsIn({ type: 'Ephemeral', data: {} })).toEqual([]);
   });
 });
+
+describe('notes', () => {
+  it('re-reads the noted cells on a note edit, and nothing else', () => {
+    const p = partial(planFor(mutation(['NoteChanged', { sheet_id: 's1', row_id: '0', col_id: '1' }])));
+    expect(p.notes).toBe(true);
+    expect(p.sheets.size).toBe(0);
+    expect(isNoop(p)).toBe(false);
+  });
+});

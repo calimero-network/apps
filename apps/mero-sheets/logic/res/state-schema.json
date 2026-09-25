@@ -351,6 +351,29 @@
         }
       ]
     },
+    "Span": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "text",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "attributes",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "string"
+            }
+          }
+        }
+      ]
+    },
     "Spreadsheet": {
       "kind": "record",
       "fields": [
@@ -500,6 +523,25 @@
             },
             "value": {
               "$ref": "CommentData"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "notes",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "map",
+              "key": {
+                "kind": "string"
+              },
+              "value": {
+                "$ref": "Span"
+              }
             },
             "crdt_type": "unordered_map"
           }

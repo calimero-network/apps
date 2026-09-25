@@ -26,10 +26,12 @@ import { useStreamReconnect } from './useStreamReconnect';
 import { SpreadsheetClient } from '../api/spreadsheet/SpreadsheetClient';
 import type {
   Sheet, FunctionDef, Member, Project, NamedRange, SheetLayout, AxisOpPayload, ActivityEntry, Comment,
+  NotedCell, NoteChangePayload,
 } from '../api/spreadsheet/SpreadsheetClient';
 import { AxisOp as AxisOpWire, CellOp as CellOpWire } from '../api/spreadsheet/SpreadsheetClient';
 import { chunkOps, MAX_OPS_PER_APPLY, type CellOp } from '../spreadsheet/ops';
 import { isNoop, mentionsIn, mergePlans, planFor, type Mention, type RefreshPlan } from '../spreadsheet/events';
+import type { NoteOp, Span } from '../spreadsheet/notes';
 import { newAxisId, positionOf, positionsBetween, type AxisEntry } from '../spreadsheet/axis';
 import { applicable, invert, pushBounded, type CellState, type UndoEntry } from '../spreadsheet/undo';
 import { rangeRef, type Rect } from '../spreadsheet/refs';
@@ -58,7 +60,7 @@ type IdOp =
 const EVENT_COALESCE_MS = 60;
 
 // Re-export domain types so components import from one place
-export type { Sheet, FunctionDef, Member, Project, NamedRange, ActivityEntry, Comment };
+export type { Sheet, FunctionDef, Member, Project, NamedRange, ActivityEntry, Comment, NotedCell };
 
 // ── Hook interfaces ──────────────────────────────────────────────────────────
 
@@ -131,6 +133,12 @@ export interface UseSpreadsheetReturn {
   /** Comments by others that mention this user, newest last, until dismissed. */
   mentions: Mention[];
   dismissMention: (commentId: string) => void;
+  /** Cells with a note, with the start of each. */
+  notedCells: NotedCell[];
+  /** A cell's note as formatted runs (empty when it has none). */
+  loadNote: (sheetId: string, rowId: string, colId: string) => Promise<Span[]>;
+  /** One note edit: text and formatting, as a delta. */
+  editNote: (sheetId: string, rowId: string, colId: string, ops: NoteOp[]) => Promise<void>;
   /** The activity log for the last `days` days, newest first. */
   loadActivity: (days: number) => Promise<ActivityEntry[]>;
   /** Where a cell id sits now (`null` when its row/column is gone). */
@@ -186,6 +194,7 @@ export function useSpreadsheet({
   const [names, setNames] = useState<NamedRange[]>([]);
   const [comments, setComments] = useState<Comment[]>([]);
   const [mentions, setMentions] = useState<Mention[]>([]);
+  const [notedCells, setNotedCells] = useState<NotedCell[]>([]);
   const applyStructureTo = useCallback((layouts: SheetLayout[], named: NamedRange[]) => {
     layoutsRef.current = layouts;
     namesRef.current = named;
@@ -319,7 +328,7 @@ export function useSpreadsheet({
     try {
       const [
         fetchedSheets, allCells,
-        fetchedMembers, fetchedProject, me, layouts, named, fetchedComments,
+        fetchedMembers, fetchedProject, me, layouts, named, fetchedComments, noted,
       ] = await Promise.all([
         client.listSheets(),
         client.getAllCells(),
@@ -329,9 +338,11 @@ export function useSpreadsheet({
         client.getLayouts(),
         client.getNamedRanges(),
         client.getComments(),
+        client.getNotedCells(),
       ]);
       applyStructureTo(layouts, named);
       setComments(fetchedComments);
+      setNotedCells(noted);
       snapshotRef.current = snapshotFromCells(allCells);
       overlayRef.current = retireOverlay(overlayRef.current, snapshotRef.current);
       setSheets(fetchedSheets.sort((a, b) => a.position - b.position));
@@ -387,15 +398,17 @@ export function useSpreadsheet({
     const active = activeSheetIdRef.current;
     if (sheetIds.size > 0 && active) sheetIds.add(active);
     const ids = [...sheetIds];
-    const [bySheet, fetchedSheets, fetchedMembers, layouts, named, fetchedComments] = await Promise.all([
+    const [bySheet, fetchedSheets, fetchedMembers, layouts, named, fetchedComments, noted] = await Promise.all([
       Promise.all(ids.map((id) => client.getCells({ sheet_id: id }))),
       plan.sheetList ? client.listSheets() : null,
       plan.members ? client.getMembers() : null,
       plan.layouts ? client.getLayouts() : null,
       plan.names ? client.getNamedRanges() : null,
       plan.comments ? client.getComments() : null,
+      plan.notes ? client.getNotedCells() : null,
     ]);
     if (fetchedComments) setComments(fetchedComments);
+    if (noted) setNotedCells(noted);
     if (layouts || named) applyStructureTo(layouts ?? layoutsRef.current, named ?? namesRef.current);
     if (ids.length > 0) {
       const next = new Map(snapshotRef.current);
@@ -451,7 +464,7 @@ export function useSpreadsheet({
     const forMe = mentionsIn(event).filter((m) => me && m.author !== me && m.mentions.includes(me));
     if (forMe.length) setMentions((prev) => [...prev, ...forMe.filter((m) => !prev.some((p) => p.commentId === m.commentId))]);
   });
-  useEffect(() => { setMentions([]); setComments([]); }, [client]);
+  useEffect(() => { setMentions([]); setComments([]); setNotedCells([]); }, [client]);
   // …and after the stream reconnects: nothing replays what changed while it was down.
   useStreamReconnect(() => schedule({ full: true }));
 
@@ -795,6 +808,28 @@ export function useSpreadsheet({
     [],
   );
 
+  const loadNote = useCallback(
+    async (sheetId: string, rowId: string, colId: string): Promise<Span[]> => {
+      if (!client) return [];
+      const spans = await client.getNote({ sheet_id: sheetId, row_id: rowId, col_id: colId });
+      // An unformatted run comes without `attributes` (the contract skips an
+      // empty map), whatever the generated type says.
+      return spans.map((s) => ({ text: s.text, attributes: s.attributes ?? {} }));
+    },
+    [client],
+  );
+  const editNote = useCallback(
+    async (sheetId: string, rowId: string, colId: string, ops: NoteOp[]) => {
+      if (!client || ops.length === 0) return;
+      // `edit_note` takes Quill's untagged delta shape; the generated type
+      // models the enum as tagged, which is not what the contract reads.
+      const wire = ops as unknown as NoteChangePayload[];
+      await enqueue(() => client.editNote({ sheet_id: sheetId, row_id: rowId, col_id: colId, ops: wire }));
+      setNotedCells(await client.getNotedCells());
+    },
+    [client, enqueue],
+  );
+
   const loadActivity = useCallback(async (days: number): Promise<ActivityEntry[]> => {
     if (!client) return [];
     // Nanoseconds; a float's precision loss here is well under a second.
@@ -858,6 +893,9 @@ export function useSpreadsheet({
     deleteComment,
     mentions,
     dismissMention,
+    notedCells,
+    loadNote,
+    editNote,
     loadActivity,
     refOf,
     idsOf: idsAt,

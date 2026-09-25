@@ -35,6 +35,12 @@ pub enum Event<'a> {
     },
     /// A comment was edited, resolved, reopened or deleted.
     CommentChanged { id: &'a str, sheet_id: &'a str },
+    /// A cell's note was edited.
+    NoteChanged {
+        sheet_id: &'a str,
+        row_id: &'a str,
+        col_id: &'a str,
+    },
     /// The state was migrated to a new schema.
     Migrated {
         from_version: &'a str,

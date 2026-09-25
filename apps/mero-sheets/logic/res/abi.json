@@ -861,6 +861,29 @@
         }
       ]
     },
+    "Event_NoteChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "col_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
     "Event_ProjectInitialized": {
       "kind": "record",
       "fields": [
@@ -1067,6 +1090,115 @@
         }
       ]
     },
+    "NoteChange": {
+      "kind": "variant",
+      "variants": [
+        {
+          "name": "Retain",
+          "payload": {
+            "$ref": "NoteChange_Retain"
+          }
+        },
+        {
+          "name": "Insert",
+          "payload": {
+            "$ref": "NoteChange_Insert"
+          }
+        },
+        {
+          "name": "Delete",
+          "payload": {
+            "$ref": "NoteChange_Delete"
+          }
+        }
+      ]
+    },
+    "NoteChange_Delete": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "delete",
+          "type": {
+            "kind": "u32"
+          }
+        }
+      ]
+    },
+    "NoteChange_Insert": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "insert",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "attributes",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "string"
+            }
+          }
+        }
+      ]
+    },
+    "NoteChange_Retain": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "retain",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "attributes",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "string"
+            }
+          }
+        }
+      ]
+    },
+    "NotedCell": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "preview",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
     "Project": {
       "kind": "record",
       "fields": [
@@ -1178,6 +1310,29 @@
             "kind": "list",
             "items": {
               "$ref": "AxisEntryView"
+            }
+          }
+        }
+      ]
+    },
+    "Span": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "text",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "attributes",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "string"
             }
           }
         }
@@ -1332,6 +1487,25 @@
             },
             "value": {
               "$ref": "CommentData"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "notes",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "map",
+              "key": {
+                "kind": "string"
+              },
+              "value": {
+                "$ref": "Span"
+              }
             },
             "crdt_type": "unordered_map"
           }
@@ -1536,6 +1710,42 @@
       "intent": "mutating"
     },
     {
+      "name": "edit_note",
+      "params": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "ops",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "NoteChange"
+            }
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
       "name": "export_all",
       "params": [],
       "returns": {
@@ -1650,6 +1860,47 @@
         "kind": "list",
         "items": {
           "$ref": "NamedRange"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_note",
+      "params": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "col_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "Span"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_noted_cells",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "NotedCell"
         }
       },
       "intent": "read_only"
@@ -1925,6 +2176,12 @@
       "name": "NamedRangesChanged",
       "payload": {
         "$ref": "Event_NamedRangesChanged"
+      }
+    },
+    {
+      "name": "NoteChanged",
+      "payload": {
+        "$ref": "Event_NoteChanged"
       }
     },
     {

@@ -45,6 +45,8 @@ import ContextMenu from '../../components/ContextMenu';
 import NamesModal from '../../components/NamesModal';
 import ActivityPanel from '../../components/ActivityPanel';
 import CommentsPanel from '../../components/CommentsPanel';
+import NotePanel from '../../components/NotePanel';
+import type { NoteOp } from '../../spreadsheet/notes';
 import { ago, nsToMs } from '../../lib/time';
 import { sheetsToCsv } from '../../spreadsheet/download';
 import { idsToNames, namesToIds } from '../../spreadsheet/sheetref';
@@ -175,6 +177,8 @@ export default function AppPage() {
   const [showNames, setShowNames] = useState(false);
   const [showActivity, setShowActivity] = useState(false);
   const [showComments, setShowComments] = useState(false);
+  // The cell whose note is open, by id so it stays on that cell as rows move.
+  const [noteCell, setNoteCell] = useState<{ sheetId: string; rowId: string; colId: string } | null>(null);
   const [namesSaving, setNamesSaving] = useState(false);
   const [namesError, setNamesError] = useState<string | null>(null);
   const formulaInputRef = useRef<HTMLInputElement>(null);
@@ -418,6 +422,24 @@ export default function AppPage() {
     [selectedCell, activeSheetId],
   );
 
+  // Shift+F2 / "Note…": open a cell's note.
+  const { idsOf, loadNote, editNote } = ss;
+  const openNote = useCallback(
+    (row: number, col: number) => {
+      const ids = activeSheetId ? idsOf(activeSheetId, row, col) : null;
+      if (activeSheetId && ids) setNoteCell({ sheetId: activeSheetId, rowId: ids.row_id, colId: ids.col_id });
+    },
+    [activeSheetId, idsOf],
+  );
+  const loadOpenNote = useCallback(
+    () => (noteCell ? loadNote(noteCell.sheetId, noteCell.rowId, noteCell.colId) : Promise.resolve([])),
+    [noteCell, loadNote],
+  );
+  const editOpenNote = useCallback(
+    (ops: NoteOp[]) => (noteCell ? editNote(noteCell.sheetId, noteCell.rowId, noteCell.colId, ops) : Promise.resolve()),
+    [noteCell, editNote],
+  );
+
   // Commit + move (Enter = down, Tab = right)
   const handleCommitAndMove = useCallback(
     async (direction: 'down' | 'right' | 'none') => {
@@ -637,6 +659,8 @@ export default function AppPage() {
         actions: [
           { label: 'Comment…', testId: 'open-comments',
             onClick: () => { setCtxMenu(null); setShowComments(true); } },
+          { label: 'Note… (Shift+F2)', testId: 'open-note',
+            onClick: () => { setCtxMenu(null); if (selectedCell) openNote(selectedCell.row, selectedCell.col); } },
         ],
       },
       {
@@ -1031,6 +1055,14 @@ export default function AppPage() {
     setSelectionRange(null);
     return true;
   };
+  const notes = new Map<string, string>();
+  for (const n of ss.notedCells) {
+    if (n.sheet_id !== activeSheetId) continue;
+    const at = ss.refOf(n.sheet_id, n.row_id, n.col_id);
+    if (at) notes.set(`${at.row}-${at.col}`, n.preview);
+  }
+  const noteLabel = noteCell ? commentWhere({ sheet_id: noteCell.sheetId, row_id: noteCell.rowId, col_id: noteCell.colId }) : null;
+
   const mention = ss.mentions[ss.mentions.length - 1];
   const mentionComment = mention ? ss.comments.find((c) => c.id === mention.commentId) : undefined;
   const synced = ss.loaded && !ss.mutating;
@@ -1184,6 +1216,7 @@ export default function AppPage() {
         onPaste={handlePaste}
         onGridDelete={handleDelete}
         onGridClearClipboard={handleClearClipboard}
+        onGridOpenNote={() => { if (selectedCell) openNote(selectedCell.row, selectedCell.col); }}
       />
 
       {/* Commit button next to formula bar (accessible test target) */}
@@ -1216,6 +1249,7 @@ export default function AppPage() {
         cursorLabel={cursorLabel}
         editedBy={editedBy}
         commented={commented}
+        notes={notes}
         selectedCell={pickingForeignSheet ? null : selectedCell}
         selectionRange={pickingForeignSheet ? null : selectionRange}
         editingValue={pickingForeignSheet ? null : isDirty ? formulaInput : null}
@@ -1226,6 +1260,7 @@ export default function AppPage() {
         onSelectColumn={handleSelectColumn}
         onSelectRow={handleSelectRow}
         onEditCell={handleEditCell}
+        onOpenNote={openNote}
         onCommitAndMove={handleCommitAndMove}
         onCellContextMenu={handleCellContextMenu}
         onFill={handleFill}
@@ -1325,6 +1360,16 @@ export default function AppPage() {
           onDelete={ss.deleteComment}
           onJump={(c) => { jumpTo(c.sheet_id, c.row_id, c.col_id); }}
           onClose={() => setShowComments(false)}
+        />
+      )}
+      {noteCell && noteLabel && (
+        <NotePanel
+          key={`${noteCell.sheetId}|${noteCell.rowId}|${noteCell.colId}`}
+          label={noteLabel}
+          load={loadOpenNote}
+          revision={ss.notedCells}
+          onEdit={editOpenNote}
+          onClose={() => setNoteCell(null)}
         />
       )}
       {mention && (

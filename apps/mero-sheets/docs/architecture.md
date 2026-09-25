@@ -86,6 +86,24 @@ the comment. `CommentAdded` carries them, so a mentioned member's app shows a
 notice straight from the event, with no extra read. The app marks cells with
 an open thread and lists every open thread in the Comments panel.
 
+## Cell notes
+
+A note is rich text attached to a cell (`notes`, keyed like `cells`), stored
+as the SDK's `RichText`: a sequence CRDT with formatting marks. Two people
+typing in the same note both keep their words, and formatting (bold, italic,
+underline, strikethrough, highlight) merges the same way. `edit_note` takes
+one editor transaction in the Quill delta shape (`retain` / `insert` /
+`delete`, formatting as `attributes`); a note's first edit creates it through
+`entry().or_default()`, which keys the nested CRDT under the map entry so two
+nodes creating the same note at once converge.
+
+A delta counts positions in the note as the sending node holds it. The editor
+sends typing a moment after a pause, and before sending it re-reads the note
+and rebases the edit over whatever a collaborator changed since
+(`spreadsheet/notes.ts`), so text never lands in the wrong place. Notes are
+not in the activity log or the undo stack: a note is its own document, edited
+continuously.
+
 ## Derive-on-read
 
 If values aren't stored, they have to be produced somehow when a peer asks

@@ -227,6 +227,12 @@ export interface Event_NamedRangesChanged {
   name: string;
 }
 
+export interface Event_NoteChanged {
+  sheet_id: string;
+  row_id: string;
+  col_id: string;
+}
+
 export interface Event_ProjectInitialized {
   id: string;
   name: string;
@@ -283,6 +289,38 @@ export interface NamedRangeData {
   updated_at: number;
 }
 
+export type NoteChangePayload =
+  | { name: 'Retain'; payload: NoteChange_Retain }
+  | { name: 'Insert'; payload: NoteChange_Insert }
+  | { name: 'Delete'; payload: NoteChange_Delete }
+
+export const NoteChange = {
+  Retain: (retain: NoteChange_Retain): NoteChangePayload => ({ name: 'Retain', payload: retain }),
+  Insert: (insert: NoteChange_Insert): NoteChangePayload => ({ name: 'Insert', payload: insert }),
+  Delete: (delete_: NoteChange_Delete): NoteChangePayload => ({ name: 'Delete', payload: delete_ }),
+} as const;
+
+export interface NoteChange_Delete {
+  delete_: number;
+}
+
+export interface NoteChange_Insert {
+  insert: string;
+  attributes: Record<string, string>;
+}
+
+export interface NoteChange_Retain {
+  retain: number;
+  attributes: Record<string, string>;
+}
+
+export interface NotedCell {
+  sheet_id: string;
+  row_id: string;
+  col_id: string;
+  preview: string;
+}
+
 export interface Project {
   id: string;
   name: string;
@@ -310,6 +348,11 @@ export interface SheetLayout {
   cols: AxisEntryView[];
 }
 
+export interface Span {
+  text: string;
+  attributes: Record<string, string>;
+}
+
 export interface Spreadsheet {
   project_id: string;
   project_name: string;
@@ -323,7 +366,9 @@ export interface Spreadsheet {
   cell_meta: Record<string, CellMeta>;
   activity: Record<string, ActivityData>;
   comments: Record<string, CommentData>;
+  notes: Record<string, Record<string, Span>>;
 }
+
 
 
 
@@ -350,6 +395,7 @@ export type AbiEvent =
   | { name: "MemberRenamed"; payload: Event_MemberRenamed }
   | { name: "Migrated"; payload: Event_Migrated }
   | { name: "NamedRangesChanged"; payload: Event_NamedRangesChanged }
+  | { name: "NoteChanged"; payload: Event_NoteChanged }
   | { name: "ProjectInitialized"; payload: Event_ProjectInitialized }
   | { name: "SheetCreated"; payload: Event_SheetCreated }
   | { name: "SheetDeleted"; payload: Event_SheetDeleted }
@@ -457,6 +503,16 @@ export class SpreadsheetClient {
   }
 
   /**
+   * edit_note
+   *
+   * @intent mutating
+   */
+  public async editNote(params: { sheet_id: string; row_id: string; col_id: string; ops: NoteChangePayload[] }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'edit_note', argsJson: params });
+    return response as void;
+  }
+
+  /**
    * export_all
    *
    * @intent read_only
@@ -544,6 +600,26 @@ export class SpreadsheetClient {
   public async getNamedRanges(): Promise<NamedRange[]> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_named_ranges', argsJson: {} });
     return response as NamedRange[];
+  }
+
+  /**
+   * get_note
+   *
+   * @intent read_only
+   */
+  public async getNote(params: { sheet_id: string; row_id: string; col_id: string }): Promise<Span[]> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_note', argsJson: params });
+    return response as Span[];
+  }
+
+  /**
+   * get_noted_cells
+   *
+   * @intent read_only
+   */
+  public async getNotedCells(): Promise<NotedCell[]> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_noted_cells', argsJson: {} });
+    return response as NotedCell[];
   }
 
   /**

@@ -52,6 +52,8 @@ interface FormulaBarProps {
   onGridDelete?: () => void;
   /** Clear the copied-region outline (Escape when not editing). */
   onGridClearClipboard?: () => void;
+  /** Open the selected cell's note (Shift+F2). */
+  onGridOpenNote?: () => void;
 }
 
 export default function FormulaBar({
@@ -70,6 +72,7 @@ export default function FormulaBar({
   onPaste,
   onGridDelete,
   onGridClearClipboard,
+  onGridOpenNote,
 }: FormulaBarProps) {
   const internalInputRef = useRef<HTMLInputElement>(null);
   const inputRef = externalInputRef ?? internalInputRef;
@@ -116,6 +119,11 @@ export default function FormulaBar({
         e.preventDefault();
         setAcOpen(false);
         onGridClearClipboard?.();
+        return;
+      }
+      if (e.key === 'F2' && e.shiftKey) {
+        e.preventDefault();
+        onGridOpenNote?.();
         return;
       }
     }

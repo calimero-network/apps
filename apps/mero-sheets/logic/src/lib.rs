@@ -11,7 +11,10 @@ use calimero_sdk::env;
 use calimero_sdk::serde::{Deserialize, Serialize};
 use calimero_sdk::types::Error as AppError;
 use calimero_storage::collections::crdt_meta::MergeError;
-use calimero_storage::collections::{AuthoredMap, LwwRegister, Mergeable, SortedMap, UnorderedMap};
+use calimero_storage::collections::rich_text::{Attrs, DeltaOp};
+use calimero_storage::collections::{
+    AuthoredMap, DefaultMarks, LwwRegister, Mergeable, RichText, SortedMap, Span, UnorderedMap,
+};
 use calimero_storage::env as storage_env;
 use std::collections::{BTreeMap, HashSet};
 
@@ -364,6 +367,43 @@ impl Mergeable for CommentData {
 /// The longest comment accepted, in characters.
 pub const MAX_COMMENT_CHARS: usize = 2000;
 
+/// The longest cell note accepted, in characters.
+pub const MAX_NOTE_CHARS: usize = 5000;
+
+/// How much of a note `get_noted_cells` returns as its preview.
+const NOTE_PREVIEW_CHARS: usize = 200;
+
+/// One step of a note edit, in the Quill delta shape: keep, insert or delete
+/// characters, with formatting on kept or inserted text. Mirrors `DeltaOp`,
+/// which has no `AbiType`.
+#[derive(Clone, Debug, Serialize, Deserialize, AbiType)]
+#[serde(crate = "calimero_sdk::serde", untagged)]
+pub enum NoteChange {
+    Retain {
+        retain: usize,
+        #[serde(default)]
+        attributes: Option<Attrs>,
+    },
+    Insert {
+        insert: String,
+        #[serde(default)]
+        attributes: Option<Attrs>,
+    },
+    Delete {
+        delete: usize,
+    },
+}
+
+impl From<NoteChange> for DeltaOp {
+    fn from(change: NoteChange) -> Self {
+        match change {
+            NoteChange::Retain { retain, attributes } => Self::Retain { retain, attributes },
+            NoteChange::Insert { insert, attributes } => Self::Insert { insert, attributes },
+            NoteChange::Delete { delete } => Self::Delete { delete },
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // View types returned to callers (must derive Serialize + Deserialize)
 // ---------------------------------------------------------------------------
@@ -422,6 +462,16 @@ pub struct Cell {
     /// written before the activity log existed.
     pub last_editor: String,
     pub last_edited_at: u64,
+}
+
+/// A cell that has a note, with the start of its text.
+#[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct NotedCell {
+    pub sheet_id: String,
+    pub row_id: String,
+    pub col_id: String,
+    pub preview: String,
 }
 
 /// A live (not deleted) comment.
@@ -597,6 +647,10 @@ pub struct Spreadsheet {
     /// Cell comments and replies, keyed by comment id.
     #[migrate(new = UnorderedMap::new_with_field_name("spreadsheet:comments"))]
     comments: UnorderedMap<String, CommentData>,
+    /// Cell notes, keyed like `cells`: rich text that merges concurrent edits
+    /// character by character.
+    #[migrate(new = UnorderedMap::new_with_field_name("spreadsheet:notes"))]
+    notes: UnorderedMap<String, RichText<DefaultMarks>>,
 }
 
 /// The v1 state, read once by the v2 migration.
@@ -630,6 +684,7 @@ impl Spreadsheet {
             cell_meta: UnorderedMap::new_with_field_name("spreadsheet:cell_meta"),
             activity: SortedMap::new_with_field_name("spreadsheet:activity"),
             comments: UnorderedMap::new_with_field_name("spreadsheet:comments"),
+            notes: UnorderedMap::new_with_field_name("spreadsheet:notes"),
         }
     }
 
@@ -1472,6 +1527,102 @@ impl Spreadsheet {
             }
         }
         Ok(found)
+    }
+
+    // ---- Notes ----
+
+    /// Edit a cell's note: one editor transaction (text and formatting) in the
+    /// Quill delta shape, counted against the note as this node holds it.
+    /// Concurrent edits from others merge character by character. Formatting
+    /// keys are `bold`, `italic`, `underline`, `strike`, `code`, `highlight`
+    /// and `link`.
+    pub fn edit_note(
+        &mut self,
+        sheet_id: String,
+        row_id: String,
+        col_id: String,
+        ops: Vec<NoteChange>,
+    ) -> app::Result<()> {
+        self.require_sheet(&sheet_id)?;
+        Spreadsheet::check_id(&row_id)?;
+        Spreadsheet::check_id(&col_id)?;
+        let ops: Vec<DeltaOp> = ops.into_iter().map(Into::into).collect();
+        let key = Spreadsheet::cell_key(&sheet_id, &row_id, &col_id);
+        let mut note = self
+            .notes
+            .entry(key)
+            .and_then(|e| e.or_default())
+            .map_err(|e| AppError::msg(format!("notes.entry: {e}")))?;
+        let len = note
+            .len()
+            .map_err(|e| AppError::msg(format!("note.len: {e}")))?;
+        let (added, removed) = ops.iter().fold((0, 0), |(a, r), op| match op {
+            DeltaOp::Insert { insert, .. } => (a + insert.chars().count(), r),
+            DeltaOp::Delete { delete } => (a, r + delete),
+            DeltaOp::Retain { .. } => (a, r),
+        });
+        if (len + added).saturating_sub(removed) > MAX_NOTE_CHARS {
+            return Err(AppError::from(Error::Invalid(format!(
+                "a note is at most {MAX_NOTE_CHARS} characters"
+            ))));
+        }
+        let _undo = note
+            .apply_delta(&ops)
+            .map_err(|e| AppError::from(Error::Invalid(format!("note edit: {e}"))))?;
+        drop(note);
+        app::emit!(Event::NoteChanged {
+            sheet_id: &sheet_id,
+            row_id: &row_id,
+            col_id: &col_id,
+        });
+        Ok(())
+    }
+
+    /// A cell's note as formatted runs; empty when it has none.
+    pub fn get_note(
+        &self,
+        sheet_id: String,
+        row_id: String,
+        col_id: String,
+    ) -> app::Result<Vec<Span>> {
+        let key = Spreadsheet::cell_key(&sheet_id, &row_id, &col_id);
+        match self
+            .notes
+            .get(&key)
+            .map_err(|e| AppError::msg(format!("notes.get: {e}")))?
+        {
+            Some(note) => note
+                .to_delta()
+                .map_err(|e| AppError::msg(format!("note.to_delta: {e}"))),
+            None => Ok(Vec::new()),
+        }
+    }
+
+    /// Every cell with a non-empty note, with the start of its text.
+    pub fn get_noted_cells(&self) -> app::Result<Vec<NotedCell>> {
+        let mut out = Vec::new();
+        for (key, note) in self
+            .notes
+            .entries()
+            .map_err(|e| AppError::msg(format!("notes.entries: {e}")))?
+        {
+            let text = note
+                .get_text()
+                .map_err(|e| AppError::msg(format!("note.get_text: {e}")))?;
+            let Some((sheet_id, row_id, col_id)) = split_key(&key) else {
+                continue;
+            };
+            if text.trim().is_empty() {
+                continue;
+            }
+            out.push(NotedCell {
+                sheet_id: sheet_id.to_string(),
+                row_id: row_id.to_string(),
+                col_id: col_id.to_string(),
+                preview: text.chars().take(NOTE_PREVIEW_CHARS).collect(),
+            });
+        }
+        Ok(out)
     }
 
     // ---- Rows and columns ----
@@ -3251,6 +3402,104 @@ mod tests {
                 "hi".into(),
                 "nope".into()
             ))
+            .is_err());
+    }
+
+    fn ins(text: &str) -> NoteChange {
+        NoteChange::Insert {
+            insert: text.into(),
+            attributes: None,
+        }
+    }
+
+    #[test]
+    fn a_note_takes_text_and_formatting_and_lists_its_cell() {
+        let mut app = make_app();
+        let sid = new_sheet(&mut app);
+        let edit = |app: &mut TestHost<Spreadsheet>, ops: Vec<NoteChange>| {
+            app.call(|s| s.edit_note(sid.clone(), "1".into(), "2".into(), ops))
+                .unwrap()
+        };
+        edit(&mut app, vec![ins("check totals")]);
+        edit(
+            &mut app,
+            vec![
+                NoteChange::Retain {
+                    retain: 5,
+                    attributes: Some(Attrs::from([("bold".into(), Some("true".into()))])),
+                },
+                NoteChange::Delete { delete: 1 },
+                ins(" all "),
+            ],
+        );
+        let spans = app
+            .view(|s| s.get_note(sid.clone(), "1".into(), "2".into()))
+            .unwrap();
+        let text: String = spans.iter().map(|s| s.text.as_str()).collect();
+        assert_eq!(text, "check all totals");
+        // Bold extends over text typed right after it, as in any editor.
+        assert_eq!(spans[0].text, "check all ");
+        assert_eq!(
+            spans[0].attributes.get("bold").map(String::as_str),
+            Some("true")
+        );
+
+        let noted = app.view(|s| s.get_noted_cells()).unwrap();
+        assert_eq!(noted.len(), 1);
+        assert_eq!(
+            (noted[0].row_id.as_str(), noted[0].col_id.as_str()),
+            ("1", "2")
+        );
+        assert_eq!(noted[0].preview, "check all totals");
+        assert!(app
+            .view(|s| s.get_note(sid.clone(), "0".into(), "0".into()))
+            .unwrap()
+            .is_empty());
+    }
+
+    #[test]
+    fn an_emptied_note_is_not_listed() {
+        let mut app = make_app();
+        let sid = new_sheet(&mut app);
+        app.call(|s| s.edit_note(sid.clone(), "0".into(), "0".into(), vec![ins("hi")]))
+            .unwrap();
+        app.call(|s| {
+            s.edit_note(
+                sid.clone(),
+                "0".into(),
+                "0".into(),
+                vec![NoteChange::Delete { delete: 2 }],
+            )
+        })
+        .unwrap();
+        assert!(app.view(|s| s.get_noted_cells()).unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_note_past_the_limit_is_refused_and_left_as_it_was() {
+        let mut app = make_app();
+        let sid = new_sheet(&mut app);
+        app.call(|s| s.edit_note(sid.clone(), "0".into(), "0".into(), vec![ins("keep")]))
+            .unwrap();
+        let long = "x".repeat(MAX_NOTE_CHARS);
+        assert!(app
+            .call(|s| s.edit_note(sid.clone(), "0".into(), "0".into(), vec![ins(&long)]))
+            .is_err());
+        let spans = app
+            .view(|s| s.get_note(sid.clone(), "0".into(), "0".into()))
+            .unwrap();
+        assert_eq!(
+            spans.iter().map(|s| s.text.as_str()).collect::<String>(),
+            "keep"
+        );
+    }
+
+    #[test]
+    fn a_note_on_an_unknown_sheet_is_refused() {
+        let mut app = make_app();
+        let _ = new_sheet(&mut app);
+        assert!(app
+            .call(|s| s.edit_note("nope".into(), "0".into(), "0".into(), vec![ins("x")]))
             .is_err());
     }
 }
