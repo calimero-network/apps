@@ -62,6 +62,34 @@ test.describe('Namespace (single-node)', () => {
     await alice.closeSettings();
   });
 
+  test('settings closes when picking the folder already open', async ({
+    alice,
+  }) => {
+    await alice.goToWorkspace();
+    await alice.createNamespace('Same Folder WS');
+    await alice.createFolder({ name: 'Foo', visibility: 'Open' });
+    await alice.tree.openFolder('Foo');
+    await alice.openSettings();
+    await alice.tree.openFolder('Foo');
+    await expect(
+      alice.page.getByText(/Your display name/i),
+    ).toBeHidden({ timeout: 5_000 });
+  });
+
+  test('settings closes when opening a document', async ({ alice }) => {
+    await alice.goToWorkspace();
+    await alice.createNamespace('Doc From Settings WS');
+    await alice.createFolder({ name: 'Foo', visibility: 'Open' });
+    await alice.tree.openFolder('Foo');
+    await alice.createDoc('Notes');
+    await alice.openSettings();
+    await alice.docs.clickDoc('Notes');
+    await expect(
+      alice.page.getByText(/Your display name/i),
+    ).toBeHidden({ timeout: 5_000 });
+    await alice.editor.expectMounted();
+  });
+
   test('settings closes when picking a folder', async ({ alice }) => {
     await alice.goToWorkspace();
     await alice.createNamespace('Toggle WS');

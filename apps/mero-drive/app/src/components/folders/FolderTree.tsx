@@ -24,19 +24,17 @@ const STAGE_LABELS: Record<string, string> = {
 
 interface FolderTreeProps {
   selectedDocId: string | null;
+  onSelectFolder: (folderId: string) => void;
   onOpenDoc: (folderId: string, docId: string) => void;
 }
 
-export function FolderTree({ selectedDocId, onOpenDoc }: FolderTreeProps) {
-  const {
-    folders,
-    loading,
-    stage,
-    error,
-    selectedFolderId,
-    setSelectedFolder,
-    namespaceId,
-  } = useDriveWorkspace();
+export function FolderTree({
+  selectedDocId,
+  onSelectFolder,
+  onOpenDoc,
+}: FolderTreeProps) {
+  const { folders, loading, stage, error, selectedFolderId, namespaceId } =
+    useDriveWorkspace();
 
   // Expansion is owned here (was per-row state) so it survives the
   // frequent useMemo recompute of `folders` on SSE refetch and so a
@@ -110,7 +108,7 @@ export function FolderTree({ selectedDocId, onOpenDoc }: FolderTreeProps) {
               node={n}
               byId={byId}
               selectedId={selectedFolderId}
-              onSelect={setSelectedFolder}
+              onSelect={onSelectFolder}
               expanded={expanded}
               onToggleExpanded={toggleExpanded}
               selectedDocId={selectedDocId}

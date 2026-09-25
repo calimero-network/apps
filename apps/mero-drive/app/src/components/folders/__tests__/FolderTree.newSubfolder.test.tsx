@@ -58,7 +58,7 @@ vi.mock('../NewFolderButton', () => ({ NewFolderButton: () => null }));
 
 describe('New subfolder', () => {
   it('expands the parent so the new folder shows up in the tree', () => {
-    render(<FolderTree selectedDocId={null} onOpenDoc={vi.fn()} />);
+    render(<FolderTree selectedDocId={null} onSelectFolder={vi.fn()} onOpenDoc={vi.fn()} />);
     expect(screen.queryByText('Child')).toBeNull();
 
     fireEvent.click(screen.getByText('New subfolder in f1'));
@@ -67,7 +67,7 @@ describe('New subfolder', () => {
   });
 
   it('leaves an already expanded parent open', () => {
-    render(<FolderTree selectedDocId={null} onOpenDoc={vi.fn()} />);
+    render(<FolderTree selectedDocId={null} onSelectFolder={vi.fn()} onOpenDoc={vi.fn()} />);
     fireEvent.click(screen.getByText('New subfolder in f1'));
     fireEvent.click(screen.getByText('New subfolder in f1'));
 

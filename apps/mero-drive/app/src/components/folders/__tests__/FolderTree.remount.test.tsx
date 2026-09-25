@@ -68,7 +68,7 @@ beforeEach(() => {
 });
 
 function renderTree() {
-  return render(<FolderTree selectedDocId={null} onOpenDoc={vi.fn()} />);
+  return render(<FolderTree selectedDocId={null} onSelectFolder={vi.fn()} onOpenDoc={vi.fn()} />);
 }
 
 describe('a background refresh does not rebuild the tree', () => {
@@ -81,7 +81,7 @@ describe('a background refresh does not rebuild the tree', () => {
 
     // A refresh that returns the same content. `loadRegFolders` deliberately
     // returns the PREVIOUS array in this case, so the reference is identical.
-    rerender(<FolderTree selectedDocId={null} onOpenDoc={vi.fn()} />);
+    rerender(<FolderTree selectedDocId={null} onSelectFolder={vi.fn()} onOpenDoc={vi.fn()} />);
 
     expect(screen.getByText('Budget')).toBe(before);
   });
@@ -94,7 +94,7 @@ describe('a background refresh does not rebuild the tree', () => {
     // content compare is ever removed. Row identity must survive it, because
     // the rows are keyed by folder id.
     workspace.folders = [folder('f1', 'Budget'), folder('f2', 'Designs')];
-    rerender(<FolderTree selectedDocId={null} onOpenDoc={vi.fn()} />);
+    rerender(<FolderTree selectedDocId={null} onSelectFolder={vi.fn()} onOpenDoc={vi.fn()} />);
 
     expect(screen.getByText('Budget')).toBe(before);
   });
@@ -104,7 +104,7 @@ describe('a background refresh does not rebuild the tree', () => {
   it('never replaces the list with a placeholder mid-refresh', () => {
     const { rerender } = renderTree();
     const before = screen.getByText('Budget');
-    rerender(<FolderTree selectedDocId={null} onOpenDoc={vi.fn()} />);
+    rerender(<FolderTree selectedDocId={null} onSelectFolder={vi.fn()} onOpenDoc={vi.fn()} />);
     expect(screen.queryByText('Loading folders…')).toBeNull();
     expect(screen.getByText('Budget')).toBe(before);
   });
@@ -116,7 +116,7 @@ describe('the fix does not freeze the tree', () => {
     expect(screen.queryByText('Notes')).toBeNull();
 
     workspace.folders = [...workspace.folders, folder('f3', 'Notes')];
-    rerender(<FolderTree selectedDocId={null} onOpenDoc={vi.fn()} />);
+    rerender(<FolderTree selectedDocId={null} onSelectFolder={vi.fn()} onOpenDoc={vi.fn()} />);
 
     expect(screen.getByText('Notes')).toBeTruthy();
   });
@@ -126,7 +126,7 @@ describe('the fix does not freeze the tree', () => {
     expect(screen.getByText('Designs')).toBeTruthy();
 
     workspace.folders = [folder('f1', 'Budget')];
-    rerender(<FolderTree selectedDocId={null} onOpenDoc={vi.fn()} />);
+    rerender(<FolderTree selectedDocId={null} onSelectFolder={vi.fn()} onOpenDoc={vi.fn()} />);
 
     expect(screen.queryByText('Designs')).toBeNull();
   });
@@ -138,7 +138,7 @@ describe('the fix does not freeze the tree', () => {
     const untouched = screen.getByText('Designs');
 
     workspace.folders = [folder('f1', 'Q3 Budget'), folder('f2', 'Designs')];
-    rerender(<FolderTree selectedDocId={null} onOpenDoc={vi.fn()} />);
+    rerender(<FolderTree selectedDocId={null} onSelectFolder={vi.fn()} onOpenDoc={vi.fn()} />);
 
     expect(screen.getByText('Q3 Budget')).toBeTruthy();
     expect(screen.queryByText('Budget')).toBeNull();
