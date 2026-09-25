@@ -23,7 +23,7 @@ export const CONFIG: LandingConfig = {
   iconSrc: '/icon-512.png',
   availability: "web+desktop",
   themeStorageKey: "app:theme",
-  trust: ["Live cursors", "Formulas recompute for all peers", "Sheet on your node"],
+  trust: ["Live collaboration", "Formulas recompute for all peers", "Sheet on your node"],
   explainer: [
     "A collaborative spreadsheet where you can see everyone’s cursor and nobody can see your data except the people you invited. The sheet lives in a Calimero context on your own node.",
     "Formulas are stored raw and re-evaluated for every peer whenever a cell they reference changes, so nobody is looking at a stale total — which is the failure that makes shared spreadsheets untrustworthy in the first place.",
@@ -36,8 +36,8 @@ export const CONFIG: LandingConfig = {
     },
     {
       icon: Zap,
-      title: "Live cursors",
-      body: "Every collaborator in their own colour, so you can see who is about to overwrite what.",
+      title: "Live collaboration",
+      body: "Every collaborator’s cursor in their own colour, and their edits on your screen as they make them.",
     },
     {
       icon: BarChart,
@@ -60,6 +60,67 @@ export const CONFIG: LandingConfig = {
       body: "Export whenever you want. Nothing here is designed to keep your numbers hostage.",
     },
   ],
+  overview: {
+    headline: "The spreadsheet your team actually owns.",
+    showcase: {
+      heading: "A budget, filled in together",
+      sub: "Recorded from the real app, running on a real node — the totals are the app’s own formula engine at work.",
+      video: {
+        src: "/landing/demo.webm",
+        poster: "/landing/demo-poster.jpg",
+        chapters: [
+          { at: 0, title: "Open a workbook", body: "A Q3 budget on your node, with Ada from your team already in it." },
+          { at: 3, title: "Type a number", body: "Fill in a cell and every total that reads it recomputes." },
+          { at: 8, title: "Write a formula", body: "Start typing =AV and autocomplete offers AVERAGE, with its arguments." },
+          { at: 14.5, title: "Ada edits, live", body: "Her cursor walks up to Wages, her number lands, and the totals update on your screen." },
+        ],
+      },
+    },
+    comparison: {
+      heading: "A spreadsheet, without the landlord",
+      sub: "Everything you expect from a shared spreadsheet. The difference is who holds the numbers.",
+      themLabel: "A typical cloud spreadsheet",
+      rows: [
+        { label: "Where the sheet lives", them: "On the vendor’s servers", us: "On your node, and the nodes of the people you invite" },
+        { label: "Who can read it", them: "The vendor, and whoever it grants access", us: "Only members of the workbook’s namespace" },
+        { label: "Adding a collaborator", them: "Another seat on the monthly bill", us: "An invite. The app is open source and free" },
+        { label: "Formulas", them: "Computed on their servers", us: "Stored raw and recomputed on every peer, so nobody sees a stale total" },
+        { label: "If the vendor goes away", them: "Your data may go with it", us: "Your node still has every workbook, and you can download it any time" },
+      ],
+    },
+    collaboration: {
+      heading: "Live collaboration, cell by cell",
+      sub: "Everyone in a workbook sees each other’s cursors and edits as they happen, and two people can work in it at the same moment without either losing work — because of how a sheet is stored.",
+      points: [
+        { title: "Every cell is its own record", body: "Two people typing in different cells never queue behind each other." },
+        { title: "Value, formula and format are separate", body: "Formatting a cell never fights with someone typing in it." },
+        { title: "Formulas recompute on every peer", body: "Change a number and every total that reads it updates on everyone’s screen, from the raw formula." },
+        { title: "Cursors in colour", body: "See who is where, in their own colour. Presence is kept out of the data." },
+      ],
+    },
+    audiences: {
+      heading: "Made for numbers that are nobody else’s business",
+      items: [
+        { label: "Finance & operations", title: "Budgets and forecasts that never leave your nodes", body: "Plan the quarter together, live, without the figures sitting on a third party’s servers.", uses: ["Budgets", "Forecasts", "CSV export"] },
+        { label: "Founders & small teams", title: "Metrics and cap tables, shared only with who you choose", body: "Invite a co-founder, an accountant or an investor into one workbook, and nobody else.", uses: ["KPI trackers", "Cap tables", "Multiple sheet tabs"] },
+        { label: "Research & classrooms", title: "Collect data together, in the same sheet, at the same time", body: "Everyone types into their own rows while the totals update for the whole group.", uses: ["Shared data entry", "Live cursors", "SUM, AVERAGE, COUNT"] },
+        { label: "Regulated & public sector", title: "Live collaboration on infrastructure you already control", body: "For finance, health and government data that cannot leave your own servers, without giving up working together in real time.", uses: ["Self-hosted nodes", "Works offline", "No third-party cloud"] },
+      ],
+    },
+    openSource: {
+      license: "MIT or Apache-2.0",
+      commands: [
+        "# fork calimero-network/apps on GitHub, then",
+        "git clone https://github.com/<you>/apps",
+        "cd apps && pnpm install",
+        "export RUSTFLAGS=\"$(cat apps/mero-sheets/logic/wasm-rustflags)\"",
+        "cargo mero build -p mero-sheets",
+        "pnpm -F mero-sheets dev   # app on :5185",
+      ],
+    },
+    alwaysOn: true,
+    closing: { title: "Start your first workbook", body: "Connect a node, or install the desktop app that bundles one, then invite the people you work with." },
+  },
   animation: Animation,
   docs: [
     {
@@ -123,10 +184,10 @@ export const CONFIG: LandingConfig = {
     },
   ],
   previewSteps: [
-    { title: "A filled grid", body: "Cells are individual records keyed by sheet and coordinate — not one document blob." },
-    { title: "Two cursors", body: "Every collaborator in their own colour, carried as presence beside the data." },
-    { title: "A formula recalculates", body: "The formula is stored raw. Each peer re-evaluates it, so nobody sees a total computed somewhere else." },
-    { title: "Edits merge", body: "Different cells never contend; the same cell converges on the later write." },
+    { title: "Two people, one workbook", body: "You and Ada have the same Q3 budget open. Her cursor is on Travel." },
+    { title: "You fill in a number", body: "You type Travel for Q2, and its row and column totals recompute." },
+    { title: "She edits at the same time", body: "Ada walks up to Wages and changes Q3 while you type. Neither waits for the other." },
+    { title: "Every total agrees", body: "Formulas are stored raw and recomputed from the latest cells, so both totals reflect both edits." },
   ],
   loginPopup: LoginPopup,
 };

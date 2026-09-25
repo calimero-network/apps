@@ -24,7 +24,7 @@ export default defineConfig({
       name: "mocked",
       use: { ...devices["Desktop Chrome"] },
       testMatch: "**/*.spec.ts",
-      testIgnore: ["**/integration/**", "**/perf/**"],
+      testIgnore: ["**/integration/**", "**/perf/**", "**/media/**"],
     },
     {
       // The same specs again, with the Tauri bridge stubbed. tauri-app opens this
@@ -33,7 +33,7 @@ export default defineConfig({
       name: "tauri",
       use: { ...devices["Desktop Chrome"] },
       testMatch: "**/*.spec.ts",
-      testIgnore: ["**/integration/**", "**/perf/**"],
+      testIgnore: ["**/integration/**", "**/perf/**", "**/media/**"],
     },
     {
       name: "integration",

@@ -17,7 +17,8 @@
     "e2e:web": "playwright test --project=mocked",
     "e2e:tauri": "playwright test --project=tauri",
     "starter": "node scripts/build-starter.mjs && node scripts/build-starter-presentation.mjs",
-    "tasks": "node scripts/task-status.mjs"
+    "tasks": "node scripts/task-status.mjs",
+    "landing:media": "playwright test -c playwright.media.config.ts"
   },
   "dependencies": {
     "@calimero-apps/invite": "workspace:*",

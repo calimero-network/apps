@@ -54,6 +54,19 @@ cd test/perf/lib && python3 -m pytest    # pure perf-generator/bench tests
 See [`docs/contributing.md`](docs/contributing.md) for the full build/test
 matrix and [`docs/performance.md`](docs/performance.md) for engine benchmarks.
 
+## Landing page media
+
+The landing page's hero loop and chaptered demo (`app/public/landing/*.webm`,
+each with a poster) are recorded from the real app against a real merod node,
+through the e2e global setup:
+
+```bash
+cd app && pnpm landing:media   # needs merod (MEROD_BINARY) and the built .mpk
+```
+
+The chapter times shown beside the demo live in `scripts/landing/apps.config.mjs`
+at the repo root and must match `CHAPTERS` in `app/e2e/media/capture-landing-media.spec.ts`.
+
 ## License
 
 TBD.

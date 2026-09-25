@@ -15,6 +15,7 @@ import { useEffect, useRef, useState, type ComponentType, type ReactNode } from 
 import {
   ArrowUpRight,
   CheckSquare,
+  Cloud,
   Download,
   ExternalLink,
   Monitor,
@@ -25,7 +26,7 @@ import {
 } from '@calimero-network/mero-icons';
 
 import { CONFIG } from './landing.config';
-import type { IconComponent } from './landingTypes';
+import type { IconComponent, OverviewExtras } from './landingTypes';
 import './landing.css';
 
 const THEME_KEY = 'cal-lp-theme';
@@ -71,12 +72,14 @@ const LINKS = {
   docs: 'https://docs.calimero.network',
   site: 'https://calimero.network',
   download: 'https://calimero.network/download',
+  cloudPricing: 'https://cloud.calimero.network/pricing',
   core: 'https://github.com/calimero-network/core',
   x: 'https://x.com/calimeronetwork',
   youtube: 'https://www.youtube.com/@calimeronetwork',
 };
 
 const REPO = `https://github.com/calimero-network/apps/tree/main/apps/${CONFIG.dir}`;
+const FORK = 'https://github.com/calimero-network/apps/fork';
 
 /** How it works — identical for every app, because the network is. */
 const STEPS = [
@@ -594,7 +597,7 @@ export default function LandingPage({
           <div className="cal-lp-footerbase">
             <span>{CONFIG.packageId}</span>
             <span className="cal-lp-trustdot" />
-            <span>Open source, MIT</span>
+            <span>Open source, {CONFIG.overview?.openSource?.license ?? 'MIT'}</span>
             <span className="cal-lp-trustdot" />
             <span>Built on Calimero</span>
             {/* The theme switch lives here, not in the header. The header's job
@@ -659,6 +662,7 @@ function OverviewView({
 }) {
   const featuresRef = useReveal();
   const stageRef = useStageScale();
+  const extras = CONFIG.overview;
 
   return (
     <>
@@ -675,6 +679,7 @@ function OverviewView({
             </div>
 
             <h1 className="cal-lp-h1">{CONFIG.name}</h1>
+            {extras?.headline && <p className="cal-lp-headline">{extras.headline}</p>}
             <p className="cal-lp-lede">{CONFIG.tagline}</p>
 
             <div className="cal-lp-cta">
@@ -789,9 +794,376 @@ function OverviewView({
         </div>
       </section>
 
-      {!desktopOnly && (
+      {/* After the features rather than straight under the hero: the hero
+          already has a picture, and two frames in a row read as a gallery. */}
+      {extras?.showcase && <Showcase showcase={extras.showcase} />}
+
+      {extras && <OverviewExtrasSections ConnectCta={ConnectCta} desktopOnly={desktopOnly} />}
+
+      {!desktopOnly && !extras?.closing && (
         <section className="cal-lp-section">
           <div className="cal-lp-shell">{desktopBand}</div>
+        </section>
+      )}
+    </>
+  );
+}
+
+/**
+ * A clip of the real app told as numbered chapters. The chapter the video is in
+ * is marked, and clicking one jumps there — so the story reads even for someone
+ * who only glances at the list. Autoplays muted and looping, like a GIF, except
+ * where the reader asked for less motion: there it waits on its poster with
+ * controls, and the chapters still seek.
+ */
+function Showcase({ showcase }: { showcase: NonNullable<OverviewExtras['showcase']> }) {
+  const ref = useReveal();
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [time, setTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const still = stillPreferred();
+  const { chapters } = showcase.video;
+  let active = 0;
+  chapters.forEach((c, i) => { if (time >= c.at) active = i; });
+  const end = (i: number) => chapters[i + 1]?.at ?? (duration || chapters[i].at + 1);
+  const progress = Math.min(1, Math.max(0, (time - chapters[active].at) / (end(active) - chapters[active].at)));
+
+  function seek(i: number) {
+    const v = videoRef.current;
+    if (!v) return;
+    v.currentTime = chapters[i].at;
+    setTime(chapters[i].at);
+    if (!still) void v.play().catch(() => {});
+  }
+
+  return (
+    <section id="showcase" className="cal-lp-section">
+      <div className="cal-lp-shell">
+        <div ref={ref} className="cal-lp-reveal">
+          <div className="cal-lp-kicker">See it in action</div>
+          <h2 className="cal-lp-h2">{showcase.heading}</h2>
+          {showcase.sub && <p className="cal-lp-sectionsub">{showcase.sub}</p>}
+          <div className="cal-lp-story">
+            <ol className="cal-lp-chapters">
+              {chapters.map((c, i) => (
+                <li key={c.title}>
+                  <button
+                    type="button"
+                    className="cal-lp-chapter"
+                    aria-current={i === active ? 'step' : undefined}
+                    data-cal-lp-active={i === active ? '' : undefined}
+                    onClick={() => seek(i)}
+                  >
+                    <span className="cal-lp-chapternum">{i + 1}</span>
+                    <span>
+                      <span className="cal-lp-chaptertitle">{c.title}</span>
+                      <span className="cal-lp-chapterbody">{c.body}</span>
+                    </span>
+                    <span
+                      className="cal-lp-chapterbar"
+                      style={{ transform: `scaleX(${i === active ? progress : i < active ? 1 : 0})` }}
+                      aria-hidden="true"
+                    />
+                  </button>
+                </li>
+              ))}
+            </ol>
+            <div className="cal-lp-stage cal-lp-stage--video">
+              <div className="cal-lp-stagebar" aria-hidden="true">
+                <span className="cal-lp-stagedot" />
+                <span className="cal-lp-stagedot" />
+                <span className="cal-lp-stagedot" />
+              </div>
+              <video
+                ref={videoRef}
+                className="cal-lp-video"
+                src={showcase.video.src}
+                poster={showcase.video.poster}
+                autoPlay={!still}
+                controls={still}
+                muted
+                loop
+                playsInline
+                preload="metadata"
+                aria-label={chapters.map((c, i) => `${i + 1}. ${c.title}`).join(' ')}
+                onTimeUpdate={(e) => setTime(e.currentTarget.currentTime)}
+                onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/** Fork → customise → ship. Shared, because every app in this repo is the same kind of open. */
+const FORK_STEPS = [
+  {
+    title: 'Fork it',
+    body: 'Everything is in calimero-network/apps: the front end and the Rust contract behind it.',
+  },
+  {
+    title: 'Make it yours',
+    body: 'Rebrand it, add the tools your team is missing, change what it stores. It is your code now.',
+  },
+  {
+    title: 'Ship it',
+    body: 'Run it on your own nodes, or sign the bundle and publish it to the Application Registry under your own name.',
+  },
+];
+
+function OpenSource({ license, commands }: { license: string; commands: string[] }) {
+  const ref = useReveal();
+  return (
+    <section id="open-source" className="cal-lp-section">
+      <div className="cal-lp-shell">
+        <div ref={ref} className="cal-lp-os cal-lp-reveal">
+          <div>
+            <div className="cal-lp-kicker">Open source</div>
+            <h2 className="cal-lp-h2">Fork it and make it yours</h2>
+            <p className="cal-lp-sectionsub">
+              {CONFIG.name} is open source under the {license} licence. Anybody can fork it, customise it however
+              they like, and run or ship their own version — no permission, no licence fee.
+            </p>
+            <ol className="cal-lp-forksteps">
+              {FORK_STEPS.map((st, i) => (
+                <li key={st.title} className="cal-lp-forkstep">
+                  <span className="cal-lp-stepnum">{i + 1}</span>
+                  <div>
+                    <h3 className="cal-lp-steptitle">{st.title}</h3>
+                    <p className="cal-lp-stepbody">{st.body}</p>
+                  </div>
+                </li>
+              ))}
+            </ol>
+            <div className="cal-lp-cta">
+              <a className="cal-lp-btn cal-lp-btn--primary" href={FORK} target="_blank" rel="noreferrer">
+                Fork on GitHub <ExternalLink size={14} />
+              </a>
+              <a className="cal-lp-btn cal-lp-btn--ghost" href={REPO} target="_blank" rel="noreferrer">
+                Browse the source <ExternalLink size={14} />
+              </a>
+            </div>
+          </div>
+          <pre className="cal-lp-code" aria-label="Commands to run your own fork">
+            <code>
+              {commands.map((c) => (
+                <span key={c} className="cal-lp-codeline">
+                  {c.startsWith('#') ? <span className="cal-lp-codecomment">{c}</span> : <><span className="cal-lp-codeprompt">$ </span>{c}</>}
+                </span>
+              ))}
+            </code>
+          </pre>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/** What the free tier and Calimero Cloud each give you. Identical for every app, because the platform is. */
+const PLANS = [
+  {
+    id: 'free',
+    icon: Monitor,
+    name: 'On your own hardware',
+    price: 'Free',
+    points: [
+      'Every feature, no account needed.',
+      'Calimero Desktop, or merod on any server you own.',
+      'Syncs whenever a member’s device is online.',
+    ],
+    cta: { label: 'Download desktop', href: LINKS.download },
+  },
+  {
+    id: 'cloud',
+    icon: Cloud,
+    name: 'Calimero Cloud',
+    price: 'From $20 / month',
+    points: [
+      'Always-on nodes for your namespaces, with no servers to manage.',
+      'Sealed hardware that even Calimero cannot look inside.',
+      'Open the app from any browser or phone, with no install.',
+    ],
+    cta: { label: 'See Cloud pricing', href: LINKS.cloudPricing },
+  },
+] as const;
+
+/**
+ * The optional overview sections, in reading order: why it is different, how
+ * people work in it together, who it is for, how to keep it running, and a
+ * closing call to action. Each renders only when the config provides it.
+ */
+function OverviewExtrasSections({ ConnectCta, desktopOnly }: ViewShared) {
+  const extras = CONFIG.overview;
+  const compareRef = useReveal();
+  const togetherRef = useReveal();
+  const whoRef = useReveal();
+  const plansRef = useReveal();
+  const closingRef = useReveal();
+  if (!extras) return null;
+  const { comparison, collaboration, audiences, openSource, alwaysOn, closing } = extras;
+
+  return (
+    <>
+      {comparison && (
+        <section id="compare" className="cal-lp-section">
+          <div className="cal-lp-shell">
+            <div ref={compareRef} className="cal-lp-reveal">
+              <div className="cal-lp-kicker">Why it is different</div>
+              <h2 className="cal-lp-h2">{comparison.heading}</h2>
+              {comparison.sub && <p className="cal-lp-sectionsub">{comparison.sub}</p>}
+              <div className="cal-lp-cmp" role="table" aria-label={comparison.heading}>
+                <div className="cal-lp-cmprow cal-lp-cmprow--head" role="row">
+                  <span role="columnheader" />
+                  <span role="columnheader">{comparison.themLabel}</span>
+                  <span role="columnheader" className="cal-lp-cmpus">{CONFIG.name}</span>
+                </div>
+                {comparison.rows.map((r) => (
+                  <div key={r.label} className="cal-lp-cmprow" role="row">
+                    <span role="rowheader" className="cal-lp-cmplabel">{r.label}</span>
+                    <span role="cell" className="cal-lp-cmpthem" data-label={comparison.themLabel}>{r.them}</span>
+                    <span role="cell" className="cal-lp-cmpus" data-label={CONFIG.name}>
+                      <CheckSquare size={15} /> {r.us}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {collaboration && (
+        <section id="together" className="cal-lp-section cal-lp-section--alt">
+          <div className="cal-lp-shell">
+            <div ref={togetherRef} className="cal-lp-reveal">
+              <div className="cal-lp-kicker">Live collaboration</div>
+              <h2 className="cal-lp-h2">{collaboration.heading}</h2>
+              {collaboration.sub && <p className="cal-lp-sectionsub">{collaboration.sub}</p>}
+              <ol className="cal-lp-points">
+                {collaboration.points.map((pt, i) => (
+                  <li key={pt.title} className="cal-lp-point">
+                    <span className="cal-lp-stepnum">{i + 1}</span>
+                    <h3 className="cal-lp-steptitle">{pt.title}</h3>
+                    <p className="cal-lp-stepbody">{pt.body}</p>
+                  </li>
+                ))}
+              </ol>
+              {collaboration.roles && (
+                <div className="cal-lp-roles">
+                  {collaboration.roles.map((r) => (
+                    <div key={r.name} className="cal-lp-role">
+                      <span className="cal-lp-rolename">{r.name}</span>
+                      <span className="cal-lp-rolecan">{r.can}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {collaboration.rolesNote && <p className="cal-lp-rolesnote">{collaboration.rolesNote}</p>}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {audiences && (
+        <section id="who" className="cal-lp-section">
+          <div className="cal-lp-shell">
+            <div ref={whoRef} className="cal-lp-reveal">
+              <div className="cal-lp-kicker">Who it is for</div>
+              <h2 className="cal-lp-h2">{audiences.heading}</h2>
+              <div className="cal-lp-audiences">
+                {audiences.items.map((a) => (
+                  <article key={a.label} className="cal-lp-persona">
+                    <span className="cal-lp-personalabel">{a.label}</span>
+                    <h3 className="cal-lp-personatitle">{a.title}</h3>
+                    <p className="cal-lp-personabody">{a.body}</p>
+                    <ul className="cal-lp-uses" aria-label="What they use">
+                      {a.uses.map((u) => (
+                        <li key={u} className="cal-lp-use">{u}</li>
+                      ))}
+                    </ul>
+                  </article>
+                ))}
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {openSource && <OpenSource license={openSource.license} commands={openSource.commands} />}
+
+      {alwaysOn && (
+        <section id="always-on" className="cal-lp-section cal-lp-section--alt">
+          <div className="cal-lp-shell">
+            <div ref={plansRef} className="cal-lp-reveal">
+              <div className="cal-lp-kicker">Keeping it running</div>
+              <h2 className="cal-lp-h2">Free on your hardware. Always on with Calimero Cloud.</h2>
+              <p className="cal-lp-sectionsub">
+                Peer to peer means your work syncs while a member’s device is online. When every laptop is
+                closed, there is nobody to sync with — so Calimero Cloud can keep a node running for you,
+                without being able to read what is on it.
+              </p>
+              <div className="cal-lp-plans">
+                {PLANS.map((p) => {
+                  const Icon = p.icon;
+                  return (
+                    <div key={p.id} className={`cal-lp-plan${p.id === 'cloud' ? ' cal-lp-plan--accent' : ''}`}>
+                      <div className="cal-lp-planhead">
+                        <span className="cal-lp-featureicon">
+                          <Icon size={19} />
+                        </span>
+                        <div>
+                          <h3 className="cal-lp-featuretitle">{p.name}</h3>
+                          <span className="cal-lp-planprice">{p.price}</span>
+                        </div>
+                      </div>
+                      <ul className="cal-lp-why">
+                        {p.points.map((pt) => (
+                          <li key={pt} className="cal-lp-whyitem">
+                            <span className="cal-lp-whycheck">
+                              <CheckSquare size={16} />
+                            </span>
+                            <span>{pt}</span>
+                          </li>
+                        ))}
+                      </ul>
+                      <a
+                        className={`cal-lp-btn ${p.id === 'cloud' ? 'cal-lp-btn--primary' : 'cal-lp-btn--ghost'}`}
+                        href={p.cta.href}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        {p.cta.label} <ExternalLink size={14} />
+                      </a>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {closing && (
+        <section id="start" className="cal-lp-section">
+          <div className="cal-lp-shell">
+            <div ref={closingRef} className="cal-lp-closing cal-lp-reveal">
+              <h2 className="cal-lp-h2">{closing.title}</h2>
+              <p className="cal-lp-sectionsub">{closing.body}</p>
+              <div className="cal-lp-cta">
+                {!desktopOnly && <ConnectCta />}
+                <a
+                  className={`cal-lp-btn ${desktopOnly ? 'cal-lp-btn--primary' : 'cal-lp-btn--ghost'}`}
+                  href={LINKS.download}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  <Download size={17} /> Get the desktop app
+                </a>
+              </div>
+            </div>
+          </div>
         </section>
       )}
     </>

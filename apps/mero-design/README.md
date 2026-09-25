@@ -60,6 +60,20 @@ make stop        # tear everything down
 | `make workflows` | merobox workflow tests |
 | `make clean` | Remove all build artifacts |
 
+## Landing page media
+
+The landing page's two clips — the hero loop (`app/public/landing/hero.webm`)
+and the chaptered demo (`demo.webm`), each with a poster — are recorded from the
+real editor against the mocked node the e2e specs use. The teammate in them is
+driven through the app's own SSE event path, not drawn on:
+
+```bash
+cd app && pnpm landing:media
+```
+
+The chapter times shown beside the clip live in `scripts/landing/apps.config.mjs`
+at the repo root and must match `CHAPTERS` in `app/e2e/media/capture-landing-media.spec.ts`.
+
 ## Screens and presenting
 
 A **screen** is one slide: a rectangle whose layer name sits in the top-level
