@@ -367,7 +367,7 @@ steps:
   - name: Assert Bob is an Editor with one device holding k1
     type: assert
     statements:
-      - 'contains({{alice_members}}, "{{bob_account}}")'
+      - 'contains({{alice_members}}, {{bob_account}})'
       - 'contains({{alice_members}}, "editor")'
       - 'contains({{alice_devices}}, "Bob''s browser")'
       - 'contains({{alice_pairs}}, "k1:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2")'
@@ -891,4 +891,4 @@ steps:
     statements:
       - 'contains({{bob_info_removed}}, "pending")'
       - 'contains({{bob_info_removed}}, "viewer")'
-      - 'not_contains({{bob_members_removed}}, "{{bob_account}}")'
+      - 'not_contains({{bob_members_removed}}, {{bob_account}})'
