@@ -100,13 +100,7 @@ describe('selecting a folder', () => {
 
   it('ignores clicks inside a dialog or menu opened from the row', () => {
     const onSelectFolder = vi.fn();
-    render(
-      <FolderTree
-        selectedDocId={null}
-        onSelectFolder={onSelectFolder}
-        onOpenDoc={vi.fn()}
-      />,
-    );
+    renderTree(null, onSelectFolder);
     fireEvent.click(screen.getByText('Info for f2'));
     expect(onSelectFolder).not.toHaveBeenCalled();
   });
@@ -116,7 +110,7 @@ describe('open document highlight', () => {
   // Every folder has its own doc-1, so the open doc must only reach its own folder.
   it('passes the open doc id only to the folder that owns it', () => {
     renderTree('doc-1');
-    for (const expand of screen.getAllByRole('button', { name: 'Expand' })) {
+    for (const expand of screen.getAllByRole('button', { name: /^Expand/ })) {
       fireEvent.click(expand);
     }
     expect(screen.getByTestId('leaves-f1').textContent).toBe('doc-1');

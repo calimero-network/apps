@@ -106,7 +106,7 @@ export function FolderContextMenu({
         <Button
           variant="ghost"
           size="icon"
-          className="h-6 w-6 shrink-0 text-muted-foreground opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+          className="h-6 w-6 shrink-0 text-muted-foreground opacity-0 group-hover:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
           aria-label="New document"
           title="New document"
           onClick={(e) => {
@@ -122,7 +122,7 @@ export function FolderContextMenu({
           <Button
             variant="ghost"
             size="icon"
-            className="h-6 w-6 shrink-0 text-muted-foreground opacity-0 group-hover:opacity-100 data-[state=open]:opacity-100"
+            className="h-6 w-6 shrink-0 text-muted-foreground opacity-0 group-hover:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100 data-[state=open]:opacity-100"
             aria-label="Folder actions"
             onClick={(e) => {
               // Don't bubble to the row's selection handler.

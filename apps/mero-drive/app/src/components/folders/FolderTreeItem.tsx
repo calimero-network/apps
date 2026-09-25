@@ -125,7 +125,8 @@ export function FolderTreeItem({
       >
         <button
           type="button"
-          aria-label={isExpanded ? 'Collapse' : 'Expand'}
+          aria-expanded={isExpanded}
+          aria-label={`${isExpanded ? 'Collapse' : 'Expand'} ${folder?.alias ?? 'folder'}`}
           className="flex h-4 w-4 items-center justify-center text-muted-foreground hover:text-foreground"
           onClick={(e) => {
             e.stopPropagation();
@@ -170,9 +171,14 @@ export function FolderTreeItem({
             }}
           />
         ) : (
-          <span className="flex-1 truncate">
+          // No own onClick: the click (mouse or keyboard-triggered) bubbles
+          // to the row's handler, so selection never fires twice.
+          <button
+            type="button"
+            className="flex-1 truncate text-left rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
             {folder?.alias ?? node.id.slice(0, 8)}
-          </span>
+          </button>
         )}
         {folder?.visibility === 'Restricted' && !renaming && (
           <Lock

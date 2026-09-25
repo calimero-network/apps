@@ -71,6 +71,7 @@ export function FolderDocLeaves({
               type="button"
               data-testid="doc-row"
               data-doc-id={d.id}
+              aria-current={isSelected ? 'page' : undefined}
               onClick={() => onOpenDoc(folderId, d.id)}
               className={`flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-sm transition-colors ${
                 isSelected
