@@ -1,0 +1,322 @@
+{
+  "aggregate": [
+    {
+      "a": "569fe230729f305f2c6b772c9d5484f4ebc5712c73ed0409b56377be153d4160",
+      "b": "0c2f83b413480d1343aa12007738456576bcb205e3ca339a8020dbefc9a02c4b"
+    },
+    {
+      "a": "9eb2d4bab564c59f22c4c29bbe09deb5249a2b9441afac2299bdedc5fa363d70",
+      "b": "6a9c3dd5a820d9290f839d6662b782b86b0f2e4a8f645dd73e22bf2a45f87b0e"
+    },
+    {
+      "a": "be841df80a4ed2c917b07595a8ad00ccb7b53c2c3e4c0f871ce5017b924a7d73",
+      "b": "eec819095b436c091a59d99fe81f1a2e5beb775f874d024abcfb27eea6ea6201"
+    }
+  ],
+  "ballots": [
+    {
+      "ballot": {
+        "choices": [
+          {
+            "a": "6af24f9d374559177d3e799ffa075e30318d70e77196606b311db7b820c03133",
+            "b": "50484a915e76caa24214a154ade6b715004a10be9cd870dcf556ce67e4b80231",
+            "proof": [
+              {
+                "c": "89346839576ed7e2c325ace5ac8cf4f9b54189db488c2e15a333676b3bc76801",
+                "z": "110f492b4902ad32bde1cecea97917b4c32df6ca7432e23b3c09ede7e117b700"
+              },
+              {
+                "c": "eec8f89557080987b437438430b213a5b5631e5756d40a9e31a798e560d7610a",
+                "z": "a196f5969ed7205243d15c088ab61e41e8cc11a731978bb7d5b1a2adf1d39204"
+              }
+            ]
+          },
+          {
+            "a": "3e72543cf1a14b655d777ddb1f936a1702dc183c8343e37a0fca52a63b4da03a",
+            "b": "aef2b6ee5553ecb628fbc05e62f8b5755e21347b6e17466e4502701aced84a19",
+            "proof": [
+              {
+                "c": "542a69b3879dde26bcd9bb6138adddae98d04d8d30df52cdcb4ac4d382e15c06",
+                "z": "602d51e05341a97657da3486a7e49293f11d4dc16c14809923df4483abc9620c"
+              },
+              {
+                "c": "3dfd2799342bdce5fe28ac93c6d1a6f03368c2f858ac0690591f8341315f3402",
+                "z": "a8bc4f7cb6cbfb19d139fe469abde22a188f9b9645e4c4f0cf7326fe962c4c03"
+              }
+            ]
+          },
+          {
+            "a": "aac03ba90f45948fbddd511b41644c9abd3164da2042b8a2ef6f7fbc369fe82e",
+            "b": "fe733cfcacb23317a72662edeecb679928af579322208112bc3414c012686d09",
+            "proof": [
+              {
+                "c": "0ac89f589f988dea9733216377746d65dac463070210ca2d8ac3eac78bb97f0c",
+                "z": "59d74590dcba0662818530a0830b98a255d5930beeb5556d435d341f39252c0a"
+              },
+              {
+                "c": "f8738a5175fa2cdda1359fb1593bb95c2291020a083fb5a918cff687557ecf07",
+                "z": "7c74c6e4835df293e9764c8ac62a57dabf076d22547267ea1c6bb36091f3bc0b"
+              }
+            ]
+          }
+        ],
+        "sum_proof": [
+          {
+            "c": "d23f694e4ac6fff70c6ce97aa37267e389f3320726fbc43fbc41f5b0f3c0d006",
+            "z": "37e16043b0845b34a33b80107989994982a393a20073b636ee2692cc59a3df0f"
+          },
+          {
+            "c": "f2bb8a7ee6832276d0eb44af0e4a242a51d11fd1146b7bdf35f3a69969e70404",
+            "z": "edc66e59c05790812a6977d6dd6f8fdd2d90a9bbbca0ab19fcd5f073f094bd05"
+          }
+        ]
+      },
+      "digest": "c52e9b8cb12b23f97a04a82a17eb1b1f06481bd1eea882770026a3d80e8ea931",
+      "seed": "ballot-0",
+      "selection": [
+        true,
+        false,
+        false
+      ],
+      "voter": "aaaa000000000000000000000000000000000000000000000000000000000001"
+    },
+    {
+      "ballot": {
+        "choices": [
+          {
+            "a": "248cfe40106e3b3ae2493358259471829c3ae7ebd1b9dddc4b891165ea194918",
+            "b": "40682ea6aa46d637a56adc36fda517c914297b6b94c9027a1bd0096f822f8272",
+            "proof": [
+              {
+                "c": "76bc8496150d05ccadc1d40f65db1fc28f1465aabc2810c8d5b723b406b9660a",
+                "z": "ccf901c58c7aa763e31fd13423f89cc4882eb1178e8604da852783d57823d20f"
+              },
+              {
+                "c": "6d58a06ceef8642ab15323fff706ea5f8b63c7d22e61247dfdd0acac4529e40d",
+                "z": "252c371e473159a8f6350c7430d7cc1d05265b5285f1276a7507d4e72e6dd607"
+              }
+            ]
+          },
+          {
+            "a": "c4a6be8da16567780d688b431ab74bdcf75df844fe426fd42286bc27e0501a06",
+            "b": "24ba21ed1a32ab9acece1962596567cf749b2622f0b51b38ee8dbc6ba59cc456",
+            "proof": [
+              {
+                "c": "7db6614bfd7f3183c44b0a9fc39f86b95ce284fb4565e6188d143b147b063c0b",
+                "z": "acfd275c80f75adda556a3e0ac6076bf13672a24c695c61cc3cae02dfa61b403"
+              },
+              {
+                "c": "b3dc0cb432549bab844fcac079c0419b6662d273ba5e96dadb0caeeee26e820c",
+                "z": "b9e928d1adbddc8fe3fdf38ee6002d6922ad62d52d7d044b2a374eec5a54e602"
+              }
+            ]
+          },
+          {
+            "a": "5477b4df4fb3d4904404828a424b77c8e9e7bb272d134b14820656d099df0630",
+            "b": "94afa3d3a221b90e8aec7ca07a55be0f0be708d6d0581368ad0db540fff7bf2a",
+            "proof": [
+              {
+                "c": "06a008050d98c4bb235dac25cba7de931d15b92c35da67b365c6a8718b6af50d",
+                "z": "6bd2aee5e7b471d257145ad5c59df2dd8e42b2b6c412c257f52d9bf74ea53306"
+              },
+              {
+                "c": "872020bf0ae780340b9fa28e23435420b2302c1ffa5f14fcb9afde35a62f0f02",
+                "z": "fa81fe225287bb5d03cd38216e98ebe3253299c6fe4fa5b443469ee16040b205"
+              }
+            ]
+          }
+        ],
+        "sum_proof": [
+          {
+            "c": "513bb79b5b025b68ff79ced224e5a554cb1e01a1b3b4ffd3e292e7c5e5a62e03",
+            "z": "df0de808b9e641d27490f764188f07e0b19afa18033fe5321c0696244d995200"
+          },
+          {
+            "c": "6e839074c3fcc4dbd5d6a5240c465b4a3792f14d3115100876f1f21a7dce7300",
+            "z": "1f3d2ea0a54bf76bc4909559c335eeff57e32ee28600c079a9c05a0e1f2e1407"
+          }
+        ]
+      },
+      "digest": "2b008ab90b774c364aec0545903a4565c2f839916a6791cb23ed1d3133680cfe",
+      "seed": "ballot-1",
+      "selection": [
+        true,
+        false,
+        true
+      ],
+      "voter": "aaaa000000000000000000000000000000000000000000000000000000000002"
+    },
+    {
+      "ballot": {
+        "choices": [
+          {
+            "a": "b62db4e6c9f9e685819ff93f0e1858307a6d375ae726f02a40254c4aff200678",
+            "b": "763b2f37de41390833e3b1450e12a83031cc4fa3a35cf003712b8425385c6a27",
+            "proof": [
+              {
+                "c": "bd2554e129e5989807e603a8e190581e35c5640a24fdb72eb2ec44c8a0ddaf09",
+                "z": "355b55f2b6f09f16e42dbcf01e1533734d81cdf47e02180692a4d04371ba350b"
+              },
+              {
+                "c": "9ac197742c55dc217f33069cbc6d67231762a82e29af74c7c6ca7201ffacce08",
+                "z": "4349161e560acb6b51a513409ef8f672297d59956f13b87b7cf15c3b2f049a09"
+              }
+            ]
+          },
+          {
+            "a": "a02e20e4ea3c4cef070466a780cd9de7956392909032b220dfc6a788a4d2d40c",
+            "b": "80112ba020cb71cad42b5d925e9bd7fb1d4a4c433d223d9744aff70cbae6bb46",
+            "proof": [
+              {
+                "c": "0c1a2fa800271428bbd80ac5213ebc78f755eb66717f4301be41b2bb66d3d70a",
+                "z": "7021184fce8f353c339e2ff08e84446e5a8335a205019bfbbf841d37ca208e0d"
+              },
+              {
+                "c": "d40a824eaca37aabe4d92d41a9f49c360884b861c977148d4fe64995c6754a0e",
+                "z": "f4c2361b8c7d9b4ae4ae647b087a13b9b1777f82a1f0060cd3004a24f647a608"
+              }
+            ]
+          },
+          {
+            "a": "962220929893666f2499d03aae624f4dd0b6c08f37bb2deb20ad0d2cca183310",
+            "b": "302a6173fbeb77b5c31e137b6f87aed812810933eb975b1b29285bf06a51db6f",
+            "proof": [
+              {
+                "c": "d8a47e7e77f44f8fc118da9818a9ea0285084c2ccfa150874be7ad036c4b2c09",
+                "z": "826e7a0cc623cffab385a690257281797a9fd6717a58d1b7ab84b1f6d2f5b80f"
+              },
+              {
+                "c": "4f4d354ab32c15d37bed752ff291b566a8c07c29068789be6ef349c244edfe02",
+                "z": "1e46fdcfbdd47618789887e01717cb37b5db00e3321d12be7f3d37843b3b7602"
+              }
+            ]
+          }
+        ],
+        "sum_proof": [
+          {
+            "c": "5e815670830d1c38787ccd33e6399ab6ed71460523e60eaa42f200f27a570207",
+            "z": "43c128a4d3fa54565dafcc610aec9fdc79c6e3a28b3320f8bcdc218337bad00a"
+          },
+          {
+            "c": "7dc97a0ff4041ca55074e47047f382f4b4a9bd2e0f4dabee7ad26352335a6109",
+            "z": "bafbae0dc7c1dad06cbead2cf9a6439f6a57214abee85d46f722ec259170be00"
+          }
+        ]
+      },
+      "digest": "eee6c48b3cabc6bade8cbb729c54490e5b8cfb72b8a99fb2b0a42c4e5c0aa068",
+      "seed": "ballot-2",
+      "selection": [
+        false,
+        true,
+        false
+      ],
+      "voter": "aaaa000000000000000000000000000000000000000000000000000000000003"
+    }
+  ],
+  "counts": [
+    2,
+    1,
+    1
+  ],
+  "election_key": "e6ae819ab63a0b76f0d121104f2f41e130204ca544ac8b0e29db86be5f0aa547",
+  "hash_to_scalar": {
+    "domain": "test",
+    "parts": [
+      "",
+      "mero",
+      "vote"
+    ],
+    "scalar": "96e93d5208ede9dea4db6b96a8cf660d92bd94acee7c94e50157de64169e170c"
+  },
+  "partials": [
+    {
+      "options": [
+        {
+          "d": "240c5641db8ce9f994a49d7de46bb5469a6b88f332ce4bfe50b3af6091451528",
+          "proof": {
+            "c": "11aa098caa8bd52c17de3b5e6eb9f839ffd87edc2c288bd032261ea983da7901",
+            "z": "b7c0e3be82f86b521a99ca0f1f8164203b5e2e48d3758d3ee0a4ecfd3bdfbb0a"
+          }
+        },
+        {
+          "d": "b0bd759052571e30259087bac929fba094e8fdf4f3315d1debf0a62332c0201c",
+          "proof": {
+            "c": "989606c22a663536851d58f875d243da6a66f6f82894c3ecce6eca3835bf8805",
+            "z": "46ca0bffe1222772ce9c6e30a597def3e1397000457e3b2420004dde5d71640f"
+          }
+        },
+        {
+          "d": "069da3b424ae9486584eeff427151b5c57fcf63b7dc1743683fcf2abe9cfb72e",
+          "proof": {
+            "c": "5e941551818a8b6d6bc99be507b116afd0b78b7c53f0bd53dc5d1596441f0009",
+            "z": "4b694b16399c1998227b4d8ad5afd34fc771464ed6fbda5dff4c4c156606d604"
+          }
+        }
+      ],
+      "seed": "partial-1111111111111111111111111111111111111111111111111111111111111111",
+      "trustee": "1111111111111111111111111111111111111111111111111111111111111111"
+    },
+    {
+      "options": [
+        {
+          "d": "72e04eb86fcb4ef7664355fc568d9c186c2307b358844a76e82daf64a1e32510",
+          "proof": {
+            "c": "875346c6554cb03afbca13b189d3fa33af2c31dec93d40f29a8a5af67752ab0a",
+            "z": "495b77b617eb68cb476159a9227cc0154ba5a58af5ae7d1f1740b52696d94b02"
+          }
+        },
+        {
+          "d": "28023e9b0c1126e481c406bce9676615635cfa5e1090f1fb5ef48170684f9820",
+          "proof": {
+            "c": "4355b08c2cc5e3dbee5273144540c911bd4851a1815560d81b6818b363e4330c",
+            "z": "94a37c8949c2fa862654a8e19f3f87288f1d3aa398ac4e003901362a8a3cf10f"
+          }
+        },
+        {
+          "d": "4a84e2b29ea1959d629164a5afdb599c42bd57d44632ba5134ac66846fdc343a",
+          "proof": {
+            "c": "251a725a33d5ab840b6fbbeb2895534dc35c0f8baaf379843e95c6043662940d",
+            "z": "bf3be339a554be007fab5972137601d3acfb162a2046e6004daaa950935d020b"
+          }
+        }
+      ],
+      "seed": "partial-2222222222222222222222222222222222222222222222222222222222222222",
+      "trustee": "2222222222222222222222222222222222222222222222222222222222222222"
+    }
+  ],
+  "poll_id": "c0ffee00c0ffee00c0ffee00c0ffee00c0ffee00c0ffee00c0ffee00c0ffee00",
+  "protocol": "mero-vote/v1/",
+  "rng_first_three": [
+    "b4428da0a20aa93cf0e13b76f8314473ed3ceacac47ab10e9bf773f334f39e0b",
+    "d0cb01f9ce722ad4f3e4dfa5822b77b2037fc39758f9dbe8f677f8c3e7f30e0c",
+    "e60284c2431d304d99a5dd0066da3c0c91069b5a6b92a9c143ac96ad88c38004"
+  ],
+  "rng_seed": "abc",
+  "rules": {
+    "max": 2,
+    "min": 1,
+    "options": 3
+  },
+  "shares": [
+    {
+      "proof": {
+        "c": "77e6b19044c504bcba52cf5055a8ab7cc593f96199e95aad07def2df15692d05",
+        "z": "14654fe8f572b4a15a468a2327ff65a36f9109e7771e90ddc088b030faa79307"
+      },
+      "secret": "acfa6f0904f5645f2cce2e794c2bedb5d590cc7ef3a3a47f8941f470e52fe70d",
+      "seed": "trustee-1",
+      "share": "606885c5cc4de80d08a881ba6533e64231a2ba2d4a773f08b3d1840e6b5c582f",
+      "trustee": "1111111111111111111111111111111111111111111111111111111111111111"
+    },
+    {
+      "proof": {
+        "c": "a63f81ca8e27842069d983c83c581a5372343190c9f0f0956a4bf5597d335c0f",
+        "z": "cd35c9afb11d610556f1a1e6c6cd675c9f760975b8ae53c01af87851570f9d0c"
+      },
+      "secret": "799056ff6aec206eb212bceac70bf6d491769f30cfaa0c8df9418fa260d5670c",
+      "seed": "trustee-2",
+      "share": "dc2036a6f54a44b09a185c37aaca1fa45cf2543d5ef20df6914542c17232ca5c",
+      "trustee": "2222222222222222222222222222222222222222222222222222222222222222"
+    }
+  ]
+}

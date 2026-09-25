@@ -1,0 +1,360 @@
+name: Mero Vote — replication and refusal
+description: >
+  Two real nodes, one poll. What this scenario proves and what it cannot:
+
+    * It proves REPLICATION: a poll created on node-1, and both members' roster
+      slots, reach node-2, and node-2's own contract re-audits them.
+    * It proves REFUSAL on a real node: every state transition called by the
+      wrong person or in the wrong phase fails, and a key share whose proof of
+      knowledge does not verify is rejected — the contract, not the frontend,
+      is what holds those lines.
+
+  What it cannot do is cast a VALID ballot. Every proof binds the poll id (a
+  content hash only known at run time) and the voter's account, and merobox has
+  no way to compute a sigma-protocol proof mid-scenario. The cryptographic happy
+  path — key ceremony, encrypted ballots, close, threshold decryption, audit,
+  anchor, across three accounts — is covered in-process by
+  `logic/src/tests.rs::a_poll_runs_end_to_end_and_audits_clean`, and against a
+  real node through the real JSON-RPC wire by the Playwright spec
+  `app/e2e/mero-vote.spec.ts`, where the browser builds the proofs.
+
+force_pull_image: false
+nuke_on_start: true
+near_devnet: false
+# See apps/kv-store/logic/workflows/converge.yml for why this is required.
+e2e_mode: true
+
+nodes:
+  count: 2
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.43
+  prefix: vote-node
+  mdns: true
+
+steps:
+  - name: Install application on vote-node-1
+    type: install_application
+    node: vote-node-1
+    path: dist/com.calimero.mero-vote.mpk
+    dev: true
+    outputs:
+      app_id: applicationId
+
+  # Every node, not just the first: since rc.31 a node does not serve bytecode
+  # to its peers.
+  - name: Install application on vote-node-2
+    type: install_application
+    node: vote-node-2
+    path: dist/com.calimero.mero-vote.mpk
+    dev: true
+
+  - name: Settle before the mesh joins
+    type: wait
+    seconds: 20
+
+  - name: Create mesh with node-2
+    type: create_mesh
+    context_node: vote-node-1
+    application_id: "{{app_id}}"
+    nodes:
+      - vote-node-2
+    outputs:
+      context_id: contextId
+
+  - name: Wait for node-2 to initialize
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - vote-node-1
+      - vote-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  # ─── identity & roster ────────────────────────────────────────────────────
+
+  - name: node-1 whoami
+    type: call
+    node: vote-node-1
+    context_id: "{{context_id}}"
+    method: whoami
+    outputs:
+      n1_account: result.output.account
+
+  - name: node-2 whoami
+    type: call
+    node: vote-node-2
+    context_id: "{{context_id}}"
+    method: whoami
+    outputs:
+      n2_account: result.output.account
+
+  # Concurrent, no sync between: two slots in UserStorage must union.
+  - name: node-1 joins the roster
+    type: call
+    node: vote-node-1
+    context_id: "{{context_id}}"
+    method: set_name
+    args:
+      name: "Ada"
+
+  - name: node-2 joins the roster at the same time
+    type: call
+    node: vote-node-2
+    context_id: "{{context_id}}"
+    method: set_name
+    args:
+      name: "Grace"
+
+  - name: Let the roster settle
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - vote-node-1
+      - vote-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: node-1 reads the roster
+    type: call
+    node: vote-node-1
+    context_id: "{{context_id}}"
+    method: roster
+    outputs:
+      n1_roster: result
+
+  - name: node-2 reads the roster
+    type: call
+    node: vote-node-2
+    context_id: "{{context_id}}"
+    method: roster
+    outputs:
+      n2_roster: result
+
+  - name: Assert both slots survived on both nodes
+    type: assert
+    statements:
+      - "contains({{n1_roster}}, Ada)"
+      - "contains({{n1_roster}}, Grace)"
+      - "contains({{n2_roster}}, Ada)"
+      - "contains({{n2_roster}}, Grace)"
+      - "contains({{n2_roster}}, {{n1_account}})"
+
+  # ─── a poll, replicated ───────────────────────────────────────────────────
+
+  - name: node-1 creates a poll with both members as trustees
+    type: call
+    node: vote-node-1
+    context_id: "{{context_id}}"
+    method: create_poll
+    args:
+      title: "Offsite"
+      description: "Where do we meet?"
+      options: ["Lisbon", "Split", "Tallinn"]
+      min_choices: 1
+      max_choices: 1
+      trustees: ["{{n1_account}}", "{{n2_account}}"]
+      voters: []
+      closes_at: null
+    outputs:
+      poll_id: result.output
+
+  - name: Let the poll replicate
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - vote-node-1
+      - vote-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: node-2 lists polls
+    type: call
+    node: vote-node-2
+    context_id: "{{context_id}}"
+    method: list_polls
+    outputs:
+      n2_polls: result
+
+  - name: node-2 opens the poll
+    type: call
+    node: vote-node-2
+    context_id: "{{context_id}}"
+    method: get_poll
+    args:
+      poll_id: "{{poll_id}}"
+    outputs:
+      n2_poll: result
+
+  - name: node-2 audits the poll on its own node
+    type: call
+    node: vote-node-2
+    context_id: "{{context_id}}"
+    method: get_result
+    args:
+      poll_id: "{{poll_id}}"
+    outputs:
+      n2_report: result
+
+  - name: node-2 exports the transcript
+    type: call
+    node: vote-node-2
+    context_id: "{{context_id}}"
+    method: get_transcript
+    args:
+      poll_id: "{{poll_id}}"
+    outputs:
+      n2_transcript: result
+
+  - name: Assert the poll arrived intact and is in its key ceremony
+    type: assert
+    statements:
+      - "is_set({{poll_id}})"
+      - "contains({{n2_polls}}, {{poll_id}})"
+      - "contains({{n2_poll}}, Tallinn)"
+      - "contains({{n2_poll}}, KeyCeremony)"
+      - "contains({{n2_report}}, KeyCeremony)"
+      - "contains({{n2_transcript}}, mero-vote/v1/)"
+
+  # ─── refusals ─────────────────────────────────────────────────────────────
+
+  - name: Refuse — node-2 opens voting on node-1's poll
+    type: call
+    node: vote-node-2
+    context_id: "{{context_id}}"
+    method: open_voting
+    args:
+      poll_id: "{{poll_id}}"
+    expected_failure: true
+    outputs:
+      err_open_not_creator: error
+
+  - name: Refuse — node-1 opens voting before any trustee published
+    type: call
+    node: vote-node-1
+    context_id: "{{context_id}}"
+    method: open_voting
+    args:
+      poll_id: "{{poll_id}}"
+    expected_failure: true
+    outputs:
+      err_open_early: error
+
+  # The ristretto255 base point with a made-up proof: a well-formed share the
+  # caller cannot prove knowledge of. This is the rogue-key attack's shape.
+  - name: Refuse — a key share without a valid proof of knowledge
+    type: call
+    node: vote-node-2
+    context_id: "{{context_id}}"
+    method: publish_key_share
+    args:
+      poll_id: "{{poll_id}}"
+      share: "e2f2ae0a6abc4e71a884a961c500515f58e30b6aa582dd8db6a65945e08d2d76"
+      proof:
+        c: "0100000000000000000000000000000000000000000000000000000000000000"
+        z: "0200000000000000000000000000000000000000000000000000000000000000"
+    expected_failure: true
+    outputs:
+      err_bad_share: error
+
+  - name: Refuse — a ballot before voting opens
+    type: call
+    node: vote-node-2
+    context_id: "{{context_id}}"
+    method: cast_ballot
+    args:
+      poll_id: "{{poll_id}}"
+      ballot:
+        choices: []
+        sum_proof: []
+    expected_failure: true
+    outputs:
+      err_early_ballot: error
+
+  - name: Refuse — closing a poll that never opened
+    type: call
+    node: vote-node-1
+    context_id: "{{context_id}}"
+    method: close_poll
+    args:
+      poll_id: "{{poll_id}}"
+    expected_failure: true
+    outputs:
+      err_close_early: error
+
+  - name: Refuse — tally inputs before the close
+    type: call
+    node: vote-node-1
+    context_id: "{{context_id}}"
+    method: tally_inputs
+    args:
+      poll_id: "{{poll_id}}"
+    expected_failure: true
+    outputs:
+      err_tally_early: error
+
+  - name: Refuse — a partial decryption before the close
+    type: call
+    node: vote-node-2
+    context_id: "{{context_id}}"
+    method: publish_partial
+    args:
+      poll_id: "{{poll_id}}"
+      partials: []
+    expected_failure: true
+    outputs:
+      err_partial_early: error
+
+  - name: Refuse — anchoring a poll with no result
+    type: call
+    node: vote-node-1
+    context_id: "{{context_id}}"
+    method: anchor_result
+    args:
+      poll_id: "{{poll_id}}"
+      network: "git"
+      reference: "refs/tags/nothing"
+    expected_failure: true
+    outputs:
+      err_anchor_early: error
+
+  - name: Assert every refusal carried an error
+    type: assert
+    statements:
+      - "is_set({{err_open_not_creator}})"
+      - "is_set({{err_open_early}})"
+      - "is_set({{err_bad_share}})"
+      - "is_set({{err_early_ballot}})"
+      - "is_set({{err_close_early}})"
+      - "is_set({{err_tally_early}})"
+      - "is_set({{err_partial_early}})"
+      - "is_set({{err_anchor_early}})"
+
+  # Nothing the refused calls attempted may have landed anywhere.
+  - name: Let any stray write settle
+    type: wait_for_sync
+    context_id: "{{context_id}}"
+    nodes:
+      - vote-node-1
+      - vote-node-2
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: node-1 re-reads the poll
+    type: call
+    node: vote-node-1
+    context_id: "{{context_id}}"
+    method: get_poll
+    args:
+      poll_id: "{{poll_id}}"
+    outputs:
+      n1_poll_after: result
+
+  - name: Assert the poll is still in its key ceremony
+    type: assert
+    statements:
+      - "contains({{n1_poll_after}}, KeyCeremony)"
+
+stop_all_nodes: true

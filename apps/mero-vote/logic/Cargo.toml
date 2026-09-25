@@ -1,0 +1,39 @@
+[package]
+name        = "mero-vote"
+description = "Private polls with verifiable tallies"
+# NOT the release version — the registry owns the number (see kv-store).
+version     = "0.0.1"
+edition.workspace    = true
+authors.workspace    = true
+license.workspace    = true
+repository.workspace = true
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+mero-vote-crypto = { path = "crates/crypto" }
+calimero-sdk.workspace     = true
+calimero-storage.workspace = true
+thiserror.workspace        = true
+hex.workspace              = true
+sha2.workspace             = true
+
+[dev-dependencies]
+calimero-storage = { workspace = true, features = ["testing"] }
+
+[package.metadata.calimero]
+package = "com.calimero.mero-vote"
+name = "Mero Vote"
+description = "Private polls with verifiable tallies. Ballots are encrypted in the browser, proven well-formed in zero knowledge, and tallied by every member from the same frozen ballot box — no host sees a vote, and no one has to trust the count."
+author = "Calimero"
+slug = "com.calimero.mero-vote"
+icon = "../app/public/icon-512.png"
+category = "productivity"
+tags = ["voting", "polls", "privacy", "zero-knowledge", "governance"]
+github = "https://github.com/calimero-network/apps"
+min-runtime-version = "0.11.0-rc.43"
+# Bare origin, no trailing slash (compared by exact origin). Resolves to nothing
+# until the Vercel project `mero-vote` exists; see docs/VERCEL.md.
+frontend = "https://mero-vote.vercel.app"

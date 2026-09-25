@@ -1,0 +1,10 @@
+{
+  "// note": "Playwright specs and their harness. Node types: global-setup spawns merod and reads the bundle off disk.",
+  "extends": "../../../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "../dist-types/e2e",
+    "tsBuildInfoFile": "../dist-types/e2e.tsbuildinfo",
+    "types": ["node"]
+  },
+  "include": ["."]
+}

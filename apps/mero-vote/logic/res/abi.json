@@ -1,0 +1,1386 @@
+{
+  "schema_version": "wasm-abi/1",
+  "types": {
+    "Anchor": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "digest",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "network",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "reference",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "anchored_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "AuditReport": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "poll_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "phase",
+          "type": {
+            "$ref": "Phase"
+          }
+        },
+        {
+          "name": "verified",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "checks",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "Check"
+            }
+          }
+        },
+        {
+          "name": "counts",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "u64"
+            }
+          },
+          "nullable": true
+        },
+        {
+          "name": "counted_ballots",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "transcript_digest",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "anchor",
+          "type": {
+            "$ref": "Anchor"
+          },
+          "nullable": true
+        }
+      ]
+    },
+    "BallotPointer": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "digest",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "frozen",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "cast_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "Check": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "ok",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "detail",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Closure": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "counted",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "CountedBallot"
+            }
+          }
+        },
+        {
+          "name": "closed_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "CountedBallot": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "voter",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "digest",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "frozen",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Election": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "key",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "shares",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "KeyShare"
+            }
+          }
+        },
+        {
+          "name": "opened_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "Event_Anchored": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "poll_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_BallotCast": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "poll_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "voter",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_KeySharePublished": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "poll_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "trustee",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_MemberNamed": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "account",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_PartialPublished": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "poll_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "trustee",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_PollClosed": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "poll_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "counted",
+          "type": {
+            "kind": "u32"
+          }
+        }
+      ]
+    },
+    "Event_PollCreated": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "poll_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_VotingOpened": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "poll_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Identity": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "account",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "KeyShare": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "trustee",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "share",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "proof",
+          "type": {
+            "$ref": "WireBranch"
+          }
+        }
+      ]
+    },
+    "Member": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "account",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "MemberSlot": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "ballots",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "record",
+              "fields": [],
+              "crdt_type": "lww_register",
+              "inner_type": {
+                "$ref": "BallotPointer"
+              }
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "shares",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "record",
+              "fields": [],
+              "crdt_type": "lww_register",
+              "inner_type": {
+                "$ref": "KeyShare"
+              }
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "partials",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "record",
+              "fields": [],
+              "crdt_type": "lww_register",
+              "inner_type": {
+                "$ref": "StoredPartials"
+              }
+            },
+            "crdt_type": "unordered_map"
+          }
+        }
+      ]
+    },
+    "MeroVote": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "definitions",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "PollDefinition"
+            }
+          }
+        },
+        {
+          "name": "polls",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "record",
+              "fields": [],
+              "crdt_type": "lww_register",
+              "inner_type": {
+                "$ref": "PollState"
+              }
+            },
+            "crdt_type": "authored_map"
+          }
+        },
+        {
+          "name": "ballot_bodies",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "StoredBallot"
+            }
+          }
+        },
+        {
+          "name": "slots",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "MemberSlot"
+            }
+          }
+        }
+      ]
+    },
+    "Phase": {
+      "kind": "variant",
+      "variants": [
+        {
+          "name": "KeyCeremony"
+        },
+        {
+          "name": "Voting"
+        },
+        {
+          "name": "Closed"
+        }
+      ]
+    },
+    "PollDefinition": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "title",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "description",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "options",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "min_choices",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "max_choices",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "trustees",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "voters",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "creator",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "closes_at",
+          "type": {
+            "kind": "u64"
+          },
+          "nullable": true
+        }
+      ]
+    },
+    "PollState": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "phase",
+          "type": {
+            "$ref": "Phase"
+          }
+        },
+        {
+          "name": "election",
+          "type": {
+            "$ref": "Election"
+          },
+          "nullable": true
+        },
+        {
+          "name": "closure",
+          "type": {
+            "$ref": "Closure"
+          },
+          "nullable": true
+        },
+        {
+          "name": "anchor",
+          "type": {
+            "$ref": "Anchor"
+          },
+          "nullable": true
+        }
+      ]
+    },
+    "PollSummary": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "poll_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "title",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "creator",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "phase",
+          "type": {
+            "$ref": "Phase"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "ballots",
+          "type": {
+            "kind": "u32"
+          }
+        }
+      ]
+    },
+    "PollView": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "poll_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "definition",
+          "type": {
+            "$ref": "PollDefinition"
+          }
+        },
+        {
+          "name": "state",
+          "type": {
+            "$ref": "PollState"
+          }
+        },
+        {
+          "name": "trustees",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "TrusteeStatus"
+            }
+          }
+        },
+        {
+          "name": "turnout",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "Turnout"
+            }
+          }
+        },
+        {
+          "name": "my_digest",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "can_vote",
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ]
+    },
+    "StoredBallot": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "poll_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "voter",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "ballot",
+          "type": {
+            "$ref": "WireBallot"
+          }
+        }
+      ]
+    },
+    "StoredPartials": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "options",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "WirePartial"
+            }
+          }
+        }
+      ]
+    },
+    "TallyInputs": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "aggregate",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "WireCiphertext"
+            }
+          }
+        },
+        {
+          "name": "counted",
+          "type": {
+            "kind": "u32"
+          }
+        }
+      ]
+    },
+    "Transcript": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "protocol",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "poll_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "definition",
+          "type": {
+            "$ref": "PollDefinition"
+          }
+        },
+        {
+          "name": "state",
+          "type": {
+            "$ref": "PollState"
+          }
+        },
+        {
+          "name": "ballots",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "TranscriptBallot"
+            }
+          }
+        },
+        {
+          "name": "partials",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "TranscriptPartial"
+            }
+          }
+        },
+        {
+          "name": "report",
+          "type": {
+            "$ref": "AuditReport"
+          }
+        }
+      ]
+    },
+    "TranscriptBallot": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "voter",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "digest",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "ballot",
+          "type": {
+            "$ref": "WireBallot"
+          }
+        },
+        {
+          "name": "endorsed",
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ]
+    },
+    "TranscriptPartial": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "trustee",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "options",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "WirePartial"
+            }
+          }
+        }
+      ]
+    },
+    "TrusteeStatus": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "account",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "share_published",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "partial_published",
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ]
+    },
+    "Turnout": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "voter",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "digest",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "cast_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "WireBallot": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "choices",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "WireChoice"
+            }
+          }
+        },
+        {
+          "name": "sum_proof",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "WireBranch"
+            }
+          }
+        }
+      ]
+    },
+    "WireBranch": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "c",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "z",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "WireChoice": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "a",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "b",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "proof",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "WireBranch"
+            }
+          }
+        }
+      ]
+    },
+    "WireCiphertext": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "a",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "b",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "WirePartial": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "d",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "proof",
+          "type": {
+            "$ref": "WireBranch"
+          }
+        }
+      ]
+    }
+  },
+  "methods": [
+    {
+      "name": "anchor_result",
+      "params": [
+        {
+          "name": "poll_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "network",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "reference",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "cast_ballot",
+      "params": [
+        {
+          "name": "poll_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "ballot",
+          "type": {
+            "$ref": "WireBallot"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "close_poll",
+      "params": [
+        {
+          "name": "poll_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "u32"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "create_poll",
+      "params": [
+        {
+          "name": "title",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "description",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "options",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "min_choices",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "max_choices",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "trustees",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "voters",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "closes_at",
+          "type": {
+            "kind": "u64"
+          },
+          "nullable": true
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "get_poll",
+      "params": [
+        {
+          "name": "poll_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "PollView"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_result",
+      "params": [
+        {
+          "name": "poll_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "AuditReport"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_transcript",
+      "params": [
+        {
+          "name": "poll_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "Transcript"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "init",
+      "params": [],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "list_polls",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "PollSummary"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "open_voting",
+      "params": [
+        {
+          "name": "poll_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "publish_key_share",
+      "params": [
+        {
+          "name": "poll_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "share",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "proof",
+          "type": {
+            "$ref": "WireBranch"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "publish_partial",
+      "params": [
+        {
+          "name": "poll_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "partials",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "WirePartial"
+            }
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "roster",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "Member"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "set_name",
+      "params": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "tally_inputs",
+      "params": [
+        {
+          "name": "poll_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "TallyInputs"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "whoami",
+      "params": [],
+      "returns": {
+        "$ref": "Identity"
+      },
+      "intent": "read_only"
+    }
+  ],
+  "events": [
+    {
+      "name": "Anchored",
+      "payload": {
+        "$ref": "Event_Anchored"
+      }
+    },
+    {
+      "name": "BallotCast",
+      "payload": {
+        "$ref": "Event_BallotCast"
+      }
+    },
+    {
+      "name": "KeySharePublished",
+      "payload": {
+        "$ref": "Event_KeySharePublished"
+      }
+    },
+    {
+      "name": "MemberNamed",
+      "payload": {
+        "$ref": "Event_MemberNamed"
+      }
+    },
+    {
+      "name": "PartialPublished",
+      "payload": {
+        "$ref": "Event_PartialPublished"
+      }
+    },
+    {
+      "name": "PollClosed",
+      "payload": {
+        "$ref": "Event_PollClosed"
+      }
+    },
+    {
+      "name": "PollCreated",
+      "payload": {
+        "$ref": "Event_PollCreated"
+      }
+    },
+    {
+      "name": "VotingOpened",
+      "payload": {
+        "$ref": "Event_VotingOpened"
+      }
+    }
+  ],
+  "state_root": "MeroVote",
+  "state_version": 1
+}
