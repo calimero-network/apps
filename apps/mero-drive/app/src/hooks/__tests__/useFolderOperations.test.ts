@@ -18,10 +18,14 @@ vi.mock('@calimero-network/mero-react', () => ({
   useCreateContext: () => ({ createContext }),
   useDeleteContext: () => ({ deleteContext }),
   useDeleteGroup: () => ({ deleteGroup }),
-  useSetGroupMetadata: () => ({ setGroupMetadata }),
   useSetSubgroupVisibility: () => ({ setSubgroupVisibility }),
-  useAddGroupMembers: () => ({ addGroupMembers }),
-  useMero: () => ({ nodeUrl: 'http://node' }),
+  // setGroupMetadata / addGroupMembers go through the raw admin client
+  // (see useFolderOperations' file header) rather than a mero-react hook,
+  // so the mock lives on `mero.admin`, not on its own `use*` export.
+  useMero: () => ({
+    nodeUrl: 'http://node',
+    mero: { admin: { setGroupMetadata, addGroupMembers } },
+  }),
 }));
 
 function makeRegistry() {
@@ -114,14 +118,18 @@ describe('useFolderOperations.create — members', () => {
     // create RESOLVES with the folder id even though the member-add
     // failed — it must not throw, or NewFolderDialog would stay open
     // with Create re-enabled and the user could create a duplicate.
-    const id = await result.current.create({
+    const outcome = await result.current.create({
       namespaceId: 'ns-1',
       parentGroupId: ROOT,
       alias: 'Secret',
       visibility: 'Restricted',
       members: ['member-a'],
     });
-    expect(id).toBe('new-folder');
+    expect(outcome.groupId).toBe('new-folder');
+    // The caller (NewFolderDialog) needs to know which adds failed so
+    // it can tell the user, instead of the failure only reaching the
+    // console.
+    expect(outcome.failedMembers).toEqual(['member-a']);
 
     // Folder stays put (no rollback), rail is refreshed, and the failure
     // is surfaced loudly to the console rather than silently swallowed.
@@ -134,6 +142,52 @@ describe('useFolderOperations.create — members', () => {
     expect(refetch).toHaveBeenCalled();
     expect(errSpy).toHaveBeenCalled();
     errSpy.mockRestore();
+  });
+
+  it('reports no failed members on a clean add', async () => {
+    const registry = makeRegistry();
+    const refetch = vi.fn().mockResolvedValue(undefined);
+    const { result } = renderHook(() =>
+      useFolderOperations(registry, ROOT, 'app-1', refetch),
+    );
+    const outcome = await result.current.create({
+      namespaceId: 'ns-1',
+      parentGroupId: ROOT,
+      alias: 'Secret',
+      visibility: 'Restricted',
+      members: ['member-a', 'member-b'],
+    });
+    expect(outcome.failedMembers).toEqual([]);
+  });
+});
+
+describe('useFolderOperations.rename', () => {
+  it('rejects when the admin call fails, carrying the server message', async () => {
+    const registry = makeRegistry();
+    const refetch = vi.fn().mockResolvedValue(undefined);
+    setGroupMetadata.mockRejectedValue(new Error('HTTP 500: group not found'));
+    const { result } = renderHook(() =>
+      useFolderOperations(registry, ROOT, 'app-1', refetch),
+    );
+
+    await expect(result.current.rename('f1', 'New name')).rejects.toThrow(
+      'HTTP 500: group not found',
+    );
+    // A rejected rename must not refresh the (unchanged) folder list.
+    expect(refetch).not.toHaveBeenCalled();
+  });
+
+  it('resolves and refreshes the folder list on success', async () => {
+    const registry = makeRegistry();
+    const refetch = vi.fn().mockResolvedValue(undefined);
+    setGroupMetadata.mockResolvedValue(undefined);
+    const { result } = renderHook(() =>
+      useFolderOperations(registry, ROOT, 'app-1', refetch),
+    );
+
+    await expect(result.current.rename('f1', 'New name')).resolves.toBeUndefined();
+    expect(setGroupMetadata).toHaveBeenCalledWith('f1', { name: 'New name' });
+    expect(refetch).toHaveBeenCalled();
   });
 });
 
