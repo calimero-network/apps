@@ -25,6 +25,7 @@ import {
 } from "fabric";
 import { v4 as uuid } from "uuid";
 import { rpcCall } from "../api/rpc";
+import { addElements, deleteElements, updateElements, type ElementPatch } from "../api/elementBatch";
 import { applyTopLeftOrigin } from "../utils/fabricDefaults";
 import { isPaintable } from "../utils/color";
 import { createMutationReporter } from "../utils/mutationErrors";
@@ -180,6 +181,7 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
       selectElements,
       selectWithPointer,
       upsertElement,
+      upsertElements,
       removeElement,
       cacheImage,
       snapshot,
@@ -202,6 +204,7 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
         selectElements: s.selectElements,
         selectWithPointer: s.selectWithPointer,
         upsertElement: s.upsertElement,
+        upsertElements: s.upsertElements,
         removeElement: s.removeElement,
         cacheImage: s.cacheImage,
         snapshot: s.snapshot,
@@ -985,10 +988,14 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
         await rpcCall(contextId, "add_element", { element: el }).catch((e) => reportFailure.current("add_element", e));
       };
 
-      /** Persist one object's geometry from its current absolute position. */
-      const persistGeometry = async (obj: FabricObject & { data?: Element }) => {
+      /**
+       * An object's element with its geometry read back from the canvas — the
+       * current absolute position and size. Also written to `obj.data`; the
+       * caller stores and saves it.
+       */
+      const geometryOf = (obj: FabricObject & { data?: Element }, updatedAt: number): Element | null => {
         const el = obj.data;
-        if (!el?.id) return;
+        if (!el?.id) return null;
         // An area shape's size is its box, NOT its painted bounds.
         // `getScaledWidth()` includes the stroke, so with the 4px default border
         // every move of a rect used to grow it by 4px — invisible back when new
@@ -1001,9 +1008,16 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
           width: Math.round(area ? (obj.width ?? el.width) * (obj.scaleX ?? 1) : obj.getScaledWidth?.() ?? el.width),
           height: Math.round(area ? (obj.height ?? el.height) * (obj.scaleY ?? 1) : obj.getScaledHeight?.() ?? el.height),
           rotation: Math.round(obj.angle ?? el.rotation),
-          updatedAt: Date.now(),
+          updatedAt,
         };
         obj.data = updatedEl;
+        return updatedEl;
+      };
+
+      /** Persist one object's geometry from its current absolute position. */
+      const persistGeometry = async (obj: FabricObject & { data?: Element }) => {
+        const updatedEl = geometryOf(obj, Date.now());
+        if (!updatedEl) return;
         upsertElement(updatedEl);
         await rpcCall(contextId, "update_element", {
           id: updatedEl.id, x: updatedEl.x, y: updatedEl.y,
@@ -1029,12 +1043,25 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
           const children = asGroup.getObjects!() as (FabricObject & { data?: Element })[];
           fc.discardActiveObject();
           snapshot();
-          for (const child of children) await persistGeometry(child);
-          const movedIds = new Set(children.map((c) => c.data?.id).filter(Boolean) as string[]);
-          for (const child of children) if (child.data) await detachIfMoved(child.data, movedIds);
+          // The whole selection is one edit: read every child's geometry, store
+          // it in one update, save it in one batch. This was a sequential
+          // `update_element` per child — dragging a few hundred shapes queued a
+          // few hundred round-trips, and the tail of them failed as
+          // `network error` while the node was still working through the head.
+          const updatedAt = Date.now();
+          const moved = children
+            .map((child) => geometryOf(child, updatedAt))
+            .filter((el): el is Element => el !== null);
+          const movedIds = new Set(moved.map((el) => el.id));
+          const detached = moved
+            .map((el) => detachedIfMoved(el, movedIds))
+            .filter((el): el is Element => el !== null);
+          useCanvasStore.getState().upsertElements([...moved, ...detached]);
           const restored = new ActiveSelection(children, { canvas: fc });
           fc.setActiveObject(restored);
           fc.requestRenderAll();
+          await updateElements(contextId, moved.map(geometryPatch), updatedAt, reportFailure.current);
+          if (detached.length > 0) await addElements(contextId, detached, reportFailure.current);
           return;
         }
 
@@ -1084,13 +1111,19 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
 
       /** Save a connector the user dragged on its own without its dock(s). */
       const detachIfMoved = async (el: Element, movedIds: ReadonlySet<string>) => {
-        if (!isConnector(el) || (!el.startBinding && !el.endBinding)) return;
-        const current = useCanvasStore.getState().elements.find((x) => x.id === el.id) ?? el;
-        const next = detachMoved(current, movedIds);
-        if (next.startBinding === current.startBinding && next.endBinding === current.endBinding) return;
-        const saved = { ...next, updatedAt: Date.now() };
+        const saved = detachedIfMoved(el, movedIds);
+        if (!saved) return;
         upsertElement(saved);
         await rpcCall(contextId, "add_element", { element: saved }).catch((err) => reportFailure.current("add_element", err));
+      };
+
+      /** The connector with its moved ends undocked, or null when nothing changes. */
+      const detachedIfMoved = (el: Element, movedIds: ReadonlySet<string>): Element | null => {
+        if (!isConnector(el) || (!el.startBinding && !el.endBinding)) return null;
+        const current = useCanvasStore.getState().elements.find((x) => x.id === el.id) ?? el;
+        const next = detachMoved(current, movedIds);
+        if (next.startBinding === current.startBinding && next.endBinding === current.endBinding) return null;
+        return { ...next, updatedAt: Date.now() };
       };
 
       /**
@@ -1243,19 +1276,19 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
           // nothing to select afterwards.
           fc.discardActiveObject();
 
-          for (const el of pasted) upsertElement(el);
+          // One store update for the whole paste, not one per element (each of
+          // which rebuilt the element list and re-ran the canvas reconcile).
+          useCanvasStore.getState().upsertElements(pasted);
           snapshot();
           // Select the copies, not the originals: a paste you cannot
           // immediately drag is a paste you have to go and find.
           selectElements(pasted.map((el) => el.id));
 
-          await Promise.all(
-            pasted.map((el) =>
-              rpcCall(contextId, "add_element", { element: el }).catch((err) =>
-                reportFailure.current("add_element", err),
-              ),
-            ),
-          );
+          // Batched and sequential. This was `Promise.all` over one
+          // `add_element` per element — pasting 3000 shapes opened 3000
+          // requests at once, and the node answered with `network error` until
+          // the app fell over.
+          await addElements(contextId, pasted, reportFailure.current);
           return;
         }
 
@@ -1297,11 +1330,11 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
         fc.requestRenderAll();
         snapshot();
         selectElements([]);
-        for (const id of targets) {
-          removeElement(id);
-          await rpcCall(contextId, "delete_element", { id })
-            .catch((err) => reportFailure.current("delete_element", err));
-        }
+        // One store update, then batched deletes sized to the board. This was a
+        // `delete_element` round-trip per element, one after another.
+        const boardSize = useCanvasStore.getState().elements.length;
+        useCanvasStore.getState().removeElements(targets);
+        await deleteElements(contextId, targets, boardSize, reportFailure.current);
       };
 
       const onKeyUp = (e: KeyboardEvent) => {
@@ -1367,23 +1400,20 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
     useEffect(() => {
       const moved = reroute(elements);
       if (moved.length === 0) return;
-      for (const c of moved) {
-        upsertElement(c);
-        reroutePendingRef.current.add(c.id);
-      }
+      upsertElements(moved);
+      for (const c of moved) reroutePendingRef.current.add(c.id);
       if (readOnlyRef.current) { reroutePendingRef.current.clear(); return; }
       if (rerouteTimerRef.current) clearTimeout(rerouteTimerRef.current);
       rerouteTimerRef.current = setTimeout(() => {
         const ids = [...reroutePendingRef.current];
         reroutePendingRef.current.clear();
-        const now = useCanvasStore.getState().elements;
-        for (const id of ids) {
-          const c = now.find((x) => x.id === id);
-          if (!c) continue;
-          rpcCall(contextId, "add_element", { element: c }).catch((err) => reportFailure.current("add_element", err));
-        }
+        const byId = new Map(useCanvasStore.getState().elements.map((x) => [x.id, x] as const));
+        const toSave = ids.map((id) => byId.get(id)).filter((c): c is Element => !!c);
+        // Moving a shape with many docked connectors reroutes all of them at
+        // once; save them as one batch rather than a request each.
+        void addElements(contextId, toSave, reportFailure.current);
       }, REROUTE_SAVE_MS);
-    }, [elements, upsertElement, contextId]);
+    }, [elements, upsertElements, contextId]);
 
     /* ── typing into a box / sticky ───────────────────────────────── */
     const editingEl = editingTextId ? elements.find((e) => e.id === editingTextId && isBoxText(e)) : undefined;
@@ -1508,6 +1538,11 @@ export default FabricCanvas;
  * One past the highest layer in use. `elements.length` collides after a delete —
  * two elements then share an index and paint order becomes sort-dependent.
  */
+/** A moved element's geometry as an `update_elements` patch. */
+function geometryPatch(el: Element): ElementPatch {
+  return { id: el.id, x: el.x, y: el.y, width: el.width, height: el.height, rotation: el.rotation };
+}
+
 function nextLayerIndex(elements: Element[]): number {
   return elements.reduce((max, e) => Math.max(max, e.layerIndex + 1), 0);
 }

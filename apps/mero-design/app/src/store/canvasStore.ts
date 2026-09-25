@@ -62,7 +62,11 @@ interface CanvasState {
   toggleSelected: (id: string) => void;
   setElements: (elements: Element[]) => void;
   upsertElement: (element: Element) => void;
+  /** `upsertElement` for a whole selection, as ONE store update (one canvas pass). */
+  upsertElements: (elements: Element[]) => void;
   removeElement: (id: string) => void;
+  /** `removeElement` for a whole selection, as ONE store update. */
+  removeElements: (ids: string[]) => void;
   setBackground: (bg: Background) => void;
   cacheImage: (elementId: string, dataUrl: string) => void;
   setPreviewMode: (v: boolean) => void;
@@ -138,8 +142,36 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       }
       return { elements: [...s.elements, element] };
     }),
+  // Per element, a paste of N shapes was N store updates — N re-renders and N
+  // canvas reconciles — each scanning the whole list: O(N²) before a single
+  // request left. These do the whole selection in one pass.
+  upsertElements: (incoming) =>
+    set((s) => {
+      if (incoming.length === 0) return {};
+      const byId = new Map(incoming.map((e) => [e.id, e] as const));
+      const next = s.elements.map((e) => {
+        const replacement = byId.get(e.id);
+        if (!replacement) return e;
+        byId.delete(e.id);
+        return replacement;
+      });
+      // What is left in the map is new — appended in the order it came.
+      // The map holds the LAST copy of each id, so a batch naming one twice
+      // ends with its latest version.
+      for (const e of incoming) {
+        const latest = byId.get(e.id);
+        if (latest) { next.push(latest); byId.delete(e.id); }
+      }
+      return { elements: next };
+    }),
   removeElement: (id) =>
     set((s) => ({ elements: s.elements.filter((e) => e.id !== id) })),
+  removeElements: (ids) =>
+    set((s) => {
+      if (ids.length === 0) return {};
+      const gone = new Set(ids);
+      return { elements: s.elements.filter((e) => !gone.has(e.id)) };
+    }),
   setBackground: (background) => set({ background }),
   cacheImage: (elementId, dataUrl) =>
     set((s) => ({ imageCache: { ...s.imageCache, [elementId]: dataUrl } })),

@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from "react";
 import { rpcCall } from "../api/rpc";
+import { deleteElements, updateElements } from "../api/elementBatch";
 import { countRender } from "../utils/renderCount";
 import { useShallow } from "zustand/react/shallow";
 import { useCanvasStore } from "../store/canvasStore";
@@ -66,7 +67,7 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
   // of those used to re-render the whole layers tree.
   const {
     selectedElementId, selectedElementIds, elements, elementLabels, imageCache, background,
-    collapsedGroups, upsertElement, removeElement, selectElement, selectElements, toggleSelected,
+    collapsedGroups, upsertElement, upsertElements, removeElement, removeElements, selectElement, selectElements, toggleSelected,
     setElementLabel, setElementLabels, toggleGroupCollapsed, cacheImage, snapshot, startTextEdit,
   } = useCanvasStore(
     useShallow((s) => ({
@@ -78,7 +79,9 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
       background: s.background,
       collapsedGroups: s.collapsedGroups,
       upsertElement: s.upsertElement,
+      upsertElements: s.upsertElements,
       removeElement: s.removeElement,
+      removeElements: s.removeElements,
       selectElement: s.selectElement,
       selectElements: s.selectElements,
       toggleSelected: s.toggleSelected,
@@ -182,21 +185,6 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
     await rpcCall(contextId, "add_element", { element: box }).catch((e) => reportFailure.current("add_element", e));
   }
 
-  /** Same shape as `update`, but for one specific element (bulk edits). */
-  function updateOne(target: Element, patch: Record<string, unknown>) {
-    if (readOnly) return;
-    const updated = { ...target, ...patch, updatedAt: Date.now() };
-    upsertElement(updated);
-    rpcCall(contextId, "update_element", {
-      id: target.id,
-      x: null, y: null, width: null, height: null,
-      rotation: null, fill: null, stroke: null,
-      stroke_width: null, opacity: null, corner_radius: null,
-      updated_at: updated.updatedAt,
-      ...Object.fromEntries(Object.entries(patch).map(([k, v]) => [toSnake(k), v])),
-    }).catch((e) => reportFailure.current("update_element", e));
-  }
-
   function updateTextStyle(patch: {
     content?: string;
     fontFamily?: string;
@@ -248,11 +236,12 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
   async function handleDeleteMany(ids: string[]) {
     if (readOnly || ids.length === 0) return;
     snapshot();
-    for (const id of ids) {
-      removeElement(id);
-      await rpcCall(contextId, "delete_element", { id }).catch((e) => reportFailure.current("delete_element", e));
-    }
+    // One store update and batched deletes sized to the board — this was a
+    // `delete_element` round-trip per layer, one after another.
+    const boardSize = elements.length;
+    removeElements(ids);
     selectElements([]);
+    await deleteElements(contextId, ids, boardSize, reportFailure.current);
   }
 
   async function handleBringToFront(targetEl?: Element) {
@@ -380,9 +369,10 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
         ...labelDeps,
         imageCache,
         cacheImage,
+        boardSize: elements.length,
         onFlattened: (created, removedIds) => {
           upsertElement(created);
-          removedIds.forEach(removeElement);
+          removeElements(removedIds);
           selectElement(created.id);
         },
       });
@@ -783,16 +773,23 @@ export default function PropertiesPanel({ contextId, readOnly = false }: Props) 
     const minY = Math.min(...selectedElements.map((e) => e.y));
     const maxY = Math.max(...selectedElements.map((e) => e.y + e.height));
     snapshot();
-    for (const target of selectedElements) {
+    const moved = (target: Element): { x?: number; y?: number } => {
       switch (edge) {
-        case "left":    updateOne(target, { x: Math.round(minX) }); break;
-        case "right":   updateOne(target, { x: Math.round(maxX - target.width) }); break;
-        case "hcenter": updateOne(target, { x: Math.round((minX + maxX) / 2 - target.width / 2) }); break;
-        case "top":     updateOne(target, { y: Math.round(minY) }); break;
-        case "bottom":  updateOne(target, { y: Math.round(maxY - target.height) }); break;
-        case "vmiddle": updateOne(target, { y: Math.round((minY + maxY) / 2 - target.height / 2) }); break;
+        case "left":    return { x: Math.round(minX) };
+        case "right":   return { x: Math.round(maxX - target.width) };
+        case "hcenter": return { x: Math.round((minX + maxX) / 2 - target.width / 2) };
+        case "top":     return { y: Math.round(minY) };
+        case "bottom":  return { y: Math.round(maxY - target.height) };
+        case "vmiddle": return { y: Math.round((minY + maxY) / 2 - target.height / 2) };
       }
-    }
+    };
+    // One edit, one batch: this fired an `update_element` per selected
+    // element, all at once.
+    const updatedAt = Date.now();
+    const patches = selectedElements.map((target) => ({ id: target.id, ...moved(target) }));
+    const byId = new Map(patches.map((p) => [p.id, p] as const));
+    upsertElements(selectedElements.map((target) => ({ ...target, ...byId.get(target.id), updatedAt })));
+    void updateElements(contextId, patches, updatedAt, reportFailure.current);
   }
 
   const multiPanel = (
