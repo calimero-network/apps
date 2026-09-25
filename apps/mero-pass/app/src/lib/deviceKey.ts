@@ -211,10 +211,17 @@ export class DeviceKeeper {
    *
    * A non-extractable key cannot be sealed, so setting a PIN mints a NEW device
    * key (extractable just long enough to seal it) and returns its fingerprint.
-   * The caller must register the new key in every vault and have a key holder
-   * wrap to it — the old key's wraps stop being reachable from this browser.
+   *
+   * ⚠️ `handOver` RUNS BEFORE THE NEW KEY REPLACES THE OLD ONE, and must move
+   * every vault key the old device holds onto the new one (`migrateDevice`).
+   * The old key is gone once this returns, so for a personal vault used from
+   * one browser a skipped hand-over is a vault nobody can open again. If it
+   * throws, nothing is stored and the old key stays.
    */
-  async setPin(pin: string): Promise<string> {
+  async setPin(
+    pin: string,
+    handOver: (next: DeviceKeyPair, nextFingerprint: string) => Promise<void>,
+  ): Promise<string> {
     if (pin.length < 4) throw new Error('Use at least 4 characters.');
     const pair = (await crypto.subtle.generateKey(
       { name: 'ECDH', namedCurve: 'P-256' },
@@ -236,6 +243,17 @@ export class DeviceKeeper {
         pkcs8,
       ),
     );
+    const next: DeviceKeyPair = {
+      privateKey: await importPrivate(pkcs8),
+      publicRaw,
+    };
+    const nextFp = await fingerprintOf(publicRaw);
+    try {
+      await handOver(next, nextFp);
+    } catch (e) {
+      pkcs8.fill(0);
+      throw e;
+    }
     await this.store.put({
       kind: 'pin',
       sealed: toB64(sealed),
@@ -244,9 +262,9 @@ export class DeviceKeeper {
       publicRaw,
       createdAt: Date.now(),
     });
-    this.unlocked = { privateKey: await importPrivate(pkcs8), publicRaw };
+    this.unlocked = next;
     pkcs8.fill(0);
-    this.fp = await fingerprintOf(publicRaw);
+    this.fp = nextFp;
     this.emit();
     return this.fp;
   }

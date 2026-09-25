@@ -7,7 +7,9 @@ import {
   AUTO_LOCK_CHOICES,
   useAutoLockMinutes,
 } from '../../hooks/useDeviceLock';
-import { deviceKeeper } from '../../lib/deviceKey';
+import { useApplicationId } from '../../hooks/useApplicationId';
+import { deviceKeeper, deviceLabel } from '../../lib/deviceKey';
+import { migrateDevice } from '../../lib/vaults';
 import shell from '../../styles/shell.module.css';
 
 interface NodeDevice {
@@ -30,6 +32,7 @@ interface NodeDevice {
  */
 export default function SecurityPage() {
   const { mero } = useMero();
+  const { appId } = useApplicationId();
   const [minutes, setMinutes] = useAutoLockMinutes();
   const [hasPin, setHasPin] = useState<boolean | null>(null);
   const [pin, setPin] = useState('');
@@ -55,12 +58,27 @@ export default function SecurityPage() {
   const savePin = async () => {
     setError(null);
     if (pin !== pin2) return setError('The two PINs do not match.');
+    const old = deviceKeeper.device;
+    const oldFp = deviceKeeper.fingerprint;
+    if (!mero || !appId || !old || !oldFp) return;
     try {
-      await deviceKeeper.setPin(pin);
+      let moved = 0;
+      // The new key only replaces the old one once every vault key has been
+      // wrapped to it — see `DeviceKeeper.setPin`.
+      await deviceKeeper.setPin(pin, async (next, nextFp) => {
+        moved = await migrateDevice(
+          mero,
+          appId,
+          { device: old, fingerprint: oldFp },
+          { device: next, fingerprint: nextFp },
+          deviceLabel(),
+          setStatus,
+        );
+      });
       setPin('');
       setPin2('');
       setStatus(
-        'PIN set. This browser has a new device key: open each vault once so it registers, and a member who holds the key will hand it over.',
+        `PIN set. ${moved} vault key(s) moved to this browser's new device key.`,
       );
       await load();
     } catch (e) {

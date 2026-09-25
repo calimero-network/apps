@@ -34,7 +34,7 @@ describe('DeviceKeeper', () => {
   it('with a PIN, stores nothing usable and needs the PIN to unlock', async () => {
     const store = memoryStore();
     const keeper = new DeviceKeeper(store);
-    const fp = await keeper.setPin('2468');
+    const fp = await keeper.setPin('2468', async () => {});
     expect(await keeper.hasPin()).toBe(true);
     expect(JSON.stringify(store.value)).not.toContain('privateKey');
 
@@ -54,6 +54,20 @@ describe('DeviceKeeper', () => {
 
   it('refuses a PIN that is too short', async () => {
     const keeper = new DeviceKeeper(memoryStore());
-    await expect(keeper.setPin('12')).rejects.toThrow();
+    await expect(keeper.setPin('12', async () => {})).rejects.toThrow();
+  });
+
+  it('keeps the old key when the hand-over fails', async () => {
+    const store = memoryStore();
+    const keeper = new DeviceKeeper(store);
+    await keeper.unlock();
+    const before = keeper.fingerprint;
+    await expect(
+      keeper.setPin('2468', async () => {
+        throw new Error('node down');
+      }),
+    ).rejects.toThrow('node down');
+    expect(await keeper.hasPin()).toBe(false);
+    expect(keeper.fingerprint).toBe(before);
   });
 });

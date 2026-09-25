@@ -343,6 +343,28 @@ describe('VaultSession', () => {
     expect(vault.roles.get(BOB)).toBe('editor');
   });
 
+  it('hands every key over to a new key pair for the same browser', async () => {
+    const vault = new FakeVault(ALICE);
+    const alice = await person(vault, ALICE);
+    await alice.session.open();
+    await alice.session.add({
+      kind: 'login',
+      name: 'Old',
+      tags: [],
+      fields: { password: 'o' },
+    });
+    await alice.session.rotate(null);
+
+    const next = await generateDeviceKey();
+    const nextFp = await fingerprintOf(next.publicRaw);
+    expect(await alice.session.handOver(next, nextFp, 'pin')).toBe(2);
+
+    const after = new VaultSession(vault.as(ALICE), next, nextFp, 'pin');
+    expect(await after.open()).toBe('ready');
+    expect(after.keyring.size).toBe(2);
+    expect((await after.list())[0].fields.password).toBe('o');
+  });
+
   it('a viewer is told it cannot write', async () => {
     const vault = new FakeVault(ALICE);
     vault.defaultRole = 'viewer';

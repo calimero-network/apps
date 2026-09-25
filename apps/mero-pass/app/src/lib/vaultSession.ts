@@ -362,6 +362,37 @@ export class VaultSession {
     return done;
   }
 
+  /**
+   * Give every key this device holds to `next`, a new key pair for the same
+   * browser (see `DeviceKeeper.setPin`). Registers `next` and wraps each key
+   * in the keyring to it — old keys too, so history stays readable. Returns
+   * how many keys were handed over.
+   */
+  async handOver(
+    next: DeviceKeyPair,
+    nextFingerprint: string,
+    label: string,
+  ): Promise<number> {
+    await this.api.registerDevice(
+      nextFingerprint,
+      toB64(next.publicRaw),
+      label,
+    );
+    const wraps: WrapRecord[] = [];
+    for (const keyId of this.keyring.ids()) {
+      const key = this.keyring.get(keyId);
+      if (!key) continue;
+      wraps.push({
+        key_id: keyId,
+        recipient: nextFingerprint,
+        wrapper: this.fingerprint,
+        envelope: await wrapVaultKey(key, next.publicRaw),
+      });
+    }
+    if (wraps.length) await this.api.addKeyWraps(wraps);
+    return wraps.length;
+  }
+
   // ── Secrets ─────────────────────────────────────────────────────────────
 
   private async open1(

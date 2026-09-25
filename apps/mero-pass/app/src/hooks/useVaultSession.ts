@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMero, useSubscription } from '@calimero-network/mero-react';
 
 import { deviceKeeper, deviceLabel } from '../lib/deviceKey';
@@ -100,7 +100,9 @@ export function useVaultSession(
   }, [reload]);
 
   // Live: any contract event in this vault means something changed.
-  useSubscription(contextId ? [contextId] : [], () => {
+  // Memoised: a fresh array each render would resubscribe every render.
+  const subscribed = useMemo(() => (contextId ? [contextId] : []), [contextId]);
+  useSubscription(subscribed, () => {
     void reload();
   });
 

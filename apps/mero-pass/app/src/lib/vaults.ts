@@ -70,6 +70,11 @@ import {
 } from './inviteCodec';
 import { markNamespaceJustJoined } from '@calimero-apps/join-sync';
 
+import { MeroPassClient } from '../generated/MeroPassClient';
+import type { DeviceKeyPair } from './crypto';
+import { vaultApiFor } from './vaultApi';
+import { VaultSession } from './vaultSession';
+
 /** The admin client, as `useMero().mero.admin` provides it. */
 export type AdminLike = MeroJs['admin'];
 
@@ -1475,4 +1480,43 @@ export async function vaultAudience(
   } catch {
     return null;
   }
+}
+
+// ── Moving to a new device key ───────────────────────────────────────────────
+
+/**
+ * Hand every vault key `old` can open over to `next`, across all of this
+ * app's vaults this node has joined. Used by `DeviceKeeper.setPin`, BEFORE the
+ * old key is discarded.
+ *
+ * A vault this device cannot open (still waiting for its key) has nothing to
+ * hand over and is skipped; any other failure throws, so the PIN change
+ * aborts and the old key stays.
+ */
+export async function migrateDevice(
+  mero: { admin: AdminLike } & ConstructorParameters<typeof MeroPassClient>[0],
+  applicationId: string,
+  old: { device: DeviceKeyPair; fingerprint: string },
+  next: { device: DeviceKeyPair; fingerprint: string },
+  label: string,
+  onStatus: StatusFn = noop,
+): Promise<number> {
+  let moved = 0;
+  const teams = await listTeams(mero.admin, applicationId);
+  for (const team of teams) {
+    const vaults = await listVaults(mero.admin, team.namespaceId);
+    for (const v of vaults) {
+      if (!v.contextId || !v.joined) continue;
+      onStatus(`Moving the key for ${v.name}…`);
+      const session = new VaultSession(
+        vaultApiFor(new MeroPassClient(mero, v.contextId)),
+        old.device,
+        old.fingerprint,
+        label,
+      );
+      if ((await session.open()) !== 'ready') continue;
+      moved += await session.handOver(next.device, next.fingerprint, label);
+    }
+  }
+  return moved;
 }
