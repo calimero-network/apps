@@ -330,6 +330,9 @@ jobs:
       - name: Assert each live deployment is the app this repo builds
         run: python3 scripts/check-live-frontends.py
 
+      - name: Assert the live-frontend history survives an app rename
+        run: python3 scripts/tests/live-frontends-history-test.py
+
       # The matrix resolver decides what the rest of this file runs, and both of
       # its wrong answers are silent — too broad only costs money, too narrow
       # skips an app with nothing to notice. So its rules are tested.
