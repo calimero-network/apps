@@ -88,3 +88,12 @@ describe('notes', () => {
     expect(isNoop(p)).toBe(false);
   });
 });
+
+describe('roles and protections', () => {
+  it('re-reads the roster on a role change and the protections on a protection change', () => {
+    expect(partial(planFor(mutation(['RolesChanged', { member_id: 'ada' }]))).members).toBe(true);
+    const p = partial(planFor(mutation(['ProtectionsChanged', { sheet_id: 's1' }])));
+    expect(p.protections).toBe(true);
+    expect(p.sheets.size).toBe(0);
+  });
+});

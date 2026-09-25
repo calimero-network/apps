@@ -24,6 +24,9 @@ export function describeError(err: unknown): string {
   if (top) parts.push(top);
 
   const detail = extractDetail(e.data);
+  // A bare error type ("FunctionCallError") says less than the contract's own
+  // message ("forbidden: A1 is in a protected range"): show just the message.
+  if (detail && /^[A-Z][A-Za-z]*Error$/.test(top)) return capitalize(detail);
   if (detail && !parts.some((p) => p.includes(detail))) parts.push(detail);
 
   if (parts.length === 0 && typeof e.type === 'string') parts.push(e.type);
@@ -58,6 +61,15 @@ function formatContractError(text: string): string {
  * decoded, formatted contract error — and drop the noisy wrapper prefix.
  */
 function cleanString(s: string): string {
+  // A JSON string literal (the node quotes a contract's error message).
+  if (/^".*"$/s.test(s.trim())) {
+    try {
+      const inner: unknown = JSON.parse(s.trim());
+      if (typeof inner === 'string') return inner;
+    } catch {
+      /* not JSON after all */
+    }
+  }
   const match = s.match(/\[\s*\d+(?:\s*,\s*\d+)*\s*\]/);
   if (match) {
     try {
@@ -97,4 +109,8 @@ function extractDetail(data: unknown): string | null {
     }
   }
   return String(data);
+}
+
+function capitalize(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }

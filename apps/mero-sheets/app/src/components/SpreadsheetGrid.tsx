@@ -41,6 +41,8 @@ interface SpreadsheetGridProps {
   commented: ReadonlySet<string>;
   /** "row-col" → the start of that cell's note; noted cells get a mark. */
   notes: ReadonlyMap<string, string>;
+  /** Protected ranges on this sheet; `allowed` ones this user may still edit. */
+  protectedRanges: readonly { rect: Rect; allowed: boolean }[];
   selectedCell: CellCoord | null;
   /** Committed multi-cell selection (column/row/range), highlighted. */
   selectionRange: Rect | null;
@@ -77,6 +79,7 @@ function SpreadsheetGrid({
   editedBy,
   commented,
   notes,
+  protectedRanges,
   selectedCell,
   selectionRange,
   editingValue,
@@ -456,6 +459,7 @@ function SpreadsheetGrid({
                     $inRange={inRange && !isSelected}
                     $inFillTarget={inFillTarget}
                     $copied={copiedKind}
+                    $locked={lockAt(protectedRanges, row, col)}
                     aria-selected={isSelected}
                     role="gridcell"
                     onContextMenu={(e) => {
@@ -492,6 +496,17 @@ function SpreadsheetGrid({
 }
 
 export default memo(SpreadsheetGrid);
+
+/** How a cell shows protection: stopped for this user, protected but theirs, or not. */
+function lockAt(ranges: readonly { rect: Rect; allowed: boolean }[], row: number, col: number): 'blocked' | 'allowed' | undefined {
+  let found: 'blocked' | 'allowed' | undefined;
+  for (const { rect, allowed } of ranges) {
+    if (row < rect.top || row > rect.bottom || col < rect.left || col > rect.right) continue;
+    if (!allowed) return 'blocked';
+    found = 'allowed';
+  }
+  return found;
+}
 
 /** A cell's tooltip: its raw value, who last edited it, and its note. */
 function cellTitle(ref: string, cell: Cell | undefined, editedBy: (cell: Cell) => string | null, note: string | undefined) {
@@ -576,7 +591,7 @@ const RowTh = styled.td<{ $selected: boolean }>`
   &:hover { background: rgba(164,255,17,0.10); }
 `;
 
-const DataCell = styled.td<{ $selected: boolean; $cursorColor?: string; $peerTint?: string; $inRange?: boolean; $inFillTarget?: boolean; $copied?: 'copy' | 'cut' }>`
+const DataCell = styled.td<{ $selected: boolean; $cursorColor?: string; $peerTint?: string; $inRange?: boolean; $inFillTarget?: boolean; $copied?: 'copy' | 'cut'; $locked?: 'blocked' | 'allowed' }>`
   height: 24px;
   min-width: 60px;
   max-width: 200px;
@@ -622,6 +637,8 @@ const DataCell = styled.td<{ $selected: boolean; $cursorColor?: string; $peerTin
     `
     background: rgba(164, 255, 17, 0.12);
   `}
+
+  ${(p) => p.$locked && `background-image: repeating-linear-gradient(135deg, transparent 0 6px, ${p.$locked === 'blocked' ? 'rgba(128, 128, 128, 0.16)' : 'rgba(164, 255, 17, 0.08)'} 6px 7px);`}
 
   ${(p) => p.$inFillTarget && `outline: 1px dashed ${C.green}; outline-offset: -1px;`}
 

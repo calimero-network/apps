@@ -26,7 +26,7 @@ import { useStreamReconnect } from './useStreamReconnect';
 import { SpreadsheetClient } from '../api/spreadsheet/SpreadsheetClient';
 import type {
   Sheet, FunctionDef, Member, Project, NamedRange, SheetLayout, AxisOpPayload, ActivityEntry, Comment,
-  NotedCell, NoteChangePayload,
+  NotedCell, NoteChangePayload, Protection,
 } from '../api/spreadsheet/SpreadsheetClient';
 import { AxisOp as AxisOpWire, CellOp as CellOpWire } from '../api/spreadsheet/SpreadsheetClient';
 import { chunkOps, MAX_OPS_PER_APPLY, type CellOp } from '../spreadsheet/ops';
@@ -60,7 +60,7 @@ type IdOp =
 const EVENT_COALESCE_MS = 60;
 
 // Re-export domain types so components import from one place
-export type { Sheet, FunctionDef, Member, Project, NamedRange, ActivityEntry, Comment, NotedCell };
+export type { Sheet, FunctionDef, Member, Project, NamedRange, ActivityEntry, Comment, NotedCell, Protection };
 
 // ── Hook interfaces ──────────────────────────────────────────────────────────
 
@@ -139,6 +139,17 @@ export interface UseSpreadsheetReturn {
   loadNote: (sheetId: string, rowId: string, colId: string) => Promise<Span[]>;
   /** One note edit: text and formatting, as a delta. */
   editNote: (sheetId: string, rowId: string, colId: string, ops: NoteOp[]) => Promise<void>;
+  /** Protected ranges, by corner ids. */
+  protections: Protection[];
+  /** Set a member's workbook role (owners only). */
+  setRole: (memberId: string, role: string) => Promise<void>;
+  /** Protect a range (`null` for the whole sheet); `editors` may still edit it. */
+  protectRange: (sheetId: string, rect: Rect | null, description: string, editors: string[]) => Promise<void>;
+  updateProtection: (id: string, description: string, editors: string[]) => Promise<void>;
+  removeProtection: (id: string) => Promise<void>;
+  /** Why the node last refused a write (a protected range, a role), until dismissed. */
+  writeError: unknown;
+  dismissWriteError: () => void;
   /** The activity log for the last `days` days, newest first. */
   loadActivity: (days: number) => Promise<ActivityEntry[]>;
   /** Where a cell id sits now (`null` when its row/column is gone). */
@@ -195,6 +206,9 @@ export function useSpreadsheet({
   const [comments, setComments] = useState<Comment[]>([]);
   const [mentions, setMentions] = useState<Mention[]>([]);
   const [notedCells, setNotedCells] = useState<NotedCell[]>([]);
+  const [protections, setProtections] = useState<Protection[]>([]);
+  // Why the node last refused a write, until dismissed.
+  const [writeError, setWriteError] = useState<unknown>(null);
   const applyStructureTo = useCallback((layouts: SheetLayout[], named: NamedRange[]) => {
     layoutsRef.current = layouts;
     namesRef.current = named;
@@ -328,7 +342,7 @@ export function useSpreadsheet({
     try {
       const [
         fetchedSheets, allCells,
-        fetchedMembers, fetchedProject, me, layouts, named, fetchedComments, noted,
+        fetchedMembers, fetchedProject, me, layouts, named, fetchedComments, noted, prots,
       ] = await Promise.all([
         client.listSheets(),
         client.getAllCells(),
@@ -339,8 +353,10 @@ export function useSpreadsheet({
         client.getNamedRanges(),
         client.getComments(),
         client.getNotedCells(),
+        client.getProtections(),
       ]);
       applyStructureTo(layouts, named);
+      setProtections(prots);
       setComments(fetchedComments);
       setNotedCells(noted);
       snapshotRef.current = snapshotFromCells(allCells);
@@ -398,7 +414,7 @@ export function useSpreadsheet({
     const active = activeSheetIdRef.current;
     if (sheetIds.size > 0 && active) sheetIds.add(active);
     const ids = [...sheetIds];
-    const [bySheet, fetchedSheets, fetchedMembers, layouts, named, fetchedComments, noted] = await Promise.all([
+    const [bySheet, fetchedSheets, fetchedMembers, layouts, named, fetchedComments, noted, prots] = await Promise.all([
       Promise.all(ids.map((id) => client.getCells({ sheet_id: id }))),
       plan.sheetList ? client.listSheets() : null,
       plan.members ? client.getMembers() : null,
@@ -406,7 +422,9 @@ export function useSpreadsheet({
       plan.names ? client.getNamedRanges() : null,
       plan.comments ? client.getComments() : null,
       plan.notes ? client.getNotedCells() : null,
+      plan.protections ? client.getProtections() : null,
     ]);
+    if (prots) setProtections(prots);
     if (fetchedComments) setComments(fetchedComments);
     if (noted) setNotedCells(noted);
     if (layouts || named) applyStructureTo(layouts ?? layoutsRef.current, named ?? namesRef.current);
@@ -464,7 +482,7 @@ export function useSpreadsheet({
     const forMe = mentionsIn(event).filter((m) => me && m.author !== me && m.mentions.includes(me));
     if (forMe.length) setMentions((prev) => [...prev, ...forMe.filter((m) => !prev.some((p) => p.commentId === m.commentId))]);
   });
-  useEffect(() => { setMentions([]); setComments([]); setNotedCells([]); }, [client]);
+  useEffect(() => { setMentions([]); setComments([]); setNotedCells([]); setProtections([]); setWriteError(null); }, [client]);
   // …and after the stream reconnects: nothing replays what changed while it was down.
   useStreamReconnect(() => schedule({ full: true }));
 
@@ -519,6 +537,11 @@ export function useSpreadsheet({
     redoStack.current = [];
     setDepth({ undo: undoStack.current.length, redo: 0 });
   }, []);
+  /** Take back a step the node refused, so undo does not replay it. */
+  const unrecord = useCallback((entry: UndoEntry) => {
+    undoStack.current = undoStack.current.filter((e) => e !== entry);
+    setDepth({ undo: undoStack.current.length, redo: redoStack.current.length });
+  }, []);
   useEffect(() => {
     undoStack.current = [];
     redoStack.current = [];
@@ -538,6 +561,7 @@ export function useSpreadsheet({
   const writeCells = useCallback(
     async (sheetId: string, ops: IdOp[], track: boolean) => {
       if (!client || ops.length === 0) return;
+      let entry: UndoEntry | null = null;
       if (track) {
         const changes = new Map<string, { row_id: string; col_id: string; before: CellState; after: CellState }>();
         for (const op of ops) {
@@ -549,7 +573,8 @@ export function useSpreadsheet({
             : { raw_value: '', format: '' };
           changes.set(key, { ...prev, after });
         }
-        record({ kind: 'cells', sheetId, changes: [...changes.values()] });
+        entry = { kind: 'cells', sheetId, changes: [...changes.values()] };
+        record(entry);
       }
       applyOverlay(sheetId, ops.map((op) =>
         op.kind === 'Set' ? { row_id: op.row_id, col_id: op.col_id, raw_value: op.raw_value }
@@ -562,14 +587,23 @@ export function useSpreadsheet({
           : op.kind === 'Format'
             ? CellOpWire.Format({ row_id: op.row_id, col_id: op.col_id, format: op.format })
             : CellOpWire.Clear({ row_id: op.row_id, col_id: op.col_id }));
-      await enqueue(async () => {
-        for (const chunk of chunkOps(wire)) {
-          await client.applyCellOps({ sheet_id: sheetId, ops: chunk });
-        }
-      });
+      try {
+        await enqueue(async () => {
+          for (const chunk of chunkOps(wire)) {
+            await client.applyCellOps({ sheet_id: sheetId, ops: chunk });
+          }
+        });
+      } catch (err) {
+        // The node refused (a protected range, a viewer's role): show what it
+        // holds again, and say why.
+        for (const op of ops) overlayRef.current.delete(cellKey(sheetId, op.row_id, op.col_id));
+        if (entry) unrecord(entry);
+        deriveAndSet();
+        setWriteError(err);
+      }
       // No refresh() here — the subscription refresh reconciles + retires.
     },
-    [client, applyOverlay, enqueue, record],
+    [client, applyOverlay, enqueue, record, unrecord, deriveAndSet],
   );
 
   const setCell = useCallback(
@@ -622,9 +656,11 @@ export function useSpreadsheet({
   const commitAxis = useCallback(
     async (sheetId: string, axis: Axis, added: AxisEntry[], ops: AxisOpPayload[], track: boolean) => {
       if (!client || ops.length === 0) return;
-      if (track) {
-        record({ kind: 'axis', sheetId, axis, ids: added.map((e) => e.id), inserted: !added[0]?.deleted });
-      }
+      const entry: UndoEntry | null = track
+        ? { kind: 'axis', sheetId, axis, ids: added.map((e) => e.id), inserted: !added[0]?.deleted }
+        : null;
+      if (entry) record(entry);
+      const before = layoutsRef.current;
       const layouts = layoutsRef.current.some((l) => l.sheet_id === sheetId)
         ? layoutsRef.current
         : [...layoutsRef.current, { sheet_id: sheetId, rows: [], cols: [] }];
@@ -638,13 +674,20 @@ export function useSpreadsheet({
         namesRef.current,
       );
       deriveAndSet();
-      await enqueue(async () => {
-        for (let i = 0; i < ops.length; i += MAX_OPS_PER_APPLY) {
-          await client.applyAxisOps({ sheet_id: sheetId, ops: ops.slice(i, i + MAX_OPS_PER_APPLY) });
-        }
-      });
+      try {
+        await enqueue(async () => {
+          for (let i = 0; i < ops.length; i += MAX_OPS_PER_APPLY) {
+            await client.applyAxisOps({ sheet_id: sheetId, ops: ops.slice(i, i + MAX_OPS_PER_APPLY) });
+          }
+        });
+      } catch (err) {
+        applyStructureTo(before, namesRef.current);
+        if (entry) unrecord(entry);
+        deriveAndSet();
+        setWriteError(err);
+      }
     },
-    [client, enqueue, deriveAndSet, applyStructureTo, record],
+    [client, enqueue, deriveAndSet, applyStructureTo, record, unrecord],
   );
 
   const insertAxis = useCallback(
@@ -830,6 +873,62 @@ export function useSpreadsheet({
     [client, enqueue],
   );
 
+  // Roles and protections change rarely: write, then re-read the one list.
+  const setRole = useCallback(
+    async (memberId: string, role: string) => {
+      if (!client) return;
+      await enqueue(() => client.setRole({ member_id: memberId, role }));
+      setMembers(await client.getMembers());
+    },
+    [client, enqueue],
+  );
+  const protectionAction = useCallback(
+    async (write: () => Promise<unknown>) => {
+      if (!client) return;
+      await enqueue(write);
+      setProtections(await client.getProtections());
+    },
+    [client, enqueue],
+  );
+  const protectRange = useCallback(
+    async (sheetId: string, rect: Rect | null, description: string, editors: string[]) => {
+      const tl = rect ? idsAt(sheetId, rect.top, rect.left) : null;
+      const br = rect ? idsAt(sheetId, rect.bottom, rect.right) : null;
+      if (rect && (!tl || !br)) return;
+      await protectionAction(() => client!.protectRange({
+        sheet_id: sheetId,
+        top_row_id: tl?.row_id ?? '',
+        left_col_id: tl?.col_id ?? '',
+        bottom_row_id: br?.row_id ?? '',
+        right_col_id: br?.col_id ?? '',
+        description,
+        editors,
+      }));
+    },
+    [client, protectionAction],
+  );
+  const updateProtection = useCallback(
+    (id: string, description: string, editors: string[]) =>
+      protectionAction(() => client!.updateProtection({ id, description, editors })),
+    [client, protectionAction],
+  );
+  const removeProtection = useCallback(
+    (id: string) => protectionAction(() => client!.removeProtection({ id })),
+    [client, protectionAction],
+  );
+  const dismissWriteError = useCallback(() => setWriteError(null), []);
+
+  // A member who joined before accounts were recorded: record theirs, so the
+  // People panel can match them to the group roster. Once per workbook.
+  const backfilled = useRef(false);
+  useEffect(() => { backfilled.current = false; }, [client]);
+  useEffect(() => {
+    const me = members.find((m) => m.id === selfId);
+    if (!client || !me || me.account || backfilled.current) return;
+    backfilled.current = true;
+    void enqueue(() => client.join({ nickname: me.nickname })).catch(() => undefined);
+  }, [client, members, selfId, enqueue]);
+
   const loadActivity = useCallback(async (days: number): Promise<ActivityEntry[]> => {
     if (!client) return [];
     // Nanoseconds; a float's precision loss here is well under a second.
@@ -896,6 +995,13 @@ export function useSpreadsheet({
     notedCells,
     loadNote,
     editNote,
+    protections,
+    setRole,
+    protectRange,
+    updateProtection,
+    removeProtection,
+    writeError,
+    dismissWriteError,
     loadActivity,
     refOf,
     idsOf: idsAt,

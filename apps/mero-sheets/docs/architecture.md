@@ -104,6 +104,35 @@ and rebases the edit over whatever a collaborator changed since
 not in the activity log or the undo stack: a note is its own document, edited
 continuously.
 
+## Who may do what
+
+Two layers, each enforced where it can be:
+
+- **Workspace access is core's.** A workspace is a namespace (a root group);
+  an invitation makes someone a member of it, and so of every spreadsheet in
+  it. Core's group roles govern that: an *Admin* manages people, a *Member*
+  reads and writes, and *Read only* is refused by every node, both when the
+  member executes and when their deltas arrive at peers. Removing a member
+  takes them out of every spreadsheet in the workspace and rotates the group
+  key: they keep what they already synced and receive nothing written after.
+  Their later writes are refused by core ("no owned identity"). The app
+  drives this from the People panel through the admin API.
+- **Workbook roles and protected ranges are the contract's.** Each member has
+  a role in the workbook (`roles`): *owner*, *editor* (the default),
+  *commenter* or *viewer*; the creator is the first owner, and a workbook
+  made before roles existed can be claimed by any editor. A protected range
+  (`protections`) names its corner row and column ids (or none, for a whole
+  sheet), so it follows its cells as rows and columns move; only owners and
+  the members it lists may change cells inside it, delete rows or columns
+  through it, or rename and delete a protected sheet. Every write method
+  checks these before touching state, on the node making the change.
+
+The contract check runs on the author's node, so it binds every client that
+runs this contract; it cannot stop a node that runs modified code, which is
+what core's Read only role is for. Each member's account (`accounts`) is
+recorded when they join, which is how the app lines up the contract's
+roster, keyed by device, with core's, keyed by account.
+
 ## Derive-on-read
 
 If values aren't stored, they have to be produced somehow when a peer asks

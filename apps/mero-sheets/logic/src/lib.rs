@@ -182,6 +182,121 @@ impl Mergeable for MemberData {
     }
 }
 
+/// The account a device belongs to (hex): the id core's group roster and
+/// member removal use. A device's account never changes.
+#[app::mergeable(id = "mero_sheets::AccountData")]
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, AbiType)]
+#[borsh(crate = "calimero_sdk::borsh")]
+pub struct AccountData {
+    pub account: String,
+}
+
+impl Mergeable for AccountData {
+    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        if other.account > self.account {
+            self.account = other.account.clone();
+        }
+        Ok(())
+    }
+}
+
+/// A member's role in this workbook. Keyed by member (device) id.
+#[app::mergeable(id = "mero_sheets::RoleData")]
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, AbiType)]
+#[borsh(crate = "calimero_sdk::borsh")]
+pub struct RoleData {
+    /// `owner`, `editor`, `commenter` or `viewer`.
+    pub role: String,
+    /// Who set it.
+    pub by: String,
+    pub updated_at: u64,
+}
+
+impl Mergeable for RoleData {
+    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        if (other.updated_at, &other.role) > (self.updated_at, &self.role) {
+            self.role = other.role.clone();
+            self.by = other.by.clone();
+            self.updated_at = other.updated_at;
+        }
+        Ok(())
+    }
+}
+
+/// A protected range: only owners and the listed editors may change its cells.
+/// Corners are row and column ids, so the range follows its cells as rows and
+/// columns move; all four empty protects the whole sheet. Keyed by id.
+#[app::mergeable(id = "mero_sheets::ProtectionData")]
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, AbiType)]
+#[borsh(crate = "calimero_sdk::borsh")]
+pub struct ProtectionData {
+    pub sheet_id: String,
+    pub top_row_id: String,
+    pub left_col_id: String,
+    pub bottom_row_id: String,
+    pub right_col_id: String,
+    pub description: String,
+    /// Member ids allowed to edit it besides owners.
+    pub editors: Vec<String>,
+    pub created_by: String,
+    pub deleted: bool,
+    pub updated_at: u64,
+}
+
+impl Mergeable for ProtectionData {
+    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        // Description, editors and deleted change together, last writer wins;
+        // the range is fixed when it is made.
+        if (
+            other.updated_at,
+            other.deleted,
+            &other.editors,
+            &other.description,
+        ) > (
+            self.updated_at,
+            self.deleted,
+            &self.editors,
+            &self.description,
+        ) {
+            self.description = other.description.clone();
+            self.editors = other.editors.clone();
+            self.deleted = other.deleted;
+            self.updated_at = other.updated_at;
+        }
+        Ok(())
+    }
+}
+
+/// What a role may do.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum Role {
+    Viewer,
+    Commenter,
+    Editor,
+    Owner,
+}
+
+impl Role {
+    fn parse(s: &str) -> Option<Role> {
+        Some(match s {
+            "owner" => Role::Owner,
+            "editor" => Role::Editor,
+            "commenter" => Role::Commenter,
+            "viewer" => Role::Viewer,
+            _ => return None,
+        })
+    }
+
+    fn as_str(self) -> &'static str {
+        match self {
+            Role::Owner => "owner",
+            Role::Editor => "editor",
+            Role::Commenter => "commenter",
+            Role::Viewer => "viewer",
+        }
+    }
+}
+
 /// One row or column added to a sheet, or one deleted. Keyed by
 /// `"{sheet_id}|r|{id}"` / `"{sheet_id}|c|{id}"`; see the recalc crate's
 /// `layout` module for how entries order a sheet.
@@ -433,6 +548,26 @@ pub struct Member {
     pub nickname: String,
     pub joined_at: u64,
     pub updated_at: u64,
+    /// The member's account (hex), as core's group roster names them; empty
+    /// until they have joined under this version.
+    pub account: String,
+    /// `owner`, `editor`, `commenter` or `viewer`.
+    pub role: String,
+}
+
+/// A live protected range.
+#[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct Protection {
+    pub id: String,
+    pub sheet_id: String,
+    pub top_row_id: String,
+    pub left_col_id: String,
+    pub bottom_row_id: String,
+    pub right_col_id: String,
+    pub description: String,
+    pub editors: Vec<String>,
+    pub created_by: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
@@ -651,6 +786,15 @@ pub struct Spreadsheet {
     /// character by character.
     #[migrate(new = UnorderedMap::new_with_field_name("spreadsheet:notes"))]
     notes: UnorderedMap<String, RichText<DefaultMarks>>,
+    /// Each member's account, keyed by member (device) id.
+    #[migrate(new = UnorderedMap::new_with_field_name("spreadsheet:accounts"))]
+    accounts: UnorderedMap<String, AccountData>,
+    /// Workbook roles, keyed by member id. A member without one is an editor.
+    #[migrate(new = UnorderedMap::new_with_field_name("spreadsheet:roles"))]
+    roles: UnorderedMap<String, RoleData>,
+    /// Protected ranges, keyed by id.
+    #[migrate(new = UnorderedMap::new_with_field_name("spreadsheet:protections"))]
+    protections: UnorderedMap<String, ProtectionData>,
 }
 
 /// The v1 state, read once by the v2 migration.
@@ -685,6 +829,9 @@ impl Spreadsheet {
             activity: SortedMap::new_with_field_name("spreadsheet:activity"),
             comments: UnorderedMap::new_with_field_name("spreadsheet:comments"),
             notes: UnorderedMap::new_with_field_name("spreadsheet:notes"),
+            accounts: UnorderedMap::new_with_field_name("spreadsheet:accounts"),
+            roles: UnorderedMap::new_with_field_name("spreadsheet:roles"),
+            protections: UnorderedMap::new_with_field_name("spreadsheet:protections"),
         }
     }
 
@@ -704,6 +851,19 @@ impl Spreadsheet {
         self.project_id.set(id.clone());
         self.project_name.set(name.clone());
         self.project_created_at.set(now);
+        // Whoever creates the workbook owns it.
+        let me = self.caller_hex();
+        self.record_account(&me)?;
+        self.roles
+            .insert(
+                me.clone(),
+                RoleData {
+                    role: Role::Owner.as_str().into(),
+                    by: me,
+                    updated_at: now,
+                },
+            )
+            .map_err(|e| AppError::msg(format!("roles.insert: {e}")))?;
         app::emit!(Event::ProjectInitialized {
             id: &id,
             name: &name,
@@ -757,6 +917,7 @@ impl Spreadsheet {
         let me = self.caller_hex();
         let now = storage_env::time_now();
 
+        self.record_account(&me)?;
         let existing = self.members.get(&me)?;
         let joined_at = existing.as_ref().map_or(now, |m| m.joined_at);
         let is_new = existing.is_none();
@@ -789,10 +950,22 @@ impl Spreadsheet {
     /// Sorted here rather than in the UI so every peer renders the same order;
     /// the map's own iteration order is not a stable thing to show a person.
     pub fn get_members(&self) -> app::Result<Vec<Member>> {
+        let accounts: BTreeMap<String, String> = self
+            .accounts
+            .entries()?
+            .map(|(id, a)| (id, a.account))
+            .collect();
+        let roles: BTreeMap<String, String> =
+            self.roles.entries()?.map(|(id, r)| (id, r.role)).collect();
         let mut members: Vec<Member> = self
             .members
             .entries()?
             .map(|(id, d)| Member {
+                account: accounts.get(&id).cloned().unwrap_or_default(),
+                role: roles
+                    .get(&id)
+                    .cloned()
+                    .unwrap_or_else(|| Role::Editor.as_str().into()),
                 id,
                 nickname: d.nickname,
                 joined_at: d.joined_at,
@@ -828,6 +1001,7 @@ impl Spreadsheet {
     }
 
     pub fn create_sheet(&mut self, name: String) -> app::Result<String> {
+        self.require_role(Role::Editor)?;
         validate_sheet_name(&name).map_err(AppError::from)?;
         let name = self.unique_sheet_name(&name, None)?;
         let now = storage_env::time_now();
@@ -857,6 +1031,7 @@ impl Spreadsheet {
     }
 
     pub fn rename_sheet(&mut self, sheet_id: String, new_name: String) -> app::Result<()> {
+        self.require_sheet_writable(&sheet_id)?;
         validate_sheet_name(&new_name).map_err(AppError::from)?;
         // Reject a rename that collides with a DIFFERENT sheet (renaming to the
         // current name is a no-op below).
@@ -899,6 +1074,7 @@ impl Spreadsheet {
     }
 
     pub fn delete_sheet(&mut self, sheet_id: String) -> app::Result<()> {
+        self.require_sheet_writable(&sheet_id)?;
         let removed = self
             .sheets
             .remove(&sheet_id)
@@ -1205,6 +1381,10 @@ impl Spreadsheet {
                 slot.insert((row_id.clone(), col_id.clone(), before));
             }
         }
+        self.require_cells_writable(
+            sheet_id,
+            touched.values().map(|(r, c, _)| (r.as_str(), c.as_str())),
+        )?;
         for op in ops {
             match op {
                 CellOp::Set {
@@ -1362,6 +1542,7 @@ impl Spreadsheet {
         text: String,
         parent: String,
     ) -> app::Result<String> {
+        self.require_role(Role::Commenter)?;
         self.require_sheet(&sheet_id)?;
         Spreadsheet::check_id(&row_id)?;
         Spreadsheet::check_id(&col_id)?;
@@ -1420,6 +1601,7 @@ impl Spreadsheet {
 
     /// Resolve or reopen a comment thread. Anyone in the workbook may.
     pub fn set_comment_resolved(&mut self, id: String, resolved: bool) -> app::Result<()> {
+        self.require_role(Role::Commenter)?;
         self.change_comment(&id, false, |c| c.resolved = resolved)
     }
 
@@ -1546,6 +1728,7 @@ impl Spreadsheet {
         self.require_sheet(&sheet_id)?;
         Spreadsheet::check_id(&row_id)?;
         Spreadsheet::check_id(&col_id)?;
+        self.require_cells_writable(&sheet_id, [(row_id.as_str(), col_id.as_str())])?;
         let ops: Vec<DeltaOp> = ops.into_iter().map(Into::into).collect();
         let key = Spreadsheet::cell_key(&sheet_id, &row_id, &col_id);
         let mut note = self
@@ -1625,6 +1808,209 @@ impl Spreadsheet {
         Ok(out)
     }
 
+    // ---- Roles and protected ranges ----
+    //
+    // Enforced by the contract on the node that makes the change, for every
+    // client that runs it. Who is in the workbook at all is core's group
+    // membership, which the app manages separately (and which removal rotates
+    // the group key for).
+
+    /// Set a member's workbook role: `owner`, `editor`, `commenter` or
+    /// `viewer`. Owners may; in a workbook without an owner (one made before
+    /// roles existed) any editor may, so someone can claim it.
+    pub fn set_role(&mut self, member_id: String, role: String) -> app::Result<()> {
+        let Some(new_role) = Role::parse(&role) else {
+            return Err(AppError::from(Error::Invalid(format!(
+                "{role:?} is not a role: owner, editor, commenter or viewer"
+            ))));
+        };
+        let owners = self.owners()?;
+        let caller_role = self.require_role(Role::Editor)?;
+        if !owners.is_empty() && caller_role != Role::Owner {
+            return Err(AppError::from(Error::Forbidden(
+                "only an owner can change roles".into(),
+            )));
+        }
+        if self.members.get(&member_id)?.is_none() {
+            return Err(AppError::from(Error::NotFound(member_id)));
+        }
+        if new_role != Role::Owner && owners.len() == 1 && owners[0] == member_id {
+            return Err(AppError::from(Error::Invalid(
+                "a workbook keeps at least one owner: make someone else an owner first".into(),
+            )));
+        }
+        let me = self.caller_hex();
+        self.roles
+            .insert(
+                member_id.clone(),
+                RoleData {
+                    role: new_role.as_str().into(),
+                    by: me,
+                    updated_at: storage_env::time_now(),
+                },
+            )
+            .map_err(|e| AppError::msg(format!("roles.insert: {e}")))?;
+        let nickname = self
+            .members
+            .get(&member_id)?
+            .map(|m| m.nickname.clone())
+            .unwrap_or_default();
+        self.log(
+            "",
+            "role",
+            format!(
+                "made {nickname} {} {}",
+                article(new_role),
+                new_role.as_str()
+            ),
+            0,
+            Vec::new(),
+        )?;
+        app::emit!(Event::RolesChanged {
+            member_id: &member_id
+        });
+        Ok(())
+    }
+
+    /// Protect a range (corner row and column ids; all four empty for the
+    /// whole sheet). Only owners and `editors` may then change its cells.
+    /// Owners only. Returns the protection id.
+    #[allow(clippy::too_many_arguments, reason = "one argument per corner")]
+    pub fn protect_range(
+        &mut self,
+        sheet_id: String,
+        top_row_id: String,
+        left_col_id: String,
+        bottom_row_id: String,
+        right_col_id: String,
+        description: String,
+        editors: Vec<String>,
+    ) -> app::Result<String> {
+        self.require_owner()?;
+        self.require_sheet(&sheet_id)?;
+        let corners = [&top_row_id, &left_col_id, &bottom_row_id, &right_col_id];
+        if !corners.iter().all(|c| c.is_empty()) {
+            for c in corners {
+                Spreadsheet::check_id(c)?;
+            }
+        }
+        let description = Spreadsheet::check_description(description)?;
+        let now = storage_env::time_now();
+        let mut nonce = [0u8; 4];
+        env::random_bytes(&mut nonce);
+        let id = generate_id("prot", now, &nonce);
+        let me = self.caller_hex();
+        self.protections
+            .insert(
+                id.clone(),
+                ProtectionData {
+                    sheet_id: sheet_id.clone(),
+                    top_row_id,
+                    left_col_id,
+                    bottom_row_id,
+                    right_col_id,
+                    description,
+                    editors,
+                    created_by: me,
+                    deleted: false,
+                    updated_at: now,
+                },
+            )
+            .map_err(|e| AppError::msg(format!("protections.insert: {e}")))?;
+        self.log(
+            &sheet_id,
+            "protect",
+            "protected a range".into(),
+            0,
+            Vec::new(),
+        )?;
+        app::emit!(Event::ProtectionsChanged {
+            sheet_id: &sheet_id
+        });
+        Ok(id)
+    }
+
+    /// Change who may edit a protected range, and its description. Owners only.
+    pub fn update_protection(
+        &mut self,
+        id: String,
+        description: String,
+        editors: Vec<String>,
+    ) -> app::Result<()> {
+        let description = Spreadsheet::check_description(description)?;
+        self.change_protection(&id, "changed a protected range", |p| {
+            p.description = description;
+            p.editors = editors;
+        })
+    }
+
+    /// Remove a protection. Owners only.
+    pub fn remove_protection(&mut self, id: String) -> app::Result<()> {
+        self.change_protection(&id, "removed a protected range", |p| p.deleted = true)
+    }
+
+    /// Every live protected range.
+    pub fn get_protections(&self) -> app::Result<Vec<Protection>> {
+        let mut out: Vec<Protection> = self
+            .protections
+            .entries()
+            .map_err(|e| AppError::msg(format!("protections.entries: {e}")))?
+            .filter(|(_, p)| !p.deleted)
+            .map(|(id, p)| Protection {
+                id,
+                sheet_id: p.sheet_id,
+                top_row_id: p.top_row_id,
+                left_col_id: p.left_col_id,
+                bottom_row_id: p.bottom_row_id,
+                right_col_id: p.right_col_id,
+                description: p.description,
+                editors: p.editors,
+                created_by: p.created_by,
+            })
+            .collect();
+        out.sort_by(|a, b| a.id.cmp(&b.id));
+        Ok(out)
+    }
+
+    fn change_protection(
+        &mut self,
+        id: &str,
+        summary: &str,
+        change: impl FnOnce(&mut ProtectionData),
+    ) -> app::Result<()> {
+        self.require_owner()?;
+        let Some(mut p) = self
+            .protections
+            .get(id)
+            .map_err(|e| AppError::msg(format!("protections.get: {e}")))?
+            .filter(|p| !p.deleted)
+            .map(|p| p.clone())
+        else {
+            return Err(AppError::from(Error::NotFound(id.to_string())));
+        };
+        change(&mut p);
+        p.updated_at = storage_env::time_now();
+        let sheet_id = p.sheet_id.clone();
+        self.protections
+            .insert(id.to_string(), p)
+            .map_err(|e| AppError::msg(format!("protections.insert: {e}")))?;
+        self.log(&sheet_id, "protect", summary.into(), 0, Vec::new())?;
+        app::emit!(Event::ProtectionsChanged {
+            sheet_id: &sheet_id
+        });
+        Ok(())
+    }
+
+    fn check_description(description: String) -> app::Result<String> {
+        let description = description.trim().to_string();
+        if description.chars().count() > 200 {
+            return Err(AppError::from(Error::Invalid(
+                "a description is at most 200 characters".into(),
+            )));
+        }
+        Ok(description)
+    }
+
     // ---- Rows and columns ----
 
     /// Insert or delete rows and columns. Each op is one write, whatever the
@@ -1642,6 +2028,15 @@ impl Spreadsheet {
             ))));
         }
         self.require_sheet(&sheet_id)?;
+        let deleting: Vec<(char, &str)> = ops
+            .iter()
+            .filter_map(|op| match op {
+                AxisOp::DeleteRow { id } => Some(('r', id.as_str())),
+                AxisOp::DeleteCol { id } => Some(('c', id.as_str())),
+                _ => None,
+            })
+            .collect();
+        self.require_axes_writable(&sheet_id, &deleting)?;
         let count = ops.len() as u32;
         let now = storage_env::time_now();
         // "inserted 2 rows, deleted 1 column", for the activity log.
@@ -1785,6 +2180,7 @@ impl Spreadsheet {
 
     /// Define or redefine a named range. `target` is a reference in stored form.
     pub fn set_named_range(&mut self, name: String, target: String) -> app::Result<()> {
+        self.require_role(Role::Editor)?;
         let name = name.trim().to_string();
         if !formula::is_valid_name(&name) {
             return Err(AppError::from(Error::Invalid(format!(
@@ -1801,6 +2197,7 @@ impl Spreadsheet {
     }
 
     pub fn delete_named_range(&mut self, name: String) -> app::Result<()> {
+        self.require_role(Role::Editor)?;
         let key = name.trim().to_ascii_uppercase();
         let existing = self
             .names
@@ -2055,21 +2452,7 @@ impl Spreadsheet {
         let layouts = self
             .get_layouts()?
             .into_iter()
-            .map(|l| {
-                let axis = |entries: Vec<AxisEntryView>| -> Vec<layout::AxisEntry> {
-                    entries
-                        .into_iter()
-                        .map(|e| layout::AxisEntry {
-                            id: e.id,
-                            pos: e.pos,
-                            deleted: e.deleted,
-                        })
-                        .collect()
-                };
-                let rows = layout::Axis::build(&axis(l.rows), formula::MAX_ROWS);
-                let cols = layout::Axis::build(&axis(l.cols), formula::MAX_COLS);
-                (l.sheet_id, layout::Layout { rows, cols })
-            })
+            .map(|l| (l.sheet_id.clone(), build_layout(l)))
             .collect();
         Ok(formula::Env {
             now_ms: storage_env::time_now() / 1_000_000,
@@ -2081,6 +2464,255 @@ impl Spreadsheet {
     fn cell_key(sheet_id: &str, row_id: &str, col_id: &str) -> String {
         format!("{sheet_id}|{row_id}|{col_id}")
     }
+
+    /// Remember which account this device belongs to, once.
+    fn record_account(&mut self, me: &str) -> app::Result<()> {
+        if self.accounts.get(me)?.is_none() {
+            self.accounts
+                .insert(
+                    me.to_string(),
+                    AccountData {
+                        account: hex::encode(env::account_id()),
+                    },
+                )
+                .map_err(|e| AppError::msg(format!("accounts.insert: {e}")))?;
+        }
+        Ok(())
+    }
+
+    /// A member's role; a member with none set is an editor.
+    fn role_of(&self, member: &str) -> app::Result<Role> {
+        Ok(self
+            .roles
+            .get(member)
+            .map_err(|e| AppError::msg(format!("roles.get: {e}")))?
+            .and_then(|r| Role::parse(&r.role))
+            .unwrap_or(Role::Editor))
+    }
+
+    /// The caller's role, if it is at least `at_least`.
+    fn require_role(&self, at_least: Role) -> app::Result<Role> {
+        let role = self.role_of(&self.caller_hex())?;
+        if role < at_least {
+            return Err(AppError::from(Error::Forbidden(format!(
+                "you are {} {} in this workbook",
+                article(role),
+                role.as_str()
+            ))));
+        }
+        Ok(role)
+    }
+
+    fn require_owner(&self) -> app::Result<()> {
+        if self.require_role(Role::Editor)? != Role::Owner {
+            return Err(AppError::from(Error::Forbidden(
+                "only an owner can manage protected ranges".into(),
+            )));
+        }
+        Ok(())
+    }
+
+    fn owners(&self) -> app::Result<Vec<String>> {
+        Ok(self
+            .roles
+            .entries()
+            .map_err(|e| AppError::msg(format!("roles.entries: {e}")))?
+            .filter(|(_, r)| r.role == Role::Owner.as_str())
+            .map(|(id, _)| id)
+            .collect())
+    }
+
+    /// The protected ranges on a sheet that stop the caller: none for an
+    /// owner, and none the caller is listed on. Errors if the caller may not
+    /// edit at all.
+    fn binding_protections(&self, sheet_id: &str) -> app::Result<Vec<ProtectionData>> {
+        if self.require_role(Role::Editor)? == Role::Owner {
+            return Ok(Vec::new());
+        }
+        let me = self.caller_hex();
+        Ok(self
+            .protections
+            .entries()
+            .map_err(|e| AppError::msg(format!("protections.entries: {e}")))?
+            .map(|(_, p)| p)
+            .filter(|p| !p.deleted && p.sheet_id == sheet_id && !p.editors.contains(&me))
+            .collect())
+    }
+
+    fn sheet_layout(&self, sheet_id: &str) -> app::Result<layout::Layout> {
+        Ok(self
+            .get_layouts()?
+            .into_iter()
+            .find(|l| l.sheet_id == sheet_id)
+            .map(build_layout)
+            .unwrap_or_else(|| layout::Layout::identity(formula::MAX_ROWS, formula::MAX_COLS)))
+    }
+
+    /// Refuse if any of these cells is in a range protected from the caller.
+    fn require_cells_writable<'a>(
+        &self,
+        sheet_id: &str,
+        cells: impl IntoIterator<Item = (&'a str, &'a str)>,
+    ) -> app::Result<()> {
+        let binding = self.binding_protections(sheet_id)?;
+        if binding.is_empty() {
+            return Ok(());
+        }
+        let l = self.sheet_layout(sheet_id)?;
+        for (row_id, col_id) in cells {
+            let (Some(r), Some(c)) = (l.rows.index_of(row_id), l.cols.index_of(col_id)) else {
+                continue;
+            };
+            if let Some(p) = binding
+                .iter()
+                .find(|p| protected_rect(p, &l).is_some_and(|x| x.contains(r, c)))
+            {
+                return Err(AppError::from(Error::Forbidden(format!(
+                    "{}{} is in a protected range{}",
+                    formula::col_label(c as u32),
+                    r + 1,
+                    describe(p)
+                ))));
+            }
+        }
+        Ok(())
+    }
+
+    /// Refuse deleting a row or column that runs through a range protected
+    /// from the caller.
+    fn require_axes_writable(&self, sheet_id: &str, deleting: &[(char, &str)]) -> app::Result<()> {
+        let binding = self.binding_protections(sheet_id)?;
+        if binding.is_empty() || deleting.is_empty() {
+            return Ok(());
+        }
+        let l = self.sheet_layout(sheet_id)?;
+        for &(axis, id) in deleting {
+            let at = if axis == 'r' {
+                l.rows.index_of(id)
+            } else {
+                l.cols.index_of(id)
+            };
+            let Some(at) = at else { continue };
+            let hit = binding.iter().find(|p| {
+                protected_rect(p, &l).is_some_and(|x| {
+                    if axis == 'r' {
+                        (x.top..=x.bottom).contains(&at)
+                    } else {
+                        (x.left..=x.right).contains(&at)
+                    }
+                })
+            });
+            if let Some(p) = hit {
+                return Err(AppError::from(Error::Forbidden(format!(
+                    "that {} runs through a protected range{}",
+                    if axis == 'r' { "row" } else { "column" },
+                    describe(p)
+                ))));
+            }
+        }
+        Ok(())
+    }
+
+    /// Refuse renaming or deleting a sheet protected as a whole from the caller.
+    fn require_sheet_writable(&self, sheet_id: &str) -> app::Result<()> {
+        self.require_sheet(sheet_id)?;
+        if let Some(p) = self
+            .binding_protections(sheet_id)?
+            .iter()
+            .find(|p| is_whole_sheet(p))
+        {
+            return Err(AppError::from(Error::Forbidden(format!(
+                "this sheet is protected{}",
+                describe(p)
+            ))));
+        }
+        Ok(())
+    }
+}
+
+/// A resolved rectangle of positions, inclusive.
+struct Rect {
+    top: usize,
+    left: usize,
+    bottom: usize,
+    right: usize,
+}
+
+impl Rect {
+    fn contains(&self, r: usize, c: usize) -> bool {
+        (self.top..=self.bottom).contains(&r) && (self.left..=self.right).contains(&c)
+    }
+}
+
+fn is_whole_sheet(p: &ProtectionData) -> bool {
+    [
+        &p.top_row_id,
+        &p.left_col_id,
+        &p.bottom_row_id,
+        &p.right_col_id,
+    ]
+    .iter()
+    .all(|c| c.is_empty())
+}
+
+/// Where a protection sits now, or `None` when a corner row or column is gone.
+fn protected_rect(p: &ProtectionData, l: &layout::Layout) -> Option<Rect> {
+    if is_whole_sheet(p) {
+        return Some(Rect {
+            top: 0,
+            left: 0,
+            bottom: usize::MAX,
+            right: usize::MAX,
+        });
+    }
+    let (r1, r2) = (
+        l.rows.index_of(&p.top_row_id)?,
+        l.rows.index_of(&p.bottom_row_id)?,
+    );
+    let (c1, c2) = (
+        l.cols.index_of(&p.left_col_id)?,
+        l.cols.index_of(&p.right_col_id)?,
+    );
+    Some(Rect {
+        top: r1.min(r2),
+        left: c1.min(c2),
+        bottom: r1.max(r2),
+        right: c1.max(c2),
+    })
+}
+
+/// ` ("Totals")` for a protection with a description.
+fn describe(p: &ProtectionData) -> String {
+    if p.description.is_empty() {
+        String::new()
+    } else {
+        format!(" ({:?})", p.description)
+    }
+}
+
+fn article(role: Role) -> &'static str {
+    if role == Role::Owner || role == Role::Editor {
+        "an"
+    } else {
+        "a"
+    }
+}
+
+/// A sheet's stored rows and columns as the engine's layout.
+fn build_layout(l: SheetLayout) -> layout::Layout {
+    let axis = |entries: Vec<AxisEntryView>| -> Vec<layout::AxisEntry> {
+        entries
+            .into_iter()
+            .map(|e| layout::AxisEntry {
+                id: e.id,
+                pos: e.pos,
+                deleted: e.deleted,
+            })
+            .collect()
+    };
+    let rows = layout::Axis::build(&axis(l.rows), formula::MAX_ROWS);
+    let cols = layout::Axis::build(&axis(l.cols), formula::MAX_COLS);
+    layout::Layout { rows, cols }
 }
 
 /// A format keyword as the activity log says it.
@@ -3501,5 +4133,206 @@ mod tests {
         assert!(app
             .call(|s| s.edit_note("nope".into(), "0".into(), "0".into(), vec![ins("x")]))
             .is_err());
+    }
+
+    /// Two people besides the host's default device, each with a nickname.
+    fn with_people(app: &mut TestHost<Spreadsheet>) -> ([u8; 32], [u8; 32]) {
+        let (ada, bob) = ([7u8; 32], [8u8; 32]);
+        app.call_as_account([17u8; 32], ada, |s| s.join("Ada".into()))
+            .unwrap();
+        app.call_as_account([18u8; 32], bob, |s| s.join("Bob".into()))
+            .unwrap();
+        (ada, bob)
+    }
+
+    fn set_as(
+        app: &mut TestHost<Spreadsheet>,
+        who: [u8; 32],
+        sid: &str,
+        row: &str,
+    ) -> app::Result<String> {
+        app.call_as(who, |s| {
+            s.set_cell(sid.into(), row.into(), "0".into(), "x".into())
+        })
+    }
+
+    #[test]
+    fn the_creator_owns_the_workbook_and_members_carry_their_account() {
+        let mut app = make_app();
+        let _ = new_sheet(&mut app);
+        app.call(|s| s.join("Owner".into())).unwrap();
+        let (ada, _) = with_people(&mut app);
+        let members = app.view(|s| s.get_members()).unwrap();
+        let owner = members.iter().find(|m| m.nickname == "Owner").unwrap();
+        assert_eq!(owner.role, "owner");
+        let ada_m = members.iter().find(|m| m.id == hex::encode(ada)).unwrap();
+        assert_eq!(ada_m.role, "editor");
+        assert_eq!(ada_m.account, hex::encode([17u8; 32]));
+    }
+
+    #[test]
+    fn viewers_cannot_edit_and_commenters_can_only_comment() {
+        let mut app = make_app();
+        let sid = new_sheet(&mut app);
+        let (ada, bob) = with_people(&mut app);
+        app.call(|s| s.set_role(hex::encode(ada), "viewer".into()))
+            .unwrap();
+        app.call(|s| s.set_role(hex::encode(bob), "commenter".into()))
+            .unwrap();
+
+        assert!(set_as(&mut app, ada, &sid, "0").is_err());
+        assert!(set_as(&mut app, bob, &sid, "0").is_err());
+        let comment = |app: &mut TestHost<Spreadsheet>, who| {
+            app.call_as(who, |s| {
+                s.add_comment(
+                    sid.clone(),
+                    "0".into(),
+                    "0".into(),
+                    "hi".into(),
+                    String::new(),
+                )
+            })
+        };
+        assert!(comment(&mut app, ada).is_err());
+        assert!(comment(&mut app, bob).is_ok());
+        assert!(app.call_as(ada, |s| s.create_sheet("Mine".into())).is_err());
+        // Back to editor: writes work again.
+        app.call(|s| s.set_role(hex::encode(ada), "editor".into()))
+            .unwrap();
+        assert!(set_as(&mut app, ada, &sid, "0").is_ok());
+    }
+
+    #[test]
+    fn only_owners_change_roles_and_the_last_owner_stays() {
+        let mut app = make_app();
+        let _ = new_sheet(&mut app);
+        app.call(|s| s.join("Owner".into())).unwrap();
+        let (ada, bob) = with_people(&mut app);
+        assert!(app
+            .call_as(ada, |s| s.set_role(hex::encode(bob), "owner".into()))
+            .is_err());
+        let me = app
+            .view(|s| s.get_members())
+            .unwrap()
+            .into_iter()
+            .find(|m| m.nickname == "Owner")
+            .unwrap()
+            .id;
+        assert!(app
+            .call(|s| s.set_role(me.clone(), "editor".into()))
+            .is_err());
+        app.call(|s| s.set_role(hex::encode(ada), "owner".into()))
+            .unwrap();
+        // With a second owner, the first may step down.
+        app.call(|s| s.set_role(me.clone(), "editor".into()))
+            .unwrap();
+        assert!(app
+            .call(|s| s.set_role(hex::encode(bob), "viewer".into()))
+            .is_err());
+        assert!(app
+            .call(|s| s.set_role(hex::encode(bob), "boss".into()))
+            .is_err());
+    }
+
+    #[test]
+    fn a_workbook_without_an_owner_can_be_claimed() {
+        // A workbook made before roles existed has no owner.
+        let mut app = make_app();
+        let sid = app.call(|s| s.create_sheet("S".into())).unwrap();
+        let (ada, bob) = with_people(&mut app);
+        app.call_as(ada, |s| s.set_role(hex::encode(ada), "owner".into()))
+            .unwrap();
+        assert!(app
+            .call_as(bob, |s| s.set_role(hex::encode(bob), "owner".into()))
+            .is_err());
+        assert!(set_as(&mut app, bob, &sid, "0").is_ok());
+    }
+
+    #[test]
+    fn a_protected_range_stops_other_editors_and_follows_its_cells() {
+        let mut app = make_app();
+        let sid = new_sheet(&mut app);
+        let (ada, bob) = with_people(&mut app);
+        // Protect A2:B3 (legacy rows 1-2, columns 0-1); Ada may edit it.
+        app.call(|s| {
+            s.protect_range(
+                sid.clone(),
+                "1".into(),
+                "0".into(),
+                "2".into(),
+                "1".into(),
+                "Totals".into(),
+                vec![hex::encode(ada)],
+            )
+        })
+        .unwrap();
+        let err = set_as(&mut app, bob, &sid, "1").unwrap_err();
+        assert!(
+            format!("{err:?}").contains("A2 is in a protected range"),
+            "{err:?}"
+        );
+        assert!(set_as(&mut app, bob, &sid, "0").is_ok());
+        assert!(set_as(&mut app, ada, &sid, "2").is_ok());
+        // Owners are never stopped.
+        assert!(app
+            .call(|s| s.set_cell(sid.clone(), "1".into(), "0".into(), "y".into()))
+            .is_ok());
+
+        // A row inserted above moves the range down; the cell ids stay protected.
+        app.call_as(bob, |s| {
+            s.apply_axis_ops(
+                sid.clone(),
+                vec![AxisOp::InsertRow {
+                    id: "nab".into(),
+                    pos: "4".into(),
+                }],
+            )
+        })
+        .unwrap();
+        assert!(set_as(&mut app, bob, &sid, "2").is_err());
+        // Deleting a row through it is refused; one outside it is not.
+        let del = |app: &mut TestHost<Spreadsheet>, row: &str| {
+            app.call_as(bob, |s| {
+                s.apply_axis_ops(sid.clone(), vec![AxisOp::DeleteRow { id: row.into() }])
+            })
+        };
+        assert!(del(&mut app, "2").is_err());
+        assert!(del(&mut app, "5").is_ok());
+
+        // Removing the protection lets Bob in.
+        let id = app.view(|s| s.get_protections()).unwrap()[0].id.clone();
+        assert!(app
+            .call_as(bob, |s| s.remove_protection(id.clone()))
+            .is_err());
+        app.call(|s| s.remove_protection(id.clone())).unwrap();
+        assert!(set_as(&mut app, bob, &sid, "1").is_ok());
+        assert!(app.view(|s| s.get_protections()).unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_protected_sheet_cannot_be_renamed_or_deleted_by_others() {
+        let mut app = make_app();
+        let sid = new_sheet(&mut app);
+        let (_, bob) = with_people(&mut app);
+        app.call(|s| {
+            s.protect_range(
+                sid.clone(),
+                String::new(),
+                String::new(),
+                String::new(),
+                String::new(),
+                String::new(),
+                Vec::new(),
+            )
+        })
+        .unwrap();
+        assert!(app
+            .call_as(bob, |s| s.rename_sheet(sid.clone(), "X".into()))
+            .is_err());
+        assert!(app.call_as(bob, |s| s.delete_sheet(sid.clone())).is_err());
+        assert!(set_as(&mut app, bob, &sid, "900").is_err());
+        assert!(app
+            .call(|s| s.rename_sheet(sid.clone(), "X".into()))
+            .is_ok());
     }
 }

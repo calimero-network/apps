@@ -20,7 +20,7 @@
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import styled from 'styled-components';
-import { useMero } from '@calimero-network/mero-react';
+import { useGroupMembers, useMero } from '@calimero-network/mero-react';
 import { C, useTheme, MoonIcon } from '../../theme';
 import { APP_DISPLAY_NAME } from '../../config';
 import { useWorkspace } from '../../hooks/useWorkspace';
@@ -46,6 +46,9 @@ import NamesModal from '../../components/NamesModal';
 import ActivityPanel from '../../components/ActivityPanel';
 import CommentsPanel from '../../components/CommentsPanel';
 import NotePanel from '../../components/NotePanel';
+import PeoplePanel from '../../components/PeoplePanel';
+import ProtectModal from '../../components/ProtectModal';
+import { lockedReason, placeProtections } from '../../spreadsheet/access';
 import type { NoteOp } from '../../spreadsheet/notes';
 import { ago, nsToMs } from '../../lib/time';
 import { sheetsToCsv } from '../../spreadsheet/download';
@@ -60,7 +63,7 @@ const COLS = 26;
 const ROWS = 50;
 
 export default function AppPage() {
-  const { logout } = useMero();
+  const { logout, mero } = useMero();
   const ws = useWorkspace();
   const [activeSheetId, setActiveSheetId] = useState<string | null>(null);
   const ss = useSpreadsheet({
@@ -177,6 +180,10 @@ export default function AppPage() {
   const [showNames, setShowNames] = useState(false);
   const [showActivity, setShowActivity] = useState(false);
   const [showComments, setShowComments] = useState(false);
+  const [showPeople, setShowPeople] = useState(false);
+  const [showProtect, setShowProtect] = useState(false);
+  const [protectSaving, setProtectSaving] = useState(false);
+  const [protectError, setProtectError] = useState<string | null>(null);
   // The cell whose note is open, by id so it stays on that cell as rows move.
   const [noteCell, setNoteCell] = useState<{ sheetId: string; rowId: string; colId: string } | null>(null);
   const [namesSaving, setNamesSaving] = useState(false);
@@ -422,6 +429,33 @@ export default function AppPage() {
     [selectedCell, activeSheetId],
   );
 
+  // ── Who may do what: workbook role, protected ranges, and core's group
+  //    roster for the workspace (who is in it at all, and who administers it).
+  const { members: groupMembers, refetch: refetchGroup } = useGroupMembers(ws.namespaceId);
+  // The group roster is read once by the hook; re-read it when someone joins
+  // the workbook and whenever the People panel opens.
+  useEffect(() => {
+    if (showPeople) void refetchGroup();
+  }, [showPeople, ss.members.length, refetchGroup]);
+  const selfMember = ss.members.find((m) => m.id === ss.selfId);
+  const myRole = selfMember?.role ?? 'editor';
+  const isOwner = myRole === 'owner';
+  const hasOwner = ss.members.some((m) => m.role === 'owner');
+  const isGroupAdmin = !!selfMember?.account &&
+    groupMembers.some((g) => g.identity === selfMember.account && g.role === 'Admin');
+  const placed = activeSheetId
+    ? placeProtections(ss.protections, activeSheetId, (r, c) => ss.refOf(activeSheetId, r, c), ss.selfId, myRole)
+    : [];
+  const selectedLock = selectedCell ? lockedReason(placed, myRole, selectedCell.row, selectedCell.col) : null;
+
+  // Refused writes explain themselves for a while, then go.
+  const { writeError, dismissWriteError } = ss;
+  useEffect(() => {
+    if (writeError == null) return;
+    const t = window.setTimeout(dismissWriteError, 8000);
+    return () => window.clearTimeout(t);
+  }, [writeError, dismissWriteError]);
+
   // Shift+F2 / "Note…": open a cell's note.
   const { idsOf, loadNote, editNote } = ss;
   const openNote = useCallback(
@@ -663,6 +697,13 @@ export default function AppPage() {
             onClick: () => { setCtxMenu(null); if (selectedCell) openNote(selectedCell.row, selectedCell.col); } },
         ],
       },
+      ...(isOwner ? [{
+        label: 'Protect',
+        actions: [
+          { label: 'Protect range…', testId: 'open-protect',
+            onClick: () => { setCtxMenu(null); setProtectError(null); setShowProtect(true); } },
+        ],
+      }] : []),
       {
         label: 'Name',
         actions: [
@@ -679,6 +720,18 @@ export default function AppPage() {
     const name = idToName(activeSheetId);
     return `${name ? sheetPrefix(name) : ''}${rangeRef({ row: r.top, col: r.left }, { row: r.bottom, col: r.right })}`;
   })();
+
+  const runProtect = async (fn: () => Promise<void>) => {
+    setProtectSaving(true);
+    setProtectError(null);
+    try {
+      await fn();
+    } catch (err) {
+      setProtectError(describeError(err));
+    } finally {
+      setProtectSaving(false);
+    }
+  };
 
   const runNames = async (fn: () => Promise<void>) => {
     setNamesSaving(true);
@@ -1167,6 +1220,15 @@ export default function AppPage() {
           </svg>
         </IconBtn>
 
+        <ToolBtn onClick={() => setShowPeople(true)} title="Who can do what" aria-label="Open people" data-testid="action-people">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" />
+            <path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" />
+          </svg>
+          <span>People</span>
+        </ToolBtn>
+
         <ToolBtn onClick={() => setShowComments(true)} title="Comments on cells" aria-label="Open comments" data-testid="action-comments">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
             stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1217,6 +1279,7 @@ export default function AppPage() {
         onGridDelete={handleDelete}
         onGridClearClipboard={handleClearClipboard}
         onGridOpenNote={() => { if (selectedCell) openNote(selectedCell.row, selectedCell.col); }}
+        lockedReason={selectedLock}
       />
 
       {/* Commit button next to formula bar (accessible test target) */}
@@ -1250,6 +1313,7 @@ export default function AppPage() {
         editedBy={editedBy}
         commented={commented}
         notes={notes}
+        protectedRanges={placed}
         selectedCell={pickingForeignSheet ? null : selectedCell}
         selectionRange={pickingForeignSheet ? null : selectionRange}
         editingValue={pickingForeignSheet ? null : isDirty ? formulaInput : null}
@@ -1386,6 +1450,60 @@ export default function AppPage() {
           <button type="button" aria-label="Dismiss" onClick={() => ss.dismissMention(mention.commentId)}>×</button>
         </MentionToast>
       )}
+      {writeError != null && (
+        <ErrorToast role="alert" data-testid="toast-write-error">
+          <span>Not saved: {describeError(writeError)}</span>
+          <button type="button" aria-label="Dismiss" onClick={dismissWriteError}>×</button>
+        </ErrorToast>
+      )}
+      {showPeople && (
+        <PeoplePanel
+          members={ss.members}
+          group={groupMembers}
+          selfId={ss.selfId}
+          workspaceName={ws.namespaceName}
+          nameOf={personName}
+          canManageRoles={isOwner || !hasOwner}
+          isGroupAdmin={isGroupAdmin}
+          onSetRole={ss.setRole}
+          onSetGroupRole={async (account, role) => {
+            if (!mero || !ws.namespaceId) return;
+            await mero.admin.updateMemberRole(ws.namespaceId, account, { role });
+            await refetchGroup();
+          }}
+          onRemove={async (account) => {
+            if (!mero || !ws.namespaceId) return;
+            await mero.admin.removeGroupMembers(ws.namespaceId, { members: [account] });
+            await refetchGroup();
+          }}
+          onClose={() => setShowPeople(false)}
+        />
+      )}
+      {showProtect && activeSheetId && (
+        <ProtectModal
+          selection={namesSelection}
+          items={ss.protections.filter((p) => p.sheet_id === activeSheetId).map((p) => {
+            const at = placed.find((x) => x.id === p.id);
+            return {
+              id: p.id,
+              where: !at ? null : at.wholeSheet ? 'Whole sheet'
+                : rangeRef({ row: at.rect.top, col: at.rect.left }, { row: at.rect.bottom, col: at.rect.right }),
+              description: p.description,
+              editors: p.editors,
+            };
+          })}
+          people={ss.members.filter((m) => m.role !== 'owner').map((m) => ({ id: m.id, name: personName(m.id) }))}
+          saving={protectSaving}
+          error={protectError}
+          onProtect={(whole, description, editors) => {
+            const r = menuRect();
+            void runProtect(() => ss.protectRange(activeSheetId, whole ? null : r, description, editors));
+          }}
+          onUpdate={(id, description, editors) => void runProtect(() => ss.updateProtection(id, description, editors))}
+          onRemove={(id) => void runProtect(() => ss.removeProtection(id))}
+          onClose={() => setShowProtect(false)}
+        />
+      )}
       {showNames && (
         <NamesModal
           names={ss.namedRanges.map((n) => ({ name: n.name, target: idsToNames(`=${n.target}`, idToName).slice(1) }))}
@@ -1405,6 +1523,15 @@ export default function AppPage() {
 }
 
 // ── Styled components ────────────────────────────────────────────────────────
+
+const ErrorToast = styled.div`
+  position: fixed; left: 50%; bottom: 96px; transform: translateX(-50%); z-index: 250;
+  display: flex; align-items: center; gap: 12px; max-width: min(560px, calc(100vw - 32px));
+  padding: 10px 14px; border-radius: 12px; font-size: 13px;
+  color: ${C.ink}; background: ${C.paper}; border: 1px solid ${C.danger};
+  box-shadow: 0 12px 40px -12px rgba(14, 20, 15, 0.35);
+  button { font-size: 16px; color: ${C.mutedSoft}; background: none; border: none; cursor: pointer; padding: 0; }
+`;
 
 const MentionToast = styled.div`
   position: fixed; left: 50%; bottom: 44px; transform: translateX(-50%); z-index: 250;

@@ -6,6 +6,10 @@ import {
 
 // Generated types
 
+export interface AccountData {
+  account: string;
+}
+
 export interface ActivityData {
   author: string;
   at: number;
@@ -238,6 +242,14 @@ export interface Event_ProjectInitialized {
   name: string;
 }
 
+export interface Event_ProtectionsChanged {
+  sheet_id: string;
+}
+
+export interface Event_RolesChanged {
+  member_id: string;
+}
+
 export interface Event_SheetCreated {
   id: string;
   name: string;
@@ -270,6 +282,8 @@ export interface Member {
   nickname: string;
   joined_at: number;
   updated_at: number;
+  account: string;
+  role: string;
 }
 
 export interface MemberData {
@@ -327,6 +341,37 @@ export interface Project {
   created_at: number;
 }
 
+export interface Protection {
+  id: string;
+  sheet_id: string;
+  top_row_id: string;
+  left_col_id: string;
+  bottom_row_id: string;
+  right_col_id: string;
+  description: string;
+  editors: string[];
+  created_by: string;
+}
+
+export interface ProtectionData {
+  sheet_id: string;
+  top_row_id: string;
+  left_col_id: string;
+  bottom_row_id: string;
+  right_col_id: string;
+  description: string;
+  editors: string[];
+  created_by: string;
+  deleted: boolean;
+  updated_at: number;
+}
+
+export interface RoleData {
+  role: string;
+  by: string;
+  updated_at: number;
+}
+
 export interface Sheet {
   id: string;
   name: string;
@@ -367,7 +412,12 @@ export interface Spreadsheet {
   activity: Record<string, ActivityData>;
   comments: Record<string, CommentData>;
   notes: Record<string, Record<string, Span>>;
+  accounts: Record<string, AccountData>;
+  roles: Record<string, RoleData>;
+  protections: Record<string, ProtectionData>;
 }
+
+
 
 
 
@@ -397,6 +447,8 @@ export type AbiEvent =
   | { name: "NamedRangesChanged"; payload: Event_NamedRangesChanged }
   | { name: "NoteChanged"; payload: Event_NoteChanged }
   | { name: "ProjectInitialized"; payload: Event_ProjectInitialized }
+  | { name: "ProtectionsChanged"; payload: Event_ProtectionsChanged }
+  | { name: "RolesChanged"; payload: Event_RolesChanged }
   | { name: "SheetCreated"; payload: Event_SheetCreated }
   | { name: "SheetDeleted"; payload: Event_SheetDeleted }
   | { name: "SheetRenamed"; payload: Event_SheetRenamed }
@@ -633,6 +685,16 @@ export class SpreadsheetClient {
   }
 
   /**
+   * get_protections
+   *
+   * @intent read_only
+   */
+  public async getProtections(): Promise<Protection[]> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_protections', argsJson: {} });
+    return response as Protection[];
+  }
+
+  /**
    * init
    */
   public async init(): Promise<void> {
@@ -668,6 +730,26 @@ export class SpreadsheetClient {
   public async listSheets(): Promise<Sheet[]> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'list_sheets', argsJson: {} });
     return response as Sheet[];
+  }
+
+  /**
+   * protect_range
+   *
+   * @intent mutating
+   */
+  public async protectRange(params: { sheet_id: string; top_row_id: string; left_col_id: string; bottom_row_id: string; right_col_id: string; description: string; editors: string[] }): Promise<string> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'protect_range', argsJson: params });
+    return response as string;
+  }
+
+  /**
+   * remove_protection
+   *
+   * @intent mutating
+   */
+  public async removeProtection(params: { id: string }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'remove_protection', argsJson: params });
+    return response as void;
   }
 
   /**
@@ -727,6 +809,26 @@ export class SpreadsheetClient {
    */
   public async setNamedRange(params: { name: string; target: string }): Promise<void> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_named_range', argsJson: params });
+    return response as void;
+  }
+
+  /**
+   * set_role
+   *
+   * @intent mutating
+   */
+  public async setRole(params: { member_id: string; role: string }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_role', argsJson: params });
+    return response as void;
+  }
+
+  /**
+   * update_protection
+   *
+   * @intent mutating
+   */
+  public async updateProtection(params: { id: string; description: string; editors: string[] }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'update_protection', argsJson: params });
     return response as void;
   }
 

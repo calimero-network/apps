@@ -54,6 +54,8 @@ interface FormulaBarProps {
   onGridClearClipboard?: () => void;
   /** Open the selected cell's note (Shift+F2). */
   onGridOpenNote?: () => void;
+  /** Why the selected cell cannot be edited (a protected range, a role); null when it can. */
+  lockedReason?: string | null;
 }
 
 export default function FormulaBar({
@@ -73,6 +75,7 @@ export default function FormulaBar({
   onGridDelete,
   onGridClearClipboard,
   onGridOpenNote,
+  lockedReason = null,
 }: FormulaBarProps) {
   const internalInputRef = useRef<HTMLInputElement>(null);
   const inputRef = externalInputRef ?? internalInputRef;
@@ -174,11 +177,15 @@ export default function FormulaBar({
           onPaste={onPaste}
           onMouseDown={() => onBeginEdit?.()}
           onBlur={() => setAcOpen(false)}
+          readOnly={!!lockedReason}
+          title={lockedReason ?? undefined}
           disabled={disabled || !selectedCell}
           placeholder={
-            selectedCell
-              ? 'Enter value or formula  (=SUM, =IF, =AVERAGE, …)'
-              : 'Select a cell to edit'
+            lockedReason
+              ? `🔒 ${lockedReason}`
+              : selectedCell
+                ? 'Enter value or formula  (=SUM, =IF, =AVERAGE, …)'
+                : 'Select a cell to edit'
           }
           spellCheck={false}
           autoComplete="off"

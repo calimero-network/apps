@@ -35,6 +35,10 @@ pub enum Event<'a> {
     },
     /// A comment was edited, resolved, reopened or deleted.
     CommentChanged { id: &'a str, sheet_id: &'a str },
+    /// A member's workbook role changed.
+    RolesChanged { member_id: &'a str },
+    /// A protected range was added, changed or removed.
+    ProtectionsChanged { sheet_id: &'a str },
     /// A cell's note was edited.
     NoteChanged {
         sheet_id: &'a str,
