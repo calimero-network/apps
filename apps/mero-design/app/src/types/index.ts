@@ -57,7 +57,33 @@ export interface Element {
   shadowOffsetX?: number | null;
   shadowOffsetY?: number | null;
   shadowBlur?: number | null;
+
+  // ── Client-side extras ────────────────────────────────────────────────
+  // None of these exist in the contract. They travel inside `label`, after a
+  // separator, and `api/rpc.ts` packs/unpacks them at the wire so nothing above
+  // the RPC layer ever sees the packed form — see `utils/elementMeta.ts` for
+  // why they are not contract fields.
+
+  /** Dash pattern of the outline. Absent = solid. */
+  strokeStyle?: StrokeStyle;
+  /**
+   * A `text` element painted as a container: `fill` is the box, `stroke` its
+   * border, and the words sit inside it aligned by `text_align` /
+   * `vertical_align`. "sticky" is the same box with sticky-note styling.
+   */
+  box?: BoxKind;
+  /** Text colour inside a box or sticky. Absent = picked for contrast with `fill`. */
+  textColor?: string;
+  /** For a `path` drawn by a shape tool: which outline to regenerate at any size. */
+  shape?: ShapeKind;
+  /** A line/arrow docked to a shape: "<element id>:<top|right|bottom|left>" (utils/connectors). */
+  startBinding?: string;
+  endBinding?: string;
 }
+
+export type StrokeStyle = "solid" | "dashed" | "dotted" | "dashdot" | "dotted3" | "long";
+export type BoxKind = "box" | "sticky";
+export type ShapeKind = "triangle" | "diamond" | "star" | "cloud";
 
 export interface Member {
   id: string;

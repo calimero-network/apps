@@ -17,16 +17,25 @@ import { openBoard } from "../fixtures/board";
  */
 
 /**
- * Pins placed to overlap the Options dropdown, which opens at roughly
- * x 474-674, y 41-389. The canvas viewport starts below the 48px navbar, so a
+ * Pins laid out in a grid across the whole toolbar width, so some of them sit
+ * under the Options dropdown wherever it opens. They used to be pinned to
+ * x 500-560 — where the dropdown happened to open — and the moment the toolbar
+ * grew more tool buttons the dropdown moved right, no pin overlapped it, and
+ * the overlap guard below failed (correctly: every other assertion here would
+ * have been vacuous). The canvas viewport starts below the 48px navbar, so a
  * canvas y renders at screen y + 48.
  */
-const PINS = [
-  { id: "c-1", x: 500, y: 20, content: "over the first item", author: "test-identity", createdAt: 1, replies: [] },
-  { id: "c-2", x: 520, y: 70, content: "over a middle item", author: "test-identity", createdAt: 1, replies: [] },
-  { id: "c-3", x: 540, y: 130, content: "over a lower item", author: "test-identity", createdAt: 1, replies: [] },
-  { id: "c-4", x: 560, y: 190, content: "over the last item", author: "test-identity", createdAt: 1, replies: [] },
-];
+const PINS = [20, 70, 130, 190].flatMap((y, row) =>
+  Array.from({ length: 20 }, (_, i) => ({
+    id: `c-${row}-${i}`,
+    x: 150 + i * 60 + row * 15,
+    y,
+    content: `pin ${row}-${i}`,
+    author: "test-identity",
+    createdAt: 1,
+    replies: [],
+  })),
+);
 
 /** For pins overlapping the open dropdown, who wins the hit test at the pin centre? */
 async function hitsAtPinCentres(page: import("@playwright/test").Page) {

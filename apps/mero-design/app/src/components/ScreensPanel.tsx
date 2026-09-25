@@ -1,9 +1,10 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useCanvasStore } from "../store/canvasStore";
 import { useScreenActions } from "../hooks/useScreenActions";
 import { useScreenImage } from "../hooks/useScreenImage";
 import { elementsInScreen, listScreens, screenForSelection, type Screen } from "../utils/screens";
+import { DRAG_THRESHOLD_PX, dropSlotAt, moveTarget, type DropSlot } from "../utils/screenReorder";
 import LayerRowMenu from "./LayerRowMenu";
 import styles from "./ScreensPanel.module.css";
 import controls from "./ui/controls.module.css";
@@ -34,8 +35,20 @@ export default function ScreensPanel({ contextId, readOnly = false }: Props) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   // Drag to reorder: which row is being dragged, and where it would land.
+  //
+  // ⚠️ POINTER EVENTS, NOT HTML5 DRAG-AND-DROP. The desktop app opens this page
+  // in a Tauri window whose native drag-drop handler is on (Tauri's default —
+  // tauri-app never calls `disable_drag_drop_handler`), and that handler takes
+  // the OS drag session: `dragover`/`drop` never reach the page, so the rows
+  // could be picked up and never put down. WKWebView's own HTML5 drag is flaky
+  // besides. A pointer drag is ordinary input every webview delivers.
   const [dragIndex, setDragIndex] = useState<number | null>(null);
-  const [drop, setDrop] = useState<{ index: number; edge: "before" | "after" } | null>(null);
+  const [drop, setDrop] = useState<DropSlot | null>(null);
+  const listRef = useRef<HTMLOListElement>(null);
+  /** The press that may become a drag. Null once it is released or cancelled. */
+  const press = useRef<{ index: number; pointerId: number; startY: number; dragging: boolean } | null>(null);
+  /** A drag ends with a pointerup that the browser follows with a click. */
+  const swallowClick = useRef(false);
 
   const selected = useMemo(() => {
     const ids = new Set(selectedElementIds);
@@ -44,19 +57,62 @@ export default function ScreensPanel({ contextId, readOnly = false }: Props) {
   const startScreen = screenForSelection(screens, selected);
 
   function endDrag() {
+    press.current = null;
     setDragIndex(null);
     setDrop(null);
   }
 
-  function handleDrop() {
-    if (dragIndex !== null && drop) {
-      const insertAt = drop.edge === "before" ? drop.index : drop.index + 1;
-      // Removing the dragged row first shifts every later slot up by one.
-      const to = insertAt > dragIndex ? insertAt - 1 : insertAt;
-      if (to !== dragIndex) void moveScreen(dragIndex, to);
+  function slotAt(clientY: number): DropSlot | null {
+    const rows = Array.from(listRef.current?.children ?? []).map((row) => row.getBoundingClientRect());
+    return dropSlotAt(rows, clientY);
+  }
+
+  function onRowPointerDown(index: number, e: React.PointerEvent<HTMLLIElement>) {
+    if (e.button !== 0 || !e.isPrimary) return;
+    // Presses on the row's own controls (menu, rename field) are not drags.
+    if ((e.target as HTMLElement).closest("button, input, [data-no-drag]")) return;
+    press.current = { index, pointerId: e.pointerId, startY: e.clientY, dragging: false };
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+  }
+
+  function onRowPointerMove(e: React.PointerEvent<HTMLLIElement>) {
+    const p = press.current;
+    if (!p || p.pointerId !== e.pointerId) return;
+    if (!p.dragging) {
+      if (Math.abs(e.clientY - p.startY) < DRAG_THRESHOLD_PX) return;
+      p.dragging = true;
+      setDragIndex(p.index);
+    }
+    const next = slotAt(e.clientY);
+    setDrop((cur) => (cur && next && cur.index === next.index && cur.edge === next.edge ? cur : next));
+  }
+
+  function onRowPointerUp(e: React.PointerEvent<HTMLLIElement>) {
+    const p = press.current;
+    if (!p || p.pointerId !== e.pointerId) return;
+    if (p.dragging) {
+      swallowClick.current = true;
+      const slot = slotAt(e.clientY);
+      const to = slot ? moveTarget(p.index, slot) : null;
+      if (to !== null) void moveScreen(p.index, to);
     }
     endDrag();
   }
+
+  // Escape abandons a drag in flight. Capture phase, and stopped there, so the
+  // board underneath does not also read it as "delete the selection".
+  useEffect(() => {
+    if (dragIndex === null) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      swallowClick.current = true;
+      endDrag();
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [dragIndex]);
 
   function commitRename() {
     const id = editingId;
@@ -97,10 +153,7 @@ export default function ScreensPanel({ contextId, readOnly = false }: Props) {
           </p>
         </div>
       ) : (
-        <ol className={styles.list} onDragLeave={(e) => {
-          // Only when the pointer leaves the list itself, not a row inside it.
-          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDrop(null);
-        }}>
+        <ol className={styles.list} ref={listRef}>
           {screens.map((s, i) => (
             <ScreenRow
               key={s.id}
@@ -109,13 +162,10 @@ export default function ScreensPanel({ contextId, readOnly = false }: Props) {
               count={screens.length}
               dragging={dragIndex === i}
               dropEdge={drop && dragIndex !== null && drop.index === i ? drop.edge : null}
-              onDragStart={() => setDragIndex(i)}
-              onDragOverEdge={(edge) => {
-                if (dragIndex === null) return;
-                if (!drop || drop.index !== i || drop.edge !== edge) setDrop({ index: i, edge });
-              }}
-              onDrop={handleDrop}
-              onDragEnd={endDrag}
+              onPointerDown={(e) => onRowPointerDown(i, e)}
+              onPointerMove={onRowPointerMove}
+              onPointerUp={onRowPointerUp}
+              onPointerCancel={endDrag}
               onMove={(delta) => void moveScreen(i, i + delta)}
               active={selectedElementIds.includes(s.id)}
               editing={editingId === s.id}
@@ -124,7 +174,10 @@ export default function ScreensPanel({ contextId, readOnly = false }: Props) {
               onDraft={setDraft}
               onCommit={commitRename}
               onCancel={() => setEditingId(null)}
-              onSelect={() => selectElement(s.id)}
+              onSelect={() => {
+                if (swallowClick.current) { swallowClick.current = false; return; }
+                selectElement(s.id);
+              }}
               onPresent={() => startPresentation(s.id)}
               onRename={() => { setEditingId(s.id); setDraft(s.name); }}
               onSelectContents={() => selectElements(elementsInScreen(elements, s).map((e) => e.id))}
@@ -143,10 +196,10 @@ interface RowProps {
   count: number;
   dragging: boolean;
   dropEdge: "before" | "after" | null;
-  onDragStart: () => void;
-  onDragOverEdge: (edge: "before" | "after") => void;
-  onDrop: () => void;
-  onDragEnd: () => void;
+  onPointerDown: (e: React.PointerEvent<HTMLLIElement>) => void;
+  onPointerMove: (e: React.PointerEvent<HTMLLIElement>) => void;
+  onPointerUp: (e: React.PointerEvent<HTMLLIElement>) => void;
+  onPointerCancel: () => void;
   onMove: (delta: number) => void;
   active: boolean;
   editing: boolean;
@@ -174,14 +227,18 @@ function ScreenRow(p: RowProps) {
       className={[
         styles.row,
         p.active ? styles.rowActive : "",
+        canMove ? styles.rowReorderable : "",
         p.dragging ? styles.rowDragging : "",
         p.dropEdge === "before" ? styles.dropBefore : "",
         p.dropEdge === "after" ? styles.dropAfter : "",
       ].filter(Boolean).join(" ")}
       data-testid={`screen-row-${screen.id}`}
       data-drop={p.dropEdge ?? undefined}
+      data-active={p.active ? "true" : undefined}
       tabIndex={0}
-      draggable={canMove}
+      // Never an HTML5 drag — see the note on the drag state in ScreensPanel.
+      draggable={false}
+      data-reorderable={canMove ? "true" : "false"}
       onClick={p.onSelect}
       onDoubleClick={p.onPresent}
       onKeyDown={(e) => {
@@ -189,20 +246,10 @@ function ScreenRow(p: RowProps) {
         e.preventDefault();
         p.onMove(e.key === "ArrowUp" ? -1 : 1);
       }}
-      onDragStart={(e) => {
-        e.dataTransfer.effectAllowed = "move";
-        // Firefox starts no drag without data.
-        e.dataTransfer.setData("text/plain", screen.id);
-        p.onDragStart();
-      }}
-      onDragOver={(e) => {
-        e.preventDefault();
-        e.dataTransfer.dropEffect = "move";
-        const box = e.currentTarget.getBoundingClientRect();
-        p.onDragOverEdge(e.clientY < box.top + box.height / 2 ? "before" : "after");
-      }}
-      onDrop={(e) => { e.preventDefault(); p.onDrop(); }}
-      onDragEnd={p.onDragEnd}
+      onPointerDown={canMove ? p.onPointerDown : undefined}
+      onPointerMove={canMove ? p.onPointerMove : undefined}
+      onPointerUp={canMove ? p.onPointerUp : undefined}
+      onPointerCancel={canMove ? p.onPointerCancel : undefined}
       title={canMove
         ? "Drag to reorder (or Alt+↑/↓) · click to select · double-click to present from here"
         : "Click to select · double-click to present from here"}
@@ -233,7 +280,7 @@ function ScreenRow(p: RowProps) {
         )}
         <span className={styles.size}>{screen.width} × {screen.height}</span>
       </span>
-      <span onClick={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
+      <span data-no-drag onClick={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
         <LayerRowMenu
           testId={`screen-menu-${screen.id}`}
           actions={[

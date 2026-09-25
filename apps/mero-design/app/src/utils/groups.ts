@@ -91,7 +91,11 @@ export function derivedName(el: Element): string {
   if (el.data.kind === "text") {
     const content = (el.data.content ?? "").replace(/\s+/g, " ").trim();
     if (content) return content.length > 28 ? content.slice(0, 27) + "…" : content;
+    if (el.box === "sticky") return "sticky note";
+    if (el.box === "box") return "box";
   }
+  // A shape tool's path is named for its shape, not "path".
+  if (el.data.kind === "path" && el.shape) return el.shape;
   return el.data.kind;
 }
 

@@ -315,7 +315,7 @@ export default function ProjectsPage() {
                       data-testid={`project-card-${p.contextId}`}
                       onClick={() => navigate(`/teams/${teamId}/projects/${p.contextId}`)}
                     >
-                      <ProjectThumbnail seed={p.contextId} className={styles.cardThumb} />
+                      <ProjectThumbnail contextId={p.contextId} className={styles.cardThumb} />
                       <span className={styles.cardName}>{p.name || p.contextId.slice(0, 8)}</span>
                     </button>
                     <button

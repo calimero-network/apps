@@ -72,9 +72,12 @@ test.describe("origin: shapes paint where they are declared", () => {
     await expect.poll(() => board.calledWith("add_element").length).toBe(1);
     const added = board.calledWith("add_element");
     const el = added[0].args.element as { x: number; y: number; width: number; height: number };
-    // What was persisted is what is painted: probe the middle of the declared box.
+    // What was persisted is what is painted. A new rect is an outline (plan2
+    // item 1): its 4px border sits ON the declared edges, and its middle is the
+    // board showing through.
+    const edge = await pixelAt(page, el.x, el.y + el.height / 2);
+    expect(near(edge, "#1E1E1E", 40)).toBe(true);
     const mid = await pixelAt(page, el.x + el.width / 2, el.y + el.height / 2);
-    expect(mid.a).toBeGreaterThan(0);
-    expect(near(mid, "#4F8EF7", 24)).toBe(true);
+    expect(near(mid, "#1E1E1E", 40)).toBe(false);
   });
 });

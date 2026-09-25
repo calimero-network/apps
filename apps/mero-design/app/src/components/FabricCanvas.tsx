@@ -31,10 +31,41 @@ import { createMutationReporter } from "../utils/mutationErrors";
 import { useToast } from "../contexts/ToastContext";
 import { countRender } from "../utils/renderCount";
 import { useShallow } from "zustand/react/shallow";
-import { useCanvasStore } from "../store/canvasStore";
+import { useCanvasStore, type Tool } from "../store/canvasStore";
 import { wheelAction } from "../utils/wheel";
+import {
+  detachMoved,
+  isConnector,
+  nearestAnchor,
+  parseBinding,
+  reroute,
+  routedEndpoints,
+  shapeUnder,
+  anchorsOf,
+  connectorGeometry,
+  formatBinding,
+  type Anchor,
+} from "../utils/connectors";
 import { saveDataUrl, saveText } from "../utils/saveFile";
 import type { Element } from "../types";
+import {
+  dashArray,
+  isShapeKind,
+  ROUNDED_CORNER_RADIUS,
+  shapeDefaults,
+  shapePath,
+  strokeCap,
+} from "../utils/shapes";
+import {
+  fontOf,
+  inkOf,
+  isBoxText,
+  layoutBox,
+  measurerFor,
+  newSticky,
+  rectToBox,
+} from "../utils/boxText";
+import TextBoxEditor from "./TextBoxEditor";
 import styles from "./FabricCanvas.module.css";
 
 // Must run before any Fabric object is constructed — see fabricDefaults.ts.
@@ -156,6 +187,9 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
       redo,
       copyElements,
       getPasted,
+      editingTextId,
+      startTextEdit,
+      stopTextEdit,
     } = useCanvasStore(
       useShallow((s) => ({
         activeTool: s.activeTool,
@@ -175,6 +209,9 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
         redo: s.redo,
         copyElements: s.copyElements,
         getPasted: s.getPasted,
+        editingTextId: s.editingTextId,
+        startTextEdit: s.startTextEdit,
+        stopTextEdit: s.stopTextEdit,
       })),
     );
 
@@ -272,6 +309,9 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
         selection: true,
       });
       fabricRef.current = fc;
+      // item 8: ⌘-click (macOS) and Ctrl-click (Windows/Linux) add to and remove
+      // from the selection, like a file manager. Shift keeps working as before.
+      fc.selectionKey = ["shiftKey", "metaKey", "ctrlKey"];
       // Hangs the live canvas off its own element. The e2e suite asserts on
       // Fabric's own notion of what is selected (there is no DOM for it), and it
       // is the only way to inspect canvas state from a debugger console.
@@ -518,7 +558,7 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
     useEffect(() => {
       const fc = fabricRef.current;
       if (!fc) return;
-      fc.skipTargetFind = readOnly;
+      fc.skipTargetFind = readOnly || isConnectorTool(useCanvasStore.getState().activeTool);
       if (readOnly) {
         fc.discardActiveObject();
         fc.selection = false;
@@ -591,6 +631,9 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
       fc.freeDrawingBrush.width = LINE_WIDTH;
       fc.isDrawingMode = activeTool === "path" && !readOnly;
       fc.selection = activeTool === "select" && !readOnly;
+      // A line or arrow may START on a shape — that is how it docks to one — so
+      // with those tools a press never grabs the shape underneath.
+      fc.skipTargetFind = readOnly || isConnectorTool(activeTool);
 
       if (activeTool === "hand") {
         fc.defaultCursor = "grab";
@@ -602,6 +645,50 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
       }
 
       let startX = 0, startY = 0, drawing = false;
+      /** The anchor a connector being drawn starts docked to. */
+      let startAnchor: Anchor | null = null;
+      const connectorTool = isConnectorTool(activeTool);
+
+      /** Snap radius in scene units: a constant 14 screen px at any zoom. */
+      const snapRadius = () => SNAP_PX / (fc.getZoom() || 1);
+      const liveElements = () => useCanvasStore.getState().elements;
+
+      /**
+       * The four edge midpoints of the shape under the pointer, drawn as dots,
+       * the one a connector would dock to filled in. Transient objects (no
+       * element), so the reconcile leaves them alone.
+       */
+      const anchorMarkers: FabricObject[] = [];
+      const clearAnchors = () => {
+        for (const m of anchorMarkers) fc.remove(m);
+        anchorMarkers.length = 0;
+      };
+      const showAnchors = (target: Element | null, active: Anchor | null) => {
+        clearAnchors();
+        const zoom = fc.getZoom() || 1;
+        const shapes = new Map<string, Element>();
+        if (target) shapes.set(target.id, target);
+        if (active) {
+          const owner = liveElements().find((el) => el.id === active.id);
+          if (owner) shapes.set(owner.id, owner);
+        }
+        for (const shape of shapes.values()) {
+          for (const a of anchorsOf(shape)) {
+            const on = !!active && active.id === a.id && active.side === a.side;
+            const r = (on ? 6 : 4.5) / zoom;
+            const dot = new Circle({
+              left: a.x - r, top: a.y - r, radius: r,
+              fill: on ? "#2563eb" : "#ffffff",
+              stroke: "#2563eb", strokeWidth: 1.5 / zoom,
+              selectable: false, evented: false, objectCaching: false,
+            });
+            (dot as FabricObject & { anchorMarker?: string }).anchorMarker = `${a.id}:${a.side}`;
+            anchorMarkers.push(dot);
+            fc.add(dot);
+          }
+        }
+        fc.requestRenderAll();
+      };
       // Screen-space origin of the gesture. The scene-space one moves with the
       // zoom, so "did they drag or just click?" can only be asked here: at 8x
       // zoom a 2px twitch is 16 scene px and would pass a scene-space test.
@@ -669,6 +756,11 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
 
         const p = fc.getScenePoint(e);
         startX = p.x; startY = p.y; drawing = true;
+        startAnchor = null;
+        if (connectorTool) {
+          startAnchor = nearestAnchor(liveElements(), p, snapRadius());
+          if (startAnchor) { startX = startAnchor.x; startY = startAnchor.y; }
+        }
         startClientX = e.clientX; startClientY = e.clientY;
       };
 
@@ -686,9 +778,18 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
           return;
         }
 
+        // Connector tools show where they would dock, drawing or not.
+        let p = fc.getScenePoint(e);
+        if (connectorTool && !readOnlyRef.current) {
+          const exclude = new Set(startAnchor ? [startAnchor.id] : []);
+          const snap = nearestAnchor(liveElements(), p, snapRadius(), exclude);
+          const hover = shapeUnder(liveElements().filter((el) => !exclude.has(el.id)), p, snapRadius());
+          showAnchors(hover ?? (snap ? liveElements().find((el) => el.id === snap.id) ?? null : null), snap);
+          if (drawing && snap) p = new Point(snap.x, snap.y);
+        }
+
         // Live shape preview
         if (!drawing) return;
-        const p = fc.getScenePoint(e);
         const w = Math.max(Math.abs(p.x - startX), 1);
         const h = Math.max(Math.abs(p.y - startY), 1);
         const x = Math.min(p.x, startX);
@@ -713,6 +814,12 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
         let prev: FabricObject;
         if (activeTool === "circle") {
           prev = new Circle({ ...previewProps, radius: Math.max(w, h) / 2, width: w, height: h });
+        } else if (isShapeKind(activeTool)) {
+          // The real outline, so a star looks like a star while it is dragged.
+          prev = new Path(shapePath(activeTool, w, h), previewProps);
+        } else if (activeTool === "rounded") {
+          const r = Math.min(ROUNDED_CORNER_RADIUS, Math.min(w, h) / 2);
+          prev = new Rect({ ...previewProps, width: w, height: h, rx: r, ry: r });
         } else if (activeTool === "line" || activeTool === "arrow") {
           prev = new Line([startX, startY, p.x, p.y], {
             stroke: "#4F8EF7", strokeWidth: 1.5, strokeDashArray: [6, 3],
@@ -751,15 +858,43 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
         // shape to speak of — a zero-length line, or a rect the 20px floor below
         // invents out of nothing — so create nothing at all and leave the tool
         // armed for a real drag.
-        if (
+        const isClick =
           Math.abs(e.clientX - startClientX) < MIN_DRAG_PX &&
-          Math.abs(e.clientY - startClientY) < MIN_DRAG_PX
-        ) {
+          Math.abs(e.clientY - startClientY) < MIN_DRAG_PX;
+
+        // A sticky note is placed, not drawn: a click puts a standard-size note
+        // centred under the pointer and opens it for typing straight away.
+        if (activeTool === "sticky") {
+          const p = fc.getScenePoint(e);
+          const sticky = newSticky(uuid(), p.x, p.y, nextLayerIndex(elements));
+          if (!isClick) {
+            // Dragged: the drag is the note's size, with a floor so it stays usable.
+            const dw = Math.max(Math.abs(p.x - startX), 80);
+            const dh = Math.max(Math.abs(p.y - startY), 80);
+            Object.assign(sticky, {
+              x: Math.round(Math.min(p.x, startX)), y: Math.round(Math.min(p.y, startY)),
+              width: Math.round(dw), height: Math.round(dh),
+            });
+          }
+          snapshot();
+          upsertElement(sticky);
+          startTextEdit(sticky.id);
+          await rpcCall(contextId, "add_element", { element: sticky }).catch((err) => reportFailure.current("add_element", err));
+          return;
+        }
+
+        if (isClick) {
           fc.renderAll();
           return;
         }
 
-        const p = fc.getScenePoint(e);
+        clearAnchors();
+        const raw = fc.getScenePoint(e);
+        // A connector's far end docks too — never to the shape it started on.
+        const endAnchor = connectorTool
+          ? nearestAnchor(liveElements(), raw, snapRadius(), new Set(startAnchor ? [startAnchor.id] : []))
+          : null;
+        const p = endAnchor ? new Point(endAnchor.x, endAnchor.y) : raw;
         const segment = activeTool === "line" || activeTool === "arrow";
         // A horizontal line is legitimately 0 tall — only area shapes get a floor.
         const w = segment ? Math.abs(p.x - startX) : Math.max(Math.abs(p.x - startX), 20);
@@ -767,33 +902,50 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
         const x = Math.min(p.x, startX);
         const y = Math.min(p.y, startY);
 
-        const kind =
-          activeTool === "circle" ? "circle" as const :
-          activeTool === "line"   ? "line"   as const :
-          activeTool === "arrow"  ? "arrow"  as const :
-          "rect" as const;
-
-        const isSegment = kind === "line" || kind === "arrow";
-        // item 2: a segment's stroke is the shape, and the bounding box loses which
-        // way it was dragged — so keep the endpoints, element-local.
-        const points = isSegment
-          ? `${Math.round(startX - x)},${Math.round(startY - y)} ${Math.round(p.x - x)},${Math.round(p.y - y)}`
-          : undefined;
-
-        const el: Element = {
-          id: uuid(),
-          data: points ? { kind, points } : { kind },
-          x: Math.round(x), y: Math.round(y),
-          width: Math.round(isSegment ? Math.abs(p.x - startX) : w),
-          height: Math.round(isSegment ? Math.abs(p.y - startY) : h),
-          rotation: 0,
-          fill: isSegment ? "transparent" : "#4F8EF7",
-          stroke: isSegment ? LINE_STROKE : "transparent",
-          strokeWidth: isSegment ? LINE_WIDTH : 0,
-          opacity: 100,
-          layerIndex: nextLayerIndex(elements),
-          createdBy: "", createdAt: Date.now(), updatedAt: Date.now(),
-        };
+        const isSegment = activeTool === "line" || activeTool === "arrow";
+        let el: Element;
+        if (isSegment) {
+          // item 2: a segment's stroke is the shape, and the bounding box loses which
+          // way it was dragged — so keep the endpoints, element-local.
+          const points = `${Math.round(startX - x)},${Math.round(startY - y)} ${Math.round(p.x - x)},${Math.round(p.y - y)}`;
+          el = {
+            id: uuid(),
+            data: { kind: activeTool === "arrow" ? "arrow" : "line", points },
+            x: Math.round(x), y: Math.round(y),
+            width: Math.round(Math.abs(p.x - startX)),
+            height: Math.round(Math.abs(p.y - startY)),
+            rotation: 0,
+            fill: "transparent",
+            stroke: LINE_STROKE,
+            strokeWidth: LINE_WIDTH,
+            opacity: 100,
+            layerIndex: nextLayerIndex(elements),
+            createdBy: "", createdAt: Date.now(), updatedAt: Date.now(),
+            ...(startAnchor ? { startBinding: formatBinding(startAnchor) } : {}),
+            ...(endAnchor ? { endBinding: formatBinding(endAnchor) } : {}),
+          };
+        } else {
+          // Every area shape starts as an outline — no fill, a 4px stroke — so
+          // it works as a container out of the box.
+          const { kind, shape, ...paint } = shapeDefaults(activeTool);
+          // A circle is as wide as it is tall: the preview drew max(w, h), so
+          // anything else would put down a different shape from the one shown.
+          const cw = kind === "circle" ? Math.max(w, h) : w;
+          const ch = kind === "circle" ? Math.max(w, h) : h;
+          el = {
+            id: uuid(),
+            data: shape ? { kind, points: shapePath(shape, cw, ch) } : { kind },
+            x: Math.round(x), y: Math.round(y),
+            width: Math.round(cw),
+            height: Math.round(ch),
+            rotation: 0,
+            ...paint,
+            opacity: 100,
+            layerIndex: nextLayerIndex(elements),
+            createdBy: "", createdAt: Date.now(), updatedAt: Date.now(),
+            ...(shape ? { shape } : {}),
+          };
+        }
         snapshot();
         upsertElement(el);
         // The shape is down; the next gesture is almost always about moving or
@@ -837,12 +989,17 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
       const persistGeometry = async (obj: FabricObject & { data?: Element }) => {
         const el = obj.data;
         if (!el?.id) return;
+        // An area shape's size is its box, NOT its painted bounds.
+        // `getScaledWidth()` includes the stroke, so with the 4px default border
+        // every move of a rect used to grow it by 4px — invisible back when new
+        // shapes had no stroke at all.
+        const area = isAreaShape(el);
         const updatedEl: Element = {
           ...el,
           x: Math.round(obj.left ?? el.x),
           y: Math.round(obj.top ?? el.y),
-          width: Math.round(obj.getScaledWidth?.() ?? el.width),
-          height: Math.round(obj.getScaledHeight?.() ?? el.height),
+          width: Math.round(area ? (obj.width ?? el.width) * (obj.scaleX ?? 1) : obj.getScaledWidth?.() ?? el.width),
+          height: Math.round(area ? (obj.height ?? el.height) * (obj.scaleY ?? 1) : obj.getScaledHeight?.() ?? el.height),
           rotation: Math.round(obj.angle ?? el.rotation),
           updatedAt: Date.now(),
         };
@@ -873,6 +1030,8 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
           fc.discardActiveObject();
           snapshot();
           for (const child of children) await persistGeometry(child);
+          const movedIds = new Set(children.map((c) => c.data?.id).filter(Boolean) as string[]);
+          for (const child of children) if (child.data) await detachIfMoved(child.data, movedIds);
           const restored = new ActiveSelection(children, { canvas: fc });
           fc.setActiveObject(restored);
           fc.requestRenderAll();
@@ -881,7 +1040,8 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
 
         if (!obj?.data?.id) return;
 
-        if (obj.data.data?.kind === "text") {
+        // A box or sticky resizes its container; only a bare text scales its font.
+        if (obj.data.data?.kind === "text" && !isBoxText(obj.data)) {
           const text = obj as IText & { data?: Element };
           const sy = text.scaleY ?? 1;
           const sx = text.scaleX ?? 1;
@@ -919,6 +1079,56 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
 
         snapshot();
         await persistGeometry(obj);
+        if (obj.data && isConnector(obj.data)) await detachIfMoved(obj.data, new Set([obj.data.id]));
+      };
+
+      /** Save a connector the user dragged on its own without its dock(s). */
+      const detachIfMoved = async (el: Element, movedIds: ReadonlySet<string>) => {
+        if (!isConnector(el) || (!el.startBinding && !el.endBinding)) return;
+        const current = useCanvasStore.getState().elements.find((x) => x.id === el.id) ?? el;
+        const next = detachMoved(current, movedIds);
+        if (next.startBinding === current.startBinding && next.endBinding === current.endBinding) return;
+        const saved = { ...next, updatedAt: Date.now() };
+        upsertElement(saved);
+        await rpcCall(contextId, "add_element", { element: saved }).catch((err) => reportFailure.current("add_element", err));
+      };
+
+      /**
+       * While a docked shape is dragged, redraw its connectors from where it is
+       * NOW, so the lines stretch along live instead of jumping on release. The
+       * saved reroute happens once, from the reroute effect, after the drop.
+       */
+      const onObjectMoving = (opt: { target?: FabricObject & { data?: Element } }) => {
+        const obj = opt.target;
+        const el = obj?.data;
+        if (!obj || !el?.id || isConnector(el)) return;
+        const all = useCanvasStore.getState().elements;
+        const docked = all.filter((c) =>
+          isConnector(c) && (parseBinding(c.startBinding)?.id === el.id || parseBinding(c.endBinding)?.id === el.id));
+        if (docked.length === 0) return;
+        const moved: Element = {
+          ...el,
+          x: obj.left ?? el.x,
+          y: obj.top ?? el.y,
+          width: (obj.width ?? el.width) * (obj.scaleX ?? 1),
+          height: (obj.height ?? el.height) * (obj.scaleY ?? 1),
+          rotation: obj.angle ?? el.rotation,
+        };
+        const byId = new Map(all.map((x) => [x.id, x] as const));
+        byId.set(el.id, moved);
+        for (const c of docked) {
+          const [a, b] = routedEndpoints(c, byId);
+          const { points, ...box } = connectorGeometry(a, b);
+          const next = buildFabricObject({ ...c, ...box, data: { ...c.data, points } });
+          const old = (fc.getObjects() as CanvasObject[]).find((o) => o.data?.id === c.id);
+          if (!next) continue;
+          next.selectable = !readOnlyRef.current;
+          next.evented = !readOnlyRef.current;
+          if (old) fc.remove(old);
+          fc.add(next);
+        }
+        restack(fc);
+        fc.requestRenderAll();
       };
 
       const onTextEditingExited = async (opt: { target?: (IText & { data?: Element }) }) => {
@@ -937,8 +1147,14 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
         }).catch((e) => reportFailure.current("update_text_style", e));
       };
 
-      const onSelectionCreated = (opt: { selected?: (FabricObject & { data?: Element })[] }) => {
-        const ids = (opt.selected ?? []).map((o) => o.data?.id).filter(Boolean) as string[];
+      const onSelectionCreated = () => {
+        // The WHOLE active set, not `opt.selected`: on "selection:updated" that
+        // holds only the object just added, so ⌘-clicking a second shape used to
+        // shrink the store's selection to that one shape — and the store→canvas
+        // sync then tore the multi-selection down to match.
+        const ids = (fc.getActiveObjects() as (FabricObject & { data?: Element })[])
+          .map((o) => o.data?.id)
+          .filter(Boolean) as string[];
         if (ids.length === 1) {
           selectElement(ids[0]);
         } else if (ids.length > 1) {
@@ -946,7 +1162,40 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
         }
       };
 
+      /**
+       * Double-click to type: into a box or sticky directly, and into a plain
+       * rectangle by first turning it into a box — the Figma/Excalidraw gesture
+       * for "put a label in this".
+       */
+      const onDoubleClick = async (opt: { target?: FabricObject & { data?: Element } }) => {
+        if (readOnlyRef.current || previewRef.current) return;
+        const el = opt.target?.data;
+        if (!el?.id) return;
+        if (isBoxText(el)) {
+          startTextEdit(el.id);
+          return;
+        }
+        if (el.data.kind === "rect") {
+          const box = rectToBox(el);
+          snapshot();
+          upsertElement(box);
+          startTextEdit(box.id);
+          await rpcCall(contextId, "add_element", { element: box }).catch((err) => reportFailure.current("add_element", err));
+        }
+      };
+
       const onKeyDown = async (e: KeyboardEvent) => {
+        // Tool shortcuts — single letters, as the toolbar's tooltips promise.
+        // Never while typing anywhere, never with a modifier (⌘R reloads, ⌘D
+        // bookmarks), and never on a repeat.
+        if (!e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && !isTyping(fc)) {
+          const tool = TOOL_KEYS[e.key.toLowerCase()];
+          if (tool && (!readOnlyRef.current || tool === "select" || tool === "hand")) {
+            e.preventDefault();
+            useCanvasStore.getState().setTool(tool);
+            return;
+          }
+        }
         if (e.code === "Space" && !e.repeat) {
           spaceHeldRef.current = true;
           fc.setCursor("grab");
@@ -1072,6 +1321,10 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
       fc.on("selection:updated", onSelectionCreated as (e: unknown) => void);
       const onSelectionCleared = () => selectElement(null);
       fc.on("selection:cleared", onSelectionCleared);
+      fc.on("mouse:dblclick", onDoubleClick as (e: unknown) => void);
+      fc.on("object:moving", onObjectMoving as (e: unknown) => void);
+      fc.on("object:scaling", onObjectMoving as (e: unknown) => void);
+      fc.on("object:rotating", onObjectMoving as (e: unknown) => void);
       window.addEventListener("keydown", onKeyDown);
       window.addEventListener("keyup", onKeyUp);
 
@@ -1089,15 +1342,111 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
         fc.off("selection:created", onSelectionCreated as (e: unknown) => void);
         fc.off("selection:updated", onSelectionCreated as (e: unknown) => void);
         fc.off("selection:cleared", onSelectionCleared);
+        fc.off("mouse:dblclick", onDoubleClick as (e: unknown) => void);
+        fc.off("object:moving", onObjectMoving as (e: unknown) => void);
+        fc.off("object:scaling", onObjectMoving as (e: unknown) => void);
+        fc.off("object:rotating", onObjectMoving as (e: unknown) => void);
+        clearAnchors();
         window.removeEventListener("keydown", onKeyDown);
         window.removeEventListener("keyup", onKeyUp);
         if (previewObjRef.current) { fc.remove(previewObjRef.current); previewObjRef.current = null; }
       };
-    }, [activeTool, readOnly, contextId, elements.length, selectElement, selectElements, selectWithPointer, upsertElement, removeElement, snapshot, undo, redo, copyElements, getPasted]);
+    }, [activeTool, readOnly, contextId, elements.length, selectElement, selectElements, selectWithPointer, upsertElement, removeElement, snapshot, undo, redo, copyElements, getPasted, startTextEdit]);
 
     useEffect(() => {
       (canvasElRef.current as (HTMLCanvasElement & { _cacheImage?: typeof cacheImage }) | null)!._cacheImage = cacheImage;
     }, [cacheImage]);
+
+    /* ── docked connectors follow their shapes ─────────────────────── */
+    // Whenever a shape moves — dragged here, nudged in the inspector, moved by a
+    // peer — recompute the connectors docked to it. `reroute` returns nothing
+    // once they are in place, so this settles after one pass. Saving is batched:
+    // scrubbing X in the inspector changes the shape on every pointer move.
+    const rerouteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const reroutePendingRef = useRef(new Set<string>());
+    useEffect(() => {
+      const moved = reroute(elements);
+      if (moved.length === 0) return;
+      for (const c of moved) {
+        upsertElement(c);
+        reroutePendingRef.current.add(c.id);
+      }
+      if (readOnlyRef.current) { reroutePendingRef.current.clear(); return; }
+      if (rerouteTimerRef.current) clearTimeout(rerouteTimerRef.current);
+      rerouteTimerRef.current = setTimeout(() => {
+        const ids = [...reroutePendingRef.current];
+        reroutePendingRef.current.clear();
+        const now = useCanvasStore.getState().elements;
+        for (const id of ids) {
+          const c = now.find((x) => x.id === id);
+          if (!c) continue;
+          rpcCall(contextId, "add_element", { element: c }).catch((err) => reportFailure.current("add_element", err));
+        }
+      }, REROUTE_SAVE_MS);
+    }, [elements, upsertElement, contextId]);
+
+    /* ── typing into a box / sticky ───────────────────────────────── */
+    const editingEl = editingTextId ? elements.find((e) => e.id === editingTextId && isBoxText(e)) : undefined;
+
+    // Hide the box's own text while the DOM field sits over it.
+    useEffect(() => {
+      const fc = fabricRef.current;
+      if (!fc) return;
+      for (const o of fc.getObjects()) {
+        if (o instanceof BoxRect) {
+          const hide = o.element.id === editingTextId;
+          if (o.hideText !== hide) { o.hideText = hide; o.dirty = true; }
+        }
+      }
+      fc.requestRenderAll();
+    }, [editingTextId, elements]);
+
+    // An edit on an element that went away (deleted by a peer, undone) ends.
+    useEffect(() => {
+      if (editingTextId && !editingEl) stopTextEdit();
+    }, [editingTextId, editingEl, stopTextEdit]);
+
+    async function commitTextEdit(id: string, content: string) {
+      stopTextEdit();
+      const el = useCanvasStore.getState().elements.find((e) => e.id === id);
+      if (!el || readOnlyRef.current) return;
+      if (content === (el.data.content ?? "")) {
+        // Nothing typed. A box with no words is just a rectangle again.
+        if (el.box === "box" && !content.trim()) await revertToRect(el);
+        return;
+      }
+      snapshot();
+      if (el.box === "box" && !content.trim()) {
+        await revertToRect(el);
+        return;
+      }
+      const now = Date.now();
+      const next: Element = { ...el, data: { ...el.data, content }, updatedAt: now };
+      // Grow the box to fit what was typed rather than clip it — a sticky that
+      // hides its last line looks like lost text.
+      const needed = layoutBox(next, el.width, el.height, measurerFor(fontOf(next), next.data.fontSize ?? 16)).neededHeight;
+      const grow = needed > el.height;
+      if (grow) next.height = needed;
+      upsertElement(next);
+      await rpcCall(contextId, "update_text_style", {
+        id, content, font_family: null, font_size: null, bold: null, italic: null,
+        text_align: null, vertical_align: null, updated_at: now,
+      }).catch((e) => reportFailure.current("update_text_style", e));
+      if (grow) {
+        await rpcCall(contextId, "update_element", {
+          id, x: null, y: null, width: null, height: next.height, rotation: null,
+          fill: null, stroke: null, stroke_width: null, opacity: null, corner_radius: null,
+          updated_at: now,
+        }).catch((e) => reportFailure.current("update_element", e));
+      }
+    }
+
+    async function revertToRect(el: Element) {
+      const { box: _box, textColor: _ink, ...rest } = el;
+      const rect: Element = { ...rest, data: { kind: "rect" }, updatedAt: Date.now() };
+      upsertElement(rect);
+      await rpcCall(contextId, "add_element", { element: rect }).catch((e) => reportFailure.current("add_element", e));
+    }
 
     function notifyViewport(z: number) {
       const fc = fabricRef.current;
@@ -1109,6 +1458,15 @@ const FabricCanvas = forwardRef<FabricCanvasHandle, Props>(
     return (
       <div className={styles.wrap}>
         <canvas ref={canvasElRef} data-testid="fabric-canvas" />
+        {editingEl && fabricRef.current && canvasElRef.current && (
+          <TextBoxEditor
+            key={editingEl.id}
+            element={editingEl}
+            canvas={fabricRef.current}
+            canvasEl={canvasElRef.current}
+            onCommit={(content) => { void commitTextEdit(editingEl.id, content); }}
+          />
+        )}
         <div className={styles.zoomBar}>
           <button className={styles.zoomBtn} onClick={() => {
             const fc = fabricRef.current;
@@ -1152,6 +1510,39 @@ export default FabricCanvas;
  */
 function nextLayerIndex(elements: Element[]): number {
   return elements.reduce((max, e) => Math.max(max, e.layerIndex + 1), 0);
+}
+
+/** How close, in screen px, a connector end must come to an anchor to dock. */
+const SNAP_PX = 14;
+/** Delay before a rerouted connector is saved — see the reroute effect. */
+const REROUTE_SAVE_MS = 250;
+
+function isConnectorTool(tool: string): boolean {
+  return tool === "line" || tool === "arrow";
+}
+
+/** Letter → tool. The toolbar's tooltips show the same letters. */
+const TOOL_KEYS: Record<string, Tool> = {
+  v: "select", h: "hand", r: "rect", u: "rounded", o: "circle",
+  d: "diamond", g: "triangle", x: "star", c: "cloud",
+  l: "line", a: "arrow", p: "path", t: "text", s: "sticky",
+};
+
+/** True while keystrokes belong to a text field or an IText being edited. */
+function isTyping(fc: Canvas): boolean {
+  const el = document.activeElement as HTMLElement | null;
+  const tag = el?.tagName?.toLowerCase();
+  if (tag === "input" || tag === "textarea" || tag === "select" || el?.isContentEditable) return true;
+  const active = fc.getActiveObject() as (IText & { isEditing?: boolean }) | null;
+  return !!active?.isEditing;
+}
+
+/** Shapes whose stored size is their box — see `persistGeometry`. */
+function isAreaShape(el: Element): boolean {
+  return el.data.kind === "rect"
+    || el.data.kind === "circle"
+    || (el.data.kind === "path" && isShapeKind(el.shape))
+    || isBoxText(el);
 }
 
 const LINE_STROKE = "#111111";
@@ -1215,6 +1606,10 @@ function buildFabricObject(el: Element): FabricObject | null {
     opacity: el.opacity / 100,
     shadow,
     data: el,
+    ...dashProps(el),
+    // A 4px border stays 4px while a shape is being resized, and persisting
+    // reads `width * scaleX` (see `persistGeometry`), which excludes it.
+    strokeUniform: true,
   };
 
   switch (el.data.kind) {
@@ -1232,6 +1627,7 @@ function buildFabricObject(el: Element): FabricObject | null {
       const [x1, y1, x2, y2] = endpoints(el);
       const line = new Line([x1, y1, x2, y2], {
         stroke: colour, strokeWidth: width, strokeLineCap: "round", shadow,
+        strokeDashArray: dashArray(el.strokeStyle, width) ?? null,
       });
       if (el.data.kind === "line") {
         line.set({ data: el });
@@ -1245,6 +1641,10 @@ function buildFabricObject(el: Element): FabricObject | null {
       return group;
     }
     case "text": {
+      if (isBoxText(el)) {
+        const r = Math.max(0, Math.min(el.cornerRadius ?? 0, Math.min(el.width, el.height) / 2));
+        return new BoxRect({ ...base, rx: r, ry: r }, el);
+      }
       const text = new IText(el.data.content ?? "Text", {
         left: el.x, top: el.y,
         fontSize: el.data.fontSize ?? 24,
@@ -1266,9 +1666,75 @@ function buildFabricObject(el: Element): FabricObject | null {
       text.setControlsVisibility({ mt: true, mb: true });
       return text;
     }
-    case "path":
-      return new Path(el.data.points ?? "", { ...base, fill: "transparent" });
+    case "path": {
+      // A shape tool's outline is rebuilt at the element's size (see
+      // utils/shapes); a pen stroke is drawn from its stored points as before.
+      if (isShapeKind(el.shape)) {
+        return new Path(shapePath(el.shape, el.width, el.height), { ...base, strokeLineJoin: "round" });
+      }
+      const { strokeUniform: _uniform, ...pen } = base;
+      return new Path(el.data.points ?? "", { ...pen, fill: "transparent" });
+    }
     default:
       return null;
   }
 }
+
+/** Dash pattern and cap for an element's outline, as Fabric props. */
+function dashProps(el: Element): { strokeDashArray: number[] | null; strokeLineCap: "round" | "butt" } {
+  return {
+    strokeDashArray: dashArray(el.strokeStyle, el.strokeWidth) ?? null,
+    strokeLineCap: strokeCap(el.strokeStyle),
+  };
+}
+
+/**
+ * A rectangle that also paints its element's text inside itself — a box you can
+ * type into, or a sticky note. One Fabric object per element, so selection,
+ * resize handles and hit-testing are exactly the box, and nothing has to keep a
+ * separate text object glued to it.
+ *
+ * The text is drawn in UNSCALED space: while a resize handle is being dragged
+ * Fabric scales the context, and drawing through that would stretch the glyphs.
+ * Undoing the scale and laying out at the scaled size instead re-wraps the words
+ * live as the box changes shape.
+ */
+class BoxRect extends Rect {
+  declare element: Element;
+  /** Set while the DOM editor is open over this box, so the text is not drawn twice. */
+  declare hideText: boolean;
+
+  constructor(options: ConstructorParameters<typeof Rect>[0], element: Element) {
+    super(options);
+    this.element = element;
+    this.hideText = false;
+  }
+
+  _render(ctx: CanvasRenderingContext2D): void {
+    super._render(ctx);
+    const el = this.element;
+    if (this.hideText || !el.data.content) return;
+    const sx = this.scaleX || 1;
+    const sy = this.scaleY || 1;
+    const w = this.width * sx;
+    const h = this.height * sy;
+    ctx.save();
+    ctx.scale(1 / sx, 1 / sy);
+    // Words never paint outside the box — the box is the element's bounds, and
+    // anything drawn beyond them is clipped by Fabric's object cache anyway.
+    ctx.beginPath();
+    ctx.rect(-w / 2, -h / 2, w, h);
+    ctx.clip();
+    ctx.shadowColor = "transparent";
+    ctx.font = fontOf(el);
+    ctx.fillStyle = inkOf(el);
+    ctx.textBaseline = "top";
+    const layout = layoutBox(el, w, h, (t) => ctx.measureText(t).width);
+    ctx.textAlign = layout.align;
+    layout.lines.forEach((line, i) => {
+      ctx.fillText(line, -w / 2 + layout.anchorX, -h / 2 + layout.top + i * layout.lineHeight);
+    });
+    ctx.restore();
+  }
+}
+

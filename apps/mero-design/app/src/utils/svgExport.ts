@@ -1,5 +1,7 @@
 import type { Element } from "../types";
 import { escapeHtml } from "./sanitize";
+import { dashArray, isShapeKind, shapePath, strokeCap } from "./shapes";
+import { fontOf, inkOf, isBoxText, layoutBox, measurerFor } from "./boxText";
 
 /**
  * Elements → standalone SVG markup.
@@ -93,7 +95,20 @@ function paint(el: Element): Record<string, string | number | undefined> {
     fill: isPainted(el.fill) ? el.fill : "none",
     stroke: isPainted(el.stroke) ? el.stroke : undefined,
     "stroke-width": isPainted(el.stroke) ? el.strokeWidth : undefined,
+    ...dash(el, el.strokeWidth),
     opacity: el.opacity === 100 ? undefined : (el.opacity / 100).toFixed(3),
+  };
+}
+
+/** `stroke-dasharray` for the element's stroke style — the canvas's pattern exactly. */
+function dash(el: Element, width: number): Record<string, string | undefined> {
+  const pattern = isPainted(el.stroke) || el.data.kind === "line" || el.data.kind === "arrow" || el.data.kind === "path"
+    ? dashArray(el.strokeStyle, width)
+    : undefined;
+  if (!pattern) return {};
+  return {
+    "stroke-dasharray": pattern.map((n) => +n.toFixed(2)).join(" "),
+    "stroke-linecap": strokeCap(el.strokeStyle) === "round" ? "round" : undefined,
   };
 }
 
@@ -146,7 +161,7 @@ export function elementToSvgNode(el: Element, options: SvgOptions = {}): string 
       const colour = isPainted(el.stroke) ? el.stroke : "#111111";
       const width = Math.max(1, el.strokeWidth || 2);
       const opacity = el.opacity === 100 ? undefined : (el.opacity / 100).toFixed(3);
-      const line = `<line ${attrs({ x1, y1, x2, y2, stroke: colour, "stroke-width": width, "stroke-linecap": "round", opacity, ...common })}/>`;
+      const line = `<line ${attrs({ x1, y1, x2, y2, stroke: colour, "stroke-width": width, "stroke-linecap": "round", "stroke-dasharray": dash(el, width)["stroke-dasharray"], opacity, ...common })}/>`;
       if (el.data.kind === "line") return line;
       const size = Math.max(8, width * 3.5);
       const angle = Math.atan2(y2 - y1, x2 - x1);
@@ -157,12 +172,18 @@ export function elementToSvgNode(el: Element, options: SvgOptions = {}): string 
       return line + head;
     }
     case "path": {
+      if (isShapeKind(el.shape)) {
+        // Regenerated at the element's size, like the canvas does.
+        return `<g ${attrs({ transform: `translate(${el.x} ${el.y})${el.rotation ? ` rotate(${el.rotation})` : ""}`, filter })}>` +
+          `<path ${attrs({ d: shapePath(el.shape, el.width, el.height), ...paint(el), "stroke-linejoin": "round" })}/></g>`;
+      }
       const d = el.data.points ?? "";
       if (!d) return "";
       return `<g ${attrs({ transform: `translate(${el.x} ${el.y})${el.rotation ? ` rotate(${el.rotation})` : ""}`, filter })}>` +
-        `<path ${attrs({ d, fill: "none", stroke: isPainted(el.stroke) ? el.stroke : "#111111", "stroke-width": Math.max(1, el.strokeWidth || 2), "stroke-linecap": "round", "stroke-linejoin": "round", opacity: el.opacity === 100 ? undefined : (el.opacity / 100).toFixed(3) })}/></g>`;
+        `<path ${attrs({ d, fill: "none", stroke: isPainted(el.stroke) ? el.stroke : "#111111", "stroke-width": Math.max(1, el.strokeWidth || 2), "stroke-linecap": "round", "stroke-linejoin": "round", "stroke-dasharray": dash(el, Math.max(1, el.strokeWidth || 2))["stroke-dasharray"], opacity: el.opacity === 100 ? undefined : (el.opacity / 100).toFixed(3) })}/></g>`;
     }
     case "text": {
+      if (isBoxText(el)) return boxToSvg(el, common);
       const size = el.data.fontSize ?? 24;
       const lines = (el.data.content ?? "").split("\n");
       // Fabric's default line height is 1.16em and it draws the first line's TOP
@@ -212,6 +233,41 @@ export function elementToSvgNode(el: Element, options: SvgOptions = {}): string 
     default:
       return "";
   }
+}
+
+/**
+ * A box or sticky: its container, then its words laid out by the same
+ * `layoutBox` the canvas uses, clipped to the box.
+ */
+function boxToSvg(el: Element, common: Record<string, string | undefined>): string {
+  const r = Math.max(0, Math.min(el.cornerRadius ?? 0, Math.min(el.width, el.height) / 2));
+  const rect = `<rect ${attrs({ x: el.x, y: el.y, width: el.width, height: el.height, rx: r || undefined, ry: r || undefined, ...paint(el), ...common })}/>`;
+  const content = el.data.content ?? "";
+  if (!content) return rect;
+  const size = el.data.fontSize ?? 16;
+  const layout = layoutBox(el, el.width, el.height, measurerFor(fontOf(el), size));
+  const clipId = `clip-${el.id.replace(/[^a-zA-Z0-9_-]/g, "")}`;
+  const anchor = layout.align === "center" ? "middle" : layout.align === "right" ? "end" : undefined;
+  const tspans = layout.lines
+    .map((line, i) =>
+      `<tspan ${attrs({ x: el.x + layout.anchorX, y: (el.y + layout.top + i * layout.lineHeight + size * 0.8).toFixed(2) })}>${escapeHtml(line)}</tspan>`,
+    )
+    .join("");
+  const clip = `<clipPath id="${clipId}"><rect ${attrs({ x: el.x, y: el.y, width: el.width, height: el.height })}/></clipPath>`;
+  const text = `<text ${attrs({
+    "xml:space": "preserve",
+    style: "white-space: pre",
+    "font-family": el.data.fontFamily ?? "sans-serif",
+    "font-size": size,
+    "font-weight": el.data.bold ? "bold" : undefined,
+    "font-style": el.data.italic ? "italic" : undefined,
+    "text-anchor": anchor,
+    fill: inkOf(el),
+    "clip-path": `url(#${clipId})`,
+    opacity: el.opacity === 100 ? undefined : (el.opacity / 100).toFixed(3),
+    transform: common.transform,
+  })}>${tspans}</text>`;
+  return `<g>${clip}${rect}${text}</g>`;
 }
 
 /** Elements → a complete `<svg>` document, sorted back-to-front. */

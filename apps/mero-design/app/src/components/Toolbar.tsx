@@ -66,6 +66,37 @@ const IconComment = () => (
     <path d="M2 2.5h12v8H9.5L7 13V10.5H2z"/>
   </svg>
 );
+const IconRounded = () => (
+  <svg viewBox="0 0 16 16" width="14" height="14">
+    <rect x="2" y="3" width="12" height="10" rx="3.5" fill="none" stroke="currentColor" strokeWidth="1.5"/>
+  </svg>
+);
+const IconTriangle = () => (
+  <svg viewBox="0 0 16 16" width="14" height="14">
+    <path d="M8 2.5 14 13H2z" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/>
+  </svg>
+);
+const IconDiamond = () => (
+  <svg viewBox="0 0 16 16" width="14" height="14">
+    <path d="M8 1.8 14.2 8 8 14.2 1.8 8z" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/>
+  </svg>
+);
+const IconStar = () => (
+  <svg viewBox="0 0 16 16" width="14" height="14">
+    <path d="M8 1.8l1.9 3.9 4.3.6-3.1 3 .7 4.3L8 11.6l-3.8 2 .7-4.3-3.1-3 4.3-.6z" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"/>
+  </svg>
+);
+const IconCloud = () => (
+  <svg viewBox="0 0 16 16" width="14" height="14">
+    <path d="M4.5 12.5a3 3 0 0 1-.4-6 3.8 3.8 0 0 1 7.3-1 2.9 2.9 0 0 1 .6 5.7 2.4 2.4 0 0 1-2.2 1.3z" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"/>
+  </svg>
+);
+const IconSticky = () => (
+  <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round">
+    <path d="M2.5 2.5h11v7l-4 4h-7z"/>
+    <path d="M13.5 9.5h-4v4"/>
+  </svg>
+);
 const IconMembers = () => (
   <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
     <circle cx="6" cy="5" r="2.5"/>
@@ -75,15 +106,33 @@ const IconMembers = () => (
   </svg>
 );
 
-const TOOLS = [
-  { id: "select" as const, title: "Select (V)", Icon: IconCursor },
-  { id: "hand"   as const, title: "Hand / Pan (H)", Icon: IconHand },
-  { id: "rect"   as const, title: "Rectangle (R)", Icon: IconRect },
-  { id: "circle" as const, title: "Circle (O)", Icon: IconCircle },
-  { id: "line"   as const, title: "Line (L)", Icon: IconLine },
-  { id: "arrow"  as const, title: "Arrow", Icon: IconArrow },
-  { id: "path"   as const, title: "Pen (P)", Icon: IconPen },
-  { id: "text"   as const, title: "Text (T)", Icon: IconText },
+/**
+ * Tools, in the groups the bar shows them in. The letters are live shortcuts
+ * (see TOOL_KEYS in FabricCanvas) — keep the two in step.
+ */
+const TOOL_GROUPS = [
+  [
+    { id: "select"   as const, title: "Select (V)", Icon: IconCursor },
+    { id: "hand"     as const, title: "Hand / Pan (H)", Icon: IconHand },
+  ],
+  [
+    { id: "rect"     as const, title: "Rectangle (R)", Icon: IconRect },
+    { id: "rounded"  as const, title: "Rounded rectangle (U)", Icon: IconRounded },
+    { id: "circle"   as const, title: "Circle (O)", Icon: IconCircle },
+    { id: "triangle" as const, title: "Triangle (G)", Icon: IconTriangle },
+    { id: "diamond"  as const, title: "Diamond (D)", Icon: IconDiamond },
+    { id: "star"     as const, title: "Star (X)", Icon: IconStar },
+    { id: "cloud"    as const, title: "Cloud (C)", Icon: IconCloud },
+  ],
+  [
+    { id: "line"     as const, title: "Line (L)", Icon: IconLine },
+    { id: "arrow"    as const, title: "Arrow (A)", Icon: IconArrow },
+    { id: "path"     as const, title: "Pen (P)", Icon: IconPen },
+  ],
+  [
+    { id: "text"     as const, title: "Text (T)", Icon: IconText },
+    { id: "sticky"   as const, title: "Sticky note (S)", Icon: IconSticky },
+  ],
 ];
 
 const BG_OPTIONS: { value: Background; label: string; testId: string }[] = [
@@ -226,22 +275,28 @@ export default function Toolbar({
       <div className={styles.divider} />
 
       <div className={styles.tools}>
-        {TOOLS.map(({ id, title, Icon }) => {
-          // Viewers keep navigation (select/hand) but lose every creation tool.
-          const navOnly = id === "select" || id === "hand";
-          return (
-            <button
-              key={id}
-              className={`${styles.tool} ${activeTool === id ? styles.active : ""}`}
-              title={title}
-              onClick={() => setTool(id)}
-              data-testid={`tool-${id}`}
-              disabled={readOnly && !navOnly}
-            >
-              <Icon />
-            </button>
-          );
-        })}
+        {TOOL_GROUPS.map((group, gi) => (
+          <div key={gi} className={styles.toolGroup}>
+            {group.map(({ id, title, Icon }) => {
+              // Viewers keep navigation (select/hand) but lose every creation tool.
+              const navOnly = id === "select" || id === "hand";
+              return (
+                <button
+                  key={id}
+                  className={`${styles.tool} ${activeTool === id ? styles.active : ""}`}
+                  title={title}
+                  aria-label={title}
+                  aria-pressed={activeTool === id}
+                  onClick={() => setTool(id)}
+                  data-testid={`tool-${id}`}
+                  disabled={readOnly && !navOnly}
+                >
+                  <Icon />
+                </button>
+              );
+            })}
+          </div>
+        ))}
         <button
           className={`${styles.tool} ${activeTool === "image" ? styles.active : ""}`}
           title="Image (I)"

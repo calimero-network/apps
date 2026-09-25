@@ -5,7 +5,10 @@ import type { Element } from "../types";
 /** How far a pasted batch sits from the one it was copied from. */
 const PASTE_OFFSET = 20;
 
-type Tool = "select" | "hand" | "rect" | "circle" | "line" | "arrow" | "path" | "text" | "image";
+export type Tool =
+  | "select" | "hand"
+  | "rect" | "rounded" | "circle" | "triangle" | "diamond" | "star" | "cloud"
+  | "line" | "arrow" | "path" | "text" | "sticky" | "image";
 export type Background = "#ffffff" | "#808080" | "#111111";
 
 const MAX_HISTORY = 50;
@@ -36,8 +39,16 @@ interface CanvasState {
    * the toolbar and the Screens tab start it.
    */
   presentation: { startId: string | null } | null;
+  /**
+   * The box or sticky whose text is being typed into, if any. In the store so
+   * the inspector's "Add text" and a double-click on the canvas open the same
+   * editor.
+   */
+  editingTextId: string | null;
 
   setTool: (tool: Tool) => void;
+  startTextEdit: (id: string) => void;
+  stopTextEdit: () => void;
   /**
    * Hand control back to the pointer with `id` selected — what should happen
    * the moment an item is put down, and the moment an existing item is clicked
@@ -89,7 +100,10 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
   elementLabels: {},
   collapsedGroups: {},
   presentation: null,
+  editingTextId: null,
 
+  startTextEdit: (id) => set({ editingTextId: id, activeTool: "select", selectedElementId: id, selectedElementIds: [id] }),
+  stopTextEdit: () => set({ editingTextId: null }),
   setTool: (tool) => set({ activeTool: tool, selectedElementId: null, selectedElementIds: [] }),
   selectWithPointer: (id) => set({ activeTool: "select", selectedElementId: id, selectedElementIds: [id] }),
   selectElement: (id) => set({ selectedElementId: id, selectedElementIds: id ? [id] : [] }),

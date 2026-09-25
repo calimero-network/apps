@@ -290,6 +290,80 @@ test.describe("reordering screens", () => {
     await expect(names(page)).toHaveText(["One", "Two", "Four", "Three"]);
   });
 
+  /** Press a row, travel to `y` (absolute) in steps, release. Pointer events only. */
+  async function pointerDrag(page: Page, sourceId: string, y: number) {
+    const from = (await page.getByTestId(`screen-row-${sourceId}`).boundingBox())!;
+    await page.mouse.move(from.x + 40, from.y + from.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(from.x + 40, y, { steps: 10 });
+    await page.mouse.up();
+  }
+
+  test("reordering never depends on HTML5 drag-and-drop (Tauri's native drop handler eats it)", async ({ page }) => {
+    // What a Tauri window with its drag-drop handler on does to the page: the
+    // HTML5 drag events never arrive. Killed in the capture phase, before React.
+    await page.addInitScript(() => {
+      for (const type of ["dragstart", "dragenter", "dragover", "dragleave", "drop", "dragend"]) {
+        window.addEventListener(type, (e) => { e.preventDefault(); e.stopImmediatePropagation(); }, true);
+      }
+    });
+    const board = await openBoard(page, { elements: ROW });
+    await openScreensTab(page);
+    const two = (await page.getByTestId("screen-row-s2").boundingBox())!;
+    await pointerDrag(page, "s4", two.y + 4);
+    await expect(names(page)).toHaveText(["One", "Four", "Two", "Three"]);
+    await expect
+      .poll(() => Object.fromEntries(board.calledWith("update_element_label").map((c) => [c.args.id, c.args.label])))
+      .toEqual({ s1: "screen/One @1", s4: "screen/Four @2", s2: "screen/Two @3", s3: "screen/Three @4" });
+  });
+
+  test("dragging past either end of the list lands first or last", async ({ page }) => {
+    await openBoard(page, { elements: ROW });
+    await openScreensTab(page);
+    const first = (await page.getByTestId("screen-row-s1").boundingBox())!;
+    await pointerDrag(page, "s3", first.y - 40);
+    await expect(names(page)).toHaveText(["Three", "One", "Two", "Four"]);
+    const last = (await page.getByTestId("screen-row-s4").boundingBox())!;
+    await pointerDrag(page, "s3", last.y + last.height + 60);
+    await expect(names(page)).toHaveText(["One", "Two", "Four", "Three"]);
+  });
+
+  test("a click is still a click: it selects, and moves nothing", async ({ page }) => {
+    const board = await openBoard(page, { elements: ROW });
+    await openScreensTab(page);
+    await page.getByTestId("screen-row-s3").click();
+    await expect(page.getByTestId("screen-row-s3")).toHaveAttribute("data-active", "true");
+    await expect(names(page)).toHaveText(["One", "Two", "Three", "Four"]);
+    expect(board.calledWith("update_element_label")).toHaveLength(0);
+  });
+
+  test("the row that was dragged is not also selected by the release", async ({ page }) => {
+    await openBoard(page, { elements: ROW });
+    await openScreensTab(page);
+    const one = (await page.getByTestId("screen-row-s1").boundingBox())!;
+    await pointerDrag(page, "s4", one.y + 4);
+    await expect(names(page)).toHaveText(["Four", "One", "Two", "Three"]);
+    await expect(page.getByTestId("screen-row-s4")).not.toHaveAttribute("data-active", "true");
+  });
+
+  test("Escape abandons a drag in flight", async ({ page }) => {
+    const board = await openBoard(page, { elements: ROW });
+    await openScreensTab(page);
+    const from = (await page.getByTestId("screen-row-s4").boundingBox())!;
+    const to = (await page.getByTestId("screen-row-s1").boundingBox())!;
+    await page.mouse.move(from.x + 40, from.y + from.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(to.x + 40, to.y + 4, { steps: 8 });
+    await expect(page.getByTestId("screen-row-s1")).toHaveAttribute("data-drop", "before");
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("screen-row-s1")).not.toHaveAttribute("data-drop", /./);
+    await page.mouse.up();
+    await expect(names(page)).toHaveText(["One", "Two", "Three", "Four"]);
+    expect(board.calledWith("update_element_label")).toHaveLength(0);
+    // The board underneath did not read that Escape as "delete the selection".
+    expect(board.calledWith("delete_element")).toHaveLength(0);
+  });
+
   test("Move up / Move down in the row menu", async ({ page }) => {
     await openBoard(page, { elements: ROW });
     await openScreensTab(page);
@@ -352,7 +426,15 @@ test.describe("reordering screens", () => {
   test("a viewer can see the order but not change it", async ({ page }) => {
     await openBoard(page, { elements: ROW, role: "viewer" });
     await openScreensTab(page);
-    await expect(page.getByTestId("screen-row-s2")).toHaveAttribute("draggable", "false");
+    await expect(page.getByTestId("screen-row-s2")).toHaveAttribute("data-reorderable", "false");
+    // And a real drag attempt changes nothing.
+    const from = (await page.getByTestId("screen-row-s4").boundingBox())!;
+    const to = (await page.getByTestId("screen-row-s1").boundingBox())!;
+    await page.mouse.move(from.x + 40, from.y + from.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(to.x + 40, to.y + 4, { steps: 8 });
+    await page.mouse.up();
+    await expect(names(page)).toHaveText(["One", "Two", "Three", "Four"]);
     await page.getByTestId("screen-menu-s2").click();
     await expect(page.getByTestId("screen-move-up-s2")).toBeDisabled();
   });
