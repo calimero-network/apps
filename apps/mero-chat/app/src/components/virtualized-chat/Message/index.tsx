@@ -231,7 +231,10 @@ const Tick = styled.div`
   text-align: right;
   align-self: flex-end;
   display: flex;
-  justify-content: center;
+  /* flex-end, not center: the box is 24px and "(edited)" is wider, so centred
+     it hung out on both sides. Right-aligned, it overflows leftward and ends
+     where the tick column does, with or without a tick beside it. */
+  justify-content: flex-end;
   align-items: center;
   gap: 2px;
   color: #777583;
