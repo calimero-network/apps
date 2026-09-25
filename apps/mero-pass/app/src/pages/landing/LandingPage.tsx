@@ -79,6 +79,7 @@ const LINKS = {
 };
 
 const REPO = `https://github.com/calimero-network/apps/tree/main/apps/${CONFIG.dir}`;
+const FORK = 'https://github.com/calimero-network/apps/fork';
 
 /** How it works — identical for every app, because the network is. */
 const STEPS = [
@@ -755,8 +756,6 @@ function OverviewView({
         </section>
       )}
 
-      {extras?.showcase && <Showcase showcase={extras.showcase} />}
-
       <section id="features" className="cal-lp-section cal-lp-section--alt">
         <div className="cal-lp-shell">
           <div ref={featuresRef} className="cal-lp-reveal">
@@ -795,6 +794,10 @@ function OverviewView({
         </div>
       </section>
 
+      {/* After the features rather than straight under the hero: the hero
+          already has a picture, and two frames in a row read as a gallery. */}
+      {extras?.showcase && <Showcase showcase={extras.showcase} />}
+
       {extras && <OverviewExtrasSections ConnectCta={ConnectCta} desktopOnly={desktopOnly} />}
 
       {!desktopOnly && !extras?.closing && (
@@ -807,13 +810,32 @@ function OverviewView({
 }
 
 /**
- * Real captures of the app. The clip autoplays muted and looping, the way a GIF
- * would, except where the reader asked for less motion — there it waits, with
- * controls, on its poster.
+ * A clip of the real app told as numbered chapters. The chapter the video is in
+ * is marked, and clicking one jumps there — so the story reads even for someone
+ * who only glances at the list. Autoplays muted and looping, like a GIF, except
+ * where the reader asked for less motion: there it waits on its poster with
+ * controls, and the chapters still seek.
  */
 function Showcase({ showcase }: { showcase: NonNullable<OverviewExtras['showcase']> }) {
   const ref = useReveal();
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [time, setTime] = useState(0);
+  const [duration, setDuration] = useState(0);
   const still = stillPreferred();
+  const { chapters } = showcase.video;
+  let active = 0;
+  chapters.forEach((c, i) => { if (time >= c.at) active = i; });
+  const end = (i: number) => chapters[i + 1]?.at ?? (duration || chapters[i].at + 1);
+  const progress = Math.min(1, Math.max(0, (time - chapters[active].at) / (end(active) - chapters[active].at)));
+
+  function seek(i: number) {
+    const v = videoRef.current;
+    if (!v) return;
+    v.currentTime = chapters[i].at;
+    setTime(chapters[i].at);
+    if (!still) void v.play().catch(() => {});
+  }
+
   return (
     <section id="showcase" className="cal-lp-section">
       <div className="cal-lp-shell">
@@ -821,40 +843,118 @@ function Showcase({ showcase }: { showcase: NonNullable<OverviewExtras['showcase
           <div className="cal-lp-kicker">See it in action</div>
           <h2 className="cal-lp-h2">{showcase.heading}</h2>
           {showcase.sub && <p className="cal-lp-sectionsub">{showcase.sub}</p>}
-          {showcase.video && (
-            <figure className="cal-lp-shot cal-lp-shot--video">
-              <div className="cal-lp-stage">
-                <div className="cal-lp-stagebar" aria-hidden="true">
-                  <span className="cal-lp-stagedot" />
-                  <span className="cal-lp-stagedot" />
-                  <span className="cal-lp-stagedot" />
-                </div>
-                <video
-                  className="cal-lp-shotmedia"
-                  src={showcase.video.src}
-                  poster={showcase.video.poster}
-                  autoPlay={!still}
-                  controls={still}
-                  muted
-                  loop
-                  playsInline
-                  preload="metadata"
-                  aria-label={showcase.video.caption}
-                />
+          <div className="cal-lp-story">
+            <ol className="cal-lp-chapters">
+              {chapters.map((c, i) => (
+                <li key={c.title}>
+                  <button
+                    type="button"
+                    className="cal-lp-chapter"
+                    aria-current={i === active ? 'step' : undefined}
+                    data-cal-lp-active={i === active ? '' : undefined}
+                    onClick={() => seek(i)}
+                  >
+                    <span className="cal-lp-chapternum">{i + 1}</span>
+                    <span>
+                      <span className="cal-lp-chaptertitle">{c.title}</span>
+                      <span className="cal-lp-chapterbody">{c.body}</span>
+                    </span>
+                    <span
+                      className="cal-lp-chapterbar"
+                      style={{ transform: `scaleX(${i === active ? progress : i < active ? 1 : 0})` }}
+                      aria-hidden="true"
+                    />
+                  </button>
+                </li>
+              ))}
+            </ol>
+            <div className="cal-lp-stage cal-lp-stage--video">
+              <div className="cal-lp-stagebar" aria-hidden="true">
+                <span className="cal-lp-stagedot" />
+                <span className="cal-lp-stagedot" />
+                <span className="cal-lp-stagedot" />
               </div>
-              <figcaption className="cal-lp-shotcaption">{showcase.video.caption}</figcaption>
-            </figure>
-          )}
-          <div className="cal-lp-shots">
-            {showcase.shots.map((s) => (
-              <figure key={s.src} className="cal-lp-shot">
-                <a className="cal-lp-shotlink" href={s.src} target="_blank" rel="noreferrer">
-                  <img className="cal-lp-shotmedia" src={s.src} alt={s.alt} loading="lazy" width={1440} height={900} />
-                </a>
-                <figcaption className="cal-lp-shotcaption">{s.caption}</figcaption>
-              </figure>
-            ))}
+              <video
+                ref={videoRef}
+                className="cal-lp-video"
+                src={showcase.video.src}
+                poster={showcase.video.poster}
+                autoPlay={!still}
+                controls={still}
+                muted
+                loop
+                playsInline
+                preload="metadata"
+                aria-label={chapters.map((c, i) => `${i + 1}. ${c.title}`).join(' ')}
+                onTimeUpdate={(e) => setTime(e.currentTarget.currentTime)}
+                onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
+              />
+            </div>
           </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/** Fork → customise → ship. Shared, because every app in this repo is the same kind of open. */
+const FORK_STEPS = [
+  {
+    title: 'Fork it',
+    body: 'Everything is in calimero-network/apps: the front end and the Rust contract behind it, MIT-licensed.',
+  },
+  {
+    title: 'Make it yours',
+    body: 'Rebrand it, add the tools your team is missing, change what it stores. It is your code now.',
+  },
+  {
+    title: 'Ship it',
+    body: 'Run it on your own nodes, or sign the bundle and publish it to the Application Registry under your own name.',
+  },
+];
+
+function OpenSource({ commands }: { commands: string[] }) {
+  const ref = useReveal();
+  return (
+    <section id="open-source" className="cal-lp-section">
+      <div className="cal-lp-shell">
+        <div ref={ref} className="cal-lp-os cal-lp-reveal">
+          <div>
+            <div className="cal-lp-kicker">Open source</div>
+            <h2 className="cal-lp-h2">Fork it and make it yours</h2>
+            <p className="cal-lp-sectionsub">
+              {CONFIG.name} is open source under the MIT licence. Anybody can fork it, customise it however they
+              like, and run or ship their own version — no permission, no licence fee.
+            </p>
+            <ol className="cal-lp-forksteps">
+              {FORK_STEPS.map((st, i) => (
+                <li key={st.title} className="cal-lp-forkstep">
+                  <span className="cal-lp-stepnum">{i + 1}</span>
+                  <div>
+                    <h3 className="cal-lp-steptitle">{st.title}</h3>
+                    <p className="cal-lp-stepbody">{st.body}</p>
+                  </div>
+                </li>
+              ))}
+            </ol>
+            <div className="cal-lp-cta">
+              <a className="cal-lp-btn cal-lp-btn--primary" href={FORK} target="_blank" rel="noreferrer">
+                Fork on GitHub <ExternalLink size={14} />
+              </a>
+              <a className="cal-lp-btn cal-lp-btn--ghost" href={REPO} target="_blank" rel="noreferrer">
+                Browse the source <ExternalLink size={14} />
+              </a>
+            </div>
+          </div>
+          <pre className="cal-lp-code" aria-label="Commands to run your own fork">
+            <code>
+              {commands.map((c) => (
+                <span key={c} className="cal-lp-codeline">
+                  {c.startsWith('#') ? <span className="cal-lp-codecomment">{c}</span> : <><span className="cal-lp-codeprompt">$ </span>{c}</>}
+                </span>
+              ))}
+            </code>
+          </pre>
         </div>
       </div>
     </section>
@@ -902,7 +1002,7 @@ function OverviewExtrasSections({ ConnectCta, desktopOnly }: ViewShared) {
   const plansRef = useReveal();
   const closingRef = useReveal();
   if (!extras) return null;
-  const { comparison, collaboration, audiences, alwaysOn, closing } = extras;
+  const { comparison, collaboration, audiences, openSource, alwaysOn, closing } = extras;
 
   return (
     <>
@@ -992,6 +1092,8 @@ function OverviewExtrasSections({ ConnectCta, desktopOnly }: ViewShared) {
           </div>
         </section>
       )}
+
+      {openSource && <OpenSource commands={openSource.commands} />}
 
       {alwaysOn && (
         <section id="always-on" className="cal-lp-section cal-lp-section--alt">

@@ -99,16 +99,25 @@ export interface OverviewExtras {
   /** One value line under the H1. The H1 stays the app's name. */
   headline?: string;
   /**
-   * Real captures of the app, served from its own `public/`: a muted looping
-   * clip and a few stills. The hero animation is an illustration; this is the
-   * proof that the thing exists.
+   * A clip recorded from the real app, served from its own `public/`, told as a
+   * few numbered chapters that follow the video as it plays. The hero animation
+   * is an illustration; this is the proof that the thing exists.
    */
   showcase?: {
     heading: string;
     sub?: string;
-    video?: { src: string; poster: string; caption: string };
-    shots: { src: string; alt: string; caption: string }[];
+    video: {
+      src: string;
+      poster: string;
+      /** In order. `at` is where the chapter starts, in seconds. */
+      chapters: { at: number; title: string; body: string }[];
+    };
   };
+  /**
+   * "Open source — fork it and make it yours". The copy is shared; the app
+   * supplies the commands that get a fork running, because they differ per app.
+   */
+  openSource?: { commands: string[] };
   /** "Why it is different" — this app against what people use today. */
   comparison?: {
     heading: string;

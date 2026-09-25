@@ -62,14 +62,19 @@ export const CONFIG: LandingConfig = {
   overview: {
     headline: "Your canvas. Your pixels. Your nodes.",
     showcase: {
-      heading: "The real editor, not a mock-up",
-      sub: "Recorded from the app itself, on the bundled Web design starter project.",
-      video: { src: "/landing/demo.webm", poster: "/landing/demo-poster.jpg", caption: "Leaving a sticky note, docking an arrow to a button and recolouring it, while a teammate works on the next screen." },
-      shots: [
-        { src: "/landing/canvas.jpg", alt: "The Mero Design canvas with two app screens, a teammate cursor, and the properties panel open", caption: "Frames, text and shapes on an infinite canvas, with every property editable." },
-        { src: "/landing/screens.jpg", alt: "The Screens panel listing five screens of a web design", caption: "Screens turn a board into a flow you can present or prototype." },
-        { src: "/landing/present.jpg", alt: "A slide from a deck built in Mero Design, in presentation mode", caption: "Present straight from the board — this deck is a Mero Design board too." },
-      ],
+      heading: "From a note to a new design, in twenty seconds",
+      sub: "Recorded from the real editor on the bundled Web design starter — nothing staged, nothing mocked up.",
+      video: {
+        src: "/landing/demo.webm",
+        poster: "/landing/demo-poster.jpg",
+        chapters: [
+          { at: 0, title: "Open a board", body: "The design is on your node, and Ada from your team is already in it." },
+          { at: 3, title: "Leave a note", body: "Drop a sticky note where the feedback belongs." },
+          { at: 9, title: "Point at it", body: "Draw an arrow — it docks to the button it is about." },
+          { at: 13.5, title: "Change it", body: "Select the button and give it a new colour. Everyone sees it live." },
+          { at: 19, title: "Present it", body: "Hit Present. The change is already in the slide." },
+        ],
+      },
     },
     comparison: {
       heading: "The design tool, without the landlord",
@@ -106,6 +111,16 @@ export const CONFIG: LandingConfig = {
         { icon: ShieldCheck, title: "Regulated teams", body: "Finance, health and public-sector work that cannot sit on a third-party cloud." },
         { icon: Globe, title: "Open-source projects", body: "A design space the community owns, with no seats to buy and nothing to lose if a vendor changes its terms." },
         { icon: WifiOff, title: "Teams on the move", body: "Keep designing with no connection; boards sync when your devices find each other again." },
+      ],
+    },
+    openSource: {
+      commands: [
+        "# fork calimero-network/apps on GitHub, then",
+        "git clone https://github.com/<you>/apps",
+        "cd apps/apps/mero-design",
+        "make setup      # build it",
+        "make dev-node   # run a local node",
+        "make dev        # localhost:5173",
       ],
     },
     alwaysOn: true,

@@ -580,47 +580,176 @@
   color: var(--cal-lp-accent-ink);
 }
 
-/* Showcase: real captures, framed like the hero stage. */
-.cal-lp-shot {
-  margin: 0;
+/* Showcase: numbered chapters beside the clip, which follow it as it plays. */
+.cal-lp-story {
+  display: grid;
+  grid-template-columns: minmax(240px, 0.36fr) 1fr;
+  gap: 28px;
+  align-items: center;
+  margin-top: 36px;
 }
-.cal-lp-shot--video {
-  margin-top: 34px;
+.cal-lp-chapters {
+  display: grid;
+  gap: 6px;
+  padding: 0;
+  list-style: none;
+}
+.cal-lp-chapter {
+  position: relative;
+  display: flex;
+  gap: 13px;
+  width: 100%;
+  padding: 13px 14px 15px;
+  overflow: hidden;
+  border: 1px solid transparent;
+  border-radius: var(--cal-lp-radius);
+  background: none;
+  font: inherit;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+}
+.cal-lp-chapter:hover {
+  background: var(--cal-lp-bg-1);
+}
+.cal-lp-chapter[data-cal-lp-active] {
+  border-color: var(--cal-lp-border);
+  background: var(--cal-lp-bg-1);
+  box-shadow: var(--cal-lp-shadow-sm);
+}
+.cal-lp-chapternum {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 25px;
+  height: 25px;
+  border-radius: 50%;
+  border: 1px solid var(--cal-lp-border-strong);
+  font-size: 12px;
+  font-weight: 720;
+  color: var(--cal-lp-text-faint);
+}
+.cal-lp-chapter[data-cal-lp-active] .cal-lp-chapternum {
+  border-color: var(--cal-lp-accent);
+  background: var(--cal-lp-accent);
+  color: var(--cal-lp-accent-text);
+}
+.cal-lp-chaptertitle {
+  display: block;
+  font-size: 15px;
+  font-weight: 680;
+  color: var(--cal-lp-text-dim);
+}
+.cal-lp-chapter[data-cal-lp-active] .cal-lp-chaptertitle {
+  color: var(--cal-lp-text);
+}
+.cal-lp-chapterbody {
+  display: block;
+  margin-top: 3px;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--cal-lp-text-faint);
+}
+/* Progress through the chapter, as a hairline along its bottom edge. */
+.cal-lp-chapterbar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: var(--cal-lp-accent);
+  transform-origin: left;
+  transition: transform 0.25s linear;
+}
+.cal-lp-chapter:not([data-cal-lp-active]) .cal-lp-chapterbar {
+  opacity: 0;
 }
 /* The hero stage is 4:3 for the illustrations; a recording is as tall as the
    window it was captured from, so the frame follows the video instead. */
-.cal-lp-shot--video .cal-lp-stage {
+.cal-lp-stage--video {
   aspect-ratio: auto;
 }
-.cal-lp-shotmedia {
+.cal-lp-video {
   display: block;
   width: 100%;
   height: auto;
   aspect-ratio: 16 / 10;
-  object-fit: cover;
   background: var(--cal-lp-bg-3);
 }
-.cal-lp-shots {
+
+/* Open source: the pitch and steps beside the commands that get a fork running. */
+.cal-lp-os {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr));
-  gap: 18px;
-  margin-top: 22px;
+  grid-template-columns: 1.1fr 0.9fr;
+  gap: 40px;
+  align-items: center;
 }
-.cal-lp-shotlink {
-  display: block;
-  overflow: hidden;
-  border: 1px solid var(--cal-lp-border);
-  border-radius: var(--cal-lp-radius);
-  box-shadow: var(--cal-lp-shadow-sm);
+.cal-lp-forksteps {
+  display: grid;
+  gap: 16px;
+  margin: 28px 0 0;
+  padding: 0;
+  list-style: none;
 }
-.cal-lp-shotlink:hover {
-  border-color: var(--cal-lp-border-strong);
+.cal-lp-forkstep {
+  display: flex;
+  gap: 14px;
 }
-.cal-lp-shotcaption {
-  margin-top: 10px;
+.cal-lp-forkstep .cal-lp-stepnum {
+  flex: 0 0 auto;
+}
+.cal-lp-forkstep .cal-lp-steptitle {
+  margin-top: 2px;
+}
+.cal-lp-code {
+  margin: 0;
+  padding: 22px 24px;
+  overflow-x: auto;
+  border-radius: var(--cal-lp-radius-lg);
+  background: #0e140f;
+  box-shadow: var(--cal-lp-shadow);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 13.5px;
-  line-height: 1.55;
-  color: var(--cal-lp-text-dim);
+  line-height: 1.9;
+  color: #f5f8f1;
+}
+/* Scoped under .cal-lp-code on purpose: `.cal-lp-root span` pins every span
+   to the UI font, and one class alone loses to it. */
+.cal-lp-code .cal-lp-codeline {
+  display: block;
+  font-family: inherit;
+  white-space: pre;
+}
+.cal-lp-code .cal-lp-codeprompt {
+  font-family: inherit;
+  color: #a4ff11;
+  user-select: none;
+}
+.cal-lp-code .cal-lp-codecomment {
+  font-family: inherit;
+  color: #7d8a7f;
+}
+
+@media (max-width: 940px) {
+  .cal-lp-story,
+  .cal-lp-os {
+    grid-template-columns: 1fr;
+  }
+  /* Video first on a narrow screen; the chapters read as its caption. */
+  .cal-lp-story .cal-lp-stage {
+    order: -1;
+  }
+}
+
+@media (max-width: 640px) {
+  /* Five full chapters under a phone-sized clip is a wall of text; only the
+     one playing keeps its sentence. */
+  .cal-lp-chapter:not([data-cal-lp-active]) .cal-lp-chapterbody {
+    display: none;
+  }
+  .cal-lp-chapter {
+    padding-block: 10px 12px;
+  }
 }
 
 /* Comparison: a three-column grid that becomes one card per row on a phone,

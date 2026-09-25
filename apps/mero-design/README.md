@@ -60,6 +60,18 @@ make stop        # tear everything down
 | `make workflows` | merobox workflow tests |
 | `make clean` | Remove all build artifacts |
 
+## Landing page media
+
+The demo clip on the landing page (`app/public/landing/demo.webm` and its poster)
+is recorded from the real editor against the mocked node the e2e specs use:
+
+```bash
+cd app && pnpm landing:media
+```
+
+The chapter times shown beside the clip live in `scripts/landing/apps.config.mjs`
+at the repo root and must match `CHAPTERS` in `app/e2e/media/capture-landing-media.spec.ts`.
+
 ## Screens and presenting
 
 A **screen** is one slide: a rectangle whose layer name sits in the top-level
