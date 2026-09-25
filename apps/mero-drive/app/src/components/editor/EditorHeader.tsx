@@ -13,6 +13,7 @@ import {
   Undo2,
 } from 'lucide-react';
 import { TitleCursors } from './presence/TitleCursors';
+import { PeerAvatars, type Peer } from './PeerAvatars';
 import type { TitleCaret } from '@/lib/rich/cursors';
 import {
   DropdownMenu,
@@ -41,6 +42,7 @@ interface EditorHeaderProps {
   onBack?: () => void;
   onUndo?: () => void;
   onRedo?: () => void;
+  peers?: Peer[];
 }
 
 export const EditorHeader: React.FC<EditorHeaderProps> = ({
@@ -50,6 +52,7 @@ export const EditorHeader: React.FC<EditorHeaderProps> = ({
   onBack,
   onUndo,
   onRedo,
+  peers = [],
 }) => (
   <header className="flex items-center justify-between px-4 py-3 border-b border-border bg-card">
     <div className="flex items-center gap-4">
@@ -92,6 +95,7 @@ export const EditorHeader: React.FC<EditorHeaderProps> = ({
     </div>
 
     <div className="flex items-center gap-2">
+      <PeerAvatars peers={peers} />
       {onUndo && (
         <Button
           variant="ghost"
