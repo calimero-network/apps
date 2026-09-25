@@ -86,7 +86,7 @@ step "Building Rust WASM logic…"
 # root Cargo.toml — an older one emits an ABI the node does not share. core's
 # fleet-bump rewrites the tag below on every release.
 # Install it with:  cargo install --git https://github.com/calimero-network/core \
-#                     --tag 0.11.0-rc.42 cargo-mero --locked
+#                     --tag 0.11.0-rc.43 cargo-mero --locked
 command -v cargo-mero >/dev/null 2>&1 \
   || { err "cargo-mero not found — install it (see comment above)"; exit 1; }
 info "Running cargo mero build — this may take a few minutes on a cold build"

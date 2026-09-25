@@ -13,7 +13,7 @@ e2e_mode: true
 # Defined individually so every port is pinned: the count form lets --e2e-mode
 # allocate ports dynamically, and a later start_node reconnects on base_port.
 nodes:
-  image: ghcr.io/calimero-network/merod:0.11.0-rc.42
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.43
   mdns: true
   drive-node-1:
     port: 3910
