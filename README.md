@@ -137,6 +137,15 @@ The frontend never talks to a server. It talks to *its own* node over JSON-RPC, 
 contract locally, and the resulting state delta gossips to the other members of the context. The
 "multiplayer" is a property of the network, not of the application code.
 
+**And a receiving node does not execute the contract at all** — it verifies the delta's signature,
+authorizes the author, and folds the actions into storage. So an `if` inside a `#[app::logic]` method
+binds only the node that ran it, and a patched peer can write bytes your code would never have
+produced. Choosing the right storage tier (`Public`, `Authored`, `Shared`, `Permissioned`, `Frozen`)
+and deriving on read rather than trusting stored fields is what actually holds.
+[**`apps/mero-chess/docs/trust-model.md`**](apps/mero-chess/docs/trust-model.md) is the worked
+example: what each tier enforces and when to use it, thirteen real defects with the exploit for each,
+and a checklist for your own `#[app::state]`. Read it before you design state for a new app.
+
 ## Layout
 
 ```

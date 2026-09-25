@@ -115,11 +115,19 @@ the key the next move needs and wedge the table permanently).
 What remains is that a player can **stall** — and that is also what walking away
 from a board looks like. Nothing above lets anyone change a result.
 
+**[`docs/trust-model.md`](docs/trust-model.md) is the long version**, and it is
+written for someone building their own app rather than for someone reading this
+one: what the storage tiers (`Public`, `Authored`, `Shared`, `Permissioned`,
+`Frozen`) actually enforce and when to reach for each, the thirteen defects this
+app shipped and fixed with the exploit for each one, and a checklist to run over
+your own `#[app::state]`. If you are not sure how to use permissions and data
+models on Calimero, start there.
+
 ## Test it
 
 | | what it covers | needs a node |
 |---|---|---|
-| `cargo test -p mero-chess` | the rules, the contract, perft, and forged rows written straight into storage | no |
+| `cargo test -p mero-chess` | the rules, the contract, perft, forged rows written straight into storage, and two replicas converging on concurrent writes | no |
 | `pnpm -F mero-chess test` | the board helpers and the generated client vs the ABI | no |
 | `pnpm -F mero-chess test:e2e` | the UI playing a whole game against a real node | a local `merod` |
 | `merobox bootstrap run workflows/play-a-game.yml` | two real nodes across five games: a mate, a declined offer then an agreed draw, a claimed threefold, a resignation, a chair given up | yes (Docker) |
@@ -131,6 +139,13 @@ capture, an en-passant capture that exposes the king, a promotion that generates
 one move instead of four. Each changes the count by a knowable amount and
 nothing else notices. The expected numbers are the published ones, so a wrong
 generator cannot agree with them by construction.
+
+`tests/converge.rs` covers the case neither of the others can reach: two
+replicas writing **at the same instant** without having seen each other — two
+people reaching for the same chair, one person moving from two devices, both
+players resigning together — asserted by root-hash equality plus invariants on
+the merged value. A merobox scenario is a sequence, so nothing in it is ever
+genuinely concurrent.
 
 The byzantine tests at the bottom of `src/tests.rs` cover the other half. They
 write rows directly into the contract's maps under another account — which is
