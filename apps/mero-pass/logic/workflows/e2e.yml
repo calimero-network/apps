@@ -229,7 +229,40 @@ steps:
       fingerprint: "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2"
       public_key: "pk-bob"
       label: "Bob's browser"
+      kind: "browser"
     executor_public_key: "{{bob_key}}"
+
+  - name: Bob registers a recovery key alongside his browser
+    type: call
+    node: calimero-node-2
+    context_id: "{{vault_id}}"
+    method: register_device
+    args:
+      fingerprint: "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3"
+      public_key: "pk-bob-recovery"
+      label: "Recovery key"
+      kind: "recovery"
+    executor_public_key: "{{bob_key}}"
+
+  - name: A device of an unknown kind is refused
+    type: call
+    node: calimero-node-2
+    context_id: "{{vault_id}}"
+    method: register_device
+    args:
+      fingerprint: "d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4"
+      public_key: "pk-bob-phone"
+      label: "Phone"
+      kind: "phone"
+    executor_public_key: "{{bob_key}}"
+    expected_failure: true
+    outputs:
+      bad_kind_refused: error
+
+  - name: Assert the unknown kind was refused
+    type: assert
+    statements:
+      - "is_set({{bad_kind_refused}})"
 
   - name: Bob, not yet admitted, cannot rename the vault
     type: call
@@ -257,6 +290,7 @@ steps:
       fingerprint: "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
       public_key: "pk-alice"
       label: "Alice's browser"
+      kind: "browser"
     executor_public_key: "{{alice_key}}"
 
   - name: Sync Bob's device to Node 1
@@ -370,6 +404,8 @@ steps:
       - 'contains({{alice_members}}, {{bob_account}})'
       - 'contains({{alice_members}}, "editor")'
       - 'contains({{alice_devices}}, "Bob''s browser")'
+      - 'contains({{alice_devices}}, "recovery")'
+      - 'not_contains({{alice_devices}}, "pk-bob-phone")'
       - 'contains({{alice_pairs}}, "k1:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2")'
 
   - name: Bob renames the vault

@@ -8,7 +8,17 @@ import {
   useAutoLockMinutes,
 } from '../../hooks/useDeviceLock';
 import { useApplicationId } from '../../hooks/useApplicationId';
-import { deviceKeeper, deviceLabel } from '../../lib/deviceKey';
+import {
+  MIN_PASSPHRASE,
+  type Protection,
+  deviceKeeper,
+  deviceLabel,
+} from '../../lib/deviceKey';
+import {
+  rememberedRecoveryKey,
+  restoreFromRecoveryKey,
+  setUpRecoveryKey,
+} from '../../lib/recoveryKey';
 import { migrateDevice } from '../../lib/vaults';
 import shell from '../../styles/shell.module.css';
 
@@ -24,8 +34,10 @@ interface NodeDevice {
  *
  * Two kinds of device, deliberately shown together:
  *
- *   * this BROWSER's key — what vault keys are wrapped to. A PIN puts it
- *     behind something you know; auto-lock drops it from memory.
+ *   * this BROWSER's key — what vault keys are wrapped to. A passphrase or a
+ *     passkey puts it behind something you know or touch; auto-lock drops it
+ *     from memory. A recovery key is one more holder of every vault key,
+ *     kept on paper, that brings a browser with nothing back.
  *   * the ACCOUNT's node devices — each a machine that can sign as you in a
  *     team. Revoking one here withdraws it from every team it is bound in;
  *     an admin revocation also rotates that team's key.
@@ -34,15 +46,18 @@ export default function SecurityPage() {
   const { mero } = useMero();
   const { appId } = useApplicationId();
   const [minutes, setMinutes] = useAutoLockMinutes();
-  const [hasPin, setHasPin] = useState<boolean | null>(null);
-  const [pin, setPin] = useState('');
-  const [pin2, setPin2] = useState('');
+  const [protection, setProtection] = useState<Protection | null>(null);
+  const [pass, setPass] = useState('');
+  const [pass2, setPass2] = useState('');
+  const [recovery, setRecovery] = useState(rememberedRecoveryKey);
+  const [shownCode, setShownCode] = useState<string | null>(null);
+  const [restoreCode, setRestoreCode] = useState('');
   const [devices, setDevices] = useState<NodeDevice[]>([]);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    setHasPin(await deviceKeeper.hasPin().catch(() => false));
+    setProtection(await deviceKeeper.protection().catch(() => 'none' as const));
     if (!mero) return;
     try {
       setDevices((await mero.admin.listAccountDevices()) as NodeDevice[]);
@@ -55,17 +70,20 @@ export default function SecurityPage() {
     void load();
   }, [load]);
 
-  const savePin = async () => {
+  /** Re-seal this browser's key; every vault key moves to the new one first. */
+  const protect = async (how: 'passphrase' | 'passkey') => {
     setError(null);
-    if (pin !== pin2) return setError('The two PINs do not match.');
+    if (how === 'passphrase' && pass !== pass2)
+      return setError('The two passphrases do not match.');
     const old = deviceKeeper.device;
     const oldFp = deviceKeeper.fingerprint;
     if (!mero || !appId || !old || !oldFp) return;
     try {
       let moved = 0;
-      // The new key only replaces the old one once every vault key has been
-      // wrapped to it — see `DeviceKeeper.setPin`.
-      await deviceKeeper.setPin(pin, async (next, nextFp) => {
+      const handOver = async (
+        next: NonNullable<typeof old>,
+        nextFp: string,
+      ) => {
         moved = await migrateDevice(
           mero,
           appId,
@@ -74,13 +92,61 @@ export default function SecurityPage() {
           deviceLabel(),
           setStatus,
         );
-      });
-      setPin('');
-      setPin2('');
+      };
+      if (how === 'passphrase')
+        await deviceKeeper.setPassphrase(pass, handOver);
+      else await deviceKeeper.setPasskey(handOver);
+      setPass('');
+      setPass2('');
       setStatus(
-        `PIN set. ${moved} vault key(s) moved to this browser's new device key.`,
+        `${how === 'passphrase' ? 'Passphrase' : 'Passkey'} set. ${moved} vault key(s) moved to this browser's new device key.`,
       );
       await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const createRecovery = async () => {
+    setError(null);
+    const device = deviceKeeper.device;
+    const fingerprint = deviceKeeper.fingerprint;
+    if (!mero || !appId || !device || !fingerprint) return;
+    try {
+      const { code, vaults } = await setUpRecoveryKey(
+        mero,
+        appId,
+        { device, fingerprint },
+        deviceLabel(),
+        (v) => setStatus(`Giving the recovery key ${v}`),
+      );
+      setShownCode(code);
+      setRecovery(rememberedRecoveryKey());
+      setStatus(`Recovery key created for ${vaults} vault(s).`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const restore = async () => {
+    setError(null);
+    const device = deviceKeeper.device;
+    const fingerprint = deviceKeeper.fingerprint;
+    if (!mero || !appId || !device || !fingerprint) return;
+    try {
+      const n = await restoreFromRecoveryKey(
+        mero,
+        appId,
+        restoreCode,
+        { device, fingerprint },
+        deviceLabel(),
+        (v) => setStatus(`Restoring ${v}`),
+      );
+      setRestoreCode('');
+      setRecovery(rememberedRecoveryKey());
+      setStatus(
+        `${n} vault(s) restored to this browser. Revoke the device you lost in each vault's People tab.`,
+      );
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -139,36 +205,110 @@ export default function SecurityPage() {
               <span className={shell.mono}>
                 {deviceKeeper.fingerprint?.slice(0, 16)}…
               </span>{' '}
-              {hasPin
-                ? 'is protected by a PIN: nothing usable is stored on disk.'
-                : 'is stored non-extractable in this browser. Add a PIN so unlocking needs something you know.'}
+              {protection === 'passphrase'
+                ? 'is sealed under a passphrase: nothing usable is stored on disk.'
+                : protection === 'passkey'
+                  ? 'is sealed under a passkey: unlocking needs your authenticator.'
+                  : 'is stored non-extractable in this browser, and anyone at this computer can unlock it. Protect it with a passkey or a passphrase.'}
             </p>
-            {!hasPin && (
-              <div className={shell.createRow}>
-                <input
-                  className={shell.input}
-                  type="password"
-                  placeholder="New PIN (4+ characters)"
-                  value={pin}
-                  onChange={(e) => setPin(e.target.value)}
-                />
-                <input
-                  className={shell.input}
-                  type="password"
-                  placeholder="Repeat PIN"
-                  value={pin2}
-                  onChange={(e) => setPin2(e.target.value)}
-                />
+            <div className={shell.createRow}>
+              <button
+                type="button"
+                className={shell.btn}
+                onClick={() => void protect('passkey')}
+                data-testid="use-passkey"
+              >
+                {protection === 'passkey'
+                  ? 'Use a new passkey'
+                  : 'Use a passkey'}
+              </button>
+            </div>
+            <div className={shell.createRow}>
+              <input
+                className={shell.input}
+                type="password"
+                autoComplete="new-password"
+                placeholder={`Passphrase (${MIN_PASSPHRASE}+ characters)`}
+                value={pass}
+                onChange={(e) => setPass(e.target.value)}
+              />
+              <input
+                className={shell.input}
+                type="password"
+                autoComplete="new-password"
+                placeholder="Repeat passphrase"
+                value={pass2}
+                onChange={(e) => setPass2(e.target.value)}
+              />
+              <button
+                type="button"
+                className={shell.btnGhost}
+                onClick={() => void protect('passphrase')}
+                disabled={pass.length < MIN_PASSPHRASE}
+                data-testid="use-passphrase"
+              >
+                {protection === 'passphrase'
+                  ? 'Change passphrase'
+                  : 'Use a passphrase'}
+              </button>
+            </div>
+          </section>
+
+          <section className={shell.section}>
+            <h2 className={shell.sectionLabel}>Recovery key</h2>
+            <p className={shell.sectionHint}>
+              A code that opens every vault it was given, from a browser that
+              has nothing else. Write it down or keep it in another password
+              manager: whoever reads it can do the same.{' '}
+              {recovery
+                ? `One is set up (${recovery.fingerprint.slice(0, 12)}…); vaults you open here get it automatically. Creating a new one replaces it in every vault.`
+                : 'None is set up from this browser.'}
+            </p>
+            {shownCode ? (
+              <div data-testid="recovery-code">
+                <p className={shell.notice}>
+                  Shown once. Store it now; it is not kept anywhere.
+                </p>
+                <pre className={shell.mono}>{shownCode}</pre>
                 <button
                   type="button"
                   className={shell.btn}
-                  onClick={() => void savePin()}
-                  disabled={pin.length < 4}
+                  onClick={() => setShownCode(null)}
                 >
-                  Set PIN
+                  I have stored it
+                </button>
+              </div>
+            ) : (
+              <div className={shell.createRow}>
+                <button
+                  type="button"
+                  className={recovery ? shell.btnGhost : shell.btn}
+                  onClick={() => void createRecovery()}
+                  data-testid="create-recovery"
+                >
+                  {recovery ? 'Replace recovery key' : 'Create recovery key'}
                 </button>
               </div>
             )}
+            <div className={shell.createRow}>
+              <input
+                className={shell.input}
+                placeholder="Recovery code, to restore this browser"
+                value={restoreCode}
+                onChange={(e) => setRestoreCode(e.target.value)}
+                autoComplete="off"
+                spellCheck={false}
+              />
+              <button
+                type="button"
+                className={shell.btnGhost}
+                onClick={() => void restore()}
+                disabled={!restoreCode.trim()}
+                data-testid="restore-recovery"
+              >
+                Restore
+              </button>
+            </div>
           </section>
         </LockGate>
 

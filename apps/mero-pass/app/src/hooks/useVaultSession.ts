@@ -2,9 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMero, useSubscription } from '@calimero-network/mero-react';
 
 import { deviceKeeper, deviceLabel } from '../lib/deviceKey';
+import { rememberedRecoveryKey } from '../lib/recoveryKey';
 import { useVaultClient } from '../lib/vault';
 import { vaultApiFor } from '../lib/vaultApi';
 import {
+  type DeviceRecord,
   type Secret,
   type SessionState,
   VaultSession,
@@ -17,6 +19,12 @@ export interface VaultSessionView {
   state: SessionState | 'locked' | 'loading' | 'no-identity';
   secrets: Secret[];
   error: string | null;
+  /** Other devices asking to be let in that this one may approve. */
+  approvals: DeviceRecord[];
+  /** This device waits for approval, not just for a key holder to come by. */
+  awaitingApproval: boolean;
+  /** Devices holding the current key; see `VaultSession.holders`. */
+  holders: { browsers: number; recovery: number } | null;
   reload: () => Promise<void>;
 }
 
@@ -31,6 +39,10 @@ export interface VaultSessionView {
  * `team` is the vault's namespace and subgroup when known; with it, key
  * hand-outs are restricted to the people the node says are still entitled
  * (the team, or the vault's own members when it is invite-only).
+ *
+ * Once ready, it also gives this browser's recovery key (if one was set up
+ * here) to a vault that lacks it, and lists the approval requests this
+ * device may answer.
  */
 export function useVaultSession(
   contextId: string | null,
@@ -43,6 +55,9 @@ export function useVaultSession(
   const [state, setState] = useState<VaultSessionView['state']>('loading');
   const [secrets, setSecrets] = useState<Secret[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [approvals, setApprovals] = useState<DeviceRecord[]>([]);
+  const [awaitingApproval, setAwaitingApproval] = useState(false);
+  const [holders, setHolders] = useState<VaultSessionView['holders']>(null);
   const busy = useRef(false);
 
   const reload = useCallback(async () => {
@@ -50,9 +65,21 @@ export function useVaultSession(
     busy.current = true;
     try {
       const s = await session.refreshKeys();
-      if (s === 'ready' && mero && team) {
-        const allowed = await vaultAudience(mero.admin, team);
+      const allowed =
+        mero && team ? await vaultAudience(mero.admin, team) : null;
+      if (s === 'ready') {
+        const recovery = rememberedRecoveryKey();
+        if (recovery) await session.adoptRecoveryKey(recovery).catch(() => {});
         if (allowed) await session.housekeep(allowed).catch(() => {});
+        setApprovals(await session.pendingApprovals(allowed));
+        setHolders(await session.holders());
+        setAwaitingApproval(false);
+      } else {
+        setApprovals([]);
+        setHolders(null);
+        setAwaitingApproval(
+          s === 'waiting' && (await session.awaitingApproval(allowed)),
+        );
       }
       setSecrets(await session.list());
       setState(session.state);
@@ -113,5 +140,14 @@ export function useVaultSession(
     return () => clearInterval(t);
   }, [state, reload]);
 
-  return { session, state, secrets, error, reload };
+  return {
+    session,
+    state,
+    secrets,
+    error,
+    approvals,
+    awaitingApproval,
+    holders,
+    reload,
+  };
 }

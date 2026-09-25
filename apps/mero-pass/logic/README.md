@@ -235,8 +235,9 @@ the same add-wins reason as the trash.
 
 ### 10. Devices: an `AuthoredMap` whose identity fields come from the host
 
-`register_device(fingerprint, public_key, label)` stores the browser's P-256
-public key under its SHA-256 fingerprint. `account` and `node_device` are
+`register_device(fingerprint, public_key, label, kind)` stores a P-256
+public key under its SHA-256 fingerprint. `kind` is `browser` or `recovery`
+(a key pair the user holds as a printed code) and anything else is refused. `account` and `node_device` are
 taken from `env::account_id()` and `env::device_id()`, never from arguments.
 
 **Why.**
@@ -259,6 +260,24 @@ every wrapper honours.
 Why account *and* device: authorization names the person (their laptop and
 phone share one role), while the device is recorded so the audit trail and
 the device list can tell machines apart.
+
+**Why `kind` is on chain.** Every key holder's browser runs the same
+approval rule (below) over the same device list, so they have to agree on
+which entries are recovery keys: a recovery key is never auto-entitled,
+never approves anyone, and doesn't count as the account's approved browser.
+
+**Device approval is a client rule, not a contract rule.** A new browser is
+handed keys only when it is *approved* (it already holds a wrap, because
+someone who had the key chose to give it one) or when no other browser of
+its account is approved and still listed (an account's first device, or the
+replacement for a lost one that was revoked). Anything else waits until one
+of the account's approved browsers or an admin approves it, comparing a
+6-digit code derived from the fingerprint. The contract can't enforce this:
+it can't tell whose browser holds a key, and a key holder can always wrap to
+anyone. What it prevents is the useful attack: someone able to call the node
+as you (a stolen session, a shared machine) registers a browser and waits
+for your teammates' clients to hand it every key. With the rule, they get a
+request on your screen instead.
 
 ### 11. Key wraps: one slot per (key, recipient, wrapper)
 
@@ -359,6 +378,20 @@ list so the UI can always render what it receives.
 4. The newcomer's browser reads `key_wraps_for(fp)`, unwraps, checks the hash,
    and can read.
 
+**Another browser of the same account arrives:**
+1. It calls `register_device(fp, pubkey, label, "browser")`. The account
+   already has an approved browser, so no key holder wraps to it.
+2. The account's approved browser, or an admin, sees the request and its
+   code, and approves: `add_key_wraps` for every key it holds, old ones too.
+   Denying is `revoke_device`.
+
+**A recovery key is created or used:**
+1. The browser registers it with `kind: "recovery"` and wraps every key to it.
+   A replacement revokes the account's previous recovery key first.
+2. Restoring, a browser rebuilds the private key from the code and the
+   registered public key, reads `key_wraps_for(recovery fp)`, and wraps every
+   key to itself. The restored browser is then approved like any other.
+
 **Someone is removed:**
 1. An admin calls `remove_member`: roles are revoked and re-projected, their
    devices get `revoked:` flags, and their account gets `removed:`.
@@ -412,8 +445,10 @@ Roles
 - `set_default_role(role)` (Admin): `editor` or `viewer`
 
 Devices and keys
-- `register_device(fingerprint, public_key, label)`
-- `list_devices()`, `revoke_device(fingerprint)` (your own device, or Admin)
+- `register_device(fingerprint, public_key, label, kind)`: `kind` is
+  `browser` or `recovery`
+- `list_devices()` → `[{ fingerprint, public_key, label, kind, account, added_at, revoked }]`,
+  `revoke_device(fingerprint)` (your own device, or Admin)
 - `add_key_wraps(wraps)`, `key_wraps_for(recipient)`, `wrapped_pairs()`
 - `rotate_key(key_id)` (Admin): needs at least one wrap first
 

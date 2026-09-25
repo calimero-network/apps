@@ -73,7 +73,7 @@ import { markNamespaceJustJoined } from '@calimero-apps/join-sync';
 import { MeroPassClient } from '../generated/MeroPassClient';
 import type { DeviceKeyPair } from './crypto';
 import { vaultApiFor } from './vaultApi';
-import { VaultSession } from './vaultSession';
+import { type VaultApi, VaultSession } from './vaultSession';
 
 /** The admin client, as `useMero().mero.admin` provides it. */
 export type AdminLike = MeroJs['admin'];
@@ -1482,41 +1482,97 @@ export async function vaultAudience(
   }
 }
 
+// ── Every vault this browser can open ────────────────────────────────────────
+
+type VaultMero = { admin: AdminLike } & ConstructorParameters<
+  typeof MeroPassClient
+>[0];
+
+/**
+ * Run `fn` on the contract of every vault of this app the node has joined.
+ * Returns the sum of what `fn` returned.
+ */
+export async function forEachJoinedVault(
+  mero: VaultMero,
+  applicationId: string,
+  fn: (api: VaultApi, vault: VaultRow) => Promise<number>,
+  onStatus: StatusFn = noop,
+): Promise<number> {
+  let total = 0;
+  const teams = await listTeams(mero.admin, applicationId);
+  for (const team of teams) {
+    const vaults = await listVaults(mero.admin, team.namespaceId);
+    for (const v of vaults) {
+      if (!v.contextId || !v.joined) continue;
+      onStatus(`${v.name}…`);
+      total += await fn(vaultApiFor(new MeroPassClient(mero, v.contextId)), v);
+    }
+  }
+  return total;
+}
+
+/**
+ * Open a session on every joined vault as `as`, registering it, and run `fn`
+ * on each one that opens `ready`. A vault this key cannot open yet is
+ * skipped; any other failure throws.
+ */
+export async function forEachOpenVault(
+  mero: VaultMero,
+  applicationId: string,
+  as: { device: DeviceKeyPair; fingerprint: string },
+  label: string,
+  fn: (session: VaultSession, vault: VaultRow) => Promise<number>,
+  onStatus: StatusFn = noop,
+): Promise<number> {
+  return forEachJoinedVault(
+    mero,
+    applicationId,
+    async (api, v) => {
+      const session = new VaultSession(api, as.device, as.fingerprint, label);
+      return (await session.open()) === 'ready' ? fn(session, v) : 0;
+    },
+    onStatus,
+  );
+}
 // ── Moving to a new device key ───────────────────────────────────────────────
 
 /**
  * Hand every vault key `old` can open over to `next`, across all of this
- * app's vaults this node has joined. Used by `DeviceKeeper.setPin`, BEFORE the
- * old key is discarded.
+ * app's vaults this node has joined, and retire `old` in each. Used by
+ * `DeviceKeeper.setPassphrase` and `setPasskey`, BEFORE the old key is discarded.
+ *
+ * Retiring matters for approval: a listed device that holds keys makes every
+ * later browser of the account wait for approval, and nobody could approve
+ * from a key that no longer exists. Should the change abort after a
+ * retirement, the old key still opens its wraps and re-registers itself the
+ * next time it opens that vault.
  *
  * A vault this device cannot open (still waiting for its key) has nothing to
- * hand over and is skipped; any other failure throws, so the PIN change
+ * hand over and is skipped; any other failure throws, so the change
  * aborts and the old key stays.
  */
 export async function migrateDevice(
-  mero: { admin: AdminLike } & ConstructorParameters<typeof MeroPassClient>[0],
+  mero: VaultMero,
   applicationId: string,
   old: { device: DeviceKeyPair; fingerprint: string },
   next: { device: DeviceKeyPair; fingerprint: string },
   label: string,
   onStatus: StatusFn = noop,
 ): Promise<number> {
-  let moved = 0;
-  const teams = await listTeams(mero.admin, applicationId);
-  for (const team of teams) {
-    const vaults = await listVaults(mero.admin, team.namespaceId);
-    for (const v of vaults) {
-      if (!v.contextId || !v.joined) continue;
-      onStatus(`Moving the key for ${v.name}…`);
-      const session = new VaultSession(
-        vaultApiFor(new MeroPassClient(mero, v.contextId)),
-        old.device,
-        old.fingerprint,
+  return forEachOpenVault(
+    mero,
+    applicationId,
+    old,
+    label,
+    async (session) => {
+      const moved = await session.handOver(
+        next.device,
+        next.fingerprint,
         label,
       );
-      if ((await session.open()) !== 'ready') continue;
-      moved += await session.handOver(next.device, next.fingerprint, label);
-    }
-  }
-  return moved;
+      await session.retire();
+      return moved;
+    },
+    (name) => onStatus(`Moving the key for ${name}`),
+  );
 }

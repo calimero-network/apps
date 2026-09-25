@@ -93,6 +93,12 @@
           }
         },
         {
+          "name": "kind",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
           "name": "account",
           "type": {
             "kind": "string"
@@ -129,6 +135,12 @@
         },
         {
           "name": "label",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "kind",
           "type": {
             "kind": "string"
           }
@@ -902,6 +914,12 @@
         },
         {
           "name": "label",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "kind",
           "type": {
             "kind": "string"
           }

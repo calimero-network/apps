@@ -342,7 +342,7 @@ fn an_unknown_role_is_refused() {
 fn roles_are_explicit_and_pending_is_not_viewer() {
     let mut app = new_vault();
     app.call_as_account(BOB, BOB_LAPTOP, |s| {
-        s.register_device(fp(2), "pk".to_owned(), String::new())
+        s.register_device(fp(2), "pk".to_owned(), String::new(), "browser".to_owned())
     })
     .unwrap();
     let role = |app: &TestHost<MeroPassApp>| {
@@ -371,7 +371,7 @@ fn a_removed_member_who_re_registers_is_marked_removed_until_re_admitted() {
     make(&mut app, &bob(), "viewer");
     app.call(|s| s.remove_member(bob())).unwrap();
     app.call_as_account(BOB, BOB_LAPTOP, |s| {
-        s.register_device(fp(7), "pk".to_owned(), String::new())
+        s.register_device(fp(7), "pk".to_owned(), String::new(), "browser".to_owned())
     })
     .unwrap();
     let row = |app: &TestHost<MeroPassApp>| {
@@ -453,7 +453,12 @@ fn trash_is_recoverable_and_purge_needs_the_trash_first() {
 fn a_device_is_registered_under_the_callers_account() {
     let mut app = new_vault();
     app.call_as_account(BOB, BOB_LAPTOP, |s| {
-        s.register_device(fp(1), "pk".to_owned(), "Bob's laptop".to_owned())
+        s.register_device(
+            fp(1),
+            "pk".to_owned(),
+            "Bob's laptop".to_owned(),
+            "browser".to_owned(),
+        )
     })
     .unwrap();
     let devices = app.view(|s| s.list_devices()).unwrap();
@@ -472,17 +477,24 @@ fn a_device_is_registered_under_the_callers_account() {
 #[test]
 fn a_malformed_fingerprint_is_refused() {
     let mut app = new_vault();
-    let res = app.call(|s| s.register_device("abc".to_owned(), "pk".to_owned(), String::new()));
+    let res = app.call(|s| {
+        s.register_device(
+            "abc".to_owned(),
+            "pk".to_owned(),
+            String::new(),
+            "browser".to_owned(),
+        )
+    });
     assert!(res.is_err());
 }
 
 #[test]
 fn wraps_only_land_on_registered_unrevoked_devices() {
     let mut app = new_vault();
-    app.call(|s| s.register_device(fp(1), "pk1".to_owned(), String::new()))
+    app.call(|s| s.register_device(fp(1), "pk1".to_owned(), String::new(), "browser".to_owned()))
         .unwrap();
     app.call_as_account(BOB, BOB_LAPTOP, |s| {
-        s.register_device(fp(2), "pk2".to_owned(), String::new())
+        s.register_device(fp(2), "pk2".to_owned(), String::new(), "browser".to_owned())
     })
     .unwrap();
 
@@ -527,7 +539,7 @@ fn switching_keys_needs_a_wrap_and_an_admin() {
     let early = app.call(|s| s.rotate_key("k1".to_owned()));
     assert!(early.is_err(), "no wrap of k1 exists yet");
 
-    app.call(|s| s.register_device(fp(1), "pk".to_owned(), String::new()))
+    app.call(|s| s.register_device(fp(1), "pk".to_owned(), String::new(), "browser".to_owned()))
         .unwrap();
     app.call(|s| {
         s.add_key_wraps(vec![KeyWrapInput {
@@ -550,11 +562,11 @@ fn switching_keys_needs_a_wrap_and_an_admin() {
 fn an_owner_can_revoke_their_own_device_but_not_someone_elses() {
     let mut app = new_vault();
     app.call_as_account(BOB, BOB_LAPTOP, |s| {
-        s.register_device(fp(2), "pk".to_owned(), String::new())
+        s.register_device(fp(2), "pk".to_owned(), String::new(), "browser".to_owned())
     })
     .unwrap();
     app.call_as_account(CAROL, CAROL_PHONE, |s| {
-        s.register_device(fp(3), "pk".to_owned(), String::new())
+        s.register_device(fp(3), "pk".to_owned(), String::new(), "browser".to_owned())
     })
     .unwrap();
 
@@ -577,7 +589,7 @@ fn removing_a_member_drops_their_role_and_revokes_their_devices() {
     let mut app = new_vault();
     make(&mut app, &bob(), "editor");
     app.call_as_account(BOB, BOB_LAPTOP, |s| {
-        s.register_device(fp(2), "pk".to_owned(), String::new())
+        s.register_device(fp(2), "pk".to_owned(), String::new(), "browser".to_owned())
     })
     .unwrap();
 
@@ -668,4 +680,24 @@ fn events_carry_ids_only() {
         !rendered.contains("enc:"),
         "no secret material in events: {rendered}"
     );
+}
+
+#[test]
+fn a_device_records_its_kind_and_unknown_kinds_are_refused() {
+    let mut app = new_vault();
+    app.call(|s| {
+        s.register_device(
+            fp(4),
+            "pk".to_owned(),
+            "Recovery key".to_owned(),
+            "recovery".to_owned(),
+        )
+    })
+    .unwrap();
+    let devices = app.view(|s| s.list_devices()).unwrap();
+    assert_eq!(devices[0].kind, "recovery");
+
+    let bad =
+        app.call(|s| s.register_device(fp(5), "pk".to_owned(), String::new(), "phone".to_owned()));
+    assert!(bad.is_err());
 }

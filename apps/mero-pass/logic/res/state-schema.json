@@ -52,6 +52,12 @@
           }
         },
         {
+          "name": "kind",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
           "name": "account",
           "type": {
             "kind": "string"

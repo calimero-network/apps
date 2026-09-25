@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { useMero } from '@calimero-network/mero-react';
 
 import AppHeader from '../../components/AppHeader';
+import DeviceApprovals from '../../components/DeviceApprovals';
 import HealthPanel from '../../components/HealthPanel';
 import ImportExport from '../../components/ImportExport';
 import InviteModal from '../../components/InviteModal';
@@ -15,9 +16,14 @@ import type { AuditView } from '../../generated/MeroPassClient';
 import { useApplicationId } from '../../hooks/useApplicationId';
 import { useVaultSession } from '../../hooks/useVaultSession';
 import { copySecret } from '../../lib/clipboard';
+import { deviceKeeper } from '../../lib/deviceKey';
 import { isSensitive, isTotpField } from '../../lib/secretKinds';
 import { useVaultClient, useVaultName } from '../../lib/vault';
-import type { Revision, Secret } from '../../lib/vaultSession';
+import {
+  type Revision,
+  type Secret,
+  confirmationCode,
+} from '../../lib/vaultSession';
 import { findVaultByContext, mintVaultInvite } from '../../lib/vaults';
 import shell from '../../styles/shell.module.css';
 import styles from './vault.module.css';
@@ -60,10 +66,12 @@ interface Found {
  * `lib/vaultSession`). So the page has three honest states before a list:
  *
  *   * locked      — the device key is not in memory (auto-lock, or first load
- *                   with a PIN). Nothing renders.
+ *                   with a passkey or passphrase). Nothing renders.
  *   * waiting     — this device is registered but nobody holding the key has
  *                   wrapped it to us yet. We can see THAT secrets exist, not
- *                   what they are.
+ *                   what they are. When the account already has a browser
+ *                   that holds the key, this one waits for that browser (or
+ *                   an admin) to approve it, and shows the code to compare.
  *   * ready       — the key is here; values open on Reveal.
  *
  * A concealed value renders a fixed run of dots, not the value under a mask —
@@ -109,6 +117,9 @@ function VaultBody() {
     state,
     secrets,
     error: sessionError,
+    approvals,
+    awaitingApproval,
+    holders,
     reload,
   } = useVaultSession(contextId, team);
 
@@ -506,11 +517,41 @@ function VaultBody() {
         </p>
       )}
       {state === 'loading' && <p className={shell.empty}>Opening the vault…</p>}
-      {state === 'waiting' && (
+      {state === 'waiting' && awaitingApproval && (
+        <div className={styles.banner} data-testid="waiting-for-approval">
+          This browser needs approval. Open this vault on another device of
+          yours that already reads it, or ask a vault Admin, and approve the
+          request showing code{' '}
+          <strong className={shell.mono} data-testid="my-approval-code">
+            {deviceKeeper.fingerprint
+              ? confirmationCode(deviceKeeper.fingerprint)
+              : ''}
+          </strong>
+          . No other device left? Restore with your recovery key on the{' '}
+          <Link to="/security">Security page</Link>.
+        </div>
+      )}
+      {state === 'waiting' && !awaitingApproval && (
         <div className={styles.banner} data-testid="waiting-for-key">
           This device is registered but has not been given the vault key yet. It
           arrives as soon as a member who holds it opens the vault — nothing to
           do here, this page checks every few seconds.
+        </div>
+      )}
+      {session && state === 'ready' && (
+        <DeviceApprovals
+          session={session}
+          requests={approvals}
+          me={session.info?.my_account}
+          onChanged={() => void reload()}
+        />
+      )}
+      {holders && holders.browsers <= 1 && holders.recovery === 0 && (
+        <div className={styles.banner} data-testid="single-holder">
+          <strong>Only this browser holds this vault's key.</strong> If you lose
+          it, nobody can open the vault again. Create a recovery key on the{' '}
+          <Link to="/security">Security page</Link>, open the vault from a
+          second device, or download an encrypted backup.
         </div>
       )}
       {state === 'uninitialised' && (

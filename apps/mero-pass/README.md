@@ -20,10 +20,16 @@ holds a readable secret.
 ### Encryption
 
 - Each browser has a **device key**: ECDH P-256, stored non-extractable in
-  IndexedDB, or sealed under a PIN (PBKDF2, 600k iterations) if you set one.
+  IndexedDB. You can seal it under a **passkey** (Touch ID, Windows Hello or a
+  security key, through the WebAuthn PRF extension) or a **passphrase** of 8+
+  characters (PBKDF2, 600k iterations); then nothing usable is on disk.
 - Each vault has a **vault key**: 32 random bytes for AES-256-GCM, identified by
   `SHA-256(key)`. It is **wrapped** (ECIES: ephemeral ECDH, then HKDF, then
   AES-GCM) to every entitled device, and the wraps are stored in the contract.
+- A new browser of an account that already has one must be **approved** by
+  that browser or by a vault admin, comparing a 6-digit code, before any key
+  is wrapped to it. An account's first browser, or the replacement for a
+  revoked one, is let in without asking.
 - Every field is sealed with the secret id and field name bound in as
   associated data. An envelope moved to another field or secret fails to open.
 - **Rotation** mints a new vault key, wraps it only to devices still entitled
@@ -37,45 +43,56 @@ The UI says to change those passwords.
 ### If you lose your device key
 
 This can happen by clearing the browser's site data, losing the machine, or
-forgetting the PIN. What you lose is **your copy** of each vault key, not the
-vault key itself: the contract keeps a wrap of it for every device that was
-given it. So the outcome depends on whether anyone else still holds the vault
-key.
+forgetting the passphrase (the lock screen offers **Reset this browser**).
+What you lose is **your copy** of each vault key, not the vault key itself:
+the contract keeps a wrap of it for every device that was given it. So the
+outcome depends on whether anything else still holds the vault key.
 
-**Someone else still holds it** (another device of yours, or any other member
-of a shared vault). You get back in on your own:
+**Your recovery key.** On the **Security** page, **Create recovery key**
+shows a 56-character code once. It is one more holder of every vault key
+this browser has, and vaults you open later in this browser get it too. In
+a browser with nothing, enter the code under **Restore**: it rebuilds the
+recovery key and hands every vault key it holds to the new browser. Keep
+the code on paper or in another password manager. Anyone who reads it can
+do the same.
+
+**Another of your devices, or a teammate, holds it.**
 
 1. Open Mero Pass in the new or cleared browser. It creates a fresh device
    key and registers it in each vault you open.
-2. Your role belongs to your account, not to the device, so the new device is
-   entitled straight away.
-3. The next time any key holder opens the vault, their browser wraps the vault
-   key to your new device. Until then the vault shows "waiting for the vault
-   key" and checks again every 5 seconds.
-4. Revoke the lost device on the vault's **People & devices** tab. That
-   rotates the key, which matters if the device was stolen rather than wiped.
+2. If your old browser is still listed, the new one waits for approval and
+   shows a code. Approve it from another device of yours, or ask a vault
+   admin, checking that the codes match.
+3. If you have no device left, revoke the lost one on the vault's **People &
+   devices** tab (an admin can do it for you). Your new browser is then your
+   account's first again and is let in the next time any key holder opens
+   the vault. Revoking also rotates the key, which matters if the device was
+   stolen rather than wiped.
 
-**You were the only holder** (a personal vault, or a solo team vault, used
-from one browser). The secrets cannot be recovered. The node only ever had
-ciphertext and wraps to a key that no longer exists, and nobody else can
-decrypt them: not the node operator, and not Calimero. This is the other side
-of "the node never sees your passwords". There is no reset.
+**Nothing else held it** (a personal or solo vault, one browser, no recovery
+key). The secrets cannot be recovered. The node only ever had ciphertext and
+wraps to a key that no longer exists, and nobody else can decrypt them: not
+the node operator, and not Calimero. This is the other side of "the node
+never sees your passwords". There is no reset.
 
-To make sure you are never the only holder:
+A vault whose key only this browser holds shows a warning with the ways out:
+a recovery key, a second device (which then gets its own wrap), or an
+encrypted backup from the vault's **Import & export** tab, which restores
+into a new vault even if every device is gone.
 
-- **Open each vault from a second device** once. That device gets its own
-  wrap, so either device can bring the other back.
-- **Keep an encrypted backup.** The vault's **Import & export** tab downloads
-  a file sealed under a passphrase you choose. It restores into a new vault
-  even if every device is gone.
-- In a **shared vault**, the other members are your backup already.
+### If someone steals or gets into your device
 
-Not built yet:
-
-- **Recovery key.** At vault creation, generate a printable recovery code and
-  wrap the vault key to it as one more "device", like an emergency kit.
-- **Single-holder warning.** Warn when only one device holds a vault's key,
-  and suggest adding a device or downloading a backup.
+- **Locked, protected with a passkey or passphrase:** they have ciphertext
+  and a sealed key. A passkey needs your authenticator; a passphrase has to
+  be guessed at 600k PBKDF2 rounds per try, which is why it must be 8+
+  characters.
+- **Unlocked, or unprotected:** they can read what you can. Auto-lock and the
+  Lock button narrow that window.
+- **Using your node account from another browser:** their browser has to be
+  approved, and the request appears on yours.
+- Either way, revoke the device from another one (or ask an admin). That
+  rotates the vault key, so nothing written afterwards opens for it. What it
+  already decrypted can't be taken back: change those passwords.
 
 ### Roles inside a vault
 
@@ -113,7 +130,8 @@ default role, Editor or Viewer, by the next admin who opens the vault.
   Pwned k-anonymity: only 5 hex characters of a SHA-1 leave the browser).
 - Trash and restore; permanent deletion is admin-only.
 - Per-secret history with restore.
-- Auto-lock (1/5/15/60 min) and a Lock button. Copied values are cleared from
+- Device lock by passkey or passphrase, auto-lock (1/5/15/60 min) and a Lock
+  button. Copied values are cleared from
   the clipboard after 30 seconds.
 - Import from Bitwarden, 1Password and Chrome/Edge CSV. Export is an
   **encrypted** backup only; there is no plaintext export.
@@ -121,6 +139,8 @@ default role, Editor or Viewer, by the next admin who opens the vault.
   fragment (never sent to a server). A passphrase is optional and an expiry is
   enforced by the viewer. Links cannot be revoked; the dialog says so.
 - Live updates over SSE when another member changes something.
+- Device approval with confirmation codes, a recovery key, and a warning
+  when only one browser holds a vault's key.
 - Team admin:
   - invite expiry (1h / 24h / 7d);
   - invite-only vaults;
@@ -135,8 +155,8 @@ logic/            Rust contract → WASM
   src/tests.rs    TestHost tests
   workflows/      two-node merobox scenario
 app/              React + Vite frontend
-  src/lib/        crypto, deviceKey, vaultSession, vaults, totp, health,
-                  portability, shareLink
+  src/lib/        crypto, deviceKey, recoveryKey, vaultSession, vaults, totp,
+                  health, portability, shareLink
   src/pages/      teams, team, vault, security, share
 ```
 

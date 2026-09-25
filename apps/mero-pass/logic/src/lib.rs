@@ -79,6 +79,11 @@ const MAX_ENVELOPE_LEN: usize = 128 * 1024;
 /// Upper bound on the number of fields one secret may carry.
 const MAX_FIELDS: usize = 64;
 
+/// What a registered device key is. A recovery key is shown and handled
+/// differently by clients (never prompted for approval, listed separately), and
+/// nothing else.
+const DEVICE_KINDS: [&str; 2] = ["browser", "recovery"];
+
 /// The secret kinds the UI knows how to render.
 const SECRET_KINDS: [&str; 6] = [
     "login",
@@ -145,6 +150,9 @@ pub struct DeviceKey {
     /// Base64 of the raw (uncompressed) P-256 ECDH public key.
     public_key: String,
     label: String,
+    /// `browser` for a browser's device key; `recovery` for an account's
+    /// offline recovery key, whose private half exists only on paper.
+    kind: String,
     account: String,
     node_device: String,
     added_at: u64,
@@ -249,6 +257,7 @@ pub struct DeviceView {
     pub fingerprint: String,
     pub public_key: String,
     pub label: String,
+    pub kind: String,
     pub account: String,
     pub added_at: u64,
     pub revoked: bool,
@@ -660,9 +669,13 @@ impl MeroPassApp {
         fingerprint: String,
         public_key: String,
         label: String,
+        kind: String,
     ) -> app::Result<()> {
         if fingerprint.len() != 64 || !fingerprint.chars().all(|c| c.is_ascii_hexdigit()) {
             app::bail!("fingerprint must be 64 hex characters");
+        }
+        if !DEVICE_KINDS.contains(&kind.as_str()) {
+            app::bail!("device kind must be browser or recovery");
         }
         Self::check_envelope(&public_key)?;
         if self.devices.contains(&fingerprint)? {
@@ -673,6 +686,7 @@ impl MeroPassApp {
             DeviceKey {
                 public_key,
                 label,
+                kind,
                 account: Self::me_str(),
                 node_device: hex::encode(env::device_id()),
                 added_at: env::time_now(),
@@ -693,6 +707,7 @@ impl MeroPassApp {
                 fingerprint,
                 public_key: d.public_key,
                 label: d.label,
+                kind: d.kind,
                 account: d.account,
                 added_at: d.added_at,
             })

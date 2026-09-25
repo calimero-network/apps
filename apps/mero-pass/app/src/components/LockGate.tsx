@@ -1,37 +1,42 @@
 import { type ReactNode, useEffect, useState } from 'react';
 
 import { useDeviceUnlocked } from '../hooks/useDeviceLock';
-import { WrongPinError, deviceKeeper } from '../lib/deviceKey';
+import { type Protection, deviceKeeper } from '../lib/deviceKey';
 import shell from '../styles/shell.module.css';
 
 /**
  * Nothing inside renders until this browser's device key is unlocked.
  *
- * Without a PIN, unlocking is one click (the key is non-extractable at rest,
+ * Unprotected, unlocking is one click (the key is non-extractable at rest,
  * and the click is the gesture that says someone is at the keyboard). With a
- * PIN, it is the PIN. Auto-lock (`useAutoLock`) sends the user back here.
+ * passphrase it is the passphrase; with a passkey, the authenticator.
+ * Auto-lock (`useAutoLock`) sends the user back here.
+ *
+ * "Forgot it" resets this browser: a fresh key that must be approved, or
+ * restored from a recovery key, before it opens anything.
  */
 export default function LockGate({ children }: { children: ReactNode }) {
   const unlocked = useDeviceUnlocked();
-  const [hasPin, setHasPin] = useState<boolean | null>(null);
-  const [pin, setPin] = useState('');
+  const [protection, setProtection] = useState<Protection | null>(null);
+  const [passphrase, setPassphrase] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [firstRun, setFirstRun] = useState(true);
+  const [confirmReset, setConfirmReset] = useState(false);
 
   useEffect(() => {
     if (unlocked) return;
     deviceKeeper
-      .hasPin()
+      .protection()
       .then(async (p) => {
-        setHasPin(p);
-        // First open in this tab and no PIN: no reason to make them click.
-        if (!p && firstRun) {
+        setProtection(p);
+        // First open in this tab and unprotected: no reason to make them click.
+        if (p === 'none' && firstRun) {
           setFirstRun(false);
           await deviceKeeper.unlock();
         }
       })
-      .catch(() => setHasPin(false));
+      .catch(() => setProtection('none'));
   }, [unlocked, firstRun]);
 
   if (unlocked) return <>{children}</>;
@@ -40,13 +45,21 @@ export default function LockGate({ children }: { children: ReactNode }) {
     setBusy(true);
     setError(null);
     try {
-      await deviceKeeper.unlock(pin || undefined);
-      setPin('');
+      await deviceKeeper.unlock(passphrase || undefined);
+      setPassphrase('');
     } catch (e) {
-      setError(e instanceof WrongPinError ? e.message : String(e));
+      setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
+  };
+
+  const reset = async () => {
+    setError(null);
+    await deviceKeeper.reset();
+    setConfirmReset(false);
+    setProtection('none');
+    await deviceKeeper.unlock();
   };
 
   return (
@@ -58,17 +71,16 @@ export default function LockGate({ children }: { children: ReactNode }) {
       </p>
       {error && <p className={shell.error}>{error}</p>}
       <div className={shell.createRow}>
-        {hasPin && (
+        {protection === 'passphrase' && (
           <input
             className={shell.input}
             type="password"
-            inputMode="numeric"
             autoComplete="current-password"
-            placeholder="Device PIN"
-            value={pin}
-            onChange={(e) => setPin(e.target.value)}
+            placeholder="Device passphrase"
+            value={passphrase}
+            onChange={(e) => setPassphrase(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && void unlock()}
-            data-testid="unlock-pin"
+            data-testid="unlock-passphrase"
             autoFocus
           />
         )}
@@ -76,12 +88,57 @@ export default function LockGate({ children }: { children: ReactNode }) {
           type="button"
           className={shell.btn}
           onClick={() => void unlock()}
-          disabled={busy || hasPin === null || (hasPin && !pin)}
+          disabled={
+            busy ||
+            protection === null ||
+            (protection === 'passphrase' && !passphrase)
+          }
           data-testid="unlock"
         >
-          {busy ? 'Unlocking…' : 'Unlock'}
+          {busy
+            ? 'Unlocking…'
+            : protection === 'passkey'
+              ? 'Unlock with passkey'
+              : 'Unlock'}
         </button>
       </div>
+      {protection !== null && protection !== 'none' && (
+        <div className={shell.createRow}>
+          {!confirmReset ? (
+            <button
+              type="button"
+              className={shell.btnGhost}
+              onClick={() => setConfirmReset(true)}
+            >
+              Forgot your {protection}?
+            </button>
+          ) : (
+            <>
+              <p className={shell.sectionHint}>
+                Resetting forgets this browser's key. Vaults that another of
+                your devices, a teammate or your recovery key can open come back
+                after approval or a restore; a vault only this browser held is
+                lost.
+              </p>
+              <button
+                type="button"
+                className={shell.btnDanger}
+                onClick={() => void reset()}
+                data-testid="reset-device"
+              >
+                Reset this browser
+              </button>
+              <button
+                type="button"
+                className={shell.btnGhost}
+                onClick={() => setConfirmReset(false)}
+              >
+                Cancel
+              </button>
+            </>
+          )}
+        </div>
+      )}
     </section>
   );
 }

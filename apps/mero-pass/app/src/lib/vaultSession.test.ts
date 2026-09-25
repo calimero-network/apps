@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 import { fingerprintOf, generateDeviceKey, keyIdOf } from './crypto';
 import {
+  confirmationCode,
   type DeviceRecord,
   type Role,
   type SecretRecord,
@@ -53,17 +54,25 @@ class FakeVault {
           my_role: role(),
         };
       },
-      async registerDevice(fingerprint, publicKey, label) {
+      async registerDevice(fingerprint, publicKey, label, kind) {
         if (!v.devices.has(fingerprint)) {
           v.devices.set(fingerprint, {
             fingerprint,
             public_key: publicKey,
             label,
+            kind,
             account,
             added_at: 0,
             revoked: false,
           });
         }
+      },
+      async revokeDevice(fingerprint) {
+        const d = v.devices.get(fingerprint);
+        if (!d) throw new Error('no such device');
+        if (d.account === account) v.devices.delete(fingerprint);
+        else if (role() === 'admin') d.revoked = true;
+        else throw new Error('owner or admin only');
       },
       async listDevices() {
         return [...v.devices.values()];
@@ -165,6 +174,11 @@ class FakeVault {
 }
 
 async function person(vault: FakeVault, account: string) {
+  return browser(vault, account);
+}
+
+/** Another browser of an account that may already have one. */
+async function browser(vault: FakeVault, account: string) {
   const device = await generateDeviceKey();
   const fp = await fingerprintOf(device.publicRaw);
   return {
@@ -376,5 +390,139 @@ describe('VaultSession', () => {
     await bob.session.refreshKeys();
     expect(bob.session.state).toBe('ready');
     expect(bob.session.canWrite).toBe(false);
+  });
+});
+
+describe('device approval', () => {
+  async function aliceWithBob() {
+    const vault = new FakeVault(ALICE);
+    const alice = await person(vault, ALICE);
+    await alice.session.open();
+    const bob = await person(vault, BOB);
+    await bob.session.open();
+    await alice.session.housekeep();
+    await bob.session.refreshKeys();
+    return { vault, alice, bob };
+  }
+
+  it('a second browser of an account waits, even when others hold the key', async () => {
+    const { alice, bob, vault } = await aliceWithBob();
+    const bob2 = await browser(vault, BOB);
+    expect(await bob2.session.open()).toBe('waiting');
+    expect(await bob2.session.awaitingApproval()).toBe(true);
+
+    // Alice's and Bob's routine chores do not hand it the key.
+    expect((await alice.session.housekeep()).wrapped).toBe(0);
+    expect((await bob.session.housekeep()).wrapped).toBe(0);
+    expect(await bob2.session.refreshKeys()).toBe('waiting');
+
+    // It shows up for Bob's approved browser and for the admin, not for
+    // itself.
+    const forBob = await bob.session.pendingApprovals();
+    expect(forBob.map((d) => d.fingerprint)).toEqual([bob2.fp]);
+    expect(await alice.session.pendingApprovals()).toHaveLength(1);
+    expect(await bob2.session.pendingApprovals()).toEqual([]);
+
+    expect(await bob.session.approve(forBob[0])).toBe(1);
+    expect(await bob2.session.refreshKeys()).toBe('ready');
+    expect(await bob.session.pendingApprovals()).toEqual([]);
+  });
+
+  it('an editor sees only its own account’s requests', async () => {
+    const { alice, bob, vault } = await aliceWithBob();
+    await (await browser(vault, ALICE)).session.open();
+    expect(await bob.session.pendingApprovals()).toEqual([]);
+    expect(await alice.session.pendingApprovals()).toHaveLength(1);
+  });
+
+  it('a denied request is withdrawn and never gets a key', async () => {
+    const { bob, vault } = await aliceWithBob();
+    const bob2 = await browser(vault, BOB);
+    await bob2.session.open();
+    const [req] = await bob.session.pendingApprovals();
+    await bob.session.deny(req);
+    expect(vault.devices.has(bob2.fp)).toBe(false);
+    expect(await bob.session.pendingApprovals()).toEqual([]);
+  });
+
+  it('a replacement for a revoked browser is let in without approval', async () => {
+    const { alice, bob, vault } = await aliceWithBob();
+    await alice.session.deny(vault.devices.get(bob.fp)!);
+    expect(vault.devices.get(bob.fp)!.revoked).toBe(true);
+
+    const bob2 = await browser(vault, BOB);
+    await bob2.session.open();
+    expect(await bob2.session.awaitingApproval()).toBe(false);
+    expect((await alice.session.housekeep()).wrapped).toBe(1);
+    expect(await bob2.session.refreshKeys()).toBe('ready');
+  });
+
+  it('rotation reaches approved devices and recovery keys, not requests', async () => {
+    const { alice, bob, vault } = await aliceWithBob();
+    const rec = await generateDeviceKey();
+    const recFp = await fingerprintOf(rec.publicRaw);
+    await bob.session.handOver(rec, recFp, 'Recovery key', 'recovery');
+    const bob2 = await browser(vault, BOB);
+    await bob2.session.open();
+
+    await alice.session.rotate(null);
+    const holding = [...vault.wraps.values()]
+      .filter((w) => w.key_id === vault.currentKey)
+      .map((w) => w.recipient)
+      .sort();
+    expect(holding).toEqual([alice.fp, bob.fp, recFp].sort());
+    expect(await alice.session.holders()).toEqual({ browsers: 2, recovery: 1 });
+  });
+
+  it('a recovery key never needs, or grants, approval', async () => {
+    const vault = new FakeVault(ALICE);
+    const alice = await person(vault, ALICE);
+    await alice.session.open();
+    const rec = await generateDeviceKey();
+    const recFp = await fingerprintOf(rec.publicRaw);
+    await alice.session.handOver(rec, recFp, 'Recovery key', 'recovery');
+    expect(await alice.session.pendingApprovals()).toEqual([]);
+    expect(await alice.session.holders()).toEqual({ browsers: 1, recovery: 1 });
+
+    // Restoring: the recovery pair opens the vault and hands this browser
+    // the keys.
+    const restorer = new VaultSession(vault.as(ALICE), rec, recFp, 'r');
+    expect(await restorer.refreshKeys()).toBe('ready');
+    const fresh = await generateDeviceKey();
+    const freshFp = await fingerprintOf(fresh.publicRaw);
+    expect(await restorer.handOver(fresh, freshFp, 'browser')).toBe(1);
+    const after = new VaultSession(vault.as(ALICE), fresh, freshFp, 'b');
+    expect(await after.open()).toBe('ready');
+  });
+
+  it('a new recovery key replaces the old one, and is not re-given', async () => {
+    const vault = new FakeVault(ALICE);
+    const alice = await person(vault, ALICE);
+    await alice.session.open();
+    const mk = async () => {
+      const k = await generateDeviceKey();
+      return {
+        publicRaw: k.publicRaw,
+        fingerprint: await fingerprintOf(k.publicRaw),
+      };
+    };
+    const first = await mk();
+    expect(await alice.session.adoptRecoveryKey(first)).toBe(1);
+    expect(await alice.session.adoptRecoveryKey(first)).toBe(0);
+    // A different remembered key does not displace it in the background...
+    const second = await mk();
+    expect(await alice.session.adoptRecoveryKey(second)).toBe(0);
+    expect(vault.devices.has(second.fingerprint)).toBe(false);
+    // ...only an explicit replacement does.
+    expect(await alice.session.adoptRecoveryKey(second, true)).toBe(1);
+    expect(vault.devices.has(first.fingerprint)).toBe(false);
+    expect(vault.devices.get(second.fingerprint)?.kind).toBe('recovery');
+  });
+
+  it('confirmation codes are six digits in two groups', () => {
+    expect(confirmationCode('0'.repeat(64))).toBe('000 000');
+    expect(confirmationCode('ffffffff' + '0'.repeat(56))).toMatch(
+      /^\d{3} \d{3}$/,
+    );
   });
 });

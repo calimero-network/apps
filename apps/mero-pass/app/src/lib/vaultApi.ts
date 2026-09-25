@@ -10,8 +10,9 @@ export function vaultApiFor(client: MeroPassClient): VaultApi {
       const i = await client.vaultInfo();
       return { ...i, my_role: i.my_role as Role };
     },
-    registerDevice: (fingerprint, public_key, label) =>
-      client.registerDevice({ fingerprint, public_key, label }),
+    registerDevice: (fingerprint, public_key, label, kind) =>
+      client.registerDevice({ fingerprint, public_key, label, kind }),
+    revokeDevice: (fingerprint) => client.revokeDevice({ fingerprint }),
     listDevices: () => client.listDevices(),
     async listMembers() {
       return (await client.listMembers()).map((m) => ({

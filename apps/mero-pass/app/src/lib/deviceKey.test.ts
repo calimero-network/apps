@@ -2,7 +2,12 @@
 import { describe, expect, it } from 'vitest';
 
 import { generateVaultKey, unwrapVaultKey, wrapVaultKey } from './crypto';
-import { DeviceKeeper, type DeviceStore, WrongPinError } from './deviceKey';
+import {
+  DeviceKeeper,
+  type DeviceStore,
+  type PasskeyProvider,
+  WrongPassphraseError,
+} from './deviceKey';
 
 function memoryStore(): DeviceStore & { value: unknown } {
   const s = {
@@ -13,8 +18,35 @@ function memoryStore(): DeviceStore & { value: unknown } {
     async put(v: unknown) {
       s.value = v;
     },
+    async clear() {
+      s.value = undefined;
+    },
   };
   return s;
+}
+
+/** An authenticator whose PRF is HMAC under a secret it never reveals. */
+function fakePasskeys(): PasskeyProvider & { uses: number } {
+  const secret = crypto.getRandomValues(new Uint8Array(32));
+  const p = {
+    uses: 0,
+    async create() {
+      return { credentialId: new Uint8Array([1, 2, 3]) };
+    },
+    async prf(credentialId: Uint8Array, salt: Uint8Array) {
+      p.uses += 1;
+      const k = await crypto.subtle.importKey(
+        'raw',
+        secret,
+        { name: 'HMAC', hash: 'SHA-256' },
+        false,
+        ['sign'],
+      );
+      const msg = new Uint8Array([...credentialId, ...salt]);
+      return new Uint8Array(await crypto.subtle.sign('HMAC', k, msg));
+    },
+  };
+  return p;
 }
 
 describe('DeviceKeeper', () => {
@@ -29,32 +61,54 @@ describe('DeviceKeeper', () => {
     await keeper.unlock();
     expect(keeper.fingerprint).toBe(fp);
     expect(keeper.device?.publicRaw).toEqual(first.publicRaw);
+    expect(await keeper.protection()).toBe('none');
   });
 
-  it('with a PIN, stores nothing usable and needs the PIN to unlock', async () => {
+  it('with a passphrase, stores nothing usable and needs it to unlock', async () => {
     const store = memoryStore();
     const keeper = new DeviceKeeper(store);
-    const fp = await keeper.setPin('2468', async () => {});
-    expect(await keeper.hasPin()).toBe(true);
+    const fp = await keeper.setPassphrase('correct horse', async () => {});
+    expect(await keeper.protection()).toBe('passphrase');
     expect(JSON.stringify(store.value)).not.toContain('privateKey');
 
-    // A vault key wrapped to the PIN device opens once unlocked.
+    // A vault key wrapped to the protected device opens once unlocked.
     const vk = await generateVaultKey();
     const wrap = await wrapVaultKey(vk, keeper.device!.publicRaw);
     keeper.lock();
 
-    await expect(keeper.unlock()).rejects.toBeInstanceOf(WrongPinError);
-    await expect(keeper.unlock('0000')).rejects.toBeInstanceOf(WrongPinError);
+    await expect(keeper.unlock()).rejects.toBeInstanceOf(WrongPassphraseError);
+    await expect(keeper.unlock('wrong horse')).rejects.toBeInstanceOf(
+      WrongPassphraseError,
+    );
 
-    const pair = await keeper.unlock('2468');
+    const pair = await keeper.unlock('correct horse');
     expect(keeper.fingerprint).toBe(fp);
     expect(pair.privateKey.extractable).toBe(false);
     expect((await unwrapVaultKey(wrap, vk.keyId, pair))?.keyId).toBe(vk.keyId);
   }, 20_000);
 
-  it('refuses a PIN that is too short', async () => {
+  it('refuses a passphrase under 8 characters', async () => {
     const keeper = new DeviceKeeper(memoryStore());
-    await expect(keeper.setPin('12', async () => {})).rejects.toThrow();
+    await expect(
+      keeper.setPassphrase('1234567', async () => {}),
+    ).rejects.toThrow(/8 characters/);
+  });
+
+  it('with a passkey, unlocks through the authenticator only', async () => {
+    const store = memoryStore();
+    const passkeys = fakePasskeys();
+    const keeper = new DeviceKeeper(store, passkeys);
+    const fp = await keeper.setPasskey(async () => {});
+    expect(await keeper.protection()).toBe('passkey');
+    keeper.lock();
+
+    await keeper.unlock();
+    expect(keeper.fingerprint).toBe(fp);
+    expect(passkeys.uses).toBe(2);
+
+    // A different authenticator derives a different key.
+    const other = new DeviceKeeper(store, fakePasskeys());
+    await expect(other.unlock()).rejects.toBeInstanceOf(WrongPassphraseError);
   });
 
   it('keeps the old key when the hand-over fails', async () => {
@@ -63,11 +117,23 @@ describe('DeviceKeeper', () => {
     await keeper.unlock();
     const before = keeper.fingerprint;
     await expect(
-      keeper.setPin('2468', async () => {
+      keeper.setPassphrase('correct horse', async () => {
         throw new Error('node down');
       }),
     ).rejects.toThrow('node down');
-    expect(await keeper.hasPin()).toBe(false);
+    expect(await keeper.protection()).toBe('none');
     expect(keeper.fingerprint).toBe(before);
+  });
+
+  it('reset forgets the key, and the next unlock makes a new one', async () => {
+    const store = memoryStore();
+    const keeper = new DeviceKeeper(store);
+    await keeper.setPassphrase('correct horse', async () => {});
+    const before = keeper.fingerprint;
+    await keeper.reset();
+    expect(keeper.isUnlocked).toBe(false);
+    await keeper.unlock();
+    expect(keeper.fingerprint).not.toBe(before);
+    expect(await keeper.protection()).toBe('none');
   });
 });

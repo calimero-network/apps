@@ -2,19 +2,23 @@
 //
 // One ECDH key pair per browser profile. Every vault key this device can open
 // is wrapped to its public half, so whoever can USE the private half can read
-// every vault this browser was admitted to. Two ways to keep it:
+// every vault this browser was admitted to. Three ways to keep it:
 //
-//   * No PIN (default). IndexedDB holds a NON-EXTRACTABLE CryptoKey: script on
-//     this origin can use it but no code — including this one — can read its
-//     bytes out, so a copied disk image or a synced profile does not carry it.
-//   * With a PIN. IndexedDB holds only the pkcs8 bytes sealed under
-//     AES-GCM(PBKDF2-SHA256(PIN, 600k)). Nothing usable is at rest; unlocking
-//     derives the key, imports the private half as non-extractable, and keeps it
-//     in memory only.
+//   * Unprotected (default). IndexedDB holds a NON-EXTRACTABLE CryptoKey:
+//     script on this origin can use it but no code — including this one — can
+//     read its bytes out, so a copied disk image or a synced profile does not
+//     carry it. Anyone at the unlocked computer can open it, though.
+//   * Passphrase. IndexedDB holds only the pkcs8 bytes sealed under
+//     AES-GCM(PBKDF2-SHA256(passphrase, 600k)). Nothing usable is at rest.
+//   * Passkey. The same sealing, under a key the authenticator derives with
+//     the WebAuthn PRF extension: unlocking is Touch ID, Windows Hello or a
+//     security key, and the sealing key never exists outside the
+//     authenticator until it is asked, with user verification, for it.
 //
-// Either way the in-memory copy is dropped by `lock()`, which the auto-lock
-// timer calls. Unlocking a PIN-less device is a click; unlocking a PIN device
-// needs the PIN.
+// Either sealed way, unlocking imports the private half as non-extractable
+// and keeps it in memory only; `lock()`, which the auto-lock timer calls,
+// drops it. Protecting a device mints a new key pair (a non-extractable key
+// cannot be sealed) and hands every vault key over to it first.
 
 import {
   type DeviceKeyPair,
@@ -29,6 +33,10 @@ const DB_NAME = 'mero-pass';
 const STORE = 'device';
 const RECORD = 'default';
 const PBKDF2_ITERATIONS = 600_000;
+export const MIN_PASSPHRASE = 8;
+const PRF_INFO = new TextEncoder().encode('mero-pass/passkey-seal/v1');
+
+export type Protection = 'none' | 'passphrase' | 'passkey';
 
 type StoredDevice =
   | {
@@ -38,10 +46,14 @@ type StoredDevice =
       createdAt: number;
     }
   | {
-      kind: 'pin';
+      kind: 'sealed';
+      by: 'passphrase' | 'passkey';
       sealed: string;
+      /** PBKDF2 salt, or the PRF input. */
       salt: string;
       iv: string;
+      /** The passkey's credential id, for `by: 'passkey'`. */
+      credentialId?: string;
       publicRaw: Uint8Array;
       createdAt: number;
     };
@@ -50,6 +62,16 @@ type StoredDevice =
 export interface DeviceStore {
   get(): Promise<StoredDevice | undefined>;
   put(value: StoredDevice): Promise<void>;
+  clear(): Promise<void>;
+}
+
+/**
+ * The WebAuthn seam: create a passkey, and ask it for its PRF output on a
+ * salt. Both need a user gesture and user verification.
+ */
+export interface PasskeyProvider {
+  create(): Promise<{ credentialId: Uint8Array }>;
+  prf(credentialId: Uint8Array, salt: Uint8Array): Promise<Uint8Array>;
 }
 
 function openDb(): Promise<IDBDatabase> {
@@ -59,6 +81,18 @@ function openDb(): Promise<IDBDatabase> {
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
   });
+}
+
+function write(fn: (s: IDBObjectStore) => void): Promise<void> {
+  return openDb().then(
+    (db) =>
+      new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE, 'readwrite');
+        fn(tx.objectStore(STORE));
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      }),
+  );
 }
 
 export const indexedDbStore: DeviceStore = {
@@ -73,21 +107,81 @@ export const indexedDbStore: DeviceStore = {
       req.onerror = () => reject(req.error);
     });
   },
-  async put(value) {
-    const db = await openDb();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(STORE, 'readwrite');
-      tx.objectStore(STORE).put(value, RECORD);
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
-    });
+  put: (value) => write((s) => s.put(value, RECORD)),
+  clear: () => write((s) => s.delete(RECORD)),
+};
+
+// ── WebAuthn PRF ────────────────────────────────────────────────────────────
+
+/** The PRF extension's shapes, which lib.dom does not type yet. */
+interface PrfResults {
+  prf?: { enabled?: boolean; results?: { first?: ArrayBuffer } };
+}
+
+export class PasskeyUnsupportedError extends Error {
+  constructor() {
+    super(
+      'This browser or authenticator cannot derive keys from a passkey (WebAuthn PRF).',
+    );
+  }
+}
+
+export const webAuthnPasskeys: PasskeyProvider = {
+  async create() {
+    const cred = (await navigator.credentials.create({
+      publicKey: {
+        challenge: randomBytes(32),
+        rp: { name: 'Mero Pass' },
+        user: {
+          id: randomBytes(16),
+          name: 'Mero Pass device key',
+          displayName: 'Mero Pass device key',
+        },
+        pubKeyCredParams: [
+          { type: 'public-key', alg: -7 },
+          { type: 'public-key', alg: -257 },
+        ],
+        authenticatorSelection: {
+          residentKey: 'preferred',
+          userVerification: 'required',
+        },
+        extensions: { prf: {} } as AuthenticationExtensionsClientInputs,
+      },
+    })) as PublicKeyCredential | null;
+    if (!cred) throw new PasskeyUnsupportedError();
+    const ext = cred.getClientExtensionResults() as PrfResults;
+    if (!ext.prf?.enabled) throw new PasskeyUnsupportedError();
+    return { credentialId: new Uint8Array(cred.rawId) };
+  },
+  async prf(credentialId, salt) {
+    const cred = (await navigator.credentials.get({
+      publicKey: {
+        challenge: randomBytes(32),
+        allowCredentials: [
+          { type: 'public-key', id: new Uint8Array(credentialId) },
+        ],
+        userVerification: 'required',
+        extensions: {
+          prf: { eval: { first: new Uint8Array(salt) } },
+        } as AuthenticationExtensionsClientInputs,
+      },
+    })) as PublicKeyCredential | null;
+    const first = (cred?.getClientExtensionResults() as PrfResults | undefined)
+      ?.prf?.results?.first;
+    if (!first) throw new PasskeyUnsupportedError();
+    return new Uint8Array(first);
   },
 };
 
-async function pinKey(pin: string, salt: Uint8Array): Promise<CryptoKey> {
+// ── Sealing keys ────────────────────────────────────────────────────────────
+
+async function passphraseKey(
+  passphrase: string,
+  salt: Uint8Array,
+): Promise<CryptoKey> {
   const base = await crypto.subtle.importKey(
     'raw',
-    new TextEncoder().encode(pin),
+    new TextEncoder().encode(passphrase),
     'PBKDF2',
     false,
     ['deriveKey'],
@@ -106,6 +200,32 @@ async function pinKey(pin: string, salt: Uint8Array): Promise<CryptoKey> {
   );
 }
 
+/** HKDF over the PRF output, so the authenticator's bytes are never the key. */
+async function prfKey(
+  output: Uint8Array,
+  salt: Uint8Array,
+): Promise<CryptoKey> {
+  const base = await crypto.subtle.importKey(
+    'raw',
+    new Uint8Array(output),
+    'HKDF',
+    false,
+    ['deriveKey'],
+  );
+  return crypto.subtle.deriveKey(
+    {
+      name: 'HKDF',
+      hash: 'SHA-256',
+      salt: new Uint8Array(salt),
+      info: PRF_INFO,
+    },
+    base,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['encrypt', 'decrypt'],
+  );
+}
+
 async function importPrivate(pkcs8: Uint8Array): Promise<CryptoKey> {
   return crypto.subtle.importKey(
     'pkcs8',
@@ -116,11 +236,13 @@ async function importPrivate(pkcs8: Uint8Array): Promise<CryptoKey> {
   );
 }
 
-export class WrongPinError extends Error {
-  constructor() {
-    super('That PIN does not unlock this device.');
+export class WrongPassphraseError extends Error {
+  constructor(message = 'That passphrase does not unlock this device.') {
+    super(message);
   }
 }
+
+type HandOver = (next: DeviceKeyPair, nextFingerprint: string) => Promise<void>;
 
 /** The device key, and whether it is currently unlocked in memory. */
 export class DeviceKeeper {
@@ -128,7 +250,10 @@ export class DeviceKeeper {
   private fp: string | null = null;
   private listeners = new Set<() => void>();
 
-  constructor(private store: DeviceStore = indexedDbStore) {}
+  constructor(
+    private store: DeviceStore = indexedDbStore,
+    private passkeys: PasskeyProvider = webAuthnPasskeys,
+  ) {}
 
   onChange(fn: () => void): () => void {
     this.listeners.add(fn);
@@ -152,16 +277,18 @@ export class DeviceKeeper {
     return this.fp;
   }
 
-  /** Whether a PIN guards this device. */
-  async hasPin(): Promise<boolean> {
-    return (await this.store.get())?.kind === 'pin';
+  /** What guards this device's key at rest. */
+  async protection(): Promise<Protection> {
+    const stored = await this.store.get();
+    return stored?.kind === 'sealed' ? stored.by : 'none';
   }
 
   /**
-   * Unlock without a PIN, creating the device key on first use. Throws
-   * `WrongPinError` if a PIN is set (the caller should ask for it).
+   * Unlock, creating the device key on first use. A passphrase device needs
+   * `passphrase` (else `WrongPassphraseError`); a passkey device asks the
+   * authenticator, so call this from a click.
    */
-  async unlock(pin?: string): Promise<DeviceKeyPair> {
+  async unlock(passphrase?: string): Promise<DeviceKeyPair> {
     const stored = await this.store.get();
     let pair: DeviceKeyPair;
     if (!stored) {
@@ -175,24 +302,40 @@ export class DeviceKeeper {
     } else if (stored.kind === 'plain') {
       pair = { privateKey: stored.privateKey, publicRaw: stored.publicRaw };
     } else {
-      if (!pin) throw new WrongPinError();
+      const salt = fromB64(stored.salt);
+      let key: CryptoKey;
+      if (stored.by === 'passkey') {
+        const out = await this.passkeys.prf(
+          fromB64(stored.credentialId ?? ''),
+          salt,
+        );
+        key = await prfKey(out, salt);
+        out.fill(0);
+      } else {
+        if (!passphrase) throw new WrongPassphraseError();
+        key = await passphraseKey(passphrase, salt);
+      }
+      let pkcs8: Uint8Array;
       try {
-        const key = await pinKey(pin, fromB64(stored.salt));
-        const pkcs8 = new Uint8Array(
+        pkcs8 = new Uint8Array(
           await crypto.subtle.decrypt(
             { name: 'AES-GCM', iv: new Uint8Array(fromB64(stored.iv)) },
             key,
             new Uint8Array(fromB64(stored.sealed)),
           ),
         );
-        pair = {
-          privateKey: await importPrivate(pkcs8),
-          publicRaw: stored.publicRaw,
-        };
-        pkcs8.fill(0);
       } catch {
-        throw new WrongPinError();
+        throw new WrongPassphraseError(
+          stored.by === 'passkey'
+            ? 'That passkey does not unlock this device.'
+            : undefined,
+        );
       }
+      pair = {
+        privateKey: await importPrivate(pkcs8),
+        publicRaw: stored.publicRaw,
+      };
+      pkcs8.fill(0);
     }
     this.unlocked = pair;
     this.fp = await fingerprintOf(pair.publicRaw);
@@ -206,11 +349,34 @@ export class DeviceKeeper {
     this.emit();
   }
 
+  /** Protect this device with a passphrase of at least `MIN_PASSPHRASE`. */
+  async setPassphrase(passphrase: string, handOver: HandOver): Promise<string> {
+    if (passphrase.length < MIN_PASSPHRASE)
+      throw new Error(`Use at least ${MIN_PASSPHRASE} characters.`);
+    const salt = randomBytes(16);
+    return this.reseal(
+      { by: 'passphrase', salt },
+      await passphraseKey(passphrase, salt),
+      handOver,
+    );
+  }
+
+  /** Protect this device with a passkey. Call from a click. */
+  async setPasskey(handOver: HandOver): Promise<string> {
+    const { credentialId } = await this.passkeys.create();
+    const salt = randomBytes(32);
+    const out = await this.passkeys.prf(credentialId, salt);
+    const key = await prfKey(out, salt);
+    out.fill(0);
+    return this.reseal(
+      { by: 'passkey', salt, credentialId: toB64(credentialId) },
+      key,
+      handOver,
+    );
+  }
+
   /**
-   * Put a PIN on this device.
-   *
-   * A non-extractable key cannot be sealed, so setting a PIN mints a NEW device
-   * key (extractable just long enough to seal it) and returns its fingerprint.
+   * Mint a new device key, seal it under `key`, and store it.
    *
    * ⚠️ `handOver` RUNS BEFORE THE NEW KEY REPLACES THE OLD ONE, and must move
    * every vault key the old device holds onto the new one (`migrateDevice`).
@@ -218,11 +384,15 @@ export class DeviceKeeper {
    * one browser a skipped hand-over is a vault nobody can open again. If it
    * throws, nothing is stored and the old key stays.
    */
-  async setPin(
-    pin: string,
-    handOver: (next: DeviceKeyPair, nextFingerprint: string) => Promise<void>,
+  private async reseal(
+    how: {
+      by: 'passphrase' | 'passkey';
+      salt: Uint8Array;
+      credentialId?: string;
+    },
+    key: CryptoKey,
+    handOver: HandOver,
   ): Promise<string> {
-    if (pin.length < 4) throw new Error('Use at least 4 characters.');
     const pair = (await crypto.subtle.generateKey(
       { name: 'ECDH', namedCurve: 'P-256' },
       true,
@@ -234,39 +404,50 @@ export class DeviceKeeper {
     const publicRaw = new Uint8Array(
       await crypto.subtle.exportKey('raw', pair.publicKey),
     );
-    const salt = randomBytes(16);
     const iv = randomBytes(12);
-    const sealed = new Uint8Array(
-      await crypto.subtle.encrypt(
-        { name: 'AES-GCM', iv: new Uint8Array(iv) },
-        await pinKey(pin, salt),
-        pkcs8,
-      ),
-    );
-    const next: DeviceKeyPair = {
-      privateKey: await importPrivate(pkcs8),
-      publicRaw,
-    };
-    const nextFp = await fingerprintOf(publicRaw);
     try {
+      const sealed = new Uint8Array(
+        await crypto.subtle.encrypt(
+          { name: 'AES-GCM', iv: new Uint8Array(iv) },
+          key,
+          pkcs8,
+        ),
+      );
+      const next: DeviceKeyPair = {
+        privateKey: await importPrivate(pkcs8),
+        publicRaw,
+      };
+      const nextFp = await fingerprintOf(publicRaw);
       await handOver(next, nextFp);
-    } catch (e) {
+      await this.store.put({
+        kind: 'sealed',
+        by: how.by,
+        sealed: toB64(sealed),
+        salt: toB64(how.salt),
+        iv: toB64(iv),
+        credentialId: how.credentialId,
+        publicRaw,
+        createdAt: Date.now(),
+      });
+      this.unlocked = next;
+      this.fp = nextFp;
+      this.emit();
+      return nextFp;
+    } finally {
       pkcs8.fill(0);
-      throw e;
     }
-    await this.store.put({
-      kind: 'pin',
-      sealed: toB64(sealed),
-      salt: toB64(salt),
-      iv: toB64(iv),
-      publicRaw,
-      createdAt: Date.now(),
-    });
-    this.unlocked = next;
-    pkcs8.fill(0);
-    this.fp = nextFp;
+  }
+
+  /**
+   * Forget this browser's device key. For a forgotten passphrase or a lost
+   * passkey: the next unlock makes a fresh, unprotected key, which has to be
+   * approved, or restored with a recovery key, to open anything again.
+   */
+  async reset(): Promise<void> {
+    await this.store.clear();
+    this.unlocked = null;
+    this.fp = null;
     this.emit();
-    return this.fp;
   }
 }
 
