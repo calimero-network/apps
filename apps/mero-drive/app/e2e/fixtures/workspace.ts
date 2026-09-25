@@ -515,7 +515,7 @@ export class EditorDriver {
   }
 
   async close(): Promise<void> {
-    await this.page.getByRole('button', { name: /^Documents$/ }).click();
+    await this.page.getByRole('button', { name: /^Back to / }).click();
   }
 
   // EditorHeader renders the doc name as a live input, so a rename is a fill.
