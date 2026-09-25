@@ -134,10 +134,13 @@ export interface OverviewExtras {
     roles?: { name: string; can: string }[];
     rolesNote?: string;
   };
-  /** Who it is for. */
+  /**
+   * Who it is for, as concrete personas rather than icon cards: who they are,
+   * what it gets them, and the things in the app they would actually use.
+   */
   audiences?: {
     heading: string;
-    items: Feature[];
+    items: { label: string; title: string; body: string; uses: string[] }[];
   };
   /** The shared "free on your hardware, or always on with Calimero Cloud" block. */
   alwaysOn?: boolean;

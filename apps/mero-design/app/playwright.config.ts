@@ -55,6 +55,9 @@ export default defineConfig({
       name: "media",
       use: { ...devices["Desktop Chrome"] },
       testMatch: "**/media/**/*.spec.ts",
+      // One at a time: the clips hold each chapter to a fixed length, and two
+      // recordings sharing a machine slow each other past it.
+      fullyParallel: false,
     },
   ],
 

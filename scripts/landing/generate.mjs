@@ -109,9 +109,7 @@ function readCalimeroMeta(app) {
 
 /** The named mero-icons imports this app's features need, deduped and sorted. */
 function iconImports(entry) {
-  const names = [
-    ...new Set([...entry.features, ...(entry.overview?.audiences?.items ?? [])].map((f) => f.icon)),
-  ].sort();
+  const names = [...new Set(entry.features.map((f) => f.icon))].sort();
   for (const n of names) {
     if (!/^[A-Z][A-Za-z0-9]*$/.test(n)) throw new Error(`bad icon name: ${n}`);
   }
@@ -160,7 +158,7 @@ function renderOverviewSpec(o) {
 ${o.headline ? `    await expect(page.locator('.cal-lp-headline')).toHaveText(${q(o.headline)});\n` : ''}    for (const id of ${JSON.stringify(ids)}) {
       await expect(page.locator(\`#\${id}\`)).toBeVisible();
     }
-${o.comparison ? `    await expect(page.locator('.cal-lp-cmprow:not(.cal-lp-cmprow--head)')).toHaveCount(${o.comparison.rows.length});\n` : ''}${o.showcase ? `    await expect(page.locator('#showcase .cal-lp-chapter')).toHaveCount(${o.showcase.video.chapters.length});\n` : ''}${o.openSource ? `    await expect(page.locator('#open-source a[href="https://github.com/calimero-network/apps/fork"]')).toBeVisible();\n` : ''}${o.audiences ? `    await expect(page.locator('.cal-lp-card')).toHaveCount(${o.audiences.items.length});\n` : ''}${o.alwaysOn ? `    await expect(page.locator('#always-on a[href="https://cloud.calimero.network/pricing"]')).toBeVisible();\n` : ''}  });
+${o.comparison ? `    await expect(page.locator('.cal-lp-cmprow:not(.cal-lp-cmprow--head)')).toHaveCount(${o.comparison.rows.length});\n` : ''}${o.showcase ? `    await expect(page.locator('#showcase .cal-lp-chapter')).toHaveCount(${o.showcase.video.chapters.length});\n` : ''}${o.openSource ? `    await expect(page.locator('#open-source a[href="https://github.com/calimero-network/apps/fork"]')).toBeVisible();\n` : ''}${o.audiences ? `    await expect(page.locator('.cal-lp-persona')).toHaveCount(${o.audiences.items.length});\n` : ''}${o.alwaysOn ? `    await expect(page.locator('#always-on a[href="https://cloud.calimero.network/pricing"]')).toBeVisible();\n` : ''}  });
 ${media.length ? `
   test('every showcase file is actually served', async ({ page }) => {
     // A renamed capture is a broken image on the front page, and nothing else
@@ -475,7 +473,7 @@ ${entry.overview ? renderOverviewSpec(entry.overview) : ''}  test('offers the de
 `;
 }
 
-/** The optional `overview` block, as config lines. Plain data except the audience icons. */
+/** The optional `overview` block, as config lines. */
 function renderOverview(o) {
   const lines = ['  overview: {'];
   if (o.headline) lines.push(`    headline: ${q(o.headline)},`);
@@ -525,7 +523,7 @@ function renderOverview(o) {
     lines.push(`      heading: ${q(o.audiences.heading)},`);
     lines.push('      items: [');
     for (const a of o.audiences.items) {
-      lines.push(`        { icon: ${a.icon}, title: ${q(a.title)}, body: ${q(a.body)} },`);
+      lines.push(`        { label: ${q(a.label)}, title: ${q(a.title)}, body: ${q(a.body)}, uses: [${a.uses.map(q).join(', ')}] },`);
     }
     lines.push('      ],');
     lines.push('    },');

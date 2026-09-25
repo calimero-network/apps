@@ -268,10 +268,11 @@ export const DOCS = {
       },
     ],
     previewSteps: [
-      { title: 'A board with tools', body: 'Frames, shapes and text, each stored as its own record rather than one blob.' },
-      { title: 'Two people editing', body: 'Separate elements mean separate records, so concurrent edits merge instead of overwriting.' },
-      { title: 'Properties change live', body: 'Every mutable field is its own register — moving a shape does not conflict with recolouring it.' },
-      { title: 'Cursors alongside', body: 'Presence rides separately from the document, so it can never rewrite the artwork.' },
+      // Beats of the recorded hero loop (public/landing/hero.webm), in order.
+      { title: 'Two people, one board', body: 'You and Ada have the same sign-in screen open, each from your own node.' },
+      { title: 'Her note lands live', body: 'Ada leaves a sticky note by the headline, and it appears on your canvas as she makes it.' },
+      { title: 'You change the design', body: 'At the same moment you recolour the Sign in button. Neither of you waits for the other.' },
+      { title: 'She sees it too', body: 'Ada’s cursor comes over to the button. Edits to different things merge instead of colliding.' },
     ],
   },
 

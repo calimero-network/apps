@@ -8,7 +8,7 @@
  * `name`, `packageId` and `tagline` come from the Cargo metadata the registry
  * publishes from, so this page and the registry listing cannot diverge.
  */
-import { CloudUpload, Cube, Download, FileText, Globe, Grid, LockBox, Refresh, ShieldCheck, WifiOff } from '@calimero-network/mero-icons';
+import { CloudUpload, Cube, Download, FileText, Grid, Refresh } from '@calimero-network/mero-icons';
 
 import Animation from './animation';
 import LoginPopup from './loginPopup';
@@ -22,7 +22,7 @@ export const CONFIG: LandingConfig = {
   markSrc: "/favicon.svg",
   iconSrc: '/icon-512.png',
   availability: "web+desktop",
-  trust: ["Infinite canvas", "Real-time sync", "Files on your nodes"],
+  trust: ["Live collaboration", "Infinite canvas", "Files on your nodes"],
   explainer: [
     "A collaborative design tool in the shape of Figma — an infinite canvas with shapes, text and images that several people can work on at once. The difference is where the file lives: in a Calimero context on your infrastructure, shared only with the teammates you invite.",
     "There is no central server holding your designs, which means no vendor with a copy, no seat-based access model, and nothing to migrate off if you change your mind.",
@@ -55,14 +55,14 @@ export const CONFIG: LandingConfig = {
     },
     {
       icon: Refresh,
-      title: "Real-time sync",
-      body: "Changes stream to every member over SSE. No central server arbitrating who edited what.",
+      title: "Live collaboration",
+      body: "See teammates’ cursors, notes and edits the moment they make them. Changes sync peer to peer, with no central server deciding who edited what.",
     },
   ],
   overview: {
     headline: "Your canvas. Your pixels. Your nodes.",
     showcase: {
-      heading: "From a note to a new design, in twenty seconds",
+      heading: "From a note to a new design, together",
       sub: "Recorded from the real editor on the bundled Web design starter — nothing staged, nothing mocked up.",
       video: {
         src: "/landing/demo.webm",
@@ -71,8 +71,8 @@ export const CONFIG: LandingConfig = {
           { at: 0, title: "Open a board", body: "The design is on your node, and Ada from your team is already in it." },
           { at: 3, title: "Leave a note", body: "Drop a sticky note where the feedback belongs." },
           { at: 9, title: "Point at it", body: "Draw an arrow — it docks to the button it is about." },
-          { at: 13.5, title: "Change it", body: "Select the button and give it a new colour. Everyone sees it live." },
-          { at: 19, title: "Present it", body: "Hit Present. The change is already in the slide." },
+          { at: 14, title: "Ada changes it, live", body: "Her cursor comes over and the button turns green on your screen. No refresh, no server in the middle." },
+          { at: 19, title: "Present it", body: "Hit Present. Ada’s change is already in the slide." },
         ],
       },
     },
@@ -89,8 +89,8 @@ export const CONFIG: LandingConfig = {
       ],
     },
     collaboration: {
-      heading: "Built for editing together, not taking turns",
-      sub: "Two people can work on the same board at the same moment and both keep their work, because of how a board is stored.",
+      heading: "Live collaboration, with no server in the middle",
+      sub: "Everyone on a board sees each other’s cursors and edits as they happen, and two people can change it at the same moment without either losing work — because of how a board is stored.",
       points: [
         { title: "Every element is its own record", body: "Two people editing different shapes never queue behind each other." },
         { title: "Every property is its own value", body: "One person moves a shape while another recolours it, and both changes land." },
@@ -105,12 +105,12 @@ export const CONFIG: LandingConfig = {
       rolesNote: "Permissions are checked when changes merge, not only hidden in the interface — a rename from a non-owner is refused, wherever it came from.",
     },
     audiences: {
-      heading: "For teams whose designs should not live on someone else’s server",
+      heading: "Made for teams whose designs are nobody else’s business",
       items: [
-        { icon: LockBox, title: "Agencies and studios", body: "Client work under NDA stays on infrastructure you and the client control." },
-        { icon: ShieldCheck, title: "Regulated teams", body: "Finance, health and public-sector work that cannot sit on a third-party cloud." },
-        { icon: Globe, title: "Open-source projects", body: "A design space the community owns, with no seats to buy and nothing to lose if a vendor changes its terms." },
-        { icon: WifiOff, title: "Teams on the move", body: "Keep designing with no connection; boards sync when your devices find each other again." },
+        { label: "Product teams", title: "Design the roadmap without handing it to a vendor", body: "Unreleased screens and flows stay on your team’s own nodes until the day you ship them.", uses: ["UI screens", "Design systems", "HTML handoff"] },
+        { label: "Agencies & freelancers", title: "Client work that stays between you and the client", body: "Invite the client straight into the board: no extra seat to pay for, and nothing on a third party’s cloud.", uses: ["Client reviews", "Sticky-note feedback", "Presenting from the board"] },
+        { label: "Regulated & public sector", title: "Live collaboration on infrastructure you already control", body: "For finance, health and government work that cannot leave your own servers, without giving up working together in real time.", uses: ["Self-hosted nodes", "Owner, editor and viewer roles", "Works offline"] },
+        { label: "Open-source communities", title: "A design space the community owns", body: "No seats and no vendor terms that can change under you. If the tool is missing something, fork it and add it.", uses: ["Free for everyone", "MIT licensed", "Fork and customise"] },
       ],
     },
     openSource: {
@@ -188,10 +188,10 @@ export const CONFIG: LandingConfig = {
     },
   ],
   previewSteps: [
-    { title: "A board with tools", body: "Frames, shapes and text, each stored as its own record rather than one blob." },
-    { title: "Two people editing", body: "Separate elements mean separate records, so concurrent edits merge instead of overwriting." },
-    { title: "Properties change live", body: "Every mutable field is its own register — moving a shape does not conflict with recolouring it." },
-    { title: "Cursors alongside", body: "Presence rides separately from the document, so it can never rewrite the artwork." },
+    { title: "Two people, one board", body: "You and Ada have the same sign-in screen open, each from your own node." },
+    { title: "Her note lands live", body: "Ada leaves a sticky note by the headline, and it appears on your canvas as she makes it." },
+    { title: "You change the design", body: "At the same moment you recolour the Sign in button. Neither of you waits for the other." },
+    { title: "She sees it too", body: "Ada’s cursor comes over to the button. Edits to different things merge instead of colliding." },
   ],
   loginPopup: LoginPopup,
 };

@@ -62,8 +62,10 @@ make stop        # tear everything down
 
 ## Landing page media
 
-The demo clip on the landing page (`app/public/landing/demo.webm` and its poster)
-is recorded from the real editor against the mocked node the e2e specs use:
+The landing page's two clips — the hero loop (`app/public/landing/hero.webm`)
+and the chaptered demo (`demo.webm`), each with a poster — are recorded from the
+real editor against the mocked node the e2e specs use. The teammate in them is
+driven through the app's own SSE event path, not drawn on:
 
 ```bash
 cd app && pnpm landing:media

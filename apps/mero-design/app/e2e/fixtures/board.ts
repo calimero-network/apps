@@ -25,6 +25,8 @@ export interface Board {
   calledWith(method: string): RpcCall[];
   /** Replaces what `get_elements` will return on the next fetch. */
   setElements(next: Element[]): void;
+  /** The node's element state right now, including every edit the page made. */
+  elementsNow(): Element[];
   /** Bodies of every blob upload, in order — what a flatten writes out. */
   blobUploads: string[];
 }
@@ -165,6 +167,12 @@ export async function openBoard(page: Page, opts: BoardOptions = {}): Promise<Bo
     let value: unknown;
     switch (method) {
       case "get_elements": value = state.elements; break;
+      // What the app re-reads when an ElementAdded / ElementUpdated event arrives.
+      case "get_element": {
+        const id = (body?.params?.argsJson as { id?: string })?.id;
+        value = state.elements.find((e) => e.id === id) ?? null;
+        break;
+      }
       case "get_comments": value = state.comments; break;
       case "get_members": value = opts.members ?? [TEST_MEMBER]; break;
       case "get_cursors": value = opts.cursors?.() ?? []; break;
@@ -280,6 +288,7 @@ export async function openBoard(page: Page, opts: BoardOptions = {}): Promise<Bo
     setElements: (next: Element[]) => {
       state.elements = next;
     },
+    elementsNow: () => state.elements,
     blobUploads,
   };
 }

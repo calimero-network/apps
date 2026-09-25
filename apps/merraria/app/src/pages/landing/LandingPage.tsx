@@ -1038,7 +1038,7 @@ function OverviewExtrasSections({ ConnectCta, desktopOnly }: ViewShared) {
         <section id="together" className="cal-lp-section cal-lp-section--alt">
           <div className="cal-lp-shell">
             <div ref={togetherRef} className="cal-lp-reveal">
-              <div className="cal-lp-kicker">Working together</div>
+              <div className="cal-lp-kicker">Live collaboration</div>
               <h2 className="cal-lp-h2">{collaboration.heading}</h2>
               {collaboration.sub && <p className="cal-lp-sectionsub">{collaboration.sub}</p>}
               <ol className="cal-lp-points">
@@ -1072,21 +1072,19 @@ function OverviewExtrasSections({ ConnectCta, desktopOnly }: ViewShared) {
             <div ref={whoRef} className="cal-lp-reveal">
               <div className="cal-lp-kicker">Who it is for</div>
               <h2 className="cal-lp-h2">{audiences.heading}</h2>
-              <div className="cal-lp-features cal-lp-audiences">
-                {audiences.items.map((a) => {
-                  const Icon = a.icon;
-                  return (
-                    <div key={a.title} className="cal-lp-card">
-                      <span className="cal-lp-featureicon">
-                        <Icon size={19} />
-                      </span>
-                      <div>
-                        <h3 className="cal-lp-featuretitle">{a.title}</h3>
-                        <p className="cal-lp-featurebody">{a.body}</p>
-                      </div>
-                    </div>
-                  );
-                })}
+              <div className="cal-lp-audiences">
+                {audiences.items.map((a) => (
+                  <article key={a.label} className="cal-lp-persona">
+                    <span className="cal-lp-personalabel">{a.label}</span>
+                    <h3 className="cal-lp-personatitle">{a.title}</h3>
+                    <p className="cal-lp-personabody">{a.body}</p>
+                    <ul className="cal-lp-uses" aria-label="What they use">
+                      {a.uses.map((u) => (
+                        <li key={u} className="cal-lp-use">{u}</li>
+                      ))}
+                    </ul>
+                  </article>
+                ))}
               </div>
             </div>
           </div>

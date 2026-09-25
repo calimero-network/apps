@@ -199,7 +199,7 @@ test.describe('Mero Design landing page', () => {
     await expect(page.locator('.cal-lp-cmprow:not(.cal-lp-cmprow--head)')).toHaveCount(5);
     await expect(page.locator('#showcase .cal-lp-chapter')).toHaveCount(5);
     await expect(page.locator('#open-source a[href="https://github.com/calimero-network/apps/fork"]')).toBeVisible();
-    await expect(page.locator('.cal-lp-card')).toHaveCount(4);
+    await expect(page.locator('.cal-lp-persona')).toHaveCount(4);
     await expect(page.locator('#always-on a[href="https://cloud.calimero.network/pricing"]')).toBeVisible();
   });
 
