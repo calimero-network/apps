@@ -56,6 +56,7 @@
 //! to anyone who can walk away from a board.
 
 use std::cmp::Ordering;
+use std::collections::BTreeMap;
 
 use calimero_sdk::abi::AbiType;
 use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
@@ -1183,15 +1184,44 @@ impl MeroChess {
         // stuck with it: the earliest row that IS legal is taken, and the rest
         // of their rows for that ply are ignored. Only their own rows are ever
         // in the running, so this cannot be used against anyone.
+        // ⚠️ ONE scan of the map, bucketed by ply — not one scan per ply.
+        //
+        // `valid_rows` walks every entry in the collection and keeps the ones
+        // under its prefix; there is no prefix or range lookup on
+        // `AuthoredMap` to ask for less. Calling it inside the ply loop
+        // therefore re-read (and re-deserialised) the WHOLE map once per ply,
+        // making a read cost plies × rows.
+        //
+        // That is not just slow, it is a denial of service, because rows are
+        // something a byzantine peer can add and nobody can remove: only an
+        // entry's own author may delete it. Measured on the in-process host,
+        // a six-move game read in 6.8ms; with 1,200 junk rows parked in the
+        // map it read in 105ms, and the cost is linear in the junk — a few
+        // hundred thousand rows makes `table()` take minutes, permanently,
+        // for every member. The rows stayed inert, which was never the
+        // question: the forgery could not change the game, and could still
+        // end it.
+        //
+        // Bucketing first makes a read cost rows + plies. Junk still has to be
+        // looked at once — you cannot know a row is junk without reading it —
+        // but it is no longer multiplied by the length of the game.
+        let mut by_ply: BTreeMap<u32, Vec<(String, MoveRecord)>> = BTreeMap::new();
+        let seated = |author: &str| author == white || author == black;
+        for (key, record) in Self::rows_where(&self.moves, &game_prefix(index), seated)? {
+            let Some(ply) = key_ply(&key) else { continue };
+            by_ply.entry(ply).or_default().push((key, record));
+        }
+
         let mut position = board::Position::initial();
         let mut moves = Vec::new();
         for ply in 0..MAX_PLY {
             let author = if ply % 2 == 0 { &white } else { &black };
-            let mut rows: Vec<(String, MoveRecord)> =
-                Self::valid_rows(&self.moves, &move_prefix(index, ply))?
-                    .into_iter()
-                    .filter(|(key, _)| key_author(key) == Some(author.as_str()))
-                    .collect();
+            let mut rows: Vec<(String, MoveRecord)> = by_ply
+                .remove(&ply)
+                .unwrap_or_default()
+                .into_iter()
+                .filter(|(key, _)| key_author(key) == Some(author.as_str()))
+                .collect();
             // A total order over rows, so every replica tries them in the same
             // sequence and lands on the same move.
             rows.sort_by_key(|(_, record)| {
@@ -1297,14 +1327,38 @@ impl MeroChess {
     where
         V: BorshSerialize + BorshDeserialize + Clone,
     {
+        Self::rows_where(map, prefix, |_| true)
+    }
+
+    /// [`Self::valid_rows`], narrowed to rows whose key names an author the
+    /// caller is actually interested in.
+    ///
+    /// The narrowing is not a convenience, it is the cost model. Confirming the
+    /// owner stamp means a metadata lookup PER ROW, while the author named in
+    /// the key is a string already in hand — and a row whose key names somebody
+    /// the caller does not care about cannot count whatever its stamp says. So
+    /// the cheap test goes first, and rows a byzantine peer filed under a name
+    /// nobody is looking for cost a string compare instead of a store read.
+    fn rows_where<V>(
+        map: &AuthoredMap<String, V>,
+        prefix: &str,
+        wanted: impl Fn(&str) -> bool,
+    ) -> app::Result<Vec<(String, V)>>
+    where
+        V: BorshSerialize + BorshDeserialize + Clone,
+    {
         let mut rows = Vec::new();
         for (key, value) in map.entries()? {
             if !key.starts_with(prefix) {
                 continue;
             }
-            let Some(author) = key_author(&key).map(ToOwned::to_owned) else {
+            let Some(author) = key_author(&key) else {
                 continue;
             };
+            if !wanted(author) {
+                continue;
+            }
+            let author = author.to_owned();
             if !Self::owned_by(Self::owner_of(map, &key)?, &author) {
                 continue;
             }
@@ -1795,9 +1849,13 @@ fn move_key(index: u32, ply: u32, author: &str, nonce: u64) -> String {
     format!("{}/{ply:04}/{author}/{nonce}", game_key(index))
 }
 
-/// The prefix every row for one ply shares, whoever wrote it.
-fn move_prefix(index: u32, ply: u32) -> String {
-    format!("{}/{ply:04}/", game_key(index))
+/// The prefix every move row of one game shares, whichever ply it is at.
+///
+/// One game, not one ply: the replay reads the whole game in a single pass and
+/// buckets by ply itself, because a per-ply prefix meant a full scan of the
+/// collection per ply. See `moves_of`.
+fn game_prefix(index: u32) -> String {
+    format!("{}/", game_key(index))
 }
 
 /// `"<game>/<account>/<nonce>"` — one player's claim about one game: their draw
@@ -1833,6 +1891,20 @@ fn key_author(key: &str) -> Option<&str> {
     let mut parts = key.rsplitn(3, '/');
     let _nonce = parts.next()?;
     parts.next()
+}
+
+/// The ply a move key sits at: the second segment of
+/// `"<game>/<ply>/<account>/<nonce>"`.
+///
+/// Read from the KEY, which is the same source the per-ply prefix lookup used
+/// before the rows were bucketed — so a row still counts at exactly the ply it
+/// is filed under, and nowhere else. An account segment containing a `/` would
+/// shift the segments, so this only trusts the two positions before any author
+/// text can appear.
+fn key_ply(key: &str) -> Option<u32> {
+    let mut parts = key.split('/');
+    let _game = parts.next()?;
+    parts.next()?.parse().ok()
 }
 
 fn normalize_seat(seat: &str) -> app::Result<String> {

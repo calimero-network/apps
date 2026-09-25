@@ -111,14 +111,20 @@ the key the next move needs and wedge the table permanently).
 | a forged resignation, draw or result | endings are re-derived: a resignation must lose, an agreement needs the offer it answered, a claimed draw must be available in that position |
 | a rematch that erases a live game | the game index is counted, not read: it advances only past a finished game, claimed by a seat holder |
 | seat theft | claims are per-claimant rows, elected by the reader, and only their author can write one |
+| burying the table under junk rows | a read scans the move map ONCE and buckets by ply, and tests a row's named author before paying for its owner stamp — so the rows nobody can delete cost a string compare each, not a full rescan per ply |
 
-What remains is that a player can **stall** — and that is also what walking away
-from a board looks like. Nothing above lets anyone change a result.
+Two things remain. A player can **stall**, and because `stand` is refused once a
+game has started, a member who sits down and walks away leaves that table
+unusable — griefing rather than a breach (a table is a context; another costs
+nothing), and an abandon rule is the honest fix. And a read is still **linear in
+the total rows** a member has written, because the collection offers no way to
+iterate keys or a prefix: the constant is small now, the slope needs a core API.
+Nothing above lets anyone change a result.
 
 **[`docs/trust-model.md`](docs/trust-model.md) is the long version**, and it is
 written for someone building their own app rather than for someone reading this
 one: what the storage tiers (`Public`, `Authored`, `Shared`, `Permissioned`,
-`Frozen`) actually enforce and when to reach for each, the thirteen defects this
+`Frozen`) actually enforce and when to reach for each, the fourteen defects this
 app shipped and fixed with the exploit for each one, and a checklist to run over
 your own `#[app::state]`. If you are not sure how to use permissions and data
 models on Calimero, start there.

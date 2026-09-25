@@ -143,7 +143,7 @@ binds only the node that ran it, and a patched peer can write bytes your code wo
 produced. Choosing the right storage tier (`Public`, `Authored`, `Shared`, `Permissioned`, `Frozen`)
 and deriving on read rather than trusting stored fields is what actually holds.
 [**`apps/mero-chess/docs/trust-model.md`**](apps/mero-chess/docs/trust-model.md) is the worked
-example: what each tier enforces and when to use it, thirteen real defects with the exploit for each,
+example: what each tier enforces and when to use it, fourteen real defects with the exploit for each,
 and a checklist for your own `#[app::state]`. Read it before you design state for a new app.
 
 ## Layout

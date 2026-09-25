@@ -1022,3 +1022,42 @@ fn a_draw_offer_from_a_spectator_is_not_an_offer() {
         .call_as_account(BOB, BOB, |s| s.accept_draw(at(6)))
         .is_err());
 }
+
+#[test]
+fn a_map_stuffed_with_junk_still_reads_as_the_game_that_was_played() {
+    // The other tests here ask whether a forged row changes the ANSWER. This
+    // one asks what it costs to get the answer at all, which turned out to be
+    // the sharper question: rows are something any member can add and only
+    // their own author can remove, so junk accumulates permanently and every
+    // honest node pays to skip it on every read.
+    //
+    // A thousand rows spread over the plies this game actually reaches, under
+    // an account that holds no chair.
+    let mut app = seated();
+    app.call_as_account(CAROL, CAROL, |s| {
+        for i in 0..1_000u64 {
+            let _written = s.moves.insert(
+                move_key(0, (i % 8) as u32, "deadbeef", i),
+                MoveRecord {
+                    uci: "e2e4".to_owned(),
+                    at: i,
+                },
+            );
+        }
+    });
+
+    for (who, uci, san) in [
+        (ALICE, "e2e4", "e4"),
+        (BOB, "e7e5", "e5"),
+        (ALICE, "g1f3", "Nf3"),
+        (BOB, "b8c6", "Nc6"),
+    ] {
+        assert_eq!(play(&mut app, who, uci, at(10)), san);
+    }
+
+    let view = table_as(&mut app, ALICE, at(20));
+    assert_eq!(view.moves.len(), 4);
+    assert_eq!(view.moves[3].san, "Nc6");
+    assert_eq!(view.side_to_move, "white");
+    assert_eq!(view.result, "*");
+}

@@ -41,8 +41,13 @@ Two consequences, and everything else in this document follows from them:
    entity that is not specifically guarded.
 2. **You can decide what a write MEANS.** Every honest node reads the same
    storage through the same contract. If reading is derivation rather than
-   lookup, a forged row is inert: it sits in storage, it is in the root hash,
-   and no honest reader folds it into anything.
+   lookup, a forged row cannot change the answer: it sits in storage, it is in
+   the root hash, and no honest reader folds it into anything.
+
+   It is **not free**, though, and that distinction is the single most expensive
+   thing in this document — see [finding 14](#14-inert-was-doing-a-lot-of-work-in-that-sentence).
+   A row you correctly ignore still has to be read to be ignored, it is in every
+   peer's database forever, and nobody but its author can delete it.
 
 That is the model. **Quarantine at interpretation, not prevention at write.**
 
@@ -424,11 +429,83 @@ dependency lives (the commit message is not where anyone looks), and re-check it
 when you bump the dependency. "We deleted the test because X" ages into "we have
 no test", silently.
 
+### 14. "Inert" was doing a lot of work in that sentence
+
+This is the one that came out of being asked "is any of this actually serious",
+and it is the most serious thing in the file — because for months the answer
+above it was *"a forged row just sits in storage; no honest node folds it into a
+position"*, which is true and which quietly skips the cost of **not** folding it
+in.
+
+`AuthoredMap` has no prefix lookup and no `keys()`. The only way to iterate is
+`entries()`, which walks and **deserialises every value in the collection**. So
+`valid_rows(map, prefix)` is a full scan however narrow the prefix is — and the
+replay called it *once per ply*:
+
+```rust
+for ply in 0..MAX_PLY {
+    let rows = Self::valid_rows(&self.moves, &move_prefix(index, ply))?;  // full scan. every ply.
+    …
+}
+```
+
+A read therefore cost `plies × rows`. Rows are something any member can add and
+**only their own author can ever remove**, so junk is permanent, and the
+frontend polls `table()` every six seconds. Measured on the in-process host,
+with junk spread across the plies the game actually reaches:
+
+| junk rows in `moves` | before | after |
+|---|---|---|
+| 0 | 6.2 ms | 6.4 ms |
+| 200 | 34.0 ms | 13.4 ms |
+| 1,200 | 141.0 ms | 39.2 ms |
+
+Extrapolate the "before" column: a few hundred thousand rows — minutes of
+writing, a few hundred MB — and `table()` takes **minutes**, for everyone at
+that table, forever. The forged rows never changed a single move. They did not
+need to.
+
+**Two changes, both in the reader.**
+
+*Scan once, bucket by ply.* One pass over the game's rows into a
+`BTreeMap<ply, rows>`, then the ply loop reads from that. Cost goes from
+`plies × rows` to `rows + plies`.
+
+*Do the cheap test before the expensive one.* Confirming a row's owner stamp is
+a metadata lookup **per row**; the author named in its key is a string already
+in hand. A row whose key names somebody the caller is not looking for cannot
+count whatever its stamp says — so `rows_where` filters on the name first and
+only pays for the stamp on survivors:
+
+```rust
+let seated = |author: &str| author == white || author == black;
+for (key, record) in Self::rows_where(&self.moves, &game_prefix, seated)? { … }
+```
+
+**What is still open, and it is not the contract's to close.** The remaining
+cost is linear in total rows, because `entries()` deserialises values this
+reader is going to throw away. A `keys()` on `AuthoredMap`, or any prefix/range
+scan, would make it linear in *matching* rows instead. Until then a contract can
+only shrink the constant. Filed as what it is: a platform gap, not a chess bug.
+
+**The general rule, and it is the one to take away from this whole document:**
+*a forged row you correctly ignore is not free.* Whenever you catch yourself
+writing "harmless, the reader drops it", finish the sentence — **how much does
+dropping it cost, who pays, and how many can they write?** In a system where
+writes cannot be prevented and nobody can delete anyone else's data, "the reader
+drops it" is a promise about correctness and says nothing at all about
+availability. Availability is where this class of app actually dies.
+
+**Pinned by:** `a_map_stuffed_with_junk_still_reads_as_the_game_that_was_played`
+— correctness under a thousand junk rows. The cost itself is not asserted,
+because a wall-clock threshold in CI is a flake generator; the numbers above are
+reproducible with the benchmark described in that test's comment.
+
 ---
 
 ## What is deliberately NOT fixed
 
-Being honest about the residue is part of the model. Three things remain, and
+Being honest about the residue is part of the model. Four things remain, and
 each is a decision rather than an oversight.
 
 **`title` and `created_at` are plain `LwwRegister`s.** Any member can
@@ -438,9 +515,18 @@ relabels the table. Guarding them would mean a writer-set anchor for two strings
 nobody makes decisions from. *The general rule: know which of your fields are
 load-bearing, write it down, and let the rest be cheap.*
 
-**A player can stall.** Nothing forces a move. That is also what walking away
-from a board looks like, and a chess clock is a feature, not a security
-boundary.
+**A player can stall, and a stalled table cannot be reclaimed.** Nothing forces
+a move, which is fine — a chess clock is a feature, not a security boundary. The
+sharper edge is that `stand` is refused once a game has started and nobody can
+vacate anyone else's chair, so a member who sits down, plays one move and walks
+away leaves that table unusable permanently. A table is a context and another
+one costs nothing, so this is griefing rather than a breach; the honest fix is
+an abandon rule (claim the win, or free the chair, after a timeout), and it is
+not written yet.
+
+**Read cost is still linear in total rows**, for the reason in finding 14: the
+collection offers no way to iterate keys or a prefix, so a reader cannot ask for
+less than everything. The constant is now small. The slope needs a core API.
 
 **The forgery path itself has no automated coverage in this repository.** The
 byzantine tests below prove the *reader* is not fooled, and `tests/converge.rs`
@@ -573,6 +659,9 @@ Before your contract ships, for each field in your `#[app::state]`:
       suppress a valid one (finding 9).
 - [ ] **Can you re-derive every claim you accept?** A resignation must lose, an
       agreement needs its offer, a claimed draw must be available (finding 5).
+- [ ] **What does ignoring a forged row COST?** Count the scans a single read
+      does, and multiply by the rows a hostile member could add in an afternoon.
+      Correctness is not the only thing a forgery can take from you (finding 14).
 - [ ] **Is there a byzantine test?** Write the row directly into the map under
       the wrong account and assert the reader is not moved.
 - [ ] **Is there a `converge_app` test?** Two replicas writing it at the same
