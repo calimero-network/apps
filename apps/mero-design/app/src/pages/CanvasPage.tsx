@@ -482,7 +482,28 @@ export default function CanvasPage() {
     [projectId, upsertElement, removeElement, setElements],
   );
 
-  useSse(projectId ?? null, handleSseEvent);
+  // The stream dropped and came back (the node was restarted, the machine
+  // slept): every event from the gap is lost, so re-read the whole board. In
+  // place — unlike the initial load, which clears the canvas first — so a
+  // reconnect is invisible when nothing changed. A new roster re-runs the role
+  // effect, which covers a grant or revoke made while we were away.
+  const resyncBoard = useCallback(() => {
+    if (!projectId) return;
+    rpcCall<Element[]>(projectId, "get_elements", {})
+      .then((els) => setElements(Array.isArray(els) ? els : []))
+      .catch(() => {});
+    rpcCall<CanvasComment[]>(projectId, "get_comments", {})
+      .then((cs) => setComments(Array.isArray(cs) ? cs : []))
+      .catch(() => {});
+    rpcCall<CursorState[]>(projectId, "get_cursors", {})
+      .then((cs) => setCursors(Array.isArray(cs) ? cs.map(normalizeCursor) : []))
+      .catch(() => {});
+    rpcCall<Member[]>(projectId, "get_members", {})
+      .then((ms) => setMembers(Array.isArray(ms) ? ms : []))
+      .catch(() => {});
+  }, [projectId, setElements]);
+
+  useSse(projectId ?? null, handleSseEvent, resyncBoard);
 
   async function handleSaveProject() {
     if (!projectId) return;

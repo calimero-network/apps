@@ -7,12 +7,23 @@ import { useContextEvents } from '../useContextEvents';
 // the test can drive synthetic SSE events through it.
 let lastHandler: ((e: SseEventData) => void) | null = null;
 let lastIds: string[] = [];
+// The shared stream's `connect` listeners, so a test can reopen it.
+const connectHandlers = new Set<() => void>();
+const events = {
+  on: (_: 'connect', h: () => void) => { connectHandlers.add(h); },
+  off: (_: 'connect', h: () => void) => { connectHandlers.delete(h); },
+};
 vi.mock('@calimero-network/mero-react', () => ({
   useSubscription: (ids: string[], handler: (e: SseEventData) => void) => {
     lastHandler = handler;
     lastIds = ids;
   },
+  useMero: () => ({ mero: { events } }),
 }));
+
+function reconnect() {
+  for (const h of connectHandlers) h();
+}
 
 function fire(contextId: string, type?: string) {
   lastHandler?.({ contextId, type, data: {} } as SseEventData);
@@ -29,9 +40,57 @@ function fireSync(contextId: string, state: string) {
 beforeEach(() => {
   lastHandler = null;
   lastIds = [];
+  connectHandlers.clear();
 });
 
 describe('useContextEvents', () => {
+  describe('stream reconnects', () => {
+    beforeEach(() => { vi.useFakeTimers(); });
+    afterEach(() => { vi.useRealTimers(); });
+
+    // A node restart drops the stream; SseClient reopens it and re-subscribes,
+    // but what changed in the gap never arrives as an event. The page used to
+    // keep its pre-outage state until it was re-mounted.
+    it('fires onChange once the stream reopens, after the re-subscribe', () => {
+      const onChange = vi.fn();
+      renderHook(() => useContextEvents(['ctx-a'], onChange, { strict: true }));
+      reconnect();
+      expect(onChange).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(500);
+      expect(onChange).toHaveBeenCalledTimes(1);
+    });
+
+    it('coalesces a flapping stream into one onChange', () => {
+      const onChange = vi.fn();
+      renderHook(() => useContextEvents(['ctx-a'], onChange));
+      reconnect();
+      vi.advanceTimersByTime(200);
+      reconnect();
+      vi.advanceTimersByTime(500);
+      expect(onChange).toHaveBeenCalledTimes(1);
+    });
+
+    it('does nothing with no contexts to watch', () => {
+      const onChange = vi.fn();
+      renderHook(() => useContextEvents([], onChange));
+      reconnect();
+      vi.advanceTimersByTime(500);
+      expect(onChange).not.toHaveBeenCalled();
+    });
+
+    it('stops listening on unmount', () => {
+      const onChange = vi.fn();
+      const { unmount } = renderHook(() => useContextEvents(['ctx-a'], onChange));
+      reconnect();
+      unmount();
+      vi.advanceTimersByTime(500);
+      reconnect();
+      vi.advanceTimersByTime(500);
+      expect(onChange).not.toHaveBeenCalled();
+      expect(connectHandlers.size).toBe(0);
+    });
+  });
+
   it('default (non-strict): fires onChange for ANY event, regardless of contextId', () => {
     const onChange = vi.fn();
     renderHook(() => useContextEvents(['ctx-a'], onChange));

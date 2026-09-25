@@ -17,6 +17,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMero, useSubscription } from '@calimero-network/mero-react';
+import { useStreamReconnect } from './useStreamReconnect';
 import { SpreadsheetClient } from '../api/spreadsheet/SpreadsheetClient';
 import type {
   Sheet, Cell, Cursor, FunctionDef, Member, Project,
@@ -326,6 +327,8 @@ export function useSpreadsheet({
 
   // Live updates: re-fetch on any CRDT sync event for this context
   useSubscription(contextId ? [contextId] : [], () => { void refresh(); });
+  // …and after the stream reconnects: nothing replays what changed while it was down.
+  useStreamReconnect(() => { void refresh(); });
 
   // Cursor cleanup on unmount
   useEffect(() => {

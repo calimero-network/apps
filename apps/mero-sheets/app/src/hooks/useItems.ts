@@ -14,6 +14,7 @@
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useMero, useSubscription } from '@calimero-network/mero-react';
+import { useStreamReconnect } from './useStreamReconnect';
 import { ServiceClient, Item } from '../api/service/ServiceClient';
 
 export interface UseItemsArgs {
@@ -64,6 +65,8 @@ export function useItems({ contextId, executorPublicKey }: UseItemsArgs): UseIte
 
   // Live updates: re-fetch on any sync event for this context (local or remote).
   useSubscription(contextId ? [contextId] : [], () => { void refresh(); });
+  // …and after the stream reconnects: nothing replays what changed while it was down.
+  useStreamReconnect(() => { void refresh(); });
 
   const add = useCallback(async (title: string, body: string) => {
     if (!client) return;
