@@ -580,6 +580,49 @@
   color: var(--cal-lp-accent-ink);
 }
 
+/* Showcase: real captures, framed like the hero stage. */
+.cal-lp-shot {
+  margin: 0;
+}
+.cal-lp-shot--video {
+  margin-top: 34px;
+}
+/* The hero stage is 4:3 for the illustrations; a recording is as tall as the
+   window it was captured from, so the frame follows the video instead. */
+.cal-lp-shot--video .cal-lp-stage {
+  aspect-ratio: auto;
+}
+.cal-lp-shotmedia {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 10;
+  object-fit: cover;
+  background: var(--cal-lp-bg-3);
+}
+.cal-lp-shots {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr));
+  gap: 18px;
+  margin-top: 22px;
+}
+.cal-lp-shotlink {
+  display: block;
+  overflow: hidden;
+  border: 1px solid var(--cal-lp-border);
+  border-radius: var(--cal-lp-radius);
+  box-shadow: var(--cal-lp-shadow-sm);
+}
+.cal-lp-shotlink:hover {
+  border-color: var(--cal-lp-border-strong);
+}
+.cal-lp-shotcaption {
+  margin-top: 10px;
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--cal-lp-text-dim);
+}
+
 /* Comparison: a three-column grid that becomes one card per row on a phone,
    because three columns of prose at 320px is ninety pixels each. */
 .cal-lp-cmp {

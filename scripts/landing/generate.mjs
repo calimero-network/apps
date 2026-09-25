@@ -144,7 +144,11 @@ const HAD_LOGIN_PAGE = new Set([
 
 /** Assertions for the optional overview sections — only the ones this app configured. */
 function renderOverviewSpec(o) {
+  const media = o.showcase
+    ? [...o.showcase.shots.map((s) => s.src), ...(o.showcase.video ? [o.showcase.video.src, o.showcase.video.poster] : [])]
+    : [];
   const ids = [
+    o.showcase && 'showcase',
     o.comparison && 'compare',
     o.collaboration && 'together',
     o.audiences && 'who',
@@ -157,8 +161,17 @@ function renderOverviewSpec(o) {
 ${o.headline ? `    await expect(page.locator('.cal-lp-headline')).toHaveText(${q(o.headline)});\n` : ''}    for (const id of ${JSON.stringify(ids)}) {
       await expect(page.locator(\`#\${id}\`)).toBeVisible();
     }
-${o.comparison ? `    await expect(page.locator('.cal-lp-cmprow:not(.cal-lp-cmprow--head)')).toHaveCount(${o.comparison.rows.length});\n` : ''}${o.audiences ? `    await expect(page.locator('.cal-lp-card')).toHaveCount(${o.audiences.items.length});\n` : ''}${o.alwaysOn ? `    await expect(page.locator('#always-on a[href="https://cloud.calimero.network/pricing"]')).toBeVisible();\n` : ''}  });
-${o.closing ? `
+${o.comparison ? `    await expect(page.locator('.cal-lp-cmprow:not(.cal-lp-cmprow--head)')).toHaveCount(${o.comparison.rows.length});\n` : ''}${o.showcase ? `    await expect(page.locator('#showcase img')).toHaveCount(${o.showcase.shots.length});\n` : ''}${o.audiences ? `    await expect(page.locator('.cal-lp-card')).toHaveCount(${o.audiences.items.length});\n` : ''}${o.alwaysOn ? `    await expect(page.locator('#always-on a[href="https://cloud.calimero.network/pricing"]')).toBeVisible();\n` : ''}  });
+${media.length ? `
+  test('every showcase file is actually served', async ({ page }) => {
+    // A renamed capture is a broken image on the front page, and nothing else
+    // would notice.
+    for (const src of ${JSON.stringify(media)}) {
+      const res = await page.request.get(src);
+      expect(res.ok(), src).toBe(true);
+    }
+  });
+` : ''}${o.closing ? `
   test('the closing call to action replaces the low desktop band', async ({ page }) => {
     await expect(page.locator('#start').locator('button').filter({ hasText: /^Connect to node$/ })).toBeVisible();
     await expect(page.locator('.cal-lp-band')).toHaveCount(0);
@@ -459,6 +472,20 @@ ${entry.overview ? renderOverviewSpec(entry.overview) : ''}  test('offers the de
 function renderOverview(o) {
   const lines = ['  overview: {'];
   if (o.headline) lines.push(`    headline: ${q(o.headline)},`);
+  if (o.showcase) {
+    const sc = o.showcase;
+    lines.push('    showcase: {');
+    lines.push(`      heading: ${q(sc.heading)},`);
+    if (sc.sub) lines.push(`      sub: ${q(sc.sub)},`);
+    if (sc.video) {
+      const v = sc.video;
+      lines.push(`      video: { src: ${q(v.src)}, poster: ${q(v.poster)}, caption: ${q(v.caption)} },`);
+    }
+    lines.push('      shots: [');
+    for (const sh of sc.shots) lines.push(`        { src: ${q(sh.src)}, alt: ${q(sh.alt)}, caption: ${q(sh.caption)} },`);
+    lines.push('      ],');
+    lines.push('    },');
+  }
   if (o.comparison) {
     const c = o.comparison;
     lines.push('    comparison: {');

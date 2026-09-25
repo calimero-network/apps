@@ -98,6 +98,17 @@ export interface LoginPopupProps {
 export interface OverviewExtras {
   /** One value line under the H1. The H1 stays the app's name. */
   headline?: string;
+  /**
+   * Real captures of the app, served from its own `public/`: a muted looping
+   * clip and a few stills. The hero animation is an illustration; this is the
+   * proof that the thing exists.
+   */
+  showcase?: {
+    heading: string;
+    sub?: string;
+    video?: { src: string; poster: string; caption: string };
+    shots: { src: string; alt: string; caption: string }[];
+  };
   /** "Why it is different" — this app against what people use today. */
   comparison?: {
     heading: string;

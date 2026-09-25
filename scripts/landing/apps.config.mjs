@@ -149,6 +149,21 @@ export const APPS = {
     overview: {
       // Same line calimero.network uses for design, so the two pages agree.
       headline: 'Your canvas. Your pixels. Your nodes.',
+      // Captured from the real app by `pnpm landing:media` in apps/mero-design/app.
+      showcase: {
+        heading: 'The real editor, not a mock-up',
+        sub: 'Recorded from the app itself, on the bundled Web design starter project.',
+        video: {
+          src: '/landing/demo.webm',
+          poster: '/landing/demo-poster.jpg',
+          caption: 'Leaving a sticky note, docking an arrow to a button and recolouring it, while a teammate works on the next screen.',
+        },
+        shots: [
+          { src: '/landing/canvas.jpg', alt: 'The Mero Design canvas with two app screens, a teammate cursor, and the properties panel open', caption: 'Frames, text and shapes on an infinite canvas, with every property editable.' },
+          { src: '/landing/screens.jpg', alt: 'The Screens panel listing five screens of a web design', caption: 'Screens turn a board into a flow you can present or prototype.' },
+          { src: '/landing/present.jpg', alt: 'A slide from a deck built in Mero Design, in presentation mode', caption: 'Present straight from the board — this deck is a Mero Design board too.' },
+        ],
+      },
       comparison: {
         heading: 'The design tool, without the landlord',
         sub: 'Everything you expect from a collaborative canvas. The difference is who holds the file.',

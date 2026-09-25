@@ -24,7 +24,7 @@ export default defineConfig({
       name: "mocked",
       use: { ...devices["Desktop Chrome"] },
       testMatch: "**/*.spec.ts",
-      testIgnore: ["**/integration/**", "**/perf/**"],
+      testIgnore: ["**/integration/**", "**/perf/**", "**/media/**"],
     },
     {
       // The same specs again, with the Tauri bridge stubbed. tauri-app opens this
@@ -33,7 +33,7 @@ export default defineConfig({
       name: "tauri",
       use: { ...devices["Desktop Chrome"] },
       testMatch: "**/*.spec.ts",
-      testIgnore: ["**/integration/**", "**/perf/**"],
+      testIgnore: ["**/integration/**", "**/perf/**", "**/media/**"],
     },
     {
       name: "integration",
@@ -48,6 +48,13 @@ export default defineConfig({
       use: { ...devices["Desktop Chrome"] },
       testMatch: "**/perf/**/*.spec.ts",
       fullyParallel: false,
+    },
+    {
+      // Writes the landing page's screenshots and demo clip into public/landing.
+      // Asserts nothing, so it never runs in CI: `pnpm landing:media` by hand.
+      name: "media",
+      use: { ...devices["Desktop Chrome"] },
+      testMatch: "**/media/**/*.spec.ts",
     },
   ],
 

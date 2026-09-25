@@ -26,7 +26,7 @@ import {
 } from '@calimero-network/mero-icons';
 
 import { CONFIG } from './landing.config';
-import type { IconComponent } from './landingTypes';
+import type { IconComponent, OverviewExtras } from './landingTypes';
 import './landing.css';
 
 const THEME_KEY = 'cal-lp-theme';
@@ -755,6 +755,8 @@ function OverviewView({
         </section>
       )}
 
+      {extras?.showcase && <Showcase showcase={extras.showcase} />}
+
       <section id="features" className="cal-lp-section cal-lp-section--alt">
         <div className="cal-lp-shell">
           <div ref={featuresRef} className="cal-lp-reveal">
@@ -801,6 +803,61 @@ function OverviewView({
         </section>
       )}
     </>
+  );
+}
+
+/**
+ * Real captures of the app. The clip autoplays muted and looping, the way a GIF
+ * would, except where the reader asked for less motion — there it waits, with
+ * controls, on its poster.
+ */
+function Showcase({ showcase }: { showcase: NonNullable<OverviewExtras['showcase']> }) {
+  const ref = useReveal();
+  const still = stillPreferred();
+  return (
+    <section id="showcase" className="cal-lp-section">
+      <div className="cal-lp-shell">
+        <div ref={ref} className="cal-lp-reveal">
+          <div className="cal-lp-kicker">See it in action</div>
+          <h2 className="cal-lp-h2">{showcase.heading}</h2>
+          {showcase.sub && <p className="cal-lp-sectionsub">{showcase.sub}</p>}
+          {showcase.video && (
+            <figure className="cal-lp-shot cal-lp-shot--video">
+              <div className="cal-lp-stage">
+                <div className="cal-lp-stagebar" aria-hidden="true">
+                  <span className="cal-lp-stagedot" />
+                  <span className="cal-lp-stagedot" />
+                  <span className="cal-lp-stagedot" />
+                </div>
+                <video
+                  className="cal-lp-shotmedia"
+                  src={showcase.video.src}
+                  poster={showcase.video.poster}
+                  autoPlay={!still}
+                  controls={still}
+                  muted
+                  loop
+                  playsInline
+                  preload="metadata"
+                  aria-label={showcase.video.caption}
+                />
+              </div>
+              <figcaption className="cal-lp-shotcaption">{showcase.video.caption}</figcaption>
+            </figure>
+          )}
+          <div className="cal-lp-shots">
+            {showcase.shots.map((s) => (
+              <figure key={s.src} className="cal-lp-shot">
+                <a className="cal-lp-shotlink" href={s.src} target="_blank" rel="noreferrer">
+                  <img className="cal-lp-shotmedia" src={s.src} alt={s.alt} loading="lazy" width={1440} height={900} />
+                </a>
+                <figcaption className="cal-lp-shotcaption">{s.caption}</figcaption>
+              </figure>
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
   );
 }
 
