@@ -55,14 +55,14 @@ export const EditorHeader: React.FC<EditorHeaderProps> = ({
   peers = [],
 }) => (
   <header className="flex items-center justify-between px-4 py-3 border-b border-border bg-card">
-    <div className="flex items-center gap-4">
+    <div className="flex shrink-0 items-center gap-4">
       <Button variant="ghost" size="sm" className="gap-1.5" onClick={onBack}>
         <ChevronLeft className="w-4 h-4" />
         <span className="hidden sm:inline">Documents</span>
       </Button>
     </div>
 
-    <div className="flex-1 flex justify-center px-4">
+    <div className="flex min-w-0 flex-1 justify-center px-4">
       {title ? (
         <div className="relative flex items-center gap-1.5 max-w-xs min-w-0">
           <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
@@ -78,7 +78,7 @@ export const EditorHeader: React.FC<EditorHeaderProps> = ({
             onKeyDown={title.onKeyDown}
             // Sized to the text so the icon sits beside a centred title, not beside an empty box.
             style={{ width: `${Math.max(title.value.length, MIN_TITLE_CH) + 2}ch` }}
-            className="max-w-full bg-transparent rounded px-2 py-1 text-center text-sm font-medium border border-transparent hover:border-border focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/40"
+            className="max-w-full text-ellipsis bg-transparent rounded px-2 py-1 text-center text-sm font-medium border border-transparent hover:border-border focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/40"
           />
           <TitleCursors
             carets={title.carets}
@@ -87,14 +87,14 @@ export const EditorHeader: React.FC<EditorHeaderProps> = ({
           />
         </div>
       ) : (
-        <span className="text-sm font-medium flex items-center gap-1.5 text-foreground">
-          <FileText className="w-4 h-4 text-muted-foreground" />
-          {documentName}
+        <span className="text-sm font-medium flex min-w-0 items-center gap-1.5 text-foreground">
+          <FileText className="w-4 h-4 shrink-0 text-muted-foreground" />
+          <span className="truncate">{documentName}</span>
         </span>
       )}
     </div>
 
-    <div className="flex items-center gap-2">
+    <div className="flex shrink-0 items-center gap-2">
       <PeerAvatars peers={peers} />
       {onUndo && (
         <Button
