@@ -187,7 +187,8 @@ export function FolderTreeItem({
         <ul className="ml-4 mt-1.5 space-y-1.5 border-l border-border/50 pl-2">
           <FolderDocLeaves
             folderId={node.id}
-            selectedDocId={selectedDocId}
+            // Doc ids are per-folder counters, so only the open doc's folder may match.
+            selectedDocId={isSelected ? selectedDocId : null}
             onOpenDoc={onOpenDoc}
           />
           {node.children.map((c) => (

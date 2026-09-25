@@ -95,3 +95,21 @@ describe('selecting a folder', () => {
     expect(onSelectFolder).toHaveBeenCalledWith('f1');
   });
 });
+
+describe('open document highlight', () => {
+  // Every folder has its own doc-1, so the open doc must only reach its own folder.
+  it('passes the open doc id only to the folder that owns it', () => {
+    render(
+      <FolderTree
+        selectedDocId="doc-1"
+        onSelectFolder={vi.fn()}
+        onOpenDoc={vi.fn()}
+      />,
+    );
+    for (const expand of screen.getAllByRole('button', { name: 'Expand' })) {
+      fireEvent.click(expand);
+    }
+    expect(screen.getByTestId('leaves-f1').textContent).toBe('doc-1');
+    expect(screen.getByTestId('leaves-f2').textContent).toBe('null');
+  });
+});
