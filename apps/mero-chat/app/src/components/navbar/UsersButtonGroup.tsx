@@ -35,7 +35,11 @@ const ProfileIconContainerGroup = styled.div<{
   font-style: normal;
   font-weight: 400;
   line-height: 150%; /* 21px */
-  margin-left: -8px;
+  /* Each disc overlaps the one before it. At -8px the overlap reached the
+     second initial of a 24px avatar (two letters span roughly x 5-19), so the
+     header read "MC TE PN" for "MO TB PN". 4px keeps the stacked look without
+     covering a letter. */
+  margin-left: -4px;
   border: solid 1px ${({ $isHovered }) => ($isHovered ? "#fff" : "#0e0e10")};
 `;
 
