@@ -32,21 +32,11 @@ type ConfirmFn = (opts: ConfirmOptions) => Promise<boolean>;
 
 const ConfirmCtx = createContext<ConfirmFn | null>(null);
 
-// A menu item unmounts with its menu, so return focus to the trigger that labels the menu.
-function focusReturnTarget(): HTMLElement | null {
-  const active = document.activeElement as HTMLElement | null;
-  const triggerId = active
-    ?.closest('[role="menu"]')
-    ?.getAttribute('aria-labelledby');
-  return (triggerId && document.getElementById(triggerId)) || active;
-}
-
 export function ConfirmProvider({ children }: { children: ReactNode }) {
   const [opts, setOpts] = useState<ConfirmOptions | null>(null);
   const resolveRef = useRef<((value: boolean) => void) | null>(null);
   const cancelButtonRef = useRef<HTMLButtonElement>(null);
   const confirmButtonRef = useRef<HTMLButtonElement>(null);
-  const openerRef = useRef<HTMLElement | null>(null);
 
   const confirm = useCallback<ConfirmFn>((next) => {
     return new Promise<boolean>((resolve) => {
@@ -59,7 +49,6 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
         resolveRef.current(false);
       }
       resolveRef.current = resolve;
-      openerRef.current = focusReturnTarget();
       setOpts(next);
     });
   }, []);
@@ -89,11 +78,6 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
                 ? cancelButtonRef
                 : confirmButtonRef
               ).current?.focus();
-            }}
-            // Radix returns focus to a Dialog.Trigger; an imperative confirm has none.
-            onCloseAutoFocus={(e) => {
-              e.preventDefault();
-              openerRef.current?.focus();
             }}
           >
             <DialogHeader>

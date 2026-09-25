@@ -11,6 +11,13 @@
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
   COLOR_PRESETS,
   MAX_ALIAS_LENGTH,
   MAX_FOLDER_DEPTH,
@@ -113,19 +120,13 @@ export function NewFolderDialog({ parentFolderId, onClose }: Props) {
   };
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-      onClick={safeClose}
-    >
-      <div
-        className="w-96 rounded-lg border border-border bg-card p-5 shadow-xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h2 className="mb-3 text-base font-semibold">
-          {parentFolderId ? 'New subfolder' : 'New folder'}
-        </h2>
+    <Dialog open onOpenChange={(open) => !open && safeClose()}>
+      <DialogContent aria-describedby={undefined} className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>
+            {parentFolderId ? 'New subfolder' : 'New folder'}
+          </DialogTitle>
+        </DialogHeader>
 
         {atDepthCap ? (
           <div className="rounded border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
@@ -148,7 +149,6 @@ export function NewFolderDialog({ parentFolderId, onClose }: Props) {
                 autoFocus
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && canSubmit) onCreate();
-                  if (e.key === 'Escape') safeClose();
                 }}
               />
             </label>
@@ -201,7 +201,7 @@ export function NewFolderDialog({ parentFolderId, onClose }: Props) {
                     {
                       value: 'Open' as const,
                       title: 'Open',
-                      desc: 'Namespace members can join',
+                      desc: 'Workspace members can join',
                     },
                     {
                       value: 'Restricted' as const,
@@ -283,7 +283,7 @@ export function NewFolderDialog({ parentFolderId, onClose }: Props) {
           </div>
         )}
 
-        <div className="mt-4 flex justify-end gap-2">
+        <DialogFooter>
           <Button
             variant="ghost"
             size="sm"
@@ -297,8 +297,8 @@ export function NewFolderDialog({ parentFolderId, onClose }: Props) {
               {submitting ? 'Creating…' : 'Create'}
             </Button>
           )}
-        </div>
-      </div>
-    </div>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

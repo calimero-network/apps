@@ -1,6 +1,7 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 // vi.mock is hoisted above imports, so this resolves to the mocked
 // dependencies declared below.
 import { NewFolderDialog } from '../NewFolderDialog';
@@ -80,5 +81,27 @@ describe('NewFolderDialog member-picker', () => {
         expect.objectContaining({ visibility: 'Open', members: [] }),
       ),
     );
+  });
+});
+
+describe('NewFolderDialog closing', () => {
+  it('closes on Escape', async () => {
+    const onClose = vi.fn();
+    render(<NewFolderDialog parentFolderId={null} onClose={onClose} />);
+    await userEvent.setup().keyboard('{Escape}');
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it('ignores Escape while the folder is being created', async () => {
+    create.mockReturnValueOnce(new Promise(() => {}));
+    const onClose = vi.fn();
+    render(<NewFolderDialog parentFolderId={null} onClose={onClose} />);
+    const user = userEvent.setup();
+    await user.type(screen.getByPlaceholderText('Folder name'), 'Slow');
+    await user.click(screen.getByRole('button', { name: 'Create' }));
+    await screen.findByRole('button', { name: 'Creating…' });
+    await user.keyboard('{Escape}');
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByRole('dialog', { name: 'New folder' })).toBeTruthy();
   });
 });

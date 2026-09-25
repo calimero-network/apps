@@ -110,7 +110,9 @@ export function FolderTreeItem({
             ? 'bg-selected text-selected-foreground font-medium'
             : 'text-foreground hover:bg-muted/60'
         }`}
-        onClick={() => {
+        onClick={(e) => {
+          // Portalled dialogs and menus still bubble through React; only this row's DOM selects.
+          if (!e.currentTarget.contains(e.target as Node)) return;
           if (renaming) return;
           onSelect(node.id);
           // Selecting a folder also reveals its contents. Expand-only (not

@@ -1,4 +1,5 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 import { describe, it, expect, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { FolderTree } from '../FolderTree';
@@ -42,7 +43,11 @@ vi.mock('@/hooks/useFolderOperations', () => ({
     remove: vi.fn(),
   }),
 }));
-vi.mock('../FolderContextMenu', () => ({ FolderContextMenu: () => null }));
+// Dialogs and menus portal out of the row but still bubble through React to it.
+vi.mock('../FolderContextMenu', () => ({
+  FolderContextMenu: ({ folderId }: { folderId: string }) =>
+    createPortal(<button>Info for {folderId}</button>, document.body),
+}));
 vi.mock('../FolderDocLeaves', () => ({
   FolderDocLeaves: (p: { folderId: string; selectedDocId: string | null }) => (
     <li data-testid={`leaves-${p.folderId}`}>{String(p.selectedDocId)}</li>
@@ -88,6 +93,19 @@ describe('selecting a folder', () => {
     renderTree(null, onSelectFolder);
     fireEvent.click(screen.getByText('Budget'));
     expect(onSelectFolder).toHaveBeenCalledWith('f1');
+  });
+
+  it('ignores clicks inside a dialog or menu opened from the row', () => {
+    const onSelectFolder = vi.fn();
+    render(
+      <FolderTree
+        selectedDocId={null}
+        onSelectFolder={onSelectFolder}
+        onOpenDoc={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByText('Info for f2'));
+    expect(onSelectFolder).not.toHaveBeenCalled();
   });
 });
 

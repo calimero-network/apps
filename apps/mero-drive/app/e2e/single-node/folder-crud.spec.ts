@@ -54,6 +54,40 @@ test.describe('Folder CRUD (single-node)', () => {
     // createFolder supports parent option.
   });
 
+  test('clicking outside folder info closes it and keeps the open document', async ({
+    alice,
+  }) => {
+    await alice.createFolder({ name: 'Home', visibility: 'Open' });
+    await alice.createFolder({ name: 'Elsewhere', visibility: 'Open' });
+    await alice.tree.openFolder('Home');
+    await alice.createDoc('Kept');
+    await alice.openDoc('Kept');
+
+    await alice.openFolderInfo('Elsewhere');
+    await alice.page.mouse.click(5, 5);
+
+    await expect(alice.page.getByRole('dialog')).toBeHidden();
+    await expect(alice.page.getByTestId('doc-title-input')).toHaveValue('Kept');
+  });
+
+  test('Escape closes folder info and returns focus to its menu', async ({
+    alice,
+  }) => {
+    await alice.createFolder({ name: 'Home', visibility: 'Open' });
+    await alice.openFolderInfo('Home');
+    // Let the menu finish unmounting, as it would at human pace.
+    await expect(alice.page.locator('[role="menu"]')).toHaveCount(0);
+
+    await alice.page.keyboard.press('Escape');
+
+    await expect(alice.page.getByRole('dialog')).toBeHidden();
+    await expect(
+      alice.tree
+        .folderRow('Home')
+        .getByRole('button', { name: /Folder actions/i }),
+    ).toBeFocused();
+  });
+
   test('create folder with empty alias shows validation error', async ({
     alice,
   }) => {
