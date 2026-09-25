@@ -113,13 +113,17 @@ the key the next move needs and wedge the table permanently).
 | seat theft | claims are per-claimant rows, elected by the reader, and only their author can write one |
 | burying the table under junk rows | a read scans the move map ONCE and buckets by ply, and tests a row's named author before paying for its owner stamp — so the rows nobody can delete cost a string compare each, not a full rescan per ply |
 
-Two things remain. A player can **stall**, and because `stand` is refused once a
+One thing remains. A player can **stall**, and because `stand` is refused once a
 game has started, a member who sits down and walks away leaves that table
 unusable — griefing rather than a breach (a table is a context; another costs
-nothing), and an abandon rule is the honest fix. And a read is still **linear in
-the total rows** a member has written, because the collection offers no way to
-iterate keys or a prefix: the constant is small now, the slope needs a core API.
-Nothing above lets anyone change a result.
+nothing), and an abandon rule is the honest fix. Nothing above lets anyone
+change a result.
+
+A read is still linear in the total rows a member has written, because
+`AuthoredMap` offers no way to iterate a prefix. That one is fixed upstream
+rather than here — `AuthoredSortedMap` landed in core for exactly this shape —
+and this app adopts it when a release carrying it ships. See
+[`docs/trust-model.md`](docs/trust-model.md), finding 14.
 
 **[`docs/trust-model.md`](docs/trust-model.md) is the long version**, and it is
 written for someone building their own app rather than for someone reading this

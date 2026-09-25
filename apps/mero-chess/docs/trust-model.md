@@ -482,11 +482,35 @@ let seated = |author: &str| author == white || author == black;
 for (key, record) in Self::rows_where(&self.moves, &game_prefix, seated)? { … }
 ```
 
-**What is still open, and it is not the contract's to close.** The remaining
-cost is linear in total rows, because `entries()` deserialises values this
-reader is going to throw away. A `keys()` on `AuthoredMap`, or any prefix/range
-scan, would make it linear in *matching* rows instead. Until then a contract can
-only shrink the constant. Filed as what it is: a platform gap, not a chess bug.
+**The rest was a platform gap, and it is now closed in core.** The remaining
+cost was linear in TOTAL rows, because `AuthoredMap`'s only iteration is
+`entries()` — a full walk of the collection, however narrow the prefix. A
+contract can shrink that constant and cannot remove the term.
+
+So it was fixed where it lived:
+[`AuthoredSortedMap`](https://github.com/calimero-network/core/blob/main/crates/storage/src/collections/authored_sorted_map.rs)
+wraps `SortedMap` the way `AuthoredMap` wraps `UnorderedMap` — the same owner
+stamp, the same open insert, the same owner-gated update and remove, the same
+`CrdtType::UserStorage` on the wire — and adds the ordered index `SortedMap`
+already maintained but no authored collection could reach. Measured in core's
+own `read_cost_profile.rs`, fetching an 8-entry slice in counted store reads:
+
+| entries in the collection | `AuthoredMap::entries()` | `AuthoredSortedMap::prefix()` |
+|---|---|---|
+| 250 | 500 reads | 17 reads |
+| 1,000 | 2,000 reads | 17 reads |
+| 4,000 | 8,000 reads | 17 reads |
+
+Linear against flat. Two thousand further rows under a prefix nobody reads
+leave the slice at 17. A writer who targets *your* prefix can still crowd it —
+no collection prevents that — but an untargeted flood stops mattering, and it
+was the untargeted flood that could end a table from a laptop in an afternoon.
+
+**This app does not use it yet**, and that is a release-ordering fact rather
+than a decision: the contract pins `calimero-sdk` at the tag the workspace
+pins, and the collection lands in a later one. When it ships, `moves`,
+`endings`, `draw_offers`, `games` and `seat_claims` are all hierarchical-keyed
+authored maps read by prefix, which is precisely the shape it is for.
 
 **The general rule, and it is the one to take away from this whole document:**
 *a forged row you correctly ignore is not free.* Whenever you catch yourself
@@ -505,8 +529,9 @@ reproducible with the benchmark described in that test's comment.
 
 ## What is deliberately NOT fixed
 
-Being honest about the residue is part of the model. Four things remain, and
-each is a decision rather than an oversight.
+Being honest about the residue is part of the model. Four things remain. Three
+are decisions; the fourth is now waiting on a release rather than on anyone
+making up their mind.
 
 **`title` and `created_at` are plain `LwwRegister`s.** Any member can
 last-write them. They are captions: nothing about a game's legality, result,
@@ -524,9 +549,10 @@ one costs nothing, so this is griefing rather than a breach; the honest fix is
 an abandon rule (claim the win, or free the chair, after a timeout), and it is
 not written yet.
 
-**Read cost is still linear in total rows**, for the reason in finding 14: the
-collection offers no way to iterate keys or a prefix, so a reader cannot ask for
-less than everything. The constant is now small. The slope needs a core API.
+**Read cost is still linear in total rows *in this app*,** for the reason in
+finding 14 — though no longer because the platform cannot do better.
+`AuthoredSortedMap` closed that in core; this contract adopts it on the release
+that carries it.
 
 **The forgery path itself has no automated coverage in this repository.** The
 byzantine tests below prove the *reader* is not fooled, and `tests/converge.rs`
@@ -662,6 +688,8 @@ Before your contract ships, for each field in your `#[app::state]`:
 - [ ] **What does ignoring a forged row COST?** Count the scans a single read
       does, and multiply by the rows a hostile member could add in an afternoon.
       Correctness is not the only thing a forgery can take from you (finding 14).
+      If the answer is "a full scan per read", the keys are hierarchical and the
+      collection is authored, you want `AuthoredSortedMap` and a prefix.
 - [ ] **Is there a byzantine test?** Write the row directly into the map under
       the wrong account and assert the reader is not moved.
 - [ ] **Is there a `converge_app` test?** Two replicas writing it at the same
