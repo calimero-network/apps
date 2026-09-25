@@ -109,7 +109,9 @@ function readCalimeroMeta(app) {
 
 /** The named mero-icons imports this app's features need, deduped and sorted. */
 function iconImports(entry) {
-  const names = [...new Set(entry.features.map((f) => f.icon))].sort();
+  const names = [
+    ...new Set([...entry.features, ...(entry.overview?.audiences?.items ?? [])].map((f) => f.icon)),
+  ].sort();
   for (const n of names) {
     if (!/^[A-Z][A-Za-z0-9]*$/.test(n)) throw new Error(`bad icon name: ${n}`);
   }
@@ -139,6 +141,31 @@ const HAD_LOGIN_PAGE = new Set([
   'battleships', 'mero-calendar', 'mero-design', 'mero-drive', 'mero-forum',
   'mero-issue-tracker', 'mero-pass', 'mero-pixart', 'mero-sheets',
 ]);
+
+/** Assertions for the optional overview sections — only the ones this app configured. */
+function renderOverviewSpec(o) {
+  const ids = [
+    o.comparison && 'compare',
+    o.collaboration && 'together',
+    o.audiences && 'who',
+    o.alwaysOn && 'always-on',
+    o.closing && 'start',
+  ].filter(Boolean);
+  return `
+  // ── Overview extras ─────────────────────────────────────────────────────
+  test('the overview carries its extra sections', async ({ page }) => {
+${o.headline ? `    await expect(page.locator('.cal-lp-headline')).toHaveText(${q(o.headline)});\n` : ''}    for (const id of ${JSON.stringify(ids)}) {
+      await expect(page.locator(\`#\${id}\`)).toBeVisible();
+    }
+${o.comparison ? `    await expect(page.locator('.cal-lp-cmprow:not(.cal-lp-cmprow--head)')).toHaveCount(${o.comparison.rows.length});\n` : ''}${o.audiences ? `    await expect(page.locator('.cal-lp-card')).toHaveCount(${o.audiences.items.length});\n` : ''}${o.alwaysOn ? `    await expect(page.locator('#always-on a[href="https://cloud.calimero.network/pricing"]')).toBeVisible();\n` : ''}  });
+${o.closing ? `
+  test('the closing call to action replaces the low desktop band', async ({ page }) => {
+    await expect(page.locator('#start').locator('button').filter({ hasText: /^Connect to node$/ })).toBeVisible();
+    await expect(page.locator('.cal-lp-band')).toHaveCount(0);
+  });
+` : ''}
+`;
+}
 
 function renderSpec(app, entry, meta) {
   meta = { ...meta, name: entry.displayName ?? meta.name };
@@ -354,7 +381,7 @@ ${usesPopup ? `
   });
 ` : ''}
 `}
-  test('offers the desktop download', async ({ page }) => {
+${entry.overview ? renderOverviewSpec(entry.overview) : ''}  test('offers the desktop download', async ({ page }) => {
     await expect(
       page.locator('a[href="https://calimero.network/download"]').first(),
     ).toBeVisible();
@@ -428,6 +455,55 @@ ${usesPopup ? `
 `;
 }
 
+/** The optional `overview` block, as config lines. Plain data except the audience icons. */
+function renderOverview(o) {
+  const lines = ['  overview: {'];
+  if (o.headline) lines.push(`    headline: ${q(o.headline)},`);
+  if (o.comparison) {
+    const c = o.comparison;
+    lines.push('    comparison: {');
+    lines.push(`      heading: ${q(c.heading)},`);
+    if (c.sub) lines.push(`      sub: ${q(c.sub)},`);
+    lines.push(`      themLabel: ${q(c.themLabel)},`);
+    lines.push('      rows: [');
+    for (const r of c.rows) lines.push(`        { label: ${q(r.label)}, them: ${q(r.them)}, us: ${q(r.us)} },`);
+    lines.push('      ],');
+    lines.push('    },');
+  }
+  if (o.collaboration) {
+    const c = o.collaboration;
+    lines.push('    collaboration: {');
+    lines.push(`      heading: ${q(c.heading)},`);
+    if (c.sub) lines.push(`      sub: ${q(c.sub)},`);
+    lines.push('      points: [');
+    for (const p of c.points) lines.push(`        { title: ${q(p.title)}, body: ${q(p.body)} },`);
+    lines.push('      ],');
+    if (c.roles?.length) {
+      lines.push('      roles: [');
+      for (const r of c.roles) lines.push(`        { name: ${q(r.name)}, can: ${q(r.can)} },`);
+      lines.push('      ],');
+    }
+    if (c.rolesNote) lines.push(`      rolesNote: ${q(c.rolesNote)},`);
+    lines.push('    },');
+  }
+  if (o.audiences) {
+    lines.push('    audiences: {');
+    lines.push(`      heading: ${q(o.audiences.heading)},`);
+    lines.push('      items: [');
+    for (const a of o.audiences.items) {
+      lines.push(`        { icon: ${a.icon}, title: ${q(a.title)}, body: ${q(a.body)} },`);
+    }
+    lines.push('      ],');
+    lines.push('    },');
+  }
+  if (o.alwaysOn) lines.push('    alwaysOn: true,');
+  if (o.closing) {
+    lines.push(`    closing: { title: ${q(o.closing.title)}, body: ${q(o.closing.body)} },`);
+  }
+  lines.push('  },');
+  return lines;
+}
+
 function renderConfig(app, entry, meta) {
   // Presentation-only override. The registry metadata stays exactly as
   // published — this changes the heading on the web page and nothing else.
@@ -481,6 +557,7 @@ function renderConfig(app, entry, meta) {
     lines.push('    },');
   }
   lines.push('  ],');
+  if (entry.overview) lines.push(...renderOverview(entry.overview));
   if (entry.faq?.length) {
     lines.push('  faq: [');
     for (const f of entry.faq) {

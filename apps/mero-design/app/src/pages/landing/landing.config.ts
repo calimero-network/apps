@@ -8,7 +8,7 @@
  * `name`, `packageId` and `tagline` come from the Cargo metadata the registry
  * publishes from, so this page and the registry listing cannot diverge.
  */
-import { CloudUpload, Cube, Download, FileText, Grid, Refresh } from '@calimero-network/mero-icons';
+import { CloudUpload, Cube, Download, FileText, Globe, Grid, LockBox, Refresh, ShieldCheck, WifiOff } from '@calimero-network/mero-icons';
 
 import Animation from './animation';
 import LoginPopup from './loginPopup';
@@ -59,6 +59,48 @@ export const CONFIG: LandingConfig = {
       body: "Changes stream to every member over SSE. No central server arbitrating who edited what.",
     },
   ],
+  overview: {
+    headline: "Your canvas. Your pixels. Your nodes.",
+    comparison: {
+      heading: "The design tool, without the landlord",
+      sub: "Everything you expect from a collaborative canvas. The difference is who holds the file.",
+      themLabel: "A typical cloud design tool",
+      rows: [
+        { label: "Where the file lives", them: "On the vendor’s servers", us: "On your node, and the nodes of the people you invite" },
+        { label: "Who can read it", them: "The vendor, and whoever it grants access", us: "Only members of the board’s namespace" },
+        { label: "Adding a collaborator", them: "Another seat on the monthly bill", us: "An invite. The app is open source and free" },
+        { label: "Working offline", them: "Usually needs a connection", us: "Full editing; changes merge when you reconnect" },
+        { label: "If the vendor goes away", them: "Your files may go with it", us: "Your node still has every board" },
+      ],
+    },
+    collaboration: {
+      heading: "Built for editing together, not taking turns",
+      sub: "Two people can work on the same board at the same moment and both keep their work, because of how a board is stored.",
+      points: [
+        { title: "Every element is its own record", body: "Two people editing different shapes never queue behind each other." },
+        { title: "Every property is its own value", body: "One person moves a shape while another recolours it, and both changes land." },
+        { title: "Presence stays out of the file", body: "Cursors travel separately, so they can never rewrite the artwork." },
+        { title: "Offline is a normal state", body: "Keep drawing with no network. Your node merges the changes when it reaches a peer again." },
+      ],
+      roles: [
+        { name: "Owner", can: "Names the board, grants and revokes roles, and can hand ownership on." },
+        { name: "Editor", can: "Draws, moves and edits elements, and comments." },
+        { name: "Viewer", can: "Follows the board live without changing it." },
+      ],
+      rolesNote: "Permissions are checked when changes merge, not only hidden in the interface — a rename from a non-owner is refused, wherever it came from.",
+    },
+    audiences: {
+      heading: "For teams whose designs should not live on someone else’s server",
+      items: [
+        { icon: LockBox, title: "Agencies and studios", body: "Client work under NDA stays on infrastructure you and the client control." },
+        { icon: ShieldCheck, title: "Regulated teams", body: "Finance, health and public-sector work that cannot sit on a third-party cloud." },
+        { icon: Globe, title: "Open-source projects", body: "A design space the community owns, with no seats to buy and nothing to lose if a vendor changes its terms." },
+        { icon: WifiOff, title: "Teams on the move", body: "Keep designing with no connection; boards sync when your devices find each other again." },
+      ],
+    },
+    alwaysOn: true,
+    closing: { title: "Start your first board", body: "Connect a node, or install the desktop app that bundles one, then invite the people you design with." },
+  },
   animation: Animation,
   docs: [
     {

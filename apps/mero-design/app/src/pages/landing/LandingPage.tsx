@@ -15,6 +15,7 @@ import { useEffect, useRef, useState, type ComponentType, type ReactNode } from 
 import {
   ArrowUpRight,
   CheckSquare,
+  Cloud,
   Download,
   ExternalLink,
   Monitor,
@@ -71,6 +72,7 @@ const LINKS = {
   docs: 'https://docs.calimero.network',
   site: 'https://calimero.network',
   download: 'https://calimero.network/download',
+  cloudPricing: 'https://cloud.calimero.network/pricing',
   core: 'https://github.com/calimero-network/core',
   x: 'https://x.com/calimeronetwork',
   youtube: 'https://www.youtube.com/@calimeronetwork',
@@ -659,6 +661,7 @@ function OverviewView({
 }) {
   const featuresRef = useReveal();
   const stageRef = useStageScale();
+  const extras = CONFIG.overview;
 
   return (
     <>
@@ -675,6 +678,7 @@ function OverviewView({
             </div>
 
             <h1 className="cal-lp-h1">{CONFIG.name}</h1>
+            {extras?.headline && <p className="cal-lp-headline">{extras.headline}</p>}
             <p className="cal-lp-lede">{CONFIG.tagline}</p>
 
             <div className="cal-lp-cta">
@@ -789,9 +793,220 @@ function OverviewView({
         </div>
       </section>
 
-      {!desktopOnly && (
+      {extras && <OverviewExtrasSections ConnectCta={ConnectCta} desktopOnly={desktopOnly} />}
+
+      {!desktopOnly && !extras?.closing && (
         <section className="cal-lp-section">
           <div className="cal-lp-shell">{desktopBand}</div>
+        </section>
+      )}
+    </>
+  );
+}
+
+/** What the free tier and Calimero Cloud each give you. Identical for every app, because the platform is. */
+const PLANS = [
+  {
+    id: 'free',
+    icon: Monitor,
+    name: 'On your own hardware',
+    price: 'Free',
+    points: [
+      'Every feature, no account needed.',
+      'Calimero Desktop, or merod on any server you own.',
+      'Syncs whenever a member’s device is online.',
+    ],
+    cta: { label: 'Download desktop', href: LINKS.download },
+  },
+  {
+    id: 'cloud',
+    icon: Cloud,
+    name: 'Calimero Cloud',
+    price: 'From $20 / month',
+    points: [
+      'Always-on nodes for your namespaces, with no servers to manage.',
+      'Sealed hardware that even Calimero cannot look inside.',
+      'Open the app from any browser or phone, with no install.',
+    ],
+    cta: { label: 'See Cloud pricing', href: LINKS.cloudPricing },
+  },
+] as const;
+
+/**
+ * The optional overview sections, in reading order: why it is different, how
+ * people work in it together, who it is for, how to keep it running, and a
+ * closing call to action. Each renders only when the config provides it.
+ */
+function OverviewExtrasSections({ ConnectCta, desktopOnly }: ViewShared) {
+  const extras = CONFIG.overview;
+  const compareRef = useReveal();
+  const togetherRef = useReveal();
+  const whoRef = useReveal();
+  const plansRef = useReveal();
+  const closingRef = useReveal();
+  if (!extras) return null;
+  const { comparison, collaboration, audiences, alwaysOn, closing } = extras;
+
+  return (
+    <>
+      {comparison && (
+        <section id="compare" className="cal-lp-section">
+          <div className="cal-lp-shell">
+            <div ref={compareRef} className="cal-lp-reveal">
+              <div className="cal-lp-kicker">Why it is different</div>
+              <h2 className="cal-lp-h2">{comparison.heading}</h2>
+              {comparison.sub && <p className="cal-lp-sectionsub">{comparison.sub}</p>}
+              <div className="cal-lp-cmp" role="table" aria-label={comparison.heading}>
+                <div className="cal-lp-cmprow cal-lp-cmprow--head" role="row">
+                  <span role="columnheader" />
+                  <span role="columnheader">{comparison.themLabel}</span>
+                  <span role="columnheader" className="cal-lp-cmpus">{CONFIG.name}</span>
+                </div>
+                {comparison.rows.map((r) => (
+                  <div key={r.label} className="cal-lp-cmprow" role="row">
+                    <span role="rowheader" className="cal-lp-cmplabel">{r.label}</span>
+                    <span role="cell" className="cal-lp-cmpthem" data-label={comparison.themLabel}>{r.them}</span>
+                    <span role="cell" className="cal-lp-cmpus" data-label={CONFIG.name}>
+                      <CheckSquare size={15} /> {r.us}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {collaboration && (
+        <section id="together" className="cal-lp-section cal-lp-section--alt">
+          <div className="cal-lp-shell">
+            <div ref={togetherRef} className="cal-lp-reveal">
+              <div className="cal-lp-kicker">Working together</div>
+              <h2 className="cal-lp-h2">{collaboration.heading}</h2>
+              {collaboration.sub && <p className="cal-lp-sectionsub">{collaboration.sub}</p>}
+              <ol className="cal-lp-points">
+                {collaboration.points.map((pt, i) => (
+                  <li key={pt.title} className="cal-lp-point">
+                    <span className="cal-lp-stepnum">{i + 1}</span>
+                    <h3 className="cal-lp-steptitle">{pt.title}</h3>
+                    <p className="cal-lp-stepbody">{pt.body}</p>
+                  </li>
+                ))}
+              </ol>
+              {collaboration.roles && (
+                <div className="cal-lp-roles">
+                  {collaboration.roles.map((r) => (
+                    <div key={r.name} className="cal-lp-role">
+                      <span className="cal-lp-rolename">{r.name}</span>
+                      <span className="cal-lp-rolecan">{r.can}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {collaboration.rolesNote && <p className="cal-lp-rolesnote">{collaboration.rolesNote}</p>}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {audiences && (
+        <section id="who" className="cal-lp-section">
+          <div className="cal-lp-shell">
+            <div ref={whoRef} className="cal-lp-reveal">
+              <div className="cal-lp-kicker">Who it is for</div>
+              <h2 className="cal-lp-h2">{audiences.heading}</h2>
+              <div className="cal-lp-features cal-lp-audiences">
+                {audiences.items.map((a) => {
+                  const Icon = a.icon;
+                  return (
+                    <div key={a.title} className="cal-lp-card">
+                      <span className="cal-lp-featureicon">
+                        <Icon size={19} />
+                      </span>
+                      <div>
+                        <h3 className="cal-lp-featuretitle">{a.title}</h3>
+                        <p className="cal-lp-featurebody">{a.body}</p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {alwaysOn && (
+        <section id="always-on" className="cal-lp-section cal-lp-section--alt">
+          <div className="cal-lp-shell">
+            <div ref={plansRef} className="cal-lp-reveal">
+              <div className="cal-lp-kicker">Keeping it running</div>
+              <h2 className="cal-lp-h2">Free on your hardware. Always on with Calimero Cloud.</h2>
+              <p className="cal-lp-sectionsub">
+                Peer to peer means your work syncs while a member’s device is online. When every laptop is
+                closed, there is nobody to sync with — so Calimero Cloud can keep a node running for you,
+                without being able to read what is on it.
+              </p>
+              <div className="cal-lp-plans">
+                {PLANS.map((p) => {
+                  const Icon = p.icon;
+                  return (
+                    <div key={p.id} className={`cal-lp-plan${p.id === 'cloud' ? ' cal-lp-plan--accent' : ''}`}>
+                      <div className="cal-lp-planhead">
+                        <span className="cal-lp-featureicon">
+                          <Icon size={19} />
+                        </span>
+                        <div>
+                          <h3 className="cal-lp-featuretitle">{p.name}</h3>
+                          <span className="cal-lp-planprice">{p.price}</span>
+                        </div>
+                      </div>
+                      <ul className="cal-lp-why">
+                        {p.points.map((pt) => (
+                          <li key={pt} className="cal-lp-whyitem">
+                            <span className="cal-lp-whycheck">
+                              <CheckSquare size={16} />
+                            </span>
+                            <span>{pt}</span>
+                          </li>
+                        ))}
+                      </ul>
+                      <a
+                        className={`cal-lp-btn ${p.id === 'cloud' ? 'cal-lp-btn--primary' : 'cal-lp-btn--ghost'}`}
+                        href={p.cta.href}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        {p.cta.label} <ExternalLink size={14} />
+                      </a>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {closing && (
+        <section id="start" className="cal-lp-section">
+          <div className="cal-lp-shell">
+            <div ref={closingRef} className="cal-lp-closing cal-lp-reveal">
+              <h2 className="cal-lp-h2">{closing.title}</h2>
+              <p className="cal-lp-sectionsub">{closing.body}</p>
+              <div className="cal-lp-cta">
+                {!desktopOnly && <ConnectCta />}
+                <a
+                  className={`cal-lp-btn ${desktopOnly ? 'cal-lp-btn--primary' : 'cal-lp-btn--ghost'}`}
+                  href={LINKS.download}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  <Download size={17} /> Get the desktop app
+                </a>
+              </div>
+            </div>
+          </div>
         </section>
       )}
     </>

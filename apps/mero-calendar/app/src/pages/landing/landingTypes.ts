@@ -87,6 +87,44 @@ export interface LoginPopupProps {
   onClose: () => void;
 }
 
+/**
+ * Optional extra sections for the overview page, for an app that wants a fuller
+ * pitch than hero + features. Every field is optional, and an app that sets none
+ * of them renders exactly the page every other app renders.
+ *
+ * None of these repeat `/docs`: the explainer, the four platform steps and the
+ * FAQ stay there. These are the reasons to click, not the manual.
+ */
+export interface OverviewExtras {
+  /** One value line under the H1. The H1 stays the app's name. */
+  headline?: string;
+  /** "Why it is different" — this app against what people use today. */
+  comparison?: {
+    heading: string;
+    sub?: string;
+    /** Column title for the status quo, e.g. "A typical cloud design tool". */
+    themLabel: string;
+    rows: { label: string; them: string; us: string }[];
+  };
+  /** How several people work in it at once, and who may do what. */
+  collaboration?: {
+    heading: string;
+    sub?: string;
+    points: { title: string; body: string }[];
+    roles?: { name: string; can: string }[];
+    rolesNote?: string;
+  };
+  /** Who it is for. */
+  audiences?: {
+    heading: string;
+    items: Feature[];
+  };
+  /** The shared "free on your hardware, or always on with Calimero Cloud" block. */
+  alwaysOn?: boolean;
+  /** Replaces the low desktop band with a closing call to action. */
+  closing?: { title: string; body: string };
+}
+
 export interface LandingConfig {
   /** `name` from `[package.metadata.calimero]`. */
   name: string;
@@ -121,6 +159,8 @@ export interface LandingConfig {
   /** Two or three plain-language paragraphs: what this is, who for, why it differs. */
   explainer: string[];
   features: Feature[];
+  /** Extra overview sections. Absent for most apps. */
+  overview?: OverviewExtras;
   /** Appended to the shared FAQ. */
   faq?: FaqItem[];
   /** Per-app hero animation. Falls back to the shared peer-sync animation. */
