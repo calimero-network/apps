@@ -1,31 +1,23 @@
-// Dedicated confirm dialog for destructive actions. Replaces
-// window.confirm() which (a) can't be styled, (b) is blocking (so
-// can't show async submit state), and (c) is suppressed in some
-// embedded browsers.
-//
-// Imperative API via useConfirm(): call `confirm({...})` and
-// await a boolean. The dialog renders via ConfirmProvider that
-// must be mounted near the app root.
-//
-// Keyboard behaviour:
-// - Escape at the dialog level → cancel.
-// - Enter is NOT handled by the dialog; whichever button has focus
-//   is "clicked" via native button semantics. The primary (confirm)
-//   button autofocuses on open, so the common "open → Enter →
-//   confirm" flow works with one keystroke, but Tab-to-Cancel-then-
-//   Enter correctly cancels.
-// - Tab / Shift-Tab cycle within the dialog (minimal focus trap).
+// Imperative confirm: `await confirm({...})` via useConfirm(); only the confirm button resolves true.
+// Destructive confirms focus Cancel first so a stray Enter never deletes.
 
-import React, {
+import {
   createContext,
   ReactNode,
   useCallback,
   useContext,
-  useEffect,
   useRef,
   useState,
 } from 'react';
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 
 export interface ConfirmOptions {
   title: string;
@@ -40,11 +32,21 @@ type ConfirmFn = (opts: ConfirmOptions) => Promise<boolean>;
 
 const ConfirmCtx = createContext<ConfirmFn | null>(null);
 
+// A menu item unmounts with its menu, so return focus to the trigger that labels the menu.
+function focusReturnTarget(): HTMLElement | null {
+  const active = document.activeElement as HTMLElement | null;
+  const triggerId = active
+    ?.closest('[role="menu"]')
+    ?.getAttribute('aria-labelledby');
+  return (triggerId && document.getElementById(triggerId)) || active;
+}
+
 export function ConfirmProvider({ children }: { children: ReactNode }) {
   const [opts, setOpts] = useState<ConfirmOptions | null>(null);
   const resolveRef = useRef<((value: boolean) => void) | null>(null);
-  const panelRef = useRef<HTMLDivElement>(null);
+  const cancelButtonRef = useRef<HTMLButtonElement>(null);
   const confirmButtonRef = useRef<HTMLButtonElement>(null);
+  const openerRef = useRef<HTMLElement | null>(null);
 
   const confirm = useCallback<ConfirmFn>((next) => {
     return new Promise<boolean>((resolve) => {
@@ -57,6 +59,7 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
         resolveRef.current(false);
       }
       resolveRef.current = resolve;
+      openerRef.current = focusReturnTarget();
       setOpts(next);
     });
   }, []);
@@ -70,71 +73,40 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
     setOpts(null);
   }, []);
 
-  // Auto-focus the primary button on open so Enter activates it
-  // via native button semantics. Tab/Shift-Tab then cycles between
-  // Cancel and Confirm.
-  useEffect(() => {
-    if (opts) confirmButtonRef.current?.focus();
-  }, [opts]);
-
-  // Minimal focus trap: Tab at the last focusable wraps to the
-  // first; Shift-Tab at the first wraps to the last. Keeps
-  // keyboard focus from leaking to the page behind the modal.
-  const onPanelKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLDivElement>) => {
-      if (e.key !== 'Tab' || !panelRef.current) return;
-      const focusable = panelRef.current.querySelectorAll<HTMLElement>(
-        'button:not([disabled]),[href],input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])',
-      );
-      if (focusable.length === 0) return;
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      const active = document.activeElement as HTMLElement | null;
-      if (e.shiftKey && active === first) {
-        e.preventDefault();
-        last.focus();
-      } else if (!e.shiftKey && active === last) {
-        e.preventDefault();
-        first.focus();
-      }
-    },
-    [],
-  );
-
   return (
     <ConfirmCtx.Provider value={confirm}>
       {children}
-      {opts && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="confirm-title"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-          onClick={() => close(false)}
-          onKeyDown={(e) => {
-            // Only Escape at the dialog level. Enter follows native
-            // button semantics on whichever button has focus.
-            if (e.key === 'Escape') close(false);
-          }}
-        >
-          <div
-            ref={panelRef}
-            tabIndex={-1}
-            className="w-96 rounded-lg border border-border bg-card p-5 shadow-xl outline-none"
-            onClick={(e) => e.stopPropagation()}
-            onKeyDown={onPanelKeyDown}
+      <Dialog
+        open={opts !== null}
+        onOpenChange={(open) => !open && close(false)}
+      >
+        {opts && (
+          <DialogContent
+            className="max-w-sm"
+            onOpenAutoFocus={(e) => {
+              e.preventDefault();
+              (opts.destructive
+                ? cancelButtonRef
+                : confirmButtonRef
+              ).current?.focus();
+            }}
+            // Radix returns focus to a Dialog.Trigger; an imperative confirm has none.
+            onCloseAutoFocus={(e) => {
+              e.preventDefault();
+              openerRef.current?.focus();
+            }}
           >
-            <h2
-              id="confirm-title"
-              className="mb-2 text-base font-semibold"
-            >
-              {opts.title}
-            </h2>
-            {opts.body && (
-              <div className="text-sm text-muted-foreground">{opts.body}</div>
-            )}
-            <div className="mt-4 flex justify-end gap-2">
+            <DialogHeader>
+              <DialogTitle>{opts.title}</DialogTitle>
+              {opts.body && (
+                <DialogDescription asChild>
+                  <div>{opts.body}</div>
+                </DialogDescription>
+              )}
+            </DialogHeader>
+            <DialogFooter>
               <Button
+                ref={cancelButtonRef}
                 variant="ghost"
                 size="sm"
                 onClick={() => close(false)}
@@ -149,10 +121,10 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
               >
                 {opts.confirmLabel ?? 'Confirm'}
               </Button>
-            </div>
-          </div>
-        </div>
-      )}
+            </DialogFooter>
+          </DialogContent>
+        )}
+      </Dialog>
     </ConfirmCtx.Provider>
   );
 }

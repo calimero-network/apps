@@ -103,6 +103,33 @@ test.describe('Document CRUD (single-node)', () => {
     await alice.docs.expectDocHidden('To Trash');
   });
 
+  for (const dismiss of ['escape', 'outside click'] as const) {
+    test(`${dismiss} cancels the delete confirm opened from the menu`, async ({
+      alice,
+    }) => {
+      await alice.createDoc('Keep Me');
+      await alice.openDoc('Keep Me');
+      const actions = alice.page.getByRole('button', {
+        name: /Document actions/i,
+      });
+      await actions.click();
+      await alice.page
+        .getByRole('menuitem', { name: /Delete Document/i })
+        .click();
+      const confirm = alice.page.getByRole('dialog', {
+        name: 'Delete document?',
+      });
+      await expect(confirm).toBeVisible();
+      // Let the menu finish unmounting, as it would at human pace.
+      await expect(alice.page.locator('[role="menu"]')).toHaveCount(0);
+      if (dismiss === 'escape') await alice.page.keyboard.press('Escape');
+      else await alice.page.mouse.click(5, 5);
+      await expect(confirm).toBeHidden();
+      await expect(actions).toBeFocused();
+      await alice.docs.expectDocVisible('Keep Me');
+    });
+  }
+
   test('switching folders clears the open document', async ({ alice }) => {
     await alice.createDoc('Doc A');
     await alice.createFolder({ name: 'Other', visibility: 'Open' });
