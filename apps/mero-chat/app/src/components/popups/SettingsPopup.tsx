@@ -515,7 +515,21 @@ export default function SettingsPopup({
 
       setUploading(true);
       try {
-        const uploadRes = await uploadBlobDirect(file, getContextId() || undefined);
+        // The avatar is announced to the active context, same as any other
+        // blob: without one the bytes never leave this node and every other
+        // member keeps seeing the old avatar (or none) with nothing to
+        // indicate why. See api/blobs.ts.
+        const uploadContextId = getContextId();
+        if (!uploadContextId) {
+          addToast({
+            title: "Avatar",
+            message: "Open a workspace first — an avatar is published to the conversation you are in.",
+            type: "channel",
+            duration: 4000,
+          });
+          return;
+        }
+        const uploadRes = await uploadBlobDirect(file, uploadContextId);
         if (!uploadRes.data?.blobId) {
           addToast({ title: "Avatar", message: "Upload failed", type: "channel", duration: 3000 });
           return;

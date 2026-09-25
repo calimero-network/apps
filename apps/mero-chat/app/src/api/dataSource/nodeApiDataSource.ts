@@ -1,8 +1,5 @@
 import axios from "axios";
-import {
-  getNodeUrl as getAppEndpointKey,
-  getContextIdentity as getExecutorPublicKey,
-} from "@calimero-network/mero-react";
+import { getNodeUrl as getAppEndpointKey } from "@calimero-network/mero-react";
 import { getAuthConfig, getMeroJs } from "../meroJsClient";
 import type { CreateContextRequest } from "@calimero-network/mero-react";
 import type { ApiResponse } from "../types";
@@ -192,9 +189,11 @@ export class ContextApiDataSource implements NodeApi {
 
   async deleteContext(props: DeleteContextProps): ApiResponse<string> {
     try {
-      const data = await getMeroJs().admin.deleteContext(props.contextId, {
-        requester: getExecutorPublicKey() ?? undefined,
-      });
+      // Path only — no body. `requester` used to ride along here, and rc.38
+      // closed the body: `delete_context` takes `Path(context_id)` and nothing
+      // else, so any key sent is a 422 rather than an ignored extra. The gate
+      // is the caller's token now, not a field the caller names.
+      const data = await getMeroJs().admin.deleteContext(props.contextId);
       return { data, error: null } as unknown as {
         data: string;
         error: null;

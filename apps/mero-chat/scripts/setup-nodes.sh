@@ -33,11 +33,18 @@ NODE_2_URL="http://localhost:${NODE_2_PORT}"
 ADMIN_USER="${E2E_ADMIN_USER:-admin}"
 ADMIN_PASS="${E2E_ADMIN_PASS:-calimero1234}"
 
-# Defaults to the raw wasm. Point it at a signed .mpk to install WITH metadata
-# (name, icon, links.frontend) — a raw-wasm install carries none, so the app
-# shows no name or icon and desktop offers no "Open" entry:
-#   CURB_WASM_PATH=$REPO_ROOT/logic/res/com.calimero.chat-0.1.0.mpk
-WASM_PATH="${CURB_WASM_PATH:-$REPO_ROOT/logic/res/curb.wasm}"
+# The SIGNED BUNDLE, not the raw wasm — and since rc.41 that is not a
+# preference. `install_application_from_path` reads the file and bails with
+# "not a signed application bundle" on anything that is not one, because the
+# application id derives from the manifest's (package, signer) pair and a raw
+# module has no manifest to derive it from. (Even before that it was the wrong
+# artifact: a raw-wasm install carries no name, icon or links.frontend, so the
+# app showed no name and desktop offered no "Open" entry.)
+#
+# `logic/stage-bundle.sh` puts it here; the merobox scenarios install the same
+# file. Override to test a different bundle:
+#   CURB_BUNDLE_PATH=$REPO_ROOT/logic/dist/com.calimero.chat-3.1.1.mpk
+BUNDLE_PATH="${CURB_BUNDLE_PATH:-${CURB_WASM_PATH:-$REPO_ROOT/logic/dist/curb.mpk}}"
 ENV_OUT="$REPO_ROOT/app/.env.integration"
 
 USE_MEROBOX=false
@@ -239,11 +246,31 @@ stop_node_merod() {
 
 # ── merobox node management ───────────────────────────────────────────────────
 
+# ⚠️ `merobox nuke` does not actually delete the node data, and only says so
+# in passing: "Deleting N data directory(ies)... No data directories were
+# deleted." The rocksdb under `workflows/data/calimero-node-N` is written by
+# the container as root, so your user cannot remove it and it survives.
+#
+# A node that boots onto a previous run's database fails namespace creation
+# with a bare HTTP 500 and, in the node log, "failed to mint this node's
+# account" — which reads as a flaky node rather than as leftover state. This is
+# the wipe that makes `--restart` mean restart. It needs sudo; if you are not
+# an admin, `docker run --rm -v "$PWD/data:/d" alpine rm -rf /d/*` does the
+# same job from inside a container.
+wipe_merobox_data() {
+  local dir="$REPO_ROOT/workflows/data"
+  [ -d "$dir" ] || return 0
+  rm -rf "$dir" 2>/dev/null && return 0
+  yellow "Node data is root-owned (written by the container) — removing with sudo"
+  sudo rm -rf "$dir"
+}
+
 start_nodes_merobox() {
   step "Starting nodes via merobox (--no-docker)"
   cd "$REPO_ROOT/workflows"
   merobox stop --all  2>/dev/null || true
   merobox nuke --force 2>/dev/null || true
+  wipe_merobox_data
   # integration-setup.yml sets stop_all_nodes: false so nodes stay running
   merobox bootstrap run --no-docker integration-setup.yml
   cd "$REPO_ROOT"
@@ -259,6 +286,7 @@ if $STOP; then
   if $USE_MEROBOX && command -v merobox &>/dev/null; then
     merobox stop --all 2>/dev/null || true
     merobox nuke --force 2>/dev/null || true
+    wipe_merobox_data
   fi
   if $CLEAN; then
     step "Removing node home directories"
@@ -290,13 +318,15 @@ green "All tools found"
 
 # ── Build WASM if needed ──────────────────────────────────────────────────────
 
-step "Checking WASM build"
-if [ ! -f "$WASM_PATH" ]; then
-  yellow "curb.wasm not found — building (first run is slow)…"
-  (cd "$REPO_ROOT/logic" && cargo mero build)
-  green "curb.wasm built: $WASM_PATH"
+step "Checking bundle build"
+if [ ! -f "$BUNDLE_PATH" ]; then
+  yellow "curb.mpk not found — building (first run is slow)…"
+  # stage-bundle.sh, not `cargo mero build`: the latter emits only the raw
+  # wasm, which the node now refuses. See its header.
+  "$REPO_ROOT/logic/stage-bundle.sh"
+  green "bundle built: $BUNDLE_PATH"
 else
-  green "WASM already exists: $WASM_PATH"
+  green "Bundle already exists: $BUNDLE_PATH"
 fi
 
 # ── Start nodes ───────────────────────────────────────────────────────────────
@@ -333,7 +363,7 @@ else
     -X POST "${NODE_1_URL}/admin-api/install-dev-application" \
     -H "Authorization: Bearer ${ACCESS_TOKEN_1}" \
     -H "Content-Type: application/json" \
-    -d "$(jq -n --arg p "$WASM_PATH" '{path: $p, metadata: [], package: null, version: null}')" \
+    -d "$(jq -n --arg p "$BUNDLE_PATH" '{path: $p}')" \
     2>/dev/null) || APP_HTTP="000"
   APP_RES=$(cat /tmp/curb-app-install-n1.json 2>/dev/null || echo "{}")
   APP_ID=$(echo "$APP_RES" | jq -r '.data.applicationId // empty' 2>/dev/null || true)
@@ -358,7 +388,7 @@ else
   curl -sf -X POST "${NODE_2_URL}/admin-api/install-dev-application" \
     -H "Authorization: Bearer ${ACCESS_TOKEN_2}" \
     -H "Content-Type: application/json" \
-    -d "$(jq -n --arg p "$WASM_PATH" '{path: $p, metadata: [], package: null, version: null}')" \
+    -d "$(jq -n --arg p "$BUNDLE_PATH" '{path: $p}')" \
     2>/dev/null | jq -r '.data.applicationId // "already installed"' 2>/dev/null \
     && green "App installed on node-2" || yellow "App install on node-2 failed (non-fatal)"
 
@@ -649,6 +679,17 @@ E2E_CONTEXT_GROUP_ID=${GENERAL_GROUP_ID:-${GROUP_ID:-}}
 E2E_CONTEXT_ID=${CONTEXT_ID:-}
 E2E_MEMBER_KEY=${MEMBER_KEY:-}
 E2E_MEMBER_KEY_2=${MEMBER_KEY_2:-}
+
+# These tokens were minted by the node's own POST /auth/token (see
+# bootstrap_auth), which exists because this script inits with
+# --auth-mode embedded. So they are real, and the browser-driven specs
+# (chat.spec.ts, integration.spec.ts's "Authentication with live node") can
+# actually log the app in.
+#
+# CI cannot say this: merobox starts its containers in open-auth mode and
+# fabricates a placeholder JWT, which the admin API ignores and mero-react
+# rejects. Those specs skip there, with the reason printed.
+E2E_BROWSER_AUTH=1
 EOF
 
 green "Written: $ENV_OUT"

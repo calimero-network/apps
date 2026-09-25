@@ -54,11 +54,15 @@ jobs:
       - name: Install cargo-mero
         uses: ./.github/actions/setup-cargo-mero
 
-      # Builds res/curb.wasm (ABI embedded, wasm-opt'd) AND the .mpk, so the
-      # nodes below run the same artifact a release publishes.
-      - name: Build curb WASM and bundle
+      # Builds res/curb.wasm (ABI embedded, wasm-opt'd) AND the signed .mpk, then
+      # stages the .mpk at the fixed `logic/dist/curb.mpk` the scenarios install
+      # from. `cargo mero bundle` alone is NOT enough any more: it names the file
+      # after `[package] version`, and since rc.41 the node refuses a raw
+      # `res/curb.wasm` outright ("not a signed application bundle"), which
+      # merobox reports as a bare 500 on the install step. See logic/stage-bundle.sh.
+      - name: Build curb WASM and stage the bundle
         working-directory: logic
-        run: cargo mero bundle --dev
+        run: ./stage-bundle.sh
 
       # ── Install merobox ───────────────────────────────────────────────────────
 
@@ -70,14 +74,21 @@ jobs:
       #
       # That is not hypothetical here. Leaving it unpinned resolved to 0.6.33,
       # which expects rc.25's renamed `namespaceId`, against the rc.24 node these
-      # scenarios start:
+      # scenarios started:
       #
       #     Join namespace failed: Client error: missing field `namespaceId`
       #
-      # 0.6.29 is the version the rest of the fleet ran green against rc.24
-      # nodes. Moving the node to rc.25 means moving BOTH pins and migrating the
-      # scenario schema (see logic/Cargo.toml's min-runtime-version note).
-        run: pip install merobox==0.6.66 calimero-client-py==0.6.33 && merobox --version
+      # 0.6.66/0.6.33 is the pair that ran green against rc.26 nodes. The rc.41
+      # node below needs 0.6.75/0.7.0, which is the pair mero-ar and mero-tag run
+      # against rc.38+ — 0.6.33 predates client-py #102/#105, which stopped the
+      # client dropping `admitters` and the admitter addresses from an invitation
+      # on re-encode, and rc.29 made `admitters` non-empty. A dropped `admitters`
+      # is refused by the node, so the two-node join in integration-setup.yml
+      # cannot pass on the old pair whatever the scenario says.
+      #
+      # Bump BOTH together and in this order: client-py 0.7.0 dropped a kwarg
+      # older merobox passes, so 0.6.66 + 0.7.0 does not work either.
+        run: pip install merobox==0.6.75 calimero-client-py==0.7.0 && merobox --version
 
       # ── Start nodes + install curb app + create context + seed messages ───────
       # integration-setup.yml sets stop_all_nodes: false so nodes stay running.
@@ -87,6 +98,16 @@ jobs:
         run: |
           merobox stop --all 2>/dev/null || true
           merobox nuke --force 2>/dev/null || true
+          # ⚠️ `nuke` reports "Deleting N data directory(ies)... No data
+          # directories were deleted." The rocksdb under
+          # `workflows/data/calimero-node-N` is written by the container as
+          # root, so the runner user cannot remove it and it survives. A node
+          # that boots onto a previous run's database 500s on namespace
+          # creation with "failed to mint this node's account" — which reads as
+          # a flaky node, not as leftover state. `sudo` is what makes the wipe
+          # happen. This job caches nothing between runs, but a re-run on the
+          # same runner, or a cancelled run, leaves the directory behind.
+          sudo rm -rf data
           # --e2e-mode: without it merod keeps its DEFAULT bootstrap nodes, so
           # these containers join the public network, discover each other's
           # public and relay addresses through the shared rendezvous, and dial
@@ -128,6 +149,24 @@ jobs:
           # /auth/token is unavailable and the admin API is open (no auth
           # required). Generate a placeholder JWT so integrationEnvAvailable()
           # returns true; the node ignores Bearer tokens in open-auth mode.
+          #
+          # ⚠️ That is enough for the admin API and /jsonrpc, and NOT enough for
+          # the app. mero-react validates the session before it considers
+          # itself authenticated, and a token signed `ci-placeholder` does not
+          # survive it — every browser-driven spec lands back on /login and
+          # times out waiting for a workspace. Measured: all 14 of them, twice,
+          # with retries.
+          #
+          # So `E2E_BROWSER_AUTH=0` below, and those specs skip with the reason
+          # printed rather than failing or, worse, skipping invisibly. The
+          # admin-API, JSON-RPC and blob specs — including the cross-node blob
+          # transfer — run for real and are what this job verifies.
+          #
+          # Closing the gap means real tokens, which means a node with embedded
+          # auth. merobox supports it via `auth_service: true`, but that fronts
+          # the nodes with a Traefik proxy on different URLs, so it is a change
+          # to how this job addresses its nodes, not a flag. Worth doing; too
+          # large to ride along with an SDK bump.
           _hdr=$(printf '{"alg":"HS256","typ":"JWT"}' \
             | base64 | tr -d '=' | tr '/+' '_-' | tr -d '\n')
           _pay=$(printf '{"sub":"ci","iss":"calimero-auth","aud":"calimero-auth","exp":9999999999,"iat":0,"jti":"ci","permissions":["admin"],"node_url":""}' \
@@ -138,21 +177,37 @@ jobs:
           ACCESS_TOKEN_2="$PLACEHOLDER_JWT"
           REFRESH_TOKEN_2="$PLACEHOLDER_JWT"
 
-          GROUPS=$(curl -sf "${NODE_1_URL}/admin-api/groups" \
-            2>/dev/null) || GROUPS="{}"
-          GROUP_ID=$(echo "$GROUPS" | jq -r '
-            (.data // .) |
-            if type == "array" then .[0].groupId
-            elif type == "object" then (.groups[0].groupId // .items[0].groupId)
-            else empty end' 2>/dev/null || echo "")
-
+          # BOTH ids come from `GET /admin-api/contexts`, in one call.
+          #
+          # There is no `GET /admin-api/groups` on rc.41 — the router has
+          # `POST /groups` (create) and `GET /groups/{group_id}` (fetch one),
+          # and nothing that lists them. The old code called it anyway and
+          # `curl -sf` did not reject the answer, which came back as the bare
+          # token `1001`; `jq` saw a number rather than an array or object,
+          # took its `else empty end` branch, and produced an EMPTY GROUP_ID
+          # with no error anywhere.
+          #
+          # That matters more than the route does. `integrationEnvAvailable()`
+          # requires a group id, and every integration test calls `test.skip()`
+          # without one — so on rc.41 this step would have written an env file
+          # that skipped the ENTIRE suite while the job reported success. The
+          # guard below is what turned that into a red build instead. (MEASURED
+          # on this branch; whether the older route answered properly on the
+          # rc.26 nodes master runs was not checked — those logs have expired.)
+          #
+          # The context row already carries `groupId`, and it is the better
+          # source anyway: it is by construction the group that owns the
+          # context the tests use, which a separate listing could not promise.
           CTXS=$(curl -sf "${NODE_1_URL}/admin-api/contexts" \
             2>/dev/null) || CTXS="{}"
-          CONTEXT_ID=$(echo "$CTXS" | jq -r '
+          CTX=$(echo "$CTXS" | jq -c '
             (.data // .) |
-            if type == "array" then .[0].id // .[0].contextId
-            elif type == "object" then (.contexts[0].id // .contexts[0].contextId // .items[0].id)
-            else empty end' 2>/dev/null || echo "")
+            if type == "array" then .[0]
+            elif type == "object" then (.contexts[0] // .items[0])
+            else empty end' 2>/dev/null || echo "null")
+          CONTEXT_ID=$(echo "$CTX" | jq -r '(.id // .contextId) // empty' 2>/dev/null || echo "")
+          GROUP_ID=$(echo "$CTX" | jq -r '(.groupId // .group_id) // empty' 2>/dev/null || echo "")
+          GROUPS="(not queried — rc.41 has no GET /admin-api/groups)"
 
           MEMBER_KEY=""
           if [ -n "$CONTEXT_ID" ]; then
@@ -169,6 +224,22 @@ jobs:
           echo "GROUP_ID:   ${GROUP_ID:-<not found>}"
           echo "CONTEXT_ID: ${CONTEXT_ID:-<not found>}"
 
+          # Fail here rather than let the suite skip itself.
+          #
+          # `integrationEnvAvailable()` requires all four of node url, token,
+          # group id and context id, and every integration test calls
+          # `test.skip()` when one is missing. So a discovery step that quietly
+          # produced an empty id gives a GREEN job that ran nothing — the job
+          # name says "Full-Stack Integration Tests" and the report says zero
+          # failures, which is indistinguishable from the suite passing.
+          if [ -z "${GROUP_ID}" ] || [ -z "${CONTEXT_ID}" ]; then
+            echo "::error::Could not discover the group/context the merobox setup created."
+            echo "  /admin-api/groups   → ${GROUPS}"
+            echo "  /admin-api/contexts → ${CTXS}"
+            echo "Without both, every integration test skips and the job passes vacuously."
+            exit 1
+          fi
+
           cat > app/.env.integration << ENVEOF
           E2E_NODE_URL=${NODE_1_URL}
           E2E_NODE_URL_2=${NODE_2_URL}
@@ -179,6 +250,7 @@ jobs:
           E2E_GROUP_ID=${GROUP_ID:-}
           E2E_CONTEXT_ID=${CONTEXT_ID:-}
           E2E_MEMBER_KEY=${MEMBER_KEY:-}
+          E2E_BROWSER_AUTH=0
           ENVEOF
           echo "app/.env.integration written"
 
@@ -220,6 +292,8 @@ jobs:
         run: |
           merobox stop --all 2>/dev/null || true
           merobox nuke --force 2>/dev/null || true
+          # See the note on the setup step: nuke leaves the root-owned rocksdb.
+          sudo rm -rf workflows/data
 
       # ── Artifacts ─────────────────────────────────────────────────────────────
 

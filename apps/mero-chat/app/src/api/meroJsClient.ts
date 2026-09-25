@@ -108,31 +108,21 @@ export async function rpcExec<T>(
   }
 }
 
-// mero-js's `admin.getBlob` returns metadata (`{ blobId, size }`), not bytes.
-// Curb needs the raw bytes for image previews and downloads — fetch them
-// directly from the same endpoint the old `blobClient.downloadBlob` used.
-export async function downloadBlob(
-  blobId: string,
-  contextId: string,
-): Promise<Blob> {
-  const baseUrl = getNodeUrl();
-  if (!baseUrl) {
-    throw new Error("Node URL is not set.");
-  }
-  const url = new URL(`/admin-api/blobs/${blobId}`, baseUrl);
-  url.searchParams.set("context_id", contextId);
-
-  const token = getJwt();
-
-  const res = await fetch(url.toString(), {
-    method: "GET",
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-  });
-  if (!res.ok) {
-    throw new Error(`downloadBlob failed: ${res.status} ${res.statusText}`);
-  }
-  return res.blob();
-}
+// The blob surface lives in ./blobs — one module owning the rc.39 discovery
+// contract, the hex id form and the 35s budget. Re-exported here because six
+// call sites already import `downloadBlob` from this file and the signature is
+// unchanged; new code should import from "./blobs" directly.
+export {
+  downloadBlob,
+  uploadBlob,
+  blobInfo,
+  deleteBlob,
+  blobUrl,
+  isUsableBlobId,
+  toBlobIdHex,
+  BLOB_READ_TIMEOUT_MS,
+  BlobContextRequiredError,
+} from "./blobs";
 
 // Minimal replacement for calimero-client's `getAuthConfig`. Curb only ever
 // reads `cfg?.jwtToken`, so we expose just that field. Reads from the same

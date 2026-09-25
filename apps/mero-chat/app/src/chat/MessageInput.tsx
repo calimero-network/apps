@@ -17,7 +17,7 @@ import MessageFileField from "./MessageFileField";
 import MessageImageField from "./MessageImageField";
 import { getContextId } from "@calimero-network/mero-react";
 import type { ResponseData } from "../api/types";
-import { getMeroJs } from "../api/meroJsClient";
+import { deleteBlob } from "../api/blobs";
 import { ClientApiDataSource } from "../api/dataSource/clientApiDataSource";
 import { extractUsernames } from "../utils/mentions";
 import { mentionCandidates } from "../utils/mentionCandidates";
@@ -509,7 +509,10 @@ export default function MessageInput({
     }
 
     try {
-      await getMeroJs().admin.deleteBlob(blobId);
+      // Via api/blobs so the id is canonicalised to hex first. The node parses
+      // the path segment as 32 bytes of hex, and a base58 id from an older row
+      // would be refused here exactly as it is on a read.
+      await deleteBlob(blobId);
     } catch (error) {
       console.error("MessageInput", "Failed to delete blob", error);
     }

@@ -16,6 +16,7 @@ import {
   setNodeUrl,
 } from "@calimero-network/mero-react";
 import MeroJsBridge from "./api/MeroJsBridge.tsx";
+import { BLOB_READ_TIMEOUT_MS } from "./api/blobs.ts";
 import {
   TOKENS_KEY,
   jwtExpiryMs,
@@ -225,6 +226,17 @@ function boot() {
           mode={MeroAppMode.MultiContext}
           packageName={import.meta.env.VITE_APPLICATION_PACKAGE}
           registryUrl="https://apps.calimero.network"
+          // 35s, not MeroProvider's 30s default.
+          //
+          // This is the client budget for EVERY mero-js call, and the one that
+          // matters is a blob read: since rc.39 a blob a peer holds is found by
+          // probing the context, and core bounds that sweep at ~30s with the
+          // byte transfer on top. The default is therefore exactly the deadline
+          // — the client aborts at the moment core is finishing, so a
+          // cross-node image load fails roughly whenever discovery actually had
+          // work to do, and looks like flake. mero-js has no per-call timeout
+          // on `getBlob`, so this is the only place to set it.
+          timeoutMs={BLOB_READ_TIMEOUT_MS}
         >
           <MeroJsBridge>
             <BrowserRouter>

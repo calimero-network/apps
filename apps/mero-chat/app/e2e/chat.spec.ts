@@ -14,10 +14,32 @@
 
 import { test, expect, type Page } from "@playwright/test";
 import { getEnv, envAvailable } from "./helpers/rpc-client";
-import { injectRealTokens } from "./helpers/node-client";
+import { browserAuthAvailable, injectRealTokens } from "./helpers/node-client";
 
+/**
+ * Every test in this file drives the real app in a real browser, so it needs a
+ * session mero-react will actually accept — not just a reachable node.
+ *
+ * `browserAuthAvailable()` is the extra half. The CI job starts its nodes
+ * through merobox in open-auth mode and fabricates a placeholder JWT: enough
+ * for direct admin-API and JSON-RPC calls (the node ignores the header), and
+ * not enough for the app, which bounces straight back to `/login`. See that
+ * function's doc for what it would take to close the gap.
+ *
+ * The skip carries its reason so a skipped run says why, rather than looking
+ * like a suite that passed.
+ */
 function requireEnv() {
-  if (!envAvailable()) test.skip();
+  if (!envAvailable()) {
+    test.skip(true, "No live node configured — run ./scripts/setup-nodes.sh");
+  }
+  if (!browserAuthAvailable()) {
+    test.skip(
+      true,
+      "E2E_BROWSER_AUTH != 1: the node has no embedded auth, so these tokens " +
+        "cannot log the app in. Run ./scripts/setup-nodes.sh to get real ones.",
+    );
+  }
 }
 
 // ── App state injection ───────────────────────────────────────────────────────
@@ -26,8 +48,8 @@ async function setupApp(page: Page) {
   const env = getEnv();
   // Inject mero-react auth tokens
   await injectRealTokens(page, {
-    nodeUrl:      env.nodeUrl,
-    accessToken:  env.accessToken,
+    nodeUrl: env.nodeUrl,
+    accessToken: env.accessToken,
     refreshToken: env.refreshToken,
   });
   // Inject workspace state so the app skips the workspace selector
@@ -97,7 +119,7 @@ function getMessageActionsBar(page: Page, text: string) {
     .locator(".msg-content")
     .filter({ hasText: text })
     .first()
-    .locator("xpath=../../..")        // → MessageContainer
+    .locator("xpath=../../..") // → MessageContainer
     .locator('[id^="actions-container-"]')
     .first();
 }
@@ -109,7 +131,7 @@ async function hoverMessage(page: Page, text: string) {
     .locator(".msg-content")
     .filter({ hasText: text })
     .first()
-    .locator("xpath=../../..")        // → MessageContainer
+    .locator("xpath=../../..") // → MessageContainer
     .hover();
 }
 
@@ -154,7 +176,9 @@ test.describe("Chat UI — send message", () => {
     const marker = `ui-sender-${Date.now()}`;
     await sendMessage(page, marker);
     await waitForMessage(page, marker);
-    await expect(page.getByText("Alice").first()).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText("Alice").first()).toBeVisible({
+      timeout: 10_000,
+    });
   });
 
   test("Shift+Enter inserts a newline instead of sending", async ({ page }) => {
@@ -164,9 +188,9 @@ test.describe("Chat UI — send message", () => {
     await page.keyboard.press("Shift+Enter");
     await page.keyboard.type("line two");
     // Message should NOT yet be visible as a sent message
-    await expect(
-      page.locator(".msg-content").filter({ hasText: "line one" }),
-    ).not.toBeVisible({ timeout: 2_000 }).catch(() => {});
+    await expect(page.locator(".msg-content").filter({ hasText: "line one" }))
+      .not.toBeVisible({ timeout: 2_000 })
+      .catch(() => {});
     // Clear the editor without sending
     await page.keyboard.press("Escape");
   });
@@ -186,18 +210,24 @@ test.describe("Chat UI — message actions bar", () => {
     await sendMessage(page, marker);
     await waitForMessage(page, marker);
     await hoverMessage(page, marker);
-    await expect(
-      getMessageActionsBar(page, marker),
-    ).toBeVisible({ timeout: 5_000 });
+    await expect(getMessageActionsBar(page, marker)).toBeVisible({
+      timeout: 5_000,
+    });
   });
 
-  test("three-dots button opens the more-actions dropdown", async ({ page }) => {
+  test("three-dots button opens the more-actions dropdown", async ({
+    page,
+  }) => {
     const marker = `ui-dots-${Date.now()}`;
     await sendMessage(page, marker);
     await waitForMessage(page, marker);
     await openActionsMenu(page, marker);
-    await expect(page.getByText("Edit message").first()).toBeVisible({ timeout: 3_000 });
-    await expect(page.getByText("Delete message").first()).toBeVisible({ timeout: 3_000 });
+    await expect(page.getByText("Edit message").first()).toBeVisible({
+      timeout: 3_000,
+    });
+    await expect(page.getByText("Delete message").first()).toBeVisible({
+      timeout: 3_000,
+    });
   });
 });
 
@@ -212,7 +242,7 @@ test.describe("Chat UI — edit message", () => {
 
   test("Edit message replaces the text inline", async ({ page }) => {
     const original = `ui-edit-orig-${Date.now()}`;
-    const edited   = `ui-edit-done-${Date.now()}`;
+    const edited = `ui-edit-done-${Date.now()}`;
 
     await sendMessage(page, original);
     await waitForMessage(page, original);
@@ -235,7 +265,7 @@ test.describe("Chat UI — edit message", () => {
 
   test("edited message shows the (edited) marker", async ({ page }) => {
     const original = `ui-edit-marker-${Date.now()}`;
-    const edited   = `ui-edit-marker-done-${Date.now()}`;
+    const edited = `ui-edit-marker-done-${Date.now()}`;
 
     await sendMessage(page, original);
     await waitForMessage(page, original);
@@ -252,7 +282,9 @@ test.describe("Chat UI — edit message", () => {
     await page.keyboard.press("Enter");
 
     await waitForMessage(page, edited);
-    await expect(page.getByText("(edited)").first()).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText("(edited)").first()).toBeVisible({
+      timeout: 5_000,
+    });
   });
 });
 
@@ -295,13 +327,19 @@ test.describe("Chat UI — reactions", () => {
     await hoverMessage(page, marker);
 
     const actionsBar = getMessageActionsBar(page, marker);
-    await actionsBar.getByText("👍").first().click({ force: true, timeout: 5_000 });
+    await actionsBar
+      .getByText("👍")
+      .first()
+      .click({ force: true, timeout: 5_000 });
 
     // The 👍 emoji should appear as a reaction badge below the message
     // Badge text is "👍1" (emoji + count); actionsBar button is just "👍" — this is unambiguous
     await expect(
-      page.locator(".msg-content").filter({ hasText: marker })
-        .locator("xpath=../../..").getByText("👍1"),
+      page
+        .locator(".msg-content")
+        .filter({ hasText: marker })
+        .locator("xpath=../../..")
+        .getByText("👍1"),
     ).toBeVisible({ timeout: 5_000 });
   });
 
@@ -313,21 +351,33 @@ test.describe("Chat UI — reactions", () => {
     // Add ✅ reaction
     await hoverMessage(page, marker);
     const actionsBar = getMessageActionsBar(page, marker);
-    await actionsBar.getByText("✅").first().click({ force: true, timeout: 5_000 });
+    await actionsBar
+      .getByText("✅")
+      .first()
+      .click({ force: true, timeout: 5_000 });
     // Badge text is "✅1" (emoji + count); actionsBar button is just "✅" — this is unambiguous
     await expect(
-      page.locator(".msg-content").filter({ hasText: marker })
-        .locator("xpath=../../..").getByText("✅1"),
+      page
+        .locator(".msg-content")
+        .filter({ hasText: marker })
+        .locator("xpath=../../..")
+        .getByText("✅1"),
     ).toBeVisible({ timeout: 5_000 });
 
     // Click the reaction badge itself to remove — badge is visible and its onClick calls handleReaction
     // which checks if user already reacted and sets isAdding=false (removes)
-    await page.locator(".msg-content").filter({ hasText: marker })
-      .locator("xpath=../../..").getByText("✅1")
+    await page
+      .locator(".msg-content")
+      .filter({ hasText: marker })
+      .locator("xpath=../../..")
+      .getByText("✅1")
       .click();
     await expect(
-      page.locator(".msg-content").filter({ hasText: marker })
-        .locator("xpath=../../..").getByText("✅1"),
+      page
+        .locator(".msg-content")
+        .filter({ hasText: marker })
+        .locator("xpath=../../..")
+        .getByText("✅1"),
     ).not.toBeVisible({ timeout: 5_000 });
   });
 });
@@ -350,21 +400,29 @@ test.describe("Chat UI — thread replies", () => {
     await hoverMessage(page, marker);
 
     // Thread button is index 4 (after ✅ 👍 😀 EmojiPicker)
-    await getMessageActionsBar(page, marker).locator("span").nth(7).click({ force: true, timeout: 5_000 });
+    await getMessageActionsBar(page, marker)
+      .locator("span")
+      .nth(7)
+      .click({ force: true, timeout: 5_000 });
 
     // A second .ProseMirror should appear in the thread panel
-    await expect(page.locator(".ProseMirror").nth(1)).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator(".ProseMirror").nth(1)).toBeVisible({
+      timeout: 10_000,
+    });
   });
 
   test("reply sent in thread panel appears in the thread", async ({ page }) => {
     const parent = `ui-thread-parent-${Date.now()}`;
-    const reply  = `ui-thread-reply-${Date.now()}`;
+    const reply = `ui-thread-reply-${Date.now()}`;
 
     await sendMessage(page, parent);
     await waitForMessage(page, parent);
     await hoverMessage(page, parent);
 
-    await getMessageActionsBar(page, parent).locator("span").nth(7).click({ force: true, timeout: 5_000 });
+    await getMessageActionsBar(page, parent)
+      .locator("span")
+      .nth(7)
+      .click({ force: true, timeout: 5_000 });
 
     const threadEditor = page.locator(".ProseMirror").nth(1);
     await threadEditor.waitFor({ timeout: 10_000 });
@@ -381,13 +439,16 @@ test.describe("Chat UI — thread replies", () => {
     page,
   }) => {
     const parent = `ui-thread-count-${Date.now()}`;
-    const reply  = `ui-thread-count-reply-${Date.now()}`;
+    const reply = `ui-thread-count-reply-${Date.now()}`;
 
     await sendMessage(page, parent);
     await waitForMessage(page, parent);
     await hoverMessage(page, parent);
 
-    await getMessageActionsBar(page, parent).locator("span").nth(7).click({ force: true, timeout: 5_000 });
+    await getMessageActionsBar(page, parent)
+      .locator("span")
+      .nth(7)
+      .click({ force: true, timeout: 5_000 });
 
     const threadEditor = page.locator(".ProseMirror").nth(1);
     await threadEditor.waitFor({ timeout: 10_000 });
@@ -400,8 +461,8 @@ test.describe("Chat UI — thread replies", () => {
     ).toBeVisible({ timeout: 10_000 });
 
     // "1 reply" or similar text should appear below the parent message
-    await expect(
-      page.getByText(/1 repl/i).first(),
-    ).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText(/1 repl/i).first()).toBeVisible({
+      timeout: 5_000,
+    });
   });
 });

@@ -60,10 +60,12 @@ export async function getNodeTokens(
     throw new Error(`Auth failed (${res.status}): ${text}`);
   }
 
-  const body = await res.json() as { data?: AuthTokens };
+  const body = (await res.json()) as { data?: AuthTokens };
   const tokens = body.data;
   if (!tokens?.access_token) {
-    throw new Error(`Auth response missing access_token: ${JSON.stringify(body)}`);
+    throw new Error(
+      `Auth response missing access_token: ${JSON.stringify(body)}`,
+    );
   }
   return tokens;
 }
@@ -83,7 +85,7 @@ export class NodeClient {
       headers: this.headers,
     });
     if (!res.ok) throw new Error(`GET ${path} → ${res.status}`);
-    const body = await res.json() as { data?: T } | T;
+    const body = (await res.json()) as { data?: T } | T;
     return (body as { data?: T }).data ?? (body as T);
   }
 
@@ -97,7 +99,7 @@ export class NodeClient {
       const text = await res.text();
       throw new Error(`POST ${path} → ${res.status}: ${text}`);
     }
-    const body = await res.json() as { data?: T } | T;
+    const body = (await res.json()) as { data?: T } | T;
     return (body as { data?: T }).data ?? (body as T);
   }
 
@@ -111,20 +113,26 @@ export class NodeClient {
   }
 
   async listGroups(): Promise<Group[]> {
-    const data = await this.get<Group[] | { groups?: Group[]; items?: Group[] }>("/groups");
+    const data = await this.get<
+      Group[] | { groups?: Group[]; items?: Group[] }
+    >("/groups");
     if (Array.isArray(data)) return data;
-    return (data as { groups?: Group[]; items?: Group[] }).groups
-      ?? (data as { items?: Group[] }).items
-      ?? [];
+    return (
+      (data as { groups?: Group[]; items?: Group[] }).groups ??
+      (data as { items?: Group[] }).items ??
+      []
+    );
   }
 
   async listContexts(): Promise<ContextEntry[]> {
-    const data = await this.get<ContextEntry[] | { contexts?: ContextEntry[]; items?: ContextEntry[] }>("/contexts");
+    const data = await this.get<
+      ContextEntry[] | { contexts?: ContextEntry[]; items?: ContextEntry[] }
+    >("/contexts");
     const raw = Array.isArray(data)
       ? data
-      : ((data as { contexts?: ContextEntry[] }).contexts
-        ?? (data as { items?: ContextEntry[] }).items
-        ?? []);
+      : ((data as { contexts?: ContextEntry[] }).contexts ??
+        (data as { items?: ContextEntry[] }).items ??
+        []);
     // Normalize id → contextId in case the node returns {id} instead of {contextId}
     return raw.map((c) => ({
       ...c,
@@ -140,10 +148,24 @@ export class NodeClient {
     return (data as { identities?: string[] }).identities ?? [];
   }
 
-  /** Make a JSON-RPC call to a context method via the node's /jsonrpc endpoint. */
+  /**
+   * Make a JSON-RPC call to a context method via the node's /jsonrpc endpoint.
+   *
+   * ⚠️ `executorPublicKey` is accepted for call-site compatibility and NOT
+   * sent. rc.38 closed this body along with 36 others:
+   *
+   *     {"type":"ParseError","data":"unknown field `executorPublicKey`,
+   *      expected one of `contextId`, `method`, `argsJson`"}
+   *
+   * The caller is identified by its token now, not by a field it names. This
+   * helper hand-rolls the request, which is why it had to be fixed here —
+   * mero-js 19 rebuilds the params object from exactly those three keys, so
+   * every call the APP makes is already sanitised even though its call sites
+   * still pass an executor.
+   */
   async rpcCall(
     contextId: string,
-    executorPublicKey: string,
+    _executorPublicKey: string,
     method: string,
     args: Record<string, unknown> = {},
   ): Promise<RpcResult> {
@@ -155,7 +177,6 @@ export class NodeClient {
         contextId,
         method,
         argsJson: args,
-        executorPublicKey,
       },
     };
     const res = await fetch(`${this.opts.nodeUrl}/jsonrpc`, {
@@ -167,7 +188,7 @@ export class NodeClient {
       const text = await res.text();
       throw new Error(`POST /jsonrpc → ${res.status}: ${text}`);
     }
-    const body = await res.json() as { result?: RpcResult; error?: unknown };
+    const body = (await res.json()) as { result?: RpcResult; error?: unknown };
     if (body.error) throw new Error(JSON.stringify(body.error));
     return body.result ?? {};
   }
@@ -180,15 +201,15 @@ export class NodeClient {
  */
 export function getIntegrationEnv() {
   return {
-    nodeUrl:        process.env.E2E_NODE_URL       ?? "",
-    nodeUrl2:       process.env.E2E_NODE_URL_2     ?? "",
-    accessToken:    process.env.E2E_ACCESS_TOKEN   ?? "",
-    refreshToken:   process.env.E2E_REFRESH_TOKEN  ?? "",
-    accessToken2:   process.env.E2E_ACCESS_TOKEN_2 ?? "",
-    refreshToken2:  process.env.E2E_REFRESH_TOKEN_2 ?? "",
-    groupId:        process.env.E2E_GROUP_ID       ?? "",
-    contextId:      process.env.E2E_CONTEXT_ID     ?? "",
-    memberKey:      process.env.E2E_MEMBER_KEY     ?? "",
+    nodeUrl: process.env.E2E_NODE_URL ?? "",
+    nodeUrl2: process.env.E2E_NODE_URL_2 ?? "",
+    accessToken: process.env.E2E_ACCESS_TOKEN ?? "",
+    refreshToken: process.env.E2E_REFRESH_TOKEN ?? "",
+    accessToken2: process.env.E2E_ACCESS_TOKEN_2 ?? "",
+    refreshToken2: process.env.E2E_REFRESH_TOKEN_2 ?? "",
+    groupId: process.env.E2E_GROUP_ID ?? "",
+    contextId: process.env.E2E_CONTEXT_ID ?? "",
+    memberKey: process.env.E2E_MEMBER_KEY ?? "",
   };
 }
 
@@ -196,6 +217,31 @@ export function getIntegrationEnv() {
 export function integrationEnvAvailable(): boolean {
   const e = getIntegrationEnv();
   return !!(e.nodeUrl && e.accessToken && e.groupId && e.contextId);
+}
+
+/**
+ * True when the tokens in the env file are ones the BROWSER can log in with.
+ *
+ * Not the same question as `integrationEnvAvailable()`. Direct admin-API and
+ * JSON-RPC calls work against a node started in open-auth mode, which ignores
+ * the Authorization header entirely — that is why the CI job can fabricate a
+ * placeholder JWT, and why the blob and node-health tests pass with it.
+ *
+ * The app is a different matter. mero-react validates the session before it
+ * considers itself authenticated, and a token signed `ci-placeholder` does not
+ * survive that: every browser test lands back on `/login` and times out
+ * waiting for a workspace that will never render. Minting a real token needs a
+ * node started with `--auth-mode embedded` so `POST /auth/token` exists, which
+ * `scripts/setup-nodes.sh` does and merobox's containers currently do not —
+ * they would need merobox's `auth_service` stack, which fronts the nodes with
+ * a Traefik proxy on different URLs.
+ *
+ * So the browser specs gate on this rather than failing in CI, or — worse —
+ * skipping for a reason nobody can see. `./scripts/setup-nodes.sh` sets
+ * `E2E_BROWSER_AUTH=1`; the CI job sets it to 0 and says why.
+ */
+export function browserAuthAvailable(): boolean {
+  return integrationEnvAvailable() && process.env.E2E_BROWSER_AUTH === "1";
 }
 
 /**
@@ -210,21 +256,17 @@ export async function injectRealTokens(
     refreshToken: string;
   },
 ) {
-  await page.addInitScript(
-    ({ nodeUrl, accessToken, refreshToken }) => {
-      // MeroProvider internally uses mero-js's `LocalStorageTokenStore()`
-      // which reads/writes a single JSON blob at `mero-tokens`.
-      localStorage.setItem("mero:node_url", nodeUrl);
-      localStorage.setItem(
-        "mero-tokens",
-        JSON.stringify({
-          access_token: accessToken,
-          refresh_token: refreshToken,
-          expires_at: Date.now() + 3600_000,
-        }),
-      );
-    },
-    opts,
-  );
+  await page.addInitScript(({ nodeUrl, accessToken, refreshToken }) => {
+    // MeroProvider internally uses mero-js's `LocalStorageTokenStore()`
+    // which reads/writes a single JSON blob at `mero-tokens`.
+    localStorage.setItem("mero:node_url", nodeUrl);
+    localStorage.setItem(
+      "mero-tokens",
+      JSON.stringify({
+        access_token: accessToken,
+        refresh_token: refreshToken,
+        expires_at: Date.now() + 3600_000,
+      }),
+    );
+  }, opts);
 }
-

@@ -53,11 +53,15 @@ jobs:
       - name: Install cargo-mero
         uses: ./.github/actions/setup-cargo-mero
 
-      # Builds res/curb.wasm (ABI embedded, wasm-opt'd) AND the .mpk, so the
-      # nodes below run the same artifact a release publishes.
-      - name: Build curb WASM and bundle
+      # Builds res/curb.wasm (ABI embedded, wasm-opt'd) AND the signed .mpk, then
+      # stages the .mpk at the fixed `logic/dist/curb.mpk` the scenarios install
+      # from. `cargo mero bundle` alone is NOT enough any more: it names the file
+      # after `[package] version`, and since rc.41 the node refuses a raw
+      # `res/curb.wasm` outright ("not a signed application bundle"), which
+      # merobox reports as a bare 500 on the install step. See logic/stage-bundle.sh.
+      - name: Build curb WASM and stage the bundle
         working-directory: logic
-        run: cargo mero bundle --dev
+        run: ./stage-bundle.sh
 
       - name: Install merobox
       # ⚠️ calimero-client-py MUST be pinned, not just merobox. It is the layer
@@ -67,25 +71,66 @@ jobs:
       #
       # That is not hypothetical here. Leaving it unpinned resolved to 0.6.33,
       # which expects rc.25's renamed `namespaceId`, against the rc.24 node these
-      # scenarios start:
+      # scenarios started:
       #
       #     Join namespace failed: Client error: missing field `namespaceId`
       #
-      # 0.6.29 is the version the rest of the fleet ran green against rc.24
-      # nodes. Moving the node to rc.25 means moving BOTH pins and migrating the
-      # scenario schema (see logic/Cargo.toml's min-runtime-version note).
-        run: pip install merobox==0.6.66 calimero-client-py==0.6.33 && merobox --version
+      # 0.6.66/0.6.33 is the pair that ran green against rc.26 nodes. The rc.41
+      # node below needs 0.6.75/0.7.0, which is the pair mero-ar and mero-tag run
+      # against rc.38+ — 0.6.33 predates client-py #102/#105, which stopped the
+      # client dropping `admitters` and the admitter addresses from an invitation
+      # on re-encode, and rc.29 made `admitters` non-empty. A dropped `admitters`
+      # is refused by the node, so the two-node join in integration-setup.yml
+      # cannot pass on the old pair whatever the scenario says.
+      #
+      # Bump BOTH together and in this order: client-py 0.7.0 dropped a kwarg
+      # older merobox passes, so 0.6.66 + 0.7.0 does not work either.
+        run: pip install merobox==0.6.75 calimero-client-py==0.7.0 && merobox --version
+
+      # ⚠️ `merobox nuke` does NOT wipe the node data, and says so only if you
+      # read its output closely:
+      #
+      #     Found 3 Calimero node data directory(ies)
+      #     Deleting 3 data directory(ies)...
+      #     No data directories were deleted.
+      #
+      # The rocksdb under `workflows/data/calimero-node-N` is written by the
+      # container as root, and the runner user cannot remove it. So it survives
+      # `nuke`, and the NEXT scenario boots node-1 and node-2 straight onto the
+      # previous scenario's database. On rc.41 that is fatal and the message
+      # names nothing useful:
+      #
+      #     Namespace creation failed on calimero-node-1:
+      #       create_namespace failed: Client error: HTTP 500
+      #     ERROR failed to mint this node's account
+      #
+      # It reads as a flaky node — the 3-node scenario that ran first passed,
+      # and re-running the 2-node one fails again identically. `sudo` is what
+      # makes the wipe actually happen, and it has to run between EVERY
+      # scenario and before every retry, not just at the end.
+      - name: Reset merobox state
+        working-directory: workflows
+        run: |
+          merobox stop --all 2>/dev/null || true
+          merobox nuke --force 2>/dev/null || true
+          sudo rm -rf data
+          ls -la . || true
 
       - name: Run E2E workflow (3-node)
         working-directory: workflows
         run: |
+          reset() {
+            merobox stop --all 2>/dev/null || true
+            merobox nuke --force 2>/dev/null || true
+            # The bit `nuke` cannot do. See "Reset merobox state" above.
+            sudo rm -rf data
+          }
           max_attempts=2
           attempt=1
           success=false
           while [ $attempt -le $max_attempts ]; do
             if [ $attempt -gt 1 ]; then
-              merobox stop --all || true
-              merobox nuke --force || true
+              reset
               sleep 2
             fi
             # See integration-ci.yml for why --e2e-mode is required here.
@@ -95,20 +140,29 @@ jobs:
             fi
             attempt=$((attempt + 1))
           done
-          merobox stop --all || true
-          merobox nuke --force || true
+          reset
           [ "$success" = true ] || exit 1
 
       - name: Run integration-setup workflow (2-node)
         working-directory: workflows
         run: |
+          reset() {
+            merobox stop --all 2>/dev/null || true
+            merobox nuke --force 2>/dev/null || true
+            # This scenario reuses calimero-node-1/2, the names the 3-node run
+            # above just used, so it is the one that inherits their rocksdb
+            # when the wipe is skipped. See "Reset merobox state".
+            sudo rm -rf data
+          }
+          # Unconditional, because the previous step's cleanup ran in a
+          # DIFFERENT shell — a failure there must not leave state here.
+          reset
           max_attempts=2
           attempt=1
           success=false
           while [ $attempt -le $max_attempts ]; do
             if [ $attempt -gt 1 ]; then
-              merobox stop --all || true
-              merobox nuke --force || true
+              reset
               sleep 2
             fi
             if merobox bootstrap run integration-setup.yml --e2e-mode; then
@@ -117,6 +171,5 @@ jobs:
             fi
             attempt=$((attempt + 1))
           done
-          merobox stop --all || true
-          merobox nuke --force || true
+          reset
           [ "$success" = true ] || exit 1

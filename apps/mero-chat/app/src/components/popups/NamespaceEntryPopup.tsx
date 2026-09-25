@@ -567,6 +567,23 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
     let groups: GroupSummary[] = [];
     try {
       const res = await api.current.listGroups();
+      // ⚠️ `listGroups` RETURNS a failure, it does not throw — `catchError`
+      // turns every error into `{ data: null, error }`. So `res.data ?? []`
+      // read a failed or timed-out listing as an EMPTY one, and an empty
+      // listing is indistinguishable from "a member of nothing".
+      //
+      // That is not a cosmetic difference here, because `evaluatePending`
+      // treats `groups.length === 0` as "the invitation is the only way in"
+      // and joins unconditionally. So: a join that actually landed, whose
+      // response the client gave up waiting for (a namespace join waits for an
+      // admitter to come online — measured at ~95s elsewhere, against a 35s
+      // client budget) leaves the invitation unacked; the next load's listing
+      // is slow too, comes back as `[]`, and the app joins AGAIN. That is the
+      // "it keeps rejoining a link I already used" report.
+      //
+      // A membership check that fails means "could not tell", never "not a
+      // member". It must not be able to demote a join that happened.
+      if (res.error) throw new Error(res.error.message);
       groups = (res.data ?? []).map((g) => ({
         ...g,
         alias: g.alias?.trim() || getStoredGroupAlias(g.groupId) || undefined,

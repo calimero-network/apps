@@ -65,7 +65,14 @@ export default defineConfig({
         navigationTimeout: 30_000,
       },
       timeout: 90_000,
-      testMatch: ["**/integration.spec.ts", "**/chat.spec.ts"],
+      // blobs.spec.ts raises its own timeout for the cross-node describe:
+      // core bounds blob discovery at ~30s and the byte transfer follows, so
+      // 90s at the project level is the floor there, not the ceiling.
+      testMatch: [
+        "**/integration.spec.ts",
+        "**/chat.spec.ts",
+        "**/blobs.spec.ts",
+      ],
     },
     // Live tests — same browser specs as mocked but with real auth session.
     // landing.spec.ts is excluded: all its tests expect unauthenticated state

@@ -1,6 +1,8 @@
 import axios from "axios";
 import { getNodeUrl as getAppEndpointKey } from "@calimero-network/mero-react";
 import { getAuthConfig, getMeroJs } from "../meroJsClient";
+import { uploadBlob, type BlobUploadResult } from "../blobs";
+export type { BlobUploadResult };
 import {
   getSelfAccountHex,
   loadSelfAccountIdentity,
@@ -293,41 +295,22 @@ function catchError<T>(context: string, error: unknown): Result<T> {
   return fail(500, message);
 }
 
-export interface BlobUploadResult {
-  blobId: string;
-  size: number;
-}
-
 /**
- * Blob upload. The axios version existed because the OLD calimero-client
- * misparsed the server's `data` envelope; mero-js unwraps it correctly, so this
- * now goes through the SDK. Core answers with snake_case `blob_id`, which the
- * SDK response type does not model, hence the widened read below.
+ * Blob upload, in the `{ data, error }` envelope this module's callers expect.
+ *
+ * The call itself is `api/blobs.ts`, which owns the rc.39 contract. What used
+ * to be here took `contextId?: string` and quietly dropped it when absent —
+ * an upload that succeeds, announces to nobody, and leaves the image visible
+ * only to the person who sent it (their own node has the bytes). It is
+ * required now, and an empty string is refused rather than treated as absent.
  */
 export async function uploadBlobDirect(
   file: File,
-  /**
-   * Context to announce the blob to. Without it core stores the bytes locally
-   * but never advertises them, so a peer that later asks for the blob has no
-   * way to discover who holds it — the image stays stuck on "loading" for
-   * everyone except the uploader. `downloadBlob` has always passed a context;
-   * this is the missing other half.
-   */
-  contextId?: string,
+  contextId: string,
 ): ApiResponse<BlobUploadResult> {
   try {
-    const buffer = await file.arrayBuffer();
-    const raw = (await getMeroJs().admin.uploadBlob({
-      data: buffer,
-      ...(contextId ? { contextId } : {}),
-    })) as unknown as
-      | { blob_id?: string; blobId?: string; size?: number }
-      | undefined;
-    const blobId = raw?.blob_id ?? raw?.blobId;
-    if (!blobId) {
-      return fail(500, "Upload succeeded but server returned no blob_id");
-    }
-    return ok({ blobId, size: raw?.size ?? 0 });
+    // `arrayBuffer()`, not FormData — see the note in api/blobs.ts.
+    return ok(await uploadBlob(await file.arrayBuffer(), contextId));
   } catch (error) {
     return catchError("uploadBlobDirect", error);
   }
@@ -483,12 +466,12 @@ export class GroupApiDataSource implements GroupApi {
 
   async deleteGroup(groupId: string): ApiResponse<boolean> {
     try {
-      // Server uses ValidatedJson<DeleteGroupApiRequest> even on DELETE
-      // (delete_group.rs:22), so it rejects with "Expected request with
-      // Content-Type: application/json" unless we send both the header and
-      // a JSON body. Both fields on DeleteGroupApiRequest are optional, so
-      // an empty `{}` body is accepted.
-      const data = await getMeroJs().admin.deleteGroup(groupId, {});
+      // No second argument. The server still needs `Content-Type:
+      // application/json` and a body on this DELETE — it reads
+      // `ValidatedJson<DeleteGroupApiRequest>` — but mero-js 19 sends the
+      // header and the empty `{}` itself, so the body a caller passed became
+      // an extra argument rather than the payload.
+      const data = await getMeroJs().admin.deleteGroup(groupId);
       return ok(data?.isDeleted ?? true);
     } catch (error) {
       return catchError("deleteGroup", error);
