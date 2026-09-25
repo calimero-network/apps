@@ -1,7 +1,8 @@
 /**
- * Right-click Format menu. Fixed-positioned at (x, y); dismisses on
- * outside-click, Escape, or scroll. One row per format keyword; the active
- * format is check-marked.
+ * Right-click cell menu. Fixed-positioned at (x, y); dismisses on
+ * outside-click, Escape, or scroll. One row per format keyword (the active one
+ * check-marked), then the structural actions the page passes in: inserting and
+ * deleting rows and columns, naming the selection.
  */
 import React, { useEffect, useRef } from 'react';
 import styled from 'styled-components';
@@ -15,15 +16,24 @@ const OPTIONS: { label: string; value: string }[] = [
   { label: 'Date', value: 'date' },
 ];
 
+/** One action row; `testId` becomes `action-<testId>`. */
+export interface MenuAction {
+  label: string;
+  testId: string;
+  onClick: () => void;
+}
+
 interface ContextMenuProps {
   x: number;
   y: number;
   activeFormat: string;
   onSelect: (format: string) => void;
+  /** Groups of actions, each under its own label. */
+  sections: { label: string; actions: MenuAction[] }[];
   onClose: () => void;
 }
 
-export default function ContextMenu({ x, y, activeFormat, onSelect, onClose }: ContextMenuProps) {
+export default function ContextMenu({ x, y, activeFormat, onSelect, sections, onClose }: ContextMenuProps) {
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -56,6 +66,18 @@ export default function ContextMenu({ x, y, activeFormat, onSelect, onClose }: C
           {o.label}
         </MenuItem>
       ))}
+      {sections.map((section) => (
+        <React.Fragment key={section.label}>
+          <Divider />
+          <MenuLabel>{section.label}</MenuLabel>
+          {section.actions.map((a) => (
+            <MenuItem key={a.testId} role="menuitem" data-testid={`action-${a.testId}`} onClick={a.onClick}>
+              <Check />
+              {a.label}
+            </MenuItem>
+          ))}
+        </React.Fragment>
+      ))}
     </Menu>
   );
 }
@@ -69,6 +91,12 @@ const Menu = styled.div`
   border: 1px solid ${C.line};
   border-radius: 10px;
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28);
+`;
+
+const Divider = styled.div`
+  height: 1px;
+  margin: 4px 6px;
+  background: ${C.line};
 `;
 
 const MenuLabel = styled.div`

@@ -1,36 +1,61 @@
-import type { Cell } from '../api/spreadsheet/SpreadsheetClient';
+import type { Cell as StoredCell } from '../api/spreadsheet/SpreadsheetClient';
+
+/**
+ * A cell as the grid sees it: placed at a position by its sheet's layout, with
+ * its raw value in display form (references by position). Stored cells name
+ * rows and columns by id and store formulas by id; this is the one place the
+ * two meet.
+ */
+export interface GridCell {
+  id: string;
+  sheet_id: string;
+  /** Position in the sheet's current row/column order. */
+  row: number;
+  col: number;
+  row_id: string;
+  col_id: string;
+  /** Display form: what the formula bar shows and what the user edits. */
+  raw_value: string;
+  computed_value: string;
+  format: string;
+  updated_at: number;
+}
 
 export type OverlayEntry = {
   sheet_id: string;
-  row: number;
-  col: number;
-  raw_value: string; // '' means cleared value
+  row_id: string;
+  col_id: string;
+  raw_value: string; // stored form; '' means cleared value
   format: string;    // '' means no/removed format
 };
 export type Overlay = Map<string, OverlayEntry>;
-export type Snapshot = Map<string, Cell>;
+export type Snapshot = Map<string, StoredCell>;
 
-export function cellKey(sheetId: string, row: number, col: number): string {
-  return `${sheetId}|${row}|${col}`;
+/** A sheet's visible order: the id at each row and column position. */
+export interface Order {
+  rows: string[];
+  cols: string[];
 }
 
-export function snapshotFromCells(cells: Cell[]): Snapshot {
+/** The same key the contract stores a cell under. */
+export function cellKey(sheetId: string, rowId: string, colId: string): string {
+  return `${sheetId}|${rowId}|${colId}`;
+}
+
+export function snapshotFromCells(cells: StoredCell[]): Snapshot {
   const m: Snapshot = new Map();
-  for (const c of cells) m.set(cellKey(c.sheet_id, c.row, c.col), c);
+  for (const c of cells) m.set(cellKey(c.sheet_id, c.row_id, c.col_id), c);
   return m;
 }
 
+type Effective = { sheet_id: string; row_id: string; col_id: string; raw_value: string; format: string };
+
 // The effective raw/format at a key: overlay wins over snapshot.
-function effective(
-  key: string,
-  snapshot: Snapshot,
-  overlay: Overlay,
-): { sheet_id: string; row: number; col: number; raw_value: string; format: string } | null {
+function effective(key: string, snapshot: Snapshot, overlay: Overlay): Effective | null {
   const o = overlay.get(key);
+  if (o) return o;
   const s = snapshot.get(key);
-  if (o) return { sheet_id: o.sheet_id, row: o.row, col: o.col, raw_value: o.raw_value, format: o.format };
-  if (s) return { sheet_id: s.sheet_id, row: s.row, col: s.col, raw_value: s.raw_value, format: s.format };
-  return null;
+  return s ? { sheet_id: s.sheet_id, row_id: s.row_id, col_id: s.col_id, raw_value: s.raw_value, format: s.format } : null;
 }
 
 // All keys present in either map (union), so overlay-only new cells are included.
@@ -60,10 +85,9 @@ export function retireOverlay(overlay: Overlay, snapshot: Snapshot): Overlay {
 }
 
 /**
- * Engine input JSON for `snapshot ⊕ overlay`: every effective non-blank cell.
- * `sheetIds` is metadata-only — the full sheet set, passed through so the
- * engine can tell an unknown-sheet reference (→ #REF!) from a known-but-empty
- * one. It does NOT filter which cells are included above.
+ * Engine input JSON for `snapshot ⊕ overlay`: every effective non-blank cell,
+ * by id. `sheetIds` is the full sheet set, passed through so the engine can
+ * tell an unknown-sheet reference (→ #REF!) from a known-but-empty one.
  */
 export function buildEngineInput(
   snapshot: Snapshot,
@@ -71,45 +95,61 @@ export function buildEngineInput(
   sheetIds: string[],
   nowMs: number = Date.now(),
 ): string {
-  const cells: { sheet_id: string; row: number; col: number; raw_value: string }[] = [];
+  const cells: { sheet_id: string; row_id: string; col_id: string; raw_value: string }[] = [];
   for (const key of unionKeys(snapshot, overlay)) {
     const e = effective(key, snapshot, overlay);
     if (!e || e.raw_value === '') continue; // blank cells are absent to the engine
-    cells.push({ sheet_id: e.sheet_id, row: e.row, col: e.col, raw_value: e.raw_value });
+    cells.push({ sheet_id: e.sheet_id, row_id: e.row_id, col_id: e.col_id, raw_value: e.raw_value });
   }
   return JSON.stringify({ cells, sheet_ids: sheetIds, now_ms: nowMs });
 }
 
+/** Everything placing a sheet's cells needs from the engine. */
+export interface Placement {
+  order: Order;
+  /** Stored formula → display form, on the sheet being placed. */
+  toDisplay: (stored: string) => string;
+}
+
 /**
- * Active-sheet cells with engine-computed values (overlay applied). Mirrors the
- * node's get_cells output filter: a fully-blank cell (no value AND no format) is
- * hidden; a formatted-but-empty cell is kept.
+ * One sheet's cells with engine-computed values (overlay applied), placed by
+ * the sheet's order. A cell whose row or column is deleted (or past the grid)
+ * is not placed. Mirrors the node's get_cells filter: a fully-blank cell (no
+ * value AND no format) is hidden; a formatted-but-empty one is kept.
  */
-export function deriveActiveCells(
+export function deriveSheetCells(
   snapshot: Snapshot,
   overlay: Overlay,
   sheetIds: string[],
-  activeSheetId: string,
+  sheetId: string,
   evaluate: (json: string) => string,
-): Cell[] {
+  place: Placement,
+): GridCell[] {
   const computed = new Map<string, string>();
   const outputs = JSON.parse(evaluate(buildEngineInput(snapshot, overlay, sheetIds))) as {
-    sheet_id: string; row: number; col: number; computed_value: string;
+    sheet_id: string; row_id: string; col_id: string; computed_value: string;
   }[];
-  for (const o of outputs) computed.set(cellKey(o.sheet_id, o.row, o.col), o.computed_value);
+  for (const o of outputs) computed.set(cellKey(o.sheet_id, o.row_id, o.col_id), o.computed_value);
+  const rowAt = new Map(place.order.rows.map((id, i) => [id, i]));
+  const colAt = new Map(place.order.cols.map((id, i) => [id, i]));
 
-  const out: Cell[] = [];
+  const out: GridCell[] = [];
   for (const key of unionKeys(snapshot, overlay)) {
     const e = effective(key, snapshot, overlay);
-    if (!e || e.sheet_id !== activeSheetId) continue;
+    if (!e || e.sheet_id !== sheetId) continue;
     if (e.raw_value === '' && e.format === '') continue; // fully blank → hidden
+    const row = rowAt.get(e.row_id);
+    const col = colAt.get(e.col_id);
+    if (row === undefined || col === undefined) continue;
     const base = snapshot.get(key);
     out.push({
       id: base?.id ?? key,
       sheet_id: e.sheet_id,
-      row: e.row,
-      col: e.col,
-      raw_value: e.raw_value,
+      row,
+      col,
+      row_id: e.row_id,
+      col_id: e.col_id,
+      raw_value: e.raw_value.startsWith('=') ? place.toDisplay(e.raw_value) : e.raw_value,
       computed_value: computed.get(key) ?? e.raw_value,
       format: e.format,
       updated_at: base?.updated_at ?? 0,
@@ -123,17 +163,22 @@ export function deriveActiveCells(
  * Dev-assert helper: keys where node-computed and WASM-derived values disagree,
  * INCLUDING a node cell that has no corresponding derived cell at all (it
  * dropped out of derivation) — a missing key is as much a divergence as a
- * disagreeing value.
+ * disagreeing value. `node` holds the snapshot's cells for the sheet, `derived`
+ * what `deriveSheetCells` placed with `order`.
  */
-export function diffComputed(nodeActive: Cell[], derivedActive: Cell[]): string[] {
-  const derived = new Map<string, string>();
-  for (const c of derivedActive) derived.set(cellKey(c.sheet_id, c.row, c.col), c.computed_value);
+export function diffComputed(node: StoredCell[], derived: GridCell[], order: Order): string[] {
+  const got = new Map<string, string>();
+  for (const c of derived) got.set(cellKey(c.sheet_id, c.row_id, c.col_id), c.computed_value);
+  const rows = new Set(order.rows);
+  const cols = new Set(order.cols);
   const bad: string[] = [];
-  for (const c of nodeActive) {
+  for (const c of node) {
     // NOW()/TODAY() read each side's own clock, so they differ by design.
     if (/\b(NOW|TODAY)\s*\(/i.test(c.raw_value)) continue;
-    const k = cellKey(c.sheet_id, c.row, c.col);
-    if (!derived.has(k) || derived.get(k) !== c.computed_value) bad.push(k);
+    // A cell in a deleted row or column is stored but never placed.
+    if (!rows.has(c.row_id) || !cols.has(c.col_id)) continue;
+    const k = cellKey(c.sheet_id, c.row_id, c.col_id);
+    if (!got.has(k) || got.get(k) !== c.computed_value) bad.push(k);
   }
   return bad;
 }

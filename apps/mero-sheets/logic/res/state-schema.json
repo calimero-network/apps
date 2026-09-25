@@ -1,6 +1,29 @@
 {
   "schema_version": "wasm-abi/1",
   "types": {
+    "AxisData": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "pos",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "deleted",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
     "CellData": {
       "kind": "record",
       "fields": [
@@ -48,29 +71,11 @@
         }
       ]
     },
-    "CursorData": {
+    "FormatData": {
       "kind": "record",
       "fields": [
         {
-          "name": "sheet_id",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "row",
-          "type": {
-            "kind": "u32"
-          }
-        },
-        {
-          "name": "col",
-          "type": {
-            "kind": "u32"
-          }
-        },
-        {
-          "name": "color",
+          "name": "format",
           "type": {
             "kind": "string"
           }
@@ -96,6 +101,29 @@
           "name": "joined_at",
           "type": {
             "kind": "u64"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "NamedRangeData": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "target",
+          "type": {
+            "kind": "string"
           }
         },
         {
@@ -204,19 +232,6 @@
           }
         },
         {
-          "name": "cursors",
-          "type": {
-            "kind": "map",
-            "key": {
-              "kind": "string"
-            },
-            "value": {
-              "$ref": "CursorData"
-            },
-            "crdt_type": "authored_map"
-          }
-        },
-        {
           "name": "members",
           "type": {
             "kind": "map",
@@ -228,6 +243,45 @@
             },
             "crdt_type": "unordered_map"
           }
+        },
+        {
+          "name": "axes",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "AxisData"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "formats",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "FormatData"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "names",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "NamedRangeData"
+            },
+            "crdt_type": "unordered_map"
+          }
         }
       ]
     }
@@ -235,5 +289,11 @@
   "methods": [],
   "events": [],
   "state_root": "Spreadsheet",
-  "state_version": 1
+  "state_version": 2,
+  "migrations": [
+    {
+      "method": "migrate_v1_to_v2",
+      "fromVersion": 1
+    }
+  ]
 }

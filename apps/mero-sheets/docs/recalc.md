@@ -62,6 +62,26 @@ expand to their member cells individually rather than being tracked as a
 compressed block dependency — simple and correct, at the cost of a larger
 dependency graph on very wide ranges.
 
+## Named ranges
+
+A name stands for a reference: define `Costs` as `B2:B20` and write
+`=SUM(Costs)`. Names are shared by everyone in the workbook
+(`set_named_range` / `get_named_ranges` on the contract), stored with their
+target in id form so they follow inserted and deleted rows, and resolved by the
+engine through `Env::names`. A name must not read as a cell (`Q1`), a column
+(`AB`) or a logical, and an unknown name evaluates to `#NAME?`.
+
+## Rows and columns by id
+
+References are resolved through each sheet's layout: which row id and column
+id sit at each position (`layout.rs`). A single-cell reference names ids
+directly; a range names its two corner ids and spans everything between them
+in the current order, so a row inserted inside a range is part of it, as in
+any spreadsheet. `to_display` and `to_stored` rewrite only the reference spans
+of a formula (spacing, strings, function names and `$` anchors stay as
+typed), converting between positions (what a person types) and ids (what is
+stored).
+
 ## Cross-sheet references
 
 A formula can reference a cell in another sheet with the `[id]!A1` syntax,

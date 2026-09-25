@@ -230,7 +230,8 @@ class Workbook {
   }
 
   async setCell(row: number, col: number, raw_value: string) {
-    await this.call('set_cell', { sheet_id: this.sheetId, row, col, raw_value });
+    // A fresh workbook has the legacy layout, where a row's id is its position.
+    await this.call('set_cell', { sheet_id: this.sheetId, row_id: String(row), col_id: String(col), raw_value });
   }
 
   private beat = 0;

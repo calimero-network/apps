@@ -60,9 +60,19 @@ APPLY_CHUNK = 200
 
 
 def wire_op(op):
-    """A generator op (flat `{"kind": "Set", "row": ..}`) in the contract's
-    adjacently tagged `CellOp` wire form, `{"name": "Set", "payload": {..}}`."""
-    return {"name": op["kind"], "payload": {k: v for k, v in op.items() if k != "kind"}}
+    """A generator op (flat `{"kind": "Set", "row": 0, "col": 1, ..}`, by
+    position) in the contract's adjacently tagged `CellOp` wire form, by id:
+    `{"name": "Set", "payload": {"row_id": "0", "col_id": "1", ..}}`. The
+    harness never inserts rows, so every id is the legacy one: the position."""
+    payload = {k: v for k, v in op.items() if k not in ("kind", "row", "col")}
+    payload["row_id"] = str(op["row"])
+    payload["col_id"] = str(op["col"])
+    return {"name": op["kind"], "payload": payload}
+
+
+def cell_pos(cell):
+    """A returned cell's (row, col), from its legacy ids."""
+    return int(cell.get("row_id")), int(cell.get("col_id"))
 
 
 def apply_ops(client, cid, sheet_id, ops, chunk_size=APPLY_CHUNK):

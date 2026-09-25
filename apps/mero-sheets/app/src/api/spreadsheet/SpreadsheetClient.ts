@@ -6,11 +6,54 @@ import {
 
 // Generated types
 
+export interface AxisData {
+  pos: string;
+  deleted: boolean;
+  updated_at: number;
+}
+
+export interface AxisEntryView {
+  id: string;
+  pos: string;
+  deleted: boolean;
+}
+
+export type AxisOpPayload =
+  | { name: 'InsertRow'; payload: AxisOp_InsertRow }
+  | { name: 'InsertCol'; payload: AxisOp_InsertCol }
+  | { name: 'DeleteRow'; payload: AxisOp_DeleteRow }
+  | { name: 'DeleteCol'; payload: AxisOp_DeleteCol }
+
+export const AxisOp = {
+  InsertRow: (insertrow: AxisOp_InsertRow): AxisOpPayload => ({ name: 'InsertRow', payload: insertrow }),
+  InsertCol: (insertcol: AxisOp_InsertCol): AxisOpPayload => ({ name: 'InsertCol', payload: insertcol }),
+  DeleteRow: (deleterow: AxisOp_DeleteRow): AxisOpPayload => ({ name: 'DeleteRow', payload: deleterow }),
+  DeleteCol: (deletecol: AxisOp_DeleteCol): AxisOpPayload => ({ name: 'DeleteCol', payload: deletecol }),
+} as const;
+
+export interface AxisOp_DeleteCol {
+  id: string;
+}
+
+export interface AxisOp_DeleteRow {
+  id: string;
+}
+
+export interface AxisOp_InsertCol {
+  id: string;
+  pos: string;
+}
+
+export interface AxisOp_InsertRow {
+  id: string;
+  pos: string;
+}
+
 export interface Cell {
   id: string;
   sheet_id: string;
-  row: number;
-  col: number;
+  row_id: string;
+  col_id: string;
   raw_value: string;
   computed_value: string;
   format: string;
@@ -39,44 +82,31 @@ export const CellOp = {
 } as const;
 
 export interface CellOp_Clear {
-  row: number;
-  col: number;
+  row_id: string;
+  col_id: string;
 }
 
 export interface CellOp_Format {
-  row: number;
-  col: number;
+  row_id: string;
+  col_id: string;
   format: string;
 }
 
 export interface CellOp_Set {
-  row: number;
-  col: number;
+  row_id: string;
+  col_id: string;
   raw_value: string;
 }
 
-export interface Cursor {
-  id: string;
-  author: string;
+export interface Event_AxesChanged {
   sheet_id: string;
-  row: number;
-  col: number;
-  color: string;
-  updated_at: number;
-}
-
-export interface CursorData {
-  sheet_id: string;
-  row: number;
-  col: number;
-  color: string;
-  updated_at: number;
+  count: number;
 }
 
 export interface Event_CellCleared {
   sheet_id: string;
-  row: number;
-  col: number;
+  row_id: string;
+  col_id: string;
 }
 
 export interface Event_CellUpdated {
@@ -89,15 +119,6 @@ export interface Event_CellsChanged {
   count: number;
 }
 
-export interface Event_CursorMoved {
-  author: string;
-  sheet_id: string;
-}
-
-export interface Event_CursorRemoved {
-  author: string;
-}
-
 export interface Event_MemberJoined {
   id: string;
   nickname: string;
@@ -106,6 +127,15 @@ export interface Event_MemberJoined {
 export interface Event_MemberRenamed {
   id: string;
   nickname: string;
+}
+
+export interface Event_Migrated {
+  from_version: string;
+  to_version: string;
+}
+
+export interface Event_NamedRangesChanged {
+  name: string;
 }
 
 export interface Event_ProjectInitialized {
@@ -127,6 +157,11 @@ export interface Event_SheetRenamed {
   name: string;
 }
 
+export interface FormatData {
+  format: string;
+  updated_at: number;
+}
+
 export interface FunctionDef {
   name: string;
   category: string;
@@ -145,6 +180,17 @@ export interface Member {
 export interface MemberData {
   nickname: string;
   joined_at: number;
+  updated_at: number;
+}
+
+export interface NamedRange {
+  name: string;
+  target: string;
+}
+
+export interface NamedRangeData {
+  name: string;
+  target: string;
   updated_at: number;
 }
 
@@ -169,14 +215,22 @@ export interface SheetData {
   updated_at: number;
 }
 
+export interface SheetLayout {
+  sheet_id: string;
+  rows: AxisEntryView[];
+  cols: AxisEntryView[];
+}
+
 export interface Spreadsheet {
   project_id: string;
   project_name: string;
   project_created_at: number;
   sheets: Record<string, SheetData>;
   cells: Record<string, CellData>;
-  cursors: Record<string, CursorData>;
   members: Record<string, MemberData>;
+  axes: Record<string, AxisData>;
+  formats: Record<string, FormatData>;
+  names: Record<string, NamedRangeData>;
 }
 
 
@@ -190,14 +244,16 @@ export interface Spreadsheet {
 
 
 
+
 export type AbiEvent =
+  | { name: "AxesChanged"; payload: Event_AxesChanged }
   | { name: "CellCleared"; payload: Event_CellCleared }
   | { name: "CellUpdated"; payload: Event_CellUpdated }
   | { name: "CellsChanged"; payload: Event_CellsChanged }
-  | { name: "CursorMoved"; payload: Event_CursorMoved }
-  | { name: "CursorRemoved"; payload: Event_CursorRemoved }
   | { name: "MemberJoined"; payload: Event_MemberJoined }
   | { name: "MemberRenamed"; payload: Event_MemberRenamed }
+  | { name: "Migrated"; payload: Event_Migrated }
+  | { name: "NamedRangesChanged"; payload: Event_NamedRangesChanged }
   | { name: "ProjectInitialized"; payload: Event_ProjectInitialized }
   | { name: "SheetCreated"; payload: Event_SheetCreated }
   | { name: "SheetDeleted"; payload: Event_SheetDeleted }
@@ -215,6 +271,16 @@ export class SpreadsheetClient {
   }
 
   /**
+   * apply_axis_ops
+   *
+   * @intent mutating
+   */
+  public async applyAxisOps(params: { sheet_id: string; ops: AxisOpPayload[] }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'apply_axis_ops', argsJson: params });
+    return response as void;
+  }
+
+  /**
    * apply_cell_ops
    *
    * @intent mutating
@@ -229,7 +295,7 @@ export class SpreadsheetClient {
    *
    * @intent mutating
    */
-  public async clearCell(params: { sheet_id: string; row: number; col: number }): Promise<void> {
+  public async clearCell(params: { sheet_id: string; row_id: string; col_id: string }): Promise<void> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'clear_cell', argsJson: params });
     return response as void;
   }
@@ -242,6 +308,16 @@ export class SpreadsheetClient {
   public async createSheet(params: { name: string }): Promise<string> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'create_sheet', argsJson: params });
     return response as string;
+  }
+
+  /**
+   * delete_named_range
+   *
+   * @intent mutating
+   */
+  public async deleteNamedRange(params: { name: string }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'delete_named_range', argsJson: params });
+    return response as void;
   }
 
   /**
@@ -285,16 +361,6 @@ export class SpreadsheetClient {
   }
 
   /**
-   * get_cursors
-   *
-   * @intent read_only
-   */
-  public async getCursors(): Promise<Cursor[]> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_cursors', argsJson: {} });
-    return response as Cursor[];
-  }
-
-  /**
    * get_functions
    *
    * @intent read_only
@@ -305,6 +371,16 @@ export class SpreadsheetClient {
   }
 
   /**
+   * get_layouts
+   *
+   * @intent read_only
+   */
+  public async getLayouts(): Promise<SheetLayout[]> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_layouts', argsJson: {} });
+    return response as SheetLayout[];
+  }
+
+  /**
    * get_members
    *
    * @intent read_only
@@ -312,6 +388,16 @@ export class SpreadsheetClient {
   public async getMembers(): Promise<Member[]> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_members', argsJson: {} });
     return response as Member[];
+  }
+
+  /**
+   * get_named_ranges
+   *
+   * @intent read_only
+   */
+  public async getNamedRanges(): Promise<NamedRange[]> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_named_ranges', argsJson: {} });
+    return response as NamedRange[];
   }
 
   /**
@@ -363,16 +449,6 @@ export class SpreadsheetClient {
   }
 
   /**
-   * remove_cursor
-   *
-   * @intent mutating
-   */
-  public async removeCursor(): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'remove_cursor', argsJson: {} });
-    return response as void;
-  }
-
-  /**
    * rename_sheet
    *
    * @intent mutating
@@ -397,7 +473,7 @@ export class SpreadsheetClient {
    *
    * @intent mutating
    */
-  public async setCell(params: { sheet_id: string; row: number; col: number; raw_value: string }): Promise<string> {
+  public async setCell(params: { sheet_id: string; row_id: string; col_id: string; raw_value: string }): Promise<string> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_cell', argsJson: params });
     return response as string;
   }
@@ -407,28 +483,18 @@ export class SpreadsheetClient {
    *
    * @intent mutating
    */
-  public async setCellFormat(params: { sheet_id: string; row: number; col: number; format: string }): Promise<string> {
+  public async setCellFormat(params: { sheet_id: string; row_id: string; col_id: string; format: string }): Promise<string> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_cell_format', argsJson: params });
     return response as string;
   }
 
   /**
-   * set_cell_formula
+   * set_named_range
    *
    * @intent mutating
    */
-  public async setCellFormula(params: { sheet_id: string; row: number; col: number; formula: string }): Promise<string> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_cell_formula', argsJson: params });
-    return response as string;
-  }
-
-  /**
-   * update_cursor
-   *
-   * @intent mutating
-   */
-  public async updateCursor(params: { sheet_id: string; row: number; col: number }): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'update_cursor', argsJson: params });
+  public async setNamedRange(params: { name: string; target: string }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_named_range', argsJson: params });
     return response as void;
   }
 

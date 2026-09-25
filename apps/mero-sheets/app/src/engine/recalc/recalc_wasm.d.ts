@@ -2,7 +2,7 @@
 /* eslint-disable */
 
 /**
- * Browser entry point. Same signature the future warm/incremental engine keeps.
+ * Browser entry point for [`evaluate_json`].
  */
 export function evaluate(input: string): string;
 
@@ -11,12 +11,36 @@ export function evaluate(input: string): string;
  */
 export function functions(): string;
 
+/**
+ * Browser entry point for [`set_structure_json`].
+ */
+export function set_structure(input: string): boolean;
+
+/**
+ * A formula as stored (ids) → as shown (positions), on sheet `home`.
+ */
+export function to_display(formula_text: string, home: string): string;
+
+/**
+ * A formula as typed (positions) → as stored (ids), on sheet `home`.
+ */
+export function to_stored(formula_text: string, home: string): string;
+
+/**
+ * Browser entry point for [`visible_order_json`].
+ */
+export function visible_order(sheet_id: string): string;
+
 export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
 
 export interface InitOutput {
     readonly memory: WebAssembly.Memory;
     readonly evaluate: (a: number, b: number) => [number, number];
     readonly functions: () => [number, number];
+    readonly set_structure: (a: number, b: number) => number;
+    readonly to_display: (a: number, b: number, c: number, d: number) => [number, number];
+    readonly to_stored: (a: number, b: number, c: number, d: number) => [number, number];
+    readonly visible_order: (a: number, b: number) => [number, number];
     readonly __wbindgen_externrefs: WebAssembly.Table;
     readonly __wbindgen_malloc: (a: number, b: number) => number;
     readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;

@@ -11,12 +11,12 @@ fn is_formula(raw: &str) -> bool {
     raw.trim_start().starts_with('=')
 }
 
-/// Absolute cell coordinate (0-based row/col).
+/// A cell by sheet, row id and column id (see [`crate::layout`]).
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub struct CellRef {
     pub sheet_id: String,
-    pub row: u32,
-    pub col: u32,
+    pub row: String,
+    pub col: String,
 }
 
 pub(crate) fn order(
@@ -73,7 +73,7 @@ pub(crate) fn order(
 /// bounded by the finite set of sheet ids present in `cells`.
 pub fn sheet_closure(
     cells: &BTreeMap<CellRef, String>,
-    names: &BTreeMap<String, String>,
+    env: &formula::Env,
     requested_sheet: &str,
 ) -> HashSet<String> {
     // Adjacency: sheet -> the set of sheets its formulas reference. Built in one
@@ -84,7 +84,7 @@ pub fn sheet_closure(
             continue;
         }
         let targets = refs.entry(cell.sheet_id.clone()).or_default();
-        for (sid, _row, _col) in formula::precedents_with(raw, &cell.sheet_id, names) {
+        for (sid, _row, _col) in formula::precedents_with(raw, &cell.sheet_id, env) {
             targets.insert(sid);
         }
     }
@@ -128,7 +128,7 @@ pub fn evaluate(inputs: &WorkbookInputs) -> BTreeMap<CellRef, String> {
 
     let precedents_of = |n: &CellRef| -> Vec<CellRef> {
         let raw = inputs.cells.get(n).map(String::as_str).unwrap_or("");
-        formula::precedents_with(raw, &n.sheet_id, &inputs.env.names)
+        formula::precedents_with(raw, &n.sheet_id, &inputs.env)
             .into_iter()
             .map(|(sheet_id, row, col)| CellRef { sheet_id, row, col })
             .collect()
@@ -149,26 +149,31 @@ pub fn evaluate(inputs: &WorkbookInputs) -> BTreeMap<CellRef, String> {
         };
         let home = n.sheet_id.clone();
         let bad_sheet = core::cell::Cell::new(false);
-        let value = formula::evaluate_with(&raw, &inputs.env, |sheet, r, c| {
-            let sid = match sheet {
-                Some(id) => {
-                    if inputs.sheet_ids.contains(id) {
-                        id.to_string()
-                    } else {
-                        bad_sheet.set(true);
-                        return None;
+        let value = formula::evaluate_with(
+            &raw,
+            &home,
+            &inputs.env,
+            |sheet: Option<&str>, r: &str, c: &str| {
+                let sid = match sheet {
+                    Some(id) => {
+                        if inputs.sheet_ids.contains(id) {
+                            id.to_string()
+                        } else {
+                            bad_sheet.set(true);
+                            return None;
+                        }
                     }
-                }
-                None => home.clone(),
-            };
-            results
-                .get(&CellRef {
-                    sheet_id: sid,
-                    row: r,
-                    col: c,
-                })
-                .cloned()
-        });
+                    None => home.clone(),
+                };
+                results
+                    .get(&CellRef {
+                        sheet_id: sid,
+                        row: r.to_string(),
+                        col: c.to_string(),
+                    })
+                    .cloned()
+            },
+        );
         let value = if bad_sheet.get() {
             "#REF!".to_string()
         } else {
@@ -187,8 +192,8 @@ mod tests {
     fn cr(sheet: &str, row: u32, col: u32) -> CellRef {
         CellRef {
             sheet_id: sheet.into(),
-            row,
-            col,
+            row: row.to_string(),
+            col: col.to_string(),
         }
     }
 
@@ -208,7 +213,7 @@ mod tests {
             (cr("S2", 0, 0), "9"),
         ]);
         assert_eq!(
-            sheet_closure(&cells, &BTreeMap::new(), "S1"),
+            sheet_closure(&cells, &formula::Env::default(), "S1"),
             ["S1".to_string()].into_iter().collect()
         );
     }
@@ -217,7 +222,7 @@ mod tests {
     fn closure_includes_directly_referenced_sheet() {
         let cells = inputs(&[(cr("S1", 0, 0), "=[S2]!A1"), (cr("S2", 0, 0), "5")]);
         assert_eq!(
-            sheet_closure(&cells, &BTreeMap::new(), "S1"),
+            sheet_closure(&cells, &formula::Env::default(), "S1"),
             ["S1".to_string(), "S2".to_string()].into_iter().collect()
         );
     }
@@ -232,7 +237,7 @@ mod tests {
             (cr("S4", 0, 0), "9"),
         ]);
         assert_eq!(
-            sheet_closure(&cells, &BTreeMap::new(), "S1"),
+            sheet_closure(&cells, &formula::Env::default(), "S1"),
             ["S1", "S2", "S3"].iter().map(|s| s.to_string()).collect()
         );
     }
@@ -241,7 +246,7 @@ mod tests {
     fn closure_of_sheet_with_no_cells_is_self() {
         let cells = inputs(&[(cr("S2", 0, 0), "9")]);
         assert_eq!(
-            sheet_closure(&cells, &BTreeMap::new(), "S1"),
+            sheet_closure(&cells, &formula::Env::default(), "S1"),
             ["S1".to_string()].into_iter().collect()
         );
     }
@@ -251,7 +256,7 @@ mod tests {
         // S1 ↔ S2 mutually reference; closure(S1) must include both and terminate.
         let cells = inputs(&[(cr("S1", 0, 0), "=[S2]!A1"), (cr("S2", 0, 0), "=[S1]!A1")]);
         assert_eq!(
-            sheet_closure(&cells, &BTreeMap::new(), "S1"),
+            sheet_closure(&cells, &formula::Env::default(), "S1"),
             ["S1".to_string(), "S2".to_string()].into_iter().collect()
         );
     }
@@ -333,8 +338,8 @@ mod eval_tests {
                     (
                         CellRef {
                             sheet_id: (*s).into(),
-                            row: *r,
-                            col: *c,
+                            row: r.to_string(),
+                            col: c.to_string(),
                         },
                         (*v).into(),
                     )
@@ -347,8 +352,8 @@ mod eval_tests {
     fn get(out: &BTreeMap<CellRef, String>, s: &str, r: u32, c: u32) -> String {
         out.get(&CellRef {
             sheet_id: s.into(),
-            row: r,
-            col: c,
+            row: r.to_string(),
+            col: c.to_string(),
         })
         .cloned()
         .unwrap_or_default()

@@ -17,9 +17,10 @@ never stored.**
 
 Each cell in a workbook is a CRDT entry, merged across peers with
 last-writer-wins semantics. What that entry holds is deliberately narrow: the
-cell's identity (sheet, row, column), its raw content (a literal or a
-formula string), and its format — nothing else. In particular, a cell never
-stores its *computed* value.
+cell's identity (sheet, row id, column id) and its raw content (a literal or a
+formula string) — nothing else. Its format is a separate last-writer-wins
+entry under the same key, so formatting a cell while someone types in it
+keeps both. In particular, a cell never stores its *computed* value.
 
 That constraint exists because of what CRDT merge can and can't do here. A
 merge is a field-level operation with no hook back into application logic —
@@ -31,6 +32,30 @@ inconsistent — a `computed_value` that doesn't match what the merged inputs
 actually imply. Keeping computed values out of the CRDT entirely sidesteps
 that failure mode by construction: there is nothing derived to merge
 incorrectly.
+
+## Rows and columns by id
+
+A cell is keyed by row and column **id**, not position. Each sheet has an
+axis of row ids and one of column ids, ordered by fractional position
+strings, so inserting or deleting a row is one write to the axis, not a
+rewrite of every cell below it, and an edit that races an insert lands on the
+cell it was aimed at. Formulas store references by id too (`=SUM(A1:A4)` for
+rows that were there from the start, `{r=n…;c=0}` for inserted ones), so they
+keep pointing at the same cells; a reference to a deleted row reads `#REF!`.
+
+Every workbook written before ids existed keeps working unchanged: the
+original row `k` has id `k` at an implicit position, so an old key or an old
+A1 formula already *is* the id form. The app shows and accepts positions; the
+engine converts at the edge (`to_display` / `to_stored` in
+`logic/crates/recalc`), and places cells with the same layout code the node
+evaluates with. See [Recalc engine](recalc) for the formula side.
+
+**The v2 migration** that introduced ids, per-field formats and named ranges
+carries every v1 collection over by id and rewrites no cell, so it costs the
+same for a workbook of any size: a migration runs as one execution, and
+rewriting cells one by one would exhaust its gas budget past a few hundred of
+them. It also drops v1's contract-stored cursors, which are ephemeral presence
+now.
 
 ## Derive-on-read
 

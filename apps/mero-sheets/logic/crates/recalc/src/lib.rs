@@ -15,4 +15,5 @@
 )]
 
 pub mod formula;
+pub mod layout;
 pub mod recalc;

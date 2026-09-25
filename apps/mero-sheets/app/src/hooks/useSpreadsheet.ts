@@ -15,28 +15,43 @@
  *    through the pending overlay and rely on the subscription refresh to reconcile —
  *    they do NOT call refresh() directly. Sheet-level ops (initProject/createSheet/
  *    renameSheet/deleteSheet) still call refresh() directly after the write.
+ *  - The node stores cells by row and column id, and formulas with references by
+ *    id (see logic/crates/recalc/src/layout.rs). This hook is the boundary: callers
+ *    see positions and formulas as typed, and it places cells and converts
+ *    formulas through the engine, which holds every sheet's layout.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMero, useSubscription } from '@calimero-network/mero-react';
 import { useStreamReconnect } from './useStreamReconnect';
 import { SpreadsheetClient } from '../api/spreadsheet/SpreadsheetClient';
 import type {
-  Sheet, Cell, FunctionDef, Member, Project,
+  Sheet, FunctionDef, Member, Project, NamedRange, SheetLayout, AxisOpPayload,
 } from '../api/spreadsheet/SpreadsheetClient';
-import { CellOp as CellOpWire } from '../api/spreadsheet/SpreadsheetClient';
-import { chunkOps, type CellOp } from '../spreadsheet/ops';
+import { AxisOp as AxisOpWire, CellOp as CellOpWire } from '../api/spreadsheet/SpreadsheetClient';
+import { chunkOps, MAX_OPS_PER_APPLY, type CellOp } from '../spreadsheet/ops';
 import { isNoop, mergePlans, planFor, type RefreshPlan } from '../spreadsheet/events';
-import { initEngine, engineReady, evaluate as engineEvaluate, functionCatalog } from '../engine/engine';
+import { newAxisId, positionOf, positionsBetween, type AxisEntry } from '../spreadsheet/axis';
+import { rangeRef, type Rect } from '../spreadsheet/refs';
 import {
-  snapshotFromCells, retireOverlay, deriveActiveCells, diffComputed, cellKey,
-  type Snapshot, type Overlay,
+  initEngine, engineReady, evaluate as engineEvaluate, functionCatalog,
+  setStructure, visibleOrder, toStored, toDisplay,
+} from '../engine/engine';
+import {
+  snapshotFromCells, retireOverlay, deriveSheetCells, diffComputed, cellKey,
+  type GridCell, type Snapshot, type Overlay, type Placement,
 } from '../engine/derive';
+
+/** A cell as callers see it: placed at a position, formula in display form. */
+export type Cell = GridCell;
+
+/** Rows or columns. */
+export type Axis = 'row' | 'col';
 
 /** How long events are gathered before one round of reads. */
 const EVENT_COALESCE_MS = 60;
 
 // Re-export domain types so components import from one place
-export type { Sheet, Cell, FunctionDef, Member, Project };
+export type { Sheet, FunctionDef, Member, Project, NamedRange };
 
 // ── Hook interfaces ──────────────────────────────────────────────────────────
 
@@ -94,10 +109,18 @@ export interface UseSpreadsheetReturn {
   clearCell: (sheetId: string, row: number, col: number) => Promise<void>;
   setCellFormat: (sheetId: string, row: number, col: number, format: string) => Promise<void>;
   applyCellOps: (sheetId: string, ops: CellOp[]) => Promise<void>;
+  /** Insert `count` rows or columns before position `at`: one write each. */
+  insertAxis: (sheetId: string, axis: Axis, at: number, count: number) => Promise<void>;
+  /** Delete the rows or columns at these positions. */
+  deleteAxis: (sheetId: string, axis: Axis, positions: number[]) => Promise<void>;
+  /** Named ranges, targets in display form (`[sheet-id]!A1:B4`). */
+  namedRanges: NamedRange[];
+  defineName: (name: string, sheetId: string, rect: Rect) => Promise<void>;
+  deleteName: (name: string) => Promise<void>;
   // Export
   exportAll: () => Promise<Sheet[]>;
-  /** Fetch one sheet's cells on demand (off the mutation queue) — used by download. */
-  getSheetCells: (sheetId: string) => Promise<Cell[]>;
+  /** One sheet's cells, placed and computed from the warm store — used by download. */
+  getSheetCells: (sheetId: string) => Cell[];
   // Function search (local filter)
   searchFunctions: (prefix: string) => FunctionDef[];
   refresh: () => Promise<void>;
@@ -128,6 +151,16 @@ export function useSpreadsheet({
 
   const snapshotRef = useRef<Snapshot>(new Map());
   const overlayRef = useRef<Overlay>(new Map());
+  // The workbook structure, as the node stores it, mirrored into the engine.
+  const layoutsRef = useRef<SheetLayout[]>([]);
+  const namesRef = useRef<NamedRange[]>([]);
+  const [names, setNames] = useState<NamedRange[]>([]);
+  const applyStructureTo = useCallback((layouts: SheetLayout[], named: NamedRange[]) => {
+    layoutsRef.current = layouts;
+    namesRef.current = named;
+    setStructure(layouts, named);
+    setNames(named);
+  }, []);
   const [engineTick, setEngineTick] = useState(0); // bump to re-derive after init
 
   useEffect(() => {
@@ -181,50 +214,72 @@ export function useSpreadsheet({
   // Derive the active sheet's cells from the warm store ⊕ overlay and paint them.
   // Before the engine is ready, fall back to the node computed values captured in
   // the snapshot (pre-WASM initial paint — no flash of raw formulas).
-  const deriveAndSet = useCallback(() => {
-    const active = activeSheetIdRef.current;
-    if (!active) { setCells([]); return; }
+  const placement = (sheetId: string): Placement => ({
+    order: visibleOrder(sheetId),
+    toDisplay: (stored) => toDisplay(stored, sheetId),
+  });
+
+  // One sheet's cells, placed and computed. Before the engine is ready, the
+  // node's computed values captured in the snapshot, at their legacy positions
+  // (pre-WASM initial paint — no flash of raw formulas).
+  const sheetCells = useCallback((sheetId: string): Cell[] => {
     if (!engineReady()) {
-      setCells([...snapshotRef.current.values()].filter((c) => c.sheet_id === active));
-      return;
+      return [...snapshotRef.current.values()]
+        .filter((c) => c.sheet_id === sheetId && /^\d+$/.test(c.row_id) && /^\d+$/.test(c.col_id))
+        .map((c) => ({ ...c, row: Number(c.row_id), col: Number(c.col_id) }));
     }
     const sheetIds = [...new Set([
       ...sheetsRef.current.map((s) => s.id),
       ...[...snapshotRef.current.values()].map((c) => c.sheet_id),
       ...[...overlayRef.current.values()].map((e) => e.sheet_id),
     ])];
-    const derived = deriveActiveCells(
-      snapshotRef.current, overlayRef.current, sheetIds, active, engineEvaluate,
+    return deriveSheetCells(
+      snapshotRef.current, overlayRef.current, sheetIds, sheetId, engineEvaluate, placement(sheetId),
     );
-    setCells(derived);
-    if (import.meta.env.DEV) {
-      const nodeActive = [...snapshotRef.current.values()].filter((c) => c.sheet_id === active);
-      const bad = diffComputed(nodeActive, derived);
-      if (bad.length) console.error('[recalc] WASM/node computed-value disagreement at', bad, '— stale wasm artifact or engine-input mismatch');
-    }
   }, []);
 
-  // Apply local ops to the overlay and repaint immediately (before the node write).
+  // Derive the active sheet's cells from the warm store ⊕ overlay and paint them.
+  const deriveAndSet = useCallback(() => {
+    const active = activeSheetIdRef.current;
+    if (!active) { setCells([]); return; }
+    const derived = sheetCells(active);
+    setCells(derived);
+    if (import.meta.env.DEV && engineReady()) {
+      const nodeActive = [...snapshotRef.current.values()].filter((c) => c.sheet_id === active);
+      const bad = diffComputed(nodeActive, derived, visibleOrder(active));
+      if (bad.length) console.error('[recalc] WASM/node computed-value disagreement at', bad, '— stale wasm artifact or engine-input mismatch');
+    }
+  }, [sheetCells]);
+
+  // Apply local edits (by id, raw in stored form) to the overlay and repaint
+  // immediately, before the node write.
   const applyOverlay = useCallback(
-    (sheetId: string, edits: { row: number; col: number; raw_value?: string; format?: string; clear?: boolean }[]) => {
+    (sheetId: string, edits: { row_id: string; col_id: string; raw_value?: string; format?: string; clear?: boolean }[]) => {
       for (const e of edits) {
-        const key = cellKey(sheetId, e.row, e.col);
+        const key = cellKey(sheetId, e.row_id, e.col_id);
         const prev = overlayRef.current.get(key)
           ?? snapshotRef.current.get(key)
-          ?? { sheet_id: sheetId, row: e.row, col: e.col, raw_value: '', format: '' };
-        const next = e.clear
-          ? { sheet_id: sheetId, row: e.row, col: e.col, raw_value: '', format: '' }
-          : {
-              sheet_id: sheetId, row: e.row, col: e.col,
-              raw_value: e.raw_value ?? prev.raw_value,
-              format: e.format ?? prev.format,
-            };
-        overlayRef.current.set(key, next);
+          ?? { raw_value: '', format: '' };
+        overlayRef.current.set(key, {
+          sheet_id: sheetId,
+          row_id: e.row_id,
+          col_id: e.col_id,
+          raw_value: e.clear ? '' : e.raw_value ?? prev.raw_value,
+          format: e.clear ? '' : e.format ?? prev.format,
+        });
       }
       deriveAndSet();
     },
     [deriveAndSet],
   );
+
+  /** The row and column id at a position, or null past the sheet's edge. */
+  const idsAt = (sheetId: string, row: number, col: number) => {
+    const order = visibleOrder(sheetId);
+    const row_id = order.rows[row];
+    const col_id = order.cols[col];
+    return row_id !== undefined && col_id !== undefined ? { row_id, col_id } : null;
+  };
 
   const refresh = useCallback(async () => {
     if (!client) return;
@@ -233,14 +288,17 @@ export function useSpreadsheet({
     try {
       const [
         fetchedSheets, allCells,
-        fetchedMembers, fetchedProject, me,
+        fetchedMembers, fetchedProject, me, layouts, named,
       ] = await Promise.all([
         client.listSheets(),
         client.getAllCells(),
         client.getMembers(),
         client.getProject(),
         client.whoami(),
+        client.getLayouts(),
+        client.getNamedRanges(),
       ]);
+      applyStructureTo(layouts, named);
       snapshotRef.current = snapshotFromCells(allCells);
       overlayRef.current = retireOverlay(overlayRef.current, snapshotRef.current);
       setSheets(fetchedSheets.sort((a, b) => a.position - b.position));
@@ -255,7 +313,7 @@ export function useSpreadsheet({
       setLoaded(true);
       setMembersLoaded(true);
     }
-  }, [client, deriveAndSet]);
+  }, [client, deriveAndSet, applyStructureTo]);
 
   // Reset the loaded flag whenever the client changes (new context) so callers
   // wait for that context's first fetch before acting on empty state.
@@ -296,22 +354,25 @@ export function useSpreadsheet({
     const active = activeSheetIdRef.current;
     if (sheetIds.size > 0 && active) sheetIds.add(active);
     const ids = [...sheetIds];
-    const [bySheet, fetchedSheets, fetchedMembers] = await Promise.all([
+    const [bySheet, fetchedSheets, fetchedMembers, layouts, named] = await Promise.all([
       Promise.all(ids.map((id) => client.getCells({ sheet_id: id }))),
       plan.sheetList ? client.listSheets() : null,
       plan.members ? client.getMembers() : null,
+      plan.layouts ? client.getLayouts() : null,
+      plan.names ? client.getNamedRanges() : null,
     ]);
+    if (layouts || named) applyStructureTo(layouts ?? layoutsRef.current, named ?? namesRef.current);
     if (ids.length > 0) {
       const next = new Map(snapshotRef.current);
       for (const [key, c] of next) if (sheetIds.has(c.sheet_id)) next.delete(key);
-      for (const c of bySheet.flat()) next.set(cellKey(c.sheet_id, c.row, c.col), c);
+      for (const c of bySheet.flat()) next.set(cellKey(c.sheet_id, c.row_id, c.col_id), c);
       snapshotRef.current = next;
       overlayRef.current = retireOverlay(overlayRef.current, next);
     }
     if (fetchedSheets) setSheets(fetchedSheets.sort((a, b) => a.position - b.position));
     if (fetchedMembers) setMembers(fetchedMembers);
     deriveAndSet();
-  }, [client, deriveAndSet]);
+  }, [client, deriveAndSet, applyStructureTo]);
 
   // Events are coalesced for a moment and read in one round; one round runs
   // at a time, and whatever arrives meanwhile is merged into the next.
@@ -394,30 +455,29 @@ export function useSpreadsheet({
 
   const setCell = useCallback(
     async (sheetId: string, row: number, col: number, rawValue: string) => {
-      if (!client) return;
-      applyOverlay(sheetId, [{ row, col, raw_value: rawValue }]);
-      await enqueue(() =>
-        rawValue.startsWith('=')
-          ? // Store as formula — backend evaluates and returns computed_value
-            client.setCellFormula({ sheet_id: sheetId, row, col, formula: rawValue })
-          : client.setCell({ sheet_id: sheetId, row, col, raw_value: rawValue }),
-      );
+      const at = idsAt(sheetId, row, col);
+      if (!client || !at) return;
+      const raw_value = toStored(rawValue, sheetId);
+      applyOverlay(sheetId, [{ ...at, raw_value }]);
+      await enqueue(() => client.setCell({ sheet_id: sheetId, ...at, raw_value }));
       // No await refresh() here — the subscription refresh reconciles + retires.
     },
     [client, applyOverlay, enqueue],
   );
 
   const clearCell = useCallback(async (sheetId: string, row: number, col: number) => {
-    if (!client) return;
-    applyOverlay(sheetId, [{ row, col, clear: true }]);
-    await enqueue(() => client.clearCell({ sheet_id: sheetId, row, col }));
+    const at = idsAt(sheetId, row, col);
+    if (!client || !at) return;
+    applyOverlay(sheetId, [{ ...at, clear: true }]);
+    await enqueue(() => client.clearCell({ sheet_id: sheetId, ...at }));
   }, [client, applyOverlay, enqueue]);
 
   const setCellFormat = useCallback(
     async (sheetId: string, row: number, col: number, format: string) => {
-      if (!client) return;
-      applyOverlay(sheetId, [{ row, col, format }]);
-      await enqueue(() => client.setCellFormat({ sheet_id: sheetId, row, col, format }));
+      const at = idsAt(sheetId, row, col);
+      if (!client || !at) return;
+      applyOverlay(sheetId, [{ ...at, format }]);
+      await enqueue(() => client.setCellFormat({ sheet_id: sheetId, ...at, format }));
     },
     [client, applyOverlay, enqueue],
   );
@@ -425,37 +485,146 @@ export function useSpreadsheet({
   const applyCellOps = useCallback(
     async (sheetId: string, ops: CellOp[]) => {
       if (!client || ops.length === 0) return;
-      applyOverlay(sheetId, ops.map((op) =>
-        op.kind === 'Set'    ? { row: op.row, col: op.col, raw_value: op.raw_value }
-        : op.kind === 'Format' ? { row: op.row, col: op.col, format: op.format }
-        : { row: op.row, col: op.col, clear: true },
-      ));
-      const wire = (chunk: CellOp[]) => chunk.map((op) =>
-        op.kind === 'Set'
-          ? CellOpWire.Set({ row: op.row, col: op.col, raw_value: op.raw_value })
+      // Positions and typed formulas → ids and stored formulas, once, before
+      // anything is painted or sent.
+      const byId = ops.flatMap((op) => {
+        const at = idsAt(sheetId, op.row, op.col);
+        if (!at) return [];
+        return [op.kind === 'Set'
+          ? { kind: 'Set' as const, ...at, raw_value: toStored(op.raw_value, sheetId) }
           : op.kind === 'Format'
-            ? CellOpWire.Format({ row: op.row, col: op.col, format: op.format })
-            : CellOpWire.Clear({ row: op.row, col: op.col }));
+            ? { kind: 'Format' as const, ...at, format: op.format }
+            : { kind: 'Clear' as const, ...at }];
+      });
+      applyOverlay(sheetId, byId.map((op) =>
+        op.kind === 'Set' ? { row_id: op.row_id, col_id: op.col_id, raw_value: op.raw_value }
+        : op.kind === 'Format' ? { row_id: op.row_id, col_id: op.col_id, format: op.format }
+        : { row_id: op.row_id, col_id: op.col_id, clear: true },
+      ));
+      const wire = byId.map((op) =>
+        op.kind === 'Set'
+          ? CellOpWire.Set({ row_id: op.row_id, col_id: op.col_id, raw_value: op.raw_value })
+          : op.kind === 'Format'
+            ? CellOpWire.Format({ row_id: op.row_id, col_id: op.col_id, format: op.format })
+            : CellOpWire.Clear({ row_id: op.row_id, col_id: op.col_id }));
       // One queue slot for the whole batch, so no other write lands between
       // its commits; each commit stays under the node's per-commit caps.
       await enqueue(async () => {
-        for (const chunk of chunkOps(ops)) {
-          await client.applyCellOps({ sheet_id: sheetId, ops: wire(chunk) });
+        for (const chunk of chunkOps(wire)) {
+          await client.applyCellOps({ sheet_id: sheetId, ops: chunk });
         }
       });
     },
     [client, applyOverlay, enqueue],
   );
 
+  // ── Rows and columns ─────────────────────────────────────────────────────
+
+  /** A sheet's entries on one axis, as the engine holds them. */
+  const axisEntries = (sheetId: string, axis: Axis): AxisEntry[] => {
+    const l = layoutsRef.current.find((x) => x.sheet_id === sheetId);
+    return (axis === 'row' ? l?.rows : l?.cols) ?? [];
+  };
+
+  /** Add entries to the local structure at once, then send the ops. */
+  const commitAxis = useCallback(
+    async (sheetId: string, axis: Axis, added: AxisEntry[], ops: AxisOpPayload[]) => {
+      if (!client || ops.length === 0) return;
+      const layouts = layoutsRef.current.some((l) => l.sheet_id === sheetId)
+        ? layoutsRef.current
+        : [...layoutsRef.current, { sheet_id: sheetId, rows: [], cols: [] }];
+      applyStructureTo(
+        layouts.map((l) => {
+          if (l.sheet_id !== sheetId) return l;
+          const key = axis === 'row' ? 'rows' : 'cols';
+          const kept = l[key].filter((e) => !added.some((a) => a.id === e.id));
+          return { ...l, [key]: [...kept, ...added] };
+        }),
+        namesRef.current,
+      );
+      deriveAndSet();
+      await enqueue(async () => {
+        for (let i = 0; i < ops.length; i += MAX_OPS_PER_APPLY) {
+          await client.applyAxisOps({ sheet_id: sheetId, ops: ops.slice(i, i + MAX_OPS_PER_APPLY) });
+        }
+      });
+    },
+    [client, enqueue, deriveAndSet, applyStructureTo],
+  );
+
+  const insertAxis = useCallback(
+    async (sheetId: string, axis: Axis, at: number, count: number) => {
+      const order = visibleOrder(sheetId);
+      const ids = axis === 'row' ? order.rows : order.cols;
+      const entries = axisEntries(sheetId, axis);
+      const before = at > 0 ? positionOf(ids[at - 1], entries) ?? '' : '';
+      const after = at < ids.length ? positionOf(ids[at], entries) : null;
+      const added = positionsBetween(before, after, count)
+        .map((pos) => ({ id: newAxisId(), pos, deleted: false }));
+      const ops = added.map(({ id, pos }) =>
+        axis === 'row' ? AxisOpWire.InsertRow({ id, pos }) : AxisOpWire.InsertCol({ id, pos }));
+      await commitAxis(sheetId, axis, added, ops);
+    },
+    [commitAxis],
+  );
+
+  const deleteAxis = useCallback(
+    async (sheetId: string, axis: Axis, positions: number[]) => {
+      const order = visibleOrder(sheetId);
+      const ids = axis === 'row' ? order.rows : order.cols;
+      const entries = axisEntries(sheetId, axis);
+      const added = [...new Set(positions)].flatMap((p) => {
+        const id = ids[p];
+        const pos = id === undefined ? null : positionOf(id, entries);
+        return id === undefined || pos === null ? [] : [{ id, pos, deleted: true }];
+      });
+      const ops = added.map(({ id }) =>
+        axis === 'row' ? AxisOpWire.DeleteRow({ id }) : AxisOpWire.DeleteCol({ id }));
+      await commitAxis(sheetId, axis, added, ops);
+    },
+    [commitAxis],
+  );
+
+  // ── Named ranges ─────────────────────────────────────────────────────────
+
+  const defineName = useCallback(
+    async (name: string, sheetId: string, rect: Rect) => {
+      if (!client) return;
+      const display = `=[${sheetId}]!${rangeRef({ row: rect.top, col: rect.left }, { row: rect.bottom, col: rect.right })}`;
+      const target = toStored(display, sheetId).slice(1);
+      await enqueue(() => client.setNamedRange({ name, target }));
+      applyStructureTo(layoutsRef.current, [
+        ...namesRef.current.filter((n) => n.name.toUpperCase() !== name.toUpperCase()),
+        { name, target },
+      ]);
+      deriveAndSet();
+    },
+    [client, enqueue, applyStructureTo, deriveAndSet],
+  );
+
+  const deleteName = useCallback(
+    async (name: string) => {
+      if (!client) return;
+      await enqueue(() => client.deleteNamedRange({ name }));
+      applyStructureTo(layoutsRef.current, namesRef.current.filter((n) => n.name.toUpperCase() !== name.toUpperCase()));
+      deriveAndSet();
+    },
+    [client, enqueue, applyStructureTo, deriveAndSet],
+  );
+
+  // Targets in display form, for the names list. Computed each render: a
+  // handful of names, and the conversion depends on the engine having loaded.
+  const namedRanges = names.map((n) => {
+    const sheet = /^\[([^\]]+)\]!/.exec(n.target)?.[1] ?? activeSheetId ?? '';
+    return { name: n.name, target: toDisplay(`=${n.target}`, sheet).slice(1) };
+  });
+
   const exportAll = useCallback(async (): Promise<Sheet[]> => {
     if (!client) return sheets;
     return client.exportAll();
   }, [client, sheets]);
 
-  const getSheetCells = useCallback(
-    (sheetId: string) => (client ? client.getCells({ sheet_id: sheetId }) : Promise.resolve([])),
-    [client],
-  );
+  const getSheetCells = useCallback((sheetId: string) => sheetCells(sheetId), [sheetCells]);
 
   const searchFunctions = useCallback(
     (prefix: string): FunctionDef[] => {
@@ -488,6 +657,11 @@ export function useSpreadsheet({
     clearCell,
     setCellFormat,
     applyCellOps,
+    insertAxis,
+    deleteAxis,
+    namedRanges,
+    defineName,
+    deleteName,
     exportAll,
     getSheetCells,
     searchFunctions,

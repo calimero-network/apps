@@ -12,16 +12,17 @@
 //! list and a test evaluates every example, so the help cannot drift from the
 //! engine.
 
+use std::borrow::Cow;
 use std::cmp::Ordering::{self, Equal, Greater, Less};
 use std::collections::BTreeMap;
 
-/// Rows a whole-column reference (`A:A`) spans.
+use crate::layout::{legacy_index, Axis, Layout};
+
+/// Rows a sheet has, and so what a whole-column reference (`A:A`) spans.
 pub const MAX_ROWS: u32 = 1000;
-/// Columns a whole-row reference (`1:1`) spans, which is also the widest
-/// column a reference may name: `A`..`ZZ`.
+/// Columns a sheet has, and so what a whole-row reference (`1:1`) spans:
+/// `A`..`ZZ`.
 pub const MAX_COLS: u32 = 702;
-/// The highest row a reference may name.
-const MAX_REF_ROW: u32 = 1_048_576;
 /// Nesting a formula may use before it is refused; bounds the parser's
 /// recursion, which runs on the contract's small wasm stack.
 const MAX_DEPTH: usize = 64;
@@ -36,28 +37,33 @@ pub struct Env {
     /// `TODAY()`.
     pub now_ms: u64,
     /// Named ranges: upper-case name → the reference it stands for, written as
-    /// a formula would write it (`B2:B20`, `[sheet-id]!A1:A9`).
+    /// a stored formula would write it (`B2:B20`, `[sheet-id]!A1:A9`).
     pub names: BTreeMap<String, String>,
+    /// Row and column order per sheet id. A sheet with no entry has the legacy
+    /// layout, where row id `k` is row `k`.
+    pub layouts: BTreeMap<String, Layout>,
 }
 
-/// Evaluate a formula with no named ranges and the clock at the epoch.
+impl Env {
+    fn layout(&self, sheet: &str) -> Cow<'_, Layout> {
+        match self.layouts.get(sheet) {
+            Some(l) => Cow::Borrowed(l),
+            None => Cow::Owned(Layout::identity(MAX_ROWS, MAX_COLS)),
+        }
+    }
+}
+
+/// Evaluate a formula on sheet `home` against `env`.
 ///
-/// `formula` should start with `=`. `get_value(sheet, row, col)` returns a
-/// cell's current computed value: `sheet` is `None` for a reference on the
-/// formula's own sheet and `Some(id)` for `[id]!A1`. Rows and columns are
-/// 0-based; `A1` is row 0, column 0.
-pub fn evaluate(
-    formula: &str,
-    get_value: impl Fn(Option<&str>, u32, u32) -> Option<String>,
-) -> String {
-    evaluate_with(formula, &Env::default(), get_value)
-}
-
-/// Evaluate a formula against `env`. See [`evaluate`].
+/// References in `formula` are in stored form: rows and columns by id (see
+/// [`crate::layout`]). `get_value(sheet, row_id, col_id)` returns a cell's
+/// current computed value; `sheet` is `None` for the formula's own sheet and
+/// `Some(id)` for `[id]!A1`.
 pub fn evaluate_with(
     formula: &str,
+    home: &str,
     env: &Env,
-    get_value: impl Fn(Option<&str>, u32, u32) -> Option<String>,
+    get_value: impl Fn(Option<&str>, &str, &str) -> Option<String>,
 ) -> String {
     let body = formula.trim();
     let body = body.strip_prefix('=').unwrap_or(body);
@@ -68,6 +74,7 @@ pub fn evaluate_with(
         Ok(expr) => Ctx {
             get: &get_value,
             env,
+            home,
         }
         .eval(&expr)
         .display(),
@@ -75,19 +82,11 @@ pub fn evaluate_with(
     }
 }
 
-/// Every cell a formula reads, as `(sheet_id, row, col)`, with `home_sheet`
-/// for unqualified references. Ranges expand to their cells. Every branch of
-/// an `IF` is included, so the dependency order is valid whichever branch runs.
-pub fn precedents(formula: &str, home_sheet: &str) -> Vec<(String, u32, u32)> {
-    precedents_with(formula, home_sheet, &BTreeMap::new())
-}
-
-/// [`precedents`], also following named ranges through `names`.
-pub fn precedents_with(
-    formula: &str,
-    home_sheet: &str,
-    names: &BTreeMap<String, String>,
-) -> Vec<(String, u32, u32)> {
+/// Every cell a formula reads, as `(sheet_id, row_id, col_id)`, with `home`
+/// for unqualified references. Ranges expand through the sheet's layout and
+/// named ranges through `env.names`. Every branch of an `IF` is included, so
+/// the dependency order is valid whichever branch runs.
+pub fn precedents_with(formula: &str, home: &str, env: &Env) -> Vec<(String, String, String)> {
     let Some(body) = formula.trim().strip_prefix('=') else {
         return Vec::new();
     };
@@ -95,13 +94,15 @@ pub fn precedents_with(
         return Vec::new();
     };
     let mut refs = Vec::new();
-    collect_refs(&expr, names, &mut refs);
+    collect_refs(&expr, &env.names, &mut refs);
     let mut out = Vec::new();
     for r in refs {
-        let sheet = r.sheet.as_deref().unwrap_or(home_sheet);
-        for row in r.r1..=r.r2 {
-            for col in r.c1..=r.c2 {
-                out.push((sheet.to_string(), row, col));
+        let sheet = r.sheet.as_deref().unwrap_or(home);
+        if let Ok((rows, cols)) = resolve(&r, &env.layout(sheet)) {
+            for row in &rows {
+                for col in &cols {
+                    out.push((sheet.to_string(), row.clone(), col.clone()));
+                }
             }
         }
     }
@@ -131,6 +132,215 @@ fn name_ref(names: &BTreeMap<String, String>, name: &str) -> Option<RefExpr> {
         Ok(Expr::Ref(r)) => Some(r),
         _ => None,
     }
+}
+
+/// The row ids and column ids a reference covers, in order, or `#REF!` when
+/// an end names a deleted row or column.
+fn resolve(r: &RefExpr, layout: &Layout) -> Result<(Vec<String>, Vec<String>), ErrCode> {
+    let span =
+        |axis: &Axis, a: &Option<String>, b: &Option<String>| -> Result<Vec<String>, ErrCode> {
+            let (i, j) = match (a, b) {
+                (Some(a), Some(b)) => (
+                    axis.index_of(a).ok_or(E::Ref)?,
+                    axis.index_of(b).ok_or(E::Ref)?,
+                ),
+                // A whole column or row: every position on the other axis.
+                _ if axis.is_empty() => return Ok(Vec::new()),
+                _ => (0, axis.len() - 1),
+            };
+            Ok((i.min(j)..=i.max(j))
+                .filter_map(|k| axis.id_at(k).map(Cow::into_owned))
+                .collect())
+        };
+    Ok((
+        span(&layout.rows, &r.r1, &r.r2)?,
+        span(&layout.cols, &r.c1, &r.c2)?,
+    ))
+}
+
+// ── Display ⇄ stored ────────────────────────────────────────────────────
+//
+// A person reads and types references by position (`B12` is the twelfth row
+// they see). Stored formulas name rows and columns by id, so a formula keeps
+// pointing at its cells when rows are inserted or deleted around them. These
+// two rewrite only the reference spans of a formula, leaving everything else
+// (spacing, function names, strings, `$` anchors) exactly as written.
+
+/// A formula as typed (positions) → as stored (ids).
+pub fn to_stored(formula: &str, home: &str, env: &Env) -> String {
+    rewrite_refs(formula, home, env, true)
+}
+
+/// A formula as stored (ids) → as shown (positions). A reference to a deleted
+/// row or column shows as `#REF!`.
+pub fn to_display(formula: &str, home: &str, env: &Env) -> String {
+    rewrite_refs(formula, home, env, false)
+}
+
+/// Which `$` anchors a reference end carries, read from its source text.
+fn anchors(raw: &str) -> (bool, bool) {
+    if let Some(body) = raw.strip_prefix('{') {
+        return (body.contains("$c="), body.contains("$r="));
+    }
+    let col_abs = raw.starts_with('$');
+    let row_abs = raw
+        .char_indices()
+        .any(|(i, ch)| ch == '$' && raw[i + 1..].starts_with(|d: char| d.is_ascii_digit()));
+    (col_abs, row_abs)
+}
+
+fn rewrite_refs(formula: &str, home: &str, env: &Env, to_ids: bool) -> String {
+    let Some(body) = formula.strip_prefix('=') else {
+        return formula.to_string();
+    };
+    let Ok(toks) = lex(body) else {
+        return formula.to_string();
+    };
+    let chars: Vec<char> = body.chars().collect();
+    let mut out = String::from("=");
+    let mut copied = 0;
+    let mut i = 0;
+    while i < toks.len() {
+        let sheet = match &toks[i].tok {
+            Tok::Sheet(id) => Some(id.as_str()),
+            _ => None,
+        };
+        let first = i + usize::from(sheet.is_some());
+        let Some(a) = toks.get(first) else { break };
+        let colon = matches!(toks.get(first + 1), Some(t) if t.tok == Tok::Colon);
+        let b = if colon { toks.get(first + 2) } else { None };
+        let is_call = matches!(toks.get(first + 1), Some(t) if t.tok == Tok::LParen);
+        let group = match (
+            Anchor::from_tok(&a.tok),
+            b.and_then(|b| Anchor::from_tok(&b.tok)),
+        ) {
+            (Some(Anchor::Cell(..)), Some(Anchor::Cell(..)))
+            | (Some(Anchor::Col(_)), Some(Anchor::Col(_)))
+            | (Some(Anchor::Row(_)), Some(Anchor::Row(_))) => Some(vec![a, b.unwrap_or(a)]),
+            (Some(Anchor::Cell(..)), _) if !(is_call || colon && b.is_some()) => Some(vec![a]),
+            _ => None,
+        };
+        let Some(ends) = group else {
+            i += 1;
+            continue;
+        };
+        let layout = env.layout(sheet.unwrap_or(home));
+        let rewritten: Option<Vec<String>> = ends
+            .iter()
+            .map(|t| rewrite_end(&t.tok, &t.raw, &layout, to_ids))
+            .collect();
+        let span_start = a.start;
+        let span_end = ends[ends.len() - 1].end;
+        out.extend(&chars[copied..span_start]);
+        match rewritten {
+            Some(parts) if parts.len() == 2 => {
+                out.push_str(&parts[0]);
+                out.push(':');
+                out.push_str(&parts[1]);
+            }
+            Some(parts) => out.push_str(&parts[0]),
+            None => out.push_str(E::Ref.as_str()),
+        }
+        copied = span_end;
+        i = first + if ends.len() == 2 { 3 } else { 1 };
+    }
+    out.extend(&chars[copied..]);
+    out
+}
+
+/// One reference end in the other form, or `None` when it names a row or
+/// column that does not exist (deleted, or past the sheet).
+fn rewrite_end(tok: &Tok, raw: &str, layout: &Layout, to_ids: bool) -> Option<String> {
+    let (col_abs, row_abs) = anchors(raw);
+    let anchor = Anchor::from_tok(tok)?;
+    // Written ids are positions when typed, ids when stored.
+    let row = |id: &str| -> Option<String> {
+        if to_ids {
+            layout
+                .rows
+                .id_at(legacy_index(id)? as usize)
+                .map(Cow::into_owned)
+        } else {
+            layout.rows.index_of(id).map(|k| k.to_string())
+        }
+    };
+    let col = |id: &str| -> Option<String> {
+        if to_ids {
+            layout
+                .cols
+                .id_at(legacy_index(id)? as usize)
+                .map(Cow::into_owned)
+        } else {
+            layout.cols.index_of(id).map(|k| k.to_string())
+        }
+    };
+    Some(match anchor {
+        Anchor::Cell(r, c) => cell_text(&row(&r)?, &col(&c)?, col_abs, row_abs),
+        Anchor::Col(c) => col_text(&col(&c)?, col_abs),
+        Anchor::Row(r) => row_text(&row(&r)?, row_abs),
+    })
+}
+
+fn dollar(abs: bool) -> &'static str {
+    if abs {
+        "$"
+    } else {
+        ""
+    }
+}
+
+/// A cell by row and column id: A1 when both are legacy ids, braces otherwise.
+fn cell_text(row: &str, col: &str, col_abs: bool, row_abs: bool) -> String {
+    match (legacy_index(row), legacy_index(col)) {
+        (Some(r), Some(c)) => format!(
+            "{}{}{}{}",
+            dollar(col_abs),
+            col_label(c),
+            dollar(row_abs),
+            r + 1
+        ),
+        _ => format!("{{{}r={row};{}c={col}}}", dollar(row_abs), dollar(col_abs)),
+    }
+}
+
+fn col_text(col: &str, abs: bool) -> String {
+    match legacy_index(col) {
+        Some(c) => format!("{}{}", dollar(abs), col_label(c)),
+        None => format!("{{{}c={col}}}", dollar(abs)),
+    }
+}
+
+fn row_text(row: &str, abs: bool) -> String {
+    match legacy_index(row) {
+        Some(r) => format!("{}{}", dollar(abs), r + 1),
+        None => format!("{{{}r={row}}}", dollar(abs)),
+    }
+}
+
+/// Whether `text` is a single cell or range reference (a named range's
+/// target), in either form.
+pub fn is_reference(text: &str) -> bool {
+    let t = text.trim();
+    matches!(parse(t.strip_prefix('=').unwrap_or(t)), Ok(Expr::Ref(_)))
+}
+
+/// Whether `name` can name a range: letters, digits, `_` and `.`, starting
+/// with a letter or `_`, and not something a formula would read as a cell
+/// (`Q1`), a column (`AB`) or a logical (`TRUE`).
+pub fn is_valid_name(name: &str) -> bool {
+    let mut chars = name.chars();
+    let starts_ok = chars
+        .next()
+        .is_some_and(|c| c.is_ascii_alphabetic() || c == '_');
+    starts_ok
+        && name.len() <= 64
+        && name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.')
+        && parse_cell_word(name).is_none()
+        && col_index(name).is_none()
+        && !name.eq_ignore_ascii_case("TRUE")
+        && !name.eq_ignore_ascii_case("FALSE")
 }
 
 /// `A` → 0, `Z` → 25, `AA` → 26. `None` past [`MAX_COLS`] or for anything
@@ -249,6 +459,12 @@ enum Tok {
     Word(String),
     /// `[sheet-id]!`, which qualifies the reference after it.
     Sheet(String),
+    /// `{r=ID;c=ID}`, `{c=ID}` or `{r=ID}`: a cell, column or row by id, for
+    /// rows and columns added after the legacy layout (see [`crate::layout`]).
+    IdRef {
+        row: Option<String>,
+        col: Option<String>,
+    },
     Err(ErrCode),
     Op(Op),
     LParen,
@@ -292,17 +508,47 @@ impl Op {
 /// operator, so `-2^2` is 4 as in Excel.
 const UNARY: u8 = 11;
 
+/// A token and the characters it came from, for rewriting references in
+/// place ([`to_stored`], [`to_display`]).
+struct Lexed {
+    tok: Tok,
+    /// Char offsets into the source.
+    start: usize,
+    end: usize,
+    /// The source text, `$` anchors included.
+    raw: String,
+}
+
 fn tokenize(src: &str) -> Result<Vec<Tok>, ()> {
+    Ok(lex(src)?.into_iter().map(|l| l.tok).collect())
+}
+
+fn lex(src: &str) -> Result<Vec<Lexed>, ()> {
     let c: Vec<char> = src.chars().collect();
     let mut out = Vec::new();
     let mut i = 0;
     while i < c.len() {
         let ch = c[i];
-        match ch {
+        let start = i;
+        let tok = match ch {
             // `$` anchors a reference for fill and copy; it never changes
-            // which cell is read, so it is dropped outside string literals.
-            '$' => i += 1,
-            _ if ch.is_whitespace() => i += 1,
+            // which cell is read. It belongs to the word or row number after
+            // it, and is dropped anywhere else.
+            '$' if c.get(i + 1).is_some_and(|n| n.is_ascii_digit()) => {
+                i += 1;
+                lex_number(&c, &mut i)?
+            }
+            '$' => {
+                i += 1;
+                if !c.get(i).is_some_and(|n| n.is_alphabetic()) {
+                    continue;
+                }
+                lex_word(&c, &mut i)
+            }
+            _ if ch.is_whitespace() => {
+                i += 1;
+                continue;
+            }
             '"' => {
                 let mut s = String::new();
                 i += 1;
@@ -323,15 +569,38 @@ fn tokenize(src: &str) -> Result<Vec<Tok>, ()> {
                         }
                     }
                 }
-                out.push(Tok::Str(s));
+                Tok::Str(s)
             }
             '[' => {
                 let end = i + 1 + c[i + 1..].iter().position(|&x| x == ']').ok_or(())?;
                 if c.get(end + 1) != Some(&'!') {
                     return Err(());
                 }
-                out.push(Tok::Sheet(c[i + 1..end].iter().collect()));
                 i = end + 2;
+                Tok::Sheet(c[start + 1..end].iter().collect())
+            }
+            '{' => {
+                let end = i + 1 + c[i + 1..].iter().position(|&x| x == '}').ok_or(())?;
+                let body: String = c[i + 1..end].iter().collect();
+                i = end + 1;
+                let (mut row, mut col) = (None, None);
+                for part in body.split(';') {
+                    let (key, id) = part
+                        .trim()
+                        .trim_start_matches('$')
+                        .split_once('=')
+                        .ok_or(())?;
+                    let id = id.trim();
+                    if id.is_empty() || !id.chars().all(|x| x.is_ascii_alphanumeric()) {
+                        return Err(());
+                    }
+                    match key.trim() {
+                        "r" if row.is_none() => row = Some(id.to_string()),
+                        "c" if col.is_none() => col = Some(id.to_string()),
+                        _ => return Err(()),
+                    }
+                }
+                Tok::IdRef { row, col }
             }
             '#' => {
                 let rest: String = c[i..].iter().collect::<String>().to_ascii_uppercase();
@@ -339,39 +608,11 @@ fn tokenize(src: &str) -> Result<Vec<Tok>, ()> {
                     .into_iter()
                     .find(|e| rest.starts_with(e.as_str()))
                     .ok_or(())?;
-                out.push(Tok::Err(code));
                 i += code.as_str().len();
+                Tok::Err(code)
             }
-            '0'..='9' | '.' => {
-                let start = i;
-                while i < c.len() && (c[i].is_ascii_digit() || c[i] == '.') {
-                    i += 1;
-                }
-                if matches!(c.get(i), Some('e' | 'E')) {
-                    let mut j = i + 1;
-                    if matches!(c.get(j), Some('+' | '-')) {
-                        j += 1;
-                    }
-                    if c.get(j).is_some_and(char::is_ascii_digit) {
-                        while c.get(j).is_some_and(char::is_ascii_digit) {
-                            j += 1;
-                        }
-                        i = j;
-                    }
-                }
-                let text: String = c[start..i].iter().collect();
-                out.push(Tok::Num(text.parse().map_err(|_| ())?));
-            }
-            _ if ch.is_alphabetic() || ch == '_' => {
-                let mut w = String::new();
-                while i < c.len() && (c[i].is_alphanumeric() || matches!(c[i], '_' | '.' | '$')) {
-                    if c[i] != '$' {
-                        w.push(c[i]);
-                    }
-                    i += 1;
-                }
-                out.push(Tok::Word(w));
-            }
+            '0'..='9' | '.' => lex_number(&c, &mut i)?,
+            _ if ch.is_alphabetic() || ch == '_' => lex_word(&c, &mut i),
             _ => {
                 let (tok, len) = match (ch, c.get(i + 1)) {
                     ('(', _) => (Tok::LParen, 1),
@@ -393,12 +634,50 @@ fn tokenize(src: &str) -> Result<Vec<Tok>, ()> {
                     ('>', _) => (Tok::Op(Op::Gt), 1),
                     _ => return Err(()),
                 };
-                out.push(tok);
                 i += len;
+                tok
             }
-        }
+        };
+        out.push(Lexed {
+            tok,
+            start,
+            end: i,
+            raw: c[start..i].iter().collect(),
+        });
     }
     Ok(out)
+}
+
+fn lex_number(c: &[char], i: &mut usize) -> Result<Tok, ()> {
+    let start = *i;
+    while *i < c.len() && (c[*i].is_ascii_digit() || c[*i] == '.') {
+        *i += 1;
+    }
+    if matches!(c.get(*i), Some('e' | 'E')) {
+        let mut j = *i + 1;
+        if matches!(c.get(j), Some('+' | '-')) {
+            j += 1;
+        }
+        if c.get(j).is_some_and(char::is_ascii_digit) {
+            while c.get(j).is_some_and(char::is_ascii_digit) {
+                j += 1;
+            }
+            *i = j;
+        }
+    }
+    let text: String = c[start..*i].iter().collect();
+    Ok(Tok::Num(text.parse().map_err(|_| ())?))
+}
+
+fn lex_word(c: &[char], i: &mut usize) -> Tok {
+    let mut w = String::new();
+    while *i < c.len() && (c[*i].is_alphanumeric() || matches!(c[*i], '_' | '.' | '$')) {
+        if c[*i] != '$' {
+            w.push(c[*i]);
+        }
+        *i += 1;
+    }
+    Tok::Word(w)
 }
 
 // ── Expression tree ─────────────────────────────────────────────────────
@@ -419,40 +698,54 @@ enum Expr {
     Bin(Op, Box<Expr>, Box<Expr>),
 }
 
-/// A rectangle of cells, corners normalised so `r1 <= r2` and `c1 <= c2`.
+/// A rectangle of cells between two row ids and two column ids. `None` on an
+/// axis means all of it: `A:A` has no rows, `1:1` no columns.
 #[derive(Clone, Debug, PartialEq)]
 struct RefExpr {
     sheet: Option<String>,
-    r1: u32,
-    c1: u32,
-    r2: u32,
-    c2: u32,
+    r1: Option<String>,
+    c1: Option<String>,
+    r2: Option<String>,
+    c2: Option<String>,
 }
 
-/// One end of a range: a cell, a whole column, or a whole row.
+/// One end of a range, by id: a cell, a whole column, or a whole row.
 enum Anchor {
-    Cell(u32, u32),
-    Col(u32),
-    Row(u32),
+    Cell(String, String),
+    Col(String),
+    Row(String),
 }
 
 impl Anchor {
+    /// In stored form, `B12` is row id `11`, column id `1`: a legacy id.
     fn from_tok(t: &Tok) -> Option<Anchor> {
         match t {
             Tok::Word(w) => {
                 if let Some((r, c)) = parse_cell_word(w) {
-                    Some(Anchor::Cell(r, c))
+                    Some(Anchor::Cell(r.to_string(), c.to_string()))
                 } else {
-                    col_index(w).map(Anchor::Col)
+                    col_index(w).map(|c| Anchor::Col(c.to_string()))
                 }
             }
-            Tok::Num(n) => row_number(*n).map(Anchor::Row),
+            Tok::Num(n) => row_number(*n).map(|r| Anchor::Row(r.to_string())),
+            Tok::IdRef {
+                row: Some(r),
+                col: Some(c),
+            } => Some(Anchor::Cell(r.clone(), c.clone())),
+            Tok::IdRef {
+                row: None,
+                col: Some(c),
+            } => Some(Anchor::Col(c.clone())),
+            Tok::IdRef {
+                row: Some(r),
+                col: None,
+            } => Some(Anchor::Row(r.clone())),
             _ => None,
         }
     }
 }
 
-/// `B12` → (11, 1).
+/// `B12` → (11, 1): the 0-based row and column an A1 word names.
 fn parse_cell_word(w: &str) -> Option<(u32, u32)> {
     let split = w.find(|c: char| c.is_ascii_digit())?;
     let (letters, digits) = w.split_at(split);
@@ -461,12 +754,12 @@ fn parse_cell_word(w: &str) -> Option<(u32, u32)> {
         return None;
     }
     let row: u32 = digits.parse().ok()?;
-    (1..=MAX_REF_ROW).contains(&row).then(|| (row - 1, col))
+    row.checked_sub(1).map(|r| (r, col))
 }
 
 /// A 1-based row number written as a literal (`3` in `3:5`) → 0-based.
 fn row_number(n: f64) -> Option<u32> {
-    (n.fract() == 0.0 && (1.0..=f64::from(MAX_REF_ROW)).contains(&n)).then(|| n as u32 - 1)
+    (n.fract() == 0.0 && (1.0..=f64::from(u32::MAX)).contains(&n)).then(|| n as u32 - 1)
 }
 
 fn parse(src: &str) -> Result<Expr, ()> {
@@ -548,6 +841,10 @@ impl Parser {
             Tok::Str(s) => Ok(Expr::Str(s)),
             Tok::Err(e) => Ok(Expr::Err(e)),
             Tok::Sheet(id) => self.reference(Some(id)),
+            Tok::IdRef { .. } => {
+                self.pos -= 1;
+                self.reference(None)
+            }
             Tok::Word(w) if self.eat(&Tok::LParen) => {
                 let mut args = Vec::new();
                 if !self.eat(&Tok::RParen) {
@@ -593,27 +890,29 @@ impl Parser {
         if self.peek() == Some(&Tok::Colon) {
             let end = self.toks.get(self.pos + 1).and_then(Anchor::from_tok);
             let (r1, c1, r2, c2) = match (start, end) {
-                (Some(Anchor::Cell(r1, c1)), Some(Anchor::Cell(r2, c2))) => (r1, c1, r2, c2),
-                (Some(Anchor::Col(c1)), Some(Anchor::Col(c2))) => (0, c1, MAX_ROWS - 1, c2),
-                (Some(Anchor::Row(r1)), Some(Anchor::Row(r2))) => (r1, 0, r2, MAX_COLS - 1),
+                (Some(Anchor::Cell(r1, c1)), Some(Anchor::Cell(r2, c2))) => {
+                    (Some(r1), Some(c1), Some(r2), Some(c2))
+                }
+                (Some(Anchor::Col(c1)), Some(Anchor::Col(c2))) => (None, Some(c1), None, Some(c2)),
+                (Some(Anchor::Row(r1)), Some(Anchor::Row(r2))) => (Some(r1), None, Some(r2), None),
                 _ => return Err(()),
             };
             self.pos += 2;
             return Ok(Expr::Ref(RefExpr {
                 sheet,
-                r1: r1.min(r2),
-                c1: c1.min(c2),
-                r2: r1.max(r2),
-                c2: c1.max(c2),
+                r1,
+                c1,
+                r2,
+                c2,
             }));
         }
         match (start, first) {
             (Some(Anchor::Cell(r, c)), _) => Ok(Expr::Ref(RefExpr {
                 sheet,
-                r1: r,
-                c1: c,
-                r2: r,
-                c2: c,
+                r1: Some(r.clone()),
+                c1: Some(c.clone()),
+                r2: Some(r),
+                c2: Some(c),
             })),
             (_, Tok::Word(w)) if sheet.is_none() => Ok(Expr::Name(w.to_ascii_uppercase())),
             _ => Err(()),
@@ -1309,9 +1608,10 @@ fn format_date(serial: f64, fmt: &str) -> Result<String, ErrCode> {
 struct Ctx<'a, F> {
     get: &'a F,
     env: &'a Env,
+    home: &'a str,
 }
 
-impl<F: Fn(Option<&str>, u32, u32) -> Option<String>> Ctx<'_, F> {
+impl<F: Fn(Option<&str>, &str, &str) -> Option<String>> Ctx<'_, F> {
     fn eval(&self, e: &Expr) -> Value {
         match e {
             Expr::Num(n) => Value::Num(*n),
@@ -1342,15 +1642,20 @@ impl<F: Fn(Option<&str>, u32, u32) -> Option<String>> Ctx<'_, F> {
     }
 
     fn range(&self, r: &RefExpr) -> Value {
-        let mut cells = Vec::new();
-        for row in r.r1..=r.r2 {
-            for col in r.c1..=r.c2 {
+        let layout = self.env.layout(r.sheet.as_deref().unwrap_or(self.home));
+        let (rows, cols) = match resolve(r, &layout) {
+            Ok(span) => span,
+            Err(e) => return Value::Err(e),
+        };
+        let mut cells = Vec::with_capacity(rows.len() * cols.len());
+        for row in &rows {
+            for col in &cols {
                 cells.push(Value::from_cell((self.get)(r.sheet.as_deref(), row, col)));
             }
         }
         Value::Grid(Grid {
-            rows: (r.r2 - r.r1 + 1) as usize,
-            cols: (r.c2 - r.c1 + 1) as usize,
+            rows: rows.len(),
+            cols: cols.len(),
             cells,
         })
     }
@@ -1566,7 +1871,11 @@ impl<F: Fn(Option<&str>, u32, u32) -> Option<String>> Ctx<'_, F> {
                 if x <= 0.0 {
                     return Err(E::Num);
                 }
-                number(if name == "LN" { libm::log(x) } else { libm::log10(x) })
+                number(if name == "LN" {
+                    libm::log(x)
+                } else {
+                    libm::log10(x)
+                })
             }
             "LOG" => {
                 arity(1, 2)?;
@@ -2274,6 +2583,35 @@ pub const CATALOG: &[FnInfo] = catalog! {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::layout::{legacy_pos, AxisEntry};
+
+    /// Evaluate on sheet `s` with the legacy layout, where row id `k` is row
+    /// `k`, so a getter can take positions.
+    fn eval_env(
+        formula: &str,
+        env: &Env,
+        gv: impl Fn(Option<&str>, u32, u32) -> Option<String>,
+    ) -> String {
+        evaluate_with(formula, "s", env, |s, r, c| {
+            gv(s, r.parse().ok()?, c.parse().ok()?)
+        })
+    }
+
+    fn evaluate(formula: &str, gv: impl Fn(Option<&str>, u32, u32) -> Option<String>) -> String {
+        eval_env(formula, &Env::default(), gv)
+    }
+
+    /// Precedents with the legacy layout, as positions.
+    fn precedents_in(formula: &str, home: &str, env: &Env) -> Vec<(String, u32, u32)> {
+        precedents_with(formula, home, env)
+            .into_iter()
+            .map(|(s, r, c)| (s, r.parse().unwrap(), c.parse().unwrap()))
+            .collect()
+    }
+
+    fn precedents(formula: &str, home: &str) -> Vec<(String, u32, u32)> {
+        precedents_in(formula, home, &Env::default())
+    }
 
     /// A getter over `(row, col, value)` cells on the formula's own sheet.
     fn cells(list: &[(u32, u32, &str)]) -> impl Fn(Option<&str>, u32, u32) -> Option<String> {
@@ -2563,9 +2901,9 @@ mod tests {
             now_ms: 1_790_337_600_000,
             ..Env::default()
         };
-        assert_eq!(evaluate_with("=TODAY()", &env, none), "46290");
-        assert_eq!(evaluate_with("=NOW()", &env, none), "46290.5");
-        assert_eq!(evaluate_with("=HOUR(NOW())", &env, none), "12");
+        assert_eq!(eval_env("=TODAY()", &env, none), "46290");
+        assert_eq!(eval_env("=NOW()", &env, none), "46290.5");
+        assert_eq!(eval_env("=HOUR(NOW())", &env, none), "12");
     }
 
     #[test]
@@ -2575,9 +2913,9 @@ mod tests {
             names: [("COSTS".to_string(), "B1:B3".to_string())].into(),
             ..Env::default()
         };
-        assert_eq!(evaluate_with("=SUM(Costs)", &env, &gv), "6");
-        assert_eq!(evaluate_with("=SUM(Other)", &env, &gv), "#NAME?");
-        let mut p = precedents_with("=SUM(costs)", "s1", &env.names);
+        assert_eq!(eval_env("=SUM(Costs)", &env, &gv), "6");
+        assert_eq!(eval_env("=SUM(Other)", &env, &gv), "#NAME?");
+        let mut p = precedents_in("=SUM(costs)", "s1", &env);
         p.sort();
         assert_eq!(
             p,
@@ -2718,5 +3056,134 @@ mod tests {
         assert_eq!(format_num(1e15), "1E+15");
         assert_eq!(format_num(1.5e-11), "1.5E-11");
         assert_eq!(format_num(0.000_1), "0.0001");
+    }
+
+    /// Sheet `s` with a new row `nab` inserted between rows 1 and 2, and
+    /// legacy row 4 deleted.
+    fn edited() -> Env {
+        let rows = Axis::build(
+            &[
+                AxisEntry {
+                    id: "nab".into(),
+                    pos: format!("{}5", legacy_pos(1)),
+                    deleted: false,
+                },
+                AxisEntry {
+                    id: "4".into(),
+                    pos: legacy_pos(4),
+                    deleted: true,
+                },
+            ],
+            MAX_ROWS,
+        );
+        let mut env = Env::default();
+        let _ = env.layouts.insert(
+            "s".into(),
+            Layout {
+                rows,
+                cols: Axis::Identity(MAX_COLS),
+            },
+        );
+        env
+    }
+
+    /// A getter over `(row id, col id, value)` cells.
+    fn by_id(list: &[(&str, &str, &str)]) -> impl Fn(Option<&str>, &str, &str) -> Option<String> {
+        let map: BTreeMap<(String, String), String> = list
+            .iter()
+            .map(|(r, c, v)| ((r.to_string(), c.to_string()), v.to_string()))
+            .collect();
+        move |_s, r, c| map.get(&(r.to_string(), c.to_string())).cloned()
+    }
+
+    #[test]
+    fn a_range_takes_in_an_inserted_row() {
+        let env = edited();
+        let gv = by_id(&[
+            ("0", "0", "1"),
+            ("1", "0", "2"),
+            ("nab", "0", "10"),
+            ("2", "0", "3"),
+        ]);
+        // Stored `A1:A3` names row ids 0 and 2, which now span the new row.
+        assert_eq!(evaluate_with("=SUM(A1:A3)", "s", &env, &gv), "16");
+        assert_eq!(evaluate_with("={r=nab;c=0}*2", "s", &env, &gv), "20");
+        assert_eq!(evaluate_with("=SUM(A:A)", "s", &env, &gv), "16");
+    }
+
+    #[test]
+    fn a_reference_to_a_deleted_row_is_ref_error() {
+        let env = edited();
+        let gv = by_id(&[("4", "0", "7")]);
+        assert_eq!(evaluate_with("=A5", "s", &env, &gv), "#REF!");
+        assert_eq!(evaluate_with("=SUM(A1:A5)", "s", &env, &gv), "#REF!");
+    }
+
+    #[test]
+    fn precedents_follow_the_layout() {
+        let env = edited();
+        let p = precedents_with("=SUM(A2:A3)", "s", &env);
+        let rows: Vec<&str> = p.iter().map(|(_, r, _)| r.as_str()).collect();
+        assert_eq!(rows, ["1", "nab", "2"]);
+    }
+
+    #[test]
+    fn display_and_stored_forms_round_trip() {
+        let env = edited();
+        // Visible rows: 0, 1, nab, 2, 3, 5, …
+        assert_eq!(to_stored("=A3*2", "s", &env), "={r=nab;c=0}*2");
+        assert_eq!(to_display("={r=nab;c=0}*2", "s", &env), "=A3*2");
+        // Legacy row 2 now shows as row 4.
+        assert_eq!(to_display("=SUM(A1:A3)", "s", &env), "=SUM(A1:A4)");
+        assert_eq!(to_stored("=SUM(A1:A4)", "s", &env), "=SUM(A1:A3)");
+        // Anchors, spacing and strings survive; a function name is not a ref.
+        assert_eq!(
+            to_stored("= $A$3 + LOG10(B1) & \"A3\"", "s", &env),
+            "= {$r=nab;$c=0} + LOG10(B1) & \"A3\""
+        );
+        assert_eq!(
+            to_display("= {$r=nab;$c=0} + LOG10(B1)", "s", &env),
+            "= $A$3 + LOG10(B1)"
+        );
+        // Whole rows and columns.
+        assert_eq!(to_stored("=SUM(3:4)", "s", &env), "=SUM({r=nab}:3)");
+        assert_eq!(to_display("=SUM(A:B)", "s", &env), "=SUM(A:B)");
+        // A deleted row shows as #REF!; other sheets use their own layout.
+        assert_eq!(to_display("=A5+1", "s", &env), "=#REF!+1");
+        assert_eq!(to_display("=[t]!A3", "s", &env), "=[t]!A3");
+        // Half-typed formulas still convert; text that does not lex (an open
+        // string) and non-formulas are left alone.
+        assert_eq!(to_stored("=A3+(", "s", &env), "={r=nab;c=0}+(");
+        assert_eq!(to_stored("=A3&\"", "s", &env), "=A3&\"");
+        assert_eq!(to_stored("A3", "s", &env), "A3");
+    }
+
+    #[test]
+    fn the_legacy_layout_changes_nothing() {
+        let env = Env::default();
+        for f in [
+            "=SUM(A1:B3)",
+            "=$A$1+C$4",
+            "=[x]!B2",
+            "=SUM(A:A)+SUM(2:2)",
+            "=IF(A1>1,\"B2\",C3)",
+        ] {
+            assert_eq!(to_stored(f, "s", &env), f);
+            assert_eq!(to_display(f, "s", &env), f);
+        }
+    }
+
+    #[test]
+    fn names_and_references_are_validated() {
+        assert!(is_valid_name("Costs"));
+        assert!(is_valid_name("_tax.rate"));
+        for bad in ["", "1st", "Q1", "AB", "true", "a b", "a-b"] {
+            assert!(!is_valid_name(bad), "{bad}");
+        }
+        assert!(is_reference("A1"));
+        assert!(is_reference("=[s1]!B2:C9"));
+        assert!(is_reference("{r=nab;c=0}"));
+        assert!(!is_reference("A1+1"));
+        assert!(!is_reference("Costs"));
     }
 }

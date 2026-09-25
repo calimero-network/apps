@@ -36,9 +36,17 @@ describe('planFor', () => {
     expect([...del.sheets]).toEqual(['s3']);
   });
 
-  it('re-reads the roster on member events and skips legacy cursor events', () => {
+  it('re-reads the roster on member events', () => {
     expect(partial(planFor(mutation(['MemberJoined', { id: 'd', nickname: 'Ada' }]))).members).toBe(true);
-    expect(isNoop(partial(planFor(mutation(['CursorMoved', { author: 'a', sheet_id: 's' }]))))).toBe(true);
+  });
+
+  it('re-reads the layout and that sheet on row/column changes, and names on name changes', () => {
+    const axes = partial(planFor(mutation(['AxesChanged', { sheet_id: 's1', count: 1 }])));
+    expect(axes.layouts).toBe(true);
+    expect([...axes.sheets]).toEqual(['s1']);
+    const names = partial(planFor(mutation(['NamedRangesChanged', { name: 'Costs' }])));
+    expect(names.names).toBe(true);
+    expect(isNoop(names)).toBe(false);
   });
 
   it('falls back to a full refresh when it cannot tell what changed', () => {

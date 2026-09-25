@@ -38,8 +38,8 @@ export function opsFromWrites(
 }
 
 /** Split a batch into slices the node accepts in one commit, order kept. */
-export function chunkOps(ops: CellOp[], size = MAX_OPS_PER_APPLY): CellOp[][] {
-  const chunks: CellOp[][] = [];
+export function chunkOps<T>(ops: T[], size = MAX_OPS_PER_APPLY): T[][] {
+  const chunks: T[][] = [];
   for (let i = 0; i < ops.length; i += size) chunks.push(ops.slice(i, i + size));
   return chunks;
 }

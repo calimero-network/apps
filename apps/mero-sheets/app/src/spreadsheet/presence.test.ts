@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import type { Cursor } from '../api/spreadsheet/SpreadsheetClient';
 import { labelsById, labelMembers } from '../lib/people';
 import {
   avatarLabel,
   cursorsFromPresence,
   presenceColor,
   PRESENCE_STALE_MS,
+  type PeerCursor,
   type PresenceSlice,
   distinctCollaborators,
   peerCount,
@@ -14,7 +14,7 @@ import {
   cellsLabel,
 } from './presence';
 
-const cur = (author: string, color: string): Cursor => ({
+const cur = (author: string, color: string): PeerCursor => ({
   id: `${author}-1`,
   author,
   sheet_id: 's1',
@@ -22,6 +22,7 @@ const cur = (author: string, color: string): Cursor => ({
   col: 0,
   color,
   updated_at: 0,
+  range: null,
 });
 
 /** The roster as it comes back from `get_members`, indexed the way the UI uses it. */

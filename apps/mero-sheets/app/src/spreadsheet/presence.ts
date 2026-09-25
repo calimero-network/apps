@@ -1,4 +1,3 @@
-import type { Cursor } from '../api/spreadsheet/SpreadsheetClient';
 import { initials, shortId, type PersonLabel } from '../lib/people';
 import type { Rect } from './refs';
 
@@ -50,8 +49,21 @@ export interface PresenceSlice {
   n?: number;
 }
 
-/** A peer's cursor, and the range they have selected, if any. */
-export interface PeerCursor extends Cursor {
+/**
+ * A peer's cursor, and the range they have selected, if any. Positions, not
+ * ids: presence is advisory and short-lived, and a peer who inserts a row
+ * republishes where they are.
+ */
+export interface PeerCursor {
+  /** The presence author (per-context identity) the slice came from. */
+  id: string;
+  /** The member id the slice names: the roster key. */
+  author: string;
+  sheet_id: string;
+  row: number;
+  col: number;
+  color: string;
+  updated_at: number;
   range: Rect | null;
 }
 
@@ -141,7 +153,7 @@ export interface Collaborator {
  * compiles, never matches, and quietly renders the local user as a stranger.
  */
 export function distinctCollaborators(
-  cursors: readonly Cursor[],
+  cursors: readonly PeerCursor[],
   selfKey: string | null,
   selfColor: string,
   labels: ReadonlyMap<string, PersonLabel> = new Map(),
@@ -216,7 +228,7 @@ export function distinctCollaborators(
 
 /** Count of distinct authors with a live cursor, excluding the local user. */
 export function peerCount(
-  cursors: readonly Cursor[],
+  cursors: readonly PeerCursor[],
   selfKey: string | null,
 ): number {
   const authors = new Set<string>();

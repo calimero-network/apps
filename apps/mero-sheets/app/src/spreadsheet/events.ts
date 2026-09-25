@@ -11,13 +11,15 @@
 /** A decided plan: either everything, or exactly these parts. */
 export type RefreshPlan =
   | { full: true }
-  | { full: false; sheets: Set<string>; sheetList: boolean; members: boolean };
+  | { full: false; sheets: Set<string>; sheetList: boolean; members: boolean; layouts: boolean; names: boolean };
 
 const empty = (): Extract<RefreshPlan, { full: false }> => ({
   full: false,
   sheets: new Set(),
   sheetList: false,
   members: false,
+  layouts: false,
+  names: false,
 });
 
 const FULL: RefreshPlan = { full: true };
@@ -93,10 +95,17 @@ export function planFor(event: NodeEvent): RefreshPlan | null {
       case 'MemberRenamed':
         plan.members = true;
         break;
-      // Published by an older client that still writes cursors through the
-      // contract; cursors are presence now.
-      case 'CursorMoved':
-      case 'CursorRemoved':
+      // Rows or columns moved: the layout changes, and so do the node's values
+      // for ranges on that sheet.
+      case 'AxesChanged': {
+        const sheet = p?.sheet_id;
+        if (typeof sheet !== 'string') return FULL;
+        plan.layouts = true;
+        plan.sheets.add(sheet);
+        break;
+      }
+      case 'NamedRangesChanged':
+        plan.names = true;
         break;
       default:
         return FULL;
@@ -115,10 +124,12 @@ export function mergePlans(a: RefreshPlan | null, b: RefreshPlan | null): Refres
     sheets: new Set([...a.sheets, ...b.sheets]),
     sheetList: a.sheetList || b.sheetList,
     members: a.members || b.members,
+    layouts: a.layouts || b.layouts,
+    names: a.names || b.names,
   };
 }
 
 /** True when a plan reads nothing (every event was a no-op). */
 export function isNoop(plan: RefreshPlan): boolean {
-  return !plan.full && plan.sheets.size === 0 && !plan.sheetList && !plan.members;
+  return !plan.full && plan.sheets.size === 0 && !plan.sheetList && !plan.members && !plan.layouts && !plan.names;
 }

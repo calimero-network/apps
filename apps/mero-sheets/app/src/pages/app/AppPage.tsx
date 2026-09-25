@@ -29,7 +29,7 @@ import { describeError } from '../../utils/errors';
 import { cellRef } from '../../components/FormulaBar';
 import { isFormula, insertReference, type AutoRef } from '../../spreadsheet/formulaEdit';
 import { JoinSyncBanner } from '@calimero-apps/join-sync';
-import { normalizeRect, sheetPrefix, rectCells, type CellCoord, type Rect } from '../../spreadsheet/refs';
+import { normalizeRect, rangeRef, sheetPrefix, rectCells, type CellCoord, type Rect } from '../../spreadsheet/refs';
 import { planFill } from '../../spreadsheet/fill';
 import { toTSV, fromTSV } from '../../spreadsheet/clipboard';
 import { planPaste, type ClipPayload, type ClipCell, type PasteWrite } from '../../spreadsheet/paste';
@@ -42,6 +42,7 @@ import InviteModal from '../../components/InviteModal';
 import JoinModal from '../../components/JoinModal';
 import NicknameModal from '../../components/NicknameModal';
 import ContextMenu from '../../components/ContextMenu';
+import NamesModal from '../../components/NamesModal';
 import { sheetsToCsv } from '../../spreadsheet/download';
 import { idsToNames, namesToIds } from '../../spreadsheet/sheetref';
 import StatusBar from '../../components/StatusBar';
@@ -168,6 +169,9 @@ export default function AppPage() {
   const [editing, setEditing] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
+  const [showNames, setShowNames] = useState(false);
+  const [namesSaving, setNamesSaving] = useState(false);
+  const [namesError, setNamesError] = useState<string | null>(null);
   const formulaInputRef = useRef<HTMLInputElement>(null);
   // Marks the reference the last point-click inserted, so the next click can
   // replace it (Sheets behaviour: click A1 then B2 → `=B2`, not `=A1B2`).
@@ -555,6 +559,82 @@ export default function AppPage() {
     },
     [activeSheetId, selectionRange, selectedCell, ss],
   );
+
+  // ── Rows, columns and names ─────────────────────────────────────
+  // The rect the menu acts on: the multi-cell selection, or the selected cell.
+  const menuRect = (): Rect | null =>
+    selectionRange ??
+    (selectedCell
+      ? { top: selectedCell.row, left: selectedCell.col, bottom: selectedCell.row, right: selectedCell.col }
+      : null);
+
+  // Each is one write per row or column: cells keep their ids, and formulas
+  // that reference them keep pointing at the same cells.
+  const structural = (fn: (sheetId: string, rect: Rect) => Promise<void>) => () => {
+    setCtxMenu(null);
+    const rect = menuRect();
+    if (!activeSheetId || !rect) return;
+    setSelectionRange(null);
+    void fn(activeSheetId, rect).catch((err: unknown) => console.error('[sheets] structural edit failed', err));
+  };
+  const rows = (r: Rect) => r.bottom - r.top + 1;
+  const cols = (r: Rect) => r.right - r.left + 1;
+  const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
+  const menuSections = (() => {
+    const r = menuRect();
+    if (!r) return [];
+    const range = (from: number, to: number) => Array.from({ length: to - from + 1 }, (_, i) => from + i);
+    return [
+      {
+        label: 'Rows',
+        actions: [
+          { label: `Insert ${plural(rows(r), 'row')} above`, testId: 'insert-rows-above',
+            onClick: structural((sid, x) => ss.insertAxis(sid, 'row', x.top, rows(x))) },
+          { label: `Insert ${plural(rows(r), 'row')} below`, testId: 'insert-rows-below',
+            onClick: structural((sid, x) => ss.insertAxis(sid, 'row', x.bottom + 1, rows(x))) },
+          { label: `Delete ${plural(rows(r), 'row')}`, testId: 'delete-rows',
+            onClick: structural((sid, x) => ss.deleteAxis(sid, 'row', range(x.top, x.bottom))) },
+        ],
+      },
+      {
+        label: 'Columns',
+        actions: [
+          { label: `Insert ${plural(cols(r), 'column')} left`, testId: 'insert-cols-left',
+            onClick: structural((sid, x) => ss.insertAxis(sid, 'col', x.left, cols(x))) },
+          { label: `Insert ${plural(cols(r), 'column')} right`, testId: 'insert-cols-right',
+            onClick: structural((sid, x) => ss.insertAxis(sid, 'col', x.right + 1, cols(x))) },
+          { label: `Delete ${plural(cols(r), 'column')}`, testId: 'delete-cols',
+            onClick: structural((sid, x) => ss.deleteAxis(sid, 'col', range(x.left, x.right))) },
+        ],
+      },
+      {
+        label: 'Name',
+        actions: [
+          { label: 'Name this range…', testId: 'open-names',
+            onClick: () => { setCtxMenu(null); setNamesError(null); setShowNames(true); } },
+        ],
+      },
+    ];
+  })();
+
+  const namesSelection = (() => {
+    const r = menuRect();
+    if (!r || !activeSheetId) return null;
+    const name = idToName(activeSheetId);
+    return `${name ? sheetPrefix(name) : ''}${rangeRef({ row: r.top, col: r.left }, { row: r.bottom, col: r.right })}`;
+  })();
+
+  const runNames = async (fn: () => Promise<void>) => {
+    setNamesSaving(true);
+    setNamesError(null);
+    try {
+      await fn();
+    } catch (err) {
+      setNamesError(describeError(err));
+    } finally {
+      setNamesSaving(false);
+    }
+  };
 
   // Apply a fill drag: compute the writes from the source→target rects and
   // persist them. Empty results clear the cell; formats follow the pattern.
@@ -1112,7 +1192,22 @@ export default function AppPage() {
           y={ctxMenu.y}
           activeFormat={activeCellFormat}
           onSelect={(fmt) => void applyFormat(fmt)}
+          sections={menuSections}
           onClose={() => setCtxMenu(null)}
+        />
+      )}
+      {showNames && (
+        <NamesModal
+          names={ss.namedRanges.map((n) => ({ name: n.name, target: idsToNames(`=${n.target}`, idToName).slice(1) }))}
+          selection={namesSelection}
+          saving={namesSaving}
+          error={namesError}
+          onDefine={(name) => {
+            const r = menuRect();
+            if (activeSheetId && r) void runNames(() => ss.defineName(name, activeSheetId, r));
+          }}
+          onDelete={(name) => void runNames(() => ss.deleteName(name))}
+          onClose={() => setShowNames(false)}
         />
       )}
     </AppShell>

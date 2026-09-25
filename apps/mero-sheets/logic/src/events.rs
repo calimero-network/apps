@@ -12,20 +12,25 @@ pub enum Event<'a> {
     SheetDeleted { id: &'a str },
     /// A cell's value was set or updated.
     CellUpdated { id: &'a str, sheet_id: &'a str },
-    /// A cell was cleared (removed).
+    /// A cell was cleared.
     CellCleared {
         sheet_id: &'a str,
-        row: u32,
-        col: u32,
+        row_id: &'a str,
+        col_id: &'a str,
     },
     /// A batch of cells was applied via `apply_cell_ops`. ONE event per batch
     /// (not one per cell) so a large batch stays under the runtime's per-commit
     /// event cap (`max_events`); subscribers refresh once for the whole apply.
     CellsChanged { sheet_id: &'a str, count: u32 },
-    /// A collaborator moved their cursor.
-    CursorMoved { author: &'a str, sheet_id: &'a str },
-    /// A collaborator's cursor was removed.
-    CursorRemoved { author: &'a str },
+    /// Rows or columns were inserted or deleted via `apply_axis_ops`.
+    AxesChanged { sheet_id: &'a str, count: u32 },
+    /// A named range was defined, redefined or deleted.
+    NamedRangesChanged { name: &'a str },
+    /// The state was migrated to a new schema.
+    Migrated {
+        from_version: &'a str,
+        to_version: &'a str,
+    },
     /// A device announced itself under a nickname for the first time.
     MemberJoined { id: &'a str, nickname: &'a str },
     /// A member changed the nickname they are shown under.

@@ -1,6 +1,137 @@
 {
   "schema_version": "wasm-abi/1",
   "types": {
+    "AxisData": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "pos",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "deleted",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "AxisEntryView": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "pos",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "deleted",
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ]
+    },
+    "AxisOp": {
+      "kind": "variant",
+      "variants": [
+        {
+          "name": "InsertRow",
+          "payload": {
+            "$ref": "AxisOp_InsertRow"
+          }
+        },
+        {
+          "name": "InsertCol",
+          "payload": {
+            "$ref": "AxisOp_InsertCol"
+          }
+        },
+        {
+          "name": "DeleteRow",
+          "payload": {
+            "$ref": "AxisOp_DeleteRow"
+          }
+        },
+        {
+          "name": "DeleteCol",
+          "payload": {
+            "$ref": "AxisOp_DeleteCol"
+          }
+        }
+      ]
+    },
+    "AxisOp_DeleteCol": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "AxisOp_DeleteRow": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "AxisOp_InsertCol": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "pos",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "AxisOp_InsertRow": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "pos",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
     "Cell": {
       "kind": "record",
       "fields": [
@@ -17,15 +148,15 @@
           }
         },
         {
-          "name": "row",
+          "name": "row_id",
           "type": {
-            "kind": "u32"
+            "kind": "string"
           }
         },
         {
-          "name": "col",
+          "name": "col_id",
           "type": {
-            "kind": "u32"
+            "kind": "string"
           }
         },
         {
@@ -128,15 +259,15 @@
       "kind": "record",
       "fields": [
         {
-          "name": "row",
+          "name": "row_id",
           "type": {
-            "kind": "u32"
+            "kind": "string"
           }
         },
         {
-          "name": "col",
+          "name": "col_id",
           "type": {
-            "kind": "u32"
+            "kind": "string"
           }
         }
       ]
@@ -145,15 +276,15 @@
       "kind": "record",
       "fields": [
         {
-          "name": "row",
+          "name": "row_id",
           "type": {
-            "kind": "u32"
+            "kind": "string"
           }
         },
         {
-          "name": "col",
+          "name": "col_id",
           "type": {
-            "kind": "u32"
+            "kind": "string"
           }
         },
         {
@@ -168,15 +299,15 @@
       "kind": "record",
       "fields": [
         {
-          "name": "row",
+          "name": "row_id",
           "type": {
-            "kind": "u32"
+            "kind": "string"
           }
         },
         {
-          "name": "col",
+          "name": "col_id",
           "type": {
-            "kind": "u32"
+            "kind": "string"
           }
         },
         {
@@ -187,54 +318,7 @@
         }
       ]
     },
-    "Cursor": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "id",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "author",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "sheet_id",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "row",
-          "type": {
-            "kind": "u32"
-          }
-        },
-        {
-          "name": "col",
-          "type": {
-            "kind": "u32"
-          }
-        },
-        {
-          "name": "color",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "updated_at",
-          "type": {
-            "kind": "u64"
-          }
-        }
-      ]
-    },
-    "CursorData": {
+    "Event_AxesChanged": {
       "kind": "record",
       "fields": [
         {
@@ -244,27 +328,9 @@
           }
         },
         {
-          "name": "row",
+          "name": "count",
           "type": {
             "kind": "u32"
-          }
-        },
-        {
-          "name": "col",
-          "type": {
-            "kind": "u32"
-          }
-        },
-        {
-          "name": "color",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "updated_at",
-          "type": {
-            "kind": "u64"
           }
         }
       ]
@@ -279,15 +345,15 @@
           }
         },
         {
-          "name": "row",
+          "name": "row_id",
           "type": {
-            "kind": "u32"
+            "kind": "string"
           }
         },
         {
-          "name": "col",
+          "name": "col_id",
           "type": {
-            "kind": "u32"
+            "kind": "string"
           }
         }
       ]
@@ -326,34 +392,6 @@
         }
       ]
     },
-    "Event_CursorMoved": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "author",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "sheet_id",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ]
-    },
-    "Event_CursorRemoved": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "author",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ]
-    },
     "Event_MemberJoined": {
       "kind": "record",
       "fields": [
@@ -382,6 +420,34 @@
         },
         {
           "name": "nickname",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_Migrated": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "from_version",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "to_version",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_NamedRangesChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "name",
           "type": {
             "kind": "string"
           }
@@ -446,6 +512,23 @@
           "name": "name",
           "type": {
             "kind": "string"
+          }
+        }
+      ]
+    },
+    "FormatData": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "format",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
           }
         }
       ]
@@ -527,6 +610,46 @@
           "name": "joined_at",
           "type": {
             "kind": "u64"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "NamedRange": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "target",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "NamedRangeData": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "target",
+          "type": {
+            "kind": "string"
           }
         },
         {
@@ -624,6 +747,35 @@
         }
       ]
     },
+    "SheetLayout": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "rows",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "AxisEntryView"
+            }
+          }
+        },
+        {
+          "name": "cols",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "AxisEntryView"
+            }
+          }
+        }
+      ]
+    },
     "Spreadsheet": {
       "kind": "record",
       "fields": [
@@ -687,19 +839,6 @@
           }
         },
         {
-          "name": "cursors",
-          "type": {
-            "kind": "map",
-            "key": {
-              "kind": "string"
-            },
-            "value": {
-              "$ref": "CursorData"
-            },
-            "crdt_type": "authored_map"
-          }
-        },
-        {
           "name": "members",
           "type": {
             "kind": "map",
@@ -711,11 +850,74 @@
             },
             "crdt_type": "unordered_map"
           }
+        },
+        {
+          "name": "axes",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "AxisData"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "formats",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "FormatData"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "names",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "NamedRangeData"
+            },
+            "crdt_type": "unordered_map"
+          }
         }
       ]
     }
   },
   "methods": [
+    {
+      "name": "apply_axis_ops",
+      "params": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "ops",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "AxisOp"
+            }
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
     {
       "name": "apply_cell_ops",
       "params": [
@@ -750,15 +952,15 @@
           }
         },
         {
-          "name": "row",
+          "name": "row_id",
           "type": {
-            "kind": "u32"
+            "kind": "string"
           }
         },
         {
-          "name": "col",
+          "name": "col_id",
           "type": {
-            "kind": "u32"
+            "kind": "string"
           }
         }
       ],
@@ -779,6 +981,21 @@
       ],
       "returns": {
         "kind": "string"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "delete_named_range",
+      "params": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
       },
       "intent": "mutating"
     },
@@ -838,17 +1055,6 @@
       "intent": "read_only"
     },
     {
-      "name": "get_cursors",
-      "params": [],
-      "returns": {
-        "kind": "list",
-        "items": {
-          "$ref": "Cursor"
-        }
-      },
-      "intent": "read_only"
-    },
-    {
       "name": "get_functions",
       "params": [],
       "returns": {
@@ -860,12 +1066,34 @@
       "intent": "read_only"
     },
     {
+      "name": "get_layouts",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "SheetLayout"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
       "name": "get_members",
       "params": [],
       "returns": {
         "kind": "list",
         "items": {
           "$ref": "Member"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_named_ranges",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "NamedRange"
         }
       },
       "intent": "read_only"
@@ -927,14 +1155,6 @@
       "intent": "read_only"
     },
     {
-      "name": "remove_cursor",
-      "params": [],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating"
-    },
-    {
       "name": "rename_sheet",
       "params": [
         {
@@ -983,15 +1203,15 @@
           }
         },
         {
-          "name": "row",
+          "name": "row_id",
           "type": {
-            "kind": "u32"
+            "kind": "string"
           }
         },
         {
-          "name": "col",
+          "name": "col_id",
           "type": {
-            "kind": "u32"
+            "kind": "string"
           }
         },
         {
@@ -1016,15 +1236,15 @@
           }
         },
         {
-          "name": "row",
+          "name": "row_id",
           "type": {
-            "kind": "u32"
+            "kind": "string"
           }
         },
         {
-          "name": "col",
+          "name": "col_id",
           "type": {
-            "kind": "u32"
+            "kind": "string"
           }
         },
         {
@@ -1040,57 +1260,18 @@
       "intent": "mutating"
     },
     {
-      "name": "set_cell_formula",
+      "name": "set_named_range",
       "params": [
         {
-          "name": "sheet_id",
+          "name": "name",
           "type": {
             "kind": "string"
           }
         },
         {
-          "name": "row",
-          "type": {
-            "kind": "u32"
-          }
-        },
-        {
-          "name": "col",
-          "type": {
-            "kind": "u32"
-          }
-        },
-        {
-          "name": "formula",
+          "name": "target",
           "type": {
             "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "string"
-      },
-      "intent": "mutating"
-    },
-    {
-      "name": "update_cursor",
-      "params": [
-        {
-          "name": "sheet_id",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "row",
-          "type": {
-            "kind": "u32"
-          }
-        },
-        {
-          "name": "col",
-          "type": {
-            "kind": "u32"
           }
         }
       ],
@@ -1110,6 +1291,12 @@
   ],
   "events": [
     {
+      "name": "AxesChanged",
+      "payload": {
+        "$ref": "Event_AxesChanged"
+      }
+    },
+    {
       "name": "CellCleared",
       "payload": {
         "$ref": "Event_CellCleared"
@@ -1128,18 +1315,6 @@
       }
     },
     {
-      "name": "CursorMoved",
-      "payload": {
-        "$ref": "Event_CursorMoved"
-      }
-    },
-    {
-      "name": "CursorRemoved",
-      "payload": {
-        "$ref": "Event_CursorRemoved"
-      }
-    },
-    {
       "name": "MemberJoined",
       "payload": {
         "$ref": "Event_MemberJoined"
@@ -1149,6 +1324,18 @@
       "name": "MemberRenamed",
       "payload": {
         "$ref": "Event_MemberRenamed"
+      }
+    },
+    {
+      "name": "Migrated",
+      "payload": {
+        "$ref": "Event_Migrated"
+      }
+    },
+    {
+      "name": "NamedRangesChanged",
+      "payload": {
+        "$ref": "Event_NamedRangesChanged"
       }
     },
     {
@@ -1177,5 +1364,11 @@
     }
   ],
   "state_root": "Spreadsheet",
-  "state_version": 1
+  "state_version": 2,
+  "migrations": [
+    {
+      "method": "migrate_v1_to_v2",
+      "fromVersion": 1
+    }
+  ]
 }

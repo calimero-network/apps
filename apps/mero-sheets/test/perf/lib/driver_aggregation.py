@@ -69,7 +69,7 @@ def run():
             sync_ms = -1.0
 
         # Correctness: every one of the 5 aggregates matches its closed form.
-        by_coord = {(cell.get("row"), cell.get("col")): cell.get("computed_value")
+        by_coord = {b.cell_pos(cell): cell.get("computed_value")
                     for cell in (cells or [])}
         correct = True
         details = []

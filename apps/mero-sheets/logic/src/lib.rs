@@ -13,7 +13,9 @@ use calimero_sdk::types::Error as AppError;
 use calimero_storage::collections::crdt_meta::MergeError;
 use calimero_storage::collections::{AuthoredMap, LwwRegister, Mergeable, UnorderedMap};
 use calimero_storage::env as storage_env;
-use mero_sheets_recalc::{formula, recalc};
+use std::collections::{BTreeMap, HashSet};
+
+use mero_sheets_recalc::{formula, layout, recalc};
 use mero_sheets_types::{generate_id, validate_label, validate_sheet_name, Error};
 
 pub mod events;
@@ -95,7 +97,9 @@ impl Mergeable for CellData {
     }
 }
 
-/// A cursor stored in the per-author AuthoredMap (keyed by author pubkey b58).
+/// A cursor as v1 stored it, in a per-author AuthoredMap. Cursors are
+/// ephemeral presence since v2; the type remains only so the v2 migration can
+/// read the v1 state it drops them from.
 #[app::mergeable(id = "mero_sheets::CursorData")]
 #[derive(Debug, Clone, BorshSerialize, BorshDeserialize, AbiType)]
 #[borsh(crate = "calimero_sdk::borsh")]
@@ -175,6 +179,81 @@ impl Mergeable for MemberData {
     }
 }
 
+/// One row or column added to a sheet, or one deleted. Keyed by
+/// `"{sheet_id}|r|{id}"` / `"{sheet_id}|c|{id}"`; see the recalc crate's
+/// `layout` module for how entries order a sheet.
+#[app::mergeable(id = "mero_sheets::AxisData")]
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, AbiType)]
+#[borsh(crate = "calimero_sdk::borsh")]
+pub struct AxisData {
+    /// Fractional position: decimal digits, compared as strings.
+    pub pos: String,
+    pub deleted: bool,
+    pub updated_at: u64,
+}
+
+impl Mergeable for AxisData {
+    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        // A delete is final: once any replica deleted the row, it stays gone.
+        self.deleted |= other.deleted;
+        // A position is fixed when the id is created; the smaller string wins
+        // so two replicas can never disagree on it.
+        if self.pos.is_empty() || (!other.pos.is_empty() && other.pos < self.pos) {
+            self.pos = other.pos.clone();
+        }
+        self.updated_at = self.updated_at.max(other.updated_at);
+        Ok(())
+    }
+}
+
+/// A cell's display format, kept apart from its value so that formatting a
+/// cell and typing in it at the same moment both survive. Keyed like the cell.
+#[app::mergeable(id = "mero_sheets::FormatData")]
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, AbiType)]
+#[borsh(crate = "calimero_sdk::borsh")]
+pub struct FormatData {
+    /// Empty means Automatic, and overrides a format the cell carried from v1.
+    pub format: String,
+    pub updated_at: u64,
+}
+
+impl Mergeable for FormatData {
+    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        if (other.updated_at, &other.format) > (self.updated_at, &self.format) {
+            self.format = other.format.clone();
+            self.updated_at = other.updated_at;
+        }
+        Ok(())
+    }
+}
+
+/// A named range: a name that formulas can use in place of a reference.
+/// Keyed by the upper-case name; an empty target means deleted (a removed key
+/// would tombstone the name and block defining it again).
+#[app::mergeable(id = "mero_sheets::NamedRangeData")]
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, AbiType)]
+#[borsh(crate = "calimero_sdk::borsh")]
+pub struct NamedRangeData {
+    /// The name as it was typed, for display.
+    pub name: String,
+    /// A reference in stored form (`[sheet-id]!A1:B9`).
+    pub target: String,
+    pub updated_at: u64,
+}
+
+impl Mergeable for NamedRangeData {
+    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        if (other.updated_at, &other.target, &other.name)
+            > (self.updated_at, &self.target, &self.name)
+        {
+            self.name = other.name.clone();
+            self.target = other.target.clone();
+            self.updated_at = other.updated_at;
+        }
+        Ok(())
+    }
+}
+
 // ---------------------------------------------------------------------------
 // View types returned to callers (must derive Serialize + Deserialize)
 // ---------------------------------------------------------------------------
@@ -215,13 +294,16 @@ pub struct Sheet {
     pub created_at: u64,
 }
 
+/// A cell, by row and column id. A legacy id is the cell's old 0-based
+/// position; the client places ids with the sheet's layout (`get_layouts`).
 #[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct Cell {
     pub id: String,
     pub sheet_id: String,
-    pub row: u32,
-    pub col: u32,
+    pub row_id: String,
+    pub col_id: String,
+    /// As stored: references name rows and columns by id.
     pub raw_value: String,
     pub computed_value: String,
     pub format: String,
@@ -237,32 +319,58 @@ pub struct Cell {
 #[serde(tag = "name", content = "payload")]
 pub enum CellOp {
     Set {
-        row: u32,
-        col: u32,
+        row_id: String,
+        col_id: String,
         raw_value: String,
     },
     Format {
-        row: u32,
-        col: u32,
+        row_id: String,
+        col_id: String,
         format: String,
     },
     Clear {
-        row: u32,
-        col: u32,
+        row_id: String,
+        col_id: String,
     },
+}
+
+/// A structural edit: add a row or column at a fractional position, or delete
+/// one by id. Every op is one write, however many cells the sheet holds.
+#[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
+#[serde(crate = "calimero_sdk::serde")]
+#[serde(tag = "name", content = "payload")]
+pub enum AxisOp {
+    InsertRow { id: String, pos: String },
+    InsertCol { id: String, pos: String },
+    DeleteRow { id: String },
+    DeleteCol { id: String },
+}
+
+/// One explicit row or column entry of a sheet.
+#[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct AxisEntryView {
+    pub id: String,
+    pub pos: String,
+    pub deleted: bool,
+}
+
+/// A sheet's explicit row and column entries. A sheet with none has the
+/// legacy layout: row id `k` at row `k`.
+#[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct SheetLayout {
+    pub sheet_id: String,
+    pub rows: Vec<AxisEntryView>,
+    pub cols: Vec<AxisEntryView>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
 #[serde(crate = "calimero_sdk::serde")]
-pub struct Cursor {
-    /// Same as `author` — the pubkey b58 that uniquely identifies this cursor.
-    pub id: String,
-    pub author: String,
-    pub sheet_id: String,
-    pub row: u32,
-    pub col: u32,
-    pub color: String,
-    pub updated_at: u64,
+pub struct NamedRange {
+    pub name: String,
+    /// A reference in stored form.
+    pub target: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
@@ -287,8 +395,23 @@ pub const MAX_OPS_PER_APPLY: usize = 200;
 // State
 // ---------------------------------------------------------------------------
 
+/// Schema versions, as the migration event reports them.
+const SCHEMA_V1: &str = "1";
+const SCHEMA_V2: &str = "2";
+
 // `#[app::state]` injects borsh derives itself (SDK 0.11+).
-#[app::state(emits = for<'a> Event<'a>)]
+//
+// v2 adds row/column ids (`axes`), per-field formats (`formats`) and named
+// ranges (`names`), and drops v1's contract-stored cursors. Every v1
+// collection is carried by id and no cell is rewritten, so the migration costs
+// the same for a workbook of any size: rewriting cells in one execution would
+// run out of gas past a few hundred of them.
+#[app::state(version = 2, emits = for<'a> Event<'a>)]
+#[derive(app::Migrate)]
+#[migrate(
+    from = SpreadsheetV1,
+    emit = Event::Migrated { from_version: SCHEMA_V1, to_version: SCHEMA_V2 }
+)]
 pub struct Spreadsheet {
     /// Set once by `init_project`; empty until then.
     project_id: LwwRegister<String>,
@@ -296,16 +419,38 @@ pub struct Spreadsheet {
     project_created_at: LwwRegister<u64>,
     /// Sheet tabs keyed by sheet id.
     sheets: UnorderedMap<String, SheetData>,
-    /// Cells keyed by `"{sheet_id}|{row}|{col}"`.
+    /// Cells keyed by `"{sheet_id}|{row_id}|{col_id}"`. A v1 key
+    /// (`"{sheet_id}|{row}|{col}"`) is the same cell: legacy ids are positions.
     cells: UnorderedMap<String, CellData>,
-    /// Live cursors keyed by author pubkey hex (one entry per connected user).
-    cursors: AuthoredMap<String, CursorData>,
-    /// Chosen nicknames keyed by the same device hex as `cursors`.
+    /// Chosen nicknames keyed by device hex (`whoami`).
     ///
     /// An `UnorderedMap`, not an `AuthoredMap`: the roster must be readable by
-    /// everyone and survive a member going away, whereas an `AuthoredMap` entry
-    /// is per-writer live state (which is exactly right for a cursor and
-    /// exactly wrong for a name).
+    /// everyone and survive a member going away.
+    members: UnorderedMap<String, MemberData>,
+    /// Added and deleted rows and columns, keyed `"{sheet_id}|r|{id}"` and
+    /// `"{sheet_id}|c|{id}"`.
+    #[migrate(new = UnorderedMap::new_with_field_name("spreadsheet:axes"))]
+    axes: UnorderedMap<String, AxisData>,
+    /// Cell formats, keyed like `cells`. Where a cell has no entry, the format
+    /// it carried from v1 (`CellData::format`) applies.
+    #[migrate(new = UnorderedMap::new_with_field_name("spreadsheet:formats"))]
+    formats: UnorderedMap<String, FormatData>,
+    /// Named ranges keyed by upper-case name.
+    #[migrate(new = UnorderedMap::new_with_field_name("spreadsheet:names"))]
+    names: UnorderedMap<String, NamedRangeData>,
+}
+
+/// The v1 state, read once by the v2 migration.
+#[derive(BorshDeserialize)]
+#[borsh(crate = "calimero_sdk::borsh")]
+struct SpreadsheetV1 {
+    project_id: LwwRegister<String>,
+    project_name: LwwRegister<String>,
+    project_created_at: LwwRegister<u64>,
+    sheets: UnorderedMap<String, SheetData>,
+    cells: UnorderedMap<String, CellData>,
+    #[allow(dead_code, reason = "v1 field the v2 migration drops")]
+    cursors: AuthoredMap<String, CursorData>,
     members: UnorderedMap<String, MemberData>,
 }
 
@@ -319,8 +464,10 @@ impl Spreadsheet {
             project_created_at: LwwRegister::new(0),
             sheets: UnorderedMap::new_with_field_name("spreadsheet:sheets"),
             cells: UnorderedMap::new_with_field_name("spreadsheet:cells"),
-            cursors: AuthoredMap::new_with_field_name("spreadsheet:cursors"),
             members: UnorderedMap::new_with_field_name("spreadsheet:members"),
+            axes: UnorderedMap::new_with_field_name("spreadsheet:axes"),
+            formats: UnorderedMap::new_with_field_name("spreadsheet:formats"),
+            names: UnorderedMap::new_with_field_name("spreadsheet:names"),
         }
     }
 
@@ -534,25 +681,9 @@ impl Spreadsheet {
         if removed.is_none() {
             return Err(AppError::from(Error::NotFound(sheet_id.clone())));
         }
-        // Remove all cells belonging to this sheet.
-        let prefix = format!("{sheet_id}|");
-        let orphan_keys: Vec<String> = self
-            .cells
-            .entries()
-            .map_err(|e| AppError::msg(format!("cells.entries: {e}")))?
-            .filter_map(|(k, _)| {
-                if k.starts_with(&prefix) {
-                    Some(k)
-                } else {
-                    None
-                }
-            })
-            .collect();
-        for k in orphan_keys {
-            self.cells
-                .remove(&k)
-                .map_err(|e| AppError::msg(format!("cells.remove: {e}")))?;
-        }
+        // The sheet's cells are left in storage and skipped on every read:
+        // removing them one by one costs gas per cell, and a big sheet would
+        // not fit one execution.
         app::emit!(Event::SheetDeleted { id: &sheet_id });
         Ok(())
     }
@@ -574,13 +705,14 @@ impl Spreadsheet {
     }
 
     // ---- Cells ----
-
-    // ── Non-emitting storage helpers ─────────────────────────────────────────
-    // These do the storage-only work (no event). Single-cell methods verify the
-    // sheet + emit their own per-cell event; `apply_cell_ops` verifies once and
-    // emits ONE batch event. Keeping the emit OUT of the storage path is what lets
-    // a bulk apply of N cells stay a single commit under the runtime's per-commit
-    // event cap (`max_events` = 100) instead of overflowing at ~1 event/cell.
+    //
+    // A cell is keyed by `"{sheet_id}|{row_id}|{col_id}"` (see the recalc
+    // crate's `layout`): a legacy id is the old 0-based position, so every key
+    // written before row/column ids existed still names the same cell.
+    //
+    // Storage helpers emit nothing. Single-cell methods emit their own event
+    // and `apply_cell_ops` one for the whole batch, which keeps a bulk apply
+    // under the runtime's per-execution event cap.
 
     fn require_sheet(&self, sheet_id: &str) -> app::Result<()> {
         if self
@@ -594,16 +726,29 @@ impl Spreadsheet {
         Ok(())
     }
 
-    /// Store a raw value (literal or formula — both stored verbatim; `get_cells`
-    /// derives formulas on read). Preserves any existing format. No event.
+    /// A row or column id goes into storage keys and stored formulas, so it
+    /// must be short and alphanumeric.
+    fn check_id(id: &str) -> app::Result<()> {
+        if id.is_empty() || id.len() > 32 || !id.bytes().all(|b| b.is_ascii_alphanumeric()) {
+            return Err(AppError::from(Error::Invalid(format!(
+                "row/column id {id:?} must be 1-32 ASCII letters and digits"
+            ))));
+        }
+        Ok(())
+    }
+
+    /// Store a raw value (literal or formula, stored verbatim). The format is
+    /// not touched: it lives in `formats`. Creates the cell if absent. No event.
     fn store_value(
         &mut self,
         sheet_id: &str,
-        row: u32,
-        col: u32,
+        row_id: &str,
+        col_id: &str,
         raw_value: String,
     ) -> app::Result<String> {
-        let key = Spreadsheet::cell_key(sheet_id, row, col);
+        Spreadsheet::check_id(row_id)?;
+        Spreadsheet::check_id(col_id)?;
+        let key = Spreadsheet::cell_key(sheet_id, row_id, col_id);
         let now = storage_env::time_now();
         let exists = self
             .cells
@@ -611,13 +756,14 @@ impl Spreadsheet {
             .map_err(|e| AppError::msg(format!("cells.get: {e}")))?
             .is_some();
         if exists {
-            let mut guard = self
+            if let Some(mut guard) = self
                 .cells
                 .get_mut(&key)
                 .map_err(|e| AppError::msg(format!("cells.get_mut: {e}")))?
-                .unwrap();
-            guard.raw_value = raw_value;
-            guard.updated_at = now;
+            {
+                guard.raw_value = raw_value;
+                guard.updated_at = now;
+            }
         } else {
             self.cells
                 .insert(
@@ -625,8 +771,8 @@ impl Spreadsheet {
                     CellData {
                         id: key.clone(),
                         sheet_id: sheet_id.to_string(),
-                        row,
-                        col,
+                        row: layout::legacy_index(row_id).unwrap_or(u32::MAX),
+                        col: layout::legacy_index(col_id).unwrap_or(u32::MAX),
                         raw_value,
                         format: String::new(),
                         updated_at: now,
@@ -637,75 +783,78 @@ impl Spreadsheet {
         Ok(key)
     }
 
-    /// Store only the display format, preserving any existing value. Creates the
-    /// cell (empty value) if absent. No event.
+    /// Store only the display format, in its own register so it merges apart
+    /// from the value. Creates an empty cell if absent, so a cell can be
+    /// formatted before anything is typed in it. No event.
     fn store_format(
         &mut self,
         sheet_id: &str,
-        row: u32,
-        col: u32,
+        row_id: &str,
+        col_id: &str,
         format: String,
     ) -> app::Result<String> {
-        let key = Spreadsheet::cell_key(sheet_id, row, col);
-        let now = storage_env::time_now();
+        let key = Spreadsheet::cell_key(sheet_id, row_id, col_id);
+        let has_cell = self
+            .cells
+            .get(&key)
+            .map_err(|e| AppError::msg(format!("cells.get: {e}")))?
+            .is_some();
+        if !has_cell {
+            self.store_value(sheet_id, row_id, col_id, String::new())?;
+        }
+        let entry = FormatData {
+            format,
+            updated_at: storage_env::time_now(),
+        };
+        let exists = self
+            .formats
+            .get(&key)
+            .map_err(|e| AppError::msg(format!("formats.get: {e}")))?
+            .is_some();
+        if exists {
+            if let Some(mut guard) = self
+                .formats
+                .get_mut(&key)
+                .map_err(|e| AppError::msg(format!("formats.get_mut: {e}")))?
+            {
+                *guard = entry;
+            }
+        } else {
+            self.formats
+                .insert(key.clone(), entry)
+                .map_err(|e| AppError::msg(format!("formats.insert: {e}")))?;
+        }
+        Ok(key)
+    }
+
+    /// Soft-clear value and format: blank in place rather than removed, since
+    /// removing tombstones the deterministic key and blocks a later write to
+    /// the same cell. A fully blank cell is treated as absent everywhere.
+    /// No event.
+    fn store_clear(&mut self, sheet_id: &str, row_id: &str, col_id: &str) -> app::Result<()> {
+        let key = Spreadsheet::cell_key(sheet_id, row_id, col_id);
         let exists = self
             .cells
             .get(&key)
             .map_err(|e| AppError::msg(format!("cells.get: {e}")))?
             .is_some();
-        if exists {
-            let mut guard = self
-                .cells
-                .get_mut(&key)
-                .map_err(|e| AppError::msg(format!("cells.get_mut: {e}")))?
-                .unwrap();
-            guard.format = format;
-            guard.updated_at = now;
-        } else {
-            self.cells
-                .insert(
-                    key.clone(),
-                    CellData {
-                        id: key.clone(),
-                        sheet_id: sheet_id.to_string(),
-                        row,
-                        col,
-                        raw_value: String::new(),
-                        format,
-                        updated_at: now,
-                    },
-                )
-                .map_err(|e| AppError::msg(format!("cells.insert: {e}")))?;
+        if !exists {
+            return Ok(());
         }
-        Ok(key)
-    }
-
-    /// Soft-clear: blank the cell in place rather than removing it (removing
-    /// tombstones the deterministic CRDT key, blocking a later re-write to the
-    /// same coordinate). A fully-blank cell is treated as absent everywhere. No event.
-    fn store_clear(&mut self, sheet_id: &str, row: u32, col: u32) -> app::Result<()> {
-        let key = Spreadsheet::cell_key(sheet_id, row, col);
-        if let Some(mut guard) = self
-            .cells
-            .get_mut(&key)
-            .map_err(|e| AppError::msg(format!("cells.get_mut: {e}")))?
-        {
-            guard.raw_value = String::new();
-            guard.format = String::new();
-            guard.updated_at = storage_env::time_now();
-        }
+        self.store_value(sheet_id, row_id, col_id, String::new())?;
+        self.store_format(sheet_id, row_id, col_id, String::new())?;
         Ok(())
     }
 
     pub fn set_cell(
         &mut self,
         sheet_id: String,
-        row: u32,
-        col: u32,
+        row_id: String,
+        col_id: String,
         raw_value: String,
     ) -> app::Result<String> {
         self.require_sheet(&sheet_id)?;
-        let key = self.store_value(&sheet_id, row, col, raw_value)?;
+        let key = self.store_value(&sheet_id, &row_id, &col_id, raw_value)?;
         app::emit!(Event::CellUpdated {
             id: &key,
             sheet_id: &sheet_id
@@ -713,37 +862,17 @@ impl Spreadsheet {
         Ok(key)
     }
 
-    pub fn set_cell_formula(
-        &mut self,
-        sheet_id: String,
-        row: u32,
-        col: u32,
-        formula: String,
-    ) -> app::Result<String> {
-        self.require_sheet(&sheet_id)?;
-        // Store the raw formula; `get_cells` derives its value (and every
-        // dependent) on read, so one code path handles same- and cross-sheet refs.
-        let key = self.store_value(&sheet_id, row, col, formula)?;
-        app::emit!(Event::CellUpdated {
-            id: &key,
-            sheet_id: &sheet_id
-        });
-        Ok(key)
-    }
-
-    /// Set only the display format of a cell, preserving its value. Creates the
-    /// cell (empty value) if it does not exist yet, so you can format ahead of
-    /// typing. `format` is a keyword like "number"/"currency"/"percent"/"date"
-    /// ("" = Automatic).
+    /// Set only the display format of a cell, preserving its value. `format`
+    /// is a keyword like "number"/"currency"/"percent"/"date" ("" = Automatic).
     pub fn set_cell_format(
         &mut self,
         sheet_id: String,
-        row: u32,
-        col: u32,
+        row_id: String,
+        col_id: String,
         format: String,
     ) -> app::Result<String> {
         self.require_sheet(&sheet_id)?;
-        let key = self.store_format(&sheet_id, row, col, format)?;
+        let key = self.store_format(&sheet_id, &row_id, &col_id, format)?;
         app::emit!(Event::CellUpdated {
             id: &key,
             sheet_id: &sheet_id
@@ -751,24 +880,27 @@ impl Spreadsheet {
         Ok(key)
     }
 
-    pub fn clear_cell(&mut self, sheet_id: String, row: u32, col: u32) -> app::Result<()> {
-        self.store_clear(&sheet_id, row, col)?;
+    pub fn clear_cell(
+        &mut self,
+        sheet_id: String,
+        row_id: String,
+        col_id: String,
+    ) -> app::Result<()> {
+        self.store_clear(&sheet_id, &row_id, &col_id)?;
         app::emit!(Event::CellCleared {
             sheet_id: &sheet_id,
-            row,
-            col,
+            row_id: &row_id,
+            col_id: &col_id,
         });
         Ok(())
     }
 
-    /// Apply a batch of cell operations to one sheet in a single mutation. One
-    /// CRDT commit for the batch; values are derived on read. Emits ONE
-    /// `CellsChanged` event for the whole batch (not one per cell) so it stays
-    /// under the runtime's per-commit event cap.
+    /// Apply a batch of cell operations to one sheet in a single mutation, with
+    /// ONE `CellsChanged` event for the whole batch.
     ///
-    /// At most [`MAX_OPS_PER_APPLY`] ops. One execution has a fixed gas
-    /// budget (1e9 points on 0.11.0-rc.43), which runs out between 500 and 600
-    /// cell writes, and a batch that exhausts it fails as a whole with nothing
+    /// At most [`MAX_OPS_PER_APPLY`] ops. One execution has a fixed gas budget
+    /// (1e9 points on 0.11.0-rc.43), which runs out between 500 and 600 cell
+    /// writes, and a batch that exhausts it fails as a whole with nothing
     /// written. Refusing early says why; callers split larger range ops.
     pub fn apply_cell_ops(&mut self, sheet_id: String, ops: Vec<CellOp>) -> app::Result<()> {
         if ops.len() > MAX_OPS_PER_APPLY {
@@ -781,20 +913,22 @@ impl Spreadsheet {
         let count = ops.len() as u32;
         for op in ops {
             match op {
-                // Literal and formula both store the raw string verbatim
-                // (`get_cells` derives formulas on read), so one path handles both.
                 CellOp::Set {
-                    row,
-                    col,
+                    row_id,
+                    col_id,
                     raw_value,
                 } => {
-                    self.store_value(&sheet_id, row, col, raw_value)?;
+                    self.store_value(&sheet_id, &row_id, &col_id, raw_value)?;
                 }
-                CellOp::Format { row, col, format } => {
-                    self.store_format(&sheet_id, row, col, format)?;
+                CellOp::Format {
+                    row_id,
+                    col_id,
+                    format,
+                } => {
+                    self.store_format(&sheet_id, &row_id, &col_id, format)?;
                 }
-                CellOp::Clear { row, col } => {
-                    self.store_clear(&sheet_id, row, col)?;
+                CellOp::Clear { row_id, col_id } => {
+                    self.store_clear(&sheet_id, &row_id, &col_id)?;
                 }
             }
         }
@@ -805,217 +939,336 @@ impl Spreadsheet {
         Ok(())
     }
 
-    /// Shared by `get_cells`/`get_all_cells`: filters out fully-blank cells
-    /// (see the cleared-cell note below) and builds the output `Cell` list,
-    /// looking up each cell's computed value (falling back to its raw value
-    /// when recalc has nothing for it, e.g. blank-but-formatted cells).
-    /// Does not sort — callers sort with their own key.
-    fn cells_from_stored(
-        stored: impl IntoIterator<Item = CellData>,
-        computed: &std::collections::BTreeMap<recalc::CellRef, String>,
-    ) -> Vec<Cell> {
-        stored
-            .into_iter()
-            .filter_map(|d| {
-                // A cleared cell is kept in the map (blank in place) rather than
-                // removed, so its coordinate can be re-written — removing it
-                // tombstones the deterministic key and blocks re-insertion. Such
-                // fully-blank cells are hidden here so consumers still see a
-                // cleared cell as gone. A value-less but formatted cell stays.
-                if d.raw_value.is_empty() && d.format.is_empty() {
-                    return None;
+    // ---- Rows and columns ----
+
+    /// Insert or delete rows and columns. Each op is one write, whatever the
+    /// sheet holds: cells keep their keys, and formulas that name rows by id
+    /// keep pointing at the same cells. A deleted row's cells stay stored but
+    /// out of the layout, so references to them read `#REF!`.
+    ///
+    /// The client picks ids (letters first, never a legacy number) and
+    /// positions (see the recalc crate's `layout`).
+    pub fn apply_axis_ops(&mut self, sheet_id: String, ops: Vec<AxisOp>) -> app::Result<()> {
+        if ops.len() > MAX_OPS_PER_APPLY {
+            return Err(AppError::from(Error::Invalid(format!(
+                "{} axis ops in one apply_axis_ops; the limit is {MAX_OPS_PER_APPLY}",
+                ops.len()
+            ))));
+        }
+        self.require_sheet(&sheet_id)?;
+        let count = ops.len() as u32;
+        let now = storage_env::time_now();
+        for op in ops {
+            let (axis, id, insert_pos) = match op {
+                AxisOp::InsertRow { id, pos } => ('r', id, Some(pos)),
+                AxisOp::InsertCol { id, pos } => ('c', id, Some(pos)),
+                AxisOp::DeleteRow { id } => ('r', id, None),
+                AxisOp::DeleteCol { id } => ('c', id, None),
+            };
+            Spreadsheet::check_id(&id)?;
+            let key = format!("{sheet_id}|{axis}|{id}");
+            let existing = self
+                .axes
+                .get(&key)
+                .map_err(|e| AppError::msg(format!("axes.get: {e}")))?;
+            match insert_pos {
+                Some(pos) => {
+                    if layout::legacy_index(&id).is_some()
+                        || !id.starts_with(|c: char| c.is_ascii_alphabetic())
+                    {
+                        return Err(AppError::from(Error::Invalid(format!(
+                            "a new row/column id must start with a letter, got {id:?}"
+                        ))));
+                    }
+                    if pos.is_empty() || !pos.bytes().all(|b| b.is_ascii_digit()) {
+                        return Err(AppError::from(Error::Invalid(format!(
+                            "a position is decimal digits, got {pos:?}"
+                        ))));
+                    }
+                    if existing.is_some() {
+                        return Err(AppError::from(Error::Invalid(format!(
+                            "{id} already exists"
+                        ))));
+                    }
+                    self.axes
+                        .insert(
+                            key,
+                            AxisData {
+                                pos,
+                                deleted: false,
+                                updated_at: now,
+                            },
+                        )
+                        .map_err(|e| AppError::msg(format!("axes.insert: {e}")))?;
                 }
-                // `d` is owned here, so its fields move into `Cell` directly
-                // instead of being cloned. `raw_value` is only cloned in the
-                // fallback branch (no computed value for this cell) — the
-                // common case (a hit in `computed`) clones nothing.
-                let cv = computed
-                    .get(&recalc::CellRef {
-                        sheet_id: d.sheet_id.clone(),
-                        row: d.row,
-                        col: d.col,
-                    })
-                    .cloned()
-                    .unwrap_or_else(|| d.raw_value.clone());
-                Some(Cell {
-                    id: d.id,
-                    sheet_id: d.sheet_id,
-                    row: d.row,
-                    col: d.col,
-                    raw_value: d.raw_value,
-                    computed_value: cv,
-                    format: d.format,
-                    updated_at: d.updated_at,
-                })
-            })
-            .collect()
+                None if existing.is_some() => {
+                    if let Some(mut guard) = self
+                        .axes
+                        .get_mut(&key)
+                        .map_err(|e| AppError::msg(format!("axes.get_mut: {e}")))?
+                    {
+                        guard.deleted = true;
+                        guard.updated_at = now;
+                    }
+                }
+                // Deleting a legacy row writes its tombstone at its fixed position.
+                None => {
+                    let k = layout::legacy_index(&id)
+                        .ok_or_else(|| AppError::from(Error::NotFound(id.clone())))?;
+                    self.axes
+                        .insert(
+                            key,
+                            AxisData {
+                                pos: layout::legacy_pos(k),
+                                deleted: true,
+                                updated_at: now,
+                            },
+                        )
+                        .map_err(|e| AppError::msg(format!("axes.insert: {e}")))?;
+                }
+            }
+        }
+        app::emit!(Event::AxesChanged {
+            sheet_id: &sheet_id,
+            count
+        });
+        Ok(())
     }
 
-    pub fn get_cells(&self, sheet_id: String) -> app::Result<Vec<Cell>> {
-        // Collect all non-empty cells once; `stored` retains every cell (the
-        // output for the requested sheet is filtered from it below).
-        let mut all_inputs: std::collections::BTreeMap<recalc::CellRef, String> =
-            std::collections::BTreeMap::new();
-        let mut stored: Vec<CellData> = Vec::new();
-        for (_k, d) in self
+    /// Every sheet's explicit row and column entries.
+    pub fn get_layouts(&self) -> app::Result<Vec<SheetLayout>> {
+        let mut by_sheet: BTreeMap<String, SheetLayout> = BTreeMap::new();
+        for (key, d) in self
+            .axes
+            .entries()
+            .map_err(|e| AppError::msg(format!("axes.entries: {e}")))?
+        {
+            let Some((sheet_id, axis, id)) = split_key(&key) else {
+                continue;
+            };
+            let l = by_sheet
+                .entry(sheet_id.to_string())
+                .or_insert_with(|| SheetLayout {
+                    sheet_id: sheet_id.to_string(),
+                    rows: Vec::new(),
+                    cols: Vec::new(),
+                });
+            let entry = AxisEntryView {
+                id: id.to_string(),
+                pos: d.pos,
+                deleted: d.deleted,
+            };
+            match axis {
+                "r" => l.rows.push(entry),
+                "c" => l.cols.push(entry),
+                _ => {}
+            }
+        }
+        Ok(by_sheet.into_values().collect())
+    }
+
+    // ---- Named ranges ----
+
+    /// Define or redefine a named range. `target` is a reference in stored form.
+    pub fn set_named_range(&mut self, name: String, target: String) -> app::Result<()> {
+        let name = name.trim().to_string();
+        if !formula::is_valid_name(&name) {
+            return Err(AppError::from(Error::Invalid(format!(
+                "{name:?} cannot be a name: use letters, digits and _, starting with a letter or _, \
+                 and not something that reads as a cell, a column or TRUE/FALSE"
+            ))));
+        }
+        if !formula::is_reference(&target) {
+            return Err(AppError::from(Error::Invalid(format!(
+                "{target:?} is not a cell or range reference"
+            ))));
+        }
+        self.store_name(name, target)
+    }
+
+    pub fn delete_named_range(&mut self, name: String) -> app::Result<()> {
+        let key = name.trim().to_ascii_uppercase();
+        let existing = self
+            .names
+            .get(&key)
+            .map_err(|e| AppError::msg(format!("names.get: {e}")))?;
+        if existing.is_none_or(|d| d.target.is_empty()) {
+            return Err(AppError::from(Error::NotFound(name)));
+        }
+        self.store_name(name.trim().to_string(), String::new())
+    }
+
+    fn store_name(&mut self, name: String, target: String) -> app::Result<()> {
+        let key = name.to_ascii_uppercase();
+        let entry = NamedRangeData {
+            name: name.clone(),
+            target,
+            updated_at: storage_env::time_now(),
+        };
+        let exists = self
+            .names
+            .get(&key)
+            .map_err(|e| AppError::msg(format!("names.get: {e}")))?
+            .is_some();
+        if exists {
+            if let Some(mut guard) = self
+                .names
+                .get_mut(&key)
+                .map_err(|e| AppError::msg(format!("names.get_mut: {e}")))?
+            {
+                *guard = entry;
+            }
+        } else {
+            self.names
+                .insert(key, entry)
+                .map_err(|e| AppError::msg(format!("names.insert: {e}")))?;
+        }
+        app::emit!(Event::NamedRangesChanged { name: &name });
+        Ok(())
+    }
+
+    /// Every defined named range, sorted by name.
+    pub fn get_named_ranges(&self) -> app::Result<Vec<NamedRange>> {
+        let mut out: Vec<NamedRange> = self
+            .names
+            .entries()
+            .map_err(|e| AppError::msg(format!("names.entries: {e}")))?
+            .filter(|(_, d)| !d.target.is_empty())
+            .map(|(_, d)| NamedRange {
+                name: d.name,
+                target: d.target,
+            })
+            .collect();
+        out.sort_by(|a, b| {
+            a.name
+                .to_ascii_uppercase()
+                .cmp(&b.name.to_ascii_uppercase())
+        });
+        Ok(out)
+    }
+
+    // ---- Reading cells ----
+
+    /// Every stored cell of a live sheet, the recalc input of each non-blank
+    /// one, and the live sheet ids, read in one pass.
+    fn read_cells(&self) -> app::Result<StoredCells> {
+        let sheet_ids: HashSet<String> = self
+            .sheets
+            .entries()
+            .map_err(|e| AppError::msg(format!("sheets.entries: {e}")))?
+            .map(|(id, _)| id)
+            .collect();
+        let mut inputs = BTreeMap::new();
+        let mut stored = Vec::new();
+        for (key, d) in self
             .cells
             .entries()
             .map_err(|e| AppError::msg(format!("cells.entries: {e}")))?
         {
+            // A deleted sheet's cells are left behind rather than removed one
+            // by one (which would not fit one execution's gas for a big sheet).
+            if !sheet_ids.contains(&d.sheet_id) {
+                continue;
+            }
+            let Some((_, row_id, col_id)) = split_key(&key) else {
+                continue;
+            };
             if !d.raw_value.is_empty() {
-                all_inputs.insert(
+                inputs.insert(
                     recalc::CellRef {
                         sheet_id: d.sheet_id.clone(),
-                        row: d.row,
-                        col: d.col,
+                        row: row_id.to_string(),
+                        col: col_id.to_string(),
                     },
                     d.raw_value.clone(),
                 );
             }
             stored.push(d);
         }
+        Ok((stored, inputs, sheet_ids))
+    }
 
-        // Build the set of valid sheet ids for error detection.
-        let sheet_ids: std::collections::HashSet<String> = self
-            .sheets
+    /// The cells to show: effective format applied, computed value looked up,
+    /// fully blank cells (no value and no format) hidden.
+    fn cells_from_stored(
+        &self,
+        stored: impl IntoIterator<Item = CellData>,
+        computed: &BTreeMap<recalc::CellRef, String>,
+    ) -> app::Result<Vec<Cell>> {
+        let formats: BTreeMap<String, String> = self
+            .formats
             .entries()
-            .map_err(|e| AppError::msg(format!("sheets.entries: {e}")))?
-            .map(|(id, _)| id)
+            .map_err(|e| AppError::msg(format!("formats.entries: {e}")))?
+            .map(|(k, f)| (k, f.format))
             .collect();
+        let mut out = Vec::new();
+        for d in stored {
+            let format = formats.get(&d.id).cloned().unwrap_or(d.format);
+            if d.raw_value.is_empty() && format.is_empty() {
+                continue;
+            }
+            let Some((_, row_id, col_id)) = split_key(&d.id) else {
+                continue;
+            };
+            let (row_id, col_id) = (row_id.to_string(), col_id.to_string());
+            let computed_value = computed
+                .get(&recalc::CellRef {
+                    sheet_id: d.sheet_id.clone(),
+                    row: row_id.clone(),
+                    col: col_id.clone(),
+                })
+                .cloned()
+                .unwrap_or_else(|| d.raw_value.clone());
+            out.push(Cell {
+                id: d.id,
+                sheet_id: d.sheet_id,
+                row_id,
+                col_id,
+                raw_value: d.raw_value,
+                computed_value,
+                format,
+                updated_at: d.updated_at,
+            });
+        }
+        Ok(out)
+    }
 
-        // Sheet-level read scoping: evaluate only the requested sheet and the
-        // sheets it transitively references. `sheet_ids` stays the FULL set so
-        // unknown-sheet → #REF! detection is exact. Result is identical to a
-        // whole-workbook eval (unreachable sheets cannot affect this sheet).
-        let env = Spreadsheet::formula_env();
-        let closure = recalc::sheet_closure(&all_inputs, &env.names, &sheet_id);
-        let inputs = recalc::WorkbookInputs {
+    /// One sheet's cells with computed values. Evaluates only the sheet and
+    /// the sheets it transitively references, which gives the same values as
+    /// evaluating the whole workbook.
+    pub fn get_cells(&self, sheet_id: String) -> app::Result<Vec<Cell>> {
+        let (stored, all_inputs, sheet_ids) = self.read_cells()?;
+        let env = self.formula_env()?;
+        let closure = recalc::sheet_closure(&all_inputs, &env, &sheet_id);
+        let computed = recalc::evaluate(&recalc::WorkbookInputs {
             cells: all_inputs
                 .into_iter()
                 .filter(|(k, _)| closure.contains(&k.sheet_id))
                 .collect(),
             sheet_ids,
             env,
-        };
-        let computed = recalc::evaluate(&inputs);
-
-        // `d.sheet_id` mirrors the `"{sheet_id}|{row}|{col}"` map key (see
-        // `cell_key`), so filtering on it is equivalent to the old
-        // key-prefix check without needing to keep the map key around.
-        let mut out = Spreadsheet::cells_from_stored(
+        });
+        let mut out = self.cells_from_stored(
             stored.into_iter().filter(|d| d.sheet_id == sheet_id),
             &computed,
-        );
-        out.sort_by_key(|c| (c.row, c.col));
+        )?;
+        out.sort_by(|a, b| (&a.row_id, &a.col_id).cmp(&(&b.row_id, &b.col_id)));
         Ok(out)
     }
 
-    /// Every non-blank cell across ALL sheets, with raw + computed values —
-    /// a single-call warm-store read for the client. Unlike `get_cells`
-    /// (scoped to one sheet's closure), this evaluates the whole workbook
-    /// once. `export_all` is metadata-only (sheets) and is unrelated.
+    /// Every non-blank cell across all sheets, raw and computed: the client's
+    /// warm store, read in one call.
     pub fn get_all_cells(&self) -> app::Result<Vec<Cell>> {
-        let mut all_inputs: std::collections::BTreeMap<recalc::CellRef, String> =
-            std::collections::BTreeMap::new();
-        let mut stored: Vec<CellData> = Vec::new();
-        for (_k, d) in self
-            .cells
-            .entries()
-            .map_err(|e| AppError::msg(format!("cells.entries: {e}")))?
-        {
-            if !d.raw_value.is_empty() {
-                all_inputs.insert(
-                    recalc::CellRef {
-                        sheet_id: d.sheet_id.clone(),
-                        row: d.row,
-                        col: d.col,
-                    },
-                    d.raw_value.clone(),
-                );
-            }
-            stored.push(d);
-        }
-        let sheet_ids: std::collections::HashSet<String> = self
-            .sheets
-            .entries()
-            .map_err(|e| AppError::msg(format!("sheets.entries: {e}")))?
-            .map(|(id, _)| id)
-            .collect();
+        let (stored, cells, sheet_ids) = self.read_cells()?;
         let computed = recalc::evaluate(&recalc::WorkbookInputs {
-            cells: all_inputs,
+            cells,
             sheet_ids,
-            env: Spreadsheet::formula_env(),
+            env: self.formula_env()?,
         });
-
-        let mut out = Spreadsheet::cells_from_stored(stored, &computed);
-        out.sort_by_key(|c| (c.sheet_id.clone(), c.row, c.col));
-        Ok(out)
-    }
-
-    // ---- Cursors ----
-    //
-    // Superseded: the app now shares cursors and selections over the node's
-    // ephemeral presence channel (app/src/hooks/useSheetPresence.ts), so a
-    // cursor move is no longer a replicated commit. These stay only so a
-    // frontend from before that change keeps working against this contract;
-    // they and the `cursors` field go in the v2 state migration.
-
-    pub fn update_cursor(&mut self, sheet_id: String, row: u32, col: u32) -> app::Result<()> {
-        let author = self.caller_hex();
-        let color = Spreadsheet::assign_color(&author);
-        let now = storage_env::time_now();
-        let data = CursorData {
-            sheet_id: sheet_id.clone(),
-            row,
-            col,
-            color,
-            updated_at: now,
-        };
-        let exists = self
-            .cursors
-            .contains(&author)
-            .map_err(|e| AppError::msg(format!("cursors.contains: {e}")))?;
-        if exists {
-            self.cursors
-                .update(&author, data)
-                .map_err(|e| AppError::msg(format!("cursors.update: {e}")))?;
-        } else {
-            self.cursors
-                .insert(author.clone(), data)
-                .map_err(|e| AppError::msg(format!("cursors.insert: {e}")))?;
-        }
-        app::emit!(Event::CursorMoved {
-            author: &author,
-            sheet_id: &sheet_id,
+        let mut out = self.cells_from_stored(stored, &computed)?;
+        out.sort_by(|a, b| {
+            (&a.sheet_id, &a.row_id, &a.col_id).cmp(&(&b.sheet_id, &b.row_id, &b.col_id))
         });
-        Ok(())
-    }
-
-    pub fn remove_cursor(&mut self) -> app::Result<()> {
-        let author = self.caller_hex();
-        self.cursors
-            .remove(&author)
-            .map_err(|e| AppError::msg(format!("cursors.remove: {e}")))?;
-        app::emit!(Event::CursorRemoved { author: &author });
-        Ok(())
-    }
-
-    pub fn get_cursors(&self) -> app::Result<Vec<Cursor>> {
-        let mut out: Vec<Cursor> = self
-            .cursors
-            .entries()
-            .map_err(|e| AppError::msg(format!("cursors.entries: {e}")))?
-            .map(|(author, d)| Cursor {
-                id: author.clone(),
-                author: author.clone(),
-                sheet_id: d.sheet_id.clone(),
-                row: d.row,
-                col: d.col,
-                color: d.color.clone(),
-                updated_at: d.updated_at,
-            })
-            .collect();
-        out.sort_by(|a, b| a.author.cmp(&b.author));
         Ok(out)
     }
 
@@ -1048,8 +1301,8 @@ impl Spreadsheet {
 // ---------------------------------------------------------------------------
 
 impl Spreadsheet {
-    /// This device's id, hex. A live cursor is per-INSTALLATION state — one
-    /// entry per connected session — so it keys on the device, not the account
+    /// This device's id, hex: the key a member's nickname is stored under and
+    /// the id their live cursor carries. Keyed on the device, not the account
     /// (core's own rule: `device_id` is "right for per-writer state"). Was
     /// `bs58::encode(env::executor_id())`; rc.20 removed `executor_id` and rc.27
     /// removed base58 (core#3691).
@@ -1057,31 +1310,63 @@ impl Spreadsheet {
         hex::encode(env::device_id())
     }
 
-    /// What formulas see besides cells: the execution's clock, so `NOW()` and
-    /// `TODAY()` read the node's time (`time_now` is nanoseconds).
-    fn formula_env() -> formula::Env {
-        formula::Env {
+    /// What formulas see besides cells: the execution's clock (so `NOW()` and
+    /// `TODAY()` read the node's time; `time_now` is nanoseconds), the named
+    /// ranges, and each sheet's row and column order.
+    fn formula_env(&self) -> app::Result<formula::Env> {
+        let names = self
+            .names
+            .entries()
+            .map_err(|e| AppError::msg(format!("names.entries: {e}")))?
+            .filter(|(_, d)| !d.target.is_empty())
+            .map(|(k, d)| (k, d.target))
+            .collect();
+        let layouts = self
+            .get_layouts()?
+            .into_iter()
+            .map(|l| {
+                let axis = |entries: Vec<AxisEntryView>| -> Vec<layout::AxisEntry> {
+                    entries
+                        .into_iter()
+                        .map(|e| layout::AxisEntry {
+                            id: e.id,
+                            pos: e.pos,
+                            deleted: e.deleted,
+                        })
+                        .collect()
+                };
+                let rows = layout::Axis::build(&axis(l.rows), formula::MAX_ROWS);
+                let cols = layout::Axis::build(&axis(l.cols), formula::MAX_COLS);
+                (l.sheet_id, layout::Layout { rows, cols })
+            })
+            .collect();
+        Ok(formula::Env {
             now_ms: storage_env::time_now() / 1_000_000,
-            ..formula::Env::default()
-        }
+            names,
+            layouts,
+        })
     }
 
-    fn cell_key(sheet_id: &str, row: u32, col: u32) -> String {
-        format!("{sheet_id}|{row}|{col}")
+    fn cell_key(sheet_id: &str, row_id: &str, col_id: &str) -> String {
+        format!("{sheet_id}|{row_id}|{col_id}")
     }
+}
 
-    /// Deterministic colour derived from the author pubkey so it is stable
-    /// across sessions without any server-side assignment.
-    fn assign_color(pubkey_hex: &str) -> String {
-        const PALETTE: &[&str] = &[
-            "#E74C3C", "#3498DB", "#2ECC71", "#F39C12", "#9B59B6", "#1ABC9C", "#E67E22", "#34495E",
-            "#E91E63", "#00BCD4", "#FF5722", "#8BC34A", "#607D8B", "#FF9800", "#673AB7",
-        ];
-        let idx = pubkey_hex
-            .bytes()
-            .fold(0usize, |acc, b| acc.wrapping_add(b as usize));
-        PALETTE[idx % PALETTE.len()].to_string()
-    }
+/// See `Spreadsheet::read_cells`.
+type StoredCells = (
+    Vec<CellData>,
+    BTreeMap<recalc::CellRef, String>,
+    HashSet<String>,
+);
+
+/// `"{sheet}|{a}|{b}"` → its three parts. The sheet id is everything before
+/// the last two separators; row, column and axis parts never contain one.
+fn split_key(key: &str) -> Option<(&str, &str, &str)> {
+    let mut parts = key.rsplitn(3, '|');
+    let b = parts.next()?;
+    let a = parts.next()?;
+    let sheet = parts.next()?;
+    Some((sheet, a, b))
 }
 
 // ---------------------------------------------------------------------------
@@ -1195,22 +1480,6 @@ mod tests {
     }
 
     #[test]
-    fn a_member_id_is_the_same_key_a_cursor_is_authored_by() {
-        // The whole point of keying both on `caller_hex`: the roster and the
-        // live cursors join without a translation step, so a cursor can be
-        // labelled with the name its author chose.
-        let mut app = make_app();
-        app.call(|s| s.init_project("P".into())).unwrap();
-        let sid = app.call(|s| s.create_sheet("S".into())).unwrap();
-        app.call(|s| s.join("Ada".into())).unwrap();
-        app.call(|s| s.update_cursor(sid, 1, 1)).unwrap();
-        let members = app.view(|s| s.get_members()).unwrap();
-        let cursors = app.view(|s| s.get_cursors()).unwrap();
-        assert_eq!(cursors.len(), 1);
-        assert_eq!(cursors[0].author, members[0].id);
-    }
-
-    #[test]
     fn member_merge_keeps_the_newer_name_and_the_earlier_arrival() {
         let mut mine = MemberData {
             nickname: "Ada".into(),
@@ -1282,7 +1551,7 @@ mod tests {
         let mut app = make_app();
         app.call(|s| s.init_project("P".into())).unwrap();
         let sid = app.call(|s| s.create_sheet("Tab".into())).unwrap();
-        app.call(|s| s.set_cell(sid.clone(), 0, 0, "42".into()))
+        app.call(|s| s.set_cell(sid.clone(), "0".into(), "0".into(), "42".into()))
             .unwrap();
         app.call(|s| s.delete_sheet(sid.clone())).unwrap();
         let sheets = app.view(|s| s.list_sheets()).unwrap();
@@ -1297,7 +1566,7 @@ mod tests {
         app.call(|s| s.init_project("P".into())).unwrap();
         let sid = app.call(|s| s.create_sheet("Sheet1".into())).unwrap();
         let cid = app
-            .call(|s| s.set_cell(sid.clone(), 0, 0, "1500".into()))
+            .call(|s| s.set_cell(sid.clone(), "0".into(), "0".into(), "1500".into()))
             .unwrap();
         let cells = app.view(|s| s.get_cells(sid)).unwrap();
         assert_eq!(cells.len(), 1);
@@ -1311,12 +1580,15 @@ mod tests {
         let mut app = make_app();
         app.call(|s| s.init_project("P".into())).unwrap();
         let sid = app.call(|s| s.create_sheet("S".into())).unwrap();
-        app.call(|s| s.set_cell(sid.clone(), 0, 0, "1234.5".into()))
+        app.call(|s| s.set_cell(sid.clone(), "0".into(), "0".into(), "1234.5".into()))
             .unwrap();
-        app.call(|s| s.set_cell_format(sid.clone(), 0, 0, "currency".into()))
+        app.call(|s| s.set_cell_format(sid.clone(), "0".into(), "0".into(), "currency".into()))
             .unwrap();
         let cells = app.view(|s| s.get_cells(sid.clone())).unwrap();
-        let a1 = cells.iter().find(|c| c.row == 0 && c.col == 0).unwrap();
+        let a1 = cells
+            .iter()
+            .find(|c| c.row_id == "0" && c.col_id == "0")
+            .unwrap();
         assert_eq!(a1.format, "currency");
         assert_eq!(a1.raw_value, "1234.5", "value preserved when format is set");
     }
@@ -1327,12 +1599,15 @@ mod tests {
         app.call(|s| s.init_project("P".into())).unwrap();
         let sid = app.call(|s| s.create_sheet("S".into())).unwrap();
         // Format an empty cell, then type a value into it.
-        app.call(|s| s.set_cell_format(sid.clone(), 0, 0, "percent".into()))
+        app.call(|s| s.set_cell_format(sid.clone(), "0".into(), "0".into(), "percent".into()))
             .unwrap();
-        app.call(|s| s.set_cell(sid.clone(), 0, 0, "0.25".into()))
+        app.call(|s| s.set_cell(sid.clone(), "0".into(), "0".into(), "0.25".into()))
             .unwrap();
         let cells = app.view(|s| s.get_cells(sid.clone())).unwrap();
-        let a1 = cells.iter().find(|c| c.row == 0 && c.col == 0).unwrap();
+        let a1 = cells
+            .iter()
+            .find(|c| c.row_id == "0" && c.col_id == "0")
+            .unwrap();
         assert_eq!(a1.format, "percent", "format survives a later value edit");
         assert_eq!(a1.computed_value, "0.25");
     }
@@ -1368,15 +1643,15 @@ mod tests {
         app.call(|s| s.init_project("P".into())).unwrap();
         let sid = app.call(|s| s.create_sheet("S".into())).unwrap();
         // Seed A1..A3 with values 10, 20, 30.
-        app.call(|s| s.set_cell(sid.clone(), 0, 0, "10".into()))
+        app.call(|s| s.set_cell(sid.clone(), "0".into(), "0".into(), "10".into()))
             .unwrap();
-        app.call(|s| s.set_cell(sid.clone(), 1, 0, "20".into()))
+        app.call(|s| s.set_cell(sid.clone(), "1".into(), "0".into(), "20".into()))
             .unwrap();
-        app.call(|s| s.set_cell(sid.clone(), 2, 0, "30".into()))
+        app.call(|s| s.set_cell(sid.clone(), "2".into(), "0".into(), "30".into()))
             .unwrap();
         // SUM(A1:A3) should be 60.
         let fid = app
-            .call(|s| s.set_cell_formula(sid.clone(), 3, 0, "=SUM(A1:A3)".into()))
+            .call(|s| s.set_cell(sid.clone(), "3".into(), "0".into(), "=SUM(A1:A3)".into()))
             .unwrap();
         let cells = app.view(|s| s.get_cells(sid)).unwrap();
         let formula_cell = cells.iter().find(|c| c.id == fid).unwrap();
@@ -1388,22 +1663,29 @@ mod tests {
         let mut app = make_app();
         app.call(|s| s.init_project("P".into())).unwrap();
         let sid = app.call(|s| s.create_sheet("S".into())).unwrap();
-        app.call(|s| s.set_cell(sid.clone(), 0, 0, "10".into()))
+        app.call(|s| s.set_cell(sid.clone(), "0".into(), "0".into(), "10".into()))
             .unwrap(); // A1 = 10
-        app.call(|s| s.set_cell(sid.clone(), 1, 0, "20".into()))
+        app.call(|s| s.set_cell(sid.clone(), "1".into(), "0".into(), "20".into()))
             .unwrap(); // A2 = 20
                        // $ anchors are evaluation no-ops: these must all compute like the bare refs.
-        app.call(|s| s.set_cell_formula(sid.clone(), 0, 1, "=$A$1".into()))
+        app.call(|s| s.set_cell(sid.clone(), "0".into(), "1".into(), "=$A$1".into()))
             .unwrap(); // B1
-        app.call(|s| s.set_cell_formula(sid.clone(), 1, 1, "=A$1+$A2".into()))
+        app.call(|s| s.set_cell(sid.clone(), "1".into(), "1".into(), "=A$1+$A2".into()))
             .unwrap(); // B2
-        app.call(|s| s.set_cell_formula(sid.clone(), 2, 1, "=SUM($A$1:$A$2)".into()))
-            .unwrap(); // B3
+        app.call(|s| {
+            s.set_cell(
+                sid.clone(),
+                "2".into(),
+                "1".into(),
+                "=SUM($A$1:$A$2)".into(),
+            )
+        })
+        .unwrap(); // B3
         let cells = app.view(|s| s.get_cells(sid.clone())).unwrap();
         let get = |r: u32, c: u32| {
             cells
                 .iter()
-                .find(|x| x.row == r && x.col == c)
+                .find(|x| x.row_id == r.to_string() && x.col_id == c.to_string())
                 .unwrap()
                 .computed_value
                 .clone()
@@ -1418,25 +1700,31 @@ mod tests {
         let mut app = make_app();
         app.call(|s| s.init_project("P".into())).unwrap();
         let sid = app.call(|s| s.create_sheet("S".into())).unwrap();
-        app.call(|s| s.set_cell(sid.clone(), 0, 0, "1".into()))
+        app.call(|s| s.set_cell(sid.clone(), "0".into(), "0".into(), "1".into()))
             .unwrap(); // A1 = 1
-        app.call(|s| s.set_cell(sid.clone(), 1, 0, "2".into()))
+        app.call(|s| s.set_cell(sid.clone(), "1".into(), "0".into(), "2".into()))
             .unwrap(); // A2 = 2
                        // A3 = SUM(A1,A2) = 3
-        app.call(|s| s.set_cell_formula(sid.clone(), 2, 0, "=SUM(A1,A2)".into()))
+        app.call(|s| s.set_cell(sid.clone(), "2".into(), "0".into(), "=SUM(A1,A2)".into()))
             .unwrap();
         // B1 = A3 * 10 = 30 (chained: B1 → A3 → A2)
-        app.call(|s| s.set_cell_formula(sid.clone(), 0, 1, "=A3*10".into()))
+        app.call(|s| s.set_cell(sid.clone(), "0".into(), "1".into(), "=A3*10".into()))
             .unwrap();
 
         // Change A2 to 5. A3 must recompute to 6, and B1 (which depends on A3)
         // must recompute to 60.
-        app.call(|s| s.set_cell(sid.clone(), 1, 0, "5".into()))
+        app.call(|s| s.set_cell(sid.clone(), "1".into(), "0".into(), "5".into()))
             .unwrap();
 
         let cells = app.view(|s| s.get_cells(sid)).unwrap();
-        let a3 = cells.iter().find(|c| c.row == 2 && c.col == 0).unwrap();
-        let b1 = cells.iter().find(|c| c.row == 0 && c.col == 1).unwrap();
+        let a3 = cells
+            .iter()
+            .find(|c| c.row_id == "2" && c.col_id == "0")
+            .unwrap();
+        let b1 = cells
+            .iter()
+            .find(|c| c.row_id == "0" && c.col_id == "1")
+            .unwrap();
         assert_eq!(a3.computed_value, "6", "A3 = SUM(A1,A2) after A2→5");
         assert_eq!(b1.computed_value, "60", "B1 = A3*10 after chain recompute");
     }
@@ -1446,16 +1734,20 @@ mod tests {
         let mut app = make_app();
         app.call(|s| s.init_project("P".into())).unwrap();
         let sid = app.call(|s| s.create_sheet("S".into())).unwrap();
-        app.call(|s| s.set_cell(sid.clone(), 0, 0, "10".into()))
+        app.call(|s| s.set_cell(sid.clone(), "0".into(), "0".into(), "10".into()))
             .unwrap(); // A1
-        app.call(|s| s.set_cell(sid.clone(), 1, 0, "20".into()))
+        app.call(|s| s.set_cell(sid.clone(), "1".into(), "0".into(), "20".into()))
             .unwrap(); // A2
-        app.call(|s| s.set_cell_formula(sid.clone(), 2, 0, "=SUM(A1:A2)".into()))
+        app.call(|s| s.set_cell(sid.clone(), "2".into(), "0".into(), "=SUM(A1:A2)".into()))
             .unwrap(); // A3 = 30
                        // Clear A2 → A3 should recompute to 10.
-        app.call(|s| s.clear_cell(sid.clone(), 1, 0)).unwrap();
+        app.call(|s| s.clear_cell(sid.clone(), "1".into(), "0".into()))
+            .unwrap();
         let cells = app.view(|s| s.get_cells(sid)).unwrap();
-        let a3 = cells.iter().find(|c| c.row == 2 && c.col == 0).unwrap();
+        let a3 = cells
+            .iter()
+            .find(|c| c.row_id == "2" && c.col_id == "0")
+            .unwrap();
         assert_eq!(a3.computed_value, "10");
     }
 
@@ -1466,19 +1758,39 @@ mod tests {
         let s1 = app.call(|s| s.create_sheet("Sheet1".into())).unwrap();
         let data = app.call(|s| s.create_sheet("Data".into())).unwrap();
         // Data!A1 = 10, Data!A2 = 20
-        app.call(|s| s.set_cell(data.clone(), 0, 0, "10".into()))
+        app.call(|s| s.set_cell(data.clone(), "0".into(), "0".into(), "10".into()))
             .unwrap();
-        app.call(|s| s.set_cell(data.clone(), 1, 0, "20".into()))
+        app.call(|s| s.set_cell(data.clone(), "1".into(), "0".into(), "20".into()))
             .unwrap();
         // Sheet1!B1 = =[data]!A1 + [data]!A2 → 30
-        app.call(|s| s.set_cell_formula(s1.clone(), 0, 1, format!("=[{data}]!A1+[{data}]!A2")))
-            .unwrap();
+        app.call(|s| {
+            s.set_cell(
+                s1.clone(),
+                "0".into(),
+                "1".into(),
+                format!("=[{data}]!A1+[{data}]!A2"),
+            )
+        })
+        .unwrap();
         // Sheet1!B2 = =SUM([data]!A1:A2) → 30
-        app.call(|s| s.set_cell_formula(s1.clone(), 1, 1, format!("=SUM([{data}]!A1:A2)")))
-            .unwrap();
+        app.call(|s| {
+            s.set_cell(
+                s1.clone(),
+                "1".into(),
+                "1".into(),
+                format!("=SUM([{data}]!A1:A2)"),
+            )
+        })
+        .unwrap();
         let cells = app.view(|s| s.get_cells(s1.clone())).unwrap();
-        let b1 = cells.iter().find(|c| c.row == 0 && c.col == 1).unwrap();
-        let b2 = cells.iter().find(|c| c.row == 1 && c.col == 1).unwrap();
+        let b1 = cells
+            .iter()
+            .find(|c| c.row_id == "0" && c.col_id == "1")
+            .unwrap();
+        let b2 = cells
+            .iter()
+            .find(|c| c.row_id == "1" && c.col_id == "1")
+            .unwrap();
         assert_eq!(b1.computed_value, "30", "=[data]!A1+[data]!A2");
         assert_eq!(b2.computed_value, "30", "=SUM([data]!A1:A2)");
     }
@@ -1490,11 +1802,21 @@ mod tests {
         let sid = app.call(|s| s.create_sheet("Sheet 1".into())).unwrap();
         // No sheet has this id, so the reference must surface as #REF!, not a
         // silent 0 that looks like the cell is empty.
-        app.call(|s| s.set_cell_formula(sid.clone(), 0, 0, "=[sheet-does-not-exist]!A1".into()))
-            .unwrap();
+        app.call(|s| {
+            s.set_cell(
+                sid.clone(),
+                "0".into(),
+                "0".into(),
+                "=[sheet-does-not-exist]!A1".into(),
+            )
+        })
+        .unwrap();
         // resolves to #REF! because no sheet has that id
         let cells = app.view(|s| s.get_cells(sid.clone())).unwrap();
-        let a1 = cells.iter().find(|c| c.row == 0 && c.col == 0).unwrap();
+        let a1 = cells
+            .iter()
+            .find(|c| c.row_id == "0" && c.col_id == "0")
+            .unwrap();
         assert_eq!(a1.computed_value, "#REF!", "unknown sheet id → #REF!");
     }
 
@@ -1504,15 +1826,18 @@ mod tests {
         app.call(|s| s.init_project("P".into())).unwrap();
         let a = app.call(|s| s.create_sheet("A".into())).unwrap();
         let b = app.call(|s| s.create_sheet("B".into())).unwrap();
-        app.call(|s| s.set_cell(a.clone(), 0, 0, "5".into()))
+        app.call(|s| s.set_cell(a.clone(), "0".into(), "0".into(), "5".into()))
             .unwrap(); // [a]!A1 = 5
-        app.call(|s| s.set_cell_formula(b.clone(), 0, 0, format!("=[{a}]!A1*10")))
+        app.call(|s| s.set_cell(b.clone(), "0".into(), "0".into(), format!("=[{a}]!A1*10")))
             .unwrap(); // [b]!A1 = 50
                        // Change [a]!A1 → 8; [b]!A1 (on the other sheet) must recompute to 80.
-        app.call(|s| s.set_cell(a.clone(), 0, 0, "8".into()))
+        app.call(|s| s.set_cell(a.clone(), "0".into(), "0".into(), "8".into()))
             .unwrap();
         let cells = app.view(|s| s.get_cells(b.clone())).unwrap();
-        let a1 = cells.iter().find(|c| c.row == 0 && c.col == 0).unwrap();
+        let a1 = cells
+            .iter()
+            .find(|c| c.row_id == "0" && c.col_id == "0")
+            .unwrap();
         assert_eq!(a1.computed_value, "80");
     }
 
@@ -1521,9 +1846,10 @@ mod tests {
         let mut app = make_app();
         app.call(|s| s.init_project("P".into())).unwrap();
         let sid = app.call(|s| s.create_sheet("S".into())).unwrap();
-        app.call(|s| s.set_cell(sid.clone(), 0, 0, "99".into()))
+        app.call(|s| s.set_cell(sid.clone(), "0".into(), "0".into(), "99".into()))
             .unwrap();
-        app.call(|s| s.clear_cell(sid.clone(), 0, 0)).unwrap();
+        app.call(|s| s.clear_cell(sid.clone(), "0".into(), "0".into()))
+            .unwrap();
         let cells = app.view(|s| s.get_cells(sid)).unwrap();
         assert!(cells.is_empty());
     }
@@ -1533,15 +1859,16 @@ mod tests {
         let mut app = make_app();
         app.call(|s| s.init_project("P".into())).unwrap();
         let sid = app.call(|s| s.create_sheet("S".into())).unwrap();
-        app.call(|s| s.set_cell(sid.clone(), 0, 0, "first".into()))
+        app.call(|s| s.set_cell(sid.clone(), "0".into(), "0".into(), "first".into()))
             .unwrap();
-        app.call(|s| s.clear_cell(sid.clone(), 0, 0)).unwrap();
+        app.call(|s| s.clear_cell(sid.clone(), "0".into(), "0".into()))
+            .unwrap();
         // Writing the same coordinate again after a clear must persist — a paste
         // or a fresh type into a previously-deleted cell.
-        app.call(|s| s.set_cell(sid.clone(), 0, 0, "second".into()))
+        app.call(|s| s.set_cell(sid.clone(), "0".into(), "0".into(), "second".into()))
             .unwrap();
         let cells = app.view(|s| s.get_cells(sid)).unwrap();
-        let a1 = cells.iter().find(|c| c.row == 0 && c.col == 0);
+        let a1 = cells.iter().find(|c| c.row_id == "0" && c.col_id == "0");
         assert!(
             a1.is_some(),
             "cell missing after re-write of a cleared cell"
@@ -1557,8 +1884,8 @@ mod tests {
         let ops = |n: usize| -> Vec<CellOp> {
             (0..n)
                 .map(|i| CellOp::Set {
-                    row: i as u32,
-                    col: 0,
+                    row_id: i.to_string(),
+                    col_id: "0".into(),
                     raw_value: "1".into(),
                 })
                 .collect()
@@ -1578,7 +1905,7 @@ mod tests {
         let mut app = make_app();
         app.call(|s| s.init_project("P".into())).unwrap();
         let sid = app.call(|s| s.create_sheet("Sheet 1".into())).unwrap();
-        app.call(|s| s.set_cell(sid.clone(), 5, 5, "old".into()))
+        app.call(|s| s.set_cell(sid.clone(), "5".into(), "5".into(), "old".into()))
             .unwrap();
         let ev_before = app.events().len();
         app.call(|s| {
@@ -1586,21 +1913,24 @@ mod tests {
                 sid.clone(),
                 vec![
                     CellOp::Set {
-                        row: 0,
-                        col: 0,
+                        row_id: "0".into(),
+                        col_id: "0".into(),
                         raw_value: "7".into(),
                     },
                     CellOp::Set {
-                        row: 1,
-                        col: 0,
+                        row_id: "1".into(),
+                        col_id: "0".into(),
                         raw_value: "=A1*2".into(),
                     },
                     CellOp::Format {
-                        row: 0,
-                        col: 0,
+                        row_id: "0".into(),
+                        col_id: "0".into(),
                         format: "number".into(),
                     },
-                    CellOp::Clear { row: 5, col: 5 },
+                    CellOp::Clear {
+                        row_id: "5".into(),
+                        col_id: "5".into(),
+                    },
                 ],
             )
         })
@@ -1613,39 +1943,21 @@ mod tests {
             "one batch event, not one per op"
         );
         let cells = app.view(|s| s.get_cells(sid)).unwrap();
-        let a1 = cells.iter().find(|c| c.row == 0 && c.col == 0).unwrap();
-        let a2 = cells.iter().find(|c| c.row == 1 && c.col == 0).unwrap();
+        let a1 = cells
+            .iter()
+            .find(|c| c.row_id == "0" && c.col_id == "0")
+            .unwrap();
+        let a2 = cells
+            .iter()
+            .find(|c| c.row_id == "1" && c.col_id == "0")
+            .unwrap();
         assert_eq!(a1.computed_value, "7");
         assert_eq!(a1.format, "number");
         assert_eq!(a2.computed_value, "14"); // derived on read
         assert!(
-            cells.iter().all(|c| !(c.row == 5 && c.col == 5)),
+            cells.iter().all(|c| !(c.row_id == "5" && c.col_id == "5")),
             "cleared cell hidden"
         );
-    }
-
-    #[test]
-    fn update_and_get_cursors() {
-        let mut app = make_app();
-        app.call(|s| s.init_project("P".into())).unwrap();
-        let sid = app.call(|s| s.create_sheet("S".into())).unwrap();
-        app.call(|s| s.update_cursor(sid.clone(), 2, 3)).unwrap();
-        let cursors = app.view(|s| s.get_cursors()).unwrap();
-        assert_eq!(cursors.len(), 1);
-        assert_eq!(cursors[0].row, 2);
-        assert_eq!(cursors[0].col, 3);
-        assert_eq!(cursors[0].sheet_id, sid);
-    }
-
-    #[test]
-    fn remove_cursor_clears_it() {
-        let mut app = make_app();
-        app.call(|s| s.init_project("P".into())).unwrap();
-        let sid = app.call(|s| s.create_sheet("S".into())).unwrap();
-        app.call(|s| s.update_cursor(sid, 0, 0)).unwrap();
-        app.call(|s| s.remove_cursor()).unwrap();
-        let cursors = app.view(|s| s.get_cursors()).unwrap();
-        assert!(cursors.is_empty());
     }
 
     #[test]
@@ -1677,16 +1989,16 @@ mod tests {
         app.call(|s| s.init_project("P".into())).unwrap();
         let s1 = app.call(|s| s.create_sheet("One".into())).unwrap();
         let s2 = app.call(|s| s.create_sheet("Two".into())).unwrap();
-        app.call(|s| s.set_cell(s1.clone(), 0, 0, "10".into()))
+        app.call(|s| s.set_cell(s1.clone(), "0".into(), "0".into(), "10".into()))
             .unwrap();
-        app.call(|s| s.set_cell(s2.clone(), 0, 0, format!("=[{s1}]!A1*2")))
+        app.call(|s| s.set_cell(s2.clone(), "0".into(), "0".into(), format!("=[{s1}]!A1*2")))
             .unwrap();
 
         let all = app.view(|s| s.get_all_cells()).unwrap();
         // Both sheets' cells present; cross-sheet computed value derived (20).
         let c2 = all
             .iter()
-            .find(|c| c.sheet_id == s2 && c.row == 0 && c.col == 0)
+            .find(|c| c.sheet_id == s2 && c.row_id == "0" && c.col_id == "0")
             .unwrap();
         assert_eq!(c2.computed_value, "20");
         assert!(all.iter().any(|c| c.sheet_id == s1 && c.raw_value == "10"));
@@ -1707,7 +2019,7 @@ mod tests {
         let mut app = make_app();
         app.call(|s| s.init_project("P".into())).unwrap();
         assert!(app
-            .call(|s| s.set_cell("no-such-sheet".into(), 0, 0, "v".into()))
+            .call(|s| s.set_cell("no-such-sheet".into(), "0".into(), "0".into(), "v".into()))
             .is_err());
     }
 
@@ -1716,17 +2028,24 @@ mod tests {
         let mut app = make_app();
         app.call(|s| s.init_project("P".into())).unwrap();
         let sid = app.call(|s| s.create_sheet("S".into())).unwrap();
-        app.call(|s| s.set_cell(sid.clone(), 0, 0, "10".into()))
+        app.call(|s| s.set_cell(sid.clone(), "0".into(), "0".into(), "10".into()))
             .unwrap();
-        app.call(|s| s.set_cell(sid.clone(), 1, 0, "20".into()))
+        app.call(|s| s.set_cell(sid.clone(), "1".into(), "0".into(), "20".into()))
             .unwrap();
-        app.call(|s| s.set_cell_formula(sid.clone(), 2, 0, "=AVERAGE(A1:A2)".into()))
-            .unwrap();
-        app.call(|s| s.set_cell_formula(sid.clone(), 3, 0, "=COUNT(A1:A2)".into()))
+        app.call(|s| {
+            s.set_cell(
+                sid.clone(),
+                "2".into(),
+                "0".into(),
+                "=AVERAGE(A1:A2)".into(),
+            )
+        })
+        .unwrap();
+        app.call(|s| s.set_cell(sid.clone(), "3".into(), "0".into(), "=COUNT(A1:A2)".into()))
             .unwrap();
         let cells = app.view(|s| s.get_cells(sid)).unwrap();
-        let avg = cells.iter().find(|c| c.row == 2).unwrap();
-        let cnt = cells.iter().find(|c| c.row == 3).unwrap();
+        let avg = cells.iter().find(|c| c.row_id == "2").unwrap();
+        let cnt = cells.iter().find(|c| c.row_id == "3").unwrap();
         assert_eq!(avg.computed_value, "15");
         assert_eq!(cnt.computed_value, "2");
     }
@@ -1780,15 +2099,15 @@ mod tests {
         let mut app = make_app();
         let data = app.call(|s| s.create_sheet("Data".into())).unwrap();
         let main = app.call(|s| s.create_sheet("Main".into())).unwrap();
-        app.call(|s| s.set_cell(data.clone(), 0, 0, "10".into()))
+        app.call(|s| s.set_cell(data.clone(), "0".into(), "0".into(), "10".into()))
             .unwrap();
         let formula = format!("=[{data}]!A1*2");
-        app.call(|s| s.set_cell_formula(main.clone(), 0, 0, formula.clone()))
+        app.call(|s| s.set_cell(main.clone(), "0".into(), "0".into(), formula.clone()))
             .unwrap();
         let before = app.view(|s| s.get_cells(main.clone())).unwrap();
         let cell_before = before
             .iter()
-            .find(|c| c.row == 0 && c.col == 0)
+            .find(|c| c.row_id == "0" && c.col_id == "0")
             .unwrap()
             .clone();
         assert_eq!(cell_before.computed_value, "20");
@@ -1797,7 +2116,10 @@ mod tests {
             .unwrap();
 
         let after = app.view(|s| s.get_cells(main.clone())).unwrap();
-        let cell_after = after.iter().find(|c| c.row == 0 && c.col == 0).unwrap();
+        let cell_after = after
+            .iter()
+            .find(|c| c.row_id == "0" && c.col_id == "0")
+            .unwrap();
         // raw formula unchanged (id-based), computed value unchanged.
         assert_eq!(
             cell_after.raw_value, formula,
@@ -1813,13 +2135,16 @@ mod tests {
     fn self_referential_formula_is_cycle_error() {
         let mut app = make_app();
         let sid = app.call(|s| s.create_sheet("Sheet 1".into())).unwrap();
-        app.call(|s| s.set_cell(sid.clone(), 0, 0, "1".into()))
+        app.call(|s| s.set_cell(sid.clone(), "0".into(), "0".into(), "1".into()))
             .unwrap(); // A1 = 1
                        // B1 = SUM(A1, B1) — references itself; must not diverge into a number.
-        app.call(|s| s.set_cell_formula(sid.clone(), 0, 1, "=SUM(A1,B1)".into()))
+        app.call(|s| s.set_cell(sid.clone(), "0".into(), "1".into(), "=SUM(A1,B1)".into()))
             .unwrap();
         let cells = app.view(|s| s.get_cells(sid.clone())).unwrap();
-        let b1 = cells.iter().find(|c| c.row == 0 && c.col == 1).unwrap();
+        let b1 = cells
+            .iter()
+            .find(|c| c.row_id == "0" && c.col_id == "1")
+            .unwrap();
         assert_eq!(b1.computed_value, "#CYCLE!");
     }
 
@@ -1828,13 +2153,19 @@ mod tests {
         let mut app = make_app();
         let sid = app.call(|s| s.create_sheet("Sheet 1".into())).unwrap();
         // A1 = B1 + 1, B1 = A1 + 1 — a mutual cycle that diverges.
-        app.call(|s| s.set_cell_formula(sid.clone(), 0, 0, "=B1+1".into()))
+        app.call(|s| s.set_cell(sid.clone(), "0".into(), "0".into(), "=B1+1".into()))
             .unwrap();
-        app.call(|s| s.set_cell_formula(sid.clone(), 0, 1, "=A1+1".into()))
+        app.call(|s| s.set_cell(sid.clone(), "0".into(), "1".into(), "=A1+1".into()))
             .unwrap();
         let cells = app.view(|s| s.get_cells(sid.clone())).unwrap();
-        let a1 = cells.iter().find(|c| c.row == 0 && c.col == 0).unwrap();
-        let b1 = cells.iter().find(|c| c.row == 0 && c.col == 1).unwrap();
+        let a1 = cells
+            .iter()
+            .find(|c| c.row_id == "0" && c.col_id == "0")
+            .unwrap();
+        let b1 = cells
+            .iter()
+            .find(|c| c.row_id == "0" && c.col_id == "1")
+            .unwrap();
         assert_eq!(a1.computed_value, "#CYCLE!");
         assert_eq!(b1.computed_value, "#CYCLE!");
     }
@@ -1843,14 +2174,17 @@ mod tests {
     fn long_acyclic_chain_still_converges() {
         let mut app = make_app();
         let sid = app.call(|s| s.create_sheet("Sheet 1".into())).unwrap();
-        app.call(|s| s.set_cell(sid.clone(), 0, 0, "1".into()))
+        app.call(|s| s.set_cell(sid.clone(), "0".into(), "0".into(), "1".into()))
             .unwrap(); // A1 = 1
-        app.call(|s| s.set_cell_formula(sid.clone(), 1, 0, "=A1+1".into()))
+        app.call(|s| s.set_cell(sid.clone(), "1".into(), "0".into(), "=A1+1".into()))
             .unwrap(); // A2
-        app.call(|s| s.set_cell_formula(sid.clone(), 2, 0, "=A2+1".into()))
+        app.call(|s| s.set_cell(sid.clone(), "2".into(), "0".into(), "=A2+1".into()))
             .unwrap(); // A3
         let cells = app.view(|s| s.get_cells(sid.clone())).unwrap();
-        let a3 = cells.iter().find(|c| c.row == 2 && c.col == 0).unwrap();
+        let a3 = cells
+            .iter()
+            .find(|c| c.row_id == "2" && c.col_id == "0")
+            .unwrap();
         // A well-formed chain must converge, never be misflagged as a cycle.
         assert_eq!(a3.computed_value, "3");
     }
@@ -1860,18 +2194,24 @@ mod tests {
         let mut app = make_app();
         let sid = app.call(|s| s.create_sheet("Sheet 1".into())).unwrap();
         // Store inputs only — set_cell must NOT recompute.
-        app.call(|s| s.set_cell(sid.clone(), 0, 0, "2".into()))
+        app.call(|s| s.set_cell(sid.clone(), "0".into(), "0".into(), "2".into()))
             .unwrap();
-        app.call(|s| s.set_cell_formula(sid.clone(), 1, 0, "=A1*10".into()))
+        app.call(|s| s.set_cell(sid.clone(), "1".into(), "0".into(), "=A1*10".into()))
             .unwrap();
         let cells = app.view(|s| s.get_cells(sid.clone())).unwrap();
-        let b = cells.iter().find(|c| c.row == 1 && c.col == 0).unwrap();
+        let b = cells
+            .iter()
+            .find(|c| c.row_id == "1" && c.col_id == "0")
+            .unwrap();
         assert_eq!(b.computed_value, "20", "dependent derived on read");
         // Change the precedent; the dependent re-derives with no extra write to B1.
-        app.call(|s| s.set_cell(sid.clone(), 0, 0, "3".into()))
+        app.call(|s| s.set_cell(sid.clone(), "0".into(), "0".into(), "3".into()))
             .unwrap();
         let cells = app.view(|s| s.get_cells(sid.clone())).unwrap();
-        let b = cells.iter().find(|c| c.row == 1 && c.col == 0).unwrap();
+        let b = cells
+            .iter()
+            .find(|c| c.row_id == "1" && c.col_id == "0")
+            .unwrap();
         assert_eq!(b.computed_value, "30");
     }
 
@@ -1883,22 +2223,35 @@ mod tests {
         let s3 = app.call(|s| s.create_sheet("Sheet 3".into())).unwrap();
 
         // S2!A1 = 5 ; S1!A1 = S2!A1 + 100 (cross-sheet dependency).
-        app.call(|s| s.set_cell(s2.clone(), 0, 0, "5".into()))
+        app.call(|s| s.set_cell(s2.clone(), "0".into(), "0".into(), "5".into()))
             .unwrap();
-        app.call(|s| s.set_cell_formula(s1.clone(), 0, 0, format!("=[{s2}]!A1+100")))
-            .unwrap();
+        app.call(|s| {
+            s.set_cell(
+                s1.clone(),
+                "0".into(),
+                "0".into(),
+                format!("=[{s2}]!A1+100"),
+            )
+        })
+        .unwrap();
         // S3 has an unrelated self-cycle — must never affect S1's read.
-        app.call(|s| s.set_cell_formula(s3.clone(), 0, 0, "=A1".into()))
+        app.call(|s| s.set_cell(s3.clone(), "0".into(), "0".into(), "=A1".into()))
             .unwrap();
 
         // Scoped get_cells(S1) still resolves the cross-sheet ref correctly.
         let s1_cells = app.view(|s| s.get_cells(s1.clone())).unwrap();
-        let a1 = s1_cells.iter().find(|c| c.row == 0 && c.col == 0).unwrap();
+        let a1 = s1_cells
+            .iter()
+            .find(|c| c.row_id == "0" && c.col_id == "0")
+            .unwrap();
         assert_eq!(a1.computed_value, "105");
 
         // get_cells(S3) still flags its own cycle — scoping doesn't hide it.
         let s3_cells = app.view(|s| s.get_cells(s3.clone())).unwrap();
-        let c = s3_cells.iter().find(|c| c.row == 0 && c.col == 0).unwrap();
+        let c = s3_cells
+            .iter()
+            .find(|c| c.row_id == "0" && c.col_id == "0")
+            .unwrap();
         assert_eq!(c.computed_value, "#CYCLE!");
     }
 
@@ -1908,10 +2261,219 @@ mod tests {
         let s1 = app.call(|s| s.create_sheet("Sheet 1".into())).unwrap();
         // Reference a sheet id that does not exist → #REF! (all sheet ids are
         // passed to the evaluator, so this stays exact under scoping).
-        app.call(|s| s.set_cell_formula(s1.clone(), 0, 0, "=[nope]!A1".into()))
+        app.call(|s| s.set_cell(s1.clone(), "0".into(), "0".into(), "=[nope]!A1".into()))
             .unwrap();
         let cells = app.view(|s| s.get_cells(s1.clone())).unwrap();
-        let a1 = cells.iter().find(|c| c.row == 0 && c.col == 0).unwrap();
+        let a1 = cells
+            .iter()
+            .find(|c| c.row_id == "0" && c.col_id == "0")
+            .unwrap();
         assert_eq!(a1.computed_value, "#REF!");
+    }
+
+    fn cell_at<'a>(cells: &'a [Cell], row_id: &str, col_id: &str) -> Option<&'a Cell> {
+        cells
+            .iter()
+            .find(|c| c.row_id == row_id && c.col_id == col_id)
+    }
+
+    fn new_sheet(app: &mut TestHost<Spreadsheet>) -> String {
+        app.call(|s| s.init_project("P".into())).unwrap();
+        app.call(|s| s.create_sheet("S".into())).unwrap()
+    }
+
+    #[test]
+    fn an_inserted_row_is_one_write_and_ranges_take_it_in() {
+        let mut app = make_app();
+        let sid = new_sheet(&mut app);
+        for (r, v) in [("0", "1"), ("1", "2"), ("2", "3")] {
+            app.call(|s| s.set_cell(sid.clone(), r.into(), "0".into(), v.into()))
+                .unwrap();
+        }
+        app.call(|s| s.set_cell(sid.clone(), "0".into(), "1".into(), "=SUM(A1:A3)".into()))
+            .unwrap();
+        // A row between legacy rows 0 and 1, holding 10.
+        let pos = format!("{}5", layout::legacy_pos(0));
+        app.call(|s| {
+            s.apply_axis_ops(
+                sid.clone(),
+                vec![AxisOp::InsertRow {
+                    id: "nab".into(),
+                    pos,
+                }],
+            )
+        })
+        .unwrap();
+        app.call(|s| s.set_cell(sid.clone(), "nab".into(), "0".into(), "10".into()))
+            .unwrap();
+        let cells = app.view(|s| s.get_cells(sid.clone())).unwrap();
+        assert_eq!(cell_at(&cells, "0", "1").unwrap().computed_value, "16");
+        assert_eq!(cell_at(&cells, "nab", "0").unwrap().raw_value, "10");
+        let layouts = app.view(|s| s.get_layouts()).unwrap();
+        assert_eq!(layouts.len(), 1);
+        assert_eq!(layouts[0].rows[0].id, "nab");
+    }
+
+    #[test]
+    fn a_deleted_row_turns_references_to_it_into_ref_errors() {
+        let mut app = make_app();
+        let sid = new_sheet(&mut app);
+        app.call(|s| s.set_cell(sid.clone(), "1".into(), "0".into(), "5".into()))
+            .unwrap();
+        app.call(|s| s.set_cell(sid.clone(), "0".into(), "1".into(), "=A2*2".into()))
+            .unwrap();
+        app.call(|s| s.apply_axis_ops(sid.clone(), vec![AxisOp::DeleteRow { id: "1".into() }]))
+            .unwrap();
+        let cells = app.view(|s| s.get_cells(sid.clone())).unwrap();
+        assert_eq!(cell_at(&cells, "0", "1").unwrap().computed_value, "#REF!");
+    }
+
+    #[test]
+    fn axis_ops_reject_bad_ids_and_positions() {
+        let mut app = make_app();
+        let sid = new_sheet(&mut app);
+        let bad = [
+            AxisOp::InsertRow {
+                id: "7".into(),
+                pos: "5".into(),
+            },
+            AxisOp::InsertRow {
+                id: "n|x".into(),
+                pos: "5".into(),
+            },
+            AxisOp::InsertCol {
+                id: "nab".into(),
+                pos: "".into(),
+            },
+            AxisOp::InsertCol {
+                id: "nab".into(),
+                pos: "1a".into(),
+            },
+            AxisOp::DeleteRow { id: "nzz".into() },
+        ];
+        for op in bad {
+            assert!(
+                app.call(|s| s.apply_axis_ops(sid.clone(), vec![op.clone()]))
+                    .is_err(),
+                "{op:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_value_write_leaves_a_concurrent_format_alone() {
+        let mut app = make_app();
+        let sid = new_sheet(&mut app);
+        app.call(|s| s.set_cell_format(sid.clone(), "0".into(), "0".into(), "currency".into()))
+            .unwrap();
+        app.call(|s| s.set_cell(sid.clone(), "0".into(), "0".into(), "12".into()))
+            .unwrap();
+        let cells = app.view(|s| s.get_cells(sid.clone())).unwrap();
+        let a1 = cell_at(&cells, "0", "0").unwrap();
+        assert_eq!(
+            (a1.raw_value.as_str(), a1.format.as_str()),
+            ("12", "currency")
+        );
+        // The value lives in the cell, the format in its own register: a
+        // replica that only changed the value cannot win over the format.
+        let mut mine = FormatData {
+            format: "currency".into(),
+            updated_at: 5,
+        };
+        mine.merge(&FormatData {
+            format: "percent".into(),
+            updated_at: 9,
+        })
+        .unwrap();
+        assert_eq!(mine.format, "percent");
+    }
+
+    #[test]
+    fn a_v1_format_applies_until_overridden_and_clear_blanks_both() {
+        let mut app = make_app();
+        let sid = new_sheet(&mut app);
+        app.call(|s| s.set_cell(sid.clone(), "0".into(), "0".into(), "3".into()))
+            .unwrap();
+        // A cell as v1 left it: its format inside the cell.
+        app.call(|s| {
+            let key = Spreadsheet::cell_key(&sid, "0", "0");
+            s.cells.get_mut(&key).unwrap().unwrap().format = "percent".into();
+            Ok::<(), AppError>(())
+        })
+        .unwrap();
+        let cells = app.view(|s| s.get_cells(sid.clone())).unwrap();
+        assert_eq!(cell_at(&cells, "0", "0").unwrap().format, "percent");
+        app.call(|s| s.clear_cell(sid.clone(), "0".into(), "0".into()))
+            .unwrap();
+        let cells = app.view(|s| s.get_cells(sid.clone())).unwrap();
+        assert!(cell_at(&cells, "0", "0").is_none());
+    }
+
+    #[test]
+    fn axis_merge_keeps_deletes_and_the_smaller_position() {
+        let mut a = AxisData {
+            pos: "0000000015".into(),
+            deleted: false,
+            updated_at: 1,
+        };
+        a.merge(&AxisData {
+            pos: "0000000014".into(),
+            deleted: true,
+            updated_at: 2,
+        })
+        .unwrap();
+        assert!(a.deleted);
+        assert_eq!(a.pos, "0000000014");
+        a.merge(&AxisData {
+            pos: "0000000019".into(),
+            deleted: false,
+            updated_at: 3,
+        })
+        .unwrap();
+        assert!(a.deleted);
+        assert_eq!(a.pos, "0000000014");
+    }
+
+    #[test]
+    fn named_ranges_feed_formulas_and_can_be_deleted() {
+        let mut app = make_app();
+        let sid = new_sheet(&mut app);
+        for (r, v) in [("0", "4"), ("1", "6")] {
+            app.call(|s| s.set_cell(sid.clone(), r.into(), "1".into(), v.into()))
+                .unwrap();
+        }
+        let target = format!("[{sid}]!B1:B2");
+        app.call(|s| s.set_named_range("Costs".into(), target.clone()))
+            .unwrap();
+        app.call(|s| s.set_cell(sid.clone(), "0".into(), "0".into(), "=SUM(costs)".into()))
+            .unwrap();
+        let cells = app.view(|s| s.get_cells(sid.clone())).unwrap();
+        assert_eq!(cell_at(&cells, "0", "0").unwrap().computed_value, "10");
+        let names = app.view(|s| s.get_named_ranges()).unwrap();
+        assert_eq!(
+            (names[0].name.as_str(), names[0].target.as_str()),
+            ("Costs", target.as_str())
+        );
+
+        app.call(|s| s.delete_named_range("COSTS".into())).unwrap();
+        assert!(app.view(|s| s.get_named_ranges()).unwrap().is_empty());
+        let cells = app.view(|s| s.get_cells(sid.clone())).unwrap();
+        assert_eq!(cell_at(&cells, "0", "0").unwrap().computed_value, "#NAME?");
+        // Defining it again after a delete works: the key was never removed.
+        app.call(|s| s.set_named_range("Costs".into(), "B1".into()))
+            .unwrap();
+    }
+
+    #[test]
+    fn named_ranges_reject_bad_names_and_targets() {
+        let mut app = make_app();
+        new_sheet(&mut app);
+        assert!(app
+            .call(|s| s.set_named_range("Q1".into(), "A1".into()))
+            .is_err());
+        assert!(app
+            .call(|s| s.set_named_range("Tax".into(), "A1+1".into()))
+            .is_err());
+        assert!(app.call(|s| s.delete_named_range("Nope".into())).is_err());
     }
 }

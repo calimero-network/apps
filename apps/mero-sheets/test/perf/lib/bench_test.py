@@ -21,4 +21,4 @@ def test_format_summary_is_markdown_table_with_rows():
 
 def test_wire_op_is_the_contracts_tagged_form():
     op = {"kind": "Set", "row": 1, "col": 2, "raw_value": "7"}
-    assert wire_op(op) == {"name": "Set", "payload": {"row": 1, "col": 2, "raw_value": "7"}}
+    assert wire_op(op) == {"name": "Set", "payload": {"row_id": "1", "col_id": "2", "raw_value": "7"}}
