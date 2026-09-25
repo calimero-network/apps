@@ -14,7 +14,7 @@ workflows/  CI (merobox scenarios; the merod image pin here MUST equal the
             calimero-sdk tag in logic/Cargo.toml — CI fails the pair)
 ```
 
-Pinned to core **0.11.0-rc.41**.
+Pinned to core **0.11.0-rc.42**.
 
 ## Quick start
 
