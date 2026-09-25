@@ -1,253 +1,118 @@
-# MeroPass - Secret Management App
+# Mero Pass
 
-A secure secret management application built on Calimero that allows teams to share secrets between members with context-level security and multi-device sync.
+A peer-to-peer password manager on Calimero. Teams share vaults of secrets that
+live on their members' own nodes, sync between them without a server, and are
+**end-to-end encrypted in the browser**: no node, disk, log or operator ever
+holds a readable secret.
 
-## Status
+> Alpha. The v2 state layout is not compatible with v1 vaults, and there is no
+> migration — create new vaults.
 
-🚀 **MeroPass is fully functional and ready for use!**
+## How it works
 
-The application includes a complete secret management system with demo data pre-loaded. All core features are implemented and tested.
+| Concept | Calimero primitive |
+|---|---|
+| **Team** | a namespace. Invitations grant membership of it. |
+| **Vault** | a subgroup plus one context running this contract. *Open* vaults admit every team member by inheritance; *invite-only* vaults need their own invitation. |
+| **Personal vault** | its own namespace nobody else can join, with a restricted subgroup. |
+| **Secret** | an entry whose name, fields and tags are **ciphertext**. Only its kind (login, TOTP, …) is cleartext. |
+
+### Encryption
+
+- Each browser has a **device key**: ECDH P-256, stored non-extractable in
+  IndexedDB, or sealed under a PIN (PBKDF2, 600k iterations) if you set one.
+- Each vault has a **vault key**: 32 random bytes for AES-256-GCM, identified by
+  `SHA-256(key)`. It is **wrapped** (ECIES: ephemeral ECDH, then HKDF, then
+  AES-GCM) to every entitled device, and the wraps are stored in the contract.
+- Every field is sealed with the secret id and field name bound in as
+  associated data. An envelope moved to another field or secret fails to open.
+- **Rotation** mints a new vault key, wraps it only to devices still entitled
+  to it, and re-seals every secret. It runs when an admin removes someone or
+  revokes a device. It also runs automatically when an admin next opens a
+  vault after a removal at team level.
+
+What the scheme cannot do: take back what a removed member already decrypted.
+The UI says to change those passwords.
+
+### Roles inside a vault
+
+| Role | May |
+|---|---|
+| Viewer | read |
+| Editor | add, edit, trash, restore |
+| Admin | everything, plus roles, key rotation, and permanent deletion |
+| *pending* | has registered a device but has not been admitted yet. Gets no key. |
+
+Roles live in an `AccessControl` registry and are projected as capability
+masks onto `PermissionedStorage<_, ProtocolAuthorizer>` stores. Every peer
+re-checks them when merging, so a patched node that skips the API checks
+still has its forged writes dropped. Newcomers are admitted with the vault's
+default role, Editor or Viewer, by the next admin who opens the vault.
+
+### Convergence
+
+- **Per-field registers.** Concurrent edits to different fields of one secret
+  both survive; the merobox scenario proves this across two nodes.
+- **Tombstones.** Trashing sets a flag rather than removing the entry, so an
+  edit racing a trash resolves by HLC instead of resurrecting the secret.
+- **History.** Every superseded value is kept, still sealed, and can be
+  restored.
+- **Append-only audit trail** (`AuthoredVector`). Entries can only be blanked,
+  only by their own author, and a blank stays visible as a redaction. No
+  entry carries a name or a value.
 
 ## Features
 
-### ✅ Implemented
-- **Vault Management**: Create vaults and invite members with different roles (owner, admin, member)
-- **Secret Types**: Support for 5 different secret types:
-  - 🔐 **Login**: Username/password with URL
-  - 📝 **Secure Note**: Free-form text notes
-  - ⏰ **TOTP**: Time-based one-time passwords
-  - 🔑 **SSH Key**: Private/public key pairs with optional passphrase
-  - 💳 **Payment Card**: Credit card information
-- **Search & Filtering**: Search secrets by name or tags, filter by secret type
-- **Audit Logging**: Track all vault activities with timestamps and member information
-- **Version Control**: CRDT-based versioning for conflict-free edits
-- **Real-time Sync**: Multi-device synchronization via Calimero
-- **Modern UI**: Built with React and Calimero UI components
+- Six kinds: login, secure note, TOTP, SSH key, payment card, identity.
+- Live TOTP codes (RFC 6238, `otpauth://` URIs), computed in the browser.
+- Password generator and a strength meter.
+- Health tab: weak, reused and old passwords, plus an opt-in breach check (Have I Been
+  Pwned k-anonymity: only 5 hex characters of a SHA-1 leave the browser).
+- Trash and restore; permanent deletion is admin-only.
+- Per-secret history with restore.
+- Auto-lock (1/5/15/60 min) and a Lock button. Copied values are cleared from
+  the clipboard after 30 seconds.
+- Import from Bitwarden, 1Password and Chrome/Edge CSV. Export is an
+  **encrypted** backup only; there is no plaintext export.
+- Share links: one secret for someone outside the team, sealed inside the URL
+  fragment (never sent to a server). A passphrase is optional and an expiry is
+  enforced by the viewer. Links cannot be revoked; the dialog says so.
+- Live updates over SSE when another member changes something.
+- Team admin:
+  - invite expiry (1h / 24h / 7d);
+  - invite-only vaults;
+  - remove a member, which is finished inside each vault by key rotation;
+  - revoke devices on the Security page.
 
-### 🚧 Planned Features
-- Auto-lock UI after inactivity
-- Export functionality (disabled in MVP for security)
-- Advanced member management
-- Secret sharing between vaults
-- Enhanced audit log filtering
-
-## Architecture
-
-### Backend (Rust → WASM)
-- **Location**: `logic/`
-- **Framework**: Calimero SDK
-- **Storage**: UnorderedMap for efficient key-value storage
-- **Features**:
-  - Vault creation and management
-  - Member invitation and role management
-  - Secret CRUD operations with versioning
-  - Tag-based organization
-  - Comprehensive audit logging
-
-### Frontend (React + TypeScript)
-- **Location**: `app/`
-- **Framework**: Vite + React + TypeScript
-- **UI Library**: Calimero UI components
-- **Features**:
-  - Vault dashboard with statistics
-  - Secret management forms for all types
-  - Search and filtering capabilities
-  - Real-time audit log viewing
-  - Responsive design
-
-## Getting Started
-
-### Prerequisites
-- Node.js 18+
-- pnpm
-- Rust (for building WASM)
-- Docker (for running Calimero network)
-
-### Installation
-
-1. **Clone and install dependencies**:
-   ```bash
-   git clone git@github.com:calimero-network/mero-pass.git
-   cd mero-pass
-   pnpm install
-   ```
-
-2. **Build the Rust logic**:
-   ```bash
-   pnpm logic:build
-   ```
-
-3. **Generate ABI client**:
-   ```bash
-   pnpm app:generate-client
-   ```
-
-4. **Install frontend dependencies**:
-   ```bash
-   pnpm app:install
-   ```
-
-### Running the Full Stack
-
-1. **Start Calimero network** (requires Docker):
-   ```bash
-   pnpm network:bootstrap
-   ```
-
-2. **Start frontend** (the application ID is already configured):
-   ```bash
-   pnpm app:dev
-   ```
-
-The application will be available at `http://localhost:5173` with demo data pre-loaded.
-
-### Demo Data
-
-The workflow creates a demo vault with the following secrets:
-- **GitHub Account** (login type) - Development credentials
-- **Google Authenticator** (TOTP type) - 2FA secret
-- **Production Server SSH** (SSH key type) - Server access key
-
-**Current Application ID**: `B7ujbnvVAFEHD9DxbnHYyk2UoQkwYkmnxh2KkAKVSSrF`  
-**Demo Vault ID**: `1`
-
-## Project Structure
+## Layout
 
 ```
-mero-pass/
-├── app/                          # Frontend (React + Vite)
-│   ├── README.md                # Frontend documentation
-│   ├── src/
-│   │   ├── api/                  # Generated ABI client
-│   │   ├── components/           # Reusable UI components
-│   │   ├── pages/               # Page components
-│   │   │   ├── home/            # Vault list page
-│   │   │   └── vault/           # Vault dashboard
-│   │   └── App.tsx              # Main app with routing
-│   └── package.json
-├── logic/                        # Backend (Rust → WASM)
-│   ├── README.md                # Backend documentation
-│   ├── src/lib.rs               # Main logic implementation
-│   ├── Cargo.toml               # Rust dependencies
-│   └── build.sh                 # Build script
-├── workflows/                    # Calimero workflow definitions
-│   └── workflow-example.yml     # Demo data bootstrap
-├── .gitignore                   # Git ignore rules
-└── package.json                 # Top-level scripts
+logic/            Rust contract → WASM
+  src/lib.rs      state, roles, key registry, secrets
+  src/tests.rs    TestHost tests
+  workflows/      two-node merobox scenario
+app/              React + Vite frontend
+  src/lib/        crypto, deviceKey, vaultSession, vaults, totp, health,
+                  portability, shareLink
+  src/pages/      teams, team, vault, security, share
 ```
 
-### Documentation
+## Develop
 
-- **[Main README](README.md)** - This file, project overview and setup
-- **[Frontend README](app/README.md)** - React frontend documentation
-- **[Backend README](logic/README.md)** - Rust/WASM backend documentation
+```bash
+# Contract: tests, then bundle (which also writes res/abi.json)
+cargo test -p mero-pass
+cargo mero bundle --manifest-path apps/mero-pass/logic/Cargo.toml --dev \
+  --app-version 0.0.0 --output /tmp/mero-pass.mpk
 
-## Key Scripts
+# Regenerate the typed client after any contract change
+pnpm -F mero-pass codegen
 
-- `pnpm logic:build` - Build WASM + ABI
-- `pnpm app:generate-client` - Generate typed client from ABI
-- `pnpm app:dev` - Run frontend dev server
-- `pnpm network:bootstrap` - Start Calimero network with demo data
-
-## Secret Types
-
-### Login
-```json
-{
-  "username": "user@example.com",
-  "password": "secure_password",
-  "url": "https://example.com",
-  "notes": "Additional notes"
-}
+# Frontend
+pnpm -F mero-pass test
+pnpm -F mero-pass dev        # http://localhost:5182
 ```
 
-### TOTP
-```json
-{
-  "secret": "JBSWY3DPEHPK3PXP",
-  "issuer": "Google",
-  "account": "user@example.com"
-}
-```
+The two-node scenario: `merobox bootstrap run apps/mero-pass/logic/workflows/e2e.yml`.
 
-### SSH Key
-```json
-{
-  "private_key": "-----BEGIN OPENSSH PRIVATE KEY-----...",
-  "public_key": "ssh-rsa AAAAB3NzaC1yc2E...",
-  "passphrase": "optional_passphrase"
-}
-```
-
-### Payment Card
-```json
-{
-  "card_number": "1234 5678 9012 3456",
-  "expiry_date": "12/25",
-  "cvv": "123",
-  "cardholder_name": "John Doe",
-  "notes": "Work credit card"
-}
-```
-
-### Secure Note
-```json
-{
-  "content": "Your secure note content here",
-  "notes": "Additional context"
-}
-```
-
-## Security Features
-
-- **Context-level Security**: Each vault is isolated in its own Calimero context
-- **Member Roles**: Granular permissions (owner, admin, member)
-- **Audit Logging**: Complete activity tracking
-- **Version Control**: CRDT-based conflict resolution
-- **No Plaintext Exports**: Exports disabled in MVP to prevent data leakage
-
-## Development
-
-### Quick Start for Development
-
-1. **Start the development environment**:
-   ```bash
-   pnpm app:dev
-   ```
-   This runs both the frontend dev server and watches for WASM changes.
-
-2. **Make changes to Rust logic**:
-   - Edit `logic/src/lib.rs`
-   - The WASM will automatically rebuild and the ABI client will regenerate
-
-3. **Make changes to frontend**:
-   - Edit files in `app/src/`
-   - Hot reload is enabled for instant feedback
-
-### Adding New Secret Types
-
-1. Update the secret type validation in `logic/src/lib.rs` (around line 246)
-2. Add the new type to the `SecretForm.tsx` component
-3. Add UI icons and labels in the form component
-
-### Extending Vault Features
-
-1. Add new methods to the Rust logic in `logic/src/lib.rs`
-2. The ABI will automatically regenerate when you save
-3. Update the frontend components to use new methods
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Test thoroughly
-5. Submit a pull request
-
-## License
-
-[Add your license here]
-
-## Support
-
-For questions or issues, please open a GitHub issue or contact the development team.
+See [logic/README.md](logic/README.md) for the contract API.

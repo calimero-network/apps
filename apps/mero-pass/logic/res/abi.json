@@ -5,25 +5,25 @@
       "kind": "record",
       "fields": [
         {
-          "name": "id",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
           "name": "action",
           "type": {
             "kind": "string"
           }
         },
         {
-          "name": "details",
+          "name": "target",
           "type": {
             "kind": "string"
           }
         },
         {
-          "name": "user_public_key",
+          "name": "account",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "device",
           "type": {
             "kind": "string"
           }
@@ -36,53 +36,258 @@
         }
       ]
     },
-    "Event_SecretAdded": {
+    "AuditView": {
       "kind": "record",
       "fields": [
         {
-          "name": "secret_id",
+          "name": "action",
           "type": {
             "kind": "string"
           }
         },
         {
-          "name": "name",
+          "name": "target",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "account",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "device",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "timestamp",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "redacted",
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ]
+    },
+    "DeviceKey": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "public_key",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "label",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "account",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "node_device",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "added_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "DeviceView": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "fingerprint",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "public_key",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "label",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "account",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "added_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "revoked",
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ]
+    },
+    "Event_SecretChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "secret_id",
           "type": {
             "kind": "string"
           }
         }
       ]
     },
-    "Event_SecretDeleted": {
+    "KeyWrap": {
       "kind": "record",
       "fields": [
         {
-          "name": "secret_id",
+          "name": "key_id",
           "type": {
             "kind": "string"
           }
         },
         {
-          "name": "name",
+          "name": "recipient",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "wrapper",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "envelope",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "wrapped_by",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "wrapped_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "KeyWrapInput": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "key_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "recipient",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "wrapper",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "envelope",
           "type": {
             "kind": "string"
           }
         }
       ]
     },
-    "Event_SecretUpdated": {
+    "KeyWrapView": {
       "kind": "record",
       "fields": [
         {
-          "name": "secret_id",
+          "name": "key_id",
           "type": {
             "kind": "string"
           }
         },
         {
-          "name": "name",
+          "name": "recipient",
           "type": {
             "kind": "string"
+          }
+        },
+        {
+          "name": "wrapper",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "envelope",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "wrapped_by",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "MemberView": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "account",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "role",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "devices",
+          "type": {
+            "kind": "u32"
           }
         }
       ]
@@ -102,38 +307,312 @@
           }
         },
         {
-          "name": "secrets",
+          "name": "roles",
           "type": {
             "kind": "map",
             "key": {
               "kind": "string"
             },
             "value": {
-              "$ref": "SecretItem"
+              "kind": "bool"
+            },
+            "crdt_type": "shared_storage"
+          }
+        },
+        {
+          "name": "secrets",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "map",
+              "key": {
+                "kind": "string"
+              },
+              "value": {
+                "$ref": "Secret"
+              },
+              "crdt_type": "unordered_map"
+            }
+          }
+        },
+        {
+          "name": "history",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "map",
+              "key": {
+                "kind": "string"
+              },
+              "value": {
+                "$ref": "Revision"
+              },
+              "crdt_type": "unordered_map"
+            }
+          }
+        },
+        {
+          "name": "admin",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "map",
+              "key": {
+                "kind": "string"
+              },
+              "value": {
+                "kind": "record",
+                "fields": [],
+                "crdt_type": "lww_register",
+                "inner_type": {
+                  "kind": "string"
+                }
+              },
+              "crdt_type": "unordered_map"
+            }
+          }
+        },
+        {
+          "name": "devices",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "DeviceKey"
+            },
+            "crdt_type": "authored_map"
+          }
+        },
+        {
+          "name": "key_wraps",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "KeyWrap"
+            },
+            "crdt_type": "authored_map"
+          }
+        },
+        {
+          "name": "audit",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "AuditLogEntry"
+            },
+            "crdt_type": "authored_vector"
+          }
+        }
+      ]
+    },
+    "Revision": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "secret_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "field",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "previous",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "replaced_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "replaced_by",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "RevisionView": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "field",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "previous",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "replaced_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "replaced_by",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Secret": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "kind",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "tags",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "fields",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "record",
+              "fields": [],
+              "crdt_type": "lww_register",
+              "inner_type": {
+                "kind": "string"
+              }
             },
             "crdt_type": "unordered_map"
           }
         },
         {
-          "name": "audit_logs",
+          "name": "created_at",
           "type": {
-            "kind": "map",
-            "key": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "u64"
+            }
+          }
+        },
+        {
+          "name": "created_by",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
               "kind": "string"
-            },
-            "value": {
-              "$ref": "AuditLogEntry"
-            },
-            "crdt_type": "unordered_map"
+            }
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "u64"
+            }
+          }
+        },
+        {
+          "name": "updated_by",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "trashed",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "bool"
+            }
+          }
+        },
+        {
+          "name": "trashed_at",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "u64"
+            }
           }
         }
       ]
     },
-    "SecretItem": {
+    "SecretView": {
       "kind": "record",
       "fields": [
         {
           "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "kind",
           "type": {
             "kind": "string"
           }
@@ -145,22 +624,19 @@
           }
         },
         {
-          "name": "secret_type",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "data",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
           "name": "tags",
           "type": {
-            "kind": "list",
-            "items": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "fields",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
               "kind": "string"
             }
           }
@@ -172,19 +648,66 @@
           }
         },
         {
+          "name": "created_by",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
           "name": "updated_at",
           "type": {
             "kind": "u64"
           }
         },
         {
-          "name": "version",
+          "name": "updated_by",
           "type": {
-            "kind": "u64"
+            "kind": "string"
           }
         },
         {
-          "name": "created_by",
+          "name": "trashed",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "trashed_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "VaultInfo": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "current_key",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "default_role",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "my_account",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "my_role",
           "type": {
             "kind": "string"
           }
@@ -194,8 +717,38 @@
   },
   "methods": [
     {
+      "name": "add_key_wraps",
+      "params": [
+        {
+          "name": "wraps",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "KeyWrapInput"
+            }
+          }
+        }
+      ],
+      "returns": {
+        "kind": "u32"
+      },
+      "intent": "mutating"
+    },
+    {
       "name": "add_secret",
       "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "kind",
+          "type": {
+            "kind": "string"
+          }
+        },
         {
           "name": "name",
           "type": {
@@ -203,22 +756,19 @@
           }
         },
         {
-          "name": "secret_type",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "data",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
           "name": "tags",
           "type": {
-            "kind": "list",
-            "items": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "fields",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
               "kind": "string"
             }
           }
@@ -230,27 +780,12 @@
       "intent": "mutating"
     },
     {
-      "name": "delete_secret",
-      "params": [
-        {
-          "name": "secret_id",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "unit"
-      },
-      "intent": "mutating"
-    },
-    {
       "name": "get_audit_logs",
       "params": [],
       "returns": {
         "kind": "list",
         "items": {
-          "$ref": "AuditLogEntry"
+          "$ref": "AuditView"
         }
       },
       "intent": "read_only"
@@ -259,32 +794,14 @@
       "name": "get_secret",
       "params": [
         {
-          "name": "secret_id",
+          "name": "id",
           "type": {
             "kind": "string"
           }
         }
       ],
       "returns": {
-        "$ref": "SecretItem"
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "get_secrets_by_tag",
-      "params": [
-        {
-          "name": "tag",
-          "type": {
-            "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "list",
-        "items": {
-          "$ref": "SecretItem"
-        }
+        "$ref": "SecretView"
       },
       "intent": "read_only"
     },
@@ -303,15 +820,112 @@
       }
     },
     {
+      "name": "key_wraps_for",
+      "params": [
+        {
+          "name": "recipient",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "KeyWrapView"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "list_devices",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "DeviceView"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "list_members",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "MemberView"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
       "name": "list_secrets",
       "params": [],
       "returns": {
         "kind": "list",
         "items": {
-          "$ref": "SecretItem"
+          "$ref": "SecretView"
         }
       },
       "intent": "read_only"
+    },
+    {
+      "name": "purge_secret",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "register_device",
+      "params": [
+        {
+          "name": "fingerprint",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "public_key",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "label",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "remove_member",
+      "params": [
+        {
+          "name": "account",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
     },
     {
       "name": "rename_vault",
@@ -329,51 +943,12 @@
       "intent": "mutating"
     },
     {
-      "name": "search_secrets",
+      "name": "restore_secret",
       "params": [
         {
-          "name": "query",
+          "name": "id",
           "type": {
             "kind": "string"
-          }
-        }
-      ],
-      "returns": {
-        "kind": "list",
-        "items": {
-          "$ref": "SecretItem"
-        }
-      },
-      "intent": "read_only"
-    },
-    {
-      "name": "update_secret",
-      "params": [
-        {
-          "name": "secret_id",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "name",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "data",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "tags",
-          "type": {
-            "kind": "list",
-            "items": {
-              "kind": "string"
-            }
           }
         }
       ],
@@ -383,32 +958,194 @@
       "intent": "mutating"
     },
     {
+      "name": "revoke_device",
+      "params": [
+        {
+          "name": "fingerprint",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "rotate_key",
+      "params": [
+        {
+          "name": "key_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "secret_history",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "RevisionView"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "set_default_role",
+      "params": [
+        {
+          "name": "role",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "set_role",
+      "params": [
+        {
+          "name": "account",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "role",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "trash_secret",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "update_secret",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "tags",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "fields",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "rekey",
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "vault_info",
+      "params": [],
+      "returns": {
+        "$ref": "VaultInfo"
+      },
+      "intent": "read_only"
+    },
+    {
       "name": "vault_name",
       "params": [],
       "returns": {
         "kind": "string"
       },
       "intent": "read_only"
+    },
+    {
+      "name": "wrapped_pairs",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "kind": "string"
+        }
+      },
+      "intent": "read_only"
     }
   ],
   "events": [
     {
-      "name": "SecretAdded",
+      "name": "KeysChanged"
+    },
+    {
+      "name": "MembersChanged"
+    },
+    {
+      "name": "SecretChanged",
       "payload": {
-        "$ref": "Event_SecretAdded"
+        "$ref": "Event_SecretChanged"
       }
     },
     {
-      "name": "SecretDeleted",
-      "payload": {
-        "$ref": "Event_SecretDeleted"
-      }
-    },
-    {
-      "name": "SecretUpdated",
-      "payload": {
-        "$ref": "Event_SecretUpdated"
-      }
+      "name": "VaultRenamed"
     }
   ],
   "state_root": "MeroPassApp",

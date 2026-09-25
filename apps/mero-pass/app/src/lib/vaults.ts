@@ -470,6 +470,8 @@ export interface VaultRow {
   joined: boolean;
   /** The identity this node holds in the vault's context, or null. */
   identity: string | null;
+  /** Invite-only: team membership alone does not admit anyone. */
+  restricted: boolean;
 }
 
 /**
@@ -488,7 +490,7 @@ export async function listVaults(
   const subgroups = await admin.listNamespaceGroups(namespaceId);
   return Promise.all(
     (subgroups ?? []).map(async (sg) => {
-      const [contexts, members, meta] = await Promise.all([
+      const [contexts, members, meta, visibility] = await Promise.all([
         admin.listGroupContexts(sg.groupId).catch(() => []),
         admin
           .listGroupMembers(sg.groupId)
@@ -498,6 +500,10 @@ export async function listVaults(
         // populated — so a vault's name comes from its metadata record, which
         // is where `createVault` writes it.
         admin.getGroupMetadata(sg.groupId).catch(() => null),
+        admin
+          .getSubgroupVisibility(sg.groupId)
+          .then((v) => String(v ?? '').toLowerCase())
+          .catch(() => ''),
       ]);
       const contextId = contexts?.[0]?.contextId ?? null;
       const identity = contextId ? await ownedIdentity(admin, contextId) : null;
@@ -508,6 +514,7 @@ export async function listVaults(
         memberCount: members.length,
         joined: !!identity,
         identity,
+        restricted: visibility === 'restricted',
       };
     }),
   );
@@ -522,7 +529,17 @@ export async function listVaults(
  */
 export async function createVault(
   admin: AdminLike,
-  opts: { applicationId: string; namespaceId: string; name: string },
+  opts: {
+    applicationId: string;
+    namespaceId: string;
+    name: string;
+    /**
+     * Only the people you invite to THIS vault can open it, instead of every
+     * member of the team. A restricted vault is unreachable by inheritance, so
+     * each person needs a vault invitation (see `mintVaultInvite`).
+     */
+    restricted?: boolean;
+  },
   onStatus: StatusFn = noop,
 ): Promise<{ vaultId: string; contextId: string; memberPublicKey: string }> {
   onStatus('Creating the vault…');
@@ -544,9 +561,10 @@ export async function createVault(
   // Born open, the visibility is part of the record that creates the subgroup
   // rather than an amendment to it. `createAgreement` in mero-sign carries the
   // same fix for the same reason.
+  const visibility = opts.restricted ? 'restricted' : 'open';
   const sg = await admin.createGroupInNamespace(opts.namespaceId, {
     groupName: opts.name,
-    visibility: 'open',
+    visibility,
   });
 
   onStatus('Naming the vault…');
@@ -556,13 +574,17 @@ export async function createVault(
   // authoritative one anyway.
   await admin.setGroupMetadata(sg.groupId, { name: opts.name }).catch(() => {});
 
-  onStatus('Opening the vault to team members…');
-  // Lowercase — core rejects "Open". NOT swallowed: unlike the namespace-root
-  // call, this one is load-bearing. If it fails the vault is restricted, and a
-  // restricted vault silently cannot be joined by the people invited to the
-  // team. Better to fail here, where the message can say so.
+  onStatus(
+    opts.restricted
+      ? 'Closing the vault to everyone you have not invited…'
+      : 'Opening the vault to team members…',
+  );
+  // Lowercase — core rejects "Open". NOT swallowed, either way: an open vault
+  // that stayed restricted cannot be joined by the team, and a restricted one
+  // that ended up open is readable by people it was meant to exclude. Both are
+  // failures to report while the creator is still looking.
   await admin.setSubgroupVisibility(sg.groupId, {
-    subgroupVisibility: 'open',
+    subgroupVisibility: visibility,
   });
 
   onStatus("Creating the vault's context…");
@@ -725,6 +747,20 @@ async function refuseIfPersonal(
 // ── Invitations ──────────────────────────────────────────────────────────────
 
 /**
+ * How long an invitation stays redeemable. The node takes a DURATION in
+ * seconds and clamps it to its own maximum, so a caller cannot mint a longer
+ * one than the node allows. A day is the default: long enough to reach someone
+ * across a timezone, short enough that a link found in last month's chat is
+ * dead.
+ */
+export const INVITE_VALIDITY = [
+  { secs: 60 * 60, label: '1 hour' },
+  { secs: 24 * 60 * 60, label: '24 hours' },
+  { secs: 7 * 24 * 60 * 60, label: '7 days' },
+] as const;
+export const DEFAULT_INVITE_SECS = 24 * 60 * 60;
+
+/**
  * Mint an OPEN team invitation and encode it as one pasteable code.
  *
  * OPEN means the invitation carries no invitee key, so anyone holding the code
@@ -733,12 +769,14 @@ async function refuseIfPersonal(
  */
 export async function mintTeamInvite(
   admin: AdminLike,
-  opts: { namespaceId: string; teamName?: string },
+  opts: { namespaceId: string; teamName?: string; validForSecs?: number },
   onStatus: StatusFn = noop,
 ): Promise<string> {
   await refuseIfPersonal(admin, opts.namespaceId);
   onStatus('Minting an invitation…');
-  const res = await admin.createNamespaceInvitation(opts.namespaceId, {});
+  const res = await admin.createNamespaceInvitation(opts.namespaceId, {
+    expirationTimestamp: opts.validForSecs ?? DEFAULT_INVITE_SECS,
+  });
   const invitation = unwrapInvitation(res);
   if (!invitation) {
     throw new Error('The node returned an invitation with no signature.');
@@ -776,20 +814,52 @@ export async function mintVaultInvite(
     vaultName?: string;
     teamName?: string;
     contextId?: string | null;
+    validForSecs?: number;
+    /** The vault is invite-only: the code must carry a vault invitation too. */
+    restricted?: boolean;
   },
   onStatus: StatusFn = noop,
 ): Promise<string> {
   await refuseIfPersonal(admin, opts.namespaceId);
+  const expirationTimestamp = opts.validForSecs ?? DEFAULT_INVITE_SECS;
   onStatus('Minting an invitation for this vault…');
-  const res = await admin.createNamespaceInvitation(opts.namespaceId, {});
+  const res = await admin.createNamespaceInvitation(opts.namespaceId, {
+    expirationTimestamp,
+  });
   const invitation = unwrapInvitation(res);
   if (!invitation) {
     throw new Error('The node returned an invitation with no signature.');
   }
 
+  // An invite-only vault does not admit by inheritance, so the code carries a
+  // second, SUBGROUP invitation — and the joiner walks both, team first.
+  let chain: InviteChainEntry[] | undefined;
+  if (opts.restricted) {
+    onStatus('Minting the vault invitation…');
+    const vaultRes = await admin.createGroupInvitation(opts.vaultId, {
+      expirationTimestamp,
+    });
+    const vaultInvitation = unwrapInvitation(vaultRes);
+    if (!vaultInvitation) {
+      throw new Error(
+        'The node returned a vault invitation with no signature.',
+      );
+    }
+    chain = [
+      { groupId: opts.namespaceId, invitation, kind: 'namespace' },
+      {
+        groupId: opts.vaultId,
+        invitation: vaultInvitation,
+        groupName: opts.vaultName,
+        kind: 'vault',
+      },
+    ];
+  }
+
   onStatus('Encoding the invite code…');
   return encodeInvite({
     invitation,
+    chain,
     kind: 'vault',
     groupId: opts.namespaceId,
     // Routing hints, outside the signature and unable to grant anything: the
@@ -917,6 +987,7 @@ export async function redeemInvite(
       {
         vaultId: accepted.vaultId,
         contextId: accepted.contextId,
+        direct: (payload.chain ?? []).some((step) => step.kind === 'vault'),
         // Known here, and this is the path where it matters most: a joiner is
         // entering a vault seconds after the grant, so the namespace state is
         // exactly what has not arrived yet.
@@ -1104,12 +1175,28 @@ async function diagnoseAdmission(
  */
 export async function enterVaultContext(
   admin: AdminLike,
-  opts: { vaultId: string; contextId: string; namespaceId?: string },
+  opts: {
+    vaultId: string;
+    contextId: string;
+    namespaceId?: string;
+    /**
+     * Already a DIRECT member of the vault's subgroup (an invite-only vault,
+     * joined with its own invitation). Inheritance would refuse — and need not
+     * be asked.
+     */
+    direct?: boolean;
+  },
   onStatus: StatusFn = noop,
 ): Promise<string> {
   onStatus('Checking your membership…');
   const existing = await ownedIdentity(admin, opts.contextId);
   if (existing) return existing;
+
+  if (opts.direct) {
+    onStatus("Joining the vault's context…");
+    const joined = await admin.joinContext(opts.contextId);
+    if (joined?.memberPublicKey) return joined.memberPublicKey;
+  }
 
   onStatus('Joining the vault…');
   // `namespaceId` is optional because two callers reach here from a context id
@@ -1341,4 +1428,51 @@ export async function setMemberRole(
     missing,
     effective: missing.length === 0,
   };
+}
+
+// ── Removing people ──────────────────────────────────────────────────────────
+
+/**
+ * Remove someone from a team. Core drops their membership everywhere under the
+ * namespace and rotates the group keys it holds, so the governance side is
+ * one call.
+ *
+ * ⚠️ IT IS NOT THE WHOLE JOB. Each vault's secrets are sealed under that
+ * vault's OWN key, which the removed person still holds. The vault page
+ * finishes the removal: it revokes them in the contract and rotates the vault
+ * key (`VaultSession.rotate`), after which nothing new is readable to them.
+ * What they already decrypted cannot be taken back — the UI says to change
+ * those passwords.
+ */
+export async function removeTeamMember(
+  admin: AdminLike,
+  opts: { namespaceId: string; accountId: string },
+): Promise<void> {
+  await admin.removeGroupMembers(opts.namespaceId, {
+    members: [opts.accountId],
+  });
+}
+
+/**
+ * The accounts entitled to a vault's key right now: the vault's own members
+ * when it is invite-only, otherwise everyone in the team.
+ *
+ * Null when the node cannot answer — the caller then declines to hand out keys
+ * rather than guessing, which costs a newcomer a moment's wait and nothing
+ * more.
+ */
+export async function vaultAudience(
+  admin: AdminLike,
+  opts: { namespaceId: string; vaultId: string },
+): Promise<Set<string> | null> {
+  try {
+    const visibility = String(
+      (await admin.getSubgroupVisibility(opts.vaultId)) ?? '',
+    ).toLowerCase();
+    const group = visibility === 'restricted' ? opts.vaultId : opts.namespaceId;
+    const res = await admin.listGroupMembers(group);
+    return new Set((res.members ?? []).map((m) => m.identity));
+  } catch {
+    return null;
+  }
 }

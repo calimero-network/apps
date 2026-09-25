@@ -1,106 +1,80 @@
-# MeroPass Logic
+# Mero Pass contract
 
-Rust-based backend logic compiled to WASM for the MeroPass secret management application.
+The replicated state of ONE vault: a Calimero context is a vault. The contract
+stores **ciphertext** — every secret name, field and tag list is sealed by the
+browser before it arrives (see `app/src/lib/crypto.ts`) — and never decrypts
+anything. See the [app README](../README.md) for the whole design.
 
-## Overview
+## State
 
-This module implements the core secret management functionality using the Calimero SDK, providing:
-- A named vault, whose name replicates to every member's node
-- Secret CRUD operations with versioning
-- Search and tagging capabilities
-- Comprehensive audit logging
+| Field | Type | Who writes |
+|---|---|---|
+| `vault_name` | `LwwRegister<String>` | Editors |
+| `roles` | `AccessControl` (admin tier + `editor`, `viewer`) | Admins |
+| `secrets` | `PermissionedStorage<UnorderedMap<String, Secret>, ProtocolAuthorizer>` | Editors (WRITE), Admins (FULL) |
+| `history` | same shape, `Revision` values | Editors, Admins |
+| `admin` | same shape: `default_role`, `current_key`, `revoked:<fp>`, `removed:<account>` | Admins |
+| `devices` | `AuthoredMap<fingerprint, DeviceKey>` | anyone, own entries |
+| `key_wraps` | `AuthoredMap<key:recipient:wrapper, KeyWrap>` | anyone, own slots |
+| `audit` | `AuthoredVector<AuditLogEntry>` | appended by every mutation |
 
-## Architecture
+A `Secret` is a struct of registers (`kind`, `name`, `tags`, `fields:
+UnorderedMap<String, LwwRegister<String>>`, timestamps, `trashed`), so edits to
+different fields merge instead of overwriting each other.
 
-### Data Structures
+Role masks are re-projected after every role change, and are what peers check
+at merge: a patched node that skips the API guards still has its forged write
+dropped.
 
-- **MeroPassApp**: the state of ONE vault — its name, its secrets, its audit log
-- **SecretItem**: an individual secret with metadata and versioning
-- **AuditLogEntry**: activity logging for compliance
+## API
 
-There is no `Vault` or `VaultMember` type. A context is a vault, so the vault's
-members are the context's members and there is nothing for the contract to
-store about them.
+The vault
+- `init(name)`: the creator becomes the first Admin.
+- `vault_info()` → `{ name, current_key, default_role, my_account, my_role }`
+- `vault_name()`, `rename_vault(name)` (Editor+)
 
-### Secret Types
+Roles
+- `list_members()` → `[{ account, role, devices }]`. The role is
+  `admin|editor|viewer`, `pending` (registered but not admitted), or `removed`.
+- `set_role(account, role)` (Admin). The last admin cannot step down.
+- `remove_member(account)` (Admin): drops every role, revokes the account's
+  devices, and marks it `removed`.
+- `set_default_role(role)` (Admin): `editor` or `viewer`.
 
-1. **Login**: Username/password with URL
-2. **Secure Note**: Free-form text content
-3. **TOTP**: Time-based one-time password secrets
-4. **SSH Key**: Private/public key pairs with optional passphrase
-5. **Payment Card**: Credit card information
+Devices and keys
+- `register_device(fingerprint, public_key, label)`: account and device come
+  from the host.
+- `list_devices()`, `revoke_device(fingerprint)` (your own device, or Admin)
+- `add_key_wraps(wraps)`: skips unregistered or revoked recipients and
+  never overwrites.
+- `key_wraps_for(recipient)`, `wrapped_pairs()`
+- `rotate_key(key_id)` (Admin): needs at least one wrap of the new key first.
 
-### Key Features
+Secrets
+- `add_secret(id, kind, name, tags, fields)`: `id` is `secret_<32 hex>`,
+  chosen by the client so it can be bound into the ciphertext. A duplicate is
+  refused.
+- `update_secret(id, name?, tags?, fields, rekey)`: only the fields passed are
+  touched, and `""` clears one. Superseded values go to history unless `rekey`.
+- `trash_secret(id)`, `restore_secret(id)` (Editor+),
+  `purge_secret(id)` (Admin, trashed only)
+- `get_secret(id)`, `list_secrets()`, `secret_history(id)`
 
-- **CRDT Versioning**: Conflict-free editing with automatic versioning
-- **Membership is the context's**: everyone in the vault's context can read and
-  write its secrets. There is no in-contract role registry
-- **Audit Logging**: Complete activity tracking
-- **Search & Tags**: Advanced filtering and organization
-- **Multi-device Sync**: Real-time synchronization via Calimero
+Audit
+- `get_audit_logs()`: newest first. Each entry has action, target id, account,
+  device and time. There are no names and no values, and redactions stay
+  visible.
 
-## Development
+Events carry ids only: `SecretChanged { secret_id }`, `MembersChanged`,
+`KeysChanged`, `VaultRenamed`.
 
-### Prerequisites
-- Rust 1.70+
-- WASM target: `rustup target add wasm32-unknown-unknown`
-
-### Building
+## Build and test
 
 ```bash
-# Build the WASM, emit res/abi.json and res/state-schema.json, and bundle.
-# There is no build.sh: cargo-mero replaced the per-app build scripts.
-cargo mero build -p mero-pass
+cargo test -p mero-pass                     # TestHost suite
+cargo mero bundle --manifest-path apps/mero-pass/logic/Cargo.toml --dev \
+  --app-version 0.0.0 --output /tmp/mero-pass.mpk   # also writes res/abi.json
 ```
 
-### Testing
-
-`cargo test -p mero-pass` drives the contract through `TestHost`. The two-node
-behaviour — including the creator's vault name arriving on the invited node — is
-covered by the merobox scenario in `workflows/e2e.yml`.
-
-## API Methods
-
-⚠️ This section used to list an API that does not exist in this crate and, as
-far as the git history goes, never did — `create_vault`, `invite_member`,
-`join_vault`, and every read taking a `vault_id`. There is no vault record in
-the contract to take an id of: **a Calimero context IS a vault**, membership is
-the context's membership, and inviting someone is an admin-API operation the
-frontend performs, not a contract method. What follows is the real surface, as
-`res/abi.json` records it.
-
-### The vault itself
-- `init(name)` — the vault's name, taken from `createContext`'s
-  `initializationParams`. This is the only copy of the name that reaches another
-  member's node; a frontend-side label does not.
-- `vault_name()` → `String`
-- `rename_vault(name)` — any member; concurrent renames resolve
-  last-writer-wins, and the change is audited.
-
-### Secrets
-- `add_secret(name, secret_type, data, tags)` → `secret_id`
-- `update_secret(secret_id, name, data, tags)`
-- `delete_secret(secret_id)`
-- `get_secret(secret_id)` → `Option<SecretItem>`
-- `list_secrets()` → `Vec<SecretItem>`
-- `search_secrets(query)` → `Vec<SecretItem>` — name and tags, case-insensitive
-- `get_secrets_by_tag(tag)` → `Vec<SecretItem>` — exact tag, not substring
-
-### Audit
-- `get_audit_logs()` → `Vec<AuditLogEntry>`, newest first
-
-## Security
-
-- **Context-level Isolation**: Each vault is isolated in its own Calimero context
-- **Membership is the context's**: access is granted by joining the vault's
-  context, which is an admin-API operation, not a contract call
-- **Audit Trail**: Complete activity logging
-- **No Plaintext Storage**: All sensitive data is encrypted at the context level
-
-## Dependencies
-
-- `calimero-sdk`: Core Calimero functionality
-- `calimero-storage`: storage collections (`UnorderedMap`, `LwwRegister`)
-- `serde`: Serialization
-- `borsh`: Binary serialization for WASM
-- `thiserror`: Error handling
+`workflows/e2e.yml` drives two real nodes through admission, key wraps,
+concurrent field edits, viewer refusal, trash/restore/purge and removal.

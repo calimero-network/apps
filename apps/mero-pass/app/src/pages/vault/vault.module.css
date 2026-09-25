@@ -220,3 +220,65 @@
   color: var(--ink-faint);
   margin-top: 2px;
 }
+
+/* ── Live authenticator code ─────────────────────────────────────────────── */
+.totp {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.totpDigits {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+.totpLeft {
+  font-size: 11px;
+  color: var(--ink-faint);
+  min-width: 26px;
+}
+
+/* ── States that are not a list ──────────────────────────────────────────── */
+.banner {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  padding: 12px 14px;
+  font-size: 13px;
+  margin-bottom: 16px;
+}
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.history {
+  border-top: 1px solid var(--border);
+  margin-top: 10px;
+  padding-top: 10px;
+}
+.historyRow {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  font-size: 12px;
+  padding: 4px 0;
+}
+.historyMeta {
+  color: var(--ink-faint);
+  min-width: 150px;
+}
+.healthIssue {
+  display: inline-block;
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  margin-right: 4px;
+}
+.healthBad {
+  border-color: #d33;
+  color: #b22;
+}

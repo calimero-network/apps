@@ -207,6 +207,171 @@ steps:
     statements:
       - 'contains({{bob_vault_name}}, "Shared credentials")'
 
+  # ── v2: roles, device keys and ciphertext ─────────────────────────────────
+  #
+  # The contract never sees plaintext: the browser seals every name, field and
+  # tag list under the vault key before it is sent. This scenario drives the
+  # contract directly, so it passes stand-in envelopes (`mp1.k1.…`) — what it
+  # proves is the REPLICATED behaviour: who may write, key wraps reaching the
+  # other node, field-level merge across nodes, history, trash.
+  - name: Who is Node 2, as an account
+    type: node_identity
+    node: calimero-node-2
+    outputs:
+      bob_account: accountId
+
+  - name: Bob registers his browser's device key
+    type: call
+    node: calimero-node-2
+    context_id: "{{vault_id}}"
+    method: register_device
+    args:
+      fingerprint: "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2"
+      public_key: "pk-bob"
+      label: "Bob's browser"
+    executor_public_key: "{{bob_key}}"
+
+  - name: Bob, not yet admitted, cannot rename the vault
+    type: call
+    node: calimero-node-2
+    context_id: "{{vault_id}}"
+    method: rename_vault
+    args:
+      name: "Hijacked"
+    executor_public_key: "{{bob_key}}"
+    expected_failure: true
+    outputs:
+      bob_rename_refused: error
+
+  - name: Assert a pending member is refused
+    type: assert
+    statements:
+      - "is_set({{bob_rename_refused}})"
+
+  - name: Alice registers her device
+    type: call
+    node: calimero-node-1
+    context_id: "{{vault_id}}"
+    method: register_device
+    args:
+      fingerprint: "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+      public_key: "pk-alice"
+      label: "Alice's browser"
+    executor_public_key: "{{alice_key}}"
+
+  - name: Sync Bob's device to Node 1
+    type: wait_for_sync
+    context_id: "{{vault_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Alice admits Bob as an Editor
+    type: call
+    node: calimero-node-1
+    context_id: "{{vault_id}}"
+    method: set_role
+    args:
+      account: "{{bob_account}}"
+      role: "editor"
+    executor_public_key: "{{alice_key}}"
+
+  - name: Alice wraps key k1 to both devices
+    type: call
+    node: calimero-node-1
+    context_id: "{{vault_id}}"
+    method: add_key_wraps
+    args:
+      wraps:
+        - { key_id: "k1", recipient: "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1", wrapper: "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1", envelope: "wrap-to-alice" }
+        - { key_id: "k1", recipient: "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2", wrapper: "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1", envelope: "wrap-to-bob" }
+    executor_public_key: "{{alice_key}}"
+
+  - name: Alice switches the vault to k1
+    type: call
+    node: calimero-node-1
+    context_id: "{{vault_id}}"
+    method: rotate_key
+    args:
+      key_id: "k1"
+    executor_public_key: "{{alice_key}}"
+
+  - name: Sync the admission and the key
+    type: wait_for_sync
+    context_id: "{{vault_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Bob finds the wrap addressed to his device
+    type: call
+    node: calimero-node-2
+    context_id: "{{vault_id}}"
+    method: key_wraps_for
+    args:
+      recipient: "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2"
+    executor_public_key: "{{bob_key}}"
+    outputs:
+      bob_wraps: result
+
+  - name: Bob reads his role and the current key
+    type: call
+    node: calimero-node-2
+    context_id: "{{vault_id}}"
+    method: vault_info
+    args: {}
+    executor_public_key: "{{bob_key}}"
+    outputs:
+      bob_info: result
+
+  - name: Assert the key and the role reached Node 2
+    type: assert
+    statements:
+      - 'contains({{bob_wraps}}, "wrap-to-bob")'
+      - 'not_contains({{bob_wraps}}, "wrap-to-alice")'
+      - 'contains({{bob_info}}, "editor")'
+      - 'contains({{bob_info}}, "k1")'
+
+  - name: Alice lists the vault's people, devices and wraps
+    type: call
+    node: calimero-node-1
+    context_id: "{{vault_id}}"
+    method: list_members
+    args: {}
+    executor_public_key: "{{alice_key}}"
+    outputs:
+      alice_members: result
+
+  - name: Alice lists the registered devices
+    type: call
+    node: calimero-node-1
+    context_id: "{{vault_id}}"
+    method: list_devices
+    args: {}
+    executor_public_key: "{{alice_key}}"
+    outputs:
+      alice_devices: result
+
+  - name: Alice lists which devices already hold which key
+    type: call
+    node: calimero-node-1
+    context_id: "{{vault_id}}"
+    method: wrapped_pairs
+    args: {}
+    executor_public_key: "{{alice_key}}"
+    outputs:
+      alice_pairs: result
+
+  - name: Assert Bob is an Editor with one device holding k1
+    type: assert
+    statements:
+      - 'contains({{alice_members}}, "{{bob_account}}")'
+      - 'contains({{alice_members}}, "editor")'
+      - 'contains({{alice_devices}}, "Bob''s browser")'
+      - 'contains({{alice_pairs}}, "k1:b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2")'
+
   - name: Bob renames the vault
     type: call
     node: calimero-node-2
@@ -238,24 +403,23 @@ steps:
     type: assert
     statements:
       - 'contains({{alice_vault_name}}, "Production keys")'
-      # The superseded name must be GONE, not merged alongside — the register
-      # is last-writer-wins over a single value, not an accumulating set.
       - 'not_contains({{alice_vault_name}}, "Shared credentials")'
 
-  # ── A secret written on node 1 is readable on node 2 ────────────────────────
-  - name: Alice adds a secret
+  - name: Alice adds a secret under a client-chosen id
     type: call
     node: calimero-node-1
     context_id: "{{vault_id}}"
     method: add_secret
     args:
-      name: "GitHub"
-      secret_type: "login"
-      data: '{"username":"alice","password":"hunter2"}'
-      tags: ["dev", "work"]
+      id: "secret_00000000000000000000000000000001"
+      kind: "login"
+      name: "mp1.k1.iv.NAME-GITHUB"
+      tags: "mp1.k1.iv.TAGS"
+      fields:
+        username: "mp1.k1.iv.USER-ALICE"
+        password: "mp1.k1.iv.PASSWORD-ONE"
+        url: "mp1.k1.iv.URL-ONE"
     executor_public_key: "{{alice_key}}"
-    outputs:
-      secret_id: result.output
 
   - name: Sync the new secret
     type: wait_for_sync
@@ -275,91 +439,44 @@ steps:
     outputs:
       bob_list: result
 
-  - name: Assert the secret replicated with its payload and tags
+  - name: Assert the secret replicated as ciphertext
     type: assert
     statements:
-      - 'contains({{bob_list}}, "GitHub")'
-      - 'contains({{bob_list}}, "hunter2")'
-      - 'contains({{bob_list}}, "dev")'
+      - 'contains({{bob_list}}, "secret_00000000000000000000000000000001")'
+      - 'contains({{bob_list}}, "PASSWORD-ONE")'
 
-  # ── Search runs on the replicated copy ──────────────────────────────────────
-  - name: Bob searches by tag, case-insensitively
-    type: call
-    node: calimero-node-2
-    context_id: "{{vault_id}}"
-    method: search_secrets
-    args:
-      query: "WORK"
-    executor_public_key: "{{bob_key}}"
-    outputs:
-      bob_search: result
-
-  - name: Assert search matched the tag on the replica
-    type: assert
-    statements:
-      - 'contains({{bob_search}}, "GitHub")'
-
-  # ── get_secrets_by_tag: an EXACT tag, where search is a substring ───────────
-  #
-  # Both read the same `tags` vector and they are not the same query, which is
-  # why covering one did not cover the other. `search_secrets` lowercases and
-  # matches a SUBSTRING across name and tags; `get_secrets_by_tag` matches a
-  # whole tag. Asserting both on the same fixture is what pins the difference:
-  # "wor" finds the secret by search and must NOT find it by tag.
-  - name: Bob fetches by exact tag
-    type: call
-    node: calimero-node-2
-    context_id: "{{vault_id}}"
-    method: get_secrets_by_tag
-    args:
-      tag: "work"
-    executor_public_key: "{{bob_key}}"
-    outputs:
-      bob_by_tag: result
-
-  - name: Assert the exact tag matched on the replica
-    type: assert
-    statements:
-      - 'contains({{bob_by_tag}}, "GitHub")'
-
-  - name: Bob fetches by a tag PREFIX, which is not a tag
-    type: call
-    node: calimero-node-2
-    context_id: "{{vault_id}}"
-    method: get_secrets_by_tag
-    args:
-      tag: "wor"
-    executor_public_key: "{{bob_key}}"
-    outputs:
-      bob_by_prefix: result
-
-  # The negative half. Without it this step passes against an implementation
-  # that ignores `tag` entirely and returns every secret.
-  #
-  # ⚠️ `not_contains`, with the underscore — merobox's predicate name. An
-  # unrecognised statement evaluates to False and fails the run
-  # (`return False, "(unrecognized statement)"`), so a typo here reds the
-  # scenario rather than passing vacuously. That is the safe direction, but it
-  # is worth knowing which way it falls.
-  - name: Assert a prefix is not a tag
-    type: assert
-    statements:
-      - 'not_contains({{bob_by_prefix}}, "GitHub")'
-
-  # ── An edit on node 2 converges back to node 1 ──────────────────────────────
-  - name: Bob rotates the password
+  # Two members edit DIFFERENT fields of the same secret on two nodes before
+  # either sees the other. Both edits must survive: each field is its own
+  # register, so this is not a last-writer-wins on the whole record.
+  - name: Bob rotates the password on Node 2
     type: call
     node: calimero-node-2
     context_id: "{{vault_id}}"
     method: update_secret
     args:
-      secret_id: "{{secret_id}}"
-      name: "GitHub (work)"
-      data: '{"username":"alice","password":"rotated"}'
-      tags: ["work"]
+      id: "secret_00000000000000000000000000000001"
+      name: null
+      tags: null
+      fields:
+        password: "mp1.k1.iv.PASSWORD-TWO"
+      rekey: false
     executor_public_key: "{{bob_key}}"
 
-  - name: Sync the edit
+  - name: Alice fixes the URL on Node 1, concurrently
+    type: call
+    node: calimero-node-1
+    context_id: "{{vault_id}}"
+    method: update_secret
+    args:
+      id: "secret_00000000000000000000000000000001"
+      name: null
+      tags: null
+      fields:
+        url: "mp1.k1.iv.URL-TWO"
+      rekey: false
+    executor_public_key: "{{alice_key}}"
+
+  - name: Sync both edits
     type: wait_for_sync
     context_id: "{{vault_id}}"
     nodes: [calimero-node-1, calimero-node-2]
@@ -373,51 +490,120 @@ steps:
     context_id: "{{vault_id}}"
     method: get_secret
     args:
-      secret_id: "{{secret_id}}"
+      id: "secret_00000000000000000000000000000001"
     executor_public_key: "{{alice_key}}"
     outputs:
       alice_secret: result
 
-  - name: Assert the edit converged, version included
+  - name: Bob reads the secret back
+    type: call
+    node: calimero-node-2
+    context_id: "{{vault_id}}"
+    method: get_secret
+    args:
+      id: "secret_00000000000000000000000000000001"
+    executor_public_key: "{{bob_key}}"
+    outputs:
+      bob_secret: result
+
+  - name: Assert both concurrent field edits survived on both nodes
     type: assert
     statements:
-      - 'contains({{alice_secret}}, "GitHub (work)")'
-      - 'contains({{alice_secret}}, "rotated")'
-      # The superseded password must be GONE, not merged alongside. This is the
-      # assertion that would catch a merge that resurrected the older record —
-      # the failure mode the LWW total order exists to prevent.
-      - 'not_contains({{alice_secret}}, "hunter2")'
+      - 'contains({{alice_secret}}, "PASSWORD-TWO")'
+      - 'contains({{alice_secret}}, "URL-TWO")'
+      - 'contains({{bob_secret}}, "PASSWORD-TWO")'
+      - 'contains({{bob_secret}}, "URL-TWO")'
+      - 'not_contains({{alice_secret}}, "PASSWORD-ONE")'
 
-  # ── The audit trail replicates too ──────────────────────────────────────────
-  - name: Alice reads the audit log
+  - name: Alice reads the secret's history
     type: call
     node: calimero-node-1
     context_id: "{{vault_id}}"
-    method: get_audit_logs
-    args: {}
+    method: secret_history
+    args:
+      id: "secret_00000000000000000000000000000001"
     executor_public_key: "{{alice_key}}"
     outputs:
-      alice_audit: result
+      alice_history: result
 
-  - name: Assert both the add and the remote edit are audited
+  - name: Assert the old password is kept, still sealed
     type: assert
     statements:
-      - 'contains({{alice_audit}}, "secret_added")'
-      - 'contains({{alice_audit}}, "secret_updated")'
-      # A rename is a change to shared state, so it is audited like any other.
-      - 'contains({{alice_audit}}, "vault_renamed")'
+      - 'contains({{alice_history}}, "PASSWORD-ONE")'
+      - 'contains({{alice_history}}, "URL-ONE")'
 
-  # ── Deletion converges ──────────────────────────────────────────────────────
-  - name: Alice deletes the secret
+  - name: Alice makes Bob a Viewer
     type: call
     node: calimero-node-1
     context_id: "{{vault_id}}"
-    method: delete_secret
+    method: set_role
     args:
-      secret_id: "{{secret_id}}"
+      account: "{{bob_account}}"
+      role: "viewer"
     executor_public_key: "{{alice_key}}"
 
-  - name: Sync the deletion
+  - name: Sync the demotion
+    type: wait_for_sync
+    context_id: "{{vault_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Bob, now a Viewer, cannot trash the secret
+    type: call
+    node: calimero-node-2
+    context_id: "{{vault_id}}"
+    method: trash_secret
+    args:
+      id: "secret_00000000000000000000000000000001"
+    executor_public_key: "{{bob_key}}"
+    expected_failure: true
+    outputs:
+      bob_trash_refused: error
+
+  - name: Assert a viewer is read-only
+    type: assert
+    statements:
+      - "is_set({{bob_trash_refused}})"
+
+  - name: Alice trashes the secret
+    type: call
+    node: calimero-node-1
+    context_id: "{{vault_id}}"
+    method: trash_secret
+    args:
+      id: "secret_00000000000000000000000000000001"
+    executor_public_key: "{{alice_key}}"
+
+  - name: Alice restores it — the trash is recoverable
+    type: call
+    node: calimero-node-1
+    context_id: "{{vault_id}}"
+    method: restore_secret
+    args:
+      id: "secret_00000000000000000000000000000001"
+    executor_public_key: "{{alice_key}}"
+
+  - name: Alice trashes it again, for good this time
+    type: call
+    node: calimero-node-1
+    context_id: "{{vault_id}}"
+    method: trash_secret
+    args:
+      id: "secret_00000000000000000000000000000001"
+    executor_public_key: "{{alice_key}}"
+
+  - name: Alice purges it
+    type: call
+    node: calimero-node-1
+    context_id: "{{vault_id}}"
+    method: purge_secret
+    args:
+      id: "secret_00000000000000000000000000000001"
+    executor_public_key: "{{alice_key}}"
+
+  - name: Sync the purge
     type: wait_for_sync
     context_id: "{{vault_id}}"
     nodes: [calimero-node-1, calimero-node-2]
@@ -435,42 +621,31 @@ steps:
     outputs:
       bob_after_delete: result
 
-  - name: Assert the delete converged to node 2
+  - name: Assert the purge converged to node 2
     type: assert
     statements:
-      - 'not_contains({{bob_after_delete}}, "GitHub")'
+      - 'not_contains({{bob_after_delete}}, "secret_00000000000000000000000000000001")'
 
-  # ── GOVERNANCE: promote, actually use it, demote ────────────────────────────
-  #
-  # The half a role system usually gets wrong. `update_member_role` writes a
-  # STRING; nothing enforces anything from it. Authorisation is the member's
-  # CAPABILITY BITMASK, set by a different call. So a promotion that writes only
-  # the role produces a roster reading "Admin" beside a person every admin
-  # endpoint refuses — and it looks completely correct from the UI.
-  #
-  # These steps therefore prove three separate things, in order:
-  #
-  #   1. Bob really is a plain Member — his mask is 4, read ON HIS OWN NODE.
-  #   2. A promotion CROSSES THE NETWORK — after it, node 2 reports 431.
-  #   3. The promotion is USABLE — Bob then does, from node 2, the four calls
-  #      `createVault` makes and the invitation mint, none of which his Member
-  #      mask permitted.
-  #
-  # 431 = 1|2|4|8|32|128|256 = CAN_CREATE_CONTEXT | CAN_INVITE_MEMBERS |
-  # CAN_JOIN_OPEN_SUBGROUPS | MANAGE_MEMBERS | CAN_CREATE_SUBGROUP |
-  # CAN_MANAGE_VISIBILITY | CAN_MANAGE_METADATA. Kept in step with
-  # ADMIN_CAPABILITIES in `app/src/lib/roles.ts`, whose unit tests derive the
-  # same number from the named bits.
-
-  # ⚠️ The ACCOUNT, not the device key and not a context executor identity. All
-  # three are 64 hex since rc.27, and member-addressing endpoints take the
-  # first: passing either other one returns 200 and names a principal that
-  # exists nowhere, so a promotion would silently authorise nobody.
-  - name: Who is Node 2, as an account
-    type: node_identity
-    node: calimero-node-2
+  - name: Alice reads the audit log
+    type: call
+    node: calimero-node-1
+    context_id: "{{vault_id}}"
+    method: get_audit_logs
+    args: {}
+    executor_public_key: "{{alice_key}}"
     outputs:
-      bob_account: accountId
+      alice_audit: result
+
+  - name: Assert every change is audited, from both nodes
+    type: assert
+    statements:
+      - 'contains({{alice_audit}}, "secret_added")'
+      - 'contains({{alice_audit}}, "secret_updated")'
+      - 'contains({{alice_audit}}, "vault_renamed")'
+      - 'contains({{alice_audit}}, "role_set:editor")'
+      - 'contains({{alice_audit}}, "secret_purged")'
+      - 'not_contains({{alice_audit}}, "PASSWORD")'
+
 
   - name: Read Bob's capabilities on his OWN node, before any promotion
     type: get_member_capabilities
@@ -650,3 +825,70 @@ steps:
     type: assert
     statements:
       - 'contains({{bob_after_demotion}}, "Production keys")'
+
+  # ── Removal ────────────────────────────────────────────────────────────────
+  # Last, so nothing above depends on Bob still being in the vault. The browser
+  # follows `remove_member` with a key rotation; here the replicated half is
+  # what is checked: roles gone, devices revoked, and newcomers defaulting to
+  # read-only.
+  - name: Alice makes newcomers Viewers by default
+    type: call
+    node: calimero-node-1
+    context_id: "{{vault_id}}"
+    method: set_default_role
+    args:
+      role: "viewer"
+    executor_public_key: "{{alice_key}}"
+
+  - name: Alice revokes Bob's browser
+    type: call
+    node: calimero-node-1
+    context_id: "{{vault_id}}"
+    method: revoke_device
+    args:
+      fingerprint: "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2"
+    executor_public_key: "{{alice_key}}"
+
+  - name: Alice removes Bob from the vault
+    type: call
+    node: calimero-node-1
+    context_id: "{{vault_id}}"
+    method: remove_member
+    args:
+      account: "{{bob_account}}"
+    executor_public_key: "{{alice_key}}"
+
+  - name: Sync the removal
+    type: wait_for_sync
+    context_id: "{{vault_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Bob reads the vault info on his own node
+    type: call
+    node: calimero-node-2
+    context_id: "{{vault_id}}"
+    method: vault_info
+    args: {}
+    executor_public_key: "{{bob_key}}"
+    outputs:
+      bob_info_removed: result
+
+  - name: Bob lists the members on his own node
+    type: call
+    node: calimero-node-2
+    context_id: "{{vault_id}}"
+    method: list_members
+    args: {}
+    executor_public_key: "{{bob_key}}"
+    outputs:
+      bob_members_removed: result
+
+  - name: Assert the removal reached Node 2
+    type: assert
+    statements:
+      - 'contains({{bob_info_removed}}, "pending")'
+      - 'contains({{bob_info_removed}}, "viewer")'
+      - 'not_contains({{bob_members_removed}}, "{{bob_account}}")'

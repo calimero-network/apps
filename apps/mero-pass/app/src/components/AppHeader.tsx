@@ -3,6 +3,8 @@ import BrandMark from './BrandMark';
 import { MARK_BG } from '../lib/brandMark';
 import { useMero } from '@calimero-network/mero-react';
 
+import { useDeviceUnlocked } from '../hooks/useDeviceLock';
+import { deviceKeeper } from '../lib/deviceKey';
 import styles from '../styles/shell.module.css';
 
 /**
@@ -36,6 +38,7 @@ export default function AppHeader({
 }) {
   const navigate = useNavigate();
   const { nodeUrl, logout } = useMero();
+  const unlocked = useDeviceUnlocked();
 
   // The host only. A full URL with a scheme and a port is noise in a header,
   // and on a hosted node it is long enough to push the logout button off.
@@ -88,10 +91,32 @@ export default function AppHeader({
             {host}
           </span>
         )}
+        {unlocked && (
+          <button
+            type="button"
+            className={styles.logoutBtn}
+            onClick={() => deviceKeeper.lock()}
+            title="Clear vault keys from memory"
+            data-testid="lock-now"
+          >
+            Lock
+          </button>
+        )}
+        <button
+          type="button"
+          className={styles.logoutBtn}
+          onClick={() => navigate('/security')}
+          data-testid="security"
+        >
+          Security
+        </button>
         <button
           type="button"
           className={styles.logoutBtn}
           onClick={() => {
+            // Logging out drops the vault keys too: a signed-out tab should
+            // hold nothing that opens a vault.
+            deviceKeeper.lock();
             logout();
             navigate('/', { replace: true });
           }}

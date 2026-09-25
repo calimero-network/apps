@@ -10,7 +10,11 @@ import {
   satisfiesRole,
 } from '../lib/roles';
 import type { TeamRole } from '../lib/roles';
-import { listTeamMembers, setMemberRole } from '../lib/vaults';
+import {
+  listTeamMembers,
+  removeTeamMember,
+  setMemberRole,
+} from '../lib/vaults';
 import type { TeamMember } from '../lib/vaults';
 import styles from '../styles/shell.module.css';
 
@@ -52,6 +56,7 @@ export default function MembersPanel({
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<string | null>(null);
+  const [removing, setRemoving] = useState<string | null>(null);
 
   const iMayManage = canManageMembers(myCapabilities);
 
@@ -100,12 +105,39 @@ export default function MembersPanel({
     [mero, namespaceId, load, onRolesChanged],
   );
 
+  const remove = useCallback(
+    async (member: TeamMember) => {
+      if (!mero) return;
+      setError(null);
+      setNotice(null);
+      setRemoving(null);
+      setBusy(`Removing ${member.name}…`);
+      try {
+        await removeTeamMember(mero.admin, {
+          namespaceId,
+          accountId: member.accountId,
+        });
+        setNotice(
+          `${member.name} is out of ${teamName}. Each vault's key is rotated the next time one of its Admins opens it, and nothing written after that is readable to them. What they already saw cannot be taken back — change those passwords.`,
+        );
+        await load();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setBusy(null);
+      }
+    },
+    [mero, namespaceId, teamName, load],
+  );
+
   return (
     <section data-testid="members-panel">
       <p className={styles.sectionHint}>
         An <strong>Admin</strong> can create vaults, invite people and change
-        roles. A <strong>Member</strong> can open every vault in {teamName} and
-        read and write its secrets — which is what they were invited for.
+        roles. A <strong>Member</strong> can open every open vault in {teamName}
+        ; what they may do inside a vault — view or edit — is set on that
+        vault's People tab. Removing someone here also removes them from every
+        vault, and rotates each vault's key the next time its Admin opens it.
       </p>
 
       {error && (
@@ -205,16 +237,49 @@ export default function MembersPanel({
                           Cancel
                         </button>
                       </>
+                    ) : removing === member.accountId ? (
+                      <>
+                        <button
+                          type="button"
+                          className={styles.btnDanger}
+                          onClick={() => void remove(member)}
+                          disabled={!!busy}
+                          data-testid="member-remove-confirm"
+                        >
+                          Remove from team
+                        </button>
+                        <button
+                          type="button"
+                          className={styles.btnGhost}
+                          onClick={() => setRemoving(null)}
+                          disabled={!!busy}
+                        >
+                          Cancel
+                        </button>
+                      </>
                     ) : (
-                      <button
-                        type="button"
-                        className={styles.btnGhost}
-                        onClick={() => setConfirming(member.accountId)}
-                        disabled={!!busy}
-                        data-testid="role-change"
-                      >
-                        {member.role === 'admin' ? 'Demote' : 'Promote'}
-                      </button>
+                      <>
+                        <button
+                          type="button"
+                          className={styles.btnGhost}
+                          onClick={() => setConfirming(member.accountId)}
+                          disabled={!!busy}
+                          data-testid="role-change"
+                        >
+                          {member.role === 'admin' ? 'Demote' : 'Promote'}
+                        </button>
+                        {!member.isSelf && (
+                          <button
+                            type="button"
+                            className={styles.btnGhost}
+                            onClick={() => setRemoving(member.accountId)}
+                            disabled={!!busy}
+                            data-testid="member-remove"
+                          >
+                            Remove
+                          </button>
+                        )}
+                      </>
                     )}
                   </div>
                 )}
@@ -230,7 +295,7 @@ export default function MembersPanel({
       {confirming && (
         <p className={styles.sectionHint} data-testid="role-warning">
           {members.find((m) => m.accountId === confirming)?.role === 'admin'
-            ? 'Demoting stops them creating vaults, inviting people and changing roles. It does NOT remove them from the team, they keep read and write on every vault here, and it cannot un-sync secrets their node has already copied — to protect those, rotate them.'
+            ? 'Demoting stops them creating vaults, inviting people and changing roles. It does NOT remove them from the team — use Remove for that.'
             : 'Promoting lets them create vaults, invite anyone into this team and change roles, including yours.'}
         </p>
       )}
