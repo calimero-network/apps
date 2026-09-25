@@ -1083,9 +1083,9 @@ impl Spreadsheet {
                 | CellOp::Clear { row_id, col_id } => (row_id, col_id),
             };
             let key = Spreadsheet::cell_key(sheet_id, row_id, col_id);
-            if !touched.contains_key(&key) {
-                let before = self.cell_state(&key)?;
-                touched.insert(key, (row_id.clone(), col_id.clone(), before));
+            if let std::collections::btree_map::Entry::Vacant(slot) = touched.entry(key) {
+                let before = self.cell_state(slot.key())?;
+                slot.insert((row_id.clone(), col_id.clone(), before));
             }
         }
         for op in ops {
