@@ -13,7 +13,7 @@ use calimero_sdk::types::Error as AppError;
 use calimero_storage::collections::crdt_meta::MergeError;
 use calimero_storage::collections::{AuthoredMap, LwwRegister, Mergeable, UnorderedMap};
 use calimero_storage::env as storage_env;
-use mero_sheets_recalc::recalc;
+use mero_sheets_recalc::{formula, recalc};
 use mero_sheets_types::{generate_id, validate_label, validate_sheet_name, Error};
 
 pub mod events;
@@ -269,6 +269,7 @@ pub struct Cursor {
 #[serde(crate = "calimero_sdk::serde")]
 pub struct FunctionDef {
     pub name: String,
+    pub category: String,
     pub syntax: String,
     pub description: String,
     pub example: String,
@@ -867,13 +868,15 @@ impl Spreadsheet {
         // sheets it transitively references. `sheet_ids` stays the FULL set so
         // unknown-sheet → #REF! detection is exact. Result is identical to a
         // whole-workbook eval (unreachable sheets cannot affect this sheet).
-        let closure = recalc::sheet_closure(&all_inputs, &sheet_id);
+        let env = Spreadsheet::formula_env();
+        let closure = recalc::sheet_closure(&all_inputs, &env.names, &sheet_id);
         let inputs = recalc::WorkbookInputs {
             cells: all_inputs
                 .into_iter()
                 .filter(|(k, _)| closure.contains(&k.sheet_id))
                 .collect(),
             sheet_ids,
+            env,
         };
         let computed = recalc::evaluate(&inputs);
 
@@ -922,6 +925,7 @@ impl Spreadsheet {
         let computed = recalc::evaluate(&recalc::WorkbookInputs {
             cells: all_inputs,
             sheet_ids,
+            env: Spreadsheet::formula_env(),
         });
 
         let mut out = Spreadsheet::cells_from_stored(stored, &computed);
@@ -992,20 +996,17 @@ impl Spreadsheet {
 
     // ---- Function help ----
 
+    /// Every formula function, sorted by name.
     pub fn get_functions(&self) -> app::Result<Vec<FunctionDef>> {
-        let mut fns = builtin_functions();
-        fns.sort_by(|a, b| a.name.cmp(&b.name));
-        Ok(fns)
+        Ok(builtin_functions())
     }
 
     pub fn search_functions(&self, prefix: String) -> app::Result<Vec<FunctionDef>> {
         let upper = prefix.to_uppercase();
-        let mut fns: Vec<FunctionDef> = builtin_functions()
+        Ok(builtin_functions()
             .into_iter()
             .filter(|f| f.name.starts_with(&upper))
-            .collect();
-        fns.sort_by(|a, b| a.name.cmp(&b.name));
-        Ok(fns)
+            .collect())
     }
 
     // ---- Export ----
@@ -1031,6 +1032,15 @@ impl Spreadsheet {
         hex::encode(env::device_id())
     }
 
+    /// What formulas see besides cells: the execution's clock, so `NOW()` and
+    /// `TODAY()` read the node's time (`time_now` is nanoseconds).
+    fn formula_env() -> formula::Env {
+        formula::Env {
+            now_ms: storage_env::time_now() / 1_000_000,
+            ..formula::Env::default()
+        }
+    }
+
     fn cell_key(sheet_id: &str, row: u32, col: u32) -> String {
         format!("{sheet_id}|{row}|{col}")
     }
@@ -1053,46 +1063,19 @@ impl Spreadsheet {
 // Built-in function list
 // ---------------------------------------------------------------------------
 
+/// The function help, straight from the engine's own catalog, so every
+/// function listed is one the evaluator implements.
 fn builtin_functions() -> Vec<FunctionDef> {
-    vec![
-        FunctionDef {
-            name: "SUM".into(),
-            syntax: "SUM(range)".into(),
-            description: "Adds all numeric values in a range.".into(),
-            example: "=SUM(A1:A10)".into(),
-        },
-        FunctionDef {
-            name: "AVERAGE".into(),
-            syntax: "AVERAGE(range)".into(),
-            description: "Returns the arithmetic mean of values in a range.".into(),
-            example: "=AVERAGE(B1:B5)".into(),
-        },
-        FunctionDef {
-            name: "MIN".into(),
-            syntax: "MIN(range)".into(),
-            description: "Returns the minimum numeric value in a range.".into(),
-            example: "=MIN(C1:C10)".into(),
-        },
-        FunctionDef {
-            name: "MAX".into(),
-            syntax: "MAX(range)".into(),
-            description: "Returns the maximum numeric value in a range.".into(),
-            example: "=MAX(D1:D10)".into(),
-        },
-        FunctionDef {
-            name: "COUNT".into(),
-            syntax: "COUNT(range)".into(),
-            description: "Counts the number of cells with numeric values in a range.".into(),
-            example: "=COUNT(E1:E20)".into(),
-        },
-        FunctionDef {
-            name: "IF".into(),
-            syntax: "IF(condition, value_if_true, value_if_false)".into(),
-            description: "Returns one of two values depending on whether a condition is non-zero."
-                .into(),
-            example: "=IF(A1, B1, C1)".into(),
-        },
-    ]
+    formula::CATALOG
+        .iter()
+        .map(|f| FunctionDef {
+            name: f.name.into(),
+            category: f.category.into(),
+            syntax: f.syntax.into(),
+            description: f.description.into(),
+            example: f.example.into(),
+        })
+        .collect()
 }
 
 // ---------------------------------------------------------------------------
@@ -1620,18 +1603,23 @@ mod tests {
     fn get_functions_returns_all() {
         let app = make_app();
         let fns = app.view(|s| s.get_functions()).unwrap();
-        assert_eq!(fns.len(), 6);
-        // Sorted alphabetically.
-        assert_eq!(fns[0].name, "AVERAGE");
-        assert_eq!(fns[5].name, "SUM");
+        // The engine's whole catalog, sorted alphabetically.
+        assert_eq!(fns.len(), formula::CATALOG.len());
+        assert!(fns.windows(2).all(|w| w[0].name < w[1].name));
+        assert!(fns
+            .iter()
+            .any(|f| f.name == "VLOOKUP" && f.category == "Lookup"));
     }
 
     #[test]
     fn search_functions_filters_by_prefix() {
         let app = make_app();
-        let fns = app.view(|s| s.search_functions("SU".into())).unwrap();
-        assert_eq!(fns.len(), 1);
-        assert_eq!(fns[0].name, "SUM");
+        let fns = app.view(|s| s.search_functions("su".into())).unwrap();
+        let names: Vec<&str> = fns.iter().map(|f| f.name.as_str()).collect();
+        assert_eq!(
+            names,
+            ["SUBSTITUTE", "SUM", "SUMIF", "SUMIFS", "SUMPRODUCT"]
+        );
     }
 
     #[test]

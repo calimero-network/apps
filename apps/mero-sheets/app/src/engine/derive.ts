@@ -65,14 +65,19 @@ export function retireOverlay(overlay: Overlay, snapshot: Snapshot): Overlay {
  * engine can tell an unknown-sheet reference (→ #REF!) from a known-but-empty
  * one. It does NOT filter which cells are included above.
  */
-export function buildEngineInput(snapshot: Snapshot, overlay: Overlay, sheetIds: string[]): string {
+export function buildEngineInput(
+  snapshot: Snapshot,
+  overlay: Overlay,
+  sheetIds: string[],
+  nowMs: number = Date.now(),
+): string {
   const cells: { sheet_id: string; row: number; col: number; raw_value: string }[] = [];
   for (const key of unionKeys(snapshot, overlay)) {
     const e = effective(key, snapshot, overlay);
     if (!e || e.raw_value === '') continue; // blank cells are absent to the engine
     cells.push({ sheet_id: e.sheet_id, row: e.row, col: e.col, raw_value: e.raw_value });
   }
-  return JSON.stringify({ cells, sheet_ids: sheetIds });
+  return JSON.stringify({ cells, sheet_ids: sheetIds, now_ms: nowMs });
 }
 
 /**
@@ -125,6 +130,8 @@ export function diffComputed(nodeActive: Cell[], derivedActive: Cell[]): string[
   for (const c of derivedActive) derived.set(cellKey(c.sheet_id, c.row, c.col), c.computed_value);
   const bad: string[] = [];
   for (const c of nodeActive) {
+    // NOW()/TODAY() read each side's own clock, so they differ by design.
+    if (/\b(NOW|TODAY)\s*\(/i.test(c.raw_value)) continue;
     const k = cellKey(c.sheet_id, c.row, c.col);
     if (!derived.has(k) || derived.get(k) !== c.computed_value) bad.push(k);
   }

@@ -15,10 +15,40 @@ keystroke), and guarantees the two always agree.
 
 ## Functions
 
-Formulas support the standard aggregate set: `SUM`, `AVERAGE`, `COUNT`,
-`MIN`, and `MAX`. Each takes one or more arguments, and arguments can be
-single cell references, ranges, or literals mixed together — the same
-shape a spreadsheet user expects from Excel or Google Sheets.
+The engine implements 94 functions across math, statistics, logic, lookup,
+text, dates and information: `SUM`/`SUMIFS`/`SUMPRODUCT`, `COUNTIF(S)`,
+`AVERAGEIF(S)`, `MEDIAN`, `STDEV`, `IF`/`IFS`/`IFERROR`/`SWITCH`,
+`VLOOKUP`/`HLOOKUP`/`XLOOKUP`/`INDEX`/`MATCH`, `TEXT`/`TEXTJOIN`/`SUBSTITUTE`,
+`DATE`/`EDATE`/`EOMONTH`/`TODAY`/`NOW`, and more. The list lives in one
+place, `CATALOG` in `logic/crates/recalc/src/formula.rs`: the contract's
+`get_functions` serves it, the browser reads it from the WASM engine for the
+function help and autocomplete, and a test evaluates every entry's example,
+so the help can never list a function the engine does not implement.
+
+Arguments can be single cell references, ranges or literals mixed together,
+as in Excel or Google Sheets. A range passed to an aggregate contributes only
+its numbers (text and blanks are skipped); a value typed into the call is
+coerced, so `SUM("3", TRUE)` is 4. Criteria take the usual forms: `">5"`,
+`"<>done"`, `"a*"` (wildcards `*` and `?`, `~` to escape).
+
+## Values and operators
+
+Inside the engine a value is typed — number, text, logical, error, or empty —
+so operators behave as a spreadsheet user expects: `+ - * / ^`, `&` for text,
+`%` as a suffix, and the comparisons `= <> < <= > >=`, which yield `TRUE` or
+`FALSE` (text compares case-insensitively; numbers sort before text before
+logicals). `-2^2` is 4 and `2^3^2` is 64, as in Excel. Numbers display with at
+most 15 significant digits, so `=0.1+0.2` shows `0.3`.
+
+Dates are serial numbers counting days from 1899-12-30, the convention every
+spreadsheet shares, so a date pasted from elsewhere means the same day here.
+`TODAY()` and `NOW()` read the clock in UTC: the node's execution time on the
+node, the browser's clock in the browser.
+
+Transcendental math (`EXP`, `LN`, `LOG`, `POWER`, `^`) goes through the pure
+Rust `libm` crate rather than std, so the node, the browser and native tests
+share one implementation. std's versions come precompiled with an opcode
+cargo-mero's `wasm-opt` rejects (see `logic/wasm-rustflags`).
 
 ## Ranges
 
@@ -26,8 +56,8 @@ A range is written `A1:B2` and expands to every cell in that rectangle.
 Whole-column (`A:A`) and whole-row ranges are also supported, but
 whole-column expansion is capped at `MAX_ROWS = 1000` rows — a formula that
 needs to sum more than 1000 rows in a single column should use an explicit
-range instead. Column references are limited to a single letter (`A`–`Z`);
-double-letter columns (`AA`, `AB`, …) are not currently parsed. Ranges
+range instead. Column references run from `A` to `ZZ` (`MAX_COLS = 702`),
+and a whole-row range (`1:1`) spans all of them. Ranges
 expand to their member cells individually rather than being tracked as a
 compressed block dependency — simple and correct, at the cost of a larger
 dependency graph on very wide ranges.
@@ -43,10 +73,13 @@ evaluates to `#REF!` rather than failing the whole computation.
 
 ## Errors
 
-Bad references and dependency cycles are reported as error values in the
-same family spreadsheet users already recognize: `#REF!` for a reference to
-a cell or sheet that doesn't exist, and `#CYCLE!` for a cell that
-participates in — or depends on — a circular reference. Because evaluation
+Errors are values in the family spreadsheet users already recognize:
+`#DIV/0!`, `#VALUE!` (a value of the wrong type), `#NAME?` (an unknown
+function or name), `#N/A` (a lookup that found nothing), `#NUM!`, `#REF!` for
+a reference to a cell or sheet that doesn't exist, `#ERROR!` for a formula
+that does not parse, and `#CYCLE!` for a cell that participates in — or
+depends on — a circular reference. An error in an `IF` condition is the
+result; it is never read as "true". Because evaluation
 walks a topologically sorted dependency graph, cycle detection is exact: a
 cell either has a well-defined evaluation order or it doesn't, with no
 heuristic iteration limit involved. An error value read by a downstream

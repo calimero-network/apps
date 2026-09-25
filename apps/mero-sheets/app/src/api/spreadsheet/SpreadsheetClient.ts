@@ -129,6 +129,7 @@ export interface Event_SheetRenamed {
 
 export interface FunctionDef {
   name: string;
+  category: string;
   syntax: string;
   description: string;
   example: string;

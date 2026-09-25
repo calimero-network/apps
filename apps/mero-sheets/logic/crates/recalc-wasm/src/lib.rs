@@ -2,6 +2,7 @@
 
 use std::collections::{BTreeMap, HashSet};
 
+use mero_sheets_recalc::formula::{Env, CATALOG};
 use mero_sheets_recalc::recalc::{evaluate as recalc_evaluate, CellRef, WorkbookInputs};
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::wasm_bindgen;
@@ -18,6 +19,10 @@ struct InputCell {
 struct Input {
     cells: Vec<InputCell>,
     sheet_ids: Vec<String>,
+    /// The browser's clock, for `NOW()`/`TODAY()`. Absent in older callers,
+    /// which then see the epoch.
+    #[serde(default)]
+    now_ms: u64,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -53,7 +58,14 @@ pub fn evaluate_json(input: &str) -> String {
         })
         .collect();
     let sheet_ids: HashSet<String> = parsed.sheet_ids.into_iter().collect();
-    let computed = recalc_evaluate(&WorkbookInputs { cells, sheet_ids });
+    let computed = recalc_evaluate(&WorkbookInputs {
+        cells,
+        sheet_ids,
+        env: Env {
+            now_ms: parsed.now_ms,
+            ..Env::default()
+        },
+    });
     let out: Vec<OutputCell> = computed
         .into_iter()
         .map(|(k, v)| OutputCell {
@@ -64,6 +76,38 @@ pub fn evaluate_json(input: &str) -> String {
         })
         .collect();
     serde_json::to_string(&out).unwrap_or_else(|_| "[]".to_string())
+}
+
+#[derive(Serialize)]
+struct FunctionOut {
+    name: &'static str,
+    category: &'static str,
+    syntax: &'static str,
+    description: &'static str,
+    example: &'static str,
+}
+
+/// The engine's function catalog as JSON, in the contract's `FunctionDef`
+/// shape, so the browser's function help needs no node round-trip and lists
+/// exactly what this build evaluates.
+pub fn functions_json() -> String {
+    let out: Vec<FunctionOut> = CATALOG
+        .iter()
+        .map(|f| FunctionOut {
+            name: f.name,
+            category: f.category,
+            syntax: f.syntax,
+            description: f.description,
+            example: f.example,
+        })
+        .collect();
+    serde_json::to_string(&out).unwrap_or_else(|_| "[]".to_string())
+}
+
+/// Browser entry point for [`functions_json`].
+#[wasm_bindgen]
+pub fn functions() -> String {
+    functions_json()
 }
 
 /// Browser entry point. Same signature the future warm/incremental engine keeps.
@@ -102,6 +146,24 @@ mod tests {
         let parsed: Vec<OutputCell> = serde_json::from_str(&evaluate_json(input)).unwrap();
         let c = parsed.iter().find(|c| c.row == 0 && c.col == 0).unwrap();
         assert_eq!(c.computed_value, "#REF!");
+    }
+
+    #[test]
+    fn evaluate_json_reads_the_clock() {
+        // 2026-09-25T12:00:00Z is serial 46290.5.
+        let input = r#"{"cells":[
+            {"sheet_id":"s","row":0,"col":0,"raw_value":"=TODAY()"}
+        ],"sheet_ids":["s"],"now_ms":1790337600000}"#;
+        let parsed: Vec<OutputCell> = serde_json::from_str(&evaluate_json(input)).unwrap();
+        assert_eq!(parsed[0].computed_value, "46290");
+    }
+
+    #[test]
+    fn functions_json_lists_the_catalog() {
+        let parsed: Vec<serde_json::Value> = serde_json::from_str(&functions_json()).unwrap();
+        assert_eq!(parsed.len(), CATALOG.len());
+        assert_eq!(parsed[0]["name"], CATALOG[0].name);
+        assert!(parsed[0]["category"].is_string());
     }
 
     #[test]

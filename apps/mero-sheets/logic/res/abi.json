@@ -460,6 +460,12 @@
           }
         },
         {
+          "name": "category",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
           "name": "syntax",
           "type": {
             "kind": "string"

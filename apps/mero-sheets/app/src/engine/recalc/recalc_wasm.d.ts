@@ -6,11 +6,17 @@
  */
 export function evaluate(input: string): string;
 
+/**
+ * Browser entry point for [`functions_json`].
+ */
+export function functions(): string;
+
 export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
 
 export interface InitOutput {
     readonly memory: WebAssembly.Memory;
     readonly evaluate: (a: number, b: number) => [number, number];
+    readonly functions: () => [number, number];
     readonly __wbindgen_externrefs: WebAssembly.Table;
     readonly __wbindgen_malloc: (a: number, b: number) => number;
     readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;

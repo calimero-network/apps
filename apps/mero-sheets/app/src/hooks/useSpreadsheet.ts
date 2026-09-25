@@ -24,7 +24,7 @@ import type {
 } from '../api/spreadsheet/SpreadsheetClient';
 import { CellOp as CellOpWire } from '../api/spreadsheet/SpreadsheetClient';
 import type { CellOp } from '../spreadsheet/ops';
-import { initEngine, engineReady, evaluate as engineEvaluate } from '../engine/engine';
+import { initEngine, engineReady, evaluate as engineEvaluate, functionCatalog } from '../engine/engine';
 import {
   snapshotFromCells, retireOverlay, deriveActiveCells, diffComputed, cellKey,
   type Snapshot, type Overlay,
@@ -32,46 +32,6 @@ import {
 
 // Re-export domain types so components import from one place
 export type { Sheet, Cell, Cursor, FunctionDef, Member, Project };
-
-// ── Built-in function reference (static fallback) ────────────────────────────
-export const BUILTIN_FUNCTIONS: FunctionDef[] = [
-  {
-    name: 'SUM',
-    syntax: 'SUM(range)',
-    description: 'Adds all numbers in a range',
-    example: '=SUM(A1:A10)',
-  },
-  {
-    name: 'AVERAGE',
-    syntax: 'AVERAGE(range)',
-    description: 'Returns the average of numbers in a range',
-    example: '=AVERAGE(B1:B5)',
-  },
-  {
-    name: 'MIN',
-    syntax: 'MIN(range)',
-    description: 'Returns the smallest number in a range',
-    example: '=MIN(C1:C10)',
-  },
-  {
-    name: 'MAX',
-    syntax: 'MAX(range)',
-    description: 'Returns the largest number in a range',
-    example: '=MAX(D1:D10)',
-  },
-  {
-    name: 'COUNT',
-    syntax: 'COUNT(range)',
-    description: 'Counts the number of cells with numeric values',
-    example: '=COUNT(A1:A20)',
-  },
-  {
-    name: 'IF',
-    syntax: 'IF(condition, value_if_true, value_if_false)',
-    description: 'Returns one value if a condition is true, another if false',
-    example: '=IF(A1>10, "High", "Low")',
-  },
-];
 
 // ── Hook interfaces ──────────────────────────────────────────────────────────
 
@@ -152,7 +112,7 @@ export function useSpreadsheet({
   const [sheets, setSheets] = useState<Sheet[]>([]);
   const [cells, setCells] = useState<Cell[]>([]);
   const [cursors, setCursors] = useState<Cursor[]>([]);
-  const [functions, setFunctions] = useState<FunctionDef[]>(BUILTIN_FUNCTIONS);
+  const [functions, setFunctions] = useState<FunctionDef[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [membersLoaded, setMembersLoaded] = useState(false);
   const [project, setProject] = useState<Project | null>(null);
@@ -272,12 +232,11 @@ export function useSpreadsheet({
     setError(null);
     try {
       const [
-        fetchedSheets, fetchedCursors, fetchedFunctions, allCells,
+        fetchedSheets, fetchedCursors, allCells,
         fetchedMembers, fetchedProject, me,
       ] = await Promise.all([
         client.listSheets(),
         client.getCursors(),
-        client.getFunctions(),
         client.getAllCells(),
         client.getMembers(),
         client.getProject(),
@@ -290,8 +249,6 @@ export function useSpreadsheet({
       setMembers(fetchedMembers);
       setProject(fetchedProject);
       setSelfId(me);
-      // Only replace the built-in functions if the backend returned a non-empty list
-      if (fetchedFunctions.length > 0) setFunctions(fetchedFunctions);
       deriveAndSet();
     } catch (err) {
       setError(err instanceof Error ? err : new Error(String(err)));
@@ -324,6 +281,11 @@ export function useSpreadsheet({
   useEffect(() => {
     deriveAndSet();
   }, [activeSheetId, engineTick, deriveAndSet]);
+
+  // The function help comes from the engine, so it lists exactly what evaluates.
+  useEffect(() => {
+    if (engineReady()) setFunctions(functionCatalog());
+  }, [engineTick]);
 
   // Live updates: re-fetch on any CRDT sync event for this context
   useSubscription(contextId ? [contextId] : [], () => { void refresh(); });

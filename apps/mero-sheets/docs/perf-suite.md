@@ -112,6 +112,5 @@ The four scenarios are deliberately parallel; a new one is a mechanical mirror:
 | grid | 14028 | 14128 |
 
 **Engine limits worth knowing** (`logic/crates/recalc/src/formula.rs`): cell refs
-parse **single-letter columns only** (A–Z), and whole-column `A:A` range
-expansion caps at `MAX_ROWS = 1000` — prefer explicit ranges past 1000 rows and
-keep grids ≤ 26 columns.
+parse columns `A`–`ZZ` (`MAX_COLS = 702`), and whole-column `A:A` range
+expansion caps at `MAX_ROWS = 1000` — prefer explicit ranges past 1000 rows.

@@ -30,6 +30,10 @@ describe('overlay precedence', () => {
     const a1 = input.cells.find((c: any) => c.row === 0 && c.col === 0);
     expect(a1.raw_value).toBe('9');
   });
+  it('passes the clock so NOW()/TODAY() evaluate', () => {
+    const input = JSON.parse(buildEngineInput(new Map(), new Map(), ['s'], 1234));
+    expect(input.now_ms).toBe(1234);
+  });
 });
 
 describe('retireOverlay', () => {
@@ -85,6 +89,11 @@ describe('diffComputed', () => {
   it('is empty when they agree', () => {
     const node = [cell('s', 0, 0, '=A', 'X')];
     const derived = [cell('s', 0, 0, '=A', 'X')];
+    expect(diffComputed(node, derived)).toEqual([]);
+  });
+  it('ignores NOW()/TODAY() cells, which read each side\'s own clock', () => {
+    const node = [cell('s', 0, 0, '=NOW()', '46290.5')];
+    const derived = [cell('s', 0, 0, '=NOW()', '46290.6')];
     expect(diffComputed(node, derived)).toEqual([]);
   });
   it('reports a node cell missing from derived (dropped out of derivation)', () => {
