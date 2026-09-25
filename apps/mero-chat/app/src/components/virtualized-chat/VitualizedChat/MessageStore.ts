@@ -1,0 +1,296 @@
+export interface UpdateFunction<T> {
+  (currentMessage: T): Partial<T>;
+}
+
+export type UpdateDescriptor<T> =
+  | { updatedFields: Partial<T> }
+  | { updateFunction: UpdateFunction<T> };
+
+type InternalMessage<T> = T & { version?: number };
+
+class MessageStore<
+  T extends {
+    id: string;
+    timestamp: number;
+  },
+> {
+  public messages: InternalMessage<T>[] = [];
+
+  private messageMap: Map<string, number> = new Map();
+
+  private startOffset: number = 0;
+
+  private endOffset: number = 0;
+
+  private updateLookup(messages: T[], isPrepend: boolean = false) {
+    messages.forEach((msg, index) => {
+      if (!msg.id) {
+        throw new Error("Message must have a valid ID");
+      }
+
+      const globalIndex = isPrepend
+        ? this.startOffset + index
+        : this.endOffset + index;
+
+      this.messageMap.set(msg.id, globalIndex);
+    });
+  }
+
+  reset() {
+    this.messages = [];
+    this.startOffset = 0;
+    this.endOffset = 0;
+    this.messageMap.clear();
+  }
+
+  prepend(messages: T[]): void {
+    // Sort messages by timestamp to ensure correct chronological order
+    const sortedMessages = [...messages].sort(
+      (a, b) => a.timestamp - b.timestamp,
+    );
+    const existingIds = new Set(this.messages.map((msg) => msg.id));
+    const uniqueMessages = sortedMessages.filter(
+      (message) => !existingIds.has(message.id),
+    );
+
+    if (uniqueMessages.length === 0) {
+      return;
+    }
+
+    this.messages = uniqueMessages.concat(this.messages);
+    this.startOffset -= uniqueMessages.length;
+    this.updateLookup(uniqueMessages, true);
+  }
+
+  initial(messages: T[]): void {
+    this.reset();
+    // Sort messages by timestamp to ensure correct chronological order
+    const sortedMessages = [...messages].sort(
+      (a, b) => a.timestamp - b.timestamp,
+    );
+    this.append(sortedMessages);
+  }
+
+  append(messages: T[]): { addedCount: number; updatedCount: number } {
+    if (messages.length === 0) {
+      return { addedCount: 0, updatedCount: 0 };
+    }
+
+    let updatedCount = 0;
+    const messagesToAdd: T[] = [];
+    const idsToSkip = new Set<string>();
+
+    // Build temp messages lookup map once - O(m) where m = existing messages
+    const tempMessagesMap = new Map<
+      string,
+      T & { text?: string; sender?: string }
+    >();
+    const tempMessagesByContent = new Map<
+      string,
+      Array<T & { text?: string; sender?: string }>
+    >();
+
+    for (const existingMsg of this.messages) {
+      const msg = existingMsg as T & { text?: string; sender?: string };
+      if (msg.id.startsWith("temp-")) {
+        // Primary key: exact match on content and timestamp (rounded to second)
+        const exactKey = `${msg.sender}:${msg.text}:${Math.floor(msg.timestamp / 1000)}`;
+        tempMessagesMap.set(exactKey, msg);
+
+        // Secondary key: for fuzzy matching with timestamp tolerance
+        const contentKey = `${msg.sender}:${msg.text}`;
+        if (!tempMessagesByContent.has(contentKey)) {
+          tempMessagesByContent.set(contentKey, []);
+        }
+        tempMessagesByContent.get(contentKey)!.push(msg);
+      }
+    }
+
+    // Process all incoming messages in a single pass - O(n)
+    for (const msg of messages) {
+      // If already exists, treat as in-place update (e.g., reactions/edits)
+      if (this.messageMap.has(msg.id)) {
+        // Merge all provided fields except id into the existing message
+        const { id: _ignoreId, ...rest } = msg as Partial<T> & { id: string };
+        this._updateWithoutVersion(msg.id, rest as Partial<T>);
+        updatedCount++;
+        continue;
+      }
+
+      // Check if this is a real message that matches a temp message
+      if (!msg.id.startsWith("temp-")) {
+        const realMsg = msg as T & { text?: string; sender?: string };
+        const exactKey = `${realMsg.sender}:${realMsg.text}:${Math.floor(realMsg.timestamp / 1000)}`;
+        let matchingTempMsg = tempMessagesMap.get(exactKey);
+
+        // Try fuzzy matching if exact match failed
+        if (!matchingTempMsg) {
+          const contentKey = `${realMsg.sender}:${realMsg.text}`;
+          const candidates = tempMessagesByContent.get(contentKey);
+
+          if (candidates) {
+            // Find first candidate within 10 second window
+            matchingTempMsg = candidates.find(
+              (tempMsg) =>
+                Math.abs(tempMsg.timestamp - realMsg.timestamp) < 10000,
+            );
+          }
+        }
+
+        if (matchingTempMsg) {
+          // Update temp message in place
+          const { id: _id, ...realDataWithoutId } = realMsg;
+          this._updateWithoutVersion(
+            matchingTempMsg.id,
+            realDataWithoutId as Partial<T>,
+          );
+          updatedCount++;
+          idsToSkip.add(msg.id);
+          continue;
+        }
+      }
+
+      // Add to list of messages to append
+      messagesToAdd.push(msg);
+    }
+
+    // Sort and add new messages if any
+    if (messagesToAdd.length > 0) {
+      // Sort by timestamp for chronological order
+      messagesToAdd.sort((a, b) => a.timestamp - b.timestamp);
+
+      // Update lookup and append
+      this.updateLookup(messagesToAdd);
+      this.messages = this.messages.concat(messagesToAdd);
+      this.endOffset += messagesToAdd.length;
+    }
+
+    return { addedCount: messagesToAdd.length, updatedCount };
+  }
+
+  /**
+   * Drop the message at `globalIndex` and re-index everything after it.
+   *
+   * `messageMap` stores GLOBAL indices and `endOffset` tracks one past the
+   * last message, so both have to be maintained or every later lookup points
+   * at the wrong row.
+   */
+  private _removeAt(globalIndex: number, id: string): void {
+    const localIndex = globalIndex - this.startOffset;
+    if (localIndex < 0 || localIndex >= this.messages.length) return;
+
+    this.messages.splice(localIndex, 1);
+    this.messageMap.delete(id);
+    this.endOffset -= 1;
+
+    for (const [key, index] of this.messageMap) {
+      if (index > globalIndex) this.messageMap.set(key, index - 1);
+    }
+  }
+
+  _update(oldId: string, updatedFields: Partial<T>): void {
+    const globalIndex = this.messageMap.get(oldId);
+    if (globalIndex == undefined) return;
+    const localIndex = globalIndex - this.startOffset;
+
+    // The optimistic message is being renamed into a real id that is ALREADY
+    // present: a refetch inserted the server's copy before this reconcile ran.
+    // Both rows describe the same message, so merge into the real one and drop
+    // the redundant temp. This used to throw, which crashed the chat view on a
+    // routine send/refetch race.
+    if (
+      updatedFields.id &&
+      updatedFields.id !== oldId &&
+      this.messageMap.has(updatedFields.id)
+    ) {
+      const { id: _renamed, ...withoutId } = updatedFields as Partial<T> & {
+        id?: string;
+      };
+      this._updateWithoutVersion(updatedFields.id, withoutId as Partial<T>);
+      this._removeAt(globalIndex, oldId);
+      return;
+    }
+    const existingMessage = this.messages[localIndex];
+
+    const version = existingMessage?.version ? existingMessage.version + 1 : 1;
+
+    this.messages[localIndex] = {
+      ...existingMessage,
+      ...updatedFields,
+      version,
+    };
+
+    if (updatedFields.id && updatedFields.id !== oldId) {
+      this.messageMap.delete(oldId);
+      this.messageMap.set(updatedFields.id, globalIndex);
+    }
+  }
+
+  _updateWithoutVersion(oldId: string, updatedFields: Partial<T>): void {
+    const globalIndex = this.messageMap.get(oldId);
+    if (globalIndex == undefined) return;
+    const localIndex = globalIndex - this.startOffset;
+    const existingMessage = this.messages[localIndex];
+
+    // Update without incrementing version to keep React key stable
+    this.messages[localIndex] = {
+      ...existingMessage,
+      ...updatedFields,
+    };
+  }
+
+  computeKey(item: InternalMessage<T>): string {
+    // Use timestamp and nonce as additional uniqueness factors
+    // Following Virtuoso best practice for stable, unique keys
+    const itemAny = item as unknown as Record<string, unknown>;
+    const nonce = (itemAny.nonce as string) || "";
+    return `${item.id}_${nonce}_${item.version ?? 0}`;
+  }
+
+  _applyUpdateFunction(oldId: string, updateFunction: UpdateFunction<T>) {
+    const globalIndex = this.messageMap.get(oldId);
+    if (globalIndex == undefined) return;
+    const localIndex = globalIndex - this.startOffset;
+    const existingMessage = this.messages[localIndex];
+    const updatedFields = updateFunction(existingMessage);
+    this._update(oldId, updatedFields);
+  }
+
+  getItem(index: number): InternalMessage<T> {
+    const localIndex = index - this.startOffset;
+    return this.messages[localIndex];
+  }
+
+  updateMultiple(
+    updates: {
+      id: string;
+      descriptor: UpdateDescriptor<T>;
+    }[],
+  ): void {
+    updates.forEach((update) => {
+      if (update.id) {
+        if (
+          "updatedFields" in update.descriptor &&
+          "updateFunction" in update.descriptor
+        ) {
+          throw new Error(
+            "Message update descriptor cannot have both updatedFields and updateFunction",
+          );
+        }
+        if ("updatedFields" in update.descriptor) {
+          this._update(update.id, update.descriptor?.updatedFields);
+        }
+        if ("updateFunction" in update.descriptor) {
+          this._applyUpdateFunction(
+            update.id,
+            update.descriptor?.updateFunction,
+          );
+        }
+      } else {
+        throw new Error("Message must have a valid ID");
+      }
+    });
+  }
+}
+
+export default MessageStore;

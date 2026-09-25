@@ -1,0 +1,81 @@
+[package]
+# Renamed from `curb`, the app's pre-release codename. Directory == cargo package
+# == npm package, which publish-bundle.yml relies on (it uses one value as both
+# `apps/$APP/logic` and `pnpm -F $APP`). The rename is free where it matters:
+# the registry id is `package` below, and an ApplicationId is hash(package,
+# signer) — the crate name reaches neither. It does move the built module from
+# `res/curb.wasm` to `res/mero_chat.wasm`, and the scenarios install the bundle,
+# not the wasm, so none of them name it.
+name        = "mero-chat"
+description = "Calimero chat"
+# The REGISTRY owns the published version (publish-bundle.yml asks it for the
+# next one); this is the lineage cargo-mero stamps on a local dev bundle.
+version     = "3.1.1"
+edition.workspace    = true
+authors.workspace    = true
+license.workspace    = true
+repository.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+calimero-sdk            = { workspace = true }
+calimero-storage        = { workspace = true }
+calimero-storage-macros = { workspace = true }
+borsh                   = { workspace = true }
+bs58                    = { workspace = true }
+thiserror               = { workspace = true }
+# Message ids are a digest, not a transcript — see `get_message_id`. Already in
+# the tree via the SDK, so this adds no code to the wasm.
+sha2                    = { workspace = true }
+
+# ABI description is a host-build concern: the manifest is extracted by running
+# the app natively. Linking it into the wasm only bloats the module. Used for
+# `impl_bytes32_abi!` on the id newtypes in `src/types/id.rs`.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+calimero-wasm-abi = { workspace = true }
+
+[dev-dependencies]
+# Enables register_crdt_merge + the native mock host so TestHost can drive the
+# AccessControl writer-set state under `cargo test`.
+calimero-storage = { workspace = true, features = ["testing"] }
+
+[package.metadata.calimero]
+package     = "com.calimero.chat"
+name        = "Mero Chat"
+description = "Mero Chat v2 - group-based context management. Each context is one channel or DM."
+author      = "Calimero"
+icon        = "../app/public/icons/icon-512x512.png"
+# The existing deployment. It is also the login callback's registered origin, so
+# the Vercel project is relinked to Root Directory `apps/mero-chat/app` rather
+# than replaced.
+frontend    = "https://mero-chat-pwa.vercel.app"
+slug        = "com.calimero.chat"
+category    = "social"
+tags        = ["chat", "messaging", "social"]
+github      = "https://github.com/calimero-network/apps"
+# Equal to [workspace.metadata.mero-apps] in the root Cargo.toml, always —
+# scripts/check-app-metadata.sh asserts it, and core's fleet-bump rewrites every
+# app's copy on a release. It is the floor a node checks before it will accept
+# the bundle at all.
+#
+# "Equal", not "at least", because the guest<->host payload is not stable across
+# releases even when the signatures are. core#3633 (rc.26) added `order` to
+# `Metadata`, which rides inside `Action` across that boundary: a contract built
+# on the newer SDK writes actions an older node cannot decode, and it surfaces
+# as a peer that never replicates rather than as an error.
+#
+# rc.28 -> rc.42 crossed five breaking releases, each of which had to be worked
+# through rather than pinned past:
+#   rc.29  invitations carry non-empty `admitters` and are clamped to 24h
+#   rc.31  an `http` registry node serves no bytecode to peers, so the app is
+#          installed on EVERY node in `workflows/integration-setup.yml`
+#   rc.32  `#[app::mergeable]` — a type implementing `Mergeable` must declare
+#          how, or it does not compile (see `src/lib.rs`)
+#   rc.38  37 admin request bodies closed: an extra key is now a 400/422
+#   rc.39  the blob DHT is gone; `?context_id=` is the only discovery path
+min-runtime-version = "0.11.0-rc.43"
+
+# NOTE: no [profile.*] — cargo ignores profiles in a workspace member and
+# `cargo mero build` then fails with `profile 'app-release' is not defined`.

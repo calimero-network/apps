@@ -1,0 +1,50 @@
+import type { ActiveChat } from "../types/Common";
+import { StorageHelper } from "./storage";
+import { log } from "./logger";
+
+/**
+ * Validator for ActiveChat to ensure it has required properties
+ */
+const isValidActiveChat = (data: unknown): boolean => {
+  if (!data || typeof data !== "object") return false;
+  const chat = data as Record<string, unknown>;
+  return !!(chat.type && chat.id && chat.name);
+};
+
+export const updateSessionChat = (session: ActiveChat): void => {
+  StorageHelper.setJSON("lastSession", session);
+};
+
+export const getStoredSession = (): ActiveChat | null => {
+  const session = StorageHelper.getJSON<ActiveChat>(
+    "lastSession",
+    isValidActiveChat,
+  );
+  if (!session) {
+    log.debug("Session", "No valid session found in storage");
+  }
+  return session;
+};
+
+export const clearStoredSession = (): void => {
+  StorageHelper.removeItem("lastSession");
+  log.debug("Session", "Session cleared from storage");
+};
+
+// ── Namespace-ready gate ──────────────────────────────────────────────────────
+// Set in sessionStorage (not localStorage) so it always requires going through
+// namespace selection after a fresh login or tab re-open.
+
+const NS_READY_KEY = "curb_ns_ready";
+
+export function setNamespaceReady(): void {
+  sessionStorage.setItem(NS_READY_KEY, "1");
+}
+
+export function isNamespaceReady(): boolean {
+  return sessionStorage.getItem(NS_READY_KEY) === "1";
+}
+
+export function clearNamespaceReady(): void {
+  sessionStorage.removeItem(NS_READY_KEY);
+}

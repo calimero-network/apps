@@ -1,0 +1,688 @@
+import { useCallback, useRef } from "react";
+import { ClientApiDataSource } from "../api/dataSource/clientApiDataSource";
+import type { ActiveChat } from "../types/Common";
+import type { DMContextInfo } from "./useDMs";
+import { getStoredSession } from "../utils/session";
+import type { NotificationType } from "../utils/notificationSound";
+import { log } from "../utils/logger";
+import { useNameResolver } from "../repositories/names/useNames";
+import type {
+  WebSocketEvent,
+  ExecutionEventData,
+} from "../types/WebSocketTypes";
+import { nameRepository } from "../repositories/names/useNames";
+import { bytesParser } from "../utils/bytesParser";
+import { messageMentionsMe } from "../utils/mentionsMe";
+import { isSelfSender } from "../utils/selfIdentity";
+
+/**
+ * Custom hook for handling chat-related events (messages, DMs, channels)
+ * Extracted from Home component to reduce complexity
+ */
+// Simplified interface - accept refs directly instead of creating them internally
+interface ChatHandlersRefs {
+  mainMessages: React.MutableRefObject<{
+    checkForNewMessages: (
+      chat: ActiveChat,
+      isDM: boolean,
+      group: string,
+      contextId: string
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ) => Promise<any[]>;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    addIncoming: (messages: any[]) => void;
+  }>;
+  threadMessages: React.MutableRefObject<{
+    checkForNewThreadMessages: (
+      chat: ActiveChat,
+      parentMessageId: string
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ) => Promise<any[]>;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    addIncoming: (messages: any[]) => void;
+  }>;
+  playSoundForMessage: React.MutableRefObject<
+    (messageId: string, type?: NotificationType, isMention?: boolean) => void
+  >;
+  notifyMessage: React.MutableRefObject<
+    (
+      messageId: string,
+      sender: string,
+      text: string,
+      isMention?: boolean
+    ) => void
+  >;
+  notifyDM: React.MutableRefObject<
+    (messageId: string, sender: string, text: string) => void
+  >;
+  notifyChannel: React.MutableRefObject<
+    (
+      messageId: string,
+      channelName: string,
+      sender: string,
+      text: string,
+      isMention?: boolean
+    ) => void
+  >;
+  notifyThread: React.MutableRefObject<
+    (
+      messageId: string,
+      channelName: string,
+      sender: string,
+      text: string
+    ) => void
+  >;
+  fetchDms: React.MutableRefObject<() => Promise<DMContextInfo[] | undefined>>;
+  onDMSelected: React.MutableRefObject<
+    (dm: DMContextInfo) => void
+  >;
+  fetchChannels: React.MutableRefObject<() => Promise<void>>;
+  fetchDMs: React.MutableRefObject<() => Promise<void>>;
+  fetchMembers: React.MutableRefObject<() => Promise<void>>;
+  fetchGroupMembers: React.MutableRefObject<() => Promise<void>>;
+  onLeftChannel: React.MutableRefObject<(contextId: string) => void>;
+  subscribeToContext: React.MutableRefObject<(contextId: string) => void>;
+  /** Re-read one message from the node and merge it into the open chat. */
+  refreshReactedMessage: React.MutableRefObject<
+    (contextId: string, messageId: string) => Promise<void>
+  >;
+  contextIdentityMap: React.MutableRefObject<Map<string, string>>;
+  contextNameMap: React.MutableRefObject<Map<string, string>>;
+  dmContextIds: React.MutableRefObject<Set<string>>;
+  onUnreadRefresh: React.MutableRefObject<(contextId: string, contextIdentity: string) => Promise<void>>;
+  onUnreadClear: React.MutableRefObject<(contextId: string, contextIdentity: string) => Promise<void>>;
+}
+
+export function useChatHandlers(
+  activeChatRef: React.RefObject<ActiveChat | null>,
+  activeChat: ActiveChat | null,
+  refs: ChatHandlersRefs
+) {
+  // Notification titles need a display name, and the only place one lives is
+  // the namespace's member metadata — resolved from the sender's account at
+  // the moment the notification fires, so it is whatever that person is called
+  // now.
+  const { displayName: resolveSenderName } = useNameResolver();
+
+  // All callbacks come through refs - much simpler!
+
+  // Track if we're already fetching messages to prevent concurrent calls
+  const isFetchingMessagesRef = useRef(false);
+  const isFetchingThreadMessagesRef = useRef(false);
+
+  /**
+   * Handle message updates from websocket events
+   */
+  const handleMessageUpdates = useCallback(
+    async (
+      useDM: boolean,
+      group: string,
+      contextId: string,
+      shouldNotifyMessage: boolean
+    ) => {
+      if (!activeChatRef.current || !group) return;
+
+      // group is private_dm
+      // useDM is true
+      // shouldNotify is false
+      // with this combination it means we are getting
+      // a reaction back meaning we should apply all new messages to the
+      // active chat
+
+      // Prevent concurrent message fetches
+      if (isFetchingMessagesRef.current) return;
+
+      try {
+        isFetchingMessagesRef.current = true;
+        const newMessages = await refs.mainMessages.current.checkForNewMessages(
+          activeChatRef.current,
+          useDM,
+          group,
+          contextId
+        );
+
+        if (newMessages.length > 0) {
+          // Check if messages belong to the currently active chat
+          const activeChatName = activeChatRef.current.name;
+
+          let messagesBelongToActiveChat = false;
+
+          if (useDM) {
+            if (!shouldNotifyMessage) {
+              messagesBelongToActiveChat = true;
+            } else if (contextId && activeChatRef.current?.contextId) {
+              messagesBelongToActiveChat = contextId === activeChatRef.current.contextId;
+            } else {
+              // No context id to compare, and a message no longer carries a
+              // name to guess from. Comparing display names was never a
+              // routing decision anyway — two people with the same name made
+              // it wrong, and a rename made it wrong for one of them.
+              messagesBelongToActiveChat = false;
+            }
+          } else {
+            // Prefer contextId match (reliable) over channel name string comparison
+            // which can silently mismatch when display name differs from event bytes
+            if (contextId && activeChatRef.current?.contextId) {
+              messagesBelongToActiveChat = contextId === activeChatRef.current.contextId;
+            } else {
+              messagesBelongToActiveChat = group === activeChatName;
+            }
+          }
+
+          // Always show notifications for all messages (even if not in active chat)
+          const lastMessage = newMessages[newMessages.length - 1];
+          // Identity is PER CONTEXT and recorded in several places that do
+          // not always agree; compare against all of them. See
+          // utils/selfIdentity — comparing against a single source is why the
+          // user's own messages were toasted.
+          const mine = (sender: string | null | undefined) =>
+            isSelfSender(
+              sender,
+              contextId,
+              refs.contextIdentityMap.current.get(contextId),
+              activeChatRef.current?.contextIdentity,
+            );
+
+          if (!useDM) {
+            const isFromCurrentUser = mine(lastMessage.sender);
+
+            // Show notification for ALL channel messages (not just active chat)
+            // Guarded on the TEXT, not on a sender name. This used to require
+            // `senderUsername` to be truthy, so once messages stopped carrying
+            // one the condition would be permanently false and channel
+            // notifications would silently stop — a behaviour change no type
+            // error would have reported.
+            if (!isFromCurrentUser && lastMessage.text) {
+              // Use message.group to show the correct channel name
+              const channelName = lastMessage.group || activeChatName;
+              if (shouldNotifyMessage) {
+                refs.notifyChannel.current(
+                  lastMessage.id,
+                  channelName,
+                  resolveSenderName(lastMessage.sender),
+                  lastMessage.text,
+                  messageMentionsMe(lastMessage, contextId)
+                );
+              }
+            }
+          } else {
+            const isFromCurrentUser = lastMessage && mine(lastMessage.sender);
+
+            // Show notification for DM messages from other users
+            if (!isFromCurrentUser && lastMessage.text) {
+              if (shouldNotifyMessage) {
+                refs.notifyDM.current(
+                  lastMessage.id,
+                  resolveSenderName(lastMessage.sender),
+                  lastMessage.text
+                );
+              }
+            }
+          }
+
+          // ONLY append messages if they belong to the active chat
+          if (messagesBelongToActiveChat) {
+            refs.mainMessages.current.addIncoming(newMessages);
+
+            // Mark the channel as read and clear the badge whenever new messages
+            // arrive while it's open. clearOne calls mark_as_read (the real WASM
+            // function that get_unread_count reads from) and immediately zeroes
+            // the React badge without waiting for a re-fetch.
+            if (activeChatRef.current?.contextId && activeChatRef.current?.contextIdentity) {
+              void refs.onUnreadClear.current(
+                activeChatRef.current.contextId,
+                activeChatRef.current.contextIdentity,
+              );
+            }
+          }
+        }
+      } catch (error) {
+        log.error("ChatHandlers", "Error handling message updates", error);
+      } finally {
+        isFetchingMessagesRef.current = false;
+      }
+    },
+    [activeChatRef, activeChat, refs]
+  );
+
+  /**
+   * Handle thread message updates from websocket events
+   */
+  const handleThreadMessageUpdates = useCallback(
+    async (useDM: boolean, parentMessageId: string) => {
+      if (!activeChatRef.current || !parentMessageId) {
+        log.debug(
+          "ChatHandlers",
+          "Skipping thread message check - no active chat or parent message ID"
+        );
+        return;
+      }
+
+      // Prevent concurrent message fetches
+      if (isFetchingThreadMessagesRef.current) {
+        log.debug(
+          "ChatHandlers",
+          "Skipping thread message check - already fetching thread messages"
+        );
+        return;
+      }
+
+      // Removed throttling to allow real-time thread message updates
+
+      try {
+        isFetchingThreadMessagesRef.current = true;
+        log.debug(
+          "ChatHandlers",
+          `Checking for new thread messages for parent: ${parentMessageId}`
+        );
+
+        const newThreadMessages =
+          await refs.threadMessages.current.checkForNewThreadMessages(
+            activeChatRef.current,
+            parentMessageId
+          );
+
+        if (newThreadMessages.length > 0) {
+          log.debug(
+            "ChatHandlers",
+            `Found ${newThreadMessages.length} new thread messages`
+          );
+          refs.threadMessages.current.addIncoming(newThreadMessages);
+        } else {
+          log.debug("ChatHandlers", "No new thread messages found");
+        }
+      } catch (error) {
+        log.error("ChatHandlers", "Error fetching thread messages", error);
+      } finally {
+        isFetchingThreadMessagesRef.current = false;
+      }
+    },
+    [refs]
+  );
+
+  /**
+   * Handle a MessageSent event for a context that is NOT the active chat.
+   * Fetches the last message (for toast content), shows the notification, and
+   * refreshes the per-context unread counts from WASM.
+   */
+  const handleBackgroundMessage = useCallback(
+    async (contextId: string, isDM: boolean, messageGroup: string) => {
+      const contextIdentity = refs.contextIdentityMap.current.get(contextId);
+      if (!contextIdentity) return;
+
+      try {
+        const api = new ClientApiDataSource();
+        // Use dmContextIds as the authoritative source for DM classification.
+        // Bytes-parse failures leave isDM = false even for real DMs.
+        const isDMContext = isDM || refs.dmContextIds.current.has(contextId);
+        const resp = await api.getMessages({
+          group: { name: isDMContext ? "private_dm" : (messageGroup || "") },
+          limit: 1,
+          offset: 0,
+          is_dm: isDMContext,
+          dm_identity: isDMContext ? contextIdentity : undefined,
+          refetch_context_id: contextId,
+          refetch_identity: contextIdentity,
+        });
+
+        const msgs = resp.data?.messages;
+        if (msgs && msgs.length > 0) {
+          const msg = msgs[msgs.length - 1];
+          // msg.sender is the sender's identity in this context.
+          // contextIdentity is our identity in this context.
+          //
+          // Identity only. This used to also treat "the display name equals
+          // mine" as proof the message was mine, which is not an identity
+          // check: two people who pick the same name silence each other's
+          // notifications, and a rename breaks your own. Messages no longer
+          // carry a name at all.
+          const isMine = isSelfSender(msg.sender, contextId, contextIdentity);
+
+          if (!isMine && msg.text && !msg.deleted) {
+            if (isDMContext) {
+              refs.notifyDM.current(msg.id, resolveSenderName(msg.sender), msg.text);
+            } else {
+              const contextName =
+                refs.contextNameMap.current.get(contextId) ?? messageGroup;
+              refs.notifyChannel.current(
+                msg.id,
+                contextName,
+                resolveSenderName(msg.sender),
+                msg.text,
+                messageMentionsMe(msg, contextId),
+              );
+            }
+            refs.playSoundForMessage.current(
+              msg.id,
+              isDMContext ? "dm" : "channel",
+              !isDMContext && messageMentionsMe(msg, contextId),
+            );
+          }
+        }
+      } catch (e) {
+        log.debug("ChatHandlers", "Background message fetch failed", e);
+      }
+
+      // Always refresh unread counts even if the fetch above failed.
+      await refs.onUnreadRefresh.current(contextId, contextIdentity);
+    },
+    [refs],
+  );
+
+  /**
+   * Handle a MessageSentThread event for a context that is NOT the active chat.
+   * Fetches the last main message to identify the sender, shows a thread-reply
+   * notification, and refreshes the per-context unread counts.
+   */
+  const handleBackgroundThreadMessage = useCallback(
+    async (contextId: string, isDM: boolean, messageGroup: string) => {
+      const contextIdentity = refs.contextIdentityMap.current.get(contextId);
+      if (!contextIdentity) return;
+
+      try {
+        const api = new ClientApiDataSource();
+        // Fetch the most recent message to get sender info. We can't fetch
+        // the specific thread reply without the parent ID, so we use the
+        // latest message as a proxy for the sender's name.
+        const resp = await api.getMessages({
+          group: { name: isDM ? "private_dm" : (messageGroup || "") },
+          limit: 1,
+          offset: 0,
+          is_dm: isDM,
+          dm_identity: isDM ? contextIdentity : undefined,
+          refetch_context_id: contextId,
+          refetch_identity: contextIdentity,
+        });
+
+        const msgs = resp.data?.messages;
+        const msg = msgs && msgs.length > 0 ? msgs[msgs.length - 1] : null;
+        const isMine = msg && isSelfSender(msg.sender, contextId, contextIdentity);
+
+        if (!isMine) {
+          const contextName =
+            refs.contextNameMap.current.get(contextId) ?? messageGroup;
+          const sender = resolveSenderName(msg?.sender);
+          const text = msg?.text ?? "";
+          const msgId = msg?.id ?? `thread-${Date.now()}`;
+          refs.notifyThread.current(msgId, contextName, sender, text);
+        }
+      } catch (e) {
+        log.debug("ChatHandlers", "Background thread message fetch failed", e);
+      }
+
+      await refs.onUnreadRefresh.current(contextId, contextIdentity);
+    },
+    [refs],
+  );
+
+  /**
+   * Handle DM-specific updates (group-based DMs are just contexts)
+   */
+  const handleDMUpdates = useCallback(
+    async (_sessionChat: ActiveChat | null) => {
+      try {
+        await refs.fetchDms.current();
+      } catch (error) {
+        log.error("ChatHandlers", "Error handling DM updates", error);
+      }
+    },
+    [refs]
+  );
+
+  /**
+   * Handle execution events inside StateMutation
+   * Map each event type to its specific data refresh action
+   */
+  const handleExecutionEvents = useCallback(
+    (contextId: string, executionEvents: ExecutionEventData[]) => {
+      // Track which specific actions we need to take
+      const actions = {
+        fetchMessages: false,
+        fetchMessageGroup: "",
+        shouldNotifyMessage: true,
+        isThreadEvent: false,
+        isDM: false,
+        fetchChannels: false,
+        fetchDMs: false,
+        dmDeleted: false,
+        fetchMembers: false,
+      };
+
+      for (const executionEvent of executionEvents) {
+        switch (executionEvent.kind) {
+          case "MessageSent":
+            actions.fetchMessages = true;
+            // Convert bytes to ASCII and extract channel/group
+            if (executionEvent.data) {
+              try {
+                const asciiString = bytesParser(executionEvent.data);
+                const parsed = JSON.parse(asciiString);
+                if (parsed.channel) {
+                  actions.fetchMessageGroup = parsed.channel;
+                  actions.isDM = parsed.channel === "private_dm";
+                }
+              } catch (e) {
+                log.warn("ChatHandlers", "Couldn't decode MessageSent data", e);
+              }
+            }
+            break;
+          case "MessageSentThread":
+            actions.fetchMessages = true;
+            actions.isThreadEvent = true;
+            actions.shouldNotifyMessage = false;
+            // Convert bytes to ASCII and extract channel/group
+            if (executionEvent.data) {
+              try {
+                const asciiString = bytesParser(executionEvent.data);
+
+                // Parse the JSON to get channel/group and message_id
+                const parsed = JSON.parse(asciiString);
+                if (parsed.channel) {
+                  actions.fetchMessageGroup = parsed.channel;
+                  actions.isDM = parsed.channel === "private_dm";
+                }
+              } catch (e) {
+                log.warn("ChatHandlers", "Couldn't decode MessageSentThread data", e);
+              }
+            }
+            break;
+
+          case "MessageEdited": {
+            // An edit changes a message that is already on screen, or already
+            // scrolled past. Refresh the one it names — the newest-page refresh
+            // below only finds it when the edit happened to be recent, which is
+            // how an edit to an old message stayed invisible.
+            //
+            // Deliberately NOT notified. Editing used to emit `MessageSent`, so
+            // a peer announced "X sent a message" for text already delivered.
+            if (executionEvent.data) {
+              try {
+                const editedId = JSON.parse(bytesParser(executionEvent.data));
+                if (typeof editedId === "string" && editedId) {
+                  void refs.refreshReactedMessage.current(contextId, editedId);
+                }
+              } catch {
+                // Fall through to the window refresh.
+              }
+            }
+            actions.shouldNotifyMessage = false;
+            actions.fetchMessages = true;
+            break;
+          }
+
+          case "ReactionUpdated": {
+            // Fetch messages to get updated reactions
+            const currentChat = activeChatRef.current;
+
+            if (currentChat) {
+              actions.isDM = currentChat.type === "direct_message";
+              if (currentChat.type === "channel") {
+                actions.fetchMessageGroup = currentChat.name;
+              } else {
+                actions.fetchMessageGroup = "private_dm";
+              }
+            }
+            actions.shouldNotifyMessage = false;
+            actions.fetchMessages = true;
+            break;
+          }
+
+          case "ProfileUpdated": {
+            // A rename by someone ELSE. The name repository caches for five
+            // minutes and its policy says a rename "does not wait for it: the
+            // write path invalidates" — true only for your own rename, which
+            // is the one case that needs it least. Nothing was listening for
+            // this event, so a peer's new name took up to the full TTL to
+            // appear, and looked like the app ignoring it.
+            if (executionEvent.data) {
+              try {
+                const account = JSON.parse(bytesParser(executionEvent.data));
+                if (typeof account === "string" && account) {
+                  nameRepository.invalidate(account);
+                } else {
+                  nameRepository.invalidate();
+                }
+              } catch {
+                // An unreadable payload still means SOME name changed.
+                // Dropping the whole cache costs a refetch; keeping a name we
+                // have been told is wrong costs a wrong name on screen.
+                nameRepository.invalidate();
+              }
+            } else {
+              nameRepository.invalidate();
+            }
+            break;
+          }
+
+          case "InfoUpdated":
+            // Channel name/description/avatar changed. Emitted by the contract
+            // on every change and, until now, listened for by nothing — so a
+            // peer's rename of a channel sat stale until the 30s channel poll
+            // happened to pick it up.
+            actions.fetchChannels = true;
+            break;
+
+          case "Initialized":
+            // A context finished initialising. Everything the app shows for it
+            // is derived from lists it has not fetched yet, so refresh them all
+            // rather than guessing which one is now wrong.
+            actions.fetchChannels = true;
+            actions.fetchDMs = true;
+            actions.fetchMembers = true;
+            break;
+
+          case "RoleUpdated":
+            // Refresh member list so role badges update immediately for everyone.
+            // useMyChannelRole also subscribes to this event directly to re-fetch
+            // the current user's own role without waiting for the 30s poll.
+            actions.fetchMembers = true;
+            break;}
+      }
+      // Execute only the necessary actions with proper sequencing
+      if (actions.fetchMessages) {
+        let messageGroup = actions.fetchMessageGroup;
+        let isDM = actions.isDM;
+
+        const isActiveContext = contextId === activeChatRef.current?.contextId;
+
+        // Only fall back to the active chat's name/type when the event belongs to
+        // the active context. Applying this fallback to background contexts would
+        // misidentify a DM whose bytes couldn't be parsed as the current channel,
+        // causing the notification to read "Sender in #ChannelName" instead of
+        // "New DM from Sender".
+        if (!messageGroup && isActiveContext && activeChatRef.current) {
+          if (activeChatRef.current.type === "channel") {
+            messageGroup = activeChatRef.current.name;
+            isDM = false;
+          } else if (activeChatRef.current.type === "direct_message") {
+            messageGroup = "private_dm";
+            isDM = true;
+          }
+        }
+        if (isActiveContext) {
+          // Active chat: use existing flow (fetch, deduplicate, append, notify)
+          handleMessageUpdates(isDM, messageGroup, contextId, actions.shouldNotifyMessage);
+        } else if (actions.shouldNotifyMessage) {
+          // Background context with notification: lightweight fetch + toast + unread refresh
+          void handleBackgroundMessage(contextId, isDM, messageGroup);
+        } else if (actions.isThreadEvent) {
+          // Background thread reply: show thread notification + unread refresh
+          void handleBackgroundThreadMessage(contextId, isDM, messageGroup);
+        } else {
+          // Background context, no notification (e.g. reaction from another context)
+          // Just refresh unread count so badge stays accurate.
+          const bgIdentity = refs.contextIdentityMap.current.get(contextId);
+          if (bgIdentity) void refs.onUnreadRefresh.current(contextId, bgIdentity);
+        }
+      }
+      if (actions.fetchChannels) {
+        refs.fetchChannels.current();
+      }
+      if (actions.fetchDMs) {
+        refs.fetchDMs.current();
+        const sessionChat = getStoredSession();
+        if (sessionChat?.type === "direct_message") {
+          setTimeout(async () => {
+            try {
+              const updated = await refs.fetchDms.current();
+              const stillExists = updated?.some(
+                (dm) => dm.contextId === sessionChat.contextId
+              );
+              if (!stillExists && updated && updated.length > 0) {
+                refs.onDMSelected.current(updated[0]);
+              } else if (!actions.dmDeleted) {
+                handleDMUpdates(sessionChat);
+              }
+            } catch (e) {
+              log.error("ChatHandlers", "Error handling DM update", e);
+            }
+          }, 150);
+        }
+      }
+      if (actions.fetchMembers) {
+        // Always fetch members for channels, and for DMs when appropriate
+        if (!actions.isDM) {
+          refs.fetchMembers.current();
+        }
+        // For DMs, we might need to refresh DM data to get updated member info
+        if (actions.isDM && actions.fetchDMs) {
+          // DM member updates are handled through DM list refresh
+          refs.fetchDMs.current();
+        }
+      }
+
+      // Log what actions were taken for debugging
+      const takenActions = Object.entries(actions)
+        .filter(([_, value]) => value)
+        .map(([key, _]) => key);
+      if (takenActions.length > 0) {
+        log.debug("ChatHandlers", "Executing actions:", takenActions);
+      }
+    },
+    [handleMessageUpdates, handleBackgroundMessage, handleBackgroundThreadMessage, refs]
+  );
+
+  /**
+   * Handle state mutation events (most common websocket event)
+   * StateMutation contains an array of execution events in event.data.events
+   * Each event type triggers only the specific data refresh it needs
+   */
+  const handleStateMutation = useCallback(
+    async (event: WebSocketEvent) => {
+      if (event.data?.events && event.data.events.length > 0) {
+        log.info("useChatHandlers", `[SSE] handleStateMutation contextId=${event.contextId} events=${event.data.events.length}`, event.data.events);
+        handleExecutionEvents(event.contextId, event.data.events);
+      }
+    },
+    [handleExecutionEvents]
+  );
+
+  return {
+    handleMessageUpdates,
+    handleBackgroundMessage,
+    handleThreadMessageUpdates,
+    handleDMUpdates,
+    handleStateMutation,
+    handleExecutionEvents,
+  };
+}

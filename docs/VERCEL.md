@@ -76,6 +76,7 @@ and republish the bundle if a domain changes.
 | `kv-store` | `mero-kv-store` | `apps/kv-store/app` | `dist` | https://mero-kv-store.vercel.app |
 | `mero-blocks` | `mero-blocks` | `apps/mero-blocks/app` | `dist` | https://mero-blocks.vercel.app/ |
 | `mero-calendar` | `mero-calendar` | `apps/mero-calendar/app` | `dist` | https://mero-calendar.vercel.app |
+| `mero-chat` | `mero-chat-pwa` | `apps/mero-chat/app` | `dist` | https://mero-chat-pwa.vercel.app |
 | `mero-drive` | `mero-drive` | `apps/mero-drive/app` | `dist` | https://mero-drive.vercel.app |
 | `mero-forum` | `mero-forum` | `apps/mero-forum/app` | `dist` | https://mero-forum.vercel.app |
 | `mero-issue-tracker` | `mero-issue-tracker-app` | `apps/mero-issue-tracker/app` | `dist` | https://mero-issue-tracker-app.vercel.app |
@@ -90,9 +91,15 @@ and republish the bundle if a domain changes.
 
 The project names above are inferred from each published `links.frontend` host,
 so they are what the URLs imply rather than what the dashboard says — confirm on
-re-linking. Four do **not** match the directory:
-`kv-store` → `mero-kv-store`, `mero-issue-tracker` → `mero-issue-tracker-app`,
+re-linking. Five do **not** match the directory:
+`kv-store` → `mero-kv-store`, `mero-chat` → `mero-chat-pwa`,
+`mero-issue-tracker` → `mero-issue-tracker-app`,
 `mero-stream` → `mero-stream-neon`, `scaffolding-e2e` → `scaffolding-e2e-application`.
+
+`mero-chat` keeps the project the standalone `mero-chat-pwa` repo deployed:
+its origin is the published `links.frontend` and the login callback's
+registered origin, so the project is relinked (Git repo `apps`, Root Directory
+`apps/mero-chat/app`) rather than recreated.
 
 ### ⚠️ Four Root Directory settings changed
 
@@ -110,8 +117,8 @@ same position.
 ## Package ids
 
 The registry package id is what the frontend sends at login. Since the `mero-`
-rename, **every app's package id is `com.calimero.<directory>`** — with one
-exception, noted below:
+rename, **every app's package id is `com.calimero.<directory>`** — with two
+exceptions, noted below:
 
 | app | package |
 |---|---|
@@ -119,6 +126,7 @@ exception, noted below:
 | `kv-store` | `com.calimero.kv-store` |
 | `mero-blocks` | `com.calimero.mero-blocks` |
 | `mero-calendar` | `com.calimero.mero-calendar` |
+| `mero-chat` | `com.calimero.chat` ⚠️ |
 | `mero-drive` | `com.calimero.mero-drive-docs` ⚠️ |
 | `mero-forum` | `com.calimero.mero-forum` |
 | `mero-issue-tracker` | `com.calimero.mero-issue-tracker` |
@@ -131,11 +139,17 @@ exception, noted below:
 | `mero-sheets` | `com.calimero.mero-sheets` |
 | `scaffolding-e2e` | `com.calimero.scaffolding-e2e` |
 
-The one exception is **`mero-drive`, which publishes as
+The first is **`mero-drive`, which publishes as
 `com.calimero.mero-drive-docs`** — the `-docs` suffix names the primary service
 of a two-service bundle (`docs` + `registry`). It was left alone in the rename
 because it already carries the `mero-` prefix; changing it would orphan its
 published bundles for no naming gain.
+
+The second is **`mero-chat`, which publishes as `com.calimero.chat`** — the id
+it already held in the registry before it moved here. An ApplicationId is
+hash(package, signer), so renaming the package would strand every installed copy
+and every invite link; the directory (and crate) follow the fleet's naming, the
+id does not.
 
 ⚠️ **The seven package ids renamed in this pass are NEW packages, not renamed
 ones.** The node derives an ApplicationId from `(package, signer)` and the id is
