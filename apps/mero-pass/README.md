@@ -34,6 +34,49 @@ holds a readable secret.
 What the scheme cannot do: take back what a removed member already decrypted.
 The UI says to change those passwords.
 
+### If you lose your device key
+
+This can happen by clearing the browser's site data, losing the machine, or
+forgetting the PIN. What you lose is **your copy** of each vault key, not the
+vault key itself: the contract keeps a wrap of it for every device that was
+given it. So the outcome depends on whether anyone else still holds the vault
+key.
+
+**Someone else still holds it** (another device of yours, or any other member
+of a shared vault). You get back in on your own:
+
+1. Open Mero Pass in the new or cleared browser. It creates a fresh device
+   key and registers it in each vault you open.
+2. Your role belongs to your account, not to the device, so the new device is
+   entitled straight away.
+3. The next time any key holder opens the vault, their browser wraps the vault
+   key to your new device. Until then the vault shows "waiting for the vault
+   key" and checks again every 5 seconds.
+4. Revoke the lost device on the vault's **People & devices** tab. That
+   rotates the key, which matters if the device was stolen rather than wiped.
+
+**You were the only holder** (a personal vault, or a solo team vault, used
+from one browser). The secrets cannot be recovered. The node only ever had
+ciphertext and wraps to a key that no longer exists, and nobody else can
+decrypt them: not the node operator, and not Calimero. This is the other side
+of "the node never sees your passwords". There is no reset.
+
+To make sure you are never the only holder:
+
+- **Open each vault from a second device** once. That device gets its own
+  wrap, so either device can bring the other back.
+- **Keep an encrypted backup.** The vault's **Import & export** tab downloads
+  a file sealed under a passphrase you choose. It restores into a new vault
+  even if every device is gone.
+- In a **shared vault**, the other members are your backup already.
+
+Not built yet:
+
+- **Recovery key.** At vault creation, generate a printable recovery code and
+  wrap the vault key to it as one more "device", like an emergency kit.
+- **Single-holder warning.** Warn when only one device holds a vault's key,
+  and suggest adding a device or downloading a backup.
+
 ### Roles inside a vault
 
 | Role | May |
