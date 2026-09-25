@@ -1,0 +1,380 @@
+/* ── Theme tokens ───────────────────────────────────────────────────────────
+ *
+ * The Calimero brand palette, matching the landing page this app ships with:
+ * green #a5ff11, near-black #131215, off-white #fcfcfc. Flat fills, hairline
+ * borders, small radii. Nothing here is a gradient and nothing glows.
+ *
+ * LIGHT IS THE DEFAULT. It used to be dark with a blue accent, so the app and
+ * its own landing page looked like two products — you met Calimero green on the
+ * marketing page and a blue-on-slate app one click later. Dark is still here
+ * under `data-theme="dark"`, and the whole set stays token-driven so both
+ * remain switchable.
+ *
+ * The green is a FILL, not an ink: #a5ff11 on white is ~1.5:1, so accent TEXT
+ * uses `--accent-ink` (#5f9400) and text ON the green uses `--accent-text`
+ * (near-black). Using --accent for a label is a contrast bug every time.
+ *
+ * There is no always-dark surface in this app — an audience is text — so unlike
+ * mero-stream every ink here follows the theme, and index.contrast.test.ts
+ * holds all of them to WCAG AA against the darkest surface they can land on.
+ */
+:root,
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --bg: #fcfcfc;
+  --bg-elev: #ffffff;
+  --surface: #ffffff;
+  --surface-hover: #f2f2f3;
+  --surface-strong: #e9e9eb;
+  --border: #e4e4e6;
+  --border-strong: #c8c8c8;
+
+  --text: #131215;
+  --text-dim: #404040;
+  /* Was #8e8e8e, which measures 3.3:1 on white — below AA for the small labels
+     it is used for (STAT captions, room ids, helper lines). See the contrast
+     test in index.contrast.test.ts. */
+  --text-faint: #6e6e6e;
+
+  --accent: #a5ff11;
+  --accent-hover: #b6ff3d;
+  --accent-soft: rgba(165, 255, 17, 0.18);
+  /* Text ON the green fill. */
+  --accent-text: #131215;
+  /* Accent-coloured TEXT on the page background — deepened to stay legible.
+     "Deepened" was not deep ENOUGH: #5f9400 measures 3.7:1 on white, which
+     clears AA for large text only, and every use of it here is small. */
+  --accent-ink: #4e7a00;
+  /* Kept as an alias: older rules use --accent-fg for "text on the accent". */
+  --accent-fg: #131215;
+
+  /* #4f9a00 measured 3.2:1 and #b26a00 4.2:1 — both read as a status WORD
+     ("19%", "2/2 broadcasting"), so both are held to the 4.5:1 body rule. */
+  --green: #407d00;
+  --red: #c62828;
+  /* Text ON the red fill, the way --accent-text is text on the green.
+     `.stopBtn` was using --accent-fg (near-black, correct on the bright green)
+     on the red too: 3.3:1 here. The right ink FLIPS between themes — white
+     clears on light's deep red and fails on dark's bright one, and near-black
+     does the reverse — so it cannot be one shared constant. */
+  --red-text: #ffffff;
+  --red-hover: #a51d1d;
+  --danger: #c62828;
+  --amber: #a05f00;
+
+
+  --radius-sm: 7px;
+  --radius: 10px;
+  --radius-lg: 16px;
+  --shadow-sm: 0 2px 10px rgba(19, 18, 21, 0.07);
+  --shadow: 0 10px 34px rgba(19, 18, 21, 0.1);
+
+  --scrollbar: #c8c8c8;
+  --scrollbar-hover: #a8a8a8;
+
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --font:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",
+    Arial, sans-serif;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg: #131215;
+  --bg-elev: #1a191d;
+  --surface: #1a191d;
+  --surface-hover: #232227;
+  --surface-strong: #2b2a30;
+  --border: #2a292f;
+  --border-strong: #3a3940;
+
+  --text: #fcfcfc;
+  --text-dim: #b4b4b8;
+  --text-faint: #8e8e8e;
+
+  /* Same green in both themes — it is the one constant across every app. On
+     #131215 the brand green is legible as ink, so accent text uses it directly. */
+  --accent: #a5ff11;
+  --accent-hover: #b6ff3d;
+  --accent-soft: rgba(165, 255, 17, 0.16);
+  --accent-text: #131215;
+  --accent-ink: #a5ff11;
+  --accent-fg: #131215;
+
+  --green: #a5ff11;
+  --red: #ef4444;
+  --red-text: #131215;
+  /* LIGHTER than --red, not darker. Every other hover in this theme brightens,
+     and #dc2626 (which this was) dropped the near-black ink on the Stop button
+     to 3.9:1 the moment you pointed at it — a control that is legible until you
+     reach for it. */
+  --red-hover: #f26060;
+  --danger: #ef4444;
+  --amber: #f59e0b;
+
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+
+  --scrollbar: #3a3940;
+  --scrollbar-hover: #4a4952;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+button {
+  font-family: inherit;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-hover);
+  background-clip: padding-box;
+}
+
+.shell { max-width: 720px; margin: 0 auto; padding: 0 16px 96px; }
+
+/* ── header ─────────────────────────────────────────────────────────────── */
+.top {
+  position: sticky; top: 0; z-index: 10;
+  display: flex; align-items: center; gap: 16px;
+  padding: 14px 0; margin-bottom: 20px;
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--border);
+}
+.brand { font-weight: 650; letter-spacing: -0.01em; font-size: 16px; }
+.brand span { color: var(--accent); }
+.grow { flex: 1; }
+
+/* ── sort tabs ──────────────────────────────────────────────────────────── */
+.tabs { display: inline-flex; gap: 2px; background: var(--surface); border: 1px solid var(--border); border-radius: 999px; padding: 3px; }
+.tab {
+  border: 0; background: transparent; color: var(--text-faint);
+  padding: 5px 14px; border-radius: 999px; cursor: pointer;
+  font: inherit; font-size: 13px; font-weight: 550;
+}
+.tab[aria-selected="true"] { background: var(--surface-hover); color: var(--text); }
+
+/* ── post card ──────────────────────────────────────────────────────────── */
+.card {
+  display: flex; gap: 14px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 14px 16px; margin-bottom: 10px;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+.card:hover { border-color: var(--border-strong); background: var(--surface-hover); }
+
+.votes { display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 34px; }
+.vote {
+  border: 0; background: transparent; color: var(--text-faint);
+  cursor: pointer; padding: 2px 4px; border-radius: 6px; line-height: 1;
+  font-size: 15px;
+}
+.vote:hover { background: var(--surface-hover); color: var(--text); }
+.vote[aria-pressed="true"].up { color: var(--accent-ink); }
+.vote[aria-pressed="true"].down { color: var(--red); }
+.score { font-size: 13px; font-weight: 650; font-variant-numeric: tabular-nums; }
+
+.body { min-width: 0; flex: 1; }
+.title { margin: 0 0 4px; font-size: 16px; font-weight: 600; letter-spacing: -0.01em; }
+/* The permalink's title is an h1 and was rendering at the same size as a feed
+   row, so the detail page read as one more card instead of the thing you had
+   navigated to. Caught by the screenshot harness, not by review. */
+h1.title { font-size: 22px; line-height: 1.3; margin-bottom: 6px; }
+.title:hover { color: var(--accent-ink); }
+.meta { color: var(--text-faint); font-size: 12.5px; display: flex; gap: 8px; flex-wrap: wrap; }
+.excerpt { margin: 8px 0 0; color: var(--text-dim); white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* ── composer + forms ───────────────────────────────────────────────────── */
+.composer { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; margin-bottom: 18px; }
+input, textarea {
+  /* Was a hardcoded #0e1118 — a near-black that only made sense against the old
+     dark palette. On the light theme it painted every composer as a black slab
+     with the placeholder barely on it. */
+  width: 100%; background: var(--bg-elev); color: var(--text);
+  border: 1px solid var(--border); border-radius: 8px;
+  padding: 9px 11px; font: inherit; margin-bottom: 8px; resize: vertical;
+}
+/* The accent at 55% alpha over white is barely a ring; --accent-ink is the
+   token that exists for accent-coloured marks on a page surface. */
+input:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: -1px; border-color: transparent; }
+.row { display: flex; gap: 8px; align-items: center; }
+button.primary {
+  /* --accent-text, not a hardcoded near-black: the ink for the green fill is a
+     token precisely so a theme change cannot leave it behind. */
+  background: var(--accent); color: var(--accent-text); border: 0;
+  padding: 8px 16px; border-radius: 8px; font: inherit; font-weight: 600; cursor: pointer;
+}
+button.primary:disabled { opacity: 0.45; cursor: default; }
+button.ghost { background: transparent; color: var(--text-faint); border: 1px solid var(--border); padding: 8px 14px; border-radius: 8px; font: inherit; cursor: pointer; }
+
+/* ── comments ───────────────────────────────────────────────────────────── */
+.comment { padding: 12px 0; border-top: 1px solid var(--border); }
+.comment .meta { margin-bottom: 4px; }
+.comment p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* ── states ─────────────────────────────────────────────────────────────── */
+.empty, .end { text-align: center; color: var(--text-faint); padding: 40px 0; font-size: 14px; }
+.end { padding: 24px 0; font-size: 13px; }
+.error { border: 1px solid var(--red); background: var(--surface); color: var(--red); border-radius: 8px; padding: 10px 12px; margin-bottom: 12px; font-size: 14px; }
+
+/* Skeletons rather than a spinner: the feed keeps its shape while it loads, so
+   the page does not jump when rows arrive. */
+.skeleton { height: 84px; border-radius: var(--radius); margin-bottom: 10px; background: linear-gradient(90deg, var(--surface) 25%, var(--surface-hover) 50%, var(--surface) 75%); background-size: 200% 100%; animation: shimmer 1.3s infinite; }
+@keyframes shimmer { to { background-position: -200% 0; } }
+@media (prefers-reduced-motion: reduce) { .skeleton { animation: none; } }
+
+/* Back links.
+ *
+ * Used on BOTH an <a> (the thread page) and a <button> (the feed, which has to
+ * read the stored namespace before it knows where "back" goes). The old rule
+ * set only `color` and `font-size`, so the <button> kept the browser's default
+ * chrome — a grey bevelled box with its own font — next to a styled link doing
+ * the same job. Reset the chrome here, once, rather than at each call site.
+ *
+ * `gap` on a flex row rather than a literal "←" in the markup: the arrow is
+ * decoration, and a screen reader should hear "All audiences", not "left arrow
+ * All audiences". */
+.back {
+  appearance: none;
+  -webkit-appearance: none;
+  background: none;
+  border: 0;
+  padding: 4px 8px 4px 4px;
+  margin: 0 0 14px -4px;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.2;
+  color: var(--text-dim);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: var(--radius-sm);
+  text-decoration: none;
+  transition: color 120ms ease, background 120ms ease;
+}
+.back::before {
+  content: "←";
+  font-size: 14px;
+  line-height: 1;
+}
+.back:hover {
+  color: var(--text);
+  background: var(--surface-hover);
+}
+.back:focus-visible {
+  outline: 2px solid var(--accent-ink);
+  outline-offset: 1px;
+}
+
+/* The account id beside a name in a byline.
+ *
+ * Always present, because a nickname is a claim anyone can make — including
+ * somebody else's. Small, monospace and dim so it disambiguates without
+ * competing with the name it qualifies. */
+.authorId {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-faint);
+  font-weight: 400;
+  margin-left: 6px;
+}
+
+/* ── unauthenticated notice ─────────────────────────────────────────────────
+   The page keeps its chrome with no node attached (the browser e2e asserts that
+   graceful degradation), so this explains the empty feed rather than replacing
+   it. Before, there was no explanation and no way to connect at all. */
+.notice {
+  border: 1px solid var(--border); background: var(--surface); color: var(--text-faint);
+  border-radius: var(--radius); padding: 12px 14px; margin-bottom: 12px;
+  font-size: 14px; line-height: 1.55; max-width: 62ch;
+}
+
+/* Links inherit. Without this the browser default paints every post title and
+   every "3 comments" in #0000EE with an underline — which on a light theme is
+   not a subtle regression, it is the loudest thing on the page. This rule lived
+   in the old preamble and went missing when the palette was replaced. */
+a { color: inherit; text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* ── Added with spaces/audiences, moderation and named authors ─────────────────── */
+
+/* The byline. `data-anonymous` is the account-id fallback, and it is styled as
+   the placeholder it is rather than in the same weight as a real name — an id
+   set in name-styling tells the reader it IS a name. */
+.author { font-weight: 600; color: var(--text-dim); }
+.author[data-anonymous="true"] { font-weight: 400; font-family: var(--mono); font-size: 12px; opacity: 0.8; }
+.youTag { color: var(--accent-ink); font-weight: 600; }
+
+/* A control that reads as text, for the low-frequency destructive actions that
+   should not compete with Post and Comment for attention. */
+.linkBtn {
+  background: none; border: 0; padding: 0; margin: 0;
+  font: inherit; font-size: 12.5px; color: var(--text-faint);
+  cursor: pointer; text-decoration: underline; text-underline-offset: 2px;
+}
+.linkBtn:hover { color: var(--text); }
+.linkBtn.danger:hover { color: var(--red); }
+
+/* "You are posting as …" — next to the composer, because that is the one
+   moment the name matters. */
+.namebar {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 10px 14px; margin-bottom: 12px;
+  font-size: 13.5px;
+}
+.namebarText { color: var(--text-dim); }
+.namebarText[data-unset="true"] { color: var(--amber); }
+.namebarLabel { color: var(--text-faint); }
+.namebarInput {
+  flex: 1; min-width: 160px; background: var(--bg-elev);
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  padding: 7px 10px; color: var(--text); font: inherit;
+}
+.namebarInput:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 1px; }
+
+/* Said again in the composer itself: by the time you are typing, the bar above
+   has scrolled out of view. */
+.composerAs { margin: 0 0 8px; font-size: 12.5px; color: var(--text-faint); }
+
+/* Comments gained a vote column, so the row is a flex pair like a post card. */
+.comment { display: flex; gap: 12px; align-items: flex-start; }
+.commentBody { min-width: 0; flex: 1; }
+.commentEdit textarea {
+  width: 100%; background: var(--bg-elev); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 8px 10px; color: var(--text);
+  font: inherit; resize: vertical; margin-bottom: 8px;
+}
+.commentEdit textarea:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 1px; }

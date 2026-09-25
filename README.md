@@ -75,6 +75,7 @@ Start here. These exist to be read, not shipped.
 | [mero-drive](apps/mero-drive) | [↗](https://mero-drive.vercel.app) | Namespace-scoped document workspace — a multi-service bundle pairing a registry with the docs themselves. | `com.calimero.mero-drive-docs` |
 | [mero-issue-tracker](apps/mero-issue-tracker) | [↗](https://mero-issue-tracker-app.vercel.app) | Issue board for a small engineering team whose backlog lives on their own nodes. | `com.calimero.mero-issue-tracker` |
 | [mero-forum](apps/mero-forum) | [↗](https://mero-forum.vercel.app) | Threads and comments replicated across your own nodes, with no server in the middle. | `com.calimero.mero-forum` |
+| [mero-updates](apps/mero-updates) | — | Investor updates, two-way: categories, KPI deltas, asks answered in one click, investor Q&A and read receipts, between the company's and its investors' nodes. | `com.calimero.mero-updates` |
 
 ### Secrets & documents
 

@@ -264,6 +264,21 @@ export const APPS = {
     ],
   },
 
+  'mero-updates': {
+    e2eDir: 'tests',
+    availability: 'web+desktop',
+    trust: ['Investors are the membership', 'Drafts never leave your node', 'No send list to leak'],
+    explainer: [
+      'Investor updates the way Visible, Cabal and Paperstreet do them — categories, KPIs, asks — but the update is not emailed from a SaaS database. It lives in a Calimero context the company and its investors share, replicated between their own nodes.',
+      'And it is two-way by design: investors react, reply, offer help on an ask in one click and ask the team questions of their own. The team sees who read what, accepts offers, and thanks contributors in the next update.',
+    ],
+    features: [
+      { icon: 'FileText', title: 'Updates with structure', body: 'Templates, categories, TL;DR, KPI tiles with the change since last time, and asks — never retype last month’s numbers.' },
+      { icon: 'MessageCircle', title: 'Two-way by default', body: 'Reactions, threaded replies, investor questions, and “I can help” on every ask.' },
+      { icon: 'LineChart', title: 'KPIs and engagement', body: 'Every metric as a trend, and a per-investor read list for the follow-ups that matter.' },
+      { icon: 'Shield', title: 'Your investors, not a vendor’s', body: 'The audience is the membership of a context. There is no platform holding your cap table’s inbox.' },
+    ],
+  },
   'mero-forum': {
     e2eDir: 'tests',
     availability: 'web+desktop',

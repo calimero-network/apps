@@ -1,0 +1,2524 @@
+{
+  "schema_version": "wasm-abi/1",
+  "types": {
+    "Ask": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "post_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "content",
+          "type": {
+            "$ref": "AskContent"
+          }
+        },
+        {
+          "name": "edited_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "status",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "status_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "deleted",
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ]
+    },
+    "AskContent": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "kind",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "title",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "detail",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "AskInput": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "kind",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "title",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "detail",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "AskView": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "post_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "post_title",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "kind",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "title",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "detail",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "status",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "offer_count",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "offers",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "OfferView"
+            }
+          }
+        },
+        {
+          "name": "my_offer",
+          "type": {
+            "$ref": "OfferView"
+          },
+          "nullable": true
+        }
+      ]
+    },
+    "Category": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "emoji",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "color",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "edited_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "archived",
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ]
+    },
+    "CategoryView": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "emoji",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "color",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "update_count",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "unread_count",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "muted",
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ]
+    },
+    "Comment": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "post_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "parent_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "author",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "body",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "edited_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "deleted",
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ]
+    },
+    "CommentView": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "post_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "parent_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "author",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "author_name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "author_is_team",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "body",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "edited_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "ContributionView": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "ask_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "ask_title",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "ask_kind",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "account",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "firm",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "note",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "accepted_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "DraftView": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "title",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "payload",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "EngagementRow": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "post_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "title",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "category_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "published_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "readers",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "ReaderView"
+            }
+          }
+        },
+        {
+          "name": "not_read",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "ReaderView"
+            }
+          }
+        },
+        {
+          "name": "reactions",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "comments",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "offers",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "Event_AskChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "post_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "ask_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_CategoryChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_Commented": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "post_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_OfferChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "post_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "ask_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_PostDeleted": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_PostEdited": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_ProfileSet": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "account",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_QuestionAsked": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_Reacted": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "post_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_Read": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "post_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_StatusChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "post_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_TeamChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "account",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_UpdatePublished": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "MeView": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "account",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "firm",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "is_admin",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "is_team",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "muted",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        }
+      ]
+    },
+    "MeroUpdates": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "roles",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "bool"
+            },
+            "crdt_type": "shared_storage"
+          }
+        },
+        {
+          "name": "settings",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Settings"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "categories",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Category"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "posts",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Post"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "asks",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Ask"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "offers",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Offer"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "comments",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Comment"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "reactions",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Reaction"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "reads",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Read"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "profiles",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Profile"
+            },
+            "crdt_type": "unordered_map"
+          }
+        }
+      ]
+    },
+    "Metric": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "unit",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "MetricPoint": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "post_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "post_title",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "MetricSeries": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "unit",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "points",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "MetricPoint"
+            }
+          }
+        }
+      ]
+    },
+    "Offer": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "ask_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "account",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "helper",
+          "type": {
+            "$ref": "OfferByHelper"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "status",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "status_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "OfferByHelper": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "note",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "withdrawn",
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ]
+    },
+    "OfferView": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "ask_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "account",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "firm",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "note",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "status",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "Overview": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "company_name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "cadence_days",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "last_update_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "next_due_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "updates_total",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "unread_updates",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "open_asks",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "open_questions",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "people",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "is_team",
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ]
+    },
+    "PersonView": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "account",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "firm",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "is_admin",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "is_team",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "joined_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "updates_read",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "updates_total",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "last_read_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "comments",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "offers",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "accepted_offers",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "Post": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "kind",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "author",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "content",
+          "type": {
+            "$ref": "PostContent"
+          }
+        },
+        {
+          "name": "edited_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "status",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "status_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "deleted",
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ]
+    },
+    "PostCard": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "kind",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "author",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "author_name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "author_is_team",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "title",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "summary",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "category_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "status",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "edited_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "comment_count",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "ask_count",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "open_ask_count",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "metric_count",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "read_count",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "read_by_me",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "reactions",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "ReactionCount"
+            }
+          }
+        }
+      ]
+    },
+    "PostContent": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "title",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "summary",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "category_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "sections",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "Section"
+            }
+          }
+        },
+        {
+          "name": "metrics",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "Metric"
+            }
+          }
+        }
+      ]
+    },
+    "PostPage": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "items",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "PostCard"
+            }
+          }
+        },
+        {
+          "name": "next_cursor",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        }
+      ]
+    },
+    "PostView": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "card",
+          "type": {
+            "$ref": "PostCard"
+          }
+        },
+        {
+          "name": "sections",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "Section"
+            }
+          }
+        },
+        {
+          "name": "metrics",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "Metric"
+            }
+          }
+        },
+        {
+          "name": "asks",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "AskView"
+            }
+          }
+        }
+      ]
+    },
+    "Profile": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "account",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "firm",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "muted",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "joined_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "Reaction": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "post_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "account",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "emoji",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "on",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "ReactionCount": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "emoji",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "count",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "mine",
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ]
+    },
+    "Read": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "post_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "account",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "first_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "last_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "ReaderView": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "account",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "firm",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "first_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "Section": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "kind",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "title",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "body",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Settings": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "company_name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "cadence_days",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "UpdateInput": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "title",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "summary",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "category_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "sections",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "Section"
+            }
+          }
+        },
+        {
+          "name": "metrics",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "Metric"
+            }
+          }
+        },
+        {
+          "name": "asks",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "AskInput"
+            }
+          }
+        }
+      ]
+    }
+  },
+  "methods": [
+    {
+      "name": "add_comment",
+      "params": [
+        {
+          "name": "post_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "parent_id",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "body",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "add_teammate",
+      "params": [
+        {
+          "name": "account",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "archive_category",
+      "params": [
+        {
+          "name": "category_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "ask_question",
+      "params": [
+        {
+          "name": "title",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "body",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "category_id",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "create_category",
+      "params": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "emoji",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "color",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "delete_comment",
+      "params": [
+        {
+          "name": "comment_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "delete_draft",
+      "params": [
+        {
+          "name": "draft_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "delete_post",
+      "params": [
+        {
+          "name": "post_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "edit_category",
+      "params": [
+        {
+          "name": "category_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "emoji",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "color",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "edit_comment",
+      "params": [
+        {
+          "name": "comment_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "body",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "edit_update",
+      "params": [
+        {
+          "name": "post_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "input",
+          "type": {
+            "$ref": "UpdateInput"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "get_engagement",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "EngagementRow"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_me",
+      "params": [],
+      "returns": {
+        "$ref": "MeView"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_overview",
+      "params": [],
+      "returns": {
+        "$ref": "Overview"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_post",
+      "params": [
+        {
+          "name": "post_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "PostView"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_settings",
+      "params": [],
+      "returns": {
+        "$ref": "Settings"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "init",
+      "params": [],
+      "returns": {
+        "kind": "unit"
+      }
+    },
+    {
+      "name": "list_asks",
+      "params": [
+        {
+          "name": "status",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        }
+      ],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "AskView"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "list_categories",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "CategoryView"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "list_comments",
+      "params": [
+        {
+          "name": "post_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "CommentView"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "list_contributions",
+      "params": [
+        {
+          "name": "since",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "ContributionView"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "list_drafts",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "DraftView"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "list_metrics",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "MetricSeries"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "list_people",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "PersonView"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "list_posts",
+      "params": [
+        {
+          "name": "kind",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "category_id",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "cursor",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "limit",
+          "type": {
+            "kind": "u32"
+          }
+        }
+      ],
+      "returns": {
+        "$ref": "PostPage"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "mark_read",
+      "params": [
+        {
+          "name": "post_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "offer_help",
+      "params": [
+        {
+          "name": "ask_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "note",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "publish_update",
+      "params": [
+        {
+          "name": "input",
+          "type": {
+            "$ref": "UpdateInput"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "react",
+      "params": [
+        {
+          "name": "post_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "emoji",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "on",
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "remove_teammate",
+      "params": [
+        {
+          "name": "account",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "save_draft",
+      "params": [
+        {
+          "name": "draft_id",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "title",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "payload",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "set_ask_status",
+      "params": [
+        {
+          "name": "ask_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "status",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "set_muted_categories",
+      "params": [
+        {
+          "name": "category_ids",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "set_offer_status",
+      "params": [
+        {
+          "name": "ask_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "account",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "status",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "set_profile",
+      "params": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "firm",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "set_question_status",
+      "params": [
+        {
+          "name": "post_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "status",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "set_settings",
+      "params": [
+        {
+          "name": "company_name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "cadence_days",
+          "type": {
+            "kind": "u32"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "withdraw_offer",
+      "params": [
+        {
+          "name": "ask_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    }
+  ],
+  "events": [
+    {
+      "name": "AskChanged",
+      "payload": {
+        "$ref": "Event_AskChanged"
+      }
+    },
+    {
+      "name": "CategoryChanged",
+      "payload": {
+        "$ref": "Event_CategoryChanged"
+      }
+    },
+    {
+      "name": "Commented",
+      "payload": {
+        "$ref": "Event_Commented"
+      }
+    },
+    {
+      "name": "OfferChanged",
+      "payload": {
+        "$ref": "Event_OfferChanged"
+      }
+    },
+    {
+      "name": "PostDeleted",
+      "payload": {
+        "$ref": "Event_PostDeleted"
+      }
+    },
+    {
+      "name": "PostEdited",
+      "payload": {
+        "$ref": "Event_PostEdited"
+      }
+    },
+    {
+      "name": "ProfileSet",
+      "payload": {
+        "$ref": "Event_ProfileSet"
+      }
+    },
+    {
+      "name": "QuestionAsked",
+      "payload": {
+        "$ref": "Event_QuestionAsked"
+      }
+    },
+    {
+      "name": "Reacted",
+      "payload": {
+        "$ref": "Event_Reacted"
+      }
+    },
+    {
+      "name": "Read",
+      "payload": {
+        "$ref": "Event_Read"
+      }
+    },
+    {
+      "name": "SettingsChanged"
+    },
+    {
+      "name": "StatusChanged",
+      "payload": {
+        "$ref": "Event_StatusChanged"
+      }
+    },
+    {
+      "name": "TeamChanged",
+      "payload": {
+        "$ref": "Event_TeamChanged"
+      }
+    },
+    {
+      "name": "UpdatePublished",
+      "payload": {
+        "$ref": "Event_UpdatePublished"
+      }
+    }
+  ],
+  "state_root": "MeroUpdates",
+  "state_version": 1
+}

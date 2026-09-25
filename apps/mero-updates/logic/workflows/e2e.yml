@@ -1,0 +1,800 @@
+name: Mero Updates — a founder publishes, an investor answers back (2-node e2e)
+description: >
+  The investor-relations loop across two real nodes, and the gates that make it
+  trustworthy:
+
+    1. the context creator is the team; a second node's account is a reader,
+       and a reader's publish, settings change or self-promotion is REJECTED;
+    2. categories, settings and an update with sections, KPIs and an ask
+       replicate to the investor by a stable id;
+    3. the investor answers on every two-way channel — read receipt, reaction,
+       reply, an offer of help, and a question of their own — and each one
+       reaches the founder's node;
+    4. the founder triages: accepts the offer (it becomes a contribution),
+       resolves the ask, answers the question, and sees the read report;
+    5. drafts stay on the author's node — the investor's node never lists them.
+
+force_pull_image: true
+
+# ⚠️ REQUIRED, and its absence is why namespace joins kept dying on
+# `KeyDelivery timed out`.
+#
+# Without it, `merod init`'s default `bootstrap.nodes` survives — the PUBLIC
+# calimero devnet boot-node. Every container then spends its startup dialing
+# unreachable public addresses, and the node log fills with
+#
+#     libp2p_relay: Dropping in-flight connect request because we are at capacity
+#     autonat: ✗ Address /ip4/52.226.124.20/udp/... test failed
+#
+# until the join gives up with
+#
+#     join_group: direct namespace-join request found no reachable mesh peer
+#     join_group: join response contained no group key
+#     KeyDelivery timed out for group ContextGroupId(...)
+#
+# The peers never found each other; it was never a timing race. `e2e_mode`
+# clears `bootstrap.nodes`, gives the workflow its own rendezvous namespace,
+# turns multicast discovery on (which is what populates the kad table on a
+# single Docker bridge) and tightens the sync intervals. merobox's own
+# `apply_e2e_defaults` documents measuring this exact failure with it off.
+e2e_mode: true
+
+nodes:
+  chain_id: testnet-1
+  count: 2
+  # Must match the `calimero-*` tag in the root Cargo.toml. check-app-metadata.sh
+  # asserts this against [workspace.metadata.mero-apps].merod-image.
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.43
+  prefix: calimero-node
+  # Stated, not inherited. rc.26 made mDNS opt-in (core#3620) and merobox does
+  # not pass the flag, so without this the nodes never peer and the run dies as a
+  # 500 on join_namespace — which reads like a contract break.
+  mdns: true
+  # Off every other app's pair so a developer can run this beside another.
+  base_port: 3100
+  base_rpc_port: 3000
+
+steps:
+  # ── Bootstrap ───────────────────────────────────────────────────────────────
+  # A bare wasm: mero-updates declares no `services` table, so create_context
+  # passes no service_name and there is nothing to select from.
+  - name: Install application on Node 1
+    type: install_application
+    node: calimero-node-1
+    path: dist/com.calimero.mero-updates.mpk
+    dev: true
+    outputs:
+      app_id: applicationId
+
+  - name: Install application on Node 2
+    type: install_application
+    node: calimero-node-2
+    path: dist/com.calimero.mero-updates.mpk
+    dev: true
+
+  # ⚠️ The nodes must be UP before the first admin call. merobox waits for
+  # container health, which is not the same as ready: on a genuinely cold
+  # host `create_namespace` returns 500 about four seconds into the run.
+  # This was masked while the teardown left the previous scenario's
+  # containers behind, because the nodes were then already warm.
+  - name: Settle before the first admin call
+    type: wait
+    seconds: 12
+
+  - name: Create namespace
+    type: create_namespace
+    node: calimero-node-1
+    application_id: "{{app_id}}"
+    outputs:
+      namespace_id: namespaceId
+
+  - name: Set default member capabilities
+    type: set_default_capabilities
+    node: calimero-node-1
+    group_id: "{{namespace_id}}"
+    capabilities: 15
+
+  - name: Generate identity for Node 2
+    type: create_identity
+    node: calimero-node-2
+    outputs:
+      bob_identity: publicKey
+
+  - name: Wait for identity propagation
+    type: wait
+    seconds: 3
+
+  - name: Node 1 creates invitation for Node 2
+    type: create_namespace_invitation
+    node: calimero-node-1
+    group_id: "{{namespace_id}}"
+    outputs:
+      invite_bob: invitation
+
+  # core gives the group key a 5s gossip window, which on a loaded runner has to
+  # cover peer discovery too. Without this the join 500s intermittently.
+  - name: Settle before the namespace join (cold-join KeyDelivery)
+    type: wait
+    seconds: 12
+
+  - name: Node 2 joins namespace
+    type: join_namespace
+    node: calimero-node-2
+    group_id: "{{namespace_id}}"
+    invitation: "{{invite_bob}}"
+
+  - name: Settle after namespace join
+    type: wait
+    seconds: 5
+
+  - name: Node 1 (the founder) creates the audience
+    type: create_context
+    node: calimero-node-1
+    application_id: "{{app_id}}"
+    group_id: "{{namespace_id}}"
+    params: '{}'
+    outputs:
+      audience_id: contextId
+      alice_key: memberPublicKey
+
+  - name: Force Node 2 to sync namespace state
+    type: sync_group
+    node: calimero-node-2
+    group_id: "{{namespace_id}}"
+
+  - name: Settle after sync
+    type: wait
+    seconds: 5
+
+  - name: Bob (an investor) joins the audience
+    type: join_context
+    node: calimero-node-2
+    context_id: "{{audience_id}}"
+    outputs:
+      bob_key: memberPublicKey
+
+  - name: Wait for audience sync
+    type: wait_for_sync
+    context_id: "{{audience_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+
+  # ── 1. Roles ────────────────────────────────────────────────────────────────
+  - name: Who is Node 2, as an account
+    type: node_identity
+    node: calimero-node-2
+    outputs:
+      bob_account: accountId
+
+  - name: Alice reads her role
+    type: call
+    node: calimero-node-1
+    context_id: "{{audience_id}}"
+    method: get_me
+    args: {}
+    executor_public_key: "{{alice_key}}"
+    outputs:
+      alice_me: result.output
+
+  - name: Assert the creator is admin and team
+    type: json_assert
+    statements:
+      - 'json_subset({{alice_me}}, {"is_admin": true, "is_team": true})'
+
+  - name: Bob reads his role
+    type: call
+    node: calimero-node-2
+    context_id: "{{audience_id}}"
+    method: get_me
+    args: {}
+    executor_public_key: "{{bob_key}}"
+    outputs:
+      bob_me: result.output
+
+  - name: Assert the investor is a reader
+    type: json_assert
+    statements:
+      - 'json_subset({{bob_me}}, {"is_admin": false, "is_team": false})'
+
+  # ⚠️ `expected_failure: true` alone can never fail the run, so every rejected
+  # call captures its error and asserts it is set.
+  - name: Bob tries to promote himself
+    type: call
+    node: calimero-node-2
+    context_id: "{{audience_id}}"
+    method: add_teammate
+    args: { account: "{{bob_account}}" }
+    executor_public_key: "{{bob_key}}"
+    expected_failure: true
+    outputs:
+      promote_error: error
+
+  - name: Bob tries to change the company settings
+    type: call
+    node: calimero-node-2
+    context_id: "{{audience_id}}"
+    method: set_settings
+    args: { company_name: "Hijacked", cadence_days: 1 }
+    executor_public_key: "{{bob_key}}"
+    expected_failure: true
+    outputs:
+      settings_error: error
+
+  - name: Assert both were rejected
+    type: assert
+    statements:
+      - "is_set({{promote_error}})"
+      - "is_set({{settings_error}})"
+
+  # Promote and demote once, so the role path is exercised on a signed delta
+  # rather than only in-process. Bob ends as a reader for the rest of the run.
+  - name: Alice makes Bob a teammate
+    type: call
+    node: calimero-node-1
+    context_id: "{{audience_id}}"
+    method: add_teammate
+    args: { account: "{{bob_account}}" }
+    executor_public_key: "{{alice_key}}"
+
+  - name: Alice removes Bob from the team again
+    type: call
+    node: calimero-node-1
+    context_id: "{{audience_id}}"
+    method: remove_teammate
+    args: { account: "{{bob_account}}" }
+    executor_public_key: "{{alice_key}}"
+
+  # ⚠️ Found by running this scenario: without this sync, Bob's publish below
+  # SUCCEEDED. The team check runs on the WRITER'S node against its own copy
+  # of the role registry, so a demotion only binds once it has reached the
+  # demoted member's node. That is inherent to local-first — and the reason
+  # this step exists rather than a bare wait.
+  - name: Sync the demotion
+    type: wait_for_sync
+    context_id: "{{audience_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  # ── 2. The founder sets up and publishes ────────────────────────────────────
+  - name: Alice names herself
+    type: call
+    node: calimero-node-1
+    context_id: "{{audience_id}}"
+    method: set_profile
+    args: { name: "Ana Founder", firm: "CEO" }
+    executor_public_key: "{{alice_key}}"
+
+  - name: Alice names the company and sets a monthly cadence
+    type: call
+    node: calimero-node-1
+    context_id: "{{audience_id}}"
+    method: set_settings
+    args: { company_name: "Acme", cadence_days: 30 }
+    executor_public_key: "{{alice_key}}"
+
+  - name: Alice creates a category
+    type: call
+    node: calimero-node-1
+    context_id: "{{audience_id}}"
+    method: create_category
+    args: { name: "Monthly", emoji: "📅", color: "#2563eb" }
+    executor_public_key: "{{alice_key}}"
+    outputs:
+      monthly_id: result.output
+
+  - name: Alice renames it
+    type: call
+    node: calimero-node-1
+    context_id: "{{audience_id}}"
+    method: edit_category
+    args: { category_id: "{{monthly_id}}", name: "Monthly update", emoji: "📅", color: "#2563eb" }
+    executor_public_key: "{{alice_key}}"
+
+  - name: Alice creates and archives a category she does not want
+    type: call
+    node: calimero-node-1
+    context_id: "{{audience_id}}"
+    method: create_category
+    args: { name: "Scratch", emoji: "", color: "" }
+    executor_public_key: "{{alice_key}}"
+    outputs:
+      scratch_id: result.output
+
+  - name: Archive it
+    type: call
+    node: calimero-node-1
+    context_id: "{{audience_id}}"
+    method: archive_category
+    args: { category_id: "{{scratch_id}}" }
+    executor_public_key: "{{alice_key}}"
+
+  - name: Alice saves a draft on her own node
+    type: call
+    node: calimero-node-1
+    context_id: "{{audience_id}}"
+    method: save_draft
+    args: { draft_id: null, title: "July — draft", payload: "{\"title\":\"July\"}" }
+    executor_public_key: "{{alice_key}}"
+    outputs:
+      draft_id: result.output
+
+  - name: Alice publishes the June update
+    type: call
+    node: calimero-node-1
+    context_id: "{{audience_id}}"
+    method: publish_update
+    args:
+      input:
+        title: "June 2026 update"
+        summary: "First enterprise customer."
+        category_id: "{{monthly_id}}"
+        sections:
+          - { kind: "highlights", title: "Highlights", body: "Closed Globex." }
+        metrics:
+          - { name: "MRR", value: "$48k", unit: "" }
+        asks:
+          - { id: null, kind: "intro", title: "Intro to a fintech CFO", detail: "" }
+    executor_public_key: "{{alice_key}}"
+    outputs:
+      update_id: result.output
+
+  - name: Bob tries to publish
+    type: call
+    node: calimero-node-2
+    context_id: "{{audience_id}}"
+    method: publish_update
+    args:
+      input: { title: "Fake", summary: "", category_id: "", sections: [], metrics: [], asks: [] }
+    executor_public_key: "{{bob_key}}"
+    expected_failure: true
+    outputs:
+      publish_error: error
+
+  - name: Assert a reader cannot publish
+    type: assert
+    statements:
+      - "is_set({{publish_error}})"
+
+  - name: Alice fixes a typo in the update
+    type: call
+    node: calimero-node-1
+    context_id: "{{audience_id}}"
+    method: edit_update
+    args:
+      post_id: "{{update_id}}"
+      input:
+        title: "June 2026 update"
+        summary: "First enterprise customer — Globex."
+        category_id: "{{monthly_id}}"
+        sections:
+          - { kind: "highlights", title: "Highlights", body: "Closed Globex." }
+        metrics:
+          - { name: "MRR", value: "$48k", unit: "" }
+        asks:
+          - { id: null, kind: "intro", title: "Intro to a fintech CFO", detail: "" }
+    executor_public_key: "{{alice_key}}"
+
+  - name: Sync the update
+    type: wait_for_sync
+    context_id: "{{audience_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  # ── 3. The investor reads and answers back ──────────────────────────────────
+  - name: Bob reads the feed
+    type: call
+    node: calimero-node-2
+    context_id: "{{audience_id}}"
+    method: list_posts
+    args: { kind: "update", category_id: null, cursor: null, limit: 20 }
+    executor_public_key: "{{bob_key}}"
+    outputs:
+      bob_feed: result
+
+  - name: Bob reads the overview, categories and settings
+    type: call
+    node: calimero-node-2
+    context_id: "{{audience_id}}"
+    method: get_overview
+    args: {}
+    executor_public_key: "{{bob_key}}"
+    outputs:
+      bob_overview: result.output
+
+  - name: Bob lists the categories
+    type: call
+    node: calimero-node-2
+    context_id: "{{audience_id}}"
+    method: list_categories
+    args: {}
+    executor_public_key: "{{bob_key}}"
+    outputs:
+      bob_categories: result
+
+  - name: Bob reads the settings
+    type: call
+    node: calimero-node-2
+    context_id: "{{audience_id}}"
+    method: get_settings
+    args: {}
+    executor_public_key: "{{bob_key}}"
+    outputs:
+      bob_settings: result
+
+  - name: Assert the update, category and settings replicated
+    type: assert
+    statements:
+      - 'contains({{bob_feed}}, "June 2026 update")'
+      - 'contains({{bob_categories}}, "Monthly update")'
+      - 'not_contains({{bob_categories}}, "Scratch")'
+      - 'contains({{bob_settings}}, "Acme")'
+
+  - name: Assert the update is unread for Bob
+    type: json_assert
+    statements:
+      - 'json_subset({{bob_overview}}, {"company_name": "Acme", "unread_updates": 1, "open_asks": 1, "is_team": false})'
+
+  - name: Bob opens the update
+    type: call
+    node: calimero-node-2
+    context_id: "{{audience_id}}"
+    method: get_post
+    args: { post_id: "{{update_id}}" }
+    executor_public_key: "{{bob_key}}"
+    outputs:
+      bob_post: result.output
+      ask_id: result.output.asks.0.id
+
+  - name: Assert the edit and the ask replicated
+    type: assert
+    statements:
+      - 'contains({{bob_post}}, "Globex")'
+      - "is_set({{ask_id}})"
+
+  - name: Bob names himself
+    type: call
+    node: calimero-node-2
+    context_id: "{{audience_id}}"
+    method: set_profile
+    args: { name: "Ben Investor", firm: "Seed Fund" }
+    executor_public_key: "{{bob_key}}"
+
+  - name: Bob's read receipt
+    type: call
+    node: calimero-node-2
+    context_id: "{{audience_id}}"
+    method: mark_read
+    args: { post_id: "{{update_id}}" }
+    executor_public_key: "{{bob_key}}"
+
+  # ⚠️ `"on"` QUOTED. Bare, YAML 1.1 reads the key `on` as the boolean
+  # `true`, and merobox rejects the step with `args.1.[key]: Input should be a
+  # valid string` — only at run time; `bootstrap validate` passes it.
+  - name: Bob reacts
+    type: call
+    node: calimero-node-2
+    context_id: "{{audience_id}}"
+    method: react
+    args: { post_id: "{{update_id}}", emoji: "🎉", "on": true }
+    executor_public_key: "{{bob_key}}"
+
+  - name: Bob replies
+    type: call
+    node: calimero-node-2
+    context_id: "{{audience_id}}"
+    method: add_comment
+    args: { post_id: "{{update_id}}", parent_id: null, body: "Congrats on Globex!" }
+    executor_public_key: "{{bob_key}}"
+    outputs:
+      comment_id: result.output
+
+  - name: Bob edits his reply
+    type: call
+    node: calimero-node-2
+    context_id: "{{audience_id}}"
+    method: edit_comment
+    args: { comment_id: "{{comment_id}}", body: "Congrats on Globex! Who ran procurement?" }
+    executor_public_key: "{{bob_key}}"
+
+  - name: Bob offers help, withdraws, and offers again with a note
+    type: call
+    node: calimero-node-2
+    context_id: "{{audience_id}}"
+    method: offer_help
+    args: { ask_id: "{{ask_id}}", note: "" }
+    executor_public_key: "{{bob_key}}"
+
+  - name: Withdraw
+    type: call
+    node: calimero-node-2
+    context_id: "{{audience_id}}"
+    method: withdraw_offer
+    args: { ask_id: "{{ask_id}}" }
+    executor_public_key: "{{bob_key}}"
+
+  - name: Offer again
+    type: call
+    node: calimero-node-2
+    context_id: "{{audience_id}}"
+    method: offer_help
+    args: { ask_id: "{{ask_id}}", note: "I know two CFOs there" }
+    executor_public_key: "{{bob_key}}"
+
+  - name: Bob asks the team a question
+    type: call
+    node: calimero-node-2
+    context_id: "{{audience_id}}"
+    method: ask_question
+    args: { title: "What is the runway after the hires?", body: "", category_id: null }
+    executor_public_key: "{{bob_key}}"
+    outputs:
+      question_id: result.output
+
+  - name: Bob mutes the category
+    type: call
+    node: calimero-node-2
+    context_id: "{{audience_id}}"
+    method: set_muted_categories
+    args: { category_ids: ["{{monthly_id}}"] }
+    executor_public_key: "{{bob_key}}"
+
+  - name: Bob's node lists no drafts — Alice's never left her node
+    type: call
+    node: calimero-node-2
+    context_id: "{{audience_id}}"
+    method: list_drafts
+    args: {}
+    executor_public_key: "{{bob_key}}"
+    outputs:
+      bob_drafts: result
+
+  - name: Assert the draft is not on Bob's node
+    type: assert
+    statements:
+      - 'not_contains({{bob_drafts}}, "July")'
+
+  - name: Bob tries to read the engagement report
+    type: call
+    node: calimero-node-2
+    context_id: "{{audience_id}}"
+    method: get_engagement
+    args: {}
+    executor_public_key: "{{bob_key}}"
+    expected_failure: true
+    outputs:
+      engagement_error: error
+
+  - name: Assert the read report is team-only
+    type: assert
+    statements:
+      - "is_set({{engagement_error}})"
+
+  - name: Sync everything Bob wrote
+    type: wait_for_sync
+    context_id: "{{audience_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  # ── 4. The founder sees it and triages ──────────────────────────────────────
+  - name: Alice reads the thread
+    type: call
+    node: calimero-node-1
+    context_id: "{{audience_id}}"
+    method: list_comments
+    args: { post_id: "{{update_id}}" }
+    executor_public_key: "{{alice_key}}"
+    outputs:
+      thread: result
+
+  - name: Alice reads the asks
+    type: call
+    node: calimero-node-1
+    context_id: "{{audience_id}}"
+    method: list_asks
+    args: { status: "open" }
+    executor_public_key: "{{alice_key}}"
+    outputs:
+      asks: result
+
+  - name: Alice reads the questions
+    type: call
+    node: calimero-node-1
+    context_id: "{{audience_id}}"
+    method: list_posts
+    args: { kind: "question", category_id: null, cursor: null, limit: 20 }
+    executor_public_key: "{{alice_key}}"
+    outputs:
+      questions: result
+
+  - name: Alice reads the engagement report
+    type: call
+    node: calimero-node-1
+    context_id: "{{audience_id}}"
+    method: get_engagement
+    args: {}
+    executor_public_key: "{{alice_key}}"
+    outputs:
+      engagement: result
+
+  - name: Alice lists the people
+    type: call
+    node: calimero-node-1
+    context_id: "{{audience_id}}"
+    method: list_people
+    args: {}
+    executor_public_key: "{{alice_key}}"
+    outputs:
+      people: result
+
+  - name: Assert every channel reached the founder
+    type: assert
+    statements:
+      - 'contains({{thread}}, "Who ran procurement?")'
+      - 'contains({{asks}}, "I know two CFOs there")'
+      - 'contains({{questions}}, "What is the runway after the hires?")'
+      - 'contains({{engagement}}, "Ben Investor")'
+      - 'contains({{people}}, "Seed Fund")'
+
+  - name: Alice accepts Bob's offer
+    type: call
+    node: calimero-node-1
+    context_id: "{{audience_id}}"
+    method: set_offer_status
+    args: { ask_id: "{{ask_id}}", account: "{{bob_account}}", status: "accepted" }
+    executor_public_key: "{{alice_key}}"
+
+  - name: Alice resolves the ask
+    type: call
+    node: calimero-node-1
+    context_id: "{{audience_id}}"
+    method: set_ask_status
+    args: { ask_id: "{{ask_id}}", status: "resolved" }
+    executor_public_key: "{{alice_key}}"
+
+  - name: Alice answers the question and marks it answered
+    type: call
+    node: calimero-node-1
+    context_id: "{{audience_id}}"
+    method: add_comment
+    args: { post_id: "{{question_id}}", parent_id: null, body: "19 months." }
+    executor_public_key: "{{alice_key}}"
+
+  - name: Mark it answered
+    type: call
+    node: calimero-node-1
+    context_id: "{{audience_id}}"
+    method: set_question_status
+    args: { post_id: "{{question_id}}", status: "answered" }
+    executor_public_key: "{{alice_key}}"
+
+  - name: Alice reads the contributions ledger
+    type: call
+    node: calimero-node-1
+    context_id: "{{audience_id}}"
+    method: list_contributions
+    args: { since: 0 }
+    executor_public_key: "{{alice_key}}"
+    outputs:
+      contributions: result
+
+  - name: Alice reads the KPI series
+    type: call
+    node: calimero-node-1
+    context_id: "{{audience_id}}"
+    method: list_metrics
+    args: {}
+    executor_public_key: "{{alice_key}}"
+    outputs:
+      metrics: result
+
+  - name: Alice's draft is still on her node
+    type: call
+    node: calimero-node-1
+    context_id: "{{audience_id}}"
+    method: list_drafts
+    args: {}
+    executor_public_key: "{{alice_key}}"
+    outputs:
+      alice_drafts: result
+
+  - name: Assert the offer became a contribution, the KPI a series, the draft stayed
+    type: assert
+    statements:
+      - 'contains({{contributions}}, "Ben Investor")'
+      - 'contains({{metrics}}, "$48k")'
+      - 'contains({{alice_drafts}}, "July")'
+
+  - name: Alice discards the draft
+    type: call
+    node: calimero-node-1
+    context_id: "{{audience_id}}"
+    method: delete_draft
+    args: { draft_id: "{{draft_id}}" }
+    executor_public_key: "{{alice_key}}"
+
+  - name: Alice moderates Bob's reply away
+    type: call
+    node: calimero-node-1
+    context_id: "{{audience_id}}"
+    method: delete_comment
+    args: { comment_id: "{{comment_id}}" }
+    executor_public_key: "{{alice_key}}"
+
+  - name: Sync the triage
+    type: wait_for_sync
+    context_id: "{{audience_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Bob sees his offer accepted
+    type: call
+    node: calimero-node-2
+    context_id: "{{audience_id}}"
+    method: list_asks
+    args: { status: "resolved" }
+    executor_public_key: "{{bob_key}}"
+    outputs:
+      bob_asks: result
+
+  - name: Bob sees the answer
+    type: call
+    node: calimero-node-2
+    context_id: "{{audience_id}}"
+    method: get_post
+    args: { post_id: "{{question_id}}" }
+    executor_public_key: "{{bob_key}}"
+    outputs:
+      bob_question: result.output.card
+
+  - name: Assert the triage replicated
+    type: assert
+    statements:
+      - 'contains({{bob_asks}}, "accepted")'
+
+  - name: Assert the question reads answered
+    type: json_assert
+    statements:
+      - 'json_subset({{bob_question}}, {"status": "answered", "comment_count": 1})'
+
+  # ── 5. A delete replicates ──────────────────────────────────────────────────
+  - name: Alice deletes the update
+    type: call
+    node: calimero-node-1
+    context_id: "{{audience_id}}"
+    method: delete_post
+    args: { post_id: "{{update_id}}" }
+    executor_public_key: "{{alice_key}}"
+
+  - name: Sync the delete
+    type: wait_for_sync
+    context_id: "{{audience_id}}"
+    nodes: [calimero-node-1, calimero-node-2]
+    timeout: 60
+    check_interval: 2
+    trigger_sync: true
+
+  - name: Bob reads the feed again
+    type: call
+    node: calimero-node-2
+    context_id: "{{audience_id}}"
+    method: list_posts
+    args: { kind: "update", category_id: null, cursor: null, limit: 20 }
+    executor_public_key: "{{bob_key}}"
+    outputs:
+      feed_after_delete: result
+
+  - name: Assert the delete reached Node 2
+    type: assert
+    statements:
+      - 'not_contains({{feed_after_delete}}, "June 2026 update")'
