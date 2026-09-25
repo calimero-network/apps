@@ -133,6 +133,24 @@ what core's Read only role is for. Each member's account (`accounts`) is
 recorded when they join, which is how the app lines up the contract's
 roster, keyed by device, with core's, keyed by account.
 
+## Private sheets
+
+A private sheet is scratch space that never leaves the node: what-if numbers,
+drafts, personal views of shared data. It lives in the contract's
+`#[app::private]` storage (`Scratch`), which the runtime keeps node-local and
+never puts in a delta. The methods that write it take `&mut self` (only
+mutating calls commit private writes) and need no role, so even a viewer can
+keep one; they produce no delta and emit nothing, so the app reads the private
+sheets back after each write instead of waiting for an event.
+
+A private sheet's formulas can read the shared sheets (the app evaluates
+private and shared cells together), but a shared cell may not refer to a
+private sheet: nobody else could see what it points at, so the app refuses
+the write. A private sheet has fixed rows and columns (legacy position ids),
+and no comments, notes, protection or named ranges. The app does not publish
+your cursor while you are on one. "Private" means this node: another device of
+yours does not see it, and anyone who can read this node's storage could.
+
 ## Derive-on-read
 
 If values aren't stored, they have to be produced somehow when a peer asks

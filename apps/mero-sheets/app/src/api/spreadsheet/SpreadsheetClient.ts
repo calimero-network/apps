@@ -495,6 +495,16 @@ export class SpreadsheetClient {
   }
 
   /**
+   * apply_private_cell_ops
+   *
+   * @intent mutating
+   */
+  public async applyPrivateCellOps(params: { sheet_id: string; ops: CellOpPayload[] }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'apply_private_cell_ops', argsJson: params });
+    return response as void;
+  }
+
+  /**
    * clear_cell
    *
    * @intent mutating
@@ -502,6 +512,16 @@ export class SpreadsheetClient {
   public async clearCell(params: { sheet_id: string; row_id: string; col_id: string }): Promise<void> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'clear_cell', argsJson: params });
     return response as void;
+  }
+
+  /**
+   * create_private_sheet
+   *
+   * @intent mutating
+   */
+  public async createPrivateSheet(params: { name: string }): Promise<string> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'create_private_sheet', argsJson: params });
+    return response as string;
   }
 
   /**
@@ -531,6 +551,16 @@ export class SpreadsheetClient {
    */
   public async deleteNamedRange(params: { name: string }): Promise<void> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'delete_named_range', argsJson: params });
+    return response as void;
+  }
+
+  /**
+   * delete_private_sheet
+   *
+   * @intent mutating
+   */
+  public async deletePrivateSheet(params: { sheet_id: string }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'delete_private_sheet', argsJson: params });
     return response as void;
   }
 
@@ -675,6 +705,26 @@ export class SpreadsheetClient {
   }
 
   /**
+   * get_private_cells
+   *
+   * @intent read_only
+   */
+  public async getPrivateCells(): Promise<Cell[]> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_private_cells', argsJson: {} });
+    return response as Cell[];
+  }
+
+  /**
+   * get_private_sheets
+   *
+   * @intent read_only
+   */
+  public async getPrivateSheets(): Promise<Sheet[]> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_private_sheets', argsJson: {} });
+    return response as Sheet[];
+  }
+
+  /**
    * get_project
    *
    * @intent read_only
@@ -749,6 +799,16 @@ export class SpreadsheetClient {
    */
   public async removeProtection(params: { id: string }): Promise<void> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'remove_protection', argsJson: params });
+    return response as void;
+  }
+
+  /**
+   * rename_private_sheet
+   *
+   * @intent mutating
+   */
+  public async renamePrivateSheet(params: { sheet_id: string; name: string }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'rename_private_sheet', argsJson: params });
     return response as void;
   }
 

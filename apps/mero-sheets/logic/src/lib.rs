@@ -797,6 +797,45 @@ pub struct Spreadsheet {
     protections: UnorderedMap<String, ProtectionData>,
 }
 
+/// This node's private sheets: scratch space for what-if work that never
+/// leaves the node. Nothing here is synced, so there is no merge and no role
+/// check; formulas in a private sheet may read the shared sheets.
+#[derive(BorshSerialize, BorshDeserialize, Debug)]
+#[borsh(crate = "calimero_sdk::borsh")]
+#[app::private]
+pub struct Scratch {
+    /// Private sheets keyed by id. Few and small: kept in the private blob.
+    sheets: BTreeMap<String, ScratchSheet>,
+    /// Their cells, keyed like `cells`, by legacy (position) ids: a private
+    /// sheet has no inserted or deleted rows.
+    cells: UnorderedMap<String, ScratchCell>,
+}
+
+impl Default for Scratch {
+    fn default() -> Self {
+        Self {
+            sheets: BTreeMap::new(),
+            cells: UnorderedMap::new(),
+        }
+    }
+}
+
+#[derive(BorshSerialize, BorshDeserialize, Debug, Clone)]
+#[borsh(crate = "calimero_sdk::borsh")]
+pub struct ScratchSheet {
+    pub name: String,
+    pub position: u32,
+    pub created_at: u64,
+}
+
+#[derive(BorshSerialize, BorshDeserialize, Debug, Clone)]
+#[borsh(crate = "calimero_sdk::borsh")]
+pub struct ScratchCell {
+    pub raw_value: String,
+    pub format: String,
+    pub updated_at: u64,
+}
+
 /// The v1 state, read once by the v2 migration.
 #[derive(BorshDeserialize)]
 #[borsh(crate = "calimero_sdk::borsh")]
@@ -2009,6 +2048,158 @@ impl Spreadsheet {
             )));
         }
         Ok(description)
+    }
+
+    // ---- Private sheets ----
+    //
+    // Node-local (`Scratch`): these write only private storage, so they
+    // produce no delta and reach nobody. They take `&mut self` because the
+    // runtime only commits private writes from mutating methods.
+
+    /// Make a private sheet on this node. Returns its id.
+    pub fn create_private_sheet(&mut self, name: String) -> app::Result<String> {
+        validate_sheet_name(&name).map_err(AppError::from)?;
+        let mut scratch = Scratch::private_load_or_default()?;
+        let now = storage_env::time_now();
+        let mut nonce = [0u8; 4];
+        env::random_bytes(&mut nonce);
+        let id = generate_id("private", now, &nonce);
+        let mut s = scratch.as_mut();
+        let position = s.sheets.len() as u32;
+        s.sheets.insert(
+            id.clone(),
+            ScratchSheet {
+                name,
+                position,
+                created_at: now,
+            },
+        );
+        Ok(id)
+    }
+
+    pub fn rename_private_sheet(&mut self, sheet_id: String, name: String) -> app::Result<()> {
+        validate_sheet_name(&name).map_err(AppError::from)?;
+        let mut scratch = Scratch::private_load_or_default()?;
+        let mut s = scratch.as_mut();
+        match s.sheets.get_mut(&sheet_id) {
+            Some(sheet) => sheet.name = name,
+            None => return Err(AppError::from(Error::NotFound(sheet_id))),
+        }
+        Ok(())
+    }
+
+    /// Delete a private sheet and its cells.
+    pub fn delete_private_sheet(&mut self, sheet_id: String) -> app::Result<()> {
+        let mut scratch = Scratch::private_load_or_default()?;
+        let mut s = scratch.as_mut();
+        if s.sheets.remove(&sheet_id).is_none() {
+            return Err(AppError::from(Error::NotFound(sheet_id)));
+        }
+        let prefix = format!("{sheet_id}|");
+        let keys: Vec<String> = s
+            .cells
+            .entries()?
+            .map(|(k, _)| k)
+            .filter(|k| k.starts_with(&prefix))
+            .collect();
+        for key in keys {
+            let _ = s.cells.remove(&key)?;
+        }
+        Ok(())
+    }
+
+    /// Write cells of a private sheet: the same ops as `apply_cell_ops`.
+    pub fn apply_private_cell_ops(
+        &mut self,
+        sheet_id: String,
+        ops: Vec<CellOp>,
+    ) -> app::Result<()> {
+        let mut scratch = Scratch::private_load_or_default()?;
+        let mut s = scratch.as_mut();
+        if !s.sheets.contains_key(&sheet_id) {
+            return Err(AppError::from(Error::NotFound(sheet_id)));
+        }
+        let now = storage_env::time_now();
+        for op in ops {
+            let (row_id, col_id) = match &op {
+                CellOp::Set { row_id, col_id, .. }
+                | CellOp::Format { row_id, col_id, .. }
+                | CellOp::Clear { row_id, col_id } => (row_id.clone(), col_id.clone()),
+            };
+            if layout::legacy_index(&row_id).is_none() || layout::legacy_index(&col_id).is_none() {
+                return Err(AppError::from(Error::Invalid(format!(
+                    "a private sheet has no inserted rows or columns: {row_id}/{col_id}"
+                ))));
+            }
+            let key = Spreadsheet::cell_key(&sheet_id, &row_id, &col_id);
+            let mut cell = s
+                .cells
+                .get(&key)?
+                .map(|c| c.clone())
+                .unwrap_or(ScratchCell {
+                    raw_value: String::new(),
+                    format: String::new(),
+                    updated_at: now,
+                });
+            match op {
+                CellOp::Set { raw_value, .. } => cell.raw_value = raw_value,
+                CellOp::Format { format, .. } => cell.format = format,
+                CellOp::Clear { .. } => {
+                    let _ = s.cells.remove(&key)?;
+                    continue;
+                }
+            }
+            cell.updated_at = now;
+            if cell.raw_value.is_empty() && cell.format.is_empty() {
+                let _ = s.cells.remove(&key)?;
+            } else {
+                let _ = s.cells.insert(key, cell)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// This node's private sheets, in the order they were made.
+    pub fn get_private_sheets(&self) -> app::Result<Vec<Sheet>> {
+        let scratch = Scratch::private_load_or_default()?;
+        let mut out: Vec<Sheet> = scratch
+            .sheets
+            .iter()
+            .map(|(id, s)| Sheet {
+                id: id.clone(),
+                name: s.name.clone(),
+                position: s.position,
+                created_at: s.created_at,
+            })
+            .collect();
+        out.sort_by(|a, b| (a.created_at, &a.id).cmp(&(b.created_at, &b.id)));
+        Ok(out)
+    }
+
+    /// Every cell of this node's private sheets. `computed_value` is empty:
+    /// the client evaluates them, with the shared sheets they read.
+    pub fn get_private_cells(&self) -> app::Result<Vec<Cell>> {
+        let scratch = Scratch::private_load_or_default()?;
+        let out = scratch
+            .cells
+            .entries()?
+            .filter_map(|(key, c)| {
+                let (sheet_id, row_id, col_id) = split_key(&key)?;
+                Some(Cell {
+                    id: key.clone(),
+                    sheet_id: sheet_id.to_string(),
+                    row_id: row_id.to_string(),
+                    col_id: col_id.to_string(),
+                    raw_value: c.raw_value,
+                    computed_value: String::new(),
+                    format: c.format,
+                    updated_at: c.updated_at,
+                    last_editor: String::new(),
+                    last_edited_at: 0,
+                })
+            })
+            .collect();
+        Ok(out)
     }
 
     // ---- Rows and columns ----
@@ -4334,5 +4525,71 @@ mod tests {
         assert!(app
             .call(|s| s.rename_sheet(sid.clone(), "X".into()))
             .is_ok());
+    }
+
+    #[test]
+    fn a_private_sheet_keeps_its_cells_to_itself() {
+        let mut app = make_app();
+        let _ = new_sheet(&mut app);
+        let pid = app
+            .call(|s| s.create_private_sheet("Scratch".into()))
+            .unwrap();
+        app.call(|s| {
+            s.apply_private_cell_ops(
+                pid.clone(),
+                vec![
+                    CellOp::Set {
+                        row_id: "0".into(),
+                        col_id: "0".into(),
+                        raw_value: "=1+1".into(),
+                    },
+                    CellOp::Format {
+                        row_id: "0".into(),
+                        col_id: "0".into(),
+                        format: "bold".into(),
+                    },
+                ],
+            )
+        })
+        .unwrap();
+        let sheets = app.view(|s| s.get_private_sheets()).unwrap();
+        assert_eq!(sheets.len(), 1);
+        assert_eq!(sheets[0].name, "Scratch");
+        let cells = app.view(|s| s.get_private_cells()).unwrap();
+        assert_eq!(cells.len(), 1);
+        assert_eq!(
+            (cells[0].raw_value.as_str(), cells[0].format.as_str()),
+            ("=1+1", "bold")
+        );
+        // None of it is in the shared workbook.
+        assert!(app
+            .view(|s| s.list_sheets())
+            .unwrap()
+            .iter()
+            .all(|s| s.id != pid));
+        assert!(app.view(|s| s.get_all_cells()).unwrap().is_empty());
+
+        // Positions only: a private sheet has no inserted rows.
+        assert!(app
+            .call(|s| {
+                s.apply_private_cell_ops(
+                    pid.clone(),
+                    vec![CellOp::Clear {
+                        row_id: "nab".into(),
+                        col_id: "0".into(),
+                    }],
+                )
+            })
+            .is_err());
+
+        app.call(|s| s.rename_private_sheet(pid.clone(), "What if".into()))
+            .unwrap();
+        assert_eq!(
+            app.view(|s| s.get_private_sheets()).unwrap()[0].name,
+            "What if"
+        );
+        app.call(|s| s.delete_private_sheet(pid.clone())).unwrap();
+        assert!(app.view(|s| s.get_private_sheets()).unwrap().is_empty());
+        assert!(app.view(|s| s.get_private_cells()).unwrap().is_empty());
     }
 }

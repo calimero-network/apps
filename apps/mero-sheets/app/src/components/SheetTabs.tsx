@@ -6,7 +6,8 @@
  *  - Double-click → rename inline
  *  - Hover × button → delete (disabled for the last sheet)
  *
- * "+" button adds a new sheet.
+ * "+" button adds a new sheet; the lock button adds a private one, which
+ * lives only on this node (nobody else sees it) and shows a lock on its tab.
  */
 import React, { useRef, useState } from 'react';
 import styled from 'styled-components';
@@ -15,7 +16,11 @@ import { type Sheet } from '../hooks/useSpreadsheet';
 import { describeError } from '../utils/errors';
 
 interface SheetTabsProps {
+  /** Shared sheets first, then this node's private ones. */
   sheets: Sheet[];
+  /** Which of `sheets` are private. */
+  privateIds: ReadonlySet<string>;
+  onAddPrivate: () => void;
   activeSheetId: string | null;
   onSelect: (id: string) => void;
   onAdd: () => void;
@@ -25,6 +30,8 @@ interface SheetTabsProps {
 
 export default function SheetTabs({
   sheets,
+  privateIds,
+  onAddPrivate,
   activeSheetId,
   onSelect,
   onAdd,
@@ -77,6 +84,9 @@ export default function SheetTabs({
         {sheets.map((sheet) => {
           const isActive = sheet.id === activeSheetId;
           const isEditing = editingId === sheet.id;
+          const isPrivate = privateIds.has(sheet.id);
+          // A workbook keeps at least one shared sheet; private ones can all go.
+          const deletable = isPrivate || sheets.filter((x) => !privateIds.has(x.id)).length > 1;
 
           return (
             <Tab
@@ -84,6 +94,8 @@ export default function SheetTabs({
               data-testid={`item-sheet`}
               data-sheet-id={sheet.id}
               $active={isActive}
+              data-private={isPrivate || undefined}
+              title={isPrivate ? 'Private: only on this node, nobody else sees it' : undefined}
               role="tab"
               aria-selected={isActive}
               onClick={() => !isEditing && onSelect(sheet.id)}
@@ -110,9 +122,9 @@ export default function SheetTabs({
                   {renameError && <RenameError role="alert">{renameError}</RenameError>}
                 </>
               ) : (
-                <TabName>{sheet.name}</TabName>
+                <TabName>{isPrivate && <span aria-label="Private">🔒 </span>}{sheet.name}</TabName>
               )}
-              {!isEditing && sheets.length > 1 && (
+              {!isEditing && deletable && (
                 <DeleteBtn
                   aria-label={`Delete ${sheet.name}`}
                   data-testid="action-delete_sheet"
@@ -137,6 +149,14 @@ export default function SheetTabs({
         title="Add sheet"
       >
         +
+      </AddBtn>
+      <AddBtn
+        data-testid="action-create_private_sheet"
+        onClick={onAddPrivate}
+        aria-label="Add private sheet"
+        title="Add a private sheet: only on this node, nobody else sees it"
+      >
+        🔒
       </AddBtn>
     </TabBar>
   );

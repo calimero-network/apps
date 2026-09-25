@@ -18,7 +18,7 @@
  *  2. Opening (ws.contextId set, !ws.ready) — identity resolving
  *  3. Workspace open — full spreadsheet UI (with ← back to the picker)
  */
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import styled from 'styled-components';
 import { useGroupMembers, useMero } from '@calimero-network/mero-react';
 import { C, useTheme, MoonIcon } from '../../theme';
@@ -75,13 +75,18 @@ export default function AppPage() {
 
   // id↔name resolvers for translating formulas at the frontend boundary: the
   // engine/store deal in canonical sheet ids; the formula bar shows names.
+  // Private sheets resolve too, so a private formula can name one; a shared
+  // cell that tries is refused at the write.
+  const allSheets = useMemo(() => [...ss.sheets, ...ss.privateSheets], [ss.sheets, ss.privateSheets]);
+  const privateIds = useMemo(() => new Set(ss.privateSheets.map((s) => s.id)), [ss.privateSheets]);
+  const isPrivateActive = !!activeSheetId && privateIds.has(activeSheetId);
   const idToName = useCallback(
-    (id: string) => ss.sheets.find((s) => s.id === id)?.name ?? null,
-    [ss.sheets],
+    (id: string) => allSheets.find((s) => s.id === id)?.name ?? null,
+    [allSheets],
   );
   const nameToId = useCallback(
-    (name: string) => ss.sheets.find((s) => s.name === name)?.id ?? null,
-    [ss.sheets],
+    (name: string) => allSheets.find((s) => s.name === name)?.id ?? null,
+    [allSheets],
   );
 
   // ── Workspace modals ────────────────────────────────────────────
@@ -208,10 +213,10 @@ export default function AppPage() {
   // Auto-select the first sheet when sheets load / change
   useEffect(() => {
     if (ss.sheets.length > 0) {
-      const stillExists = ss.sheets.find((s) => s.id === activeSheetId);
+      const stillExists = allSheets.find((s) => s.id === activeSheetId);
       if (!stillExists) setActiveSheetId(ss.sheets[0].id);
     }
-  }, [ss.sheets, activeSheetId]);
+  }, [ss.sheets, allSheets, activeSheetId]);
 
   // Safety net: guarantee an editable sheet exists. The formula bar is disabled
   // without an active sheet, so a workspace with zero sheets opens read-only —
@@ -353,12 +358,13 @@ export default function AppPage() {
   const presence = useSheetPresence(ws.contextId, ss.selfId);
   const { publish: publishPresence } = presence;
   useEffect(() => {
+    // Where you are on a private sheet is nobody else's business.
     publishPresence(
-      activeSheetId && selectedCell
+      activeSheetId && selectedCell && !isPrivateActive
         ? { sheetId: activeSheetId, row: selectedCell.row, col: selectedCell.col, range: selectionRange }
         : null,
     );
-  }, [publishPresence, activeSheetId, selectedCell, selectionRange]);
+  }, [publishPresence, activeSheetId, selectedCell, selectionRange, isPrivateActive]);
 
   // ── Cell selection ──────────────────────────────────────────────
   const handleSelectCell = useCallback(
@@ -443,10 +449,11 @@ export default function AppPage() {
   const hasOwner = ss.members.some((m) => m.role === 'owner');
   const isGroupAdmin = !!selfMember?.account &&
     groupMembers.some((g) => g.identity === selfMember.account && g.role === 'Admin');
-  const placed = activeSheetId
+  const placed = activeSheetId && !isPrivateActive
     ? placeProtections(ss.protections, activeSheetId, (r, c) => ss.refOf(activeSheetId, r, c), ss.selfId, myRole)
     : [];
-  const selectedLock = selectedCell ? lockedReason(placed, myRole, selectedCell.row, selectedCell.col) : null;
+  // A private sheet is this node's alone: no role or protection applies.
+  const selectedLock = selectedCell && !isPrivateActive ? lockedReason(placed, myRole, selectedCell.row, selectedCell.col) : null;
 
   // Refused writes explain themselves for a while, then go.
   const { writeError, dismissWriteError } = ss;
@@ -663,7 +670,8 @@ export default function AppPage() {
   const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
   const menuSections = (() => {
     const r = menuRect();
-    if (!r) return [];
+    // A private sheet has fixed rows and columns, and nothing to share.
+    if (!r || isPrivateActive) return [];
     const range = (from: number, to: number) => Array.from({ length: to - from + 1 }, (_, i) => from + i);
     return [
       {
@@ -1335,12 +1343,15 @@ export default function AppPage() {
 
       {/* ── Sheet tabs ───────────────────────────────────────────── */}
       <SheetTabs
-        sheets={ss.sheets}
+        sheets={allSheets}
+        privateIds={privateIds}
+        onAddPrivate={() => void ss.createPrivateSheet(`Private ${ss.privateSheets.length + 1}`)
+          .then((id) => { if (id) void handleSelectSheet(id); })}
         activeSheetId={activeSheetId}
         onSelect={handleSelectSheet}
         onAdd={handleAddSheet}
-        onRename={ss.renameSheet}
-        onDelete={ss.deleteSheet}
+        onRename={(id, name) => (privateIds.has(id) ? ss.renamePrivateSheet(id, name) : ss.renameSheet(id, name))}
+        onDelete={(id) => void (privateIds.has(id) ? ss.deletePrivateSheet(id) : ss.deleteSheet(id))}
       />
 
       <StatusBar synced={synced} peers={peers} cells={ss.cells.length} />

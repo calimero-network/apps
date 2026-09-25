@@ -139,6 +139,11 @@ export interface UseSpreadsheetReturn {
   loadNote: (sheetId: string, rowId: string, colId: string) => Promise<Span[]>;
   /** One note edit: text and formatting, as a delta. */
   editNote: (sheetId: string, rowId: string, colId: string, ops: NoteOp[]) => Promise<void>;
+  /** This node's private sheets: seen by nobody else, and able to read the shared ones. */
+  privateSheets: Sheet[];
+  createPrivateSheet: (name: string) => Promise<string | null>;
+  renamePrivateSheet: (sheetId: string, name: string) => Promise<void>;
+  deletePrivateSheet: (sheetId: string) => Promise<void>;
   /** Protected ranges, by corner ids. */
   protections: Protection[];
   /** Set a member's workbook role (owners only). */
@@ -264,6 +269,10 @@ export function useSpreadsheet({
   // the client's engine return #REF! for cross-sheet refs the node computed fine.
   const sheetsRef = useRef(sheets);
   sheetsRef.current = sheets;
+  // This node's private sheets: never synced, read and written on their own.
+  const [privateSheets, setPrivateSheets] = useState<Sheet[]>([]);
+  const privateIdsRef = useRef(new Set<string>());
+  privateIdsRef.current = new Set(privateSheets.map((s) => s.id));
 
   // Derive the active sheet's cells from the warm store ⊕ overlay and paint them.
   // Before the engine is ready, fall back to the node computed values captured in
@@ -284,6 +293,7 @@ export function useSpreadsheet({
     }
     const sheetIds = [...new Set([
       ...sheetsRef.current.map((s) => s.id),
+      ...privateIdsRef.current,
       ...[...snapshotRef.current.values()].map((c) => c.sheet_id),
       ...[...overlayRef.current.values()].map((e) => e.sheet_id),
     ])];
@@ -298,7 +308,8 @@ export function useSpreadsheet({
     if (!active) { setCells([]); return; }
     const derived = sheetCells(active);
     setCells(derived);
-    if (import.meta.env.DEV && engineReady()) {
+    // A private sheet has no node-computed values to agree with.
+    if (import.meta.env.DEV && engineReady() && !privateIdsRef.current.has(active)) {
       const nodeActive = [...snapshotRef.current.values()].filter((c) => c.sheet_id === active);
       const bad = diffComputed(nodeActive, derived, visibleOrder(active));
       if (bad.length) console.error('[recalc] WASM/node computed-value disagreement at', bad, '— stale wasm artifact or engine-input mismatch');
@@ -343,6 +354,7 @@ export function useSpreadsheet({
       const [
         fetchedSheets, allCells,
         fetchedMembers, fetchedProject, me, layouts, named, fetchedComments, noted, prots,
+        mine, privateCells,
       ] = await Promise.all([
         client.listSheets(),
         client.getAllCells(),
@@ -354,12 +366,16 @@ export function useSpreadsheet({
         client.getComments(),
         client.getNotedCells(),
         client.getProtections(),
+        client.getPrivateSheets(),
+        client.getPrivateCells(),
       ]);
+      setPrivateSheets(mine);
+      privateIdsRef.current = new Set(mine.map((x) => x.id));
       applyStructureTo(layouts, named);
       setProtections(prots);
       setComments(fetchedComments);
       setNotedCells(noted);
-      snapshotRef.current = snapshotFromCells(allCells);
+      snapshotRef.current = snapshotFromCells([...allCells, ...privateCells]);
       overlayRef.current = retireOverlay(overlayRef.current, snapshotRef.current);
       setSheets(fetchedSheets.sort((a, b) => a.position - b.position));
       setMembers(fetchedMembers);
@@ -412,7 +428,9 @@ export function useSpreadsheet({
     if (!client) return;
     const sheetIds = new Set(plan.sheets);
     const active = activeSheetIdRef.current;
-    if (sheetIds.size > 0 && active) sheetIds.add(active);
+    // A private sheet is not on the node's shared list: re-reading it there
+    // would find it empty and wipe it.
+    if (sheetIds.size > 0 && active && !privateIdsRef.current.has(active)) sheetIds.add(active);
     const ids = [...sheetIds];
     const [bySheet, fetchedSheets, fetchedMembers, layouts, named, fetchedComments, noted, prots] = await Promise.all([
       Promise.all(ids.map((id) => client.getCells({ sheet_id: id }))),
@@ -482,7 +500,7 @@ export function useSpreadsheet({
     const forMe = mentionsIn(event).filter((m) => me && m.author !== me && m.mentions.includes(me));
     if (forMe.length) setMentions((prev) => [...prev, ...forMe.filter((m) => !prev.some((p) => p.commentId === m.commentId))]);
   });
-  useEffect(() => { setMentions([]); setComments([]); setNotedCells([]); setProtections([]); setWriteError(null); }, [client]);
+  useEffect(() => { setMentions([]); setComments([]); setNotedCells([]); setProtections([]); setWriteError(null); setPrivateSheets([]); }, [client]);
   // …and after the stream reconnects: nothing replays what changed while it was down.
   useStreamReconnect(() => schedule({ full: true }));
 
@@ -555,12 +573,33 @@ export function useSpreadsheet({
     return { raw_value: e?.raw_value ?? '', format: e?.format ?? '' };
   };
 
+  /** Re-read this node's private sheets and their cells into the store. */
+  const reloadPrivate = useCallback(async () => {
+    if (!client) return;
+    const [mine, cells] = await Promise.all([client.getPrivateSheets(), client.getPrivateCells()]);
+    const ids = new Set(mine.map((x) => x.id));
+    const next = new Map(snapshotRef.current);
+    for (const [key, c] of next) if (privateIdsRef.current.has(c.sheet_id) || ids.has(c.sheet_id)) next.delete(key);
+    for (const c of cells) next.set(cellKey(c.sheet_id, c.row_id, c.col_id), c);
+    snapshotRef.current = next;
+    overlayRef.current = retireOverlay(overlayRef.current, next);
+    privateIdsRef.current = ids;
+    setPrivateSheets(mine);
+    deriveAndSet();
+  }, [client, deriveAndSet]);
+
   // Every cell write goes through here, by id with raw values in stored form:
   // paint through the overlay, optionally record the undo step, then send in
   // node-sized commits under one queue slot.
   const writeCells = useCallback(
     async (sheetId: string, ops: IdOp[], track: boolean) => {
       if (!client || ops.length === 0) return;
+      const isPrivate = privateIdsRef.current.has(sheetId);
+      // Others cannot see a private sheet, so a shared cell may not use one.
+      if (!isPrivate && ops.some((op) => op.kind === 'Set' && [...privateIdsRef.current].some((id) => op.raw_value.includes(id)))) {
+        setWriteError(new Error('A shared cell cannot use a private sheet: nobody else can see it'));
+        return;
+      }
       let entry: UndoEntry | null = null;
       if (track) {
         const changes = new Map<string, { row_id: string; col_id: string; before: CellState; after: CellState }>();
@@ -590,9 +629,12 @@ export function useSpreadsheet({
       try {
         await enqueue(async () => {
           for (const chunk of chunkOps(wire)) {
-            await client.applyCellOps({ sheet_id: sheetId, ops: chunk });
+            if (isPrivate) await client.applyPrivateCellOps({ sheet_id: sheetId, ops: chunk });
+            else await client.applyCellOps({ sheet_id: sheetId, ops: chunk });
           }
         });
+        // No event announces a private write: read the private cells back.
+        if (isPrivate) await reloadPrivate();
       } catch (err) {
         // The node refused (a protected range, a viewer's role): show what it
         // holds again, and say why.
@@ -603,7 +645,7 @@ export function useSpreadsheet({
       }
       // No refresh() here — the subscription refresh reconciles + retires.
     },
-    [client, applyOverlay, enqueue, record, unrecord, deriveAndSet],
+    [client, applyOverlay, enqueue, record, unrecord, deriveAndSet, reloadPrivate],
   );
 
   const setCell = useCallback(
@@ -918,6 +960,23 @@ export function useSpreadsheet({
   );
   const dismissWriteError = useCallback(() => setWriteError(null), []);
 
+  const createPrivateSheet = useCallback(async (name: string): Promise<string | null> => {
+    if (!client) return null;
+    const id = await enqueue(() => client.createPrivateSheet({ name }));
+    await reloadPrivate();
+    return id;
+  }, [client, enqueue, reloadPrivate]);
+  const renamePrivateSheet = useCallback(async (sheetId: string, name: string) => {
+    if (!client) return;
+    await enqueue(() => client.renamePrivateSheet({ sheet_id: sheetId, name }));
+    await reloadPrivate();
+  }, [client, enqueue, reloadPrivate]);
+  const deletePrivateSheet = useCallback(async (sheetId: string) => {
+    if (!client) return;
+    await enqueue(() => client.deletePrivateSheet({ sheet_id: sheetId }));
+    await reloadPrivate();
+  }, [client, enqueue, reloadPrivate]);
+
   // A member who joined before accounts were recorded: record theirs, so the
   // People panel can match them to the group roster. Once per workbook.
   const backfilled = useRef(false);
@@ -995,6 +1054,10 @@ export function useSpreadsheet({
     notedCells,
     loadNote,
     editNote,
+    privateSheets,
+    createPrivateSheet,
+    renamePrivateSheet,
+    deletePrivateSheet,
     protections,
     setRole,
     protectRange,

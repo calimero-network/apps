@@ -1839,6 +1839,30 @@
       "intent": "mutating"
     },
     {
+      "name": "apply_private_cell_ops",
+      "params": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "ops",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "CellOp"
+            }
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
       "name": "clear_cell",
       "params": [
         {
@@ -1862,6 +1886,21 @@
       ],
       "returns": {
         "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "create_private_sheet",
+      "params": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
       },
       "intent": "mutating"
     },
@@ -1900,6 +1939,21 @@
       "params": [
         {
           "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "delete_private_sheet",
+      "params": [
+        {
+          "name": "sheet_id",
           "type": {
             "kind": "string"
           }
@@ -2143,6 +2197,28 @@
       "intent": "read_only"
     },
     {
+      "name": "get_private_cells",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "Cell"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_private_sheets",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "Sheet"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
       "name": "get_project",
       "params": [],
       "returns": {
@@ -2268,6 +2344,27 @@
       "params": [
         {
           "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "rename_private_sheet",
+      "params": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
           "type": {
             "kind": "string"
           }
