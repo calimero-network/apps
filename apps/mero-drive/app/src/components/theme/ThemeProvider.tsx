@@ -1,7 +1,7 @@
 // Light/dark theme context. Owns the `.dark` class on <html> and
-// persists the choice to localStorage. Dark is the default; the
-// no-FOUC bootstrap in index.html applies the class before React
-// mounts so there is no light-flash on first paint.
+// persists the choice to localStorage. Light is the default; the
+// no-FOUC bootstrap in index.html applies a saved dark choice before
+// React mounts so there is no light-flash on first paint.
 
 import React, {
   createContext,
@@ -22,7 +22,7 @@ interface ThemeContextValue {
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setTheme] = useLocalStorage<Theme>('mero-theme', 'dark');
+  const [theme, setTheme] = useLocalStorage<Theme>('mero-theme', 'light');
 
   useEffect(() => {
     const root = document.documentElement;
