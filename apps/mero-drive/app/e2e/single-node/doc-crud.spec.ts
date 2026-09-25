@@ -25,6 +25,18 @@ test.describe('Document CRUD (single-node)', () => {
       await alice.docs.expectDocVisible('Untitled');
       await alice.docs.expectDocVisible('Existing');
     });
+
+    test(`new document from the sidebar ${via} on a collapsed folder`, async ({
+      alice,
+    }) => {
+      await alice.createFolder({ name: 'Later', visibility: 'Open' });
+      await alice.tree.newDocument('Later', via);
+      await alice.editor.expectMounted();
+      await expect(alice.page.getByTestId('doc-title-input')).toHaveValue(
+        'Untitled',
+        { timeout: 15_000 },
+      );
+    });
   }
 
   test('the save indicator stays calm while typing', async ({ alice }) => {

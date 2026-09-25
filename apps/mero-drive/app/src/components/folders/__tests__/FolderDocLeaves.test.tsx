@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { FolderDocLeaves } from '../FolderDocLeaves';
@@ -35,7 +35,8 @@ describe('FolderDocLeaves', () => {
           folderId="f1"
           selectedDocId={null}
           onOpenDoc={onOpenDoc}
-          createRequest={0}
+          createPending={false}
+          onCreateStarted={vi.fn()}
         />
       </ul>,
     );
@@ -58,7 +59,8 @@ describe('FolderDocLeaves', () => {
           folderId="f1"
           selectedDocId={null}
           onOpenDoc={vi.fn()}
-          createRequest={0}
+          createPending={false}
+          onCreateStarted={vi.fn()}
         />
       </ul>,
     );
@@ -73,7 +75,8 @@ describe('FolderDocLeaves', () => {
           folderId="f1"
           selectedDocId={null}
           onOpenDoc={vi.fn()}
-          createRequest={0}
+          createPending={false}
+          onCreateStarted={vi.fn()}
         />
       </ul>,
     );
@@ -83,23 +86,37 @@ describe('FolderDocLeaves', () => {
   });
 
   describe('New document requests', () => {
-    function leaves(createRequest: number, onOpenDoc = vi.fn()) {
+    // Mirrors FolderTreeItem, which owns the pending flag across remounts.
+    function Harness({
+      initial = false,
+      onOpenDoc = vi.fn(),
+    }: {
+      initial?: boolean;
+      onOpenDoc?: (folderId: string, docId: string) => void;
+    }) {
+      const [pending, setPending] = useState(initial);
       return (
-        <ul>
-          <FolderDocLeaves
-            folderId="f1"
-            selectedDocId={null}
-            onOpenDoc={onOpenDoc}
-            createRequest={createRequest}
-          />
-        </ul>
+        <>
+          <button type="button" onClick={() => setPending(true)}>
+            request
+          </button>
+          <ul>
+            <FolderDocLeaves
+              folderId="f1"
+              selectedDocId={null}
+              onOpenDoc={onOpenDoc}
+              createPending={pending}
+              onCreateStarted={() => setPending(false)}
+            />
+          </ul>
+        </>
       );
     }
 
-    it('does not create on mount', () => {
+    it('does not create on mount without a request', () => {
       const create = vi.fn();
       useDocsMock.mockReturnValue({ ...baseDocs, create });
-      render(leaves(0));
+      render(<Harness />);
       expect(create).not.toHaveBeenCalled();
     });
 
@@ -107,13 +124,26 @@ describe('FolderDocLeaves', () => {
       const create = vi.fn().mockResolvedValue('doc-7');
       useDocsMock.mockReturnValue({ ...baseDocs, create });
       const onOpenDoc = vi.fn();
-      const { rerender } = render(leaves(0, onOpenDoc));
-      rerender(leaves(1, onOpenDoc));
+      render(<Harness onOpenDoc={onOpenDoc} />);
+      fireEvent.click(screen.getByRole('button', { name: 'request' }));
       await waitFor(() =>
         expect(onOpenDoc).toHaveBeenCalledWith('f1', 'doc-7'),
       );
       expect(create).toHaveBeenCalledTimes(1);
       expect(create).toHaveBeenCalledWith({ title: 'Untitled' });
+      fireEvent.click(screen.getByRole('button', { name: 'request' }));
+      await waitFor(() => expect(create).toHaveBeenCalledTimes(2));
+    });
+
+    it('creates for a request made before it mounted', async () => {
+      const create = vi.fn().mockResolvedValue('doc-2');
+      useDocsMock.mockReturnValue({ ...baseDocs, create });
+      const onOpenDoc = vi.fn();
+      render(<Harness initial onOpenDoc={onOpenDoc} />);
+      await waitFor(() =>
+        expect(onOpenDoc).toHaveBeenCalledWith('f1', 'doc-2'),
+      );
+      expect(create).toHaveBeenCalledTimes(1);
     });
 
     it('waits for the folder context before creating', async () => {
@@ -125,11 +155,10 @@ describe('FolderDocLeaves', () => {
         contextResolving: true,
       });
       const onOpenDoc = vi.fn();
-      const { rerender } = render(leaves(0, onOpenDoc));
-      rerender(leaves(1, onOpenDoc));
+      const { rerender } = render(<Harness initial onOpenDoc={onOpenDoc} />);
       expect(create).not.toHaveBeenCalled();
       useDocsMock.mockReturnValue({ ...baseDocs, create });
-      rerender(leaves(1, onOpenDoc));
+      rerender(<Harness initial onOpenDoc={onOpenDoc} />);
       await waitFor(() =>
         expect(onOpenDoc).toHaveBeenCalledWith('f1', 'doc-1'),
       );
@@ -139,8 +168,7 @@ describe('FolderDocLeaves', () => {
     it('reports a failed create', async () => {
       const create = vi.fn().mockRejectedValue(new Error('offline'));
       useDocsMock.mockReturnValue({ ...baseDocs, create });
-      const { rerender } = render(leaves(0));
-      rerender(leaves(1));
+      render(<Harness initial />);
       expect((await screen.findByRole('alert')).textContent).toContain(
         'offline',
       );
