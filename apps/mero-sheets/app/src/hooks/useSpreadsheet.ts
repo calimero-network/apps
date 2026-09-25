@@ -8,8 +8,9 @@
  *  - useMemo creates the typed client when mero + contextId + executorPublicKey resolve.
  *  - refresh() fetches the whole workbook (get_all_cells) into a warm snapshot, then
  *    derives the active sheet's computed cells locally via the WASM recalc engine.
- *  - useSubscription re-fetches on every context sync event (local + remote peers),
- *    which reconciles the warm snapshot and retires confirmed overlay entries.
+ *  - useSubscription re-reads what each context event changed (local + remote peers;
+ *    see spreadsheet/events.ts), which reconciles the warm snapshot and retires
+ *    confirmed overlay entries. Presence frames never trigger a read.
  *  - Cell writes (setCell/clearCell/setCellFormat/applyCellOps) paint optimistically
  *    through the pending overlay and rely on the subscription refresh to reconcile —
  *    they do NOT call refresh() directly. Sheet-level ops (initProject/createSheet/
@@ -24,11 +25,15 @@ import type {
 } from '../api/spreadsheet/SpreadsheetClient';
 import { CellOp as CellOpWire } from '../api/spreadsheet/SpreadsheetClient';
 import { chunkOps, type CellOp } from '../spreadsheet/ops';
+import { isNoop, mergePlans, planFor, type RefreshPlan } from '../spreadsheet/events';
 import { initEngine, engineReady, evaluate as engineEvaluate, functionCatalog } from '../engine/engine';
 import {
   snapshotFromCells, retireOverlay, deriveActiveCells, diffComputed, cellKey,
   type Snapshot, type Overlay,
 } from '../engine/derive';
+
+/** How long events are gathered before one round of reads. */
+const EVENT_COALESCE_MS = 60;
 
 // Re-export domain types so components import from one place
 export type { Sheet, Cell, FunctionDef, Member, Project };
@@ -280,10 +285,71 @@ export function useSpreadsheet({
     if (engineReady()) setFunctions(functionCatalog());
   }, [engineTick]);
 
-  // Live updates: re-fetch on any CRDT sync event for this context
-  useSubscription(contextId ? [contextId] : [], () => { void refresh(); });
+  // Re-read only what an event changed (see spreadsheet/events.ts): a cell
+  // write re-reads that sheet, a rename the sheet list, a new member the
+  // roster. The active sheet is re-read alongside, so its node-computed values
+  // (the pre-engine paint, and the dev agreement check) stay current when a
+  // sheet it references changes.
+  const applyPlan = useCallback(async (plan: Extract<RefreshPlan, { full: false }>) => {
+    if (!client) return;
+    const sheetIds = new Set(plan.sheets);
+    const active = activeSheetIdRef.current;
+    if (sheetIds.size > 0 && active) sheetIds.add(active);
+    const ids = [...sheetIds];
+    const [bySheet, fetchedSheets, fetchedMembers] = await Promise.all([
+      Promise.all(ids.map((id) => client.getCells({ sheet_id: id }))),
+      plan.sheetList ? client.listSheets() : null,
+      plan.members ? client.getMembers() : null,
+    ]);
+    if (ids.length > 0) {
+      const next = new Map(snapshotRef.current);
+      for (const [key, c] of next) if (sheetIds.has(c.sheet_id)) next.delete(key);
+      for (const c of bySheet.flat()) next.set(cellKey(c.sheet_id, c.row, c.col), c);
+      snapshotRef.current = next;
+      overlayRef.current = retireOverlay(overlayRef.current, next);
+    }
+    if (fetchedSheets) setSheets(fetchedSheets.sort((a, b) => a.position - b.position));
+    if (fetchedMembers) setMembers(fetchedMembers);
+    deriveAndSet();
+  }, [client, deriveAndSet]);
+
+  // Events are coalesced for a moment and read in one round; one round runs
+  // at a time, and whatever arrives meanwhile is merged into the next.
+  const pendingPlan = useRef<RefreshPlan | null>(null);
+  const planTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const planRunning = useRef(false);
+  const runPlan = useCallback(async () => {
+    planTimer.current = null;
+    if (planRunning.current) return;
+    const plan = pendingPlan.current;
+    pendingPlan.current = null;
+    if (!plan || isNoop(plan)) return;
+    planRunning.current = true;
+    try {
+      if (plan.full) await refresh();
+      else await applyPlan(plan).catch(() => refresh());
+    } finally {
+      planRunning.current = false;
+      if (pendingPlan.current && !planTimer.current) {
+        planTimer.current = setTimeout(() => void runPlan(), 0);
+      }
+    }
+  }, [refresh, applyPlan]);
+  const schedule = useCallback((plan: RefreshPlan | null) => {
+    pendingPlan.current = mergePlans(pendingPlan.current, plan);
+    if (pendingPlan.current && !planTimer.current) {
+      planTimer.current = setTimeout(() => void runPlan(), EVENT_COALESCE_MS);
+    }
+  }, [runPlan]);
+  useEffect(() => () => {
+    if (planTimer.current) clearTimeout(planTimer.current);
+    planTimer.current = null;
+    pendingPlan.current = null;
+  }, [client]);
+
+  useSubscription(contextId ? [contextId] : [], (event) => schedule(planFor(event)));
   // …and after the stream reconnects: nothing replays what changed while it was down.
-  useStreamReconnect(() => { void refresh(); });
+  useStreamReconnect(() => schedule({ full: true }));
 
   // ── Mutations ─────────────────────────────────────────────────────────────
 
