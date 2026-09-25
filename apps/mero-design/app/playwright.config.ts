@@ -49,16 +49,6 @@ export default defineConfig({
       testMatch: "**/perf/**/*.spec.ts",
       fullyParallel: false,
     },
-    {
-      // Writes the landing page's screenshots and demo clip into public/landing.
-      // Asserts nothing, so it never runs in CI: `pnpm landing:media` by hand.
-      name: "media",
-      use: { ...devices["Desktop Chrome"] },
-      testMatch: "**/media/**/*.spec.ts",
-      // One at a time: the clips hold each chapter to a fixed length, and two
-      // recordings sharing a machine slow each other past it.
-      fullyParallel: false,
-    },
   ],
 
   webServer: {
