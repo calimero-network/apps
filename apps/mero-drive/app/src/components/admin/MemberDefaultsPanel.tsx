@@ -26,6 +26,7 @@ import {
   useSetDefaultCapabilities,
 } from '@calimero-network/mero-react';
 import { Button } from '@/components/ui/button';
+import { useConfirm } from '@/components/ui/confirm-dialog';
 import {
   CAPABILITIES,
   DEFAULT_NEW_MEMBER_CAPS,
@@ -94,6 +95,7 @@ export function MemberDefaultsPanel() {
     useSetDefaultCapabilities();
   const { mero } = useMero();
   const membership = useFolderMembership(rootGroupId);
+  const confirm = useConfirm();
   const [applying, setApplying] = useState(false);
   const [applyResult, setApplyResult] = useState<string | null>(null);
   const [applyError, setApplyError] = useState<string | null>(null);
@@ -200,6 +202,14 @@ export function MemberDefaultsPanel() {
 
   const onApplyToExisting = async () => {
     if (!mero || !rootGroupId) return;
+    const count = sweep.apply.length;
+    const ok = await confirm({
+      title: 'Apply to existing members?',
+      body: `${count} member${count === 1 ? '' : 's'} will have their permissions replaced by these defaults. Anyone with extra permissions loses them.`,
+      confirmLabel: 'Apply',
+      destructive: true,
+    });
+    if (!ok) return;
     setApplyError(null);
     setApplyResult(null);
     setApplying(true);
