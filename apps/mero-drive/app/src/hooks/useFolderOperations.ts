@@ -8,15 +8,8 @@
 // inheritance natively now, so we don't need to enumerate namespace
 // members and add them to each new folder.
 //
-// Most mutations go through mero-react hooks so the underlying admin
-// client is the same MeroJs instance everything else uses. The group
-// metadata (rename) and member-add calls go straight through
-// `mero.admin` instead: mero-react's `useSetGroupMetadata` /
-// `useAddGroupMembers` swallow a failed call to `null` (their own
-// `useAsyncMutation` wrapper catches and only exposes it via a
-// separately-rendered `error` state), so a network failure never
-// reaches this hook's callers. The raw admin client throws the real
-// server error straight through.
+// Mutations go through mero-react hooks, except rename and member adds: those
+// hooks resolve a failed call to null, so they call `mero.admin`, which throws.
 
 import { useCallback } from 'react';
 import {

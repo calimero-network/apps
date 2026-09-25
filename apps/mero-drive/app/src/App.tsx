@@ -140,10 +140,7 @@ function CatchAllRedirect() {
   return <Navigate to={search ? `/${search}` : '/'} replace />;
 }
 
-// Sonner's own default colours are light/dark-only and don't follow the
-// app's theme tokens, so every colour is forced with Tailwind's `!important`
-// modifier — sonner's built-in rules are otherwise more specific than a
-// plain utility class and would win.
+// `!` is needed: sonner's own colour rules outrank plain utility classes.
 function AppToaster() {
   const { theme } = useTheme();
   return (
