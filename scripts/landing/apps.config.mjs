@@ -133,7 +133,7 @@ export const APPS = {
     displayName: 'Mero Design',
     e2eDir: 'e2e',
     availability: 'web+desktop',
-    trust: ['Infinite canvas', 'Real-time sync', 'Files on your nodes'],
+    trust: ['Live collaboration', 'Infinite canvas', 'Files on your nodes'],
     explainer: [
       'A collaborative design tool in the shape of Figma — an infinite canvas with shapes, text and images that several people can work on at once. The difference is where the file lives: in a Calimero context on your infrastructure, shared only with the teammates you invite.',
       'There is no central server holding your designs, which means no vendor with a copy, no seat-based access model, and nothing to migrate off if you change your mind.',
@@ -144,8 +144,103 @@ export const APPS = {
       { icon: 'CloudUpload', title: 'Images and SVGs', body: 'Dropped straight onto the canvas and stored as blobs on your node, not on a CDN.' },
       { icon: 'FileText', title: 'Text with font controls', body: 'Real text elements with family, size and weight, not shapes that happen to look like words.' },
       { icon: 'Download', title: 'Export to PNG or SVG', body: 'Your work leaves in a format anything can open. No lock-in on the way out.' },
-      { icon: 'Refresh', title: 'Real-time sync', body: 'Changes stream to every member over SSE. No central server arbitrating who edited what.' },
+      { icon: 'Refresh', title: 'Live collaboration', body: 'See teammates’ cursors, notes and edits the moment they make them. Changes sync peer to peer, with no central server deciding who edited what.' },
     ],
+    overview: {
+      // Same line calimero.network uses for design, so the two pages agree.
+      headline: 'Your canvas. Your pixels. Your nodes.',
+      // Recorded from the real app by `pnpm landing:media` in apps/mero-design/app.
+      // The chapter times match CHAPTERS in e2e/media/capture-landing-media.spec.ts.
+      showcase: {
+        heading: 'From a note to a new design, together',
+        sub: 'Recorded from the real editor on the bundled Web design starter — nothing staged, nothing mocked up.',
+        video: {
+          src: '/landing/demo.webm',
+          poster: '/landing/demo-poster.jpg',
+          chapters: [
+            { at: 0, title: 'Open a board', body: 'The design is on your node, and Ada from your team is already in it.' },
+            { at: 3, title: 'Leave a note', body: 'Drop a sticky note where the feedback belongs.' },
+            { at: 9, title: 'Point at it', body: 'Draw an arrow — it docks to the button it is about.' },
+            { at: 14, title: 'Ada changes it, live', body: 'Her cursor comes over and the button turns green on your screen. No refresh, no server in the middle.' },
+            { at: 19, title: 'Present it', body: 'Hit Present. Ada’s change is already in the slide.' },
+          ],
+        },
+      },
+      comparison: {
+        heading: 'The design tool, without the landlord',
+        sub: 'Everything you expect from a collaborative canvas. The difference is who holds the file.',
+        themLabel: 'A typical cloud design tool',
+        rows: [
+          { label: 'Where the file lives', them: 'On the vendor’s servers', us: 'On your node, and the nodes of the people you invite' },
+          { label: 'Who can read it', them: 'The vendor, and whoever it grants access', us: 'Only members of the board’s namespace' },
+          { label: 'Adding a collaborator', them: 'Another seat on the monthly bill', us: 'An invite. The app is open source and free' },
+          { label: 'Working offline', them: 'Usually needs a connection', us: 'Full editing; changes merge when you reconnect' },
+          { label: 'If the vendor goes away', them: 'Your files may go with it', us: 'Your node still has every board' },
+        ],
+      },
+      collaboration: {
+        heading: 'Live collaboration, with no server in the middle',
+        sub: 'Everyone on a board sees each other’s cursors and edits as they happen, and two people can change it at the same moment without either losing work — because of how a board is stored.',
+        points: [
+          { title: 'Every element is its own record', body: 'Two people editing different shapes never queue behind each other.' },
+          { title: 'Every property is its own value', body: 'One person moves a shape while another recolours it, and both changes land.' },
+          { title: 'Presence stays out of the file', body: 'Cursors travel separately, so they can never rewrite the artwork.' },
+          { title: 'Offline is a normal state', body: 'Keep drawing with no network. Your node merges the changes when it reaches a peer again.' },
+        ],
+        roles: [
+          { name: 'Owner', can: 'Names the board, grants and revokes roles, and can hand ownership on.' },
+          { name: 'Editor', can: 'Draws, moves and edits elements, and comments.' },
+          { name: 'Viewer', can: 'Follows the board live without changing it.' },
+        ],
+        rolesNote: 'Permissions are checked when changes merge, not only hidden in the interface — a rename from a non-owner is refused, wherever it came from.',
+      },
+      audiences: {
+        heading: 'Made for teams whose designs are nobody else’s business',
+        items: [
+          {
+            label: 'Product teams',
+            title: 'Design the roadmap without handing it to a vendor',
+            body: 'Unreleased screens and flows stay on your team’s own nodes until the day you ship them.',
+            uses: ['UI screens', 'Design systems', 'HTML handoff'],
+          },
+          {
+            label: 'Agencies & freelancers',
+            title: 'Client work that stays between you and the client',
+            body: 'Invite the client straight into the board: no extra seat to pay for, and nothing on a third party’s cloud.',
+            uses: ['Client reviews', 'Sticky-note feedback', 'Presenting from the board'],
+          },
+          {
+            label: 'Regulated & public sector',
+            title: 'Live collaboration on infrastructure you already control',
+            body: 'For finance, health and government work that cannot leave your own servers, without giving up working together in real time.',
+            uses: ['Self-hosted nodes', 'Owner, editor and viewer roles', 'Works offline'],
+          },
+          {
+            label: 'Open-source communities',
+            title: 'A design space the community owns',
+            body: 'No seats and no vendor terms that can change under you. If the tool is missing something, fork it and add it.',
+            uses: ['Free for everyone', 'MIT licensed', 'Fork and customise'],
+          },
+        ],
+      },
+      openSource: {
+        license: 'MIT',
+        // Checked against apps/mero-design/Makefile: `make dev` is the whole stack
+        // (two nodes, invite, then the app), not the frontend alone.
+        commands: [
+          '# fork calimero-network/apps on GitHub, then',
+          'git clone https://github.com/<you>/apps',
+          'cd apps/apps/mero-design',
+          'make setup   # check tools, build, install',
+          'make dev     # 2 local nodes + app on :5173',
+        ],
+      },
+      alwaysOn: true,
+      closing: {
+        title: 'Start your first board',
+        body: 'Connect a node, or install the desktop app that bundles one, then invite the people you design with.',
+      },
+    },
   },
 
   'mero-drive': {
@@ -250,19 +345,110 @@ export const APPS = {
     // same key so the choice carries through sign-in instead of resetting.
     themeStorageKey: 'app:theme',
     availability: 'web+desktop',
-    trust: ['Live cursors', 'Formulas recompute for all peers', 'Sheet on your node'],
+    trust: ['Live collaboration', 'Formulas recompute for all peers', 'Sheet on your node'],
     explainer: [
       'A collaborative spreadsheet where you can see everyone’s cursor and nobody can see your data except the people you invited. The sheet lives in a Calimero context on your own node.',
       'Formulas are stored raw and re-evaluated for every peer whenever a cell they reference changes, so nobody is looking at a stale total — which is the failure that makes shared spreadsheets untrustworthy in the first place.',
     ],
     features: [
       { icon: 'Lock', title: 'Truly private sheets', body: 'The data lives in a context you control. It never passes through a central server.' },
-      { icon: 'Zap', title: 'Live cursors', body: 'Every collaborator in their own colour, so you can see who is about to overwrite what.' },
+      { icon: 'Zap', title: 'Live collaboration', body: 'Every collaborator’s cursor in their own colour, and their edits on your screen as they make them.' },
       { icon: 'BarChart', title: 'Formulas that always compute', body: 'SUM, AVERAGE, MIN, MAX, COUNT and IF, re-evaluated per peer whenever a referenced cell changes.' },
       { icon: 'Table', title: 'Multiple sheet tabs', body: 'Split a workbook the way you would expect, with tabs that sync like everything else.' },
       { icon: 'FileText', title: 'Formula autocomplete', body: 'With a built-in function reference, so you do not have to remember the argument order.' },
       { icon: 'Download', title: 'Download your data', body: 'Export whenever you want. Nothing here is designed to keep your numbers hostage.' },
     ],
+    overview: {
+      headline: 'The spreadsheet your team actually owns.',
+      // Recorded from the real app on a real node by `pnpm landing:media` in
+      // apps/mero-sheets/app. The chapter times match CHAPTERS in
+      // e2e/media/capture-landing-media.spec.ts.
+      showcase: {
+        heading: 'A budget, filled in together',
+        sub: 'Recorded from the real app, running on a real node — the totals are the app’s own formula engine at work.',
+        video: {
+          src: '/landing/demo.webm',
+          poster: '/landing/demo-poster.jpg',
+          chapters: [
+            { at: 0, title: 'Open a workbook', body: 'A Q3 budget on your node, with Ada from your team already in it.' },
+            { at: 3, title: 'Type a number', body: 'Fill in a cell and every total that reads it recomputes.' },
+            { at: 8, title: 'Write a formula', body: 'Start typing =AV and autocomplete offers AVERAGE, with its arguments.' },
+            { at: 14.5, title: 'Ada edits, live', body: 'Her cursor walks up to Wages, her number lands, and the totals update on your screen.' },
+          ],
+        },
+      },
+      comparison: {
+        heading: 'A spreadsheet, without the landlord',
+        sub: 'Everything you expect from a shared spreadsheet. The difference is who holds the numbers.',
+        themLabel: 'A typical cloud spreadsheet',
+        rows: [
+          { label: 'Where the sheet lives', them: 'On the vendor’s servers', us: 'On your node, and the nodes of the people you invite' },
+          { label: 'Who can read it', them: 'The vendor, and whoever it grants access', us: 'Only members of the workbook’s namespace' },
+          { label: 'Adding a collaborator', them: 'Another seat on the monthly bill', us: 'An invite. The app is open source and free' },
+          { label: 'Formulas', them: 'Computed on their servers', us: 'Stored raw and recomputed on every peer, so nobody sees a stale total' },
+          { label: 'If the vendor goes away', them: 'Your data may go with it', us: 'Your node still has every workbook, and you can download it any time' },
+        ],
+      },
+      collaboration: {
+        heading: 'Live collaboration, cell by cell',
+        sub: 'Everyone in a workbook sees each other’s cursors and edits as they happen, and two people can work in it at the same moment without either losing work — because of how a sheet is stored.',
+        points: [
+          { title: 'Every cell is its own record', body: 'Two people typing in different cells never queue behind each other.' },
+          { title: 'Value, formula and format are separate', body: 'Formatting a cell never fights with someone typing in it.' },
+          { title: 'Formulas recompute on every peer', body: 'Change a number and every total that reads it updates on everyone’s screen, from the raw formula.' },
+          { title: 'Cursors in colour', body: 'See who is where, in their own colour. Presence is kept out of the data.' },
+        ],
+      },
+      audiences: {
+        heading: 'Made for numbers that are nobody else’s business',
+        items: [
+          {
+            label: 'Finance & operations',
+            title: 'Budgets and forecasts that never leave your nodes',
+            body: 'Plan the quarter together, live, without the figures sitting on a third party’s servers.',
+            uses: ['Budgets', 'Forecasts', 'CSV export'],
+          },
+          {
+            label: 'Founders & small teams',
+            title: 'Metrics and cap tables, shared only with who you choose',
+            body: 'Invite a co-founder, an accountant or an investor into one workbook, and nobody else.',
+            uses: ['KPI trackers', 'Cap tables', 'Multiple sheet tabs'],
+          },
+          {
+            label: 'Research & classrooms',
+            title: 'Collect data together, in the same sheet, at the same time',
+            body: 'Everyone types into their own rows while the totals update for the whole group.',
+            uses: ['Shared data entry', 'Live cursors', 'SUM, AVERAGE, COUNT'],
+          },
+          {
+            label: 'Regulated & public sector',
+            title: 'Live collaboration on infrastructure you already control',
+            body: 'For finance, health and government data that cannot leave your own servers, without giving up working together in real time.',
+            uses: ['Self-hosted nodes', 'Works offline', 'No third-party cloud'],
+          },
+        ],
+      },
+      openSource: {
+        // The workspace licence logic/Cargo.toml inherits (the app README still
+        // says TBD). Commands run and checked: without the app's wasm-rustflags
+        // the build fails in wasm-opt on `i64.trunc_sat_f64_s` (see ci.yml);
+        // the dev server uses the app's own vite port.
+        license: 'MIT or Apache-2.0',
+        commands: [
+          '# fork calimero-network/apps on GitHub, then',
+          'git clone https://github.com/<you>/apps',
+          'cd apps && pnpm install',
+          'export RUSTFLAGS="$(cat apps/mero-sheets/logic/wasm-rustflags)"',
+          'cargo mero build -p mero-sheets',
+          'pnpm -F mero-sheets dev   # app on :5185',
+        ],
+      },
+      alwaysOn: true,
+      closing: {
+        title: 'Start your first workbook',
+        body: 'Connect a node, or install the desktop app that bundles one, then invite the people you work with.',
+      },
+    },
   },
 
   'mero-sign': {

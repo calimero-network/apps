@@ -25,6 +25,8 @@ export interface Board {
   calledWith(method: string): RpcCall[];
   /** Replaces what `get_elements` will return on the next fetch. */
   setElements(next: Element[]): void;
+  /** The node's element state right now, including every edit the page made. */
+  elementsNow(): Element[];
   /** Bodies of every blob upload, in order — what a flatten writes out. */
   blobUploads: string[];
 }
@@ -61,6 +63,10 @@ export interface BoardOptions {
    * older bundle: `{ set_layer_index: "Method not found" }`.
    */
   failMethods?: Record<string, string>;
+  /** Everyone on the board. Defaults to just `TEST_MEMBER`. */
+  members?: { id: string; username: string; avatar: string | null; joinedAt: number }[];
+  /** Other members' cursors, in screen pixels. Read on every poll, so `updatedAt` can stay fresh. */
+  cursors?: () => { identity: string; x: number; y: number; updatedAt: number }[];
 }
 
 export async function openBoard(page: Page, opts: BoardOptions = {}): Promise<Board> {
@@ -161,9 +167,15 @@ export async function openBoard(page: Page, opts: BoardOptions = {}): Promise<Bo
     let value: unknown;
     switch (method) {
       case "get_elements": value = state.elements; break;
+      // What the app re-reads when an ElementAdded / ElementUpdated event arrives.
+      case "get_element": {
+        const id = (body?.params?.argsJson as { id?: string })?.id;
+        value = state.elements.find((e) => e.id === id) ?? null;
+        break;
+      }
       case "get_comments": value = state.comments; break;
-      case "get_members": value = [TEST_MEMBER]; break;
-      case "get_cursors": value = []; break;
+      case "get_members": value = opts.members ?? [TEST_MEMBER]; break;
+      case "get_cursors": value = opts.cursors?.() ?? []; break;
       case "get_board":
         value = { name: "Test board", description: "", elementCount: state.elements.length, memberCount: 1 };
         break;
@@ -276,6 +288,7 @@ export async function openBoard(page: Page, opts: BoardOptions = {}): Promise<Bo
     setElements: (next: Element[]) => {
       state.elements = next;
     },
+    elementsNow: () => state.elements,
     blobUploads,
   };
 }

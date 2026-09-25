@@ -53,6 +53,7 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "landing:media": "NODE_COUNT=1 playwright test -c playwright.media.config.ts"
   }
 }

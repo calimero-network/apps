@@ -140,6 +140,51 @@ const HAD_LOGIN_PAGE = new Set([
   'mero-issue-tracker', 'mero-pass', 'mero-pixart', 'mero-sheets',
 ]);
 
+/** Assertions for the optional overview sections — only the ones this app configured. */
+function renderOverviewSpec(o) {
+  const media = o.showcase ? [o.showcase.video.src, o.showcase.video.poster] : [];
+  const ids = [
+    o.showcase && 'showcase',
+    o.comparison && 'compare',
+    o.collaboration && 'together',
+    o.audiences && 'who',
+    o.openSource && 'open-source',
+    o.alwaysOn && 'always-on',
+    o.closing && 'start',
+  ].filter(Boolean);
+  return `
+  // ── Overview extras ─────────────────────────────────────────────────────
+  test('the overview carries its extra sections', async ({ page }) => {
+${o.headline ? `    await expect(page.locator('.cal-lp-headline')).toHaveText(${q(o.headline)});\n` : ''}    for (const id of ${JSON.stringify(ids)}) {
+      await expect(page.locator(\`#\${id}\`)).toBeVisible();
+    }
+${o.comparison ? `    await expect(page.locator('.cal-lp-cmprow:not(.cal-lp-cmprow--head)')).toHaveCount(${o.comparison.rows.length});\n` : ''}${o.showcase ? `    await expect(page.locator('#showcase .cal-lp-chapter')).toHaveCount(${o.showcase.video.chapters.length});\n` : ''}${o.openSource ? `    await expect(page.locator('#open-source a[href="https://github.com/calimero-network/apps/fork"]')).toBeVisible();\n` : ''}${o.audiences ? `    await expect(page.locator('.cal-lp-persona')).toHaveCount(${o.audiences.items.length});\n` : ''}${o.alwaysOn ? `    await expect(page.locator('#always-on a[href="https://cloud.calimero.network/pricing"]')).toBeVisible();\n` : ''}  });
+${media.length ? `
+  test('every showcase file is actually served', async ({ page }) => {
+    // A renamed capture is a broken image on the front page, and nothing else
+    // would notice.
+    for (const src of ${JSON.stringify(media)}) {
+      const res = await page.request.get(src);
+      expect(res.ok(), src).toBe(true);
+    }
+  });
+` : ''}${o.showcase ? `
+  test('a showcase chapter seeks the clip and becomes the current one', async ({ page }) => {
+    const last = page.locator('#showcase .cal-lp-chapter').last();
+    await last.click();
+    await expect(last).toHaveAttribute('aria-current', 'step');
+    const t = await page.locator('#showcase video').evaluate((v) => (v as HTMLVideoElement).currentTime);
+    expect(t).toBeGreaterThanOrEqual(${o.showcase.video.chapters.at(-1).at});
+  });
+` : ''}${o.closing ? `
+  test('the closing call to action replaces the low desktop band', async ({ page }) => {
+    await expect(page.locator('#start').locator('button').filter({ hasText: /^Connect to node$/ })).toBeVisible();
+    await expect(page.locator('.cal-lp-band')).toHaveCount(0);
+  });
+` : ''}
+`;
+}
+
 function renderSpec(app, entry, meta) {
   meta = { ...meta, name: entry.displayName ?? meta.name };
   const desktopOnly = entry.availability === 'desktop';
@@ -354,7 +399,7 @@ ${usesPopup ? `
   });
 ` : ''}
 `}
-  test('offers the desktop download', async ({ page }) => {
+${entry.overview ? renderOverviewSpec(entry.overview) : ''}  test('offers the desktop download', async ({ page }) => {
     await expect(
       page.locator('a[href="https://calimero.network/download"]').first(),
     ).toBeVisible();
@@ -428,6 +473,77 @@ ${usesPopup ? `
 `;
 }
 
+/** The optional `overview` block, as config lines. */
+function renderOverview(o) {
+  const lines = ['  overview: {'];
+  if (o.headline) lines.push(`    headline: ${q(o.headline)},`);
+  if (o.showcase) {
+    const sc = o.showcase;
+    lines.push('    showcase: {');
+    lines.push(`      heading: ${q(sc.heading)},`);
+    if (sc.sub) lines.push(`      sub: ${q(sc.sub)},`);
+    lines.push('      video: {');
+    lines.push(`        src: ${q(sc.video.src)},`);
+    lines.push(`        poster: ${q(sc.video.poster)},`);
+    lines.push('        chapters: [');
+    for (const c of sc.video.chapters) lines.push(`          { at: ${c.at}, title: ${q(c.title)}, body: ${q(c.body)} },`);
+    lines.push('        ],');
+    lines.push('      },');
+    lines.push('    },');
+  }
+  if (o.comparison) {
+    const c = o.comparison;
+    lines.push('    comparison: {');
+    lines.push(`      heading: ${q(c.heading)},`);
+    if (c.sub) lines.push(`      sub: ${q(c.sub)},`);
+    lines.push(`      themLabel: ${q(c.themLabel)},`);
+    lines.push('      rows: [');
+    for (const r of c.rows) lines.push(`        { label: ${q(r.label)}, them: ${q(r.them)}, us: ${q(r.us)} },`);
+    lines.push('      ],');
+    lines.push('    },');
+  }
+  if (o.collaboration) {
+    const c = o.collaboration;
+    lines.push('    collaboration: {');
+    lines.push(`      heading: ${q(c.heading)},`);
+    if (c.sub) lines.push(`      sub: ${q(c.sub)},`);
+    lines.push('      points: [');
+    for (const p of c.points) lines.push(`        { title: ${q(p.title)}, body: ${q(p.body)} },`);
+    lines.push('      ],');
+    if (c.roles?.length) {
+      lines.push('      roles: [');
+      for (const r of c.roles) lines.push(`        { name: ${q(r.name)}, can: ${q(r.can)} },`);
+      lines.push('      ],');
+    }
+    if (c.rolesNote) lines.push(`      rolesNote: ${q(c.rolesNote)},`);
+    lines.push('    },');
+  }
+  if (o.audiences) {
+    lines.push('    audiences: {');
+    lines.push(`      heading: ${q(o.audiences.heading)},`);
+    lines.push('      items: [');
+    for (const a of o.audiences.items) {
+      lines.push(`        { label: ${q(a.label)}, title: ${q(a.title)}, body: ${q(a.body)}, uses: [${a.uses.map(q).join(', ')}] },`);
+    }
+    lines.push('      ],');
+    lines.push('    },');
+  }
+  if (o.openSource) {
+    lines.push('    openSource: {');
+    lines.push(`      license: ${q(o.openSource.license)},`);
+    lines.push('      commands: [');
+    for (const c of o.openSource.commands) lines.push(`        ${q(c)},`);
+    lines.push('      ],');
+    lines.push('    },');
+  }
+  if (o.alwaysOn) lines.push('    alwaysOn: true,');
+  if (o.closing) {
+    lines.push(`    closing: { title: ${q(o.closing.title)}, body: ${q(o.closing.body)} },`);
+  }
+  lines.push('  },');
+  return lines;
+}
+
 function renderConfig(app, entry, meta) {
   // Presentation-only override. The registry metadata stays exactly as
   // published — this changes the heading on the web page and nothing else.
@@ -481,6 +597,7 @@ function renderConfig(app, entry, meta) {
     lines.push('    },');
   }
   lines.push('  ],');
+  if (entry.overview) lines.push(...renderOverview(entry.overview));
   if (entry.faq?.length) {
     lines.push('  faq: [');
     for (const f of entry.faq) {

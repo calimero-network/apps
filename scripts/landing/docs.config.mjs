@@ -268,10 +268,11 @@ export const DOCS = {
       },
     ],
     previewSteps: [
-      { title: 'A board with tools', body: 'Frames, shapes and text, each stored as its own record rather than one blob.' },
-      { title: 'Two people editing', body: 'Separate elements mean separate records, so concurrent edits merge instead of overwriting.' },
-      { title: 'Properties change live', body: 'Every mutable field is its own register — moving a shape does not conflict with recolouring it.' },
-      { title: 'Cursors alongside', body: 'Presence rides separately from the document, so it can never rewrite the artwork.' },
+      // Beats of the recorded hero loop (public/landing/hero.webm), in order.
+      { title: 'Two people, one board', body: 'You and Ada have the same sign-in screen open, each from your own node.' },
+      { title: 'Her note lands live', body: 'Ada leaves a sticky note by the headline, and it appears on your canvas as she makes it.' },
+      { title: 'You change the design', body: 'At the same moment you recolour the Sign in button. Neither of you waits for the other.' },
+      { title: 'She sees it too', body: 'Ada’s cursor comes over to the button. Edits to different things merge instead of colliding.' },
     ],
   },
 
@@ -640,10 +641,11 @@ export const DOCS = {
       },
     ],
     previewSteps: [
-      { title: 'A filled grid', body: 'Cells are individual records keyed by sheet and coordinate — not one document blob.' },
-      { title: 'Two cursors', body: 'Every collaborator in their own colour, carried as presence beside the data.' },
-      { title: 'A formula recalculates', body: 'The formula is stored raw. Each peer re-evaluates it, so nobody sees a total computed somewhere else.' },
-      { title: 'Edits merge', body: 'Different cells never contend; the same cell converges on the later write.' },
+      // Beats of the recorded hero loop (public/landing/hero.webm), in order.
+      { title: 'Two people, one workbook', body: 'You and Ada have the same Q3 budget open. Her cursor is on Travel.' },
+      { title: 'You fill in a number', body: 'You type Travel for Q2, and its row and column totals recompute.' },
+      { title: 'She edits at the same time', body: 'Ada walks up to Wages and changes Q3 while you type. Neither waits for the other.' },
+      { title: 'Every total agrees', body: 'Formulas are stored raw and recomputed from the latest cells, so both totals reflect both edits.' },
     ],
   },
 

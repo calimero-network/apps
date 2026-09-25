@@ -1,28 +1,30 @@
+import { useId } from "react";
+
 interface Props {
   size?: number;
-  color?: string;
 }
 
-export default function Logo({ size = 28, color = "#111" }: Props) {
+/**
+ * The app mark: a lime vector path between two anchor points, in the Calimero
+ * palette. Same geometry as public/favicon.svg and scripts/gen-icons.mjs, so the
+ * toolbar, the browser tab and the desktop icon are one picture.
+ */
+export default function Logo({ size = 28 }: Props) {
+  // Several logos can be on one page; a shared gradient id would make them all
+  // paint with whichever definition the browser found first.
+  const gradient = useId();
   return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 32 32"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-label="Mero Design"
-    >
-      {/* Two overlapping offset squares — design/layers motif */}
-      <rect x="3" y="9" width="16" height="16" rx="2.5" fill={color} opacity="0.18" />
-      <rect x="9" y="5" width="16" height="16" rx="2.5" stroke={color} strokeWidth="2" fill="none" />
-      {/* Pen nib accent */}
-      <path
-        d="M20 19 L26 25 L23.5 27.5 L17.5 21.5 Z"
-        fill={color}
-        opacity="0.7"
-      />
-      <circle cx="21" cy="20" r="1.5" fill={color} />
+    <svg width={size} height={size} viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-label="Mero Design">
+      <defs>
+        <linearGradient id={gradient} x1="14" y1="48" x2="50" y2="16" gradientUnits="userSpaceOnUse">
+          <stop offset="0" stopColor="#93e60c" />
+          <stop offset="1" stopColor="#b6ff5e" />
+        </linearGradient>
+      </defs>
+      <rect width="64" height="64" rx="14" fill="#0e140f" />
+      <path d="M14 48 C 20 20, 40 44, 50 16" fill="none" stroke={`url(#${gradient})`} strokeWidth="6" strokeLinecap="round" />
+      <rect x="9" y="43" width="10" height="10" rx="2.5" fill="#f5f8f1" />
+      <rect x="45" y="11" width="10" height="10" rx="2.5" fill="#f5f8f1" />
     </svg>
   );
 }
