@@ -204,13 +204,14 @@ export const APPS = {
         ],
       },
       openSource: {
+        // Checked against apps/mero-design/Makefile: `make dev` is the whole stack
+        // (two nodes, invite, then the app), not the frontend alone.
         commands: [
           '# fork calimero-network/apps on GitHub, then',
           'git clone https://github.com/<you>/apps',
           'cd apps/apps/mero-design',
-          'make setup      # build it',
-          'make dev-node   # run a local node',
-          'make dev        # localhost:5173',
+          'make setup   # check tools, build, install',
+          'make dev     # 2 local nodes + app on :5173',
         ],
       },
       alwaysOn: true,
