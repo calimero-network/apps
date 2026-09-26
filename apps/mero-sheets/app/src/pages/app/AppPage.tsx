@@ -1116,6 +1116,11 @@ export default function AppPage() {
       : '') ?? '';
 
   // ── Download ────────────────────────────────────────────────────
+  /** A file name from the spreadsheet's name, safe for any file system. */
+  const workbookName = ss.project?.name;
+  const fileTitle = useCallback(() => (workbookName?.trim() || APP_DISPLAY_NAME)
+    .replace(/[\\/:*?"<>|]/g, '').replace(/\s+/g, '-').toLowerCase(), [workbookName]);
+
   const handleDownload = useCallback(async () => {
     // Fetch every sheet's cells on demand — resident `cells` holds only the
     // active sheet, so a full snapshot must be pulled at export time.
@@ -1135,11 +1140,7 @@ export default function AppPage() {
     a.download = `${fileTitle()}.csv`;
     a.click();
     URL.revokeObjectURL(url);
-  }, [ss]);
-
-  /** A file name from the spreadsheet's name, safe for any file system. */
-  const fileTitle = () => (ss.project?.name?.trim() || APP_DISPLAY_NAME)
-    .replace(/[\\/:*?"<>|]/g, '').replace(/\s+/g, '-').toLowerCase();
+  }, [ss, fileTitle]);
 
   // Every shared sheet, formulas with sheet names, for Excel.
   const handleDownloadXlsx = useCallback(async () => {
@@ -1158,8 +1159,7 @@ export default function AppPage() {
     a.download = `${fileTitle()}.xlsx`;
     a.click();
     URL.revokeObjectURL(url);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ss, idToName]);
+  }, [ss, idToName, fileTitle]);
 
   // An .xlsx (every sheet) or a CSV/TSV (one sheet) becomes new sheets.
   const handleImport = useCallback(async (file: File) => {
