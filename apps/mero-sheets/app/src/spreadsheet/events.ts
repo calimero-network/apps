@@ -11,7 +11,7 @@
 /** A decided plan: either everything, or exactly these parts. */
 export type RefreshPlan =
   | { full: true }
-  | { full: false; sheets: Set<string>; sheetList: boolean; members: boolean; layouts: boolean; names: boolean; comments: boolean; notes: boolean; protections: boolean; views: boolean; styles: boolean; rules: boolean; charts: boolean; attachments: boolean };
+  | { full: false; sheets: Set<string>; sheetList: boolean; members: boolean; layouts: boolean; names: boolean; comments: boolean; notes: boolean; protections: boolean; views: boolean; styles: boolean; rules: boolean; charts: boolean; attachments: boolean; publications: boolean };
 
 const empty = (): Extract<RefreshPlan, { full: false }> => ({
   full: false,
@@ -28,6 +28,7 @@ const empty = (): Extract<RefreshPlan, { full: false }> => ({
   rules: false,
   charts: false,
   attachments: false,
+  publications: false,
 });
 
 const FULL: RefreshPlan = { full: true };
@@ -141,6 +142,20 @@ export function planFor(event: NodeEvent): RefreshPlan | null {
       case 'AttachmentsChanged':
         plan.attachments = true;
         break;
+      case 'PublicationsChanged':
+        plan.publications = true;
+        break;
+      // A linked sheet arrived, changed or went: the tabs, and its values.
+      case 'LinkedChanged': {
+        const sheet = p?.sheet_id;
+        if (typeof sheet !== 'string') return FULL;
+        plan.sheetList = true;
+        plan.sheets.add(sheet);
+        break;
+      }
+      // Tells people something; changes nothing to read.
+      case 'AlertTriggered':
+        break;
       default:
         return FULL;
     }
@@ -168,12 +183,13 @@ export function mergePlans(a: RefreshPlan | null, b: RefreshPlan | null): Refres
     rules: a.rules || b.rules,
     charts: a.charts || b.charts,
     attachments: a.attachments || b.attachments,
+    publications: a.publications || b.publications,
   };
 }
 
 /** True when a plan reads nothing (every event was a no-op). */
 export function isNoop(plan: RefreshPlan): boolean {
-  return !plan.full && plan.sheets.size === 0 && !plan.sheetList && !plan.members && !plan.layouts && !plan.names && !plan.comments && !plan.notes && !plan.protections && !plan.views && !plan.styles && !plan.rules && !plan.charts && !plan.attachments;
+  return !plan.full && plan.sheets.size === 0 && !plan.sheetList && !plan.members && !plan.layouts && !plan.names && !plan.comments && !plan.notes && !plan.protections && !plan.views && !plan.styles && !plan.rules && !plan.charts && !plan.attachments && !plan.publications;
 }
 
 /** A comment that names someone: who wrote it, where, and whom it names. */
@@ -197,5 +213,28 @@ export function mentionsIn(event: NodeEvent): Mention[] {
       return [];
     }
     return [{ commentId: id, sheetId: sheet_id, author, mentions: mentions.filter((m): m is string => typeof m === 'string') }];
+  });
+}
+
+/** An alert rule firing: whom it tells, and what. */
+export interface Alert {
+  ruleId: string;
+  sheetId: string;
+  recipients: string[];
+  message: string;
+}
+
+/** The alerts an event carries. */
+export function alertsIn(event: NodeEvent): Alert[] {
+  if (event.type !== 'StateMutation') return [];
+  const events = (event.data as { events?: unknown } | undefined)?.events;
+  if (!Array.isArray(events)) return [];
+  return (events as ExecutionEvent[]).flatMap((e) => {
+    if (e.kind !== 'AlertTriggered') return [];
+    const { rule_id, sheet_id, recipients, message } = payload(e) ?? {};
+    if (typeof rule_id !== 'string' || typeof sheet_id !== 'string' || typeof message !== 'string' || !Array.isArray(recipients)) {
+      return [];
+    }
+    return [{ ruleId: rule_id, sheetId: sheet_id, message, recipients: recipients.filter((r): r is string => typeof r === 'string') }];
   });
 }

@@ -26,11 +26,11 @@ import { useStreamReconnect } from './useStreamReconnect';
 import { SpreadsheetClient } from '../api/spreadsheet/SpreadsheetClient';
 import type {
   Sheet, FunctionDef, Member, Project, NamedRange, SheetLayout, AxisOpPayload, ActivityEntry, Comment,
-  NotedCell, NoteChangePayload, Protection, SheetView, CellStyle, Rule, RuleInput, Chart, Attachment,
+  NotedCell, NoteChangePayload, Protection, SheetView, CellStyle, Rule, RuleInput, Chart, Attachment, Publication,
 } from '../api/spreadsheet/SpreadsheetClient';
 import { AxisOp as AxisOpWire, CellOp as CellOpWire } from '../api/spreadsheet/SpreadsheetClient';
 import { chunkOps, MAX_OPS_PER_APPLY, type CellOp } from '../spreadsheet/ops';
-import { isNoop, mentionsIn, mergePlans, planFor, type Mention, type RefreshPlan } from '../spreadsheet/events';
+import { alertsIn, isNoop, mentionsIn, mergePlans, planFor, type Alert, type Mention, type RefreshPlan } from '../spreadsheet/events';
 import type { NoteOp, Span } from '../spreadsheet/notes';
 import { newAxisId, positionOf, positionsBetween, type AxisEntry } from '../spreadsheet/axis';
 import { applicable, invert, pushBounded, type CellState, type UndoEntry } from '../spreadsheet/undo';
@@ -51,7 +51,7 @@ export type Cell = GridCell;
 export type Axis = 'row' | 'col';
 
 /** What a rule does, without where: `addRule` takes the range. */
-export type RuleSpec = Pick<RuleInput, 'kind' | 'condition' | 'args' | 'style' | 'strict'>;
+export type RuleSpec = Pick<RuleInput, 'kind' | 'condition' | 'args' | 'style' | 'strict' | 'recipients'>;
 
 /** A sheet's frozen panes and resized rows and columns, by position. */
 export interface SheetViewAt {
@@ -71,7 +71,7 @@ type IdOp =
 const EVENT_COALESCE_MS = 60;
 
 // Re-export domain types so components import from one place
-export type { Sheet, FunctionDef, Member, Project, NamedRange, ActivityEntry, Comment, NotedCell, Protection, Rule, RuleInput, Chart, Attachment };
+export type { Sheet, FunctionDef, Member, Project, NamedRange, ActivityEntry, Comment, NotedCell, Protection, Rule, RuleInput, Chart, Attachment, Publication };
 
 // ── Hook interfaces ──────────────────────────────────────────────────────────
 
@@ -169,6 +169,17 @@ export interface UseSpreadsheetReturn {
   /** Add a rule over a range; the rest of `rule` is what it does. */
   addRule: (sheetId: string, rect: Rect, rule: RuleSpec) => Promise<void>;
   removeRule: (id: string) => Promise<void>;
+  /** Ranges this workbook pushes to other workbooks. */
+  publications: Publication[];
+  /** Link a range to another workbook (its context id), shown there as a read-only sheet. */
+  publishRange: (sheetId: string, rect: Rect, targetContext: string, name: string) => Promise<void>;
+  pushPublication: (id: string) => Promise<void>;
+  unpublish: (id: string) => Promise<void>;
+  /** Remove a linked sheet here (later pushes of it are ignored). */
+  unlink: (sheetId: string) => Promise<void>;
+  /** Alerts that name this user, newest last, until dismissed. */
+  alerts: Alert[];
+  dismissAlert: (index: number) => void;
   /** Files attached to cells. */
   attachments: Attachment[];
   /** Upload a file as a blob for this workbook and attach it to a cell. */
@@ -259,6 +270,8 @@ export function useSpreadsheet({
   const [rules, setRules] = useState<Rule[]>([]);
   const [charts, setCharts] = useState<Chart[]>([]);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [publications, setPublications] = useState<Publication[]>([]);
+  const [alerts, setAlerts] = useState<Alert[]>([]);
   // Why the node last refused a write, until dismissed.
   const [writeError, setWriteError] = useState<unknown>(null);
   // Bumps whenever rows or columns move, for anything that maps ids to positions.
@@ -404,7 +417,7 @@ export function useSpreadsheet({
       const [
         fetchedSheets, allCells,
         fetchedMembers, fetchedProject, me, layouts, named, fetchedComments, noted, prots,
-        mine, privateCells, views, fetchedStyles, fetchedRules, fetchedCharts, files,
+        mine, privateCells, views, fetchedStyles, fetchedRules, fetchedCharts, files, pubs,
       ] = await Promise.all([
         client.listSheets(),
         client.getAllCells(),
@@ -423,7 +436,9 @@ export function useSpreadsheet({
         client.getRules(),
         client.getCharts(),
         client.getAttachments(),
+        client.getPublications(),
       ]);
+      setPublications(pubs);
       setCharts(fetchedCharts);
       setAttachments(files);
       setSheetViews(views);
@@ -492,7 +507,7 @@ export function useSpreadsheet({
     // would find it empty and wipe it.
     if (sheetIds.size > 0 && active && !privateIdsRef.current.has(active)) sheetIds.add(active);
     const ids = [...sheetIds];
-    const [bySheet, fetchedSheets, fetchedMembers, layouts, named, fetchedComments, noted, prots, views, fetchedStyles, fetchedRules, fetchedCharts, files] = await Promise.all([
+    const [bySheet, fetchedSheets, fetchedMembers, layouts, named, fetchedComments, noted, prots, views, fetchedStyles, fetchedRules, fetchedCharts, files, pubs] = await Promise.all([
       Promise.all(ids.map((id) => client.getCells({ sheet_id: id }))),
       plan.sheetList ? client.listSheets() : null,
       plan.members ? client.getMembers() : null,
@@ -506,7 +521,9 @@ export function useSpreadsheet({
       plan.rules ? client.getRules() : null,
       plan.charts ? client.getCharts() : null,
       plan.attachments ? client.getAttachments() : null,
+      plan.publications ? client.getPublications() : null,
     ]);
+    if (pubs) setPublications(pubs);
     if (files) setAttachments(files);
     if (fetchedCharts) setCharts(fetchedCharts);
     if (fetchedStyles) setStyles(fetchedStyles);
@@ -569,8 +586,10 @@ export function useSpreadsheet({
     const me = selfIdRef.current;
     const forMe = mentionsIn(event).filter((m) => me && m.author !== me && m.mentions.includes(me));
     if (forMe.length) setMentions((prev) => [...prev, ...forMe.filter((m) => !prev.some((p) => p.commentId === m.commentId))]);
+    const told = alertsIn(event).filter((a) => me && a.recipients.includes(me));
+    if (told.length) setAlerts((prev) => [...prev, ...told]);
   });
-  useEffect(() => { setMentions([]); setComments([]); setNotedCells([]); setProtections([]); setWriteError(null); setPrivateSheets([]); setSheetViews([]); setStyles([]); setRules([]); setCharts([]); setAttachments([]); }, [client]);
+  useEffect(() => { setMentions([]); setComments([]); setNotedCells([]); setProtections([]); setWriteError(null); setPrivateSheets([]); setSheetViews([]); setStyles([]); setRules([]); setCharts([]); setAttachments([]); setPublications([]); setAlerts([]); }, [client]);
   // …and after the stream reconnects: nothing replays what changed while it was down.
   useStreamReconnect(() => schedule({ full: true }));
 
@@ -1156,6 +1175,41 @@ export function useSpreadsheet({
     [client, enqueue],
   );
 
+  const publishRange = useCallback(
+    async (sheetId: string, rect: Rect, targetContext: string, name: string) => {
+      const tl = idsAt(sheetId, rect.top, rect.left);
+      const br = idsAt(sheetId, rect.bottom, rect.right);
+      if (!client || !tl || !br) return;
+      await enqueue(() => client.publishRange({
+        sheet_id: sheetId, top_row_id: tl.row_id, left_col_id: tl.col_id,
+        bottom_row_id: br.row_id, right_col_id: br.col_id, target_context: targetContext, name,
+      }));
+      setPublications(await client.getPublications());
+    },
+    [client, enqueue],
+  );
+  const pushPublication = useCallback(
+    async (id: string) => { if (client) await enqueue(() => client.pushPublication({ id })); },
+    [client, enqueue],
+  );
+  const unpublish = useCallback(
+    async (id: string) => {
+      if (!client) return;
+      await enqueue(() => client.unpublish({ id }));
+      setPublications(await client.getPublications());
+    },
+    [client, enqueue],
+  );
+  const unlink = useCallback(
+    async (sheetId: string) => {
+      if (!client) return;
+      await enqueue(() => client.unlink({ id: sheetId }));
+      await refresh();
+    },
+    [client, enqueue, refresh],
+  );
+  const dismissAlert = useCallback((index: number) => setAlerts((prev) => prev.filter((_, i) => i !== index)), []);
+
   const attachFile = useCallback(
     async (sheetId: string, row: number, col: number, file: File) => {
       const at = idsAt(sheetId, row, col);
@@ -1371,6 +1425,13 @@ export function useSpreadsheet({
     moveStyles,
     clearStyles,
     rules,
+    publications,
+    publishRange,
+    pushPublication,
+    unpublish,
+    unlink,
+    alerts,
+    dismissAlert,
     attachments,
     attachFile,
     removeAttachment,

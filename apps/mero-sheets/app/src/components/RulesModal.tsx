@@ -5,8 +5,9 @@ import type { RuleSpec } from '../hooks/useSpreadsheet';
 
 /**
  * Conditional formatting (style cells that meet a condition, or shade them on
- * a colour scale) or data validation (values must meet a condition: refused,
- * or marked), for the selection, plus the sheet's existing rules of that kind.
+ * a colour scale), data validation (values must meet a condition: refused,
+ * or marked) or alerts (tell people when a value starts meeting a condition),
+ * for the selection, plus the sheet's existing rules of that kind.
  * Rules are shared, and follow their cells as rows and columns move.
  */
 export interface RulesModalItem {
@@ -43,6 +44,7 @@ export const conditionLabel = (value: string) => CONDITIONS.find((c) => c.value 
 export default function RulesModal({
   mode,
   selection,
+  people = [],
   items,
   saving,
   error,
@@ -50,7 +52,9 @@ export default function RulesModal({
   onRemove,
   onClose,
 }: {
-  mode: 'format' | 'validate';
+  mode: 'format' | 'validate' | 'alert';
+  /** Who an alert can tell. */
+  people?: { id: string; name: string }[];
   /** The selection a new rule covers, as shown; null with none. */
   selection: string | null;
   items: RulesModalItem[];
@@ -60,7 +64,8 @@ export default function RulesModal({
   onRemove: (id: string) => void;
   onClose: () => void;
 }) {
-  const choices = CONDITIONS.filter((c) => mode === 'format' ? c.value !== 'checkbox' : c.validate);
+  const choices = CONDITIONS.filter((c) => (mode === 'validate' ? c.validate : c.value !== 'checkbox'));
+  const [recipients, setRecipients] = useState<string[]>([]);
   const [scale, setScale] = useState(false);
   const [condition, setCondition] = useState(choices[0].value);
   const [a, setA] = useState('');
@@ -81,16 +86,19 @@ export default function RulesModal({
   const arity = CONDITIONS.find((c) => c.value === condition)?.arity ?? 0;
   const args = arity === 0 ? [] : arity === 1 ? [a.trim()] : arity === 2 ? [a.trim(), b.trim()]
     : a.split(',').map((x) => x.trim()).filter(Boolean);
-  const ready = selection !== null && (scale || (arity === 0 || args.every(Boolean)) && (arity !== 'list' || args.length > 0));
+  const ready = selection !== null && (scale || (arity === 0 || args.every(Boolean)) && (arity !== 'list' || args.length > 0))
+    && (mode !== 'alert' || recipients.length > 0);
 
   const add = () => {
     if (!ready || saving) return;
     if (mode === 'format' && scale) {
-      onAdd({ kind: 'scale', condition: '', args: [low, high], style: {}, strict: false });
+      onAdd({ kind: 'scale', condition: '', args: [low, high], style: {}, strict: false, recipients: [] });
     } else if (mode === 'format') {
-      onAdd({ kind: 'format', condition, args, style: { fill, color, ...(bold ? { bold: '1' } : {}) }, strict: false });
+      onAdd({ kind: 'format', condition, args, style: { fill, color, ...(bold ? { bold: '1' } : {}) }, strict: false, recipients: [] });
+    } else if (mode === 'alert') {
+      onAdd({ kind: 'alert', condition, args, style: {}, strict: false, recipients });
     } else {
-      onAdd({ kind: 'validate', condition, args, style: {}, strict });
+      onAdd({ kind: 'validate', condition, args, style: {}, strict, recipients: [] });
     }
     setA('');
     setB('');
@@ -99,10 +107,10 @@ export default function RulesModal({
   return (
     <Overlay onClick={onClose} role="presentation">
       <Dialog role="dialog" aria-modal="true" aria-labelledby="rules-title" data-testid="rules-modal" onClick={(e) => e.stopPropagation()}>
-        <h3 id="rules-title">{mode === 'format' ? 'Conditional formatting' : 'Data validation'}</h3>
+        <h3 id="rules-title">{mode === 'format' ? 'Conditional formatting' : mode === 'alert' ? 'Alerts' : 'Data validation'}</h3>
         <p className="sub">
           {selection ? <>For <code>{selection}</code>. </> : 'Select cells first. '}
-          {mode === 'format' ? 'Style cells by their value.' : 'Say what a cell may hold.'}
+          {mode === 'format' ? 'Style cells by their value.' : mode === 'alert' ? 'Tell people when a value starts meeting a condition, formulas included.' : 'Say what a cell may hold.'}
         </p>
 
         {mode === 'format' && (
@@ -114,7 +122,7 @@ export default function RulesModal({
 
         {!scale && (
           <Field>
-            <label htmlFor="rule-condition">{mode === 'format' ? 'When the value is' : 'The value must be'}</label>
+            <label htmlFor="rule-condition">{mode === 'validate' ? 'The value must be' : 'When the value is'}</label>
             <div className="inline">
               <select id="rule-condition" value={condition} onChange={(e) => setCondition(e.target.value)} data-testid="field-rule-condition">
                 {choices.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
@@ -155,6 +163,23 @@ export default function RulesModal({
             <label><input type="radio" checked={strict} onChange={() => setStrict(true)} data-testid="field-rule-strict" /> Refuse it</label>
             <label><input type="radio" checked={!strict} onChange={() => setStrict(false)} /> Keep it, and mark it</label>
           </Row>
+        )}
+
+        {mode === 'alert' && (
+          <Recipients>
+            <legend>Tell</legend>
+            {people.map((p) => (
+              <label key={p.id}>
+                <input
+                  type="checkbox"
+                  checked={recipients.includes(p.id)}
+                  data-testid="field-alert-recipient"
+                  onChange={() => setRecipients((r) => (r.includes(p.id) ? r.filter((x) => x !== p.id) : [...r, p.id]))}
+                />
+                {p.name}
+              </label>
+            ))}
+          </Recipients>
         )}
 
         {error && <ErrorLine>{error}</ErrorLine>}
@@ -211,6 +236,11 @@ const Field = styled.div`
     color: ${C.ink}; background: ${C.paper2}; border: 1px solid ${C.line}; border-radius: 10px; outline: none;
     &:focus { border-color: ${C.green}; }
   }
+`;
+const Recipients = styled.fieldset`
+  margin: 16px 0 0; padding: 0; border: none;
+  legend { font-size: 12px; font-weight: 600; color: ${C.muted}; margin-bottom: 7px; padding: 0; }
+  label { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: ${C.ink}; margin: 4px 0; }
 `;
 const Preview = styled.span`
   display: inline-block; min-width: 44px; height: 22px; line-height: 22px; text-align: center;

@@ -10,6 +10,7 @@ use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use calimero_sdk::env;
 use calimero_sdk::serde::{Deserialize, Serialize};
 use calimero_sdk::types::Error as AppError;
+use calimero_sdk::ContextId;
 use calimero_storage::collections::crdt_meta::MergeError;
 use calimero_storage::collections::rich_text::{Attrs, DeltaOp};
 use calimero_storage::collections::{
@@ -372,6 +373,8 @@ pub struct RuleData {
     pub style: Vec<StylePair>,
     /// A `validate` rule that refuses values instead of marking them.
     pub strict: bool,
+    /// Who an `alert` rule tells (member ids).
+    pub recipients: Vec<String>,
     pub created_by: String,
     pub deleted: bool,
     pub updated_at: u64,
@@ -454,6 +457,90 @@ impl Mergeable for AttachmentData {
 
 /// The largest attachment recorded, in bytes.
 pub const MAX_ATTACHMENT_BYTES: u64 = 50 * 1024 * 1024;
+
+/// A range this workbook pushes to another workbook in the workspace (the
+/// source side of a link). Keyed by id.
+#[app::mergeable(id = "mero_sheets::PublicationData")]
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, AbiType)]
+#[borsh(crate = "calimero_sdk::borsh")]
+pub struct PublicationData {
+    pub sheet_id: String,
+    pub top_row_id: String,
+    pub left_col_id: String,
+    pub bottom_row_id: String,
+    pub right_col_id: String,
+    /// The receiving workbook's context id, hex.
+    pub target_context: String,
+    /// What the linked sheet is called there.
+    pub name: String,
+    pub created_by: String,
+    pub deleted: bool,
+    pub updated_at: u64,
+}
+
+impl Mergeable for PublicationData {
+    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        if (other.updated_at, other.deleted) > (self.updated_at, self.deleted) {
+            *self = other.clone();
+        }
+        Ok(())
+    }
+}
+
+/// A range pushed here from another workbook (the receiving side of a link),
+/// shown as a read-only sheet whose id is the key. Values are row-major.
+#[app::mergeable(id = "mero_sheets::LinkedData")]
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, AbiType)]
+#[borsh(crate = "calimero_sdk::borsh")]
+pub struct LinkedData {
+    pub source_context: String,
+    pub source_name: String,
+    pub name: String,
+    pub rows: u32,
+    pub cols: u32,
+    pub values: Vec<String>,
+    pub created_at: u64,
+    /// Removed here: later pushes are ignored.
+    pub blocked: bool,
+    /// Withdrawn by the source.
+    pub deleted: bool,
+    pub updated_at: u64,
+}
+
+impl Mergeable for LinkedData {
+    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        let blocked = self.blocked || other.blocked;
+        if (other.updated_at, other.deleted) > (self.updated_at, self.deleted) {
+            *self = other.clone();
+        }
+        // Once removed here, a link stays removed.
+        self.blocked = blocked;
+        Ok(())
+    }
+}
+
+/// Which cells of an alert rule met its condition when last checked, so it
+/// tells only about cells that start meeting it. Keyed by rule id.
+#[app::mergeable(id = "mero_sheets::AlertState")]
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, AbiType)]
+#[borsh(crate = "calimero_sdk::borsh")]
+pub struct AlertState {
+    pub cells: Vec<String>,
+    pub updated_at: u64,
+}
+
+impl Mergeable for AlertState {
+    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        if (other.updated_at, &other.cells) > (self.updated_at, &self.cells) {
+            *self = other.clone();
+        }
+        Ok(())
+    }
+}
+
+/// The most cells one link carries, and the longest value.
+pub const MAX_LINK_CELLS: u32 = 2000;
+const MAX_LINK_VALUE_CHARS: usize = 256;
 
 /// Style fields and what each takes (besides empty, which clears it).
 fn check_style_field(field: &str, value: &str) -> app::Result<()> {
@@ -805,13 +892,15 @@ pub struct RuleInput {
     pub bottom_row_id: String,
     pub right_col_id: String,
     /// `format` (style cells that meet the condition), `scale` (shade numbers
-    /// from `args[0]` at the lowest to `args[1]` at the highest) or
-    /// `validate` (values must meet the condition).
+    /// from `args[0]` at the lowest to `args[1]` at the highest), `validate`
+    /// (values must meet the condition) or `alert` (tell `recipients` when a
+    /// value starts meeting it).
     pub kind: String,
     pub condition: String,
     pub args: Vec<String>,
     pub style: BTreeMap<String, String>,
     pub strict: bool,
+    pub recipients: Vec<String>,
 }
 
 /// A chart as written or read: its range by corner ids, its kind and title.
@@ -852,6 +941,35 @@ pub struct Attachment {
     pub mime: String,
     pub created_by: String,
     pub created_at: u64,
+}
+
+/// A live publication.
+#[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct Publication {
+    pub id: String,
+    pub sheet_id: String,
+    pub top_row_id: String,
+    pub left_col_id: String,
+    pub bottom_row_id: String,
+    pub right_col_id: String,
+    pub target_context: String,
+    pub name: String,
+    pub created_by: String,
+}
+
+/// A live incoming link.
+#[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct Link {
+    /// Also the linked sheet's id.
+    pub id: String,
+    pub source_context: String,
+    pub source_name: String,
+    pub name: String,
+    pub rows: u32,
+    pub cols: u32,
+    pub updated_at: u64,
 }
 
 /// A live rule.
@@ -904,6 +1022,9 @@ pub struct Sheet {
     pub name: String,
     pub position: u32,
     pub created_at: u64,
+    /// For a linked sheet (read-only, pushed from another workbook), that
+    /// workbook's name; empty otherwise.
+    pub linked_from: String,
 }
 
 /// A cell, by row and column id. A legacy id is the cell's old 0-based
@@ -1140,6 +1261,15 @@ pub struct Spreadsheet {
     /// Files attached to cells, keyed by id.
     #[migrate(new = UnorderedMap::new_with_field_name("spreadsheet:attachments"))]
     attachments: UnorderedMap<String, AttachmentData>,
+    /// Ranges this workbook pushes to others, keyed by id.
+    #[migrate(new = UnorderedMap::new_with_field_name("spreadsheet:publications"))]
+    publications: UnorderedMap<String, PublicationData>,
+    /// Ranges pushed here from other workbooks, keyed by linked sheet id.
+    #[migrate(new = UnorderedMap::new_with_field_name("spreadsheet:linked"))]
+    linked: UnorderedMap<String, LinkedData>,
+    /// Alert rules' last matching cells, keyed by rule id.
+    #[migrate(new = UnorderedMap::new_with_field_name("spreadsheet:alert_state"))]
+    alert_state: UnorderedMap<String, AlertState>,
 }
 
 /// This node's private sheets: scratch space for what-if work that never
@@ -1222,6 +1352,9 @@ impl Spreadsheet {
             rules: UnorderedMap::new_with_field_name("spreadsheet:rules"),
             charts: UnorderedMap::new_with_field_name("spreadsheet:charts"),
             attachments: UnorderedMap::new_with_field_name("spreadsheet:attachments"),
+            publications: UnorderedMap::new_with_field_name("spreadsheet:publications"),
+            linked: UnorderedMap::new_with_field_name("spreadsheet:linked"),
+            alert_state: UnorderedMap::new_with_field_name("spreadsheet:alert_state"),
         }
     }
 
@@ -1496,9 +1629,28 @@ impl Spreadsheet {
                 name: d.name.clone(),
                 position: d.position,
                 created_at: d.created_at,
+                linked_from: String::new(),
             })
             .collect();
         out.sort_by_key(|s| (s.position, s.created_at));
+        // Linked sheets come after the workbook's own.
+        let base = out.len() as u32;
+        let mut linked: Vec<Sheet> = self
+            .live_links()?
+            .into_iter()
+            .map(|(id, l)| Sheet {
+                id,
+                name: l.name,
+                position: 0,
+                created_at: l.created_at,
+                linked_from: l.source_name,
+            })
+            .collect();
+        linked.sort_by(|a, b| (a.created_at, &a.id).cmp(&(b.created_at, &b.id)));
+        for (i, s) in linked.iter_mut().enumerate() {
+            s.position = base + i as u32;
+        }
+        out.extend(linked);
         Ok(out)
     }
 
@@ -1834,7 +1986,8 @@ impl Spreadsheet {
             _ => format!("changed {count} cells"),
         };
         changes.truncate(MAX_LOGGED_CHANGES);
-        self.log(sheet_id, "cells", summary, count, changes)
+        self.log(sheet_id, "cells", summary, count, changes)?;
+        self.after_change(sheet_id)
     }
 
     /// Insert or replace a map entry.
@@ -2559,6 +2712,7 @@ impl Spreadsheet {
                     args: r.args,
                     style: r.style.into_iter().map(|p| (p.field, p.value)).collect(),
                     strict: r.strict,
+                    recipients: r.recipients,
                 },
             })
             .collect();
@@ -2602,7 +2756,20 @@ impl Spreadsheet {
                     return bad("that condition does not take those values");
                 }
             }
-            _ => return bad("a rule is format, scale or validate"),
+            "alert" => {
+                if !rules::is_valid(&rule.condition, &rule.args) {
+                    return bad("that condition does not take those values");
+                }
+                if rule.recipients.is_empty() {
+                    return bad("an alert tells at least one member");
+                }
+                for m in &rule.recipients {
+                    if self.members.get(m)?.is_none() {
+                        return Err(AppError::from(Error::NotFound(m.clone())));
+                    }
+                }
+            }
+            _ => return bad("a rule is format, scale, validate or alert"),
         }
         if rule.args.iter().map(String::len).sum::<usize>() > 2000 {
             return bad("a rule's values are at most 2000 characters");
@@ -2630,6 +2797,7 @@ impl Spreadsheet {
                         .map(|(field, value)| StylePair { field, value })
                         .collect(),
                     strict: rule.strict,
+                    recipients: rule.recipients,
                     created_by: me,
                     deleted: false,
                     updated_at: now,
@@ -2699,6 +2867,208 @@ impl Spreadsheet {
             }
         }
         Ok(())
+    }
+
+    // ---- Linked workbooks ----
+    //
+    // A link pushes a range's values from this workbook to another in the
+    // workspace with a cross-context call (`xcall`), which the node runs on
+    // the target after this call commits. The target keeps them as a
+    // read-only sheet its formulas can use. Pushes happen when the link is
+    // made, whenever a cell on its sheet changes, and on demand.
+
+    /// Link a range to another workbook (its context id, hex), where it
+    /// appears as a read-only sheet called `name`. Returns the link's id.
+    #[allow(clippy::too_many_arguments, reason = "one argument per corner")]
+    pub fn publish_range(
+        &mut self,
+        sheet_id: String,
+        top_row_id: String,
+        left_col_id: String,
+        bottom_row_id: String,
+        right_col_id: String,
+        target_context: String,
+        name: String,
+    ) -> app::Result<String> {
+        self.require_role(Role::Editor)?;
+        self.require_sheet(&sheet_id)?;
+        for c in [&top_row_id, &left_col_id, &bottom_row_id, &right_col_id] {
+            Spreadsheet::check_id(c)?;
+        }
+        let target = parse_context(&target_context)?;
+        if target == env::context_id() {
+            return Err(AppError::from(Error::Invalid(
+                "a workbook cannot link to itself".into(),
+            )));
+        }
+        validate_sheet_name(&name).map_err(AppError::from)?;
+        let now = storage_env::time_now();
+        let mut nonce = [0u8; 4];
+        env::random_bytes(&mut nonce);
+        let id = generate_id("pub", now, &nonce);
+        let me = self.caller_hex();
+        let publication = PublicationData {
+            sheet_id: sheet_id.clone(),
+            top_row_id,
+            left_col_id,
+            bottom_row_id,
+            right_col_id,
+            target_context: hex::encode(target),
+            name: name.clone(),
+            created_by: me,
+            deleted: false,
+            updated_at: now,
+        };
+        self.push(&id, &publication, &self.sheet_values(&sheet_id)?)?;
+        self.publications
+            .insert(id.clone(), publication)
+            .map_err(|e| AppError::msg(format!("publications.insert: {e}")))?;
+        self.log(
+            &sheet_id,
+            "link",
+            format!("linked a range as {name:?}"),
+            0,
+            Vec::new(),
+        )?;
+        app::emit!(Event::PublicationsChanged {
+            sheet_id: &sheet_id
+        });
+        Ok(id)
+    }
+
+    /// Push a link's values again now.
+    pub fn push_publication(&mut self, id: String) -> app::Result<()> {
+        self.require_role(Role::Editor)?;
+        let p = self.live_publication(&id)?;
+        self.push(&id, &p, &self.sheet_values(&p.sheet_id)?)
+    }
+
+    /// Stop a link, and remove its sheet from the other workbook.
+    pub fn unpublish(&mut self, id: String) -> app::Result<()> {
+        self.require_role(Role::Editor)?;
+        let mut p = self.live_publication(&id)?;
+        #[derive(Serialize)]
+        #[serde(crate = "calimero_sdk::serde")]
+        struct Params {
+            from_context: ContextId,
+            publication_id: String,
+        }
+        let params = calimero_sdk::serde_json::to_vec(&Params {
+            from_context: ContextId::from(env::context_id()),
+            publication_id: id.clone(),
+        })?;
+        send_xcall(&parse_context(&p.target_context)?, "drop_link", params);
+        p.deleted = true;
+        p.updated_at = storage_env::time_now();
+        let sheet_id = p.sheet_id.clone();
+        self.publications
+            .insert(id, p)
+            .map_err(|e| AppError::msg(format!("publications.insert: {e}")))?;
+        app::emit!(Event::PublicationsChanged {
+            sheet_id: &sheet_id
+        });
+        Ok(())
+    }
+
+    /// Every live link from this workbook.
+    pub fn get_publications(&self) -> app::Result<Vec<Publication>> {
+        let mut out: Vec<Publication> = self
+            .publications
+            .entries()
+            .map_err(|e| AppError::msg(format!("publications.entries: {e}")))?
+            .filter(|(_, p)| !p.deleted)
+            .map(|(id, p)| Publication {
+                id,
+                sheet_id: p.sheet_id,
+                top_row_id: p.top_row_id,
+                left_col_id: p.left_col_id,
+                bottom_row_id: p.bottom_row_id,
+                right_col_id: p.right_col_id,
+                target_context: p.target_context,
+                name: p.name,
+                created_by: p.created_by,
+            })
+            .collect();
+        out.sort_by(|a, b| a.id.cmp(&b.id));
+        Ok(out)
+    }
+
+    /// Receive a linked range from another workbook running this app. Only
+    /// the node calls it, from the source's `xcall`; the origin it sets must
+    /// be the workbook the call says it is from.
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "the pushed range, field by field"
+    )]
+    #[app::xcall(from_same_app)]
+    pub fn receive_link(
+        &mut self,
+        from_context: ContextId,
+        publication_id: String,
+        name: String,
+        source_name: String,
+        rows: u32,
+        cols: u32,
+        values: Vec<String>,
+    ) -> app::Result<()> {
+        Spreadsheet::require_origin(&from_context)?;
+        self.store_link(
+            &hex::encode(from_context.as_ref()),
+            &publication_id,
+            name,
+            source_name,
+            rows,
+            cols,
+            values,
+        )
+    }
+
+    /// The source withdrew a link: remove its sheet.
+    #[app::xcall(from_same_app)]
+    pub fn drop_link(
+        &mut self,
+        from_context: ContextId,
+        publication_id: String,
+    ) -> app::Result<()> {
+        Spreadsheet::require_origin(&from_context)?;
+        let id = link_id(&hex::encode(from_context.as_ref()), &publication_id);
+        if let Some(mut l) = self.linked.get(&id)?.map(|l| l.clone()) {
+            l.deleted = true;
+            l.updated_at = storage_env::time_now();
+            self.linked.insert(id.clone(), l)?;
+            app::emit!(Event::LinkedChanged { sheet_id: &id });
+        }
+        Ok(())
+    }
+
+    /// Remove a linked sheet here; later pushes of it are ignored.
+    pub fn unlink(&mut self, id: String) -> app::Result<()> {
+        self.require_role(Role::Editor)?;
+        let Some(mut l) = self.linked.get(&id)?.map(|l| l.clone()) else {
+            return Err(AppError::from(Error::NotFound(id)));
+        };
+        l.blocked = true;
+        l.updated_at = storage_env::time_now();
+        self.linked.insert(id.clone(), l)?;
+        app::emit!(Event::LinkedChanged { sheet_id: &id });
+        Ok(())
+    }
+
+    /// Every live link into this workbook.
+    pub fn get_links(&self) -> app::Result<Vec<Link>> {
+        Ok(self
+            .live_links()?
+            .into_iter()
+            .map(|(id, l)| Link {
+                id,
+                source_context: l.source_context,
+                source_name: l.source_name,
+                name: l.name,
+                rows: l.rows,
+                cols: l.cols,
+                updated_at: l.updated_at,
+            })
+            .collect())
     }
 
     // ---- Attachments ----
@@ -3179,6 +3549,7 @@ impl Spreadsheet {
                 name: s.name.clone(),
                 position: s.position,
                 created_at: s.created_at,
+                linked_from: String::new(),
             })
             .collect();
         out.sort_by(|a, b| (a.created_at, &a.id).cmp(&(b.created_at, &b.id)));
@@ -3341,7 +3712,7 @@ impl Spreadsheet {
             sheet_id: &sheet_id,
             count
         });
-        Ok(())
+        self.after_change(&sheet_id)
     }
 
     /// Every sheet's explicit row and column entries.
@@ -3503,6 +3874,38 @@ impl Spreadsheet {
             }
             stored.push(d);
         }
+        // Linked sheets: their pushed values, as literal cells by position.
+        let mut sheet_ids = sheet_ids;
+        for (id, l) in self.live_links()? {
+            sheet_ids.insert(id.clone());
+            for r in 0..l.rows {
+                for c in 0..l.cols {
+                    let Some(v) = l.values.get((r * l.cols + c) as usize) else {
+                        continue;
+                    };
+                    if v.is_empty() {
+                        continue;
+                    }
+                    inputs.insert(
+                        recalc::CellRef {
+                            sheet_id: id.clone(),
+                            row: r.to_string(),
+                            col: c.to_string(),
+                        },
+                        v.clone(),
+                    );
+                    stored.push(CellData {
+                        id: Spreadsheet::cell_key(&id, &r.to_string(), &c.to_string()),
+                        sheet_id: id.clone(),
+                        row: r,
+                        col: c,
+                        raw_value: v.clone(),
+                        format: String::new(),
+                        updated_at: l.updated_at,
+                    });
+                }
+            }
+        }
         Ok((stored, inputs, sheet_ids))
     }
 
@@ -3663,6 +4066,278 @@ impl Spreadsheet {
 
     fn cell_key(sheet_id: &str, row_id: &str, col_id: &str) -> String {
         format!("{sheet_id}|{row_id}|{col_id}")
+    }
+
+    /// Work that follows any change to a sheet: push its links, check its
+    /// alerts. Both evaluate the sheet, so both are skipped (and cost
+    /// nothing) when the sheet has neither.
+    fn after_change(&mut self, sheet_id: &str) -> app::Result<()> {
+        let pubs: Vec<(String, PublicationData)> = self
+            .publications
+            .entries()
+            .map_err(|e| AppError::msg(format!("publications.entries: {e}")))?
+            .filter(|(_, p)| !p.deleted && p.sheet_id == sheet_id)
+            .collect();
+        let alerts: Vec<(String, RuleData)> = self
+            .rules
+            .entries()
+            .map_err(|e| AppError::msg(format!("rules.entries: {e}")))?
+            .filter(|(_, r)| !r.deleted && r.kind == "alert" && r.sheet_id == sheet_id)
+            .collect();
+        if pubs.is_empty() && alerts.is_empty() {
+            return Ok(());
+        }
+        let values = self.sheet_values(sheet_id)?;
+        for (id, p) in &pubs {
+            self.push(id, p, &values)?;
+        }
+        for (id, rule) in alerts {
+            self.check_alert(&id, &rule, &values)?;
+        }
+        Ok(())
+    }
+
+    /// A sheet's computed values by (row id, column id), with its layout.
+    fn sheet_values(&self, sheet_id: &str) -> app::Result<SheetValues> {
+        let (_, all_inputs, sheet_ids) = self.read_cells()?;
+        let env = self.formula_env()?;
+        let closure = recalc::sheet_closure(&all_inputs, &env, sheet_id);
+        let computed = recalc::evaluate(&recalc::WorkbookInputs {
+            cells: all_inputs
+                .into_iter()
+                .filter(|(k, _)| closure.contains(&k.sheet_id))
+                .collect(),
+            sheet_ids,
+            env,
+        });
+        let values = computed
+            .into_iter()
+            .filter(|(k, _)| k.sheet_id == sheet_id)
+            .map(|(k, v)| ((k.row, k.col), v))
+            .collect();
+        Ok(SheetValues {
+            values,
+            layout: self.sheet_layout(sheet_id)?,
+        })
+    }
+
+    /// Send a link's current values to its workbook.
+    fn push(&self, id: &str, p: &PublicationData, sheet: &SheetValues) -> app::Result<()> {
+        let rect = corner_rect(
+            [
+                &p.top_row_id,
+                &p.left_col_id,
+                &p.bottom_row_id,
+                &p.right_col_id,
+            ],
+            &sheet.layout,
+        )
+        .ok_or_else(|| {
+            AppError::from(Error::Invalid(
+                "the linked range's rows or columns are gone".into(),
+            ))
+        })?;
+        let (rows, cols) = (
+            (rect.bottom - rect.top + 1) as u32,
+            (rect.right - rect.left + 1) as u32,
+        );
+        if rows * cols > MAX_LINK_CELLS {
+            return Err(AppError::from(Error::Invalid(format!(
+                "a link carries at most {MAX_LINK_CELLS} cells"
+            ))));
+        }
+        let mut values = Vec::with_capacity((rows * cols) as usize);
+        for r in rect.top..=rect.bottom {
+            for c in rect.left..=rect.right {
+                let key = (
+                    sheet
+                        .layout
+                        .rows
+                        .id_at(r)
+                        .map(|x| x.into_owned())
+                        .unwrap_or_default(),
+                    sheet
+                        .layout
+                        .cols
+                        .id_at(c)
+                        .map(|x| x.into_owned())
+                        .unwrap_or_default(),
+                );
+                values.push(link_value(
+                    sheet.values.get(&key).map(String::as_str).unwrap_or(""),
+                ));
+            }
+        }
+        #[derive(Serialize)]
+        #[serde(crate = "calimero_sdk::serde")]
+        struct Params {
+            from_context: ContextId,
+            publication_id: String,
+            name: String,
+            source_name: String,
+            rows: u32,
+            cols: u32,
+            values: Vec<String>,
+        }
+        let params = calimero_sdk::serde_json::to_vec(&Params {
+            from_context: ContextId::from(env::context_id()),
+            publication_id: id.to_string(),
+            name: p.name.clone(),
+            source_name: self.project_name.get().clone(),
+            rows,
+            cols,
+            values,
+        })?;
+        send_xcall(&parse_context(&p.target_context)?, "receive_link", params);
+        Ok(())
+    }
+
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "the pushed range, field by field"
+    )]
+    fn store_link(
+        &mut self,
+        from_hex: &str,
+        publication_id: &str,
+        name: String,
+        source_name: String,
+        rows: u32,
+        cols: u32,
+        values: Vec<String>,
+    ) -> app::Result<()> {
+        if rows.saturating_mul(cols) > MAX_LINK_CELLS || values.len() != (rows * cols) as usize {
+            return Err(AppError::from(Error::Invalid(
+                "a link's values do not match its size".into(),
+            )));
+        }
+        validate_sheet_name(&name).map_err(AppError::from)?;
+        let id = link_id(from_hex, publication_id);
+        let existing = self.linked.get(&id)?.map(|l| l.clone());
+        if existing.as_ref().is_some_and(|l| l.blocked) {
+            return Ok(());
+        }
+        let now = storage_env::time_now();
+        self.linked.insert(
+            id.clone(),
+            LinkedData {
+                source_context: from_hex.to_string(),
+                source_name: source_name.chars().take(100).collect(),
+                name,
+                rows,
+                cols,
+                values: values.into_iter().map(|v| link_value(&v)).collect(),
+                created_at: existing.map_or(now, |l| l.created_at),
+                blocked: false,
+                deleted: false,
+                updated_at: now,
+            },
+        )?;
+        app::emit!(Event::LinkedChanged { sheet_id: &id });
+        Ok(())
+    }
+
+    fn live_links(&self) -> app::Result<Vec<(String, LinkedData)>> {
+        Ok(self
+            .linked
+            .entries()
+            .map_err(|e| AppError::msg(format!("linked.entries: {e}")))?
+            .filter(|(_, l)| !l.deleted && !l.blocked)
+            .collect())
+    }
+
+    fn live_publication(&self, id: &str) -> app::Result<PublicationData> {
+        self.publications
+            .get(id)
+            .map_err(|e| AppError::msg(format!("publications.get: {e}")))?
+            .filter(|p| !p.deleted)
+            .map(|p| p.clone())
+            .ok_or_else(|| AppError::from(Error::NotFound(id.to_string())))
+    }
+
+    /// Accept a call only from the node's xcall dispatch, from `from`.
+    fn require_origin(from: &ContextId) -> app::Result<()> {
+        match env::xcall_origin() {
+            Some(origin) if origin == *from.as_ref() => Ok(()),
+            Some(_) => Err(AppError::from(Error::Forbidden(
+                "the call's origin is not the workbook it names".into(),
+            ))),
+            None => Err(AppError::from(Error::Forbidden(
+                "only another workbook can push a link".into(),
+            ))),
+        }
+    }
+
+    /// Tell an alert's recipients about cells that now meet its condition.
+    fn check_alert(&mut self, id: &str, rule: &RuleData, sheet: &SheetValues) -> app::Result<()> {
+        let Some(rect) = corner_rect(
+            [
+                &rule.top_row_id,
+                &rule.left_col_id,
+                &rule.bottom_row_id,
+                &rule.right_col_id,
+            ],
+            &sheet.layout,
+        ) else {
+            return Ok(());
+        };
+        let mut matching = Vec::new();
+        for r in rect.top..=rect.bottom.min(formula::MAX_ROWS as usize - 1) {
+            for c in rect.left..=rect.right.min(formula::MAX_COLS as usize - 1) {
+                let (Some(row_id), Some(col_id)) =
+                    (sheet.layout.rows.id_at(r), sheet.layout.cols.id_at(c))
+                else {
+                    continue;
+                };
+                let v = sheet
+                    .values
+                    .get(&(row_id.into_owned(), col_id.into_owned()))
+                    .map(String::as_str)
+                    .unwrap_or("");
+                if !v.is_empty() && rules::matches(&rule.condition, &rule.args, v) {
+                    matching.push(format!("{}{}", formula::col_label(c as u32), r + 1));
+                }
+            }
+        }
+        let before = self
+            .alert_state
+            .get(id)?
+            .map(|s| s.cells.clone())
+            .unwrap_or_default();
+        if matching == before {
+            return Ok(());
+        }
+        let fresh: Vec<String> = matching
+            .iter()
+            .filter(|c| !before.contains(c))
+            .cloned()
+            .collect();
+        self.alert_state.insert(
+            id.to_string(),
+            AlertState {
+                cells: matching,
+                updated_at: storage_env::time_now(),
+            },
+        )?;
+        if !fresh.is_empty() {
+            let message = format!(
+                "{} {} {}",
+                fresh.iter().take(5).cloned().collect::<Vec<_>>().join(", "),
+                if fresh.len() == 1 {
+                    "is now"
+                } else {
+                    "are now"
+                },
+                rules::describe(&rule.condition, &rule.args)
+            );
+            app::emit!(Event::AlertTriggered {
+                rule_id: id,
+                sheet_id: &rule.sheet_id,
+                recipients: &rule.recipients,
+                message: &message,
+            });
+        }
+        Ok(())
     }
 
     /// Remember which account this device belongs to, once.
@@ -3874,6 +4549,63 @@ fn protected_rect(p: &ProtectionData, l: &layout::Layout) -> Option<Rect> {
         ],
         l,
     )
+}
+
+/// A sheet's computed values and its layout (see `Spreadsheet::sheet_values`).
+struct SheetValues {
+    values: BTreeMap<(String, String), String>,
+    layout: layout::Layout,
+}
+
+/// A context id given as 64 hex characters.
+fn parse_context(hex_id: &str) -> app::Result<[u8; 32]> {
+    let bytes = hex::decode(hex_id)
+        .map_err(|_| AppError::from(Error::Invalid(format!("{hex_id:?} is not a workbook id"))))?;
+    bytes
+        .try_into()
+        .map_err(|_| AppError::from(Error::Invalid(format!("{hex_id:?} is not a workbook id"))))
+}
+
+/// The linked sheet id for a publication of a source workbook.
+fn link_id(from_hex: &str, publication_id: &str) -> String {
+    format!(
+        "link-{}-{publication_id}",
+        &from_hex[..from_hex.len().min(12)]
+    )
+}
+
+/// A value as a linked sheet keeps it: a literal (a leading `=` would read as
+/// a formula), at most 256 characters.
+fn link_value(v: &str) -> String {
+    v.trim_start_matches('=')
+        .chars()
+        .take(MAX_LINK_VALUE_CHARS)
+        .collect()
+}
+
+/// Queue a cross-context call, run by the node after this one commits.
+#[cfg(target_arch = "wasm32")]
+fn send_xcall(context: &[u8; 32], function: &str, params: Vec<u8>) {
+    env::xcall(context, function, &params);
+}
+
+/// A queued cross-context call: target context, function, JSON params.
+#[cfg(not(target_arch = "wasm32"))]
+type SentXcall = ([u8; 32], String, Vec<u8>);
+
+#[cfg(not(target_arch = "wasm32"))]
+thread_local! {
+    /// The in-process test host has no xcall: calls are recorded here instead.
+    static SENT_XCALLS: std::cell::RefCell<Vec<SentXcall>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn send_xcall(context: &[u8; 32], function: &str, params: Vec<u8>) {
+    SENT_XCALLS.with(|s| {
+        s.borrow_mut()
+            .push((*context, function.to_string(), params))
+    });
 }
 
 /// A range given by corner ids (top row, left column, bottom row, right
@@ -5729,6 +6461,7 @@ mod tests {
                 BTreeMap::new()
             },
             strict,
+            recipients: Vec::new(),
         }
     }
 
@@ -5862,5 +6595,177 @@ mod tests {
                 String::new()
             ))
             .is_err());
+    }
+
+    fn sent_xcalls() -> Vec<SentXcall> {
+        SENT_XCALLS.with(|s| s.borrow_mut().drain(..).collect())
+    }
+
+    #[test]
+    fn a_link_pushes_on_publish_on_every_edit_and_on_unpublish() {
+        let mut app = make_app();
+        let sid = new_sheet(&mut app);
+        let _ = sent_xcalls();
+        app.call(|s| s.set_cell(sid.clone(), "0".into(), "0".into(), "2".into()))
+            .unwrap();
+        app.call(|s| s.set_cell(sid.clone(), "1".into(), "0".into(), "=A1*10".into()))
+            .unwrap();
+        assert!(sent_xcalls().is_empty(), "no links, no pushes");
+        let target = hex::encode([9u8; 32]);
+        let id = app
+            .call(|s| {
+                s.publish_range(
+                    sid.clone(),
+                    "0".into(),
+                    "0".into(),
+                    "1".into(),
+                    "0".into(),
+                    target.clone(),
+                    "Totals".into(),
+                )
+            })
+            .unwrap();
+        let sent = sent_xcalls();
+        assert_eq!(sent.len(), 1);
+        assert_eq!((sent[0].0, sent[0].1.as_str()), ([9u8; 32], "receive_link"));
+        let params: calimero_sdk::serde_json::Value =
+            calimero_sdk::serde_json::from_slice(&sent[0].2).unwrap();
+        assert_eq!(
+            params["values"],
+            calimero_sdk::serde_json::json!(["2", "20"])
+        );
+        assert_eq!(params["name"], "Totals");
+
+        // Any edit on the sheet pushes again, with the new values.
+        app.call(|s| s.set_cell(sid.clone(), "0".into(), "0".into(), "3".into()))
+            .unwrap();
+        let sent = sent_xcalls();
+        assert_eq!(sent.len(), 1);
+        let params: calimero_sdk::serde_json::Value =
+            calimero_sdk::serde_json::from_slice(&sent[0].2).unwrap();
+        assert_eq!(
+            params["values"],
+            calimero_sdk::serde_json::json!(["3", "30"])
+        );
+
+        assert_eq!(app.view(|s| s.get_publications()).unwrap().len(), 1);
+        app.call(|s| s.unpublish(id.clone())).unwrap();
+        assert_eq!(sent_xcalls()[0].1, "drop_link");
+        assert!(app.view(|s| s.get_publications()).unwrap().is_empty());
+        assert!(app
+            .call(|s| s.publish_range(
+                sid.clone(),
+                "0".into(),
+                "0".into(),
+                "0".into(),
+                "0".into(),
+                "nothex".into(),
+                "X".into()
+            ))
+            .is_err());
+    }
+
+    #[test]
+    fn a_received_link_is_a_read_only_sheet_formulas_can_use() {
+        let mut app = make_app();
+        let sid = new_sheet(&mut app);
+        let from = hex::encode([5u8; 32]);
+        app.call(|s| {
+            s.store_link(
+                &from,
+                "pub-1",
+                "Rates".into(),
+                "Finance".into(),
+                1,
+                2,
+                vec!["Rate".into(), "1.5".into()],
+            )
+        })
+        .unwrap();
+        let sheets = app.view(|s| s.list_sheets()).unwrap();
+        let linked = sheets.iter().find(|s| s.name == "Rates").unwrap();
+        assert_eq!(linked.linked_from, "Finance");
+        let lid = linked.id.clone();
+        let cells = app.view(|s| s.get_cells(lid.clone())).unwrap();
+        assert_eq!(cells.len(), 2);
+
+        app.call(|s| {
+            s.set_cell(
+                sid.clone(),
+                "0".into(),
+                "0".into(),
+                format!("=[{lid}]!B1*4"),
+            )
+        })
+        .unwrap();
+        let mine = app.view(|s| s.get_cells(sid.clone())).unwrap();
+        assert_eq!(mine[0].computed_value, "6");
+
+        // Read-only here, and not callable directly.
+        assert!(app
+            .call(|s| s.set_cell(lid.clone(), "0".into(), "0".into(), "x".into()))
+            .is_err());
+        assert!(app
+            .call(|s| s.receive_link(
+                ContextId::from([5u8; 32]),
+                "pub-1".into(),
+                "Rates".into(),
+                "Finance".into(),
+                0,
+                0,
+                Vec::new()
+            ))
+            .is_err());
+
+        // Removed here, it stays removed however often it is pushed.
+        app.call(|s| s.unlink(lid.clone())).unwrap();
+        app.call(|s| {
+            s.store_link(
+                &from,
+                "pub-1",
+                "Rates".into(),
+                "Finance".into(),
+                1,
+                1,
+                vec!["9".into()],
+            )
+        })
+        .unwrap();
+        assert!(app
+            .view(|s| s.list_sheets())
+            .unwrap()
+            .iter()
+            .all(|s| s.id != lid));
+    }
+
+    #[test]
+    fn an_alert_tells_its_recipients_when_a_value_starts_meeting_it() {
+        let mut app = make_app();
+        let sid = new_sheet(&mut app);
+        let (ada, _) = with_people(&mut app);
+        let mut alert = rule(&sid, "alert", "gt", &["100"], false);
+        alert.recipients = vec![hex::encode(ada)];
+        app.call(|s| s.add_rule(alert)).unwrap();
+        let alerts = |app: &TestHost<Spreadsheet>| {
+            app.take_events()
+                .into_iter()
+                .filter(|e| e.kind == "AlertTriggered")
+                .count()
+        };
+        let _ = alerts(&app);
+        let set = |app: &mut TestHost<Spreadsheet>, v: &str| {
+            app.call(|s| s.set_cell(sid.clone(), "1".into(), "0".into(), v.into()))
+                .unwrap();
+        };
+        set(&mut app, "150");
+        assert_eq!(alerts(&app), 1);
+        set(&mut app, "200");
+        assert_eq!(alerts(&app), 0, "still over: no second alert");
+        set(&mut app, "50");
+        set(&mut app, "300");
+        assert_eq!(alerts(&app), 1, "over again after dropping below");
+        let mut nobody = rule(&sid, "alert", "gt", &["1"], false);
+        nobody.recipients = Vec::new();
+        assert!(app.call(|s| s.add_rule(nobody)).is_err());
     }
 }

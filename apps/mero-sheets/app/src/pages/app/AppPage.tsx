@@ -52,6 +52,7 @@ import FormatBar from '../../components/FormatBar';
 import RulesModal, { conditionLabel } from '../../components/RulesModal';
 import ChartsPanel from '../../components/ChartsPanel';
 import AttachmentsPanel from '../../components/AttachmentsPanel';
+import LinksPanel from '../../components/LinksPanel';
 import { readXlsx, writeXlsx, type BookSheet } from '../../spreadsheet/xlsx';
 import { parseCsv } from '../../spreadsheet/csv';
 import FilterModal from '../../components/FilterModal';
@@ -91,6 +92,8 @@ export default function AppPage() {
   const allSheets = useMemo(() => [...ss.sheets, ...ss.privateSheets], [ss.sheets, ss.privateSheets]);
   const privateIds = useMemo(() => new Set(ss.privateSheets.map((s) => s.id)), [ss.privateSheets]);
   const isPrivateActive = !!activeSheetId && privateIds.has(activeSheetId);
+  // A linked sheet is pushed from another workbook: read-only here.
+  const activeLinkedFrom = ss.sheets.find((x) => x.id === activeSheetId)?.linked_from ?? '';
   const idToName = useCallback(
     (id: string) => allSheets.find((s) => s.id === id)?.name ?? null,
     [allSheets],
@@ -200,11 +203,12 @@ export default function AppPage() {
   const [showProtect, setShowProtect] = useState(false);
   const [protectSaving, setProtectSaving] = useState(false);
   const [protectError, setProtectError] = useState<string | null>(null);
-  const [rulesMode, setRulesMode] = useState<'format' | 'validate' | null>(null);
+  const [rulesMode, setRulesMode] = useState<'format' | 'validate' | 'alert' | null>(null);
   const [rulesSaving, setRulesSaving] = useState(false);
   const [rulesError, setRulesError] = useState<string | null>(null);
   const [showCharts, setShowCharts] = useState(false);
   const [showFiles, setShowFiles] = useState(false);
+  const [showLinks, setShowLinks] = useState(false);
   // What an import is doing, while it runs.
   const [importing, setImporting] = useState<string | null>(null);
   const importInput = useRef<HTMLInputElement>(null);
@@ -479,7 +483,9 @@ export default function AppPage() {
     ? placeProtections(ss.protections, activeSheetId, (r, c) => ss.refOf(activeSheetId, r, c), ss.selfId, myRole)
     : [];
   // A private sheet is this node's alone: no role or protection applies.
-  const selectedLock = selectedCell && !isPrivateActive ? lockedReason(placed, myRole, selectedCell.row, selectedCell.col) : null;
+  const selectedLock = activeLinkedFrom && selectedCell
+    ? `Linked from ${activeLinkedFrom}: read-only`
+    : selectedCell && !isPrivateActive ? lockedReason(placed, myRole, selectedCell.row, selectedCell.col) : null;
 
   // Refused writes explain themselves for a while, then go.
   const { writeError, dismissWriteError } = ss;
@@ -810,7 +816,7 @@ export default function AppPage() {
   const menuSections = (() => {
     const r = menuRect();
     // A private sheet has fixed rows and columns, and nothing to share.
-    if (!r || isPrivateActive) return [];
+    if (!r || isPrivateActive || activeLinkedFrom) return [];
     const range = (from: number, to: number) => Array.from({ length: to - from + 1 }, (_, i) => from + i);
     return [
       {
@@ -870,6 +876,9 @@ export default function AppPage() {
               if (activeSheetId && rect) saveFilters({ ...filters, [activeSheetId]: { rect, columns: {} } });
             } },
           { label: 'Chart this range…', testId: 'open-charts', onClick: () => { setCtxMenu(null); setShowCharts(true); } },
+          { label: 'Link to another workbook…', testId: 'open-links', onClick: () => { setCtxMenu(null); setShowLinks(true); } },
+          ...(canResize ? [{ label: 'Alert when…', testId: 'open-alerts',
+            onClick: () => { setCtxMenu(null); setRulesError(null); setRulesMode('alert'); } }] : []),
         ],
       },
       ...(canResize ? [{
@@ -1677,7 +1686,8 @@ export default function AppPage() {
         onSelect={handleSelectSheet}
         onAdd={handleAddSheet}
         onRename={(id, name) => (privateIds.has(id) ? ss.renamePrivateSheet(id, name) : ss.renameSheet(id, name))}
-        onDelete={(id) => void (privateIds.has(id) ? ss.deletePrivateSheet(id) : ss.deleteSheet(id))}
+        onDelete={(id) => void (privateIds.has(id) ? ss.deletePrivateSheet(id)
+          : allSheets.find((x) => x.id === id)?.linked_from ? ss.unlink(id) : ss.deleteSheet(id))}
       />
 
       <StatusBar synced={synced} peers={peers} cells={ss.cells.length} />
@@ -1773,6 +1783,44 @@ export default function AppPage() {
           onClose={() => setNoteCell(null)}
         />
       )}
+      {ss.alerts.length > 0 && (
+        <MentionToast role="status" data-testid="toast-alert" style={{ bottom: 92 }}>
+          <span>🔔 {ss.alerts[ss.alerts.length - 1].message}</span>
+          <button type="button" onClick={() => {
+            const a = ss.alerts[ss.alerts.length - 1];
+            if (allSheets.some((x) => x.id === a.sheetId)) setActiveSheetId(a.sheetId);
+            ss.dismissAlert(ss.alerts.length - 1);
+          }}>View</button>
+          <button type="button" aria-label="Dismiss" onClick={() => ss.dismissAlert(ss.alerts.length - 1)}>×</button>
+        </MentionToast>
+      )}
+      {showLinks && activeSheetId && (
+        <LinksPanel
+          selection={!isPrivateActive && !activeLinkedFrom && menuRect() ? namesSelection : null}
+          workbooks={ws.workspaces.filter((w) => w.contextId !== ws.contextId).map((w) => ({ contextId: w.contextId, name: w.name }))}
+          outgoing={ss.publications.map((p) => {
+            const a = ss.refOf(p.sheet_id, p.top_row_id, p.left_col_id);
+            const b = ss.refOf(p.sheet_id, p.bottom_row_id, p.right_col_id);
+            const sheet = idToName(p.sheet_id);
+            return {
+              id: p.id,
+              name: p.name,
+              target: ws.workspaces.find((w) => w.contextId === p.target_context)?.name ?? `${p.target_context.slice(0, 8)}…`,
+              where: a && b ? `${sheet ? sheetPrefix(sheet) : ''}${rangeRef(a, b)}` : null,
+            };
+          })}
+          incoming={ss.sheets.filter((x) => x.linked_from).map((x) => ({ sheetId: x.id, name: x.name, from: x.linked_from }))}
+          canEdit={myRole === 'owner' || myRole === 'editor'}
+          onPublish={async (target, name) => {
+            const r = menuRect();
+            if (r) await ss.publishRange(activeSheetId, r, target, name);
+          }}
+          onPush={ss.pushPublication}
+          onUnpublish={ss.unpublish}
+          onUnlink={ss.unlink}
+          onClose={() => setShowLinks(false)}
+        />
+      )}
       {mention && (
         <MentionToast role="status" data-testid="toast-mention">
           <span>
@@ -1843,14 +1891,16 @@ export default function AppPage() {
           mode={rulesMode}
           selection={namesSelection}
           items={placedRules
-            .filter((p) => (rulesMode === 'format' ? p.rule.kind !== 'validate' : p.rule.kind === 'validate'))
+            .filter((p) => (rulesMode === 'format' ? p.rule.kind === 'format' || p.rule.kind === 'scale' : p.rule.kind === rulesMode))
             .map((p) => ({
               id: p.id,
               where: rangeRef({ row: p.rect.top, col: p.rect.left }, { row: p.rect.bottom, col: p.rect.right }),
               summary: p.rule.kind === 'scale'
                 ? 'Colour scale'
-                : `${p.rule.kind === 'validate' ? (p.rule.strict ? 'Only' : 'Mark if not') : 'When'} ${conditionLabel(p.rule.condition)}${p.rule.args.length ? ` ${p.rule.args.join(p.rule.condition === 'one_of' ? ', ' : ' and ')}` : ''}`,
+                : `${p.rule.kind === 'validate' ? (p.rule.strict ? 'Only' : 'Mark if not') : 'When'} ${conditionLabel(p.rule.condition)}${p.rule.args.length ? ` ${p.rule.args.join(p.rule.condition === 'one_of' ? ', ' : ' and ')}` : ''}${
+                  p.rule.kind === 'alert' ? `, tell ${p.rule.recipients.map(personName).join(', ')}` : ''}`,
             }))}
+          people={ss.members.map((m) => ({ id: m.id, name: personName(m.id) }))}
           saving={rulesSaving}
           error={rulesError}
           onAdd={(spec) => {

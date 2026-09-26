@@ -39,6 +39,17 @@ pub enum Event<'a> {
     RolesChanged { member_id: &'a str },
     /// A protected range was added, changed or removed.
     ProtectionsChanged { sheet_id: &'a str },
+    /// A link from this workbook was made or stopped.
+    PublicationsChanged { sheet_id: &'a str },
+    /// A linked sheet (pushed from another workbook) arrived, changed or went.
+    LinkedChanged { sheet_id: &'a str },
+    /// Cells in an alert rule's range started meeting its condition.
+    AlertTriggered {
+        rule_id: &'a str,
+        sheet_id: &'a str,
+        recipients: &'a [String],
+        message: &'a str,
+    },
     /// A file was attached to a cell, or removed.
     AttachmentsChanged { sheet_id: &'a str },
     /// A chart was added, changed or removed.

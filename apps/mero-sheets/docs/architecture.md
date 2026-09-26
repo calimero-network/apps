@@ -233,6 +233,35 @@ a formula result that breaks a rule.
   contract records its name, size, type and who attached it
   (`attachments`). Whoever attached a file, or an owner, can remove it.
 
+## Linked workbooks and automations
+
+Workbooks in one workspace can share data without merging: a **link** sends
+a range of one workbook to another, where it appears as a read-only sheet
+(`⇆`) that formulas can use like any other (`=Rates!B1*2`).
+
+- The source records the link (`publications`) and pushes the range's
+  computed values with a cross-context call: `env::xcall` to the target's
+  `receive_link`, which the node runs after the source's call commits. The
+  entry point is `#[app::xcall(from_same_app)]`, so only this same app can
+  reach it, and it checks that the node-set origin is the workbook the call
+  names; a direct call is refused.
+- The target keeps the values (`linked`, one entry per link, at most 2000
+  cells) and serves them as a sheet: they join the cells formulas read, so
+  its formulas compute on the node and in the browser alike. Its own editors
+  can remove a linked sheet, after which later pushes are ignored; the
+  source can stop a link, which removes the sheet there.
+- **Automation:** a link is pushed again whenever a cell on its sheet changes
+  (and on demand). An **alert** rule tells chosen members when a value in
+  its range starts meeting a condition, formulas included: the contract
+  evaluates the sheet after each change and emits `AlertTriggered` for cells
+  that newly match (`alert_state` remembers which already did), and each
+  recipient's app shows it. Both cost nothing on sheets without links or
+  alerts.
+
+xcall runs on the node making the change, against a workbook that node has
+opened; a workbook this node has never opened does not receive the push
+until it is opened and the source pushes again.
+
 ## Derive-on-read
 
 If values aren't stored, they have to be produced somehow when a peer asks

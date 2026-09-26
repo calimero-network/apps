@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isNoop, mentionsIn, mergePlans, planFor, type RefreshPlan } from './events';
+import { alertsIn, isNoop, mentionsIn, mergePlans, planFor, type RefreshPlan } from './events';
 
 const bytes = (v: unknown) => Array.from(new TextEncoder().encode(JSON.stringify(v)));
 const mutation = (...events: [string, unknown][]) => ({
@@ -125,5 +125,20 @@ describe('attachments', () => {
   it('re-reads only the attachments', () => {
     const p = partial(planFor(mutation(['AttachmentsChanged', { sheet_id: 's1' }])));
     expect([p.attachments, p.sheets.size]).toEqual([true, 0]);
+  });
+});
+
+describe('linked workbooks and alerts', () => {
+  it('re-reads the tabs and the linked sheet when a link changes', () => {
+    const p = partial(planFor(mutation(['LinkedChanged', { sheet_id: 'link-ab-1' }])));
+    expect(p.sheetList).toBe(true);
+    expect([...p.sheets]).toEqual(['link-ab-1']);
+    expect(partial(planFor(mutation(['PublicationsChanged', { sheet_id: 's1' }]))).publications).toBe(true);
+  });
+
+  it('reads nothing for an alert, and says whom it tells', () => {
+    const ev = mutation(['AlertTriggered', { rule_id: 'r1', sheet_id: 's1', recipients: ['ada'], message: 'B2 is now over 100' }]);
+    expect(isNoop(partial(planFor(ev)))).toBe(true);
+    expect(alertsIn(ev)).toEqual([{ ruleId: 'r1', sheetId: 's1', recipients: ['ada'], message: 'B2 is now over 100' }]);
   });
 });

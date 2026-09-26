@@ -62,6 +62,26 @@
         }
       ]
     },
+    "AlertState": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "cells",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
     "AttachmentData": {
       "kind": "record",
       "fields": [
@@ -417,6 +437,74 @@
         }
       ]
     },
+    "LinkedData": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "source_context",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "source_name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "rows",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "cols",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "values",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "blocked",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "deleted",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
     "MemberData": {
       "kind": "record",
       "fields": [
@@ -531,6 +619,71 @@
         }
       ]
     },
+    "PublicationData": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "top_row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "left_col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "bottom_row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "right_col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "target_context",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "created_by",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "deleted",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
     "RoleData": {
       "kind": "record",
       "fields": [
@@ -621,6 +774,15 @@
           "name": "strict",
           "type": {
             "kind": "bool"
+          }
+        },
+        {
+          "name": "recipients",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
           }
         },
         {
@@ -1026,6 +1188,45 @@
             },
             "value": {
               "$ref": "AttachmentData"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "publications",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "PublicationData"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "linked",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "LinkedData"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "alert_state",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "AlertState"
             },
             "crdt_type": "unordered_map"
           }

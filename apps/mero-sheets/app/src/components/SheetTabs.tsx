@@ -85,8 +85,10 @@ export default function SheetTabs({
           const isActive = sheet.id === activeSheetId;
           const isEditing = editingId === sheet.id;
           const isPrivate = privateIds.has(sheet.id);
+          const linkedFrom = sheet.linked_from;
           // A workbook keeps at least one shared sheet; private ones can all go.
-          const deletable = isPrivate || sheets.filter((x) => !privateIds.has(x.id)).length > 1;
+          const deletable = isPrivate || !!linkedFrom
+            || sheets.filter((x) => !privateIds.has(x.id) && !x.linked_from).length > 1;
 
           return (
             <Tab
@@ -95,11 +97,13 @@ export default function SheetTabs({
               data-sheet-id={sheet.id}
               $active={isActive}
               data-private={isPrivate || undefined}
-              title={isPrivate ? 'Private: only on this node, nobody else sees it' : undefined}
+              title={isPrivate ? 'Private: only on this node, nobody else sees it'
+                : linkedFrom ? `Linked from ${linkedFrom}: read-only, kept up to date` : undefined}
               role="tab"
               aria-selected={isActive}
               onClick={() => !isEditing && onSelect(sheet.id)}
-              onDoubleClick={() => startRename(sheet)}
+              // A linked sheet is named by the workbook that sends it.
+              onDoubleClick={() => { if (!linkedFrom) startRename(sheet); }}
             >
               {isEditing ? (
                 <>
@@ -122,7 +126,11 @@ export default function SheetTabs({
                   {renameError && <RenameError role="alert">{renameError}</RenameError>}
                 </>
               ) : (
-                <TabName>{isPrivate && <span aria-label="Private">🔒 </span>}{sheet.name}</TabName>
+                <TabName>
+                  {isPrivate && <span aria-label="Private">🔒 </span>}
+                  {linkedFrom && <span aria-label="Linked">⇆ </span>}
+                  {sheet.name}
+                </TabName>
               )}
               {!isEditing && deletable && (
                 <DeleteBtn

@@ -31,6 +31,11 @@ export interface ActivityEntry {
   changes: CellChange[];
 }
 
+export interface AlertState {
+  cells: string[];
+  updated_at: number;
+}
+
 export interface Attachment {
   id: string;
   sheet_id: string;
@@ -248,6 +253,13 @@ export interface CommentData {
   updated_at: number;
 }
 
+export interface Event_AlertTriggered {
+  rule_id: string;
+  sheet_id: string;
+  recipients: string[];
+  message: string;
+}
+
 export interface Event_AttachmentsChanged {
   sheet_id: string;
 }
@@ -289,6 +301,10 @@ export interface Event_CommentChanged {
   sheet_id: string;
 }
 
+export interface Event_LinkedChanged {
+  sheet_id: string;
+}
+
 export interface Event_MemberJoined {
   id: string;
   nickname: string;
@@ -320,6 +336,10 @@ export interface Event_ProjectInitialized {
 }
 
 export interface Event_ProtectionsChanged {
+  sheet_id: string;
+}
+
+export interface Event_PublicationsChanged {
   sheet_id: string;
 }
 
@@ -364,6 +384,29 @@ export interface FunctionDef {
   syntax: string;
   description: string;
   example: string;
+}
+
+export interface Link {
+  id: string;
+  source_context: string;
+  source_name: string;
+  name: string;
+  rows: number;
+  cols: number;
+  updated_at: number;
+}
+
+export interface LinkedData {
+  source_context: string;
+  source_name: string;
+  name: string;
+  rows: number;
+  cols: number;
+  values: string[];
+  created_at: number;
+  blocked: boolean;
+  deleted: boolean;
+  updated_at: number;
 }
 
 export interface Member {
@@ -455,6 +498,31 @@ export interface ProtectionData {
   updated_at: number;
 }
 
+export interface Publication {
+  id: string;
+  sheet_id: string;
+  top_row_id: string;
+  left_col_id: string;
+  bottom_row_id: string;
+  right_col_id: string;
+  target_context: string;
+  name: string;
+  created_by: string;
+}
+
+export interface PublicationData {
+  sheet_id: string;
+  top_row_id: string;
+  left_col_id: string;
+  bottom_row_id: string;
+  right_col_id: string;
+  target_context: string;
+  name: string;
+  created_by: string;
+  deleted: boolean;
+  updated_at: number;
+}
+
 export interface RoleData {
   role: string;
   by: string;
@@ -478,6 +546,7 @@ export interface RuleData {
   args: string[];
   style: StylePair[];
   strict: boolean;
+  recipients: string[];
   created_by: string;
   deleted: boolean;
   updated_at: number;
@@ -494,6 +563,7 @@ export interface RuleInput {
   args: string[];
   style: Record<string, string>;
   strict: boolean;
+  recipients: string[];
 }
 
 export interface Sheet {
@@ -501,6 +571,7 @@ export interface Sheet {
   name: string;
   position: number;
   created_at: number;
+  linked_from: string;
 }
 
 export interface SheetData {
@@ -563,6 +634,9 @@ export interface Spreadsheet {
   rules: Record<string, RuleData>;
   charts: Record<string, ChartData>;
   attachments: Record<string, AttachmentData>;
+  publications: Record<string, PublicationData>;
+  linked: Record<string, LinkedData>;
+  alert_state: Record<string, AlertState>;
 }
 
 export interface StyleData {
@@ -609,7 +683,11 @@ export interface StylePair {
 
 
 
+
+
+
 export type AbiEvent =
+  | { name: "AlertTriggered"; payload: Event_AlertTriggered }
   | { name: "AttachmentsChanged"; payload: Event_AttachmentsChanged }
   | { name: "AxesChanged"; payload: Event_AxesChanged }
   | { name: "CellCleared"; payload: Event_CellCleared }
@@ -618,6 +696,7 @@ export type AbiEvent =
   | { name: "ChartsChanged"; payload: Event_ChartsChanged }
   | { name: "CommentAdded"; payload: Event_CommentAdded }
   | { name: "CommentChanged"; payload: Event_CommentChanged }
+  | { name: "LinkedChanged"; payload: Event_LinkedChanged }
   | { name: "MemberJoined"; payload: Event_MemberJoined }
   | { name: "MemberRenamed"; payload: Event_MemberRenamed }
   | { name: "Migrated"; payload: Event_Migrated }
@@ -625,6 +704,7 @@ export type AbiEvent =
   | { name: "NoteChanged"; payload: Event_NoteChanged }
   | { name: "ProjectInitialized"; payload: Event_ProjectInitialized }
   | { name: "ProtectionsChanged"; payload: Event_ProtectionsChanged }
+  | { name: "PublicationsChanged"; payload: Event_PublicationsChanged }
   | { name: "RolesChanged"; payload: Event_RolesChanged }
   | { name: "RulesChanged"; payload: Event_RulesChanged }
   | { name: "SheetCreated"; payload: Event_SheetCreated }
@@ -634,6 +714,75 @@ export type AbiEvent =
   | { name: "StylesChanged"; payload: Event_StylesChanged }
 ;
 
+
+/**
+ * Utility class for handling byte conversions in Calimero
+ */
+export class CalimeroBytes {
+  private data: Uint8Array;
+
+  constructor(input: string | number[] | Uint8Array) {
+    if (typeof input === "string") {
+      // Hex string
+      this.data = new Uint8Array(
+        input.match(/.{1,2}/g)?.map((byte) => parseInt(byte, 16)) || []
+      );
+    } else if (Array.isArray(input)) {
+      // Number array
+      this.data = new Uint8Array(input);
+    } else {
+      // Uint8Array
+      this.data = input;
+    }
+  }
+
+  toArray(): number[] {
+    return Array.from(this.data);
+  }
+
+  toUint8Array(): Uint8Array {
+    return this.data;
+  }
+
+  static fromHex(hex: string): CalimeroBytes {
+    return new CalimeroBytes(hex);
+  }
+
+  static fromArray(arr: number[]): CalimeroBytes {
+    return new CalimeroBytes(arr);
+  }
+
+  static fromUint8Array(bytes: Uint8Array): CalimeroBytes {
+    return new CalimeroBytes(bytes);
+  }
+}
+
+/**
+ * Convert CalimeroBytes instances to arrays for WASM compatibility
+ */
+function convertCalimeroBytesForWasm(obj: any): any {
+  if (obj === null || obj === undefined) {
+    return obj;
+  }
+
+  if (obj instanceof CalimeroBytes) {
+    return obj.toArray();
+  }
+
+  if (Array.isArray(obj)) {
+    return obj.map(item => convertCalimeroBytesForWasm(item));
+  }
+
+  if (typeof obj === "object") {
+    const result: any = {};
+    for (const [key, value] of Object.entries(obj)) {
+      result[key] = convertCalimeroBytesForWasm(value);
+    }
+    return result;
+  }
+
+  return obj;
+}
 
 export class SpreadsheetClient {
   private _mero: MeroJs;
@@ -795,6 +944,18 @@ export class SpreadsheetClient {
   }
 
   /**
+   * drop_link
+   *
+   * @intent mutating
+   *
+   * @xcall same_app (callers must run the same application id)
+   */
+  public async dropLink(params: { from_context: CalimeroBytes; publication_id: string }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'drop_link', argsJson: convertCalimeroBytesForWasm(params) });
+    return response as void;
+  }
+
+  /**
    * edit_comment
    *
    * @intent mutating
@@ -905,6 +1066,16 @@ export class SpreadsheetClient {
   }
 
   /**
+   * get_links
+   *
+   * @intent read_only
+   */
+  public async getLinks(): Promise<Link[]> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_links', argsJson: {} });
+    return response as Link[];
+  }
+
+  /**
    * get_members
    *
    * @intent read_only
@@ -985,6 +1156,16 @@ export class SpreadsheetClient {
   }
 
   /**
+   * get_publications
+   *
+   * @intent read_only
+   */
+  public async getPublications(): Promise<Publication[]> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_publications', argsJson: {} });
+    return response as Publication[];
+  }
+
+  /**
    * get_rules
    *
    * @intent read_only
@@ -1060,6 +1241,38 @@ export class SpreadsheetClient {
   public async protectRange(params: { sheet_id: string; top_row_id: string; left_col_id: string; bottom_row_id: string; right_col_id: string; description: string; editors: string[] }): Promise<string> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'protect_range', argsJson: params });
     return response as string;
+  }
+
+  /**
+   * publish_range
+   *
+   * @intent mutating
+   */
+  public async publishRange(params: { sheet_id: string; top_row_id: string; left_col_id: string; bottom_row_id: string; right_col_id: string; target_context: string; name: string }): Promise<string> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'publish_range', argsJson: params });
+    return response as string;
+  }
+
+  /**
+   * push_publication
+   *
+   * @intent mutating
+   */
+  public async pushPublication(params: { id: string }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'push_publication', argsJson: params });
+    return response as void;
+  }
+
+  /**
+   * receive_link
+   *
+   * @intent mutating
+   *
+   * @xcall same_app (callers must run the same application id)
+   */
+  public async receiveLink(params: { from_context: CalimeroBytes; publication_id: string; name: string; source_name: string; rows: number; cols: number; values: string[] }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'receive_link', argsJson: convertCalimeroBytesForWasm(params) });
+    return response as void;
   }
 
   /**
@@ -1199,6 +1412,26 @@ export class SpreadsheetClient {
    */
   public async setSizes(params: { sheet_id: string; sizes: AxisSize[] }): Promise<void> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_sizes', argsJson: params });
+    return response as void;
+  }
+
+  /**
+   * unlink
+   *
+   * @intent mutating
+   */
+  public async unlink(params: { id: string }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'unlink', argsJson: params });
+    return response as void;
+  }
+
+  /**
+   * unpublish
+   *
+   * @intent mutating
+   */
+  public async unpublish(params: { id: string }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'unpublish', argsJson: params });
     return response as void;
   }
 
