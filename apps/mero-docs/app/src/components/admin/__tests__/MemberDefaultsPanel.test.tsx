@@ -5,7 +5,6 @@ import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemberDefaultsPanel } from '../MemberDefaultsPanel';
-import { UNNAMED_MEMBER_LABEL } from '@/components/common/MemberLabel';
 
 const setMemberCapabilitiesMock = vi.fn().mockResolvedValue(undefined);
 const confirmMock = vi.fn();
@@ -22,6 +21,7 @@ vi.mock('@/hooks/useFolderMembership', () => ({
       { identity: 'alice', role: 'Member', name: 'Alice' },
       { identity: 'bob', role: 'Member', name: 'Bob' },
       { identity: 'carol-identity-64charhexlikevalue', role: 'Member' },
+      { identity: 'dave-identity-64charhexlikevalue', role: 'Member' },
     ],
     loading: false,
     error: null,
@@ -73,17 +73,17 @@ describe('MemberDefaultsPanel apply-to-existing confirmation', () => {
       screen.getByRole('button', { name: /Apply to existing members/ }),
     );
     await waitFor(() =>
-      expect(setMemberCapabilitiesMock).toHaveBeenCalledTimes(3),
+      expect(setMemberCapabilitiesMock).toHaveBeenCalledTimes(4),
     );
     expect(confirmMock).toHaveBeenCalledTimes(1);
   });
 
-  it('names a sweep failure with the shared fallback, never the raw identity', async () => {
+  it('names failed members and counts unnamed ones, never the raw identity', async () => {
     confirmMock.mockResolvedValue(true);
-    setMemberCapabilitiesMock.mockImplementation((_group, identity) =>
-      identity === 'carol-identity-64charhexlikevalue'
-        ? Promise.reject(new Error('boom'))
-        : Promise.resolve(undefined),
+    setMemberCapabilitiesMock.mockImplementation((_group, identity: string) =>
+      identity === 'alice'
+        ? Promise.resolve(undefined)
+        : Promise.reject(new Error('boom')),
     );
     render(<MemberDefaultsPanel />);
     fireEvent.click(
@@ -91,7 +91,8 @@ describe('MemberDefaultsPanel apply-to-existing confirmation', () => {
     );
     await waitFor(() => expect(setMemberCapabilitiesMock).toHaveBeenCalled());
     const status = await screen.findByRole('status');
-    expect(status.textContent).toContain(`Failed for: ${UNNAMED_MEMBER_LABEL}`);
-    expect(status.textContent).not.toMatch(/carol-identity/);
+    expect(status.textContent).toContain('Updated 1 of 4 members.');
+    expect(status.textContent).toContain('Failed for: Bob, 2 unnamed members.');
+    expect(status.textContent).not.toMatch(/-identity/);
   });
 });
