@@ -40,7 +40,7 @@ const WORLD_SZ: i32 = 128;
 const MAX_EDITS_PER_CALL: usize = 512;
 
 /// A player heard from within this window (room time) is online.
-/// Frontend heartbeats every 1s while moving / 3s idle.
+/// Frontend heartbeats every 0.5s while moving / 2s idle.
 const PRESENCE_TTL_SECS: u64 = 10;
 
 /// How far ahead of the caller's own clock a stored player stamp may be and
@@ -224,13 +224,17 @@ pub struct BlockEntry {
 #[serde(crate = "calimero_sdk::serde")]
 #[serde(rename_all = "camelCase")]
 pub struct PlayerView {
+    /// The player's context identity (device key, 64 hex).
     pub id: MemberId,
     pub name: String,
     pub x: f64,
     pub y: f64,
     pub z: f64,
+    /// Radians.
     pub yaw: f64,
+    /// Radians.
     pub pitch: f64,
+    /// Selected hotbar slot, 0 to 8; peers render what the player holds.
     pub sel: u8,
     /// Not left, and heard from within the last 10 s.
     pub online: bool,
@@ -394,7 +398,9 @@ impl MeroBlocks {
     /// poison a batch. Each applied edit overwrites the block at its coordinate.
     ///
     /// # Arguments
-    /// * `edits` - at most 512 per call; `b` is a block id from 0 to 15, and `b: 0` breaks the block.
+    /// * `edits` - at most 512 per call; `b` is a block id, 0 to 15 for ids the client
+    ///   defines (`b: 0` breaks the block); the contract stores any 0-255 value without
+    ///   checking it, so never send an id outside 0 to 15.
     /// * `now` - the caller's unix seconds; orders concurrent edits of one block (last writer wins).
     ///
     /// # Returns
@@ -537,9 +543,9 @@ impl MeroBlocks {
     ///
     /// Send every 0.5 s while moving and every 2 s while idle; a player silent
     /// for more than 10 s shows as offline. Creates the player row if needed.
-    /// Silent, except that returning from a `left` state emits `PlayerJoined`
-    /// to announce the player is back (peers poll `get_players`, so a routine
-    /// heartbeat must not spam an event on every call).
+    /// Emits `PlayerJoined` only when this creates the row or brings a left
+    /// player back; otherwise no event (peers poll `get_players`, so a
+    /// routine heartbeat must not spam an event on every call).
     ///
     /// # Arguments
     /// * `t` - position in blocks, `yaw` and `pitch` in radians, `sel` the hotbar slot (0 to 8).

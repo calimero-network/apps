@@ -13,7 +13,7 @@ Every client generates identical terrain from the world's seed; the contract sto
 
 To know what is at a coordinate: an entry in `get_overrides()` for `"x,y,z"` wins; otherwise it is generated terrain, which only a client running the terrain generator can compute.
 
-Block ids, the only valid values of `b`:
+Block ids the client defines for `b`; the contract stores any 0-255 value without checking it, so never send one outside this table:
 
 | id | block | id | block |
 | -- | ----- | -- | ----- |
@@ -32,16 +32,16 @@ The game never lets a player break air or bedrock; the contract accepts any edit
 Terrain, for placing blocks where players will see them:
 
 - y = 0 is bedrock everywhere.
-- The ground surface lies between y = 12 and y = 42, and water fills every column up to y = 22 (sea level).
+- The ground surface lies between y = 12 and y = 41, and water fills every column up to y = 22 (sea level).
 - The top block is sand at or below y = 23, snow at y = 38 and above, grass otherwise; dirt sits under it and stone below that.
-- A new player spawns on the dry, tree-free column closest to the world centre (64, 64).
+- `join` always places a new player at (0, 0, 0) with `yaw`, `pitch` and `sel` reset to 0; the dry, tree-free spawn column near the world centre (64, 64) is picked by the web client, not the contract, so an agent's player starts at the origin (which may be underground or underwater) until its first `heartbeat`.
 - The day/night cycle lasts 600 seconds, counted from `createdAt`.
 
 ## Context model
 
 One context is one world, running the bundle's single service.
 A world is created with init arguments `name` (string), `seed` (integer) and `now` (the creator's unix seconds).
-Each world gets its own namespace, so an invitation grants exactly one world; the world's context sits directly in that namespace.
+Each world gets its own namespace and, inside it, its own Open group; the world's context sits in that group, not directly in the namespace. This is the same layout the web client builds, so an agent-made world and a person-made world join the same way: a namespace invitation lets a joiner self-join the Open group by inheritance, then join the context in it.
 A player is the calling node's context identity (a device key): one person on two devices is two players.
 There are no roles: every member of the world may edit it.
 
@@ -51,35 +51,67 @@ Every app tool (and `call`) takes an `app_handle`. Get one from `select_app` wit
 
 1. `list_applications` and find the package `com.calimero.mero-blocks`.
 2. `create_namespace` with `application` set to that package and `name` set to the world name.
-3. `create_context` with `application`, `namespace` set to the new namespace id, `name` (the world name) and `args`:
+3. `create_group` with `namespace` set to the new namespace id, `name` set to the world name and `visibility: "open"`:
 
    ```json
-   {"name": "ci", "seed": 42, "now": 1727000000}
+   {"namespace": "<namespace id>", "name": "ci", "visibility": "open"}
+   ```
+
+   This is the Open group the world's context lives in; `open` is what lets an invited player self-join it later. Keep the returned group id.
+4. `create_context` with `application`, `namespace` set to that group id (despite the argument's name, `create_context` passes it straight through as the target group id, so the Open group's id from step 3 works here), `name` (the world name) and `args`:
+
+   ```json
+   {"application": "com.calimero.mero-blocks", "namespace": "<group id>", "name": "ci", "args": {"name": "ci", "seed": 42, "now": 1727000000}}
    ```
 
    Use a seed in [0, 4294967296): the terrain generator reads it as an unsigned 32-bit integer.
-4. `select_app` with `app` `com.calimero.mero-blocks` and `context` set to the new context id; keep the returned `app_handle`.
-5. Call `join` with a player name and the current unix seconds:
+5. `select_app` with `app` `com.calimero.mero-blocks` and `context` set to the new context id; keep the returned `app_handle`.
+6. Call `join` with a player name and the current unix seconds:
 
    ```json
    {"name": "bot", "now": 1727000000}
    ```
 
-6. While the player is active, call `heartbeat` every 0.5 seconds while moving and every 2 seconds while idle, as the game does.
+   This places the player at (0, 0, 0); send a `heartbeat` next to move somewhere else (see Rules and limits).
+7. While the player is active, call `heartbeat` every 0.5 seconds while moving and every 2 seconds while idle, as the game does.
    A player silent for more than 10 seconds shows as offline.
 
-To let someone else play, `invite_to_namespace` for the world's namespace and hand them the invitation.
-On their node they run `join_namespace` with it, `join_context` with the world's context id, `select_app` with that context, then call `join`.
+To let someone else play, share the namespace id, the group id (from step 3) and the context id, and call `invite_to_namespace` with that namespace id to get the invitation; hand all four to the joiner. See "Join an existing world" below.
 
 ## Procedures
 
 ### Create a world
 
-Follow Getting started steps 1 to 5, then confirm with `world_meta`:
+Follow Getting started steps 1 to 6, then confirm with `world_meta`:
 
 ```json
 {}
 ```
+
+### Join an existing world
+
+On the invitee's node, in this order:
+
+1. `join_namespace` with `namespace` set to the namespace id and `invitation` set to the invitation object exactly as received:
+
+   ```json
+   {"namespace": "<namespace id>", "invitation": {"...": "..."}}
+   ```
+
+2. `join_open_group` with `group` set to the world's group id, to join the Open group via inheritance:
+
+   ```json
+   {"group": "<group id>"}
+   ```
+
+3. `join_context` with `context` set to the world's context id:
+
+   ```json
+   {"context": "<context id>"}
+   ```
+
+4. `select_app` with `app` `com.calimero.mero-blocks` and `context` set to that context id; keep the returned `app_handle`.
+5. Call `join` as in Getting started step 6.
 
 ### Place or break blocks
 
@@ -127,7 +159,7 @@ Call `leave`:
 {"now": 1727000000}
 ```
 
-The player row stays and shows as offline; a later `join` or `heartbeat` brings it back at its last position.
+The player row stays and shows as offline; a later `join` brings it back at its last position. A later `heartbeat` instead moves the player straight to the position it sends.
 
 ## Rules and limits
 
@@ -136,5 +168,5 @@ The player row stays and shows as offline; a later `join` or `heartbeat` brings 
 - `now` must be real wall-clock unix seconds. It orders concurrent edits of one block (last writer wins) and drives presence.
 - Edits are never deleted: breaking writes `b: 0`, so `get_overrides` grows with every coordinate touched.
 - Presence: online while the last write is at most 10 seconds old. A player silent for 30 seconds is marked stale, and set to left 30 seconds after that by whichever player calls `set_blocks` or `heartbeat` next.
-- `heartbeat` emits no event; `set_blocks`, `join` and `leave` emit `BlocksChanged`, `PlayerJoined` and `PlayerLeft`.
+- `set_blocks` emits `BlocksChanged` only when at least one edit was applied. `join` emits `PlayerJoined`; `leave` emits `PlayerLeft`. `heartbeat` emits `PlayerJoined` only when it creates the row or brings back a player who had left, otherwise no event. Both `set_blocks` and `heartbeat` can also emit `PlayerLeft` for any player they reap for going silent.
 - There is no turn order, inventory or win condition: it is a sandbox.
