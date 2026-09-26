@@ -15,7 +15,7 @@ Each issue also has a `title`, a `status`, a `priority`, an optional `assignee`,
 - Statuses, in board column order: `Open`, `In progress`, `Blocked`, `Done`. New issues start `Open`.
 - Priorities: `low`, `medium`, `high`, `urgent`.
 - Issue ids look like `issue-1727000000000-1a2b3c4d`, comment ids like `comment-1727000000000-5e6f7a8b`; both are assigned by the contract.
-- `created_at` and `edited_at` are unix milliseconds. `created_by` and comment `author` are the writer's device key (64 hex).
+- `created_at` and `edited_at` are unix milliseconds. `created_by` and comment `author` are the writer's account id (64 hex).
 
 ## Context model
 
@@ -93,7 +93,7 @@ The author may `edit_comment` with `{"comment_id": "<comment id>", "new_body": "
 
 ### Delete an issue
 
-As its creator, `delete_issue` with `{"issue_id": "<issue id>"}`. Its comments and labels go with it.
+As its creator, `delete_issue` with `{"issue_id": "<issue id>"}`. Its triage state, labels and your own comments on it go with it. Comments other teammates left on it are not deleted, but become unreachable once the issue is gone.
 
 ### Build a fix prompt
 
@@ -105,5 +105,5 @@ Call `get_issue` and `get_repo_info` on the repo, then give the coding agent: th
 - `status` and `priority` must be exactly one of the listed values; the status values are case-sensitive and `In progress` has a space.
 - `repo_url` must start with `http://` or `https://`.
 - Adding a label twice keeps one; removing a missing label succeeds.
-- Deleting an issue removes it for every member; a delete that races an edit on another node is settled last-writer-wins.
+- Deleting an issue removes its triage state and labels for every member, plus the creator's own comments on it; comments left by other teammates are not removed but are no longer reachable.
 - An issue belongs to one repo: to move it, file it again in the other repo and delete the original.
