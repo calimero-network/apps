@@ -1,7 +1,7 @@
 // Top-bar workspace switcher: the app's namespaces plus the create / join actions.
 // namespaceId doubles as the root groupId under the current admin API.
 
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { ChevronsUpDown, Link, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -29,6 +29,12 @@ export function NamespaceSwitcher() {
     refetch,
   } = useDriveWorkspace();
   const [showCreate, setShowCreate] = useState(false);
+  // A menu hands focus back to its trigger as it closes, which lands AFTER a
+  // dialog it opened has mounted, so the first keys typed into the dialog
+  // went to the trigger (CI read "ed Without Clicking" for "Typed Without
+  // Clicking"). The dialog returns focus to the trigger itself on close, so
+  // skip the menu's own hand-back when an item opens one.
+  const openingDialog = useRef(false);
   const [showJoin, setShowJoin] = useState(false);
 
   if (loading && namespaces.length === 0) {
@@ -78,6 +84,11 @@ export function NamespaceSwitcher() {
         <DropdownMenuContent
           align="start"
           className="flex max-h-[var(--radix-dropdown-menu-content-available-height)] w-72 flex-col rounded-lg p-1 shadow-lg"
+          onCloseAutoFocus={(e) => {
+            if (!openingDialog.current) return;
+            openingDialog.current = false;
+            e.preventDefault();
+          }}
         >
           {namespaces.length > 0 && (
             <>
@@ -114,14 +125,20 @@ export function NamespaceSwitcher() {
           )}
           <DropdownMenuItem
             className="gap-2.5"
-            onSelect={() => setShowCreate(true)}
+            onSelect={() => {
+              openingDialog.current = true;
+              setShowCreate(true);
+            }}
           >
             <Plus className="h-4 w-4 text-muted-foreground" />
             New workspace
           </DropdownMenuItem>
           <DropdownMenuItem
             className="gap-2.5"
-            onSelect={() => setShowJoin(true)}
+            onSelect={() => {
+              openingDialog.current = true;
+              setShowJoin(true);
+            }}
           >
             <Link className="h-4 w-4 text-muted-foreground" />
             Join with invite link
