@@ -33,7 +33,7 @@ icon = "../app/public/icon-512.png"
 category = "productivity"
 tags = ["voting", "polls", "privacy", "zero-knowledge", "governance"]
 github = "https://github.com/calimero-network/apps"
-min-runtime-version = "0.11.0-rc.45"
+min-runtime-version = "0.11.0-rc.49"
 # Bare origin, no trailing slash (compared by exact origin). Resolves to nothing
 # until the Vercel project `mero-vote` exists; see docs/VERCEL.md.
 frontend = "https://mero-vote.vercel.app"

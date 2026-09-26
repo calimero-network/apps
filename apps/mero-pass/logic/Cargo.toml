@@ -32,7 +32,7 @@ icon        = "../app/public/icon-512.png"
 category = "security"
 tags        = ["secrets", "passwords", "security"]
 github      = "https://github.com/calimero-network/apps"
-min-runtime-version = "0.11.0-rc.45"
+min-runtime-version = "0.11.0-rc.49"
 frontend    = "https://mero-pass.vercel.app"
 
 [dependencies]
