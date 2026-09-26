@@ -32,7 +32,7 @@ catalog:
   # ⚠️ The grant set is baked into a client key when it is MINTED, so an app
   # already holding a token has to log in again to pick #73 up. 9.1.3 is what
   # makes that happen by itself instead of stranding the session offline.
-  "@calimero-network/mero-js": ^19.14.1
+  "@calimero-network/mero-js": ^19.20.0
   "@calimero-network/mero-react": ^9.1.3
   "@calimero-network/mero-ui": ^1.5.1
   # The landing template's feature-card and theme-toggle icons. Catalogued
