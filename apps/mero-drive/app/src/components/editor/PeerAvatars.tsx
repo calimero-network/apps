@@ -1,5 +1,4 @@
 import React from 'react';
-import { initials } from '@/lib/initials';
 import {
   Tooltip,
   TooltipContent,
@@ -14,11 +13,19 @@ export interface Peer {
   colour: string;
 }
 
+/** Two-letter monogram: the first letters of the first two words, else the first two letters. */
+function initials(label: string): string {
+  const words = label.trim().split(/\s+/);
+  const letters =
+    words.length > 1 ? words[0][0] + words[1][0] : label.trim().slice(0, 2);
+  return letters.toUpperCase();
+}
+
 /** Who else has this document open, in their caret colours. */
 export function PeerAvatars({ peers }: { peers: Peer[] }) {
   if (peers.length === 0) return null;
   const shown = peers.slice(0, MAX_SHOWN);
-  const hidden = peers.slice(MAX_SHOWN);
+  const extra = peers.length - MAX_SHOWN;
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -37,9 +44,9 @@ export function PeerAvatars({ peers }: { peers: Peer[] }) {
               {initials(p.name)}
             </span>
           ))}
-          {hidden.length > 0 && (
+          {extra > 0 && (
             <span className="-ml-1.5 flex h-7 min-w-7 items-center justify-center rounded-full bg-secondary px-1.5 text-[10px] font-semibold text-secondary-foreground ring-2 ring-card">
-              +{hidden.length}
+              +{extra}
             </span>
           )}
         </div>
