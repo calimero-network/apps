@@ -19,7 +19,7 @@
  *      gets, set by `setDefaultCapabilities`.
  *
  * All three are pinned by a live-node probe in this monorepo:
- * `apps/mero-drive/logic/workflows/probes/workflow-mero-drive-members.yml`,
+ * `apps/mero-docs/logic/workflows/workflow-mero-docs-members.yml`,
  * which asserts the role round-trip leaves the override bitmask unchanged and
  * that non-preset bitmasks are stored verbatim. The role spellings below are the
  * ones it actually sends to a real node.

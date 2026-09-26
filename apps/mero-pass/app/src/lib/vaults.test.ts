@@ -8,6 +8,7 @@ import {
   canCreateVault,
 } from './roles';
 import {
+  DEFAULT_INVITE_SECS,
   createPersonalVault,
   createTeam,
   createVault,
@@ -20,8 +21,10 @@ import {
   mintVaultInvite,
   isPersonalRecord,
   myCapabilities,
+  removeTeamMember,
   repairCreatorAdmin,
   setMemberRole,
+  vaultAudience,
   unwrapInvitation,
   type AdminLike,
 } from './vaults';
@@ -60,6 +63,10 @@ function fakeAdmin(over: Partial<Record<string, unknown>> = {}) {
     listGroupContexts: record('listGroupContexts', []),
     listGroupMembers: record('listGroupMembers', { members: [] }),
     getGroupMetadata: record('getGroupMetadata', null),
+    getSubgroupVisibility: record('getSubgroupVisibility', 'open'),
+    createGroupInvitation: record('createGroupInvitation', {
+      invitation: SIGNED,
+    }),
     getContextIdentitiesOwned: record('getContextIdentitiesOwned', {
       identities: [],
     }),
@@ -284,6 +291,7 @@ describe('listTeams / listVaults', () => {
       memberCount: 1,
       joined: true,
       identity: 'exec-1',
+      restricted: false,
     });
   });
 
@@ -326,9 +334,14 @@ describe('minting invitations', () => {
       teamName: 'Acme Ltd',
       contextId: 'ctx-1',
     });
-    // Vault access is inherited, so there is no narrower invitation to mint —
-    // the node is asked for a NAMESPACE invitation either way.
-    expect(argsOf(calls, 'createNamespaceInvitation')).toEqual(['ns-1', {}]);
+    // An OPEN vault's access is inherited, so there is no narrower invitation
+    // to mint — the node is asked for a NAMESPACE invitation, with the default
+    // one-day lifetime.
+    expect(argsOf(calls, 'createNamespaceInvitation')).toEqual([
+      'ns-1',
+      { expirationTimestamp: DEFAULT_INVITE_SECS },
+    ]);
+    expect(calls.some((c) => c.method === 'createGroupInvitation')).toBe(false);
     const decoded = decodeInvite(code)!;
     expect(decoded.kind).toBe('vault');
     expect(decoded.vaultId).toBe('sub-1');
@@ -349,8 +362,90 @@ describe('minting invitations', () => {
     // It is silently ignored by the node and misleads the next reader into
     // thinking the code is scoped to one person.
     const { admin, calls } = fakeAdmin();
-    await mintTeamInvite(admin, { namespaceId: 'ns-1' });
-    expect(argsOf(calls, 'createNamespaceInvitation')).toEqual(['ns-1', {}]);
+    await mintTeamInvite(admin, { namespaceId: 'ns-1', validForSecs: 3600 });
+    expect(argsOf(calls, 'createNamespaceInvitation')).toEqual([
+      'ns-1',
+      { expirationTimestamp: 3600 },
+    ]);
+  });
+
+  it('an invite-only vault code carries a team and a vault invitation, team first', async () => {
+    const { admin, calls } = fakeAdmin();
+    const code = await mintVaultInvite(admin, {
+      namespaceId: 'ns-1',
+      vaultId: 'sub-1',
+      vaultName: 'Prod keys',
+      contextId: 'ctx-1',
+      restricted: true,
+    });
+    expect(argsOf(calls, 'createGroupInvitation')).toEqual([
+      'sub-1',
+      { expirationTimestamp: DEFAULT_INVITE_SECS },
+    ]);
+    const decoded = decodeInvite(code)!;
+    expect(decoded.chain?.map((c) => [c.kind, c.groupId])).toEqual([
+      ['namespace', 'ns-1'],
+      ['vault', 'sub-1'],
+    ]);
+  });
+});
+
+describe('invite-only vaults and removal', () => {
+  it('creates an invite-only vault RESTRICTED at birth and never opens it', async () => {
+    const { admin, calls } = fakeAdmin();
+    await createVault(admin, {
+      applicationId: 'app',
+      namespaceId: 'ns-1',
+      name: 'Prod keys',
+      restricted: true,
+    });
+    expect(argsOf(calls, 'createGroupInNamespace')?.[1]).toMatchObject({
+      visibility: 'restricted',
+    });
+    const vis = calls
+      .filter((c) => c.method === 'setSubgroupVisibility')
+      .map(
+        (c) => (c.args[1] as { subgroupVisibility: string }).subgroupVisibility,
+      );
+    expect(vis).toEqual(['restricted']);
+  });
+
+  it('reads the audience from the vault when it is invite-only, else the team', async () => {
+    const listed: string[] = [];
+    const { admin } = fakeAdmin({
+      getSubgroupVisibility: () => Promise.resolve('restricted'),
+      listGroupMembers: (id: string) => {
+        listed.push(id);
+        return Promise.resolve({ members: [{ identity: 'acct-a' }] });
+      },
+    });
+    const who = await vaultAudience(admin, {
+      namespaceId: 'ns-1',
+      vaultId: 'sub-1',
+    });
+    expect(listed).toEqual(['sub-1']);
+    expect([...(who ?? [])]).toEqual(['acct-a']);
+  });
+
+  it('answers null rather than guessing when the node cannot say', async () => {
+    const { admin } = fakeAdmin({
+      getSubgroupVisibility: () => Promise.reject(new Error('down')),
+    });
+    expect(
+      await vaultAudience(admin, { namespaceId: 'ns-1', vaultId: 'sub-1' }),
+    ).toBeNull();
+  });
+
+  it('removes a member by ACCOUNT', async () => {
+    const calls: unknown[][] = [];
+    const { admin } = fakeAdmin({
+      removeGroupMembers: (...args: unknown[]) => {
+        calls.push(args);
+        return Promise.resolve();
+      },
+    });
+    await removeTeamMember(admin, { namespaceId: 'ns-1', accountId: 'acct-b' });
+    expect(calls).toEqual([['ns-1', { members: ['acct-b'] }]]);
   });
 });
 

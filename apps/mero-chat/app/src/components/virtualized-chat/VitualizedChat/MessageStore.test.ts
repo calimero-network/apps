@@ -104,3 +104,41 @@ describe("MessageStore id reconciliation", () => {
     expect(store.messages.find((m) => m.id === "real-2")?.text).toBe("next!");
   });
 });
+
+describe("MessageStore initial load", () => {
+  it("keeps a message sent while the initial load was in flight", () => {
+    // The race CI caught on a real node: open an empty channel, send at once.
+    // The optimistic message lands in the store, then the load (queried
+    // before the send) comes back empty and used to wipe it.
+    const store = new MessageStore<Msg>();
+    store.append([{ id: "temp-1", timestamp: 100, text: "first!" }]);
+
+    store.initial([]);
+
+    expect(ids(store)).toEqual(["temp-1"]);
+  });
+
+  it("keeps only messages NEWER than the snapshot, and does not duplicate", () => {
+    const store = storeWith(
+      { id: "a", timestamp: 1 },
+      { id: "b", timestamp: 2 },
+      { id: "c", timestamp: 3 },
+    );
+    store.append([{ id: "d", timestamp: 5 }]);
+
+    // A refetch returns a window that already includes c but not d.
+    store.initial([
+      { id: "b", timestamp: 2 },
+      { id: "c", timestamp: 3 },
+    ]);
+
+    // a (older than the window) is not resurrected; d (newer) is kept once.
+    expect(ids(store)).toEqual(["b", "c", "d"]);
+  });
+
+  it("is a plain replace when nothing arrived during the load", () => {
+    const store = storeWith({ id: "old", timestamp: 1 });
+    store.initial([{ id: "x", timestamp: 1 }]);
+    expect(ids(store)).toEqual(["x"]);
+  });
+});

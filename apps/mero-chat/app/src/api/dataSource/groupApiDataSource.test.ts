@@ -14,6 +14,9 @@ const {
   mockCreateGroupInNamespace,
   mockListNamespaces,
   mockListNamespacesForApplication,
+  mockListApplications,
+  mockReparentGroup,
+  mockUpgradeGroup,
 } = vi.hoisted(() => ({
   mockAxiosGet: vi.fn(),
   mockAxiosPost: vi.fn(),
@@ -27,6 +30,9 @@ const {
   mockCreateGroupInNamespace: vi.fn(),
   mockListNamespaces: vi.fn(),
   mockListNamespacesForApplication: vi.fn(),
+  mockListApplications: vi.fn(),
+  mockReparentGroup: vi.fn(),
+  mockUpgradeGroup: vi.fn(),
 }));
 
 vi.mock("axios", () => ({
@@ -64,43 +70,94 @@ vi.mock("../meroJsClient", () => ({
       createGroupInNamespace: mockCreateGroupInNamespace,
       listNamespaces: mockListNamespaces,
       listNamespacesForApplication: mockListNamespacesForApplication,
+      listApplications: mockListApplications,
+      reparentGroup: mockReparentGroup,
+      upgradeGroup: mockUpgradeGroup,
     },
   }),
 }));
 
-describe("GroupApiDataSource", () => {
-  it("filters namespaces by the RUNTIME application id, not the build-time one", async () => {
-    // `getApplicationId()` resolves `app-id` (URL) -> stored -> env. Reading
-    // `import.meta.env.VITE_APPLICATION_ID` directly instead pins a deployed
-    // build to whatever was set when it was built, so it cannot follow an
-    // app-id change — and the app id changes whenever the wasm does.
-    //
-    // The node rejects an id it does not know with `400 Invalid application
-    // id`, which surfaced as an empty workspace list and a truncated group id
-    // where the workspace name should be.
-    mockListNamespacesForApplication.mockResolvedValue({
-      namespaces: [{ namespaceId: "ns-1", name: "Calimero" }],
-    });
+// core's `CreateNamespaceApiRequest` (server/primitives admin/mod.rs), which is
+// `deny_unknown_fields`. `bytecodeId` is a deserialize alias of `appKey`.
+const CREATE_NAMESPACE_KEYS = new Set(["applicationId", "name", "appKey", "bytecodeId"]);
 
-    const response = await new GroupApiDataSource().listGroups();
-
-    expect(mockListNamespacesForApplication).toHaveBeenCalledWith("runtime-app-id");
-    expect(response.data?.[0]).toMatchObject({ groupId: "ns-1", alias: "Calimero" });
+describe("closed admin request bodies", () => {
+  beforeEach(() => {
+    mockReparentGroup.mockReset();
+    mockUpgradeGroup.mockReset();
   });
 
-  it("falls back to every namespace when the node rejects the application id", async () => {
-    // A stale or unknown app id must not hide the user's workspaces. Showing
-    // all of them is wrong-ish; showing none looks like the workspace is gone.
-    const rejected = Object.assign(new Error("Invalid application id"), { status: 400 });
-    mockListNamespacesForApplication.mockRejectedValue(rejected);
+  it("reparents with camelCase `newParentId` — core refused `new_parent_id`", async () => {
+    mockReparentGroup.mockResolvedValue(undefined);
+    const parent = "a".repeat(64);
+
+    const response = await new GroupApiDataSource().reparentGroup("g-1", { newParentId: parent });
+
+    expect(response.error).toBeNull();
+    expect(mockReparentGroup).toHaveBeenCalledWith("g-1", { newParentId: parent });
+  });
+
+  it("upgrades with only `targetApplicationId` — `migrateMethod` is not a core field", async () => {
+    mockUpgradeGroup.mockResolvedValue({ groupId: "g-1", status: "InProgress" });
+
+    await new GroupApiDataSource().triggerUpgrade("g-1", { targetApplicationId: "app-2" });
+
+    expect(mockUpgradeGroup).toHaveBeenCalledWith("g-1", { targetApplicationId: "app-2" });
+  });
+});
+
+describe("GroupApiDataSource", () => {
+  // A node holds every installed app's namespaces. Chat must list ONLY its
+  // own: it used to fall back to the node's whole list when the id filter
+  // failed, and showed mero-design's workspaces as chat workspaces.
+  const ns = (namespaceId: string, targetApplicationId: string, name: string) => ({
+    namespaceId,
+    targetApplicationId,
+    name,
+    appKey: "",
+    createdAt: 1,
+  });
+
+  it("lists only namespaces of the configured (runtime) app — never another app's", async () => {
+    mockListApplications.mockResolvedValue({ apps: [] });
     mockListNamespaces.mockResolvedValue({
-      namespaces: [{ namespaceId: "ns-1", name: "Calimero" }],
+      namespaces: [
+        ns("ns-chat", "runtime-app-id", "Calimero"),
+        ns("ns-design", "design-app-id", "Design Board"),
+      ],
     });
 
     const response = await new GroupApiDataSource().listGroups();
 
-    expect(mockListNamespaces).toHaveBeenCalled();
-    expect(response.data?.[0]).toMatchObject({ groupId: "ns-1", alias: "Calimero" });
+    expect(response.data?.map((g) => g.groupId)).toEqual(["ns-chat"]);
+  });
+
+  it("after an app-id change, finds chat's namespaces by PACKAGE — still never another app's", async () => {
+    // The configured id is stale; the node has chat under a new id.
+    mockListApplications.mockResolvedValue({
+      apps: [
+        { id: "chat-v2", package: "com.calimero.chat" },
+        { id: "design-app-id", package: "com.calimero.mero-design" },
+      ],
+    });
+    mockListNamespaces.mockResolvedValue({
+      namespaces: [ns("ns-chat", "chat-v2", "Calimero"), ns("ns-design", "design-app-id", "Design Board")],
+    });
+
+    const response = await new GroupApiDataSource().listGroups();
+
+    expect(response.data?.map((g) => g.groupId)).toEqual(["ns-chat"]);
+  });
+
+  it("filters by the configured id alone when the node will not list its applications", async () => {
+    mockListApplications.mockRejectedValue(new Error("403"));
+    mockListNamespaces.mockResolvedValue({
+      namespaces: [ns("ns-chat", "runtime-app-id", "Calimero"), ns("ns-design", "design-app-id", "Design Board")],
+    });
+
+    const response = await new GroupApiDataSource().listGroups();
+
+    expect(response.data?.map((g) => g.groupId)).toEqual(["ns-chat"]);
   });
 
   beforeEach(() => {
@@ -115,24 +172,22 @@ describe("GroupApiDataSource", () => {
     mockSetMemberMetadata.mockReset();
   });
 
-  it("passes the optional alias when creating a namespace (workspace)", async () => {
+  it("sends ONLY the keys core's closed CreateNamespaceApiRequest accepts", async () => {
+    // core refuses any other key with a 400 — this test used to assert that
+    // `upgradePolicy` and `alias` WERE sent, and the first real create
+    // failed with `unknown field \`upgradePolicy\``. Assert the key set, not
+    // `toHaveBeenCalledWith` a literal a stray key can hide beside.
     mockCreateNamespace.mockResolvedValue({ namespaceId: "group-1" });
 
     const dataSource = new GroupApiDataSource();
     const response = await dataSource.createGroup({
       applicationId: "app-1",
-      upgradePolicy: "LazyOnAccess",
-      alias: "Product Team",
-    });
-
-    expect(mockCreateNamespace).toHaveBeenCalledWith({
-      applicationId: "app-1",
-      upgradePolicy: "LazyOnAccess",
-      alias: "Product Team",
-      // Post-054a784f the server field is `name`; createGroup now sends
-      // both for transition compat.
       name: "Product Team",
     });
+
+    const body = mockCreateNamespace.mock.calls[0][0];
+    expect(Object.keys(body).every((k) => CREATE_NAMESPACE_KEYS.has(k))).toBe(true);
+    expect(body).toEqual({ applicationId: "app-1", name: "Product Team" });
     expect(response).toEqual({
       data: {
         groupId: "group-1",
@@ -147,9 +202,9 @@ describe("GroupApiDataSource", () => {
     const dataSource = new GroupApiDataSource();
     const response = await dataSource.createGroup({
       applicationId: "app-1",
-      upgradePolicy: "Automatic",
     });
 
+    expect(mockCreateNamespace).toHaveBeenCalledWith({ applicationId: "app-1" });
     expect(response).toEqual({ data: { groupId: "group-2" }, error: null });
   });
 
@@ -368,8 +423,7 @@ describe("GroupApiDataSource", () => {
 
     const response = await dataSource.createGroup({
       applicationId: "app-1",
-      upgradePolicy: "Automatic",
-      alias: "n".repeat(80),
+      name: "n".repeat(80),
     });
 
     expect(response.error).not.toBeNull();

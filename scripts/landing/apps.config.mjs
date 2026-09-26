@@ -1,5 +1,5 @@
 /**
- * Per-app landing content for all fourteen user-facing apps.
+ * Per-app landing content for all fifteen user-facing apps.
  *
  * This is the ONLY place app-specific copy lives. `generate.mjs` renders each
  * entry into `apps/<app>/app/src/pages/landing/landing.config.ts` next to a
@@ -33,6 +33,11 @@
  * ── NOT GENERATED, and why ────────────────────────────────────────────────
  * `kv-store`      contract/test fixture, no user-facing frontend.
  * `scaffolding-e2e`  e2e harness app, same.
+ *
+ * `mero-pass`     has its own hand-owned landing (`src/pages/landing/`), built
+ *                 in the calimero.network language the Calimero landing,
+ *                 Cloud, the App Registry and the desktop app share. Its
+ *                 contract lives in its own `tests/marketing-landing.spec.ts`.
  *
  * `mero-blocks` and `merraria` ARE included, but they need one extra piece.
  * Neither is a React app — both boot from `src/main.ts` with no `.tsx` — and
@@ -127,6 +132,102 @@ export const APPS = {
       { icon: 'Moon', title: 'Light and dark themes', body: 'With an accessible palette, because a calendar is something people stare at all day.' },
       { icon: 'HeartCheck', title: 'Readable identities', body: 'Display names instead of key hashes, so a shared calendar reads like one.' },
     ],
+  },
+
+  'mero-chat': {
+    e2eDir: 'e2e',
+    // Its icons live under /icons/; there is no /favicon.svg or /icon-512.png.
+    markSrc: '/icons/icon-192x192.png',
+    iconSrc: '/icons/icon-512x512.png',
+    availability: 'web+desktop',
+    trust: ['Channels, threads and DMs', 'No central server', 'Messages on your nodes'],
+    explainer: [
+      'Team chat in the shape you already know — a workspace with public and private channels, threads, reactions and direct messages. The difference is where it lives: every channel is a Calimero context on your own nodes and the nodes of the people you invite, not on a vendor’s servers.',
+      'Nobody in the middle can read, mine or lose your conversations. There is no seat to pay for when someone joins, and nothing to export if you ever leave, because the history is already yours.',
+    ],
+    features: [
+      { icon: 'MessageBubble', title: 'Channels and threads', body: 'Public and private channels, with threaded replies so a side conversation never buries the main one.' },
+      { icon: 'Lock', title: 'Private by construction', body: 'A private channel is its own restricted group. Only its members’ nodes hold the messages, and there is no server copy to leak.' },
+      { icon: 'Heart', title: 'Reactions, edits and mentions', body: 'React with any emoji, edit or delete your own messages, and @mention a teammate to get their attention.' },
+      { icon: 'CloudUpload', title: 'Files and images', body: 'Attach files and images to any message. They are stored as blobs on the nodes in the channel, not on a CDN.' },
+      { icon: 'Zap', title: 'Live, peer to peer', body: 'See who is typing and watch messages arrive as they are sent, synced node to node with no server deciding the order.' },
+      { icon: 'ShieldCheck', title: 'Real moderation', body: 'Admin, moderator, member and banned roles, enforced when changes merge — not just hidden in the interface.' },
+    ],
+    overview: {
+      headline: 'Team chat that lives on your nodes, not someone else’s servers.',
+      // Recorded from the real app by `pnpm landing:media` in apps/mero-chat/app,
+      // against an invented node (e2e/media) — the pages, composer and thread
+      // panel are production code. The chapter times match CHAPTERS in
+      // e2e/media/record.mjs.
+      showcase: {
+        heading: 'A launch, planned in one channel',
+        sub: 'Recorded from the real app — the composer, the thread panel and the reactions are the ones you get.',
+        video: {
+          src: '/landing/demo.webm',
+          poster: '/landing/demo-poster.jpg',
+          chapters: [
+            { at: 0, title: 'Open a channel', body: 'The team’s launch channel, with mentions, reactions and a busy thread.' },
+            { at: 3, title: 'Send a message', body: 'Type and press Enter. It is written to your node and sent to everyone in the channel.' },
+            { at: 8, title: 'Reply in a thread', body: 'Open the thread and answer there, so the channel stays readable.' },
+            { at: 14, title: 'React', body: 'A thumbs-up says it faster. Reactions sync like everything else.' },
+            { at: 18, title: 'Direct messages', body: 'Switch to a DM and see Theo typing, live, from his own node.' },
+          ],
+        },
+      },
+      comparison: {
+        heading: 'Team chat, without the landlord',
+        sub: 'Everything you expect from a team chat. The difference is who holds the conversation.',
+        themLabel: 'A typical cloud team chat',
+        rows: [
+          { label: 'Where messages live', them: 'On the vendor’s servers', us: 'On your node, and the nodes of the people in the channel' },
+          { label: 'Who can read them', them: 'The vendor, and whoever it grants access', us: 'Only the members of that channel' },
+          { label: 'Adding a teammate', them: 'Another seat on the monthly bill', us: 'An invite. The app is open source and free' },
+          { label: 'Message history', them: 'Limited or paywalled on cheaper plans', us: 'All of it, kept on your node' },
+          { label: 'If the vendor goes away', them: 'Your history may go with it', us: 'Your node still has every channel' },
+        ],
+      },
+      collaboration: {
+        heading: 'How a channel stays in sync',
+        sub: 'Each channel is its own context, replicated across the nodes of its members. Messages, threads and reactions merge without a server deciding the order.',
+        points: [
+          { title: 'Every channel is its own context', body: 'Channels and DMs are separate, so a busy channel never slows a quiet one, and a private channel is only on its members’ nodes.' },
+          { title: 'Threads are kept apart', body: 'Replies live beside the message they answer, so a long thread never crowds the channel.' },
+          { title: 'Typing stays out of history', body: '“Is typing” travels as presence, so it shows live and never ends up in the record.' },
+          { title: 'Drafts never leave your node', body: 'An unsent message is kept locally and is never synced to anyone.' },
+        ],
+        roles: [
+          { name: 'Admin', can: 'Grants and revokes roles, deletes any message and edits the channel info.' },
+          { name: 'Moderator', can: 'Deletes any message and bans disruptive members.' },
+          { name: 'Member', can: 'Reads and writes, and edits or deletes their own messages.' },
+          { name: 'Banned', can: 'Can no longer post in the channel.' },
+        ],
+        rolesNote: 'Roles are checked when changes merge, not only hidden in the interface — a delete from someone without the right is refused, wherever it came from.',
+      },
+      audiences: {
+        heading: 'Made for conversations that are nobody else’s business',
+        items: [
+          { label: 'Startups & product teams', title: 'Plan the roadmap without handing it to a vendor', body: 'Launch plans, hiring and customer feedback stay on your team’s own nodes.', uses: ['Private channels', 'Threads', 'File sharing'] },
+          { label: 'Communities & DAOs', title: 'A place to talk that the community owns', body: 'No platform that can change the rules, read the members or shut the server down.', uses: ['Invite links', 'Moderator roles', 'Open source'] },
+          { label: 'Regulated & public sector', title: 'Real-time chat on infrastructure you control', body: 'For finance, health and government teams whose conversations cannot sit on a third party’s cloud.', uses: ['Self-hosted nodes', 'Roles enforced at merge', 'Works offline'] },
+          { label: 'Friends & families', title: 'Group chat without an advertiser in the room', body: 'Share photos and plans in a space where nobody is mining the conversation.', uses: ['Direct messages', 'Images', 'Reactions'] },
+        ],
+      },
+      openSource: {
+        license: 'MIT or Apache-2.0',
+        commands: [
+          '# fork calimero-network/apps on GitHub, then',
+          'git clone https://github.com/<you>/apps',
+          'cd apps && pnpm install',
+          'cargo mero build -p mero-chat',
+          'pnpm -F mero-chat dev   # app on :5173',
+        ],
+      },
+      alwaysOn: true,
+      closing: {
+        title: 'Start your first workspace',
+        body: 'Connect a node, or install the desktop app that bundles one, then invite the people you talk to.',
+      },
+    },
   },
 
   'mero-design': {
@@ -243,7 +344,7 @@ export const APPS = {
     },
   },
 
-  'mero-drive': {
+  'mero-docs': {
     markSrc: '/icons/icon.svg',
     // Nested, because this app's playwright config gives its node-free specs
     // their own project globbed as `**/landing/**` — a spec written beside that
@@ -280,6 +381,27 @@ export const APPS = {
     ],
   },
 
+  'mero-crm': {
+    displayName: 'Mero CRM',
+    e2eDir: 'e2e',
+    // Same light/dark key as the app shell, so the landing choice carries through sign-in.
+    themeStorageKey: 'app:theme',
+    availability: 'web+desktop',
+    trust: ['Pipeline on your nodes', 'Built-in deal assistant', 'No per-seat vendor'],
+    explainer: [
+      'A sales CRM with only the parts that close deals: a visual pipeline, deals with a value and a next step, the people behind them, and a to-do list that puts overdue follow-ups first. Everything a tool like Pipedrive is used for day to day, without the forty menus around it.',
+      'The pipeline lives in a Calimero context your team shares, replicated between your own nodes. Your customer list is the most sensitive thing a sales team owns, and here there is no vendor holding a copy of it.',
+    ],
+    features: [
+      { icon: 'Target', title: 'Visual pipeline', body: 'Drag deals between stages, or onto Won and Lost. Every column shows its count, value and weighted forecast.' },
+      { icon: 'Zap', title: 'Deal assistant', body: 'A health score for every deal, the next best step in one click, a follow-up email draft, and a ready prompt for your AI.' },
+      { icon: 'Clock', title: 'Never miss a follow-up', body: 'Calls, meetings, tasks and deadlines, grouped by overdue, today and upcoming. Idle deals are flagged as rotting.' },
+      { icon: 'Refresh', title: 'Automations', body: 'When a deal enters a stage, the follow-up is scheduled for its owner automatically.' },
+      { icon: 'BarChart', title: 'Insights', body: 'Open and weighted pipeline, win rate, sales cycle, forecast by close month, and why deals are lost.' },
+      { icon: 'Shield', title: 'Your customers stay yours', body: 'The pipeline replicates between your team’s nodes. There is no vendor database to breach or to price you out of.' },
+    ],
+  },
+
   'mero-issue-tracker': {
     e2eDir: 'e2e',
     // This app ships its own light/dark switch; the landing toggle writes the
@@ -301,24 +423,6 @@ export const APPS = {
   },
 
 
-  'mero-pass': {
-    displayName: 'Mero Pass',
-    e2eDir: 'tests',
-    availability: 'web+desktop',
-    trust: ['Vault on your nodes', 'Five secret types', 'No vendor to breach'],
-    explainer: [
-      'A secret manager for a team, where the vault sits on your own nodes rather than in a company whose breach notification you will read about later. You create a vault, invite the people who need it, and the contents replicate only between their nodes and yours.',
-      'It handles the five things teams actually share: logins, notes, one-time-password seeds, SSH keys, and free-form secrets — with roles, so not everyone who can read a vault can change who else does.',
-    ],
-    features: [
-      { icon: 'LockBox', title: 'Vaults with roles', body: 'Owner, admin and member. Reading a vault and controlling its membership are different powers.' },
-      { icon: 'LockStar', title: 'Five secret types', body: 'Logins with URLs, secure notes, TOTP seeds, SSH keypairs, and free-form entries.' },
-      { icon: 'Clock', title: 'TOTP codes', body: 'Time-based one-time passwords generated locally from a seed that never leaves your nodes.' },
-      { icon: 'ShieldCheck', title: 'Share with members', body: 'Scoped to the people you invited. Revoking access is something you do, not request.' },
-      { icon: 'CloudX', title: 'No vendor to breach', body: 'There is no central vault to attack, because there is no central vault.' },
-    ],
-  },
-
   'mero-pixart': {
     displayName: 'Mero PixArt',
     e2eDir: 'e2e',
@@ -336,6 +440,103 @@ export const APPS = {
       { icon: 'Cube3D', title: 'Free transform', body: 'Move, scale, rotate, shear, mirror, and a corner-pin warp for perspective.' },
       { icon: 'Circle', title: 'Paint tools', body: 'Brush, eraser, bucket fill and eyedropper, each re-rendering the layer to a new blob.' },
     ],
+    overview: {
+      headline: 'Your images. Your layers. Your nodes.',
+      // Recorded from the real editor by `pnpm landing:media` in
+      // apps/mero-pixart/app, against the mocked node the `mocked` Playwright
+      // project uses (no merod). The chapter times match CHAPTERS in
+      // e2e/media/capture-landing-media.spec.ts.
+      showcase: {
+        heading: 'A launch poster, edited in layers',
+        sub: 'Recorded from the real editor on the bundled Aurora Edition project: 23 layers in six folders, all drawn by the app’s own compositor.',
+        video: {
+          src: '/landing/demo.webm',
+          poster: '/landing/demo-poster.jpg',
+          chapters: [
+            { at: 0, title: 'Open a project', body: 'A finished poster on your node, in folders, with Ada from your team already in it.' },
+            { at: 3.5, title: 'Adjust, non-destructively', body: 'Swing the backdrop’s hue and saturation. They are stored as settings, so the pixels underneath never change.' },
+            { at: 8.5, title: 'Change a blend mode', body: 'Set the brightest ribbon to Multiply and it sinks into the night sky, then back to Screen.' },
+            { at: 12, title: 'Hide a whole folder', body: 'One eye hides the product card and everything in it. Nothing is deleted.' },
+            { at: 15.5, title: 'Paint on a new layer', body: 'Add a raster layer and draw a stroke. It lands on that layer alone.' },
+          ],
+        },
+      },
+      comparison: {
+        heading: 'An image editor, without the landlord',
+        sub: 'Layers, masks, blend modes and curves, the way a desktop editor does them. The difference is where the file lives.',
+        themLabel: 'A typical cloud image editor',
+        rows: [
+          { label: 'Where the file lives', them: 'On the vendor’s servers', us: 'On your node, and the nodes of the people you invite' },
+          { label: 'Your uploaded images', them: 'In the vendor’s storage bucket', us: 'Stored as blobs on your node' },
+          { label: 'Who can open it', them: 'The vendor, and whoever it grants access', us: 'Only members of the project’s namespace' },
+          { label: 'Adding a collaborator', them: 'Another seat on the monthly bill', us: 'An invite. The app is open source and free' },
+          { label: 'Getting your work out', them: 'Often a proprietary format', us: 'Export PNG, JPEG or SVG whenever you want' },
+        ],
+      },
+      collaboration: {
+        heading: 'Several people, one image, no server in the middle',
+        sub: 'Everyone in a project sees each other’s cursors and changes, and two people can work on it at once without either losing work, because of how a document is stored.',
+        points: [
+          { title: 'Every layer is its own record', body: 'Two people working on different layers never queue behind each other.' },
+          { title: 'Pixels, mask, transform and adjustments are separate', body: 'One person paints on a layer while another moves it or tunes its curves, and both changes land.' },
+          { title: 'Adjustments are settings, not pixels', body: 'They are applied when the image is drawn, so undoing a change never needs the original back from anyone.' },
+          { title: 'Presence stays out of the file', body: 'Cursors travel separately from the document, so they can never touch the artwork.' },
+        ],
+        roles: [
+          { name: 'Owner', can: 'Names the document, sets its size and background, grants and revokes the editor role, and can hand ownership on.' },
+          { name: 'Editor', can: 'Adds, paints, transforms, adjusts and deletes layers.' },
+          { name: 'Viewer', can: 'Watches the image change without being able to change it.' },
+        ],
+        rolesNote: 'The contract checks these, not just the interface: a layer change from a viewer, or a rename from a non-owner, is refused wherever it came from.',
+      },
+      audiences: {
+        heading: 'Made for images that are nobody else’s business',
+        items: [
+          {
+            label: 'Design & marketing teams',
+            title: 'Campaign artwork that stays off a vendor’s cloud until launch day',
+            body: 'Posters, ads and social assets built in layers and folders by the whole team, on your own nodes.',
+            uses: ['Layer folders', 'Blend modes', 'PNG and JPEG export'],
+          },
+          {
+            label: 'Photographers & retouchers',
+            title: 'Non-destructive edits you can revisit a week later',
+            body: 'Curves, exposure and masks are stored as settings, so a client’s change of mind is a slider, not a redo.',
+            uses: ['Curves', 'Paintable masks', 'Adjustments'],
+          },
+          {
+            label: 'Agencies & freelancers',
+            title: 'Client work shared with the client, and nobody else',
+            body: 'Invite the client as a viewer to watch the image take shape, or as an editor to work on it with you.',
+            uses: ['Owner, editor and viewer roles', 'Live cursors', 'Invite links'],
+          },
+          {
+            label: 'Open-source communities',
+            title: 'An image editor the community owns',
+            body: 'No seats and no terms that can change under you. If a tool is missing, fork it and add it.',
+            uses: ['Free for everyone', 'MIT or Apache-2.0', 'Fork and customise'],
+          },
+        ],
+      },
+      openSource: {
+        // The workspace licence logic/Cargo.toml inherits. The Makefile's own
+        // targets: `setup` checks prerequisites and builds, `dev` starts two
+        // local nodes, invites the second and serves the app on :5176.
+        license: 'MIT or Apache-2.0',
+        commands: [
+          '# fork calimero-network/apps on GitHub, then',
+          'git clone https://github.com/<you>/apps',
+          'cd apps/apps/mero-pixart',
+          'make setup   # check tools, build logic, install app deps',
+          'make dev     # 2 local nodes + app on :5176',
+        ],
+      },
+      alwaysOn: true,
+      closing: {
+        title: 'Start your first image',
+        body: 'Connect a node, or install the desktop app that bundles one, then invite the people you make things with.',
+      },
+    },
   },
 
   'mero-sheets': {

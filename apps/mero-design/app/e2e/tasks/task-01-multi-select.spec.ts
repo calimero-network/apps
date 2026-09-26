@@ -69,9 +69,12 @@ test.describe("item 1: selecting and moving several layers", () => {
     await page.mouse.move(box.x + 190, box.y + 170, { steps: 10 });
     await page.mouse.up();
 
-    await expect.poll(() => board.calledWith("update_element").length, { timeout: 15000 }).toBe(2);
-    const moved = board.calledWith("update_element").map((c) => c.args.id).sort();
+    await expect.poll(() => board.writes("update_element").length, { timeout: 15000 }).toBe(2);
+    const moved = board.writes("update_element").map((c) => c.args.id).sort();
     expect(moved).toEqual(["a", "b"]);
+    // One edit, one call — not an `update_element` per shape.
+    expect(board.calledWith("update_elements")).toHaveLength(1);
+    expect(board.calledWith("update_element")).toHaveLength(0);
     // And the second shape really moved on screen, not only in the payload.
     const cyan = (await paintedBox(page, "#00FFFF"))!;
     expect(cyan.x).toBeGreaterThan(240);
@@ -81,8 +84,10 @@ test.describe("item 1: selecting and moving several layers", () => {
     const board = await openBoard(page, { elements: TWO });
     await selectBoth(page);
     await page.keyboard.press("Delete");
-    await expect.poll(() => board.calledWith("delete_element").map((c) => c.args.id).sort(), { timeout: 15000 })
+    await expect.poll(() => board.writes("delete_element").map((c) => c.args.id).sort(), { timeout: 15000 })
       .toEqual(["a", "b"]);
+    expect(board.calledWith("delete_elements")).toHaveLength(1);
+    expect(board.calledWith("delete_element")).toHaveLength(0);
   });
 });
 
@@ -94,8 +99,8 @@ test.describe("item 1: single-object regressions", () => {
     await page.mouse.down();
     await page.mouse.move(box.x + 230, box.y + 190, { steps: 10 });
     await page.mouse.up();
-    await expect.poll(() => board.calledWith("update_element").length, { timeout: 15000 }).toBe(1);
-    expect(board.calledWith("update_element")[0].args.id).toBe("a");
+    await expect.poll(() => board.writes("update_element").length, { timeout: 15000 }).toBe(1);
+    expect(board.writes("update_element")[0].args.id).toBe("a");
   });
 
   test("the moved shape is painted where it was persisted", async ({ page }) => {
@@ -105,8 +110,8 @@ test.describe("item 1: single-object regressions", () => {
     await page.mouse.down();
     await page.mouse.move(box.x + 230, box.y + 190, { steps: 10 });
     await page.mouse.up();
-    await expect.poll(() => board.calledWith("update_element").length, { timeout: 15000 }).toBe(1);
-    const sent = board.calledWith("update_element")[0].args as { x: number; y: number };
+    await expect.poll(() => board.writes("update_element").length, { timeout: 15000 }).toBe(1);
+    const sent = board.writes("update_element")[0].args as { x: number; y: number };
     const painted = (await paintedBox(page, "#FF00FF"))!;
     expect(Math.abs(sent.x - painted.x)).toBeLessThanOrEqual(2);
     expect(Math.abs(sent.y - painted.y)).toBeLessThanOrEqual(2);
@@ -119,7 +124,7 @@ test.describe("item 1: single-object regressions", () => {
     await page.mouse.down();
     await page.mouse.move(box.x + 230, box.y + 190, { steps: 10 });
     await page.mouse.up();
-    await expect.poll(() => board.calledWith("update_element").length, { timeout: 15000 }).toBe(1);
+    await expect.poll(() => board.writes("update_element").length, { timeout: 15000 }).toBe(1);
     expect(await paintedBox(page, "#00FFFF")).toMatchObject({ x: 220, y: 100 });
   });
 });

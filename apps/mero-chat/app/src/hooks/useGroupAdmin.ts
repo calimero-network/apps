@@ -327,14 +327,12 @@ export function useGroupAdmin() {
     async (
       groupId: string,
       targetApplicationId: string,
-      migrateMethod?: string,
     ): Promise<boolean> => {
       setActionLoading(true);
       setError(null);
       try {
         const resp = await api.triggerUpgrade(groupId, {
           targetApplicationId,
-          migrateMethod,
         });
         if (resp.error) {
           setError(resp.error.message);

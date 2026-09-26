@@ -251,7 +251,7 @@ def normalise_route(raw):
     r = r.split("?", 1)[0]
     # A call may build the URL with a base: `${base}/admin-api/groups/${id}/...`
     # or `new URL('/admin-api/blobs', nodeUrl)`. Anchor on the API prefix
-    # wherever it appears and drop whatever came before it — mero-drive's
+    # wherever it appears and drop whatever came before it - mero-docs's
     # reparent call is spelled that way and was invisible while this only
     # handled a leading slash.
     i = r.find("/admin-api")
@@ -334,6 +334,29 @@ def scan(path, src):
     return problems
 
 
+# A WHOLE request body cast past the SDK's type: `body as unknown as
+# CreateContextRequest`, or `as unknown as Parameters<…["admin"]["x"]>[1]`
+# closing the argument. The scanner above reads body LITERALS at fetch/post
+# sites, so a body assembled in a variable and handed to mero-js under a cast
+# is invisible to it — and the cast also switches off tsc, the one other
+# check that would have seen the extra key. mero-chat shipped two that way:
+# `upgradePolicy` on namespace create and `protocol` on context create (every
+# channel, public or private, was a 400). A cast on ONE field inside the body
+# (`invitation: x as unknown as …["invitation"]`) leaves the body's own keys
+# type-checked, so it is not matched.
+WHOLE_BODY_CAST = re.compile(
+    r"as\s+unknown\s+as\s+(?:"
+    r"[A-Z][A-Za-z0-9]*Request\b(?!\s*\[)"
+    r"|Parameters<[^;]*?\[\s*[\"']admin[\"']\s*\][^;]*?>\s*\[\s*\d+\s*\](?=\s*[,)])"
+    r")",
+    re.S,
+)
+
+
+def scan_casts(src):
+    return [src.count("\n", 0, m.start()) + 1 for m in WHOLE_BODY_CAST.finditer(src)]
+
+
 def main():
     failures = []
     for app in sorted(os.listdir(APPS)):
@@ -348,6 +371,12 @@ def main():
                 p = os.path.join(dirpath, fn)
                 with open(p, encoding="utf-8") as fh:
                     src = fh.read()
+                for line in scan_casts(src):
+                    failures.append(
+                        f"{os.path.relpath(p, REPO)}:{line}: a whole request body is cast "
+                        "`as unknown as` the SDK type — no check can see its keys. Build it "
+                        "as the SDK's request type instead."
+                    )
                 for line, route, extra, allowed in scan(p, src):
                     failures.append(
                         f"{os.path.relpath(p, REPO)}:{line}: {route} — the node refuses "

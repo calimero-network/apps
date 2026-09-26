@@ -118,8 +118,8 @@ test.describe("presenting", () => {
     await expect(page.getByTestId("presentation")).toHaveCount(0);
     // Escape left the presentation; it did not also go on to the canvas.
     await page.waitForTimeout(300);
-    expect(board.calledWith("delete_element")).toHaveLength(0);
-    expect(board.calledWith("update_element")).toHaveLength(0);
+    expect(board.writes("delete_element")).toHaveLength(0);
+    expect(board.writes("update_element")).toHaveLength(0);
   });
 
   test("a board with no screens explains how to make one", async ({ page }) => {
@@ -165,7 +165,7 @@ test.describe("the Screens tab", () => {
     await page.getByTestId("screens-create").click();
 
     await expect(page.locator('[data-testid^="screen-name-"]')).toHaveText(["Screen 1"]);
-    const [add] = board.calledWith("add_element");
+    const [add] = board.writes("add_element");
     const created = (add.args as { element: Record<string, unknown> }).element;
     // The selection's box, plus 40 of breathing room on every side.
     expect(created).toMatchObject({ label: "screen/Screen 1", x: 60, y: 60, width: 330, height: 230 });
@@ -183,9 +183,9 @@ test.describe("the Screens tab", () => {
     await page.getByTestId("screens-create").click();
 
     await expect(page.locator('[data-testid^="screen-name-"]')).toHaveText(["Hero"]);
-    expect(board.calledWith("add_element")).toHaveLength(0);
+    expect(board.writes("add_element")).toHaveLength(0);
     await expect
-      .poll(() => board.calledWith("update_element_label").map((c) => c.args))
+      .poll(() => board.writes("update_element_label").map((c) => c.args))
       .toEqual([expect.objectContaining({ id: "frame", label: "screen/Hero" })]);
   });
 
@@ -204,10 +204,10 @@ test.describe("the Screens tab", () => {
     await expect(page.locator('[data-testid^="screen-name-"]')).toHaveText(["Welcome", "Third"]);
 
     await expect
-      .poll(() => board.calledWith("update_element_label").map((c) => [c.args.id, c.args.label]))
+      .poll(() => board.writes("update_element_label").map((c) => [c.args.id, c.args.label]))
       .toEqual([["s1", "screen/Welcome"], ["s2", "Second"]]);
     // Removing a screen keeps the rect on the board.
-    expect(board.calledWith("delete_element")).toHaveLength(0);
+    expect(board.writes("delete_element")).toHaveLength(0);
   });
 
   test("a viewer can present but not make screens", async ({ page }) => {
@@ -254,7 +254,7 @@ test.describe("reordering screens", () => {
     expect(await presentedOrder(page)).toEqual(["One", "Four", "Two", "Three"]);
 
     await expect
-      .poll(() => Object.fromEntries(board.calledWith("update_element_label").map((c) => [c.args.id, c.args.label])))
+      .poll(() => Object.fromEntries(board.writes("update_element_label").map((c) => [c.args.id, c.args.label])))
       .toEqual({ s1: "screen/One @1", s4: "screen/Four @2", s2: "screen/Two @3", s3: "screen/Three @4" });
 
     // It is contract state, not a local sort: a reload reads the same order back.
@@ -313,7 +313,7 @@ test.describe("reordering screens", () => {
     await pointerDrag(page, "s4", two.y + 4);
     await expect(names(page)).toHaveText(["One", "Four", "Two", "Three"]);
     await expect
-      .poll(() => Object.fromEntries(board.calledWith("update_element_label").map((c) => [c.args.id, c.args.label])))
+      .poll(() => Object.fromEntries(board.writes("update_element_label").map((c) => [c.args.id, c.args.label])))
       .toEqual({ s1: "screen/One @1", s4: "screen/Four @2", s2: "screen/Two @3", s3: "screen/Three @4" });
   });
 
@@ -334,7 +334,7 @@ test.describe("reordering screens", () => {
     await page.getByTestId("screen-row-s3").click();
     await expect(page.getByTestId("screen-row-s3")).toHaveAttribute("data-active", "true");
     await expect(names(page)).toHaveText(["One", "Two", "Three", "Four"]);
-    expect(board.calledWith("update_element_label")).toHaveLength(0);
+    expect(board.writes("update_element_label")).toHaveLength(0);
   });
 
   test("the row that was dragged is not also selected by the release", async ({ page }) => {
@@ -359,9 +359,9 @@ test.describe("reordering screens", () => {
     await expect(page.getByTestId("screen-row-s1")).not.toHaveAttribute("data-drop", /./);
     await page.mouse.up();
     await expect(names(page)).toHaveText(["One", "Two", "Three", "Four"]);
-    expect(board.calledWith("update_element_label")).toHaveLength(0);
+    expect(board.writes("update_element_label")).toHaveLength(0);
     // The board underneath did not read that Escape as "delete the selection".
-    expect(board.calledWith("delete_element")).toHaveLength(0);
+    expect(board.writes("delete_element")).toHaveLength(0);
   });
 
   test("Move up / Move down in the row menu", async ({ page }) => {
@@ -419,7 +419,7 @@ test.describe("reordering screens", () => {
     await expect(names(page)).toHaveText(["Two", "One", "Screen 1"]);
     // A single selected rect becomes the screen itself, numbered after the rest.
     await expect
-      .poll(() => board.calledWith("update_element_label").map((c) => [c.args.id, c.args.label]))
+      .poll(() => board.writes("update_element_label").map((c) => [c.args.id, c.args.label]))
       .toEqual([["loose", "screen/Screen 1 @3"]]);
   });
 
@@ -446,7 +446,7 @@ test.describe("the presentation starter", () => {
     await page.getByTestId("options-btn").click();
     await expect(page.getByTestId("open-starter")).toContainText("Web design");
     await page.getByTestId("open-starter-presentation").click();
-    await expect.poll(() => board.calledWith("add_element").length, { timeout: 60000 }).toBe(206);
+    await expect.poll(() => board.writes("add_element").length, { timeout: 60000 }).toBe(206);
 
     await page.getByTestId("toolbar-present").click();
     await expect(page.getByTestId("presentation-title")).toHaveText("Calimero");
@@ -463,8 +463,10 @@ test.describe("the presentation starter", () => {
     await expect(page.getByTestId("open-starter-presentation-confirm")).toBeVisible();
     // Arming one starter does not arm the other.
     await expect(page.getByTestId("open-starter")).toBeVisible();
-    expect(board.calledWith("clear_elements")).toHaveLength(0);
+    expect(board.writes("delete_element")).toHaveLength(0);
     await page.getByTestId("open-starter-presentation-confirm").click();
-    await expect.poll(() => board.calledWith("clear_elements").length, { timeout: 60000 }).toBe(1);
+    await expect
+      .poll(() => board.writes("delete_element").map((c) => c.args.id), { timeout: 60000 })
+      .toEqual(["mine"]);
   });
 });

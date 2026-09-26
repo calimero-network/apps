@@ -455,6 +455,105 @@
         }
       ]
     },
+    "ElementPatch": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "x",
+          "type": {
+            "kind": "i64"
+          },
+          "nullable": true
+        },
+        {
+          "name": "y",
+          "type": {
+            "kind": "i64"
+          },
+          "nullable": true
+        },
+        {
+          "name": "width",
+          "type": {
+            "kind": "u32"
+          },
+          "nullable": true
+        },
+        {
+          "name": "height",
+          "type": {
+            "kind": "u32"
+          },
+          "nullable": true
+        },
+        {
+          "name": "rotation",
+          "type": {
+            "kind": "i32"
+          },
+          "nullable": true
+        },
+        {
+          "name": "fill",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "stroke",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        },
+        {
+          "name": "stroke_width",
+          "type": {
+            "kind": "u32"
+          },
+          "nullable": true
+        },
+        {
+          "name": "opacity",
+          "type": {
+            "kind": "u32"
+          },
+          "nullable": true
+        },
+        {
+          "name": "corner_radius",
+          "type": {
+            "kind": "u32"
+          },
+          "nullable": true
+        }
+      ]
+    },
+    "LabelUpdate": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "label",
+          "type": {
+            "kind": "string"
+          },
+          "nullable": true
+        }
+      ]
+    },
     "Member": {
       "kind": "record",
       "fields": [
@@ -715,6 +814,27 @@
       "intent": "mutating"
     },
     {
+      "name": "add_elements",
+      "params": [
+        {
+          "name": "elements",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "Element"
+            }
+          }
+        }
+      ],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "kind": "string"
+        }
+      },
+      "intent": "mutating"
+    },
+    {
       "name": "add_reply",
       "params": [
         {
@@ -817,6 +937,24 @@
       "intent": "mutating"
     },
     {
+      "name": "delete_elements",
+      "params": [
+        {
+          "name": "ids",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
       "name": "delete_reply",
       "params": [
         {
@@ -886,6 +1024,27 @@
     {
       "name": "get_elements",
       "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "Element"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_elements_by_ids",
+      "params": [
+        {
+          "name": "ids",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        }
+      ],
       "returns": {
         "kind": "list",
         "items": {
@@ -1244,6 +1403,54 @@
       "intent": "mutating"
     },
     {
+      "name": "update_element_labels",
+      "params": [
+        {
+          "name": "labels",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "LabelUpdate"
+            }
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "update_elements",
+      "params": [
+        {
+          "name": "patches",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "ElementPatch"
+            }
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
       "name": "update_member_username",
       "params": [
         {
@@ -1428,6 +1635,33 @@
       "name": "ElementUpdated",
       "payload": {
         "kind": "string"
+      }
+    },
+    {
+      "name": "ElementsAdded",
+      "payload": {
+        "kind": "list",
+        "items": {
+          "kind": "string"
+        }
+      }
+    },
+    {
+      "name": "ElementsDeleted",
+      "payload": {
+        "kind": "list",
+        "items": {
+          "kind": "string"
+        }
+      }
+    },
+    {
+      "name": "ElementsUpdated",
+      "payload": {
+        "kind": "list",
+        "items": {
+          "kind": "string"
+        }
       }
     },
     {
