@@ -329,15 +329,17 @@ export default function AppPage() {
         : null);
     if (!target || !isDirty) return;
     const value = namesToIds(formulaInput, nameToId);
-    if (!value.trim()) {
-      await ss.clearCell(target.sheetId, target.row, target.col);
-    } else {
-      await ss.setCell(target.sheetId, target.row, target.col, value);
-    }
+    // The write shows at once (an optimistic overlay, applied before its first
+    // await), so the edit ends now, not when the node answers: by then the
+    // next cell may be mid-edit, and ending "this" edit would discard it.
+    const write = value.trim()
+      ? ss.setCell(target.sheetId, target.row, target.col, value)
+      : ss.clearCell(target.sheetId, target.row, target.col);
     setIsDirty(false);
     setEditing(false);
     setEditAnchor(null);
     autoRefRef.current = undefined;
+    await write;
   }, [editAnchor, selectedCell, activeSheetId, isDirty, formulaInput, ss, nameToId]);
 
   // Keep ref current so SpreadsheetGrid can call it
@@ -401,16 +403,16 @@ export default function AppPage() {
   // ── Cell selection ──────────────────────────────────────────────
   const handleSelectCell = useCallback(
     async (row: number, col: number) => {
-      // Commit dirty cell before moving
-      if (isDirty && selectedCell && activeSheetId) {
-        await commitCellRef.current?.();
-      }
+      // Commit the dirty cell, and move without waiting for the node (see
+      // commitCell): a late move would undo whatever was done meanwhile.
+      const write = isDirty && selectedCell && activeSheetId ? commitCellRef.current?.() : undefined;
       setSelectedCell({ row, col });
       setSelectionRange(null);
       setEditing(false);
       setEditAnchor(null);
       autoRefRef.current = undefined;
       focusFormulaBar();
+      await write;
     },
     [isDirty, selectedCell, activeSheetId, focusFormulaBar],
   );
@@ -430,25 +432,27 @@ export default function AppPage() {
   // Whole-column / whole-row selection from a header click.
   const handleSelectColumn = useCallback(
     async (col: number) => {
-      if (isDirty && selectedCell && activeSheetId) await commitCellRef.current?.();
+      const write = isDirty && selectedCell && activeSheetId ? commitCellRef.current?.() : undefined;
       setSelectedCell({ row: 0, col });
       setSelectionRange({ top: 0, left: col, bottom: GRID_ROWS - 1, right: col });
       setEditing(false);
       setEditAnchor(null);
       autoRefRef.current = undefined;
       focusFormulaBar();
+      await write;
     },
     [isDirty, selectedCell, activeSheetId, focusFormulaBar],
   );
   const handleSelectRow = useCallback(
     async (row: number) => {
-      if (isDirty && selectedCell && activeSheetId) await commitCellRef.current?.();
+      const write = isDirty && selectedCell && activeSheetId ? commitCellRef.current?.() : undefined;
       setSelectedCell({ row, col: 0 });
       setSelectionRange({ top: row, left: 0, bottom: row, right: GRID_COLS - 1 });
       setEditing(false);
       setEditAnchor(null);
       autoRefRef.current = undefined;
       focusFormulaBar();
+      await write;
     },
     [isDirty, selectedCell, activeSheetId, focusFormulaBar],
   );
@@ -616,11 +620,13 @@ export default function AppPage() {
   // Commit + move (Enter = down, Tab = right)
   const handleCommitAndMove = useCallback(
     async (direction: 'down' | 'right' | 'none') => {
-      await commitCellRef.current?.();
-      if (!selectedCell) return;
-      const { row, col } = selectedCell;
-      if (direction === 'down' && row < GRID_ROWS - 1) setSelectedCell({ row: row + 1, col });
-      else if (direction === 'right' && col < GRID_COLS - 1) setSelectedCell({ row, col: col + 1 });
+      const write = commitCellRef.current?.();
+      if (selectedCell) {
+        const { row, col } = selectedCell;
+        if (direction === 'down' && row < GRID_ROWS - 1) setSelectedCell({ row: row + 1, col });
+        else if (direction === 'right' && col < GRID_COLS - 1) setSelectedCell({ row, col: col + 1 });
+      }
+      await write;
     },
     [selectedCell],
   );
@@ -645,15 +651,17 @@ export default function AppPage() {
 
   const handleFormulaCommit = useCallback(async () => {
     const home = editAnchor;
-    await commitCellRef.current?.();
+    const write = commitCellRef.current?.();
     // If we wandered onto another sheet to point-pick, snap back to the home
     // sheet so the committed cell and the post-commit "move down" are visible.
     if (home && home.sheetId !== activeSheetId) setActiveSheetId(home.sheetId);
-    // Move down after commit via formula bar Enter
+    // Move down now, not once the node answers: a late move would pull the
+    // selection away from a cell the user has since clicked and started typing in.
     setSelectedCell((prev) =>
       prev && prev.row < GRID_ROWS - 1 ? { row: prev.row + 1, col: prev.col } : prev,
     );
     setSelectionRange(null);
+    await write;
   }, [editAnchor, activeSheetId]);
 
   const handleFormulaCancel = useCallback(() => {
@@ -726,7 +734,7 @@ export default function AppPage() {
         requestAnimationFrame(() => formulaInputRef.current?.focus());
         return;
       }
-      if (isDirty) await commitCellRef.current?.();
+      const write = isDirty ? commitCellRef.current?.() : undefined;
       setActiveSheetId(id);
       setSelectedCell(null);
       setSelectionRange(null);
@@ -735,6 +743,7 @@ export default function AppPage() {
       setEditing(false);
       setEditAnchor(null);
       autoRefRef.current = undefined;
+      await write;
     },
     [isDirty, pointMode, ensureEditAnchor],
   );
