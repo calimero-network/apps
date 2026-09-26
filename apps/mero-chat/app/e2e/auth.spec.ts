@@ -7,6 +7,7 @@
  */
 
 import { test, expect, type Page } from "@playwright/test";
+import { fulfillChatApps } from "./helpers/chat-apps";
 import { injectMeroAuthTokens, clearAuth } from "./helpers/auth";
 
 const MOCK_NODE_URL = "http://localhost:2428";
@@ -22,6 +23,7 @@ const _EXPIRED_JWT = (() => {
 async function mockNodeApi(page: import("@playwright/test").Page) {
   await page.route(`${MOCK_NODE_URL}/**`, (route) => {
     const url = route.request().url();
+    if (url.includes("/admin-api/applications")) return fulfillChatApps(route);
 
     if (
       url.includes("/admin-api/groups") &&

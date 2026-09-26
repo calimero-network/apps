@@ -49,9 +49,11 @@ import type {
   VisibilityMode,
 } from "../groupApi";
 import {
+  APP_SLUG,
   parseGroupInvitationPayload,
   type GroupInvitationPayload,
 } from "../../utils/invitation";
+import { log } from "../../utils/logger";
 import { resolveCurrentGroupMemberIdentity } from "../../utils/groupMemberIdentity";
 
 const DEFAULT_NODE_ENDPOINT = "http://localhost:2428";
@@ -367,53 +369,47 @@ export class GroupApiDataSource implements GroupApi {
 
   async listGroups(): ApiResponse<GroupSummary[]> {
     try {
-      // /namespaces is the correct endpoint (matches POST /namespaces in createGroup).
-      // Fall back to /groups for older merod versions.
-      const admin = getMeroJs().admin;
-      // `getApplicationId()`, NOT `import.meta.env.VITE_APPLICATION_ID`.
+      // ONLY this app's namespaces. A node holds the namespaces of every app
+      // installed on it — mero-design's, mero-docs', … — and this used to fall
+      // back to the node's WHOLE list whenever the id filter failed (the node
+      // answers 400 for an app id it does not know, e.g. after an app-id
+      // change), so chat showed other apps' workspaces as its own. It also
+      // fell back to an unfiltered legacy `/groups` route. Neither is
+      // acceptable: a workspace from another app is not a chat workspace, and
+      // opening one talks to a contract that is not chat's.
       //
-      // The env value is baked at build time, so a deployed build stays pinned
-      // to whatever app it was built against and cannot follow an app-id
-      // change — and the id changes whenever the wasm does, which is every
-      // release. `getApplicationId` resolves the live one: `app-id` from the
-      // URL (how the desktop passes it), then the stored id, then the env
-      // default. Its own doc warns about exactly this fall-through.
-      const appId = getApplicationId();
-      let payload: unknown;
-      try {
-        payload = appId
-          ? await admin.listNamespacesForApplication(appId)
-          : await admin.listNamespaces();
-      } catch (firstError) {
-        const status = (firstError as { status?: number })?.status;
-
-        // The node rejects an id it does not know with `400 Invalid
-        // application id`. Treat that as "cannot filter", not as "no
-        // workspaces": an empty list is indistinguishable from having none,
-        // and it rendered as a truncated group id where the workspace name
-        // belongs. Showing every namespace is imperfect; showing none looks
-        // like the workspace is gone.
-        if (status === 400 && appId) {
-          payload = await admin.listNamespaces();
-          return this.toGroupSummaries(payload);
-        }
-
-        // Older merod does not serve /namespaces; fall back to the legacy
-        // /groups route. mero-js throws HTTPError carrying `status`.
-        if (status !== 404 && status !== 405) throw firstError;
-        const legacy = await axios.get(`${this.base()}/groups`, {
-          headers: getAuthHeaders(),
-        });
-        if (legacy.status !== 200) {
-          return httpFail(legacy.status, legacy.statusText);
-        }
-        payload = legacy.data.data;
-      }
-
-      return this.toGroupSummaries(payload);
+      // So: every namespace, kept only when its target application is one of
+      // OURS — the configured id, plus any app installed under chat's package
+      // (an app id changes with the build, the package does not).
+      const admin = getMeroJs().admin;
+      const ours = await this.chatApplicationIds();
+      const listed = this.toGroupSummaries(await admin.listNamespaces());
+      if (listed.error || !listed.data) return listed;
+      return ok(listed.data.filter((g) => ours.has(g.targetApplicationId)));
     } catch (error) {
       return catchError("listGroups", error);
     }
+  }
+
+  /**
+   * The application ids that are chat on this node: the configured one
+   * (`getApplicationId()`: URL `app-id` → stored → env), plus every installed
+   * app whose package is chat's. If the node will not list its applications,
+   * the configured id alone still filters — never "everything".
+   */
+  private async chatApplicationIds(): Promise<Set<string>> {
+    const ids = new Set<string>();
+    const configured = getApplicationId();
+    if (configured) ids.add(configured);
+    try {
+      const listed = (await getMeroJs().admin.listApplications()) as { apps?: { id?: string; package?: string }[] } | null;
+      for (const app of listed?.apps ?? []) {
+        if (app?.id && app.package === APP_SLUG) ids.add(app.id);
+      }
+    } catch (error) {
+      log.warn("groupApiDataSource", "could not list installed applications; filtering by the configured id only", error);
+    }
+    return ids;
   }
 
   /**
