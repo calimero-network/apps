@@ -20,24 +20,24 @@ test.describe('Namespace (single-node)', () => {
     const dialog = alice.page
       .getByRole('dialog')
       .filter({ has: alice.page.getByPlaceholder(/Workspace name/i) });
-    await expect(dialog).toBeVisible();
-    // No click on the input: the dropdown item that opened this dialog
-    // must not keep stealing focus back from it.
+    const input = dialog.getByPlaceholder(/Workspace name/i);
+    // No click on the input: focus must land there on open, and the dropdown
+    // item that opened the dialog must not steal it back.
+    await expect(input).toBeFocused();
     await alice.page.keyboard.type('Typed Without Clicking');
-    await expect(dialog.getByPlaceholder(/Workspace name/i)).toHaveValue(
+    await expect(input).toHaveValue(
       'Typed Without Clicking',
     );
     await dialog.getByRole('button', { name: /^Cancel$/ }).click();
   });
 
   test('switch between namespaces', async ({ alice }) => {
+    const [a, b] = [`Phoenix A ${Date.now()}`, `Phoenix B ${Date.now()}`];
     await alice.goToWorkspace();
-    await alice.createNamespace('Phoenix A');
-    await alice.createNamespace('Phoenix B');
-    await alice.switchNamespace('Phoenix A');
-    await expect(alice.page.getByTestId('workspace-switcher')).toContainText(
-      'Phoenix A',
-    );
+    await alice.createNamespace(a);
+    await alice.createNamespace(b);
+    await alice.switchNamespace(a);
+    await expect(alice.page.getByTestId('workspace-switcher')).toContainText(a);
   });
 
   test('empty workspace shows Select-a-folder state', async ({ alice }) => {
