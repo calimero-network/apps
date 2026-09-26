@@ -91,7 +91,7 @@ describe('extractInviteParams', () => {
 
   it('extracts params from a legacy invite= URL (links in the wild)', () => {
     const legacy =
-      'https://mero-drive.vercel.app/join?kind=namespace&id=ns-legacy&invite=eyJ0ZXN0Ijp0cnVlfQ';
+      'https://mero-docs.vercel.app/join?kind=namespace&id=ns-legacy&invite=eyJ0ZXN0Ijp0cnVlfQ';
     const params = extractInviteParams(legacy);
     expect(params).not.toBeNull();
     expect(params!.get('id')).toBe('ns-legacy');
@@ -127,7 +127,7 @@ describe('extractInviteParams', () => {
 
   it('returns null for a URL that has no invite param', () => {
     expect(
-      extractInviteParams('https://mero-drive.vercel.app/app?foo=bar'),
+      extractInviteParams('https://mero-docs.vercel.app/app?foo=bar'),
     ).toBeNull();
   });
 

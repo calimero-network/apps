@@ -62,14 +62,14 @@ describe('NamespaceJoinDialog', () => {
   it('renders the input stage with disabled Continue when empty', () => {
     render(<NamespaceJoinDialog onClose={noop} onJoined={noop} />);
     screen.getByRole('dialog');
-    screen.getByPlaceholderText(/mero-drive.vercel.app/i);
+    screen.getByPlaceholderText(/mero-docs.vercel.app/i);
     const continueBtn = screen.getByRole('button', { name: /continue/i }) as HTMLButtonElement;
     expect(continueBtn.disabled).toBe(true);
   });
 
   it('shows a friendly error when the pasted text is not a link', () => {
     render(<NamespaceJoinDialog onClose={noop} onJoined={noop} />);
-    fireEvent.change(screen.getByPlaceholderText(/mero-drive.vercel.app/i), {
+    fireEvent.change(screen.getByPlaceholderText(/mero-docs.vercel.app/i), {
       target: { value: 'this is not a link' },
     });
     fireEvent.click(screen.getByRole('button', { name: /continue/i }));
@@ -81,7 +81,7 @@ describe('NamespaceJoinDialog', () => {
     // URL has invite= but the payload itself is garbage — parseInviteUrl
     // returns its decoder error message rather than extractInviteParams
     // returning null.
-    fireEvent.change(screen.getByPlaceholderText(/mero-drive.vercel.app/i), {
+    fireEvent.change(screen.getByPlaceholderText(/mero-docs.vercel.app/i), {
       target: {
         value: 'https://x/join?kind=namespace&id=ns&invite=$$not-base64$$',
       },
@@ -92,7 +92,7 @@ describe('NamespaceJoinDialog', () => {
 
   it('transitions to preview on a valid invite URL', () => {
     render(<NamespaceJoinDialog onClose={noop} onJoined={noop} />);
-    fireEvent.change(screen.getByPlaceholderText(/mero-drive.vercel.app/i), {
+    fireEvent.change(screen.getByPlaceholderText(/mero-docs.vercel.app/i), {
       target: { value: VALID_URL },
     });
     fireEvent.click(screen.getByRole('button', { name: /continue/i }));
@@ -106,13 +106,13 @@ describe('NamespaceJoinDialog', () => {
 
   it('lets the user navigate back to the input stage from preview, preserving text', () => {
     render(<NamespaceJoinDialog onClose={noop} onJoined={noop} />);
-    const textarea = screen.getByPlaceholderText(/mero-drive.vercel.app/i);
+    const textarea = screen.getByPlaceholderText(/mero-docs.vercel.app/i);
     fireEvent.change(textarea, { target: { value: VALID_URL } });
     fireEvent.click(screen.getByRole('button', { name: /continue/i }));
 
     fireEvent.click(screen.getByRole('button', { name: /back to invite link/i }));
 
-    const restored = screen.getByPlaceholderText(/mero-drive.vercel.app/i) as HTMLTextAreaElement;
+    const restored = screen.getByPlaceholderText(/mero-docs.vercel.app/i) as HTMLTextAreaElement;
     expect(restored.value).toBe(VALID_URL);
   });
 
@@ -132,7 +132,7 @@ describe('NamespaceJoinDialog', () => {
 
   it('clears the inline parse error when the user edits the textarea', () => {
     render(<NamespaceJoinDialog onClose={noop} onJoined={noop} />);
-    const textarea = screen.getByPlaceholderText(/mero-drive.vercel.app/i);
+    const textarea = screen.getByPlaceholderText(/mero-docs.vercel.app/i);
     fireEvent.change(textarea, { target: { value: 'not a link' } });
     fireEvent.click(screen.getByRole('button', { name: /continue/i }));
     screen.getByRole('alert');

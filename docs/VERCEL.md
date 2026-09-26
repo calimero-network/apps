@@ -78,7 +78,7 @@ keep them that way, and republish the bundle if a domain changes.
 | `mero-calendar` | `mero-calendar` | `apps/mero-calendar/app` | `dist` | https://mero-calendar.vercel.app |
 | `mero-chat` | `mero-chat-pwa` | `apps/mero-chat/app` | `dist` | https://mero-chat-pwa.vercel.app |
 | `mero-chess` | `mero-chess` | `apps/mero-chess/app` | `dist` | https://mero-chess.vercel.app ⚠️ not created yet |
-| `mero-docs` | `mero-drive` | `apps/mero-docs/app` | `dist` | https://mero-drive.vercel.app |
+| `mero-docs` | `mero-docs` | `apps/mero-docs/app` | `dist` | https://mero-docs.vercel.app |
 | `mero-forum` | `mero-forum` | `apps/mero-forum/app` | `dist` | https://mero-forum.vercel.app |
 | `mero-crm` | `mero-crm` (to create) | `apps/mero-crm/app` | `dist` | https://mero-crm.vercel.app |
 | `mero-issue-tracker` | `mero-issue-tracker-app` | `apps/mero-issue-tracker/app` | `dist` | https://mero-issue-tracker-app.vercel.app |
@@ -94,7 +94,7 @@ keep them that way, and republish the bundle if a domain changes.
 The project names above are inferred from each published `links.frontend` host,
 so they are what the URLs imply rather than what the dashboard says — confirm on
 re-linking. Five do **not** match the directory:
-`kv-store` → `mero-kv-store`, `mero-chat` → `mero-chat-pwa`, `mero-docs` → `mero-drive`,
+`kv-store` → `mero-kv-store`, `mero-chat` → `mero-chat-pwa`,
 `mero-issue-tracker` → `mero-issue-tracker-app`,
 `mero-stream` → `mero-stream-neon`, `scaffolding-e2e` → `scaffolding-e2e-application`.
 
@@ -116,9 +116,9 @@ origins (`meropass.vercel.app`, `p2p-sheets.vercel.app`) already returned
 `DEPLOYMENT_NOT_FOUND`, so no project existed to rename. mero-forum is in the
 same position.
 
-`mero-drive` was later renamed to `mero-docs`, so the `mero-drive` Vercel project
-also deploys nothing until its Root Directory is updated to `apps/mero-docs/app`.
-Its host stays `mero-drive.vercel.app`, which is what the registry publishes.
+`mero-drive` was later renamed to `mero-docs`, and its Vercel project with it:
+the project is `mero-docs` (Root Directory `apps/mero-docs/app`), and
+`mero-drive.vercel.app` redirects to `mero-docs.vercel.app` so old links keep working.
 
 ### ⚠️ mero-chess has no project yet
 

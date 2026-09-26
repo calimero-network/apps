@@ -31,7 +31,7 @@ icon        = "assets/icon-512x512.png"
 # happily and then dies at context creation with `link error: unknown import`.
 # check-app-metadata.sh now asserts this equals the workspace value.
 min-runtime-version = "0.11.0-rc.45"
-frontend    = "https://mero-drive.vercel.app"
+frontend    = "https://mero-docs.vercel.app"
 
 # Two services, ONE bundle. Declared at PACKAGE level, which cargo-mero supports
 # for "a crate that cannot declare a workspace table of its own (e.g. a member of
