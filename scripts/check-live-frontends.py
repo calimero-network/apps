@@ -119,26 +119,29 @@ def historical_titles(app: str) -> set[str]:
     global no_history
     rel = f"apps/{app}/app/index.html"
     try:
-        revs = subprocess.run(
-            ["git", "log", "--follow", "--format=%H", "--", rel],
+        # `--name-only` pairs each commit with the file's path AT that commit, so
+        # the pre-rename side of the history is read from its old path.
+        lines = subprocess.run(
+            ["git", "log", "--follow", "--name-only", "--format=%H", "--", rel],
             cwd=REPO, capture_output=True, text=True, timeout=60, check=True,
         ).stdout.split()
     except (subprocess.SubprocessError, OSError):
         no_history = True
         return set()
+    revs = list(zip(lines[0::2], lines[1::2]))
     if not revs:
         no_history = True
         return set()
 
     titles: set[str] = set()
-    for sha in revs[:200]:
+    for sha, path in revs[:200]:
         try:
             blob = subprocess.run(
-                ["git", "show", f"{sha}:{rel}"],
+                ["git", "show", f"{sha}:{path}"],
                 cwd=REPO, capture_output=True, text=True, timeout=30, check=True,
             ).stdout
         except (subprocess.SubprocessError, OSError):
-            continue  # the path did not exist at that commit (pre-rename side)
+            continue
         t = title_of(blob)
         if t:
             titles.add(t)

@@ -398,7 +398,7 @@ else
   NS_RES=$(curl -sf -X POST "${NODE_1_URL}/admin-api/namespaces" \
     -H "Authorization: Bearer ${ACCESS_TOKEN_1}" \
     -H "Content-Type: application/json" \
-    -d "$(jq -n --arg a "$APP_ID" '{applicationId: $a, upgradePolicy: "LazyOnAccess"}')" \
+    -d "$(jq -n --arg a "$APP_ID" '{applicationId: $a}')" \
     2>/dev/null) || NS_RES="{}"
   NS_ID=$(echo "$NS_RES" | jq -r '.data.namespaceId // .data.groupId // .data.id // empty' 2>/dev/null || true)
 

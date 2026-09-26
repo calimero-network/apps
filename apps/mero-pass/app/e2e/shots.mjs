@@ -20,6 +20,7 @@
  * would document nothing about the app and misrepresent what it renders.
  *
  * Usage:  node e2e/shots.mjs [--out DIR]
+ *         SHOTS_CHROMIUM=/path/to/chromium node e2e/shots.mjs
  */
 // From @playwright/test, not the raw `playwright` package. Two copies at
 // different versions makes the test runner fail with "Playwright Test did not
@@ -125,7 +126,10 @@ const SCENARIOS = [
     'vault-open',
     'A secret expanded, values concealed',
     '[data-testid="field-hidden"]',
-    { scenario: 'vault', click: '[data-testid="secret-row"] button' },
+    {
+      scenario: 'vault',
+      click: '[data-testid="secret-row"]:has-text("GitHub") button',
+    },
   ],
   [
     'vault-revealed',
@@ -133,19 +137,15 @@ const SCENARIOS = [
     '[data-testid="field-shown"]',
     {
       scenario: 'vault',
-      click: '[data-testid="secret-row"] button',
+      click: '[data-testid="secret-row"]:has-text("GitHub") button',
       then: '[data-testid="reveal"]',
     },
   ],
   [
-    'vault-delete',
-    'Deleting reaches everyone',
-    '[data-testid="secret-delete-confirm"]',
-    {
-      scenario: 'vault',
-      click: '[data-testid="secret-row"] button',
-      then: '[data-testid="secret-delete"]',
-    },
+    'vault-trash',
+    'Trash, recoverable until an Admin purges it',
+    '[data-testid="trash-list"]',
+    { scenario: 'vault', click: '[data-testid="tab-trash"]' },
   ],
   [
     'vault-form',
@@ -166,7 +166,35 @@ const SCENARIOS = [
     'In the team, not yet in the vault',
     '[data-testid="no-identity"]',
   ],
-  ['landing', 'The front door', '.cal-lp-brand'],
+  [
+    'vault-people',
+    'Who holds the key, and their devices',
+    '[data-testid="vault-device"]',
+    { scenario: 'vault', click: '[data-testid="tab-people"]' },
+  ],
+  [
+    'vault-approval',
+    'A new browser asking to be let in',
+    '[data-testid="device-request"]',
+  ],
+  [
+    'vault-waiting',
+    'This browser, waiting for approval',
+    '[data-testid="waiting-for-approval"]',
+  ],
+  [
+    'vault-single-holder',
+    'Only one browser holds the key',
+    '[data-testid="single-holder"]',
+  ],
+  [
+    'security',
+    'Lock, recovery key and devices',
+    '[data-testid="create-recovery"]',
+  ],
+  ['teams-light', 'Teams, light theme', '[data-testid="team-card"]'],
+  ['vault-light', 'A vault, light theme', '[data-testid="secret-row"]'],
+  ['landing', 'The front door', '[data-testid="landing"]'],
 ];
 
 const MIME = {
@@ -225,7 +253,13 @@ async function main() {
 
   mkdirSync(OUT, { recursive: true });
   const { server, port } = await serve(BUILD);
-  const browser = await chromium.launch();
+  // `SHOTS_CHROMIUM` points at a browser that is already installed, for a
+  // machine whose Chromium is not the one this Playwright version pins.
+  const browser = await chromium.launch(
+    process.env.SHOTS_CHROMIUM
+      ? { executablePath: process.env.SHOTS_CHROMIUM }
+      : {},
+  );
   const failures = [];
 
   try {

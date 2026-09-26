@@ -6,16 +6,20 @@
 # without complaining. mero-sign shipped that way: its `vercel.json` pointed at
 # `apps/mero-sign/build`, a path no build ever wrote.
 #
-#   scripts/check-vercel-output.sh          # assert against existing builds
-#   scripts/check-vercel-output.sh --build  # build each app first (slow)
+#   scripts/check-vercel-output.sh                  # every app, existing builds
+#   scripts/check-vercel-output.sh --build          # build each app first (slow)
+#   scripts/check-vercel-output.sh apps/x/app ...   # only these (CI passes the
+#                                                   # apps the frontend job built)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 BUILD=0
-[[ "${1:-}" == "--build" ]] && BUILD=1
+if [[ "${1:-}" == "--build" ]]; then BUILD=1; shift; fi
+
+if (( $# )); then dirs=("${@%/}"); else dirs=(apps/*/app); fi
 
 fail=0
-for d in apps/*/app; do
+for d in "${dirs[@]}"; do
   app="$(basename "$(dirname "$d")")"
   cfg="$d/vercel.json"
 

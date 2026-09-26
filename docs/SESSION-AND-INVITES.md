@@ -35,7 +35,7 @@ reimplements one gets its own behaviour, and nothing notices.
 | mero-blocks | *none* | — | — | — | vanilla TS; reimplements the modal |
 | mero-calendar | MeroProvider | ✅ | ✅ | ✅ | |
 | mero-design | MeroProvider | ✅ | ✅ | ✅ | |
-| mero-drive | MeroProvider | ✅ | ✅ | ✅ | also mounts `LoginModal` directly |
+| mero-docs | MeroProvider | ✅ | ✅ | ✅ | also mounts `LoginModal` directly |
 | mero-forum | MeroProvider | ✅ | ✅ | ✅ | |
 | mero-crm | MeroProvider | ✅ | ✅ | ✅ | same shell as mero-issue-tracker |
 | mero-issue-tracker | MeroProvider | ✅ | ✅ | ✅ | |
@@ -95,7 +95,7 @@ desktop hand-off never had one. So an app that anchors neither way drops the
 session on every cold desktop open, leaving one console line behind and the
 ordinary Connect screen on screen.
 
-Three apps were in that state: battleships and mero-drive with no anchor, and
+Three apps were in that state: battleships and mero-docs with no anchor, and
 mero-sheets with an inverted guard that skipped the only case it existed for.
 Fixed, tested and gated in `scripts/check-desktop-sso.py`, which runs in the
 always-on `metadata` job — see that script's header for the full account. (That
@@ -147,7 +147,7 @@ node calls** and **the link format**.
 | mero-blocks | raw `/admin-api/*` `fetch` | mero-platform | `encodeInvite` |
 | mero-calendar | app-local `generateInvite` | mero-platform | `encodeInvitation` |
 | mero-design | app-local `generateInvite`, `joinGroup` | mero-platform | `encodeInvitation` |
-| mero-drive | `createNamespaceInvitation`, `joinNamespace`, `joinGroup` | — | own `useNamespaceInvitation` |
+| mero-docs | `createNamespaceInvitation`, `joinNamespace`, `joinGroup` | - | own `useNamespaceInvitation` |
 | mero-forum | **none** | — | **none** |
 | mero-crm | `createNamespaceInvitation` + `joinNamespace` | mero-platform | `encodeInvitationPayload` |
 | mero-issue-tracker | `createNamespaceInvitation` + `joinNamespace` | mero-platform | `encodeInvitationPayload` |
@@ -225,7 +225,7 @@ comment recording that lesson. A baked `CONTEXT_ID` has the same problem. And
 the baked id is base58, which core rc.27 stopped using. mero-sign is not "an app
 that logs in differently"; it is an app on a previous generation of the platform.
 
-### mero-drive is off the catalog
+### mero-docs is off the catalog
 
 `mero-js@^7.3.2`, `mero-react@^4.6.1`, `mero-ui@^0.3.6` — literal pins while the
 catalog is at `^13.2.5` / `^6.0.4` / `^1.5.1`. Six majors behind on mero-js. It

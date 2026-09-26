@@ -221,7 +221,7 @@ section "1 — Namespace creation + 3-node join"
 
 step "node-1 (Alice) creates namespace"
 NS_RES=$(n1 -X POST "${N1_URL}/admin-api/namespaces" \
-  -d "$(jq -n --arg a "$APP_ID" '{applicationId:$a,upgradePolicy:"LazyOnAccess"}')" 2>/dev/null) || NS_RES="{}"
+  -d "$(jq -n --arg a "$APP_ID" '{applicationId:$a}')" 2>/dev/null) || NS_RES="{}"
 NS_ID=$(echo "$NS_RES" | jq -r '.data.namespaceId // .data.groupId // .data.id // empty' 2>/dev/null || true)
 [ -n "$NS_ID" ] || die "Namespace creation failed"
 ok "node-1 created namespace  $NS_ID"

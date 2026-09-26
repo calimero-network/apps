@@ -136,8 +136,8 @@ const q = (s) => JSON.stringify(s);
  * a thing that was never true.
  */
 const HAD_LOGIN_PAGE = new Set([
-  'battleships', 'mero-calendar', 'mero-design', 'mero-drive', 'mero-forum',
-  'mero-crm', 'mero-issue-tracker', 'mero-pass', 'mero-pixart', 'mero-sheets',
+  'battleships', 'mero-calendar', 'mero-design', 'mero-docs', 'mero-forum',
+  'mero-crm', 'mero-issue-tracker', 'mero-pixart', 'mero-sheets',
 ]);
 
 /** Assertions for the optional overview sections — only the ones this app configured. */

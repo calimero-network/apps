@@ -33,7 +33,7 @@ e2e_mode: true
 nodes:
   chain_id: testnet-1
   count: 1
-  image: ghcr.io/calimero-network/merod:0.11.0-rc.43
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.45
   # rc.26 made mDNS opt-in (core#3620) and merobox does not pass the flag,
   # so discovery changed at the image bump. Stated, not inherited.
   mdns: true
@@ -366,6 +366,160 @@ steps:
     type: assert
     statements:
       - "contains({{updated_board}}, 'Renamed Board')"
+
+  # ── Batch element ops ─────────────────────────────────────────────────────
+  # The canvas writes a large selection through these in one call each
+  # instead of one request per element. `Element` is camelCase on the wire;
+  # `ElementPatch` and `LabelUpdate` are snake_case, like `update_element`.
+  - name: Batch Add Two Elements
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: add_elements
+    args:
+      elements:
+        - id: "batch-a"
+          data: { kind: "rect" }
+          x: 10
+          y: 10
+          width: 50
+          height: 50
+          rotation: 0
+          fill: "#aaaaaa"
+          stroke: "#000000"
+          strokeWidth: 1
+          opacity: 100
+          layerIndex: 3
+          createdBy: "alice"
+          createdAt: 1000020
+          updatedAt: 1000020
+        - id: "batch-b"
+          data: { kind: "circle" }
+          x: 70
+          y: 10
+          width: 50
+          height: 50
+          rotation: 0
+          fill: "#bbbbbb"
+          stroke: "#000000"
+          strokeWidth: 1
+          opacity: 100
+          layerIndex: 4
+          createdBy: "alice"
+          createdAt: 1000021
+          updatedAt: 1000021
+    outputs:
+      batch_added: result
+
+  - name: Assert Batch Add Returned Both Ids
+    type: assert
+    statements:
+      - "contains({{batch_added}}, 'batch-a')"
+      - "contains({{batch_added}}, 'batch-b')"
+
+  - name: Batch Update Fills
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: update_elements
+    args:
+      patches:
+        - id: "batch-a"
+          fill: "#123456"
+        - id: "batch-b"
+          fill: "#654321"
+          stroke_width: 3
+      updated_at: 1000022
+
+  - name: Batch Set Labels
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: update_element_labels
+    args:
+      labels:
+        - id: "batch-a"
+          label: "batch-label-a"
+        - id: "batch-b"
+          label: "batch-label-b"
+      updated_at: 1000023
+
+  # The single-element form, so its coverage is a real call and not just a
+  # substring of `update_element_labels` above.
+  - name: Set One Label
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: update_element_label
+    args:
+      id: "rect-1"
+      label: "single-label-rect"
+      updated_at: 1000024
+
+  - name: Read Labelled Rect
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_element
+    args:
+      id: "rect-1"
+    outputs:
+      labelled_rect: result
+
+  - name: Assert Single Label Landed
+    type: assert
+    statements:
+      - "contains({{labelled_rect}}, 'single-label-rect')"
+
+  - name: Read Batch Elements By Id
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_elements_by_ids
+    args:
+      ids: ["batch-a", "batch-b", "no-such-id"]
+    outputs:
+      batch_read: result
+
+  - name: Assert Batch Patches And Labels Landed
+    type: assert
+    statements:
+      - "contains({{batch_read}}, '#123456')"
+      - "contains({{batch_read}}, '#654321')"
+      - "contains({{batch_read}}, 'batch-label-a')"
+      - "contains({{batch_read}}, 'batch-label-b')"
+
+  - name: Batch Delete
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: delete_elements
+    args:
+      ids: ["batch-a", "batch-b"]
+
+  - name: Elements After Batch Delete
+    type: call
+    node: calimero-node-1
+    context_id: "{{context_id}}"
+    executor_public_key: "{{member_public_key}}"
+    method: get_elements
+    args: {}
+    outputs:
+      after_batch_delete: result
+
+  - name: Assert Batch Elements Gone, Others Kept
+    type: assert
+    statements:
+      - "not_contains({{after_batch_delete}}, 'batch-a')"
+      - "not_contains({{after_batch_delete}}, 'batch-b')"
+      - "contains({{after_batch_delete}}, 'rect-1')"
 
   # ── Delete ────────────────────────────────────────────────────────────────
   - name: Delete Circle

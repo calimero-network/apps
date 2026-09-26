@@ -72,7 +72,7 @@ Start here. These exist to be read, not shipped.
 | [mero-pixart](apps/mero-pixart) | [↗](https://mero-pixart.vercel.app/) | Photoshop-style image editor — layers, folders, masks, adjustments, free transform, collaborative. | `com.calimero.mero-pixart` |
 | [mero-sheets](apps/mero-sheets) | [↗](https://mero-sheets.vercel.app) | Collaborative spreadsheet — CRDT inputs, derive-on-read recalc, formula autocomplete, live cursors, CSV download. | `com.calimero.mero-sheets` |
 | [mero-calendar](apps/mero-calendar) | [↗](https://mero-calendar.vercel.app) | Shared team calendars in replicated state, plus genuinely private events in node-local storage. | `com.calimero.mero-calendar` |
-| [mero-drive](apps/mero-drive) | [↗](https://mero-drive.vercel.app) | Namespace-scoped document workspace — a multi-service bundle pairing a registry with the docs themselves. | `com.calimero.mero-drive-docs` |
+| [mero-docs](apps/mero-docs) | [↗](https://mero-drive.vercel.app) | Namespace-scoped document workspace - a multi-service bundle pairing a registry with the docs themselves. | `com.calimero.mero-drive-docs` |
 | [mero-crm](apps/mero-crm) | — | Sales CRM — drag-and-drop pipeline, deals, people, activities, stage automations, insights, and a local deal assistant (health score, next best step, email draft). | `com.calimero.mero-crm` |
 | [mero-issue-tracker](apps/mero-issue-tracker) | [↗](https://mero-issue-tracker-app.vercel.app) | Issue board for a small engineering team whose backlog lives on their own nodes. | `com.calimero.mero-issue-tracker` |
 | [mero-forum](apps/mero-forum) | [↗](https://mero-forum.vercel.app) | Threads and comments replicated across your own nodes, with no server in the middle. | `com.calimero.mero-forum` |

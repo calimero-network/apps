@@ -3,9 +3,12 @@ import { Navigate, Route, Routes, useParams } from 'react-router-dom';
 import { useMero } from '@calimero-network/mero-react';
 
 import InvitationPrompt from './components/InvitationPrompt';
+import { useAutoLock, useAutoLockMinutes } from './hooks/useDeviceLock';
 import LandingPage from './pages/landing/LandingPage';
 import TeamsPage from './pages/teams/TeamsPage';
 import TeamPage from './pages/team/TeamPage';
+import SecurityPage from './pages/security/SecurityPage';
+import SharePage from './pages/share/SharePage';
 import VaultPage from './pages/vault/VaultPage';
 
 /**
@@ -84,6 +87,8 @@ function LegacyTeamRedirect() {
 }
 
 export default function App() {
+  const [lockMinutes] = useAutoLockMinutes();
+  useAutoLock(lockMinutes);
   return (
     <>
       {/* ⚠️ APP LEVEL, not inside a route. An invitation link can land on any
@@ -121,6 +126,10 @@ export default function App() {
         <Route path="/teams/:teamId" element={<TeamPage />} />
         {/* A VAULT is a context, so the param is a context id. */}
         <Route path="/vault/:vaultId" element={<VaultPage />} />
+        <Route path="/security" element={<SecurityPage />} />
+        {/* PUBLIC: a share link carries its secret in the fragment, so the
+            recipient needs no node and no login to open it. */}
+        <Route path="/share" element={<SharePage />} />
 
         {/* Paths this app used before the nouns settled. Kept as terminal
             redirects so a bookmark or an open tab still lands somewhere real. */}

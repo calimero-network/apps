@@ -23,7 +23,7 @@ nodes:
   count: 2
   prefix: crm-node
   # Matched to the SDK tag in the root Cargo.toml.
-  image: ghcr.io/calimero-network/merod:0.11.0-rc.43
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.45
   base_port: 12428
   base_rpc_port: 12528
 nuke_on_start: true

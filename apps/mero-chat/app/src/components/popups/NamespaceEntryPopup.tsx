@@ -686,8 +686,7 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
       const appId = await resolveInstalledAppId(getApplicationId());
       const createRes = await api.current.createGroup({
         applicationId: appId,
-        upgradePolicy: "Automatic",
-        alias: trimmedNs,
+        name: trimmedNs,
       });
       if (createRes.error || !createRes.data) {
         throw new Error(createRes.error?.message || "Failed to create namespace");
@@ -695,7 +694,7 @@ export default function NamespaceEntryPopup({ isAuthenticated, isConfigSet, onLo
 
       const { groupId } = createRes.data;
       setStoredGroupAlias(groupId, trimmedNs);
-      // The `alias` passed to createNamespace above does not reach the group's
+      // The `name` passed to createNamespace above does not reach the group's
       // metadata record — a freshly created namespace reads back
       // `metadata: null` — so write it explicitly. The creator is admin, so
       // this is the call that actually succeeds and gives the workspace a name

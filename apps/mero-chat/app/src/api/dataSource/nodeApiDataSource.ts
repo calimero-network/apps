@@ -63,29 +63,20 @@ export class ContextApiDataSource implements NodeApi {
       const bytes = encoder.encode(jsonString);
       const byteArray = Array.from(bytes);
 
-      const body: Record<string, unknown> = {
+      if (!props.groupId) {
+        throw new Error("createContext needs a groupId: every context lives in a group");
+      }
+      // Typed, never cast: core's CreateContextRequest is `deny_unknown_fields`,
+      // so a stray key (it was `protocol`) refuses the whole create with a 400.
+      const body: CreateContextRequest = {
         applicationId: getApplicationId(),
-        protocol: "near",
+        groupId: props.groupId,
         initializationParams: byteArray,
+        ...(props.identitySecret ? { identitySecret: props.identitySecret } : {}),
+        // Stored in the context's MetadataRecord.
+        ...(props.name ? { name: props.name } : {}),
       };
-      if (props.groupId) {
-        body.groupId = props.groupId;
-      }
-      if (props.identitySecret) {
-        body.identitySecret = props.identitySecret;
-      }
-      if (props.name) {
-        // Post-054a784f the context-create request accepts a `name`
-        // field that is stored directly into the context's MetadataRecord.
-        body.name = props.name;
-      }
-
-      // `body` carries `protocol`, which CreateContextRequest does not model;
-      // core still expects it, so the cast keeps sending it rather than
-      // dropping a field the node reads.
-      const data = await getMeroJs().admin.createContext(
-        body as unknown as CreateContextRequest,
-      );
+      const data = await getMeroJs().admin.createContext(body);
       return { data, error: null };
     } catch (error) {
       console.error("createContext failed:", error);
@@ -205,12 +196,9 @@ export class ContextApiDataSource implements NodeApi {
 
   async createGroupContext(params: {
     applicationId: string;
-    protocol: string;
     groupId: string;
     initializationParams: Record<string, unknown>;
     identitySecret?: string;
-    /** Routing alias — may be long (e.g. DM aliases). No length cap. */
-    alias?: string;
     /** Human display name stored in the context's MetadataRecord. Capped
      *  at 64 bytes server-side; omit for DM contexts. */
     name?: string;
@@ -219,26 +207,19 @@ export class ContextApiDataSource implements NodeApi {
       const jsonString = JSON.stringify(params.initializationParams);
       const byteArray = Array.from(new TextEncoder().encode(jsonString));
 
-      const body: Record<string, unknown> = {
+      // Typed, never cast. core's CreateContextRequest is closed: `protocol`
+      // and `alias` were each a 400 ("unknown field `protocol`"), so no
+      // channel, public or private, could be created. A DM's routing alias
+      // lives on its subgroup's `groupName`, not here.
+      const body: CreateContextRequest = {
         applicationId: params.applicationId,
-        protocol: params.protocol,
         groupId: params.groupId,
         initializationParams: byteArray,
+        ...(params.identitySecret ? { identitySecret: params.identitySecret } : {}),
+        // Human-readable display name (server-capped at 64 bytes).
+        ...(params.name ? { name: params.name } : {}),
       };
-      if (params.identitySecret) {
-        body.identitySecret = params.identitySecret;
-      }
-      // alias is the routing identifier (may be long for DM contexts).
-      // name is the human-readable display (server-capped at 64 bytes).
-      // Send only what was passed — never auto-derive name from alias.
-      if (params.alias) body.alias = params.alias;
-      if (params.name) body.name = params.name;
-
-      // As in createContext: `protocol` and `alias` are not on
-      // CreateContextRequest but core reads them, so pass the body through.
-      const data = await getMeroJs().admin.createContext(
-        body as unknown as CreateContextRequest,
-      );
+      const data = await getMeroJs().admin.createContext(body);
       return { data, error: null };
     } catch (error) {
       return sdkError("createGroupContext", error);
