@@ -76,12 +76,13 @@ Start here. These exist to be read, not shipped.
 | [mero-issue-tracker](apps/mero-issue-tracker) | [↗](https://mero-issue-tracker-app.vercel.app) | Issue board for a small engineering team whose backlog lives on their own nodes. | `com.calimero.mero-issue-tracker` |
 | [mero-forum](apps/mero-forum) | [↗](https://mero-forum.vercel.app) | Threads and comments replicated across your own nodes, with no server in the middle. | `com.calimero.mero-forum` |
 
-### Secrets & documents
+### Secrets, documents & governance
 
 | App | Live | What it is | Package |
 | --- | --- | --- | --- |
 | [mero-pass](apps/mero-pass) | [↗](https://mero-pass.vercel.app) | Secret manager — a vault is a context. Credentials stay on member nodes, versioned and attributed, with no master password to phish. | `com.calimero.mero-pass` |
 | [mero-sign](apps/mero-sign) | [↗](https://mero-sign.vercel.app) | Document signing — upload a PDF, collect signatures from namespace members, verify them peer-to-peer. | `com.calimero.mero-sign` |
+| [mero-vote](apps/mero-vote) | — | Private polls with verifiable tallies — ballots encrypted in the browser (ElGamal on ristretto255) with zero-knowledge well-formedness proofs, t-of-n threshold-decrypted totals (distributed key generation, no trusted dealer), and a tally every member re-verifies. | `com.calimero.mero-vote` |
 
 ### Games
 
