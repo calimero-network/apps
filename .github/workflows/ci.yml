@@ -12,10 +12,22 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      all:
+        # Re-verify the whole fleet on demand — e.g. after an SDK bump whose own
+        # run was cancelled (see concurrency below). A dispatch otherwise has
+        # no diff to scope from.
+        description: Run every app, not only what changed
+        type: boolean
+        default: true
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  # Supersede stale runs on a PR branch only. On main every merge must finish:
+  # cancelling there meant two merges seconds apart discarded the first one's
+  # run — which is how the rc.45 SDK bump (#215) landed without its fleet-wide
+  # run ever completing, hidden under the next merge's app-scoped run.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -49,7 +61,7 @@ jobs:
       # `shared` and `js_deps` are the EFFECTIVE verdicts, not the raw path
       # filters: a lockfile that changed only for the app being touched does not
       # make this a workspace-level change. See the `locks` step below.
-      shared: ${{ steps.locks.outputs.shared }}
+      shared: ${{ (github.event_name == 'workflow_dispatch' && inputs.all) && 'true' || steps.locks.outputs.shared }}
       tooling: ${{ steps.filter.outputs.tooling }}
       js_deps: ${{ steps.locks.outputs.js_deps }}
     steps:
@@ -234,7 +246,8 @@ jobs:
       - name: Resolve the app matrix
         id: set
         env:
-          SHARED: ${{ steps.locks.outputs.shared }}
+          # A manual "run every app" dispatch counts as a workspace-level change.
+          SHARED: ${{ (github.event_name == 'workflow_dispatch' && inputs.all) && 'true' || steps.locks.outputs.shared }}
           TOOLING: ${{ steps.filter.outputs.tooling }}
           FRONTEND_TOOLING: ${{ steps.filter.outputs.frontend_tooling }}
           JS_DEPS: ${{ steps.locks.outputs.js_deps }}
