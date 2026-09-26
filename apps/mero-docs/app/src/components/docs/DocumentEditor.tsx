@@ -18,6 +18,7 @@ import { useDocPresence } from '@/hooks/useDocPresence';
 import { useTitleCursors } from '@/hooks/useTitleCursors';
 import type { DriveEditor } from '@/components/editor/blocknote/schema';
 import { DocumentInspector } from './DocumentInspector';
+import { UNNAMED_MEMBER_LABEL } from '@/components/common/MemberLabel';
 
 const TITLE_REFETCH_MS = 800; // one list refetch per rename, not per keystroke
 
@@ -60,7 +61,7 @@ export function DocumentEditor({
       selfIdentity
         ? {
             id: selfIdentity,
-            name: namespaceMemberNames[selfIdentity] || 'Anonymous',
+            name: namespaceMemberNames[selfIdentity] || UNNAMED_MEMBER_LABEL,
           }
         : null,
     [selfIdentity, namespaceMemberNames],

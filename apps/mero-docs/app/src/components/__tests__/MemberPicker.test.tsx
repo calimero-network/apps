@@ -101,6 +101,16 @@ describe('MemberPicker', () => {
     expect(onSelect).toHaveBeenCalledWith(members[0].identity);
   });
 
+  it('never shows an unnamed member by their raw key as visible text', () => {
+    render(<MemberPicker namespaceId="ns" onSelect={vi.fn()} />);
+    fireEvent.focus(screen.getByRole('combobox'));
+    // bob and cathy have no display name; the row must read
+    // "Unnamed member", not their identity.
+    expect(screen.getAllByText('Unnamed member')).toHaveLength(2);
+    expect(screen.queryByText(/bob-pubkey/)).toBeNull();
+    expect(screen.queryByText(/cathy-pubkey/)).toBeNull();
+  });
+
   it('accepts a free-form pubkey paste via Enter when no option matches', () => {
     const onSelect = vi.fn();
     render(<MemberPicker namespaceId="ns" onSelect={onSelect} />);

@@ -1,6 +1,6 @@
-// Per-(namespace, member) display name backed by core's setMemberMetadata
-// (PR #2338). Returns null when unset — callers should render a truncated
-// pubkey as the visual fallback (see <MemberLabel>).
+// Per-(namespace, member) display name backed by core's setMemberMetadata.
+// Returns null when unset — callers should render the shared "unnamed
+// member" fallback, never the raw key (see <MemberLabel>).
 //
 // Self-edit is the only mutation surface this hook exposes: the writer
 // methods always target `selfIdentity` and ignore the `memberId` arg, so a

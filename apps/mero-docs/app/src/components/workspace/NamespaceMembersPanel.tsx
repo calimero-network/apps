@@ -17,6 +17,7 @@ import { namespaceLabel } from '@/lib/namespaceLabel';
 import { useFolderMembership } from '@/hooks/useFolderMembership';
 import { useNamespacePermissions } from '@/hooks/useNamespacePermissions';
 import { NamespaceMemberRow } from '@/components/admin/NamespaceMemberRow';
+import { UNNAMED_MEMBER_LABEL } from '@/components/common/MemberLabel';
 import { useMemberCaps } from '@/hooks/useMemberCaps';
 import { countAdmins, parseGroupRole } from '@/lib/roles';
 import { InviteDialog } from './InviteDialog';
@@ -156,7 +157,7 @@ export function NamespaceMembersPanel() {
             key={m.identity}
             groupId={rootGroupId}
             identity={m.identity}
-            label={m.name ?? `${m.identity.slice(0, 8)}…`}
+            label={m.name ?? UNNAMED_MEMBER_LABEL}
             role={m.role}
             actorRole={actorRole}
             actorCaps={selfCaps.caps}

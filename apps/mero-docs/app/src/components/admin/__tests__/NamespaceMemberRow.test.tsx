@@ -6,22 +6,18 @@ import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { NamespaceMemberRow } from '../NamespaceMemberRow';
+import { UNNAMED_MEMBER_LABEL } from '@/components/common/MemberLabel';
 
 const renameToMock = vi.fn();
 const useAdminRenameMemberMock = vi.fn();
+const useMemberDisplayNameMock = vi.fn();
 
 vi.mock('@/hooks/useAdminRenameMember', () => ({
   useAdminRenameMember: (...args: unknown[]) => useAdminRenameMemberMock(...args),
   MAX_DISPLAY_NAME_LEN: 64,
 }));
 vi.mock('@/hooks/useMemberDisplayName', () => ({
-  useMemberDisplayName: () => ({
-    name: 'Bob',
-    loading: false,
-    error: null,
-    setName: vi.fn(),
-    refetch: vi.fn().mockResolvedValue(undefined),
-  }),
+  useMemberDisplayName: (...args: unknown[]) => useMemberDisplayNameMock(...args),
 }));
 const addManagerMock = vi.fn().mockResolvedValue(undefined);
 const removeManagerMock = vi.fn().mockResolvedValue(undefined);
@@ -29,6 +25,7 @@ vi.mock('@/hooks/useDriveWorkspace', () => ({
   useDriveWorkspace: () => ({
     namespaceId: 'ns',
     rootGroupId: 'ns',
+    namespaceMemberNames: {},
     registryAdmin: {
       isOwner: true,
       addManager: addManagerMock,
@@ -67,6 +64,14 @@ describe('NamespaceMemberRow admin-rename affordance', () => {
   beforeEach(() => {
     renameToMock.mockReset();
     useAdminRenameMemberMock.mockReset();
+    useMemberDisplayNameMock.mockReset();
+    useMemberDisplayNameMock.mockReturnValue({
+      name: 'Bob',
+      loading: false,
+      error: null,
+      setName: vi.fn(),
+      refetch: vi.fn().mockResolvedValue(undefined),
+    });
   });
 
   it('hides the pencil when canRename is false', () => {
@@ -220,5 +225,35 @@ describe('NamespaceMemberRow admin-rename affordance', () => {
     expect(screen.getByRole('img', { name: 'Here now' })).toBeTruthy();
     rerender(row(false));
     expect(screen.getByRole('img', { name: 'Away' })).toBeTruthy();
+  });
+
+  it('never shows the raw identity as visible text for an unnamed member', () => {
+    useAdminRenameMemberMock.mockReturnValue({
+      canRename: false,
+      renameTo: renameToMock,
+    });
+    useMemberDisplayNameMock.mockReturnValue({
+      name: null,
+      loading: false,
+      error: null,
+      setName: vi.fn(),
+      refetch: vi.fn().mockResolvedValue(undefined),
+    });
+    render(
+      <NamespaceMemberRow
+        groupId="ns"
+        identity="bob-id-64charhexlikevalue"
+        actorRole="Admin"
+        actorCaps={null}
+        adminCount={2}
+        label={UNNAMED_MEMBER_LABEL}
+        role="Member"
+        isSelf={false}
+        canManage={true}
+        onRemove={vi.fn().mockResolvedValue(undefined)}
+      />,
+    );
+    expect(screen.getByText(UNNAMED_MEMBER_LABEL)).toBeTruthy();
+    expect(screen.queryByText(/bob-id-64charhexlikevalue/)).toBeNull();
   });
 });
