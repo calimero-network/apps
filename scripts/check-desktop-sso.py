@@ -28,7 +28,7 @@ on the console. The user sees the ordinary Connect screen while holding a
 perfectly good session — the "auth skip" simply does not happen. Nothing
 throws, no test fails, and the app works fine on the web, so this survives any
 amount of green CI. Three apps were in that state when this was written:
-battleships and mero-drive (no anchor at all) and mero-sheets, whose bootstrap
+battleships and mero-docs (no anchor at all) and mero-sheets, whose bootstrap
 returned early on exactly the token-bearing hash that needs the seed — the one
 case it existed for — while its index.tsx advertised "desktop auth-skip".
 

@@ -276,13 +276,13 @@ export const DOCS = {
     ],
   },
 
-  'mero-drive': {
+  'mero-docs': {
     docs: [
       {
         id: 'concepts',
         heading: 'The words, and what they mean here',
         paragraphs: [
-          'Mero Drive Docs is a multi-service bundle, and that structure is the product. A registry service holds the folder tree for a namespace; each folder is its own context holding its own documents.',
+          'Mero Docs is a multi-service bundle, and that structure is the product. A registry service holds the folder tree for a namespace; each folder is its own context holding its own documents.',
           'That is what makes selective sharing real: giving somebody a folder replicates that folder’s documents to them and nothing else, because the other folders are different contexts they were never added to.',
         ],
         concepts: [
@@ -463,65 +463,6 @@ export const DOCS = {
   },
 
 
-  'mero-pass': {
-    docs: [
-      {
-        id: 'concepts',
-        heading: 'The words, and what they mean here',
-        concepts: [
-          { term: 'Namespace', def: 'A vault. You create it and invite the people who should hold its secrets.' },
-          { term: 'Context', def: 'The vault’s contents — the secrets themselves and the audit log.' },
-          { term: 'Secret', def: 'One entry in a map keyed by id. Five kinds: a login, a secure note, a TOTP seed, an SSH key, and free-form.' },
-          { term: 'TOTP', def: 'A time-based one-time-password seed. Codes are generated locally from the seed; no code is ever stored or transmitted.' },
-          { term: 'Audit log', def: 'A record of what happened in the vault, replicated with it, so the history is not something a vendor could withhold.' },
-        ],
-      },
-      {
-        id: 'start',
-        heading: 'Getting started',
-        steps: [
-          { title: 'Connect a node', body: 'Press Connect to node and choose your node.' },
-          { title: 'Create a vault', body: 'A namespace you own. Nothing in it leaves the members you invite.' },
-          { title: 'Add a secret', body: 'Pick one of the five types. Logins carry a URL; TOTP entries carry a seed and generate codes on your own machine.' },
-          { title: 'Share with the team', body: 'Invite the people who need it. Their node replicates the vault; there is no vendor holding a copy.' },
-        ],
-      },
-      {
-        id: 'sharing',
-        heading: 'Sharing, and taking it back',
-        paragraphs: [
-          'Membership is the access model. Revoking someone stops the vault replicating to them — it is an action you take, not a support request.',
-          'Because there is no central store, there is no central store to breach. The threat model moves from "a vendor is compromised" to "a member’s node is compromised", which is a risk you can see and act on.',
-        ],
-      },
-      {
-        id: 'storage',
-        heading: 'What is stored, and where',
-        bullets: [
-          'Secrets, keyed by id, each with its type, tags and payload.',
-          'An audit log of vault activity.',
-          'Nothing on any server: the vault exists on the nodes of the people you invited, and nowhere else.',
-        ],
-      },
-      OFFLINE,
-      {
-        id: 'trouble',
-        heading: 'When something looks wrong',
-        concepts: [
-          { term: 'A TOTP code is rejected', def: 'Codes are time-based and generated locally. A wrong code almost always means your machine’s clock has drifted.' },
-          { term: 'A teammate cannot see a secret', def: 'They must be a member of that vault. Being in another vault with you grants nothing here.' },
-          { term: 'A secret you deleted is back', def: 'A peer that was offline when you deleted it can resurface its copy on reconnect if it also edited it. Delete it again once both nodes are in sync.' },
-        ],
-      },
-    ],
-    previewSteps: [
-      { title: 'A vault of secrets', body: 'Entries in a context replicated only to the people invited to that vault.' },
-      { title: 'One reveals', body: 'Decryption happens on your machine. Nothing is fetched from a service to show it.' },
-      { title: 'A TOTP ticks', body: 'Generated locally from a stored seed — the code itself is never stored or sent.' },
-      { title: 'A member is added', body: 'Sharing is membership. Revoking it stops replication rather than filing a request.' },
-    ],
-  },
-
   'mero-pixart': {
     docs: [
       {
@@ -578,10 +519,11 @@ export const DOCS = {
       },
     ],
     previewSteps: [
-      { title: 'A layer stack', body: 'Raster, text and fill layers in a tree — each one a separate record in the context.' },
-      { title: 'A stroke is drawn', body: 'Painting writes to that layer’s content field and nothing else on it.' },
-      { title: 'An adjustment applies', body: 'Non-destructive: parameters are stored, the pixels underneath are not rewritten.' },
-      { title: 'A collaborator joins', body: 'Their cursor rides separately from the document, so presence can never damage the art.' },
+      // The hero is interactive (animation.tsx), so these are things to try, in order.
+      { title: 'Paint on the canvas', body: 'Pick a colour and drag, or use the arrow keys and Space. The stroke lands on the layer you have selected.' },
+      { title: 'Ada draws at the same time', body: 'Your teammate paints on her own layer. Neither of you waits for the other, because every layer is a separate record.' },
+      { title: 'Hide a layer', body: 'Each eye hides one layer and leaves the others exactly as they were.' },
+      { title: 'Tune the hue', body: 'The slider is an adjustment on the selected layer: stored as a setting, so Reset brings the original pixels straight back.' },
     ],
   },
 

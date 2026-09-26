@@ -1,99 +1,117 @@
 // Aliased over src/lib/vault — the per-context typed client and the vault name.
 import { VARIANT } from './fixtures';
 
-// ⚠️ NANOseconds, as `env::time_now()` emits and as `asDate` divides down.
-// These were milliseconds at first and every date in the screenshots read
-// 1/1/1970 — the fixture was wrong, not the app.
-const SECRETS = [
+const ME = 'a'.repeat(64);
+const ANA = 'b'.repeat(64);
+const MARKO = 'c'.repeat(64);
+const T = (days: number) => (1_758_000_000_000 - days * 86_400_000) * 1_000_000;
+
+// The v2 audit trail: an action, the id it touched, who and from which device.
+const EVENTS = [
   {
-    id: 's1',
-    name: 'GitHub',
-    secret_type: 'login',
-    data: JSON.stringify({
-      username: 'ada@acme.example',
-      password: 'correct-horse-battery-staple',
-      url: 'https://github.com',
-      notes: 'Org owner account. 2FA on the shared authenticator.',
-    }),
-    tags: ['work', 'infra'],
-    created_at: 1_757_000_000_000_000_000,
-    updated_at: 1_757_900_000_000_000_000,
-    version: 3,
-    created_by: 'a'.repeat(64),
+    action: 'secret_updated',
+    target: 's1',
+    account: ANA,
+    device: 'd2',
+    timestamp: T(1),
+    redacted: false,
   },
   {
-    id: 's2',
-    name: 'Stripe live key',
-    secret_type: 'ssh_key',
-    data: JSON.stringify({
-      private_key: 'sk_live_51H8xQ2KZvNmPqR4tYuIoP',
-      public_key: 'pk_live_51H8xQ2KZvNmPqR4tYuIoP',
-    }),
-    tags: ['billing'],
-    created_at: 1_756_100_000_000_000_000,
-    updated_at: 1_756_100_000_000_000_000,
-    version: 1,
-    created_by: 'b'.repeat(64),
+    action: 'device_registered',
+    target: 'f00d',
+    account: MARKO,
+    device: 'd3',
+    timestamp: T(2),
+    redacted: false,
   },
   {
-    id: 's3',
-    name: 'Office wifi',
-    secret_type: 'secure_note',
-    data: JSON.stringify({ content: 'SSID acme-5g — ask Tom to rotate in May.' }),
-    tags: [],
-    created_at: 1_755_000_000_000_000_000,
-    updated_at: 1_755_000_000_000_000_000,
-    version: 1,
-    created_by: 'c'.repeat(64),
+    action: 'key_rotated',
+    target: 'k2',
+    account: ME,
+    device: 'd1',
+    timestamp: T(3),
+    redacted: false,
   },
   {
-    id: 's4',
-    name: 'Company card',
-    secret_type: 'payment_card',
-    data: JSON.stringify({
-      cardholder_name: 'Acme Ltd',
-      card_number: '4242424242424242',
-      expiry_date: '04/29',
-      cvv: '123',
-    }),
-    tags: ['billing', 'finance'],
-    created_at: 1_754_000_000_000_000_000,
-    updated_at: 1_754_000_000_000_000_000,
-    version: 2,
-    created_by: 'a'.repeat(64),
+    action: 'secret_added',
+    target: 's5',
+    account: ANA,
+    device: 'd2',
+    timestamp: T(4),
+    redacted: false,
+  },
+  {
+    action: 'member_admitted',
+    target: MARKO,
+    account: ME,
+    device: 'd1',
+    timestamp: T(6),
+    redacted: false,
   },
 ];
 
-const EVENTS = [
+const MEMBERS = [
+  { account: ME, role: 'admin', devices: 2 },
+  { account: ANA, role: 'editor', devices: 1 },
+  { account: MARKO, role: 'viewer', devices: 1 },
+];
+
+const DEVICES = [
   {
-    id: 'l1',
-    action: 'secret_updated',
-    details: "Secret 'GitHub' updated",
-    user_public_key: 'b'.repeat(64),
-    timestamp: 1_757_900_000_000_000_000,
+    fingerprint: '1a2b' + '0'.repeat(60),
+    public_key: '',
+    label: 'Chrome on macOS',
+    kind: 'browser',
+    account: ME,
+    added_at: T(30),
+    revoked: false,
   },
   {
-    id: 'l2',
-    action: 'secret_added',
-    details: "Secret 'Stripe live key' added",
-    user_public_key: 'a'.repeat(64),
-    timestamp: 1_756_100_000_000_000_000,
+    fingerprint: '9e8d' + '0'.repeat(60),
+    public_key: '',
+    label: 'Recovery key',
+    kind: 'recovery',
+    account: ME,
+    added_at: T(29),
+    revoked: false,
   },
   {
-    id: 'l3',
-    action: 'vault_renamed',
-    details: "Vault renamed from 'Vault 1' to 'Bank logins'",
-    user_public_key: 'a'.repeat(64),
-    timestamp: 1_755_500_000_000_000_000,
+    fingerprint: '5c6d' + '0'.repeat(60),
+    public_key: '',
+    label: 'Firefox on Linux',
+    kind: 'browser',
+    account: ANA,
+    added_at: T(20),
+    revoked: false,
+  },
+  {
+    fingerprint: '3f4e' + '0'.repeat(60),
+    public_key: '',
+    label: 'Safari on iOS',
+    kind: 'browser',
+    account: MARKO,
+    added_at: T(6),
+    revoked: false,
+  },
+  {
+    fingerprint: '7a7a' + '0'.repeat(60),
+    public_key: '',
+    label: 'Chrome on Windows',
+    kind: 'browser',
+    account: ANA,
+    added_at: T(40),
+    revoked: true,
   },
 ];
 
 const client = {
-  listSecrets: async () => (VARIANT === 'empty' ? [] : SECRETS),
   getAuditLogs: async () => (VARIANT === 'empty' ? [] : EVENTS),
-  deleteSecret: async () => {},
-  addSecret: async () => 'new',
-  updateSecret: async () => {},
+  listMembers: async () => MEMBERS,
+  listDevices: async () => DEVICES,
+  setRole: async () => {},
+  removeMember: async () => {},
+  revokeDevice: async () => {},
+  setDefaultRole: async () => {},
   vaultName: async () => 'Bank logins',
 };
 

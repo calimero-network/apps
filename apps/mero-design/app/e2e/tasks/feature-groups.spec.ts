@@ -78,9 +78,12 @@ test.describe("grouping", () => {
     await page.locator('[data-testid="layer-item-d"]').click({ modifiers: ["Shift"] });
     await page.locator('[data-testid="group-selection"]').click();
 
-    await expect.poll(() => board.calledWith("update_element_label").length, { timeout: 15000 }).toBe(2);
-    const labels = board.calledWith("update_element_label").map((c) => c.args.label as string).sort();
+    await expect.poll(() => board.writes("update_element_label").length, { timeout: 15000 }).toBe(2);
+    const labels = board.writes("update_element_label").map((c) => c.args.label as string).sort();
     expect(labels).toEqual(["Group 1/loose", "Group 1/rect"]);
+    // Both labels in one call, not a round-trip per layer.
+    expect(board.calledWith("update_element_labels")).toHaveLength(1);
+    expect(board.calledWith("update_element_label")).toHaveLength(0);
     await expect(page.locator('[data-testid="layer-group-Group 1"]')).toBeVisible();
   });
 
@@ -90,7 +93,7 @@ test.describe("grouping", () => {
     await page.locator('[data-testid="layer-item-c"]').click();
     await page.locator('[data-testid="layer-item-d"]').click({ modifiers: ["Shift"] });
     await page.keyboard.press(process.platform === "darwin" ? "Meta+g" : "Control+g");
-    await expect.poll(() => board.calledWith("update_element_label").length, { timeout: 15000 }).toBe(2);
+    await expect.poll(() => board.writes("update_element_label").length, { timeout: 15000 }).toBe(2);
   });
 
   test("Ungroup lifts members back out of the group", async ({ page }) => {
@@ -98,8 +101,8 @@ test.describe("grouping", () => {
     await openLayers(page);
     await page.locator('[data-testid="layer-group-screen"]').click();
     await page.locator('[data-testid="ungroup-selection"]').click();
-    await expect.poll(() => board.calledWith("update_element_label").length, { timeout: 15000 }).toBe(2);
-    const labels = board.calledWith("update_element_label").map((c) => c.args.label as string).sort();
+    await expect.poll(() => board.writes("update_element_label").length, { timeout: 15000 }).toBe(2);
+    const labels = board.writes("update_element_label").map((c) => c.args.label as string).sort();
     expect(labels).toEqual(["body", "header"]);
   });
 
@@ -109,8 +112,8 @@ test.describe("grouping", () => {
     await page.locator('[data-testid="layer-item-c"]').click();
     await page.locator('[data-testid="frame-selection"]').click();
 
-    await expect.poll(() => board.calledWith("add_element").length, { timeout: 15000 }).toBe(1);
-    const backdrop = board.calledWith("add_element")[0].args.element as { label: string; width: number };
+    await expect.poll(() => board.writes("add_element").length, { timeout: 15000 }).toBe(1);
+    const backdrop = board.writes("add_element")[0].args.element as { label: string; width: number };
     expect(backdrop.label).toBe("Frame 1/Background");
     // 40px shape plus 16px padding on both sides.
     expect(backdrop.width).toBe(72);
@@ -143,10 +146,10 @@ test.describe("grouping", () => {
     await page.locator('[data-testid="group-menu-screen"]').click();
     await page.locator('[data-testid="flatten-screen"]').click();  // confirms
 
-    await expect.poll(() => board.calledWith("add_element").length, { timeout: 20000 }).toBe(1);
-    const created = board.calledWith("add_element")[0].args.element as { data: { kind: string } };
+    await expect.poll(() => board.writes("add_element").length, { timeout: 20000 }).toBe(1);
+    const created = board.writes("add_element")[0].args.element as { data: { kind: string } };
     expect(created.data.kind).toBe("svg");
-    await expect.poll(() => board.calledWith("delete_element").map((c) => c.args.id).sort(), { timeout: 20000 })
+    await expect.poll(() => board.writes("delete_element").map((c) => c.args.id).sort(), { timeout: 20000 })
       .toEqual(["a", "b"]);
   });
 });

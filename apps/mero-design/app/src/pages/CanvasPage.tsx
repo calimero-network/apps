@@ -3,6 +3,8 @@ import { useNavigate, useParams } from "react-router-dom";
 import { v4 as uuid } from "uuid";
 import { rpcCall, adminGet, adminUploadBlob, adminGetBlob, joinContext } from "../api/rpc";
 import { useSse } from "../hooks/useSse";
+import { getElementsByIds } from "../api/elementBatch";
+import { collectBoardChanges } from "../utils/boardEvents";
 import { useGroupActions } from "../hooks/useGroupActions";
 import { useMero } from "@calimero-network/mero-react";
 import { countRender } from "../utils/renderCount";
@@ -38,14 +40,15 @@ export default function CanvasPage() {
   // re-render CanvasPage and, through it, the canvas, the toolbar and the whole
   // layers tree. Measured at 300 elements: 309ms p95 for a click. See e2e/perf/.
   const {
-    setElements, upsertElement, removeElement, cacheImage, selectWithPointer, elements, imageCache,
+    setElements, upsertElement, upsertElements, removeElements, cacheImage, selectWithPointer, elements, imageCache,
     previewMode, setPreviewMode, presenting, startPresentation,
   } =
     useCanvasStore(
       useShallow((s) => ({
         setElements: s.setElements,
         upsertElement: s.upsertElement,
-        removeElement: s.removeElement,
+        upsertElements: s.upsertElements,
+        removeElements: s.removeElements,
         cacheImage: s.cacheImage,
         selectWithPointer: s.selectWithPointer,
         elements: s.elements,
@@ -420,66 +423,55 @@ export default function CanvasPage() {
 
   // SSE handler — the node sends StateMutation payloads:
   // { newRoot: "...", events: [{ kind: "ElementAdded", data: u8[], handler: null }] }
-  // Each event's data bytes are the WASM-emitted content (JSON-encoded value).
+  // Folded into one plan per mutation (utils/boardEvents): a batch of N element
+  // changes is one `get_elements_by_ids` pass and one store update, not N
+  // `get_element` reads and N re-renders.
   const handleSseEvent = useCallback(
     (raw: unknown) => {
-      try {
-        if (!projectId || typeof raw !== "object" || raw === null) return;
-        const payload = raw as { events?: Array<{ kind: string; data: number[] }> };
-        const events = Array.isArray(payload.events) ? payload.events : [];
+      if (!projectId) return;
+      const changes = collectBoardChanges(raw);
 
-        for (const ev of events) {
-          const kind = ev.kind ?? "";
-          let value: unknown = null;
-          if (Array.isArray(ev.data) && ev.data.length > 0) {
-            try {
-              const text = new TextDecoder().decode(new Uint8Array(ev.data));
-              value = JSON.parse(text);
-            } catch { /* keep null */ }
-          }
-
-          if (kind === "ElementAdded" || kind === "ElementUpdated") {
-            rpcCall<Element>(projectId, "get_element", { id: value as string })
-              .then((el) => { if (el) upsertElement(el); })
-              .catch(() => {});
-          } else if (kind === "ElementDeleted") {
-            removeElement(value as string);
-          } else if (kind === "LayerReordered") {
-            rpcCall<Element[]>(projectId, "get_elements", {})
-              .then((els) => setElements(Array.isArray(els) ? els : []))
-              .catch(() => {});
-          } else if (kind === "CommentAdded" || kind === "CommentUpdated") {
-            rpcCall<CanvasComment[]>(projectId, "get_comments", {})
-              .then((cs) => setComments(Array.isArray(cs) ? cs : []))
-              .catch(() => {});
-          } else if (kind === "CommentDeleted") {
-            setComments((prev) => prev.filter((c) => c.id !== (value as string)));
-          } else if (kind === "CursorMoved") {
-            rpcCall<CursorState[]>(projectId, "get_cursors", {})
-              .then((cs) => setCursors(Array.isArray(cs) ? cs.map(normalizeCursor) : []))
-              .catch(() => {});
-          } else if (kind === "MemberJoined" || kind === "MemberUsernameUpdated") {
-            rpcCall<Member[]>(projectId, "get_members", {})
-              .then((ms) => setMembers(Array.isArray(ms) ? ms : []))
-              .catch(() => {});
-          } else if (kind === "RoleUpdated" || kind === "OwnerTransferred") {
-            // A grant/revoke/transfer may flip our own role — re-resolve it
-            // immediately instead of waiting for a reload, and refresh the roster.
-            rpcCall<string>(projectId, "my_role", {})
-              .then((role) => { setCanEdit(role !== "viewer"); setIsAdmin(role === "admin"); })
-              // Fail closed, matching the role effect — never keep stale edit
-              // access after a revoke/transfer if the refetch errors.
-              .catch(() => { setCanEdit(false); setIsAdmin(false); });
-            rpcCall<Member[]>(projectId, "get_members", {})
-              .then((ms) => setMembers(Array.isArray(ms) ? ms : []))
-              .catch(() => {});
-          }
-        }
-      } catch {
-        // ignore parse errors
+      if (changes.remove.length > 0) removeElements(changes.remove);
+      if (changes.layers) {
+        // A reorder renumbers everything; the full list covers any fetch too.
+        rpcCall<Element[]>(projectId, "get_elements", {})
+          .then((els) => setElements(Array.isArray(els) ? els : []))
+          .catch(() => {});
+      } else if (changes.fetch.length > 0) {
+        getElementsByIds(projectId, changes.fetch)
+          .then((els) => upsertElements(els))
+          .catch(() => {});
+      }
+      if (changes.comments) {
+        rpcCall<CanvasComment[]>(projectId, "get_comments", {})
+          .then((cs) => setComments(Array.isArray(cs) ? cs : []))
+          .catch(() => {});
+      }
+      if (changes.removedComments.length > 0) {
+        const gone = new Set(changes.removedComments);
+        setComments((prev) => prev.filter((c) => !gone.has(c.id)));
+      }
+      if (changes.cursors) {
+        rpcCall<CursorState[]>(projectId, "get_cursors", {})
+          .then((cs) => setCursors(Array.isArray(cs) ? cs.map(normalizeCursor) : []))
+          .catch(() => {});
+      }
+      if (changes.role) {
+        // A grant/revoke/transfer may flip our own role — re-resolve it
+        // immediately instead of waiting for a reload.
+        rpcCall<string>(projectId, "my_role", {})
+          .then((role) => { setCanEdit(role !== "viewer"); setIsAdmin(role === "admin"); })
+          // Fail closed, matching the role effect — never keep stale edit
+          // access after a revoke/transfer if the refetch errors.
+          .catch(() => { setCanEdit(false); setIsAdmin(false); });
+      }
+      if (changes.members) {
+        rpcCall<Member[]>(projectId, "get_members", {})
+          .then((ms) => setMembers(Array.isArray(ms) ? ms : []))
+          .catch(() => {});
       }
     },
-    [projectId, upsertElement, removeElement, setElements],
+    [projectId, upsertElements, removeElements, setElements],
   );
 
   // The stream dropped and came back (the node was restarted, the machine

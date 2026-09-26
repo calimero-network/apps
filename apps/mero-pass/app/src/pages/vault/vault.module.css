@@ -1,87 +1,108 @@
 /* Secret-specific chrome. Everything structural comes from shell.module.css;
-   only what is genuinely about a SECRET lives here. */
+   only what is genuinely about a SECRET lives here — in the same square,
+   hairline, uppercase-label language as the rest of the app. */
 
 .stats {
-  display: flex;
-  gap: 28px;
-  margin-bottom: 24px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  border-top: 1px solid var(--border);
+  border-left: 1px solid var(--border);
+  margin-bottom: 2rem;
 }
 
 .stat {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 0.25rem;
+  padding: 1rem 1.25rem;
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
 }
 
 .statValue {
-  font-size: 20px;
-  font-weight: 600;
+  font-size: 2rem;
+  font-weight: 950;
+  line-height: 1;
 }
 
 .statLabel {
   font-size: 11px;
-  color: var(--ink-faint);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--ink-dim);
 }
 
 .filters {
   display: flex;
-  gap: 10px;
-  margin-bottom: 20px;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1.25rem;
 }
 
 .select {
-  padding: 9px 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  font-size: 13px;
-  background: var(--surface);
+  padding: 0.75rem 0.875rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 0;
+  font-size: 14px;
+  background: var(--sunken);
   color: var(--ink);
   outline: none;
-  min-width: 150px;
+  min-width: 160px;
+  cursor: pointer;
 }
 .select:focus {
-  border-color: var(--ink);
+  border-color: var(--accent-text);
+  box-shadow: inset 0 0 0 1px var(--accent-text);
 }
 
+/* The secret list: one bordered column of rows on hairlines, like the
+   console's tables, rather than floating cards. */
 .secret {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  border-radius: 0;
   overflow: hidden;
+  transition: border-color 0.3s ease;
 }
 .secret + .secret {
-  margin-top: 10px;
+  margin-top: -1px;
+}
+.secret:hover {
+  border-color: var(--border-strong);
+  position: relative;
 }
 
 .secretHead {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 1rem;
   width: 100%;
-  padding: 14px 16px;
+  padding: 1rem 1.25rem;
   background: none;
   border: none;
+  color: var(--ink);
   text-align: left;
 }
 .secretHead:hover {
-  background: var(--surface-2);
+  background: var(--hover-wash);
 }
 
 .secretKind {
-  width: 26px;
-  height: 26px;
+  width: 36px;
+  height: 36px;
   flex-shrink: 0;
-  border-radius: 6px;
+  border: 1px solid var(--accent-edge);
   background: var(--accent-soft);
+  color: var(--accent-text);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
 }
 
 .secretName {
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 15px;
+  font-weight: 700;
   word-break: break-word;
 }
 
@@ -90,46 +111,54 @@
      "GitHublogin · v3". Caught in the screenshots, not by any test. */
   display: block;
   font-size: 11px;
-  color: var(--ink-faint);
-  margin-top: 2px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+  margin-top: 0.25rem;
 }
 
 .tags {
   display: flex;
-  gap: 6px;
+  gap: 0.375rem;
   flex-wrap: wrap;
+  align-items: center;
   margin-left: auto;
   flex-shrink: 0;
 }
 
 .chevron {
-  color: var(--ink-faint);
-  font-size: 11px;
+  width: 1.25rem;
+  text-align: center;
+  color: var(--accent-text);
+  font-size: 18px;
+  font-weight: 300;
+  line-height: 1;
   flex-shrink: 0;
 }
 
 .secretBody {
   border-top: 1px solid var(--border);
-  padding: 14px 16px;
-  background: #fcfcfc;
+  padding: 1rem 1.25rem 1.25rem;
+  background: var(--sunken);
 }
 
 .field {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 6px 0;
+  gap: 1rem;
+  padding: 0.625rem 0;
 }
 .field + .field {
-  border-top: 1px dashed #ededed;
+  border-top: 1px solid var(--border);
 }
 
 .fieldName {
   font-size: 11px;
-  color: var(--ink-faint);
-  width: 110px;
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--ink-dim);
+  width: 120px;
   flex-shrink: 0;
-  text-transform: capitalize;
 }
 
 /* A revealed value is monospace so an ambiguous character can be read; a
@@ -138,50 +167,59 @@
 .fieldValue {
   flex: 1;
   font-family: var(--mono);
-  font-size: 12px;
-  color: var(--ink-2);
+  font-size: 13px;
+  letter-spacing: 0;
+  color: var(--ink);
   word-break: break-all;
   min-width: 0;
 }
 
 .fieldMasked {
-  letter-spacing: 0.18em;
-  color: var(--ink-faint);
+  letter-spacing: 0.2em;
+  color: var(--ink-dim);
 }
 
 .fieldActions {
   display: flex;
-  gap: 6px;
+  gap: 0.375rem;
   flex-shrink: 0;
 }
 
 .mini {
-  padding: 4px 10px;
-  font-size: 11px;
-  font-weight: 500;
-  border: 1px solid var(--border);
-  border-radius: 5px;
-  background: var(--surface);
-  color: var(--ink-dim);
+  padding: 0.4rem 0.6rem 0.35rem calc(0.6rem + 0.14em);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  border: 1px solid var(--border-strong);
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink-2);
+  transition:
+    color 0.2s ease,
+    border-color 0.2s ease;
 }
 .mini:hover {
-  background: var(--surface-2);
-  border-color: var(--border-strong);
-  color: var(--ink);
+  border-color: var(--accent-text);
+  color: var(--accent-text);
 }
 
 .secretFooter {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
-  margin-top: 12px;
-  padding-top: 12px;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  padding-top: 1rem;
   border-top: 1px solid var(--border);
 }
 
 .secretFooterNote {
   font-size: 11px;
-  color: var(--ink-faint);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
   margin-right: auto;
 }
 
@@ -189,34 +227,131 @@
 
 .event {
   display: flex;
-  gap: 12px;
-  padding: 11px 0;
+  gap: 1rem;
+  padding: 0.875rem 1.25rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
 }
 .event + .event {
-  border-top: 1px solid #ededed;
+  margin-top: -1px;
 }
 
 .eventDot {
   width: 6px;
   height: 6px;
-  border-radius: 50%;
-  background: var(--accent);
-  margin-top: 6px;
+  background: var(--accent-text);
+  margin-top: 0.45rem;
   flex-shrink: 0;
 }
 
 .eventAction {
-  font-size: 12px;
-  font-weight: 600;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
 }
 
 .eventDetail {
-  font-size: 12px;
-  color: var(--ink-dim);
+  font-size: 13px;
+  font-weight: 300;
+  color: var(--ink-2);
 }
 
 .eventMeta {
   font-size: 11px;
-  color: var(--ink-faint);
-  margin-top: 2px;
+  color: var(--ink-dim);
+  margin-top: 0.125rem;
+}
+
+/* ── Live authenticator code ─────────────────────────────────────────────── */
+.totp {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+.totpDigits {
+  font-family: var(--mono);
+  font-size: 18px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  color: var(--accent-text);
+}
+.totpLeft {
+  font-size: 11px;
+  color: var(--ink-dim);
+  min-width: 26px;
+}
+
+/* ── States that are not a list ──────────────────────────────────────────── */
+.banner {
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent-text);
+  background: var(--surface);
+  padding: 0.875rem 1.125rem;
+  font-size: 14px;
+  font-weight: 300;
+  line-height: 1.6;
+  color: var(--ink-2);
+  margin-bottom: 1rem;
+}
+.banner strong {
+  font-weight: 700;
+  color: var(--ink);
+}
+.banner a {
+  color: var(--accent-text);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+.history {
+  border-top: 1px solid var(--border);
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+}
+.historyRow {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  font-size: 13px;
+  padding: 0.375rem 0;
+}
+.historyMeta {
+  color: var(--ink-dim);
+  min-width: 150px;
+  font-size: 12px;
+}
+.healthIssue {
+  display: inline-flex;
+  align-items: center;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 0.25rem 0.45rem;
+  border: 1px solid var(--border-strong);
+  color: var(--ink-2);
+  margin-right: 0.25rem;
+}
+.healthBad {
+  border-color: var(--danger-edge);
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+@media (max-width: 720px) {
+  .tags {
+    display: none;
+  }
+  .field {
+    flex-wrap: wrap;
+  }
+  .fieldName {
+    width: 100%;
+  }
 }

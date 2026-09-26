@@ -32,7 +32,7 @@ import styles from './AgreementsPage.module.css';
 // A namespace is therefore required. Given that, it is worth making it mean
 // something rather than minting a hidden one per agreement — and the fleet
 // already has the shape: mero-pass (team → vault), mero-forum (space → forum),
-// mero-drive (workspace → folder).
+// mero-docs (workspace → folder).
 //
 //   WORKSPACE  — the people. You invite people HERE. This screen.
 //   AGREEMENT  — one document set, inside a workspace. The next screen.

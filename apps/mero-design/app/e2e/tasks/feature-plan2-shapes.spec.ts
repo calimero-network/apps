@@ -29,7 +29,7 @@ type Added = {
   label?: string | null; data: { kind: string; points?: string; content?: string };
 };
 
-const lastAdded = (board: Board) => board.calledWith("add_element").at(-1)!.args.element as Added;
+const lastAdded = (board: Board) => board.writes("add_element").at(-1)!.args.element as Added;
 
 async function canvasBox(page: Page) {
   return (await page.getByTestId("fabric-canvas").boundingBox())!;
@@ -73,7 +73,7 @@ test.describe("item 1+2: shape tools", () => {
       const board = await openBoard(page);
       await page.getByTestId(`tool-${tool}`).click();
       await drag(page, { x: 200, y: 200 }, { x: 340, y: 300 });
-      await expect.poll(() => board.calledWith("add_element").length).toBe(1);
+      await expect.poll(() => board.writes("add_element").length).toBe(1);
       const el = lastAdded(board);
       expect(el.fill).toBe("transparent");
       expect(el.strokeWidth).toBe(4);
@@ -94,8 +94,8 @@ test.describe("item 1+2: shape tools", () => {
     });
     await drag(page, { x: 260, y: 240 }, { x: 310, y: 290 });
     await drag(page, { x: 310, y: 290 }, { x: 360, y: 340 });
-    await expect.poll(() => board.calledWith("update_element").length).toBeGreaterThanOrEqual(2);
-    for (const call of board.calledWith("update_element")) {
+    await expect.poll(() => board.writes("update_element").length).toBeGreaterThanOrEqual(2);
+    for (const call of board.writes("update_element")) {
       expect(call.args.width).toBe(120);
       expect(call.args.height).toBe(80);
     }
@@ -128,7 +128,7 @@ test.describe("item 3: text inside a rectangle", () => {
     const editor = page.getByTestId("box-text-editor");
     await expect(editor).toBeVisible();
     // Same element, turned into a box — not a second object on top.
-    await expect.poll(() => board.calledWith("add_element").length).toBe(1);
+    await expect.poll(() => board.writes("add_element").length).toBe(1);
     const converted = lastAdded(board);
     expect(converted.id).toBe("r");
     expect(converted.data.kind).toBe("text");
@@ -182,7 +182,7 @@ test.describe("item 5: sticky notes", () => {
     await page.getByTestId("tool-sticky").click();
     await clickCanvas(page, { x: 400, y: 300 });
 
-    await expect.poll(() => board.calledWith("add_element").length).toBe(1);
+    await expect.poll(() => board.writes("add_element").length).toBe(1);
     const note = lastAdded(board);
     expect(extras(note.label).b).toBe("sticky");
     expect(note.fill).toBe("#FFE27A");
@@ -196,7 +196,7 @@ test.describe("item 5: sticky notes", () => {
     await expect(page.getByTestId("element-kind")).toHaveText(/Sticky note/);
     await page.getByTestId("sticky-color-2").click();
     await expect.poll(
-      () => board.calledWith("update_element").map((c) => c.args.fill),
+      () => board.writes("update_element").map((c) => c.args.fill),
       { timeout: 5000 },
     ).toContain("#FFB3C7");
   });
@@ -217,10 +217,10 @@ test.describe("item 5: sticky notes", () => {
       await page.keyboard.press("Enter");
     }
     await page.keyboard.press("Escape");
-    await expect.poll(() => board.calledWith("update_element").map((c) => c.args.height as number)).toEqual(
+    await expect.poll(() => board.writes("update_element").map((c) => c.args.height as number)).toEqual(
       expect.arrayContaining([expect.any(Number)]),
     );
-    const heights = board.calledWith("update_element").map((c) => c.args.height as number).filter(Boolean);
+    const heights = board.writes("update_element").map((c) => c.args.height as number).filter(Boolean);
     expect(Math.max(...heights)).toBeGreaterThan(200);
   });
 });
@@ -233,8 +233,8 @@ test.describe("item 6: stroke styles", () => {
     await clickCanvas(page, { x: 280, y: 250 });
     await page.getByTestId("stroke-style-dashed").click();
 
-    await expect.poll(() => board.calledWith("update_element_label").length).toBeGreaterThan(0);
-    expect(extras(board.calledWith("update_element_label").at(-1)!.args.label).s).toBe("dashed");
+    await expect.poll(() => board.writes("update_element_label").length).toBeGreaterThan(0);
+    expect(extras(board.writes("update_element_label").at(-1)!.args.label).s).toBe("dashed");
 
     const dash = await page.evaluate(() => {
       const c = document.querySelector('[data-testid="fabric-canvas"]') as HTMLCanvasElement & {
@@ -252,8 +252,8 @@ test.describe("item 6: stroke styles", () => {
     await clickCanvas(page, { x: 280, y: 250 });
     await page.getByTestId("fill-swatch-1").click();
     await page.getByTestId("stroke-width-8").click();
-    await expect.poll(() => board.calledWith("update_element").length, { timeout: 5000 }).toBeGreaterThan(0);
-    const sent = board.calledWith("update_element").at(-1)!.args;
+    await expect.poll(() => board.writes("update_element").length, { timeout: 5000 }).toBeGreaterThan(0);
+    const sent = board.writes("update_element").at(-1)!.args;
     expect(sent.fill).toBe("#e03131");
     expect(sent.stroke_width).toBe(8);
   });
@@ -296,12 +296,12 @@ test.describe("connectors dock to the middle of a shape's edges", () => {
     await page.getByTestId("tool-arrow").click();
     // Starting ON shape A must draw, not grab A.
     await drag(page, { x: 216, y: 143 }, { x: 405, y: 336 });
-    await expect.poll(() => board.calledWith("add_element").length).toBe(1);
+    await expect.poll(() => board.writes("add_element").length).toBe(1);
     const arrow = lastAdded(board);
     expect(arrow.data.kind).toBe("arrow");
     expect(ends(arrow)).toEqual([{ x: 220, y: 140 }, { x: 400, y: 340 }]);
     expect(extras(arrow.label)).toMatchObject({ f: "A:right", t: "B:left" });
-    expect(board.calledWith("update_element")).toHaveLength(0);
+    expect(board.writes("update_element")).toHaveLength(0);
   });
 
   test("hovering a shape with the line tool shows its four anchors", async ({ page }) => {
@@ -333,10 +333,10 @@ test.describe("connectors dock to the middle of a shape's edges", () => {
     // Drag B by 100,50.
     await drag(page, { x: 470, y: 360 }, { x: 570, y: 410 });
     await expect.poll(
-      () => board.calledWith("add_element").filter((c) => (c.args.element as Added).id === "L").length,
+      () => board.writes("add_element").filter((c) => (c.args.element as Added).id === "L").length,
       { timeout: 5000 },
     ).toBeGreaterThan(0);
-    const routed = board.calledWith("add_element").filter((c) => (c.args.element as Added).id === "L").at(-1)!.args.element as Added;
+    const routed = board.writes("add_element").filter((c) => (c.args.element as Added).id === "L").at(-1)!.args.element as Added;
     expect(ends(routed)).toEqual([{ x: 220, y: 140 }, { x: 500, y: 390 }]);
     // Still docked.
     expect(extras(routed.label)).toMatchObject({ f: "A:right", t: "B:left" });
@@ -346,7 +346,7 @@ test.describe("connectors dock to the middle of a shape's edges", () => {
     const board = await openBoard(page, { elements: boxes() });
     await page.getByTestId("tool-line").click();
     await drag(page, { x: 600, y: 100 }, { x: 700, y: 150 });
-    await expect.poll(() => board.calledWith("add_element").length).toBe(1);
+    await expect.poll(() => board.writes("add_element").length).toBe(1);
     expect(extras(lastAdded(board).label)).toEqual({});
   });
 });

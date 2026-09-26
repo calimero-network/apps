@@ -76,7 +76,10 @@ function resolveMerod(): string {
  * silently.
  */
 function resolveMpk(): string {
-  const fromEnv = process.env["VOTE_MPK_PATH"];
+  // `KV_MPK_PATH` is the fleet-wide name: CI's browser job exports it for
+  // EVERY app (the name predates the other apps), so reading anything else
+  // means the rig never sees the bundle CI built. VOTE_MPK_PATH is a local alias.
+  const fromEnv = process.env["KV_MPK_PATH"] ?? process.env["VOTE_MPK_PATH"];
   if (fromEnv) return fromEnv;
   const dist = path.resolve(LOGIC_DIR, "dist");
   const exact = path.resolve(dist, "com.calimero.mero-vote.mpk");
@@ -154,7 +157,7 @@ export default async function globalSetup() {
     throw new Error(
       `mero-vote bundle not found at ${MPK}.\n` +
         `Build it first:  cargo mero bundle --manifest-path apps/mero-vote/logic/Cargo.toml --dev --app-version 0.0.0 --output apps/mero-vote/logic/dist/com.calimero.mero-vote.mpk\n` +
-        `Or point VOTE_MPK_PATH at an existing .mpk.`,
+        `Or point KV_MPK_PATH at an existing .mpk.`,
     );
   }
 

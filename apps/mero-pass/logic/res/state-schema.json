@@ -5,31 +5,113 @@
       "kind": "record",
       "fields": [
         {
-          "name": "id",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
           "name": "action",
           "type": {
             "kind": "string"
           }
         },
         {
-          "name": "details",
+          "name": "target",
           "type": {
             "kind": "string"
           }
         },
         {
-          "name": "user_public_key",
+          "name": "account",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "device",
           "type": {
             "kind": "string"
           }
         },
         {
           "name": "timestamp",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "DeviceKey": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "public_key",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "label",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "kind",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "account",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "node_device",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "added_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "KeyWrap": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "key_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "recipient",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "wrapper",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "envelope",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "wrapped_by",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "wrapped_at",
           "type": {
             "kind": "u64"
           }
@@ -51,91 +133,268 @@
           }
         },
         {
-          "name": "secrets",
+          "name": "roles",
           "type": {
             "kind": "map",
             "key": {
               "kind": "string"
             },
             "value": {
-              "$ref": "SecretItem"
+              "kind": "bool"
             },
-            "crdt_type": "unordered_map"
+            "crdt_type": "shared_storage"
           }
         },
         {
-          "name": "audit_logs",
+          "name": "secrets",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "map",
+              "key": {
+                "kind": "string"
+              },
+              "value": {
+                "$ref": "Secret"
+              },
+              "crdt_type": "unordered_map"
+            }
+          }
+        },
+        {
+          "name": "history",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "map",
+              "key": {
+                "kind": "string"
+              },
+              "value": {
+                "$ref": "Revision"
+              },
+              "crdt_type": "unordered_map"
+            }
+          }
+        },
+        {
+          "name": "admin",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "map",
+              "key": {
+                "kind": "string"
+              },
+              "value": {
+                "kind": "record",
+                "fields": [],
+                "crdt_type": "lww_register",
+                "inner_type": {
+                  "kind": "string"
+                }
+              },
+              "crdt_type": "unordered_map"
+            }
+          }
+        },
+        {
+          "name": "devices",
           "type": {
             "kind": "map",
             "key": {
               "kind": "string"
             },
             "value": {
+              "$ref": "DeviceKey"
+            },
+            "crdt_type": "authored_map"
+          }
+        },
+        {
+          "name": "key_wraps",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "KeyWrap"
+            },
+            "crdt_type": "authored_map"
+          }
+        },
+        {
+          "name": "audit",
+          "type": {
+            "kind": "list",
+            "items": {
               "$ref": "AuditLogEntry"
             },
-            "crdt_type": "unordered_map"
+            "crdt_type": "authored_vector"
           }
         }
       ]
     },
-    "SecretItem": {
+    "Revision": {
       "kind": "record",
       "fields": [
         {
-          "name": "id",
+          "name": "secret_id",
           "type": {
             "kind": "string"
           }
         },
         {
-          "name": "name",
+          "name": "field",
           "type": {
             "kind": "string"
           }
         },
         {
-          "name": "secret_type",
+          "name": "previous",
           "type": {
             "kind": "string"
           }
         },
         {
-          "name": "data",
+          "name": "replaced_at",
           "type": {
-            "kind": "string"
+            "kind": "u64"
           }
         },
         {
-          "name": "tags",
+          "name": "replaced_by",
           "type": {
-            "kind": "list",
-            "items": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Secret": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "kind",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
               "kind": "string"
             }
           }
         },
         {
+          "name": "name",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "tags",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "fields",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "record",
+              "fields": [],
+              "crdt_type": "lww_register",
+              "inner_type": {
+                "kind": "string"
+              }
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
           "name": "created_at",
           "type": {
-            "kind": "u64"
-          }
-        },
-        {
-          "name": "updated_at",
-          "type": {
-            "kind": "u64"
-          }
-        },
-        {
-          "name": "version",
-          "type": {
-            "kind": "u64"
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "u64"
+            }
           }
         },
         {
           "name": "created_by",
           "type": {
-            "kind": "string"
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "u64"
+            }
+          }
+        },
+        {
+          "name": "updated_by",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "trashed",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "bool"
+            }
+          }
+        },
+        {
+          "name": "trashed_at",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "u64"
+            }
           }
         }
       ]

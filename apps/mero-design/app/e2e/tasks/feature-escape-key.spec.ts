@@ -33,7 +33,7 @@ test.describe("Escape", () => {
     const board = await openBoard(page, { elements: TWO });
     await clickCanvas(page, 130, 130);
     await page.keyboard.press("Escape");
-    await expect.poll(() => board.calledWith("delete_element").map((c) => c.args.id), { timeout: 15000 })
+    await expect.poll(() => board.writes("delete_element").map((c) => c.args.id), { timeout: 15000 })
       .toEqual(["a"]);
   });
 
@@ -43,8 +43,9 @@ test.describe("Escape", () => {
     await page.locator('[data-testid="layer-item-a"]').click();
     await page.locator('[data-testid="layer-item-b"]').click({ modifiers: ["Shift"] });
     await page.keyboard.press("Escape");
-    await expect.poll(() => board.calledWith("delete_element").map((c) => c.args.id).sort(), { timeout: 15000 })
+    await expect.poll(() => board.writes("delete_element").map((c) => c.args.id).sort(), { timeout: 15000 })
       .toEqual(["a", "b"]);
+    expect(board.calledWith("delete_elements")).toHaveLength(1);
   });
 
   test("does nothing at all when nothing is selected", async ({ page }) => {
@@ -53,7 +54,7 @@ test.describe("Escape", () => {
     await clickCanvas(page, 560, 420);
     await page.keyboard.press("Escape");
     await page.waitForTimeout(600);
-    expect(board.calledWith("delete_element")).toHaveLength(0);
+    expect(board.writes("delete_element")).toHaveLength(0);
     // Still on the board — Escape must not navigate away from the project.
     await expect(page.locator('[data-testid="fabric-canvas"]')).toBeVisible();
     expect(page.url()).toContain("/projects/ctx-1");
@@ -69,7 +70,7 @@ test.describe("Escape", () => {
     await expect(page.getByText("ESC to exit preview ✕")).toHaveCount(0);
     await page.waitForTimeout(400);
     // The press that left preview must not also have deleted the selection.
-    expect(board.calledWith("delete_element")).toHaveLength(0);
+    expect(board.writes("delete_element")).toHaveLength(0);
   });
 
   test("a field's Escape stays in the field", async ({ page }) => {
@@ -80,6 +81,6 @@ test.describe("Escape", () => {
     await rotation.fill("45");
     await page.keyboard.press("Escape");
     await page.waitForTimeout(400);
-    expect(board.calledWith("delete_element")).toHaveLength(0);
+    expect(board.writes("delete_element")).toHaveLength(0);
   });
 });

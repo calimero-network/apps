@@ -1,22 +1,60 @@
-/* ── The app shell, taken from MeroDesign ────────────────────────────────────
+/* ── The app shell, in Calimero Cloud's console language ─────────────────────
  *
- * Values copied from `apps/mero-design/app/src/pages/TeamsPage.module.css` and
- * `ProjectsPage.module.css` rather than re-derived: 56px header on a hairline,
- * one centred column, 22px title, 13px/11px card type, white cards on #e0e0e0,
- * a `⋯` hover menu, destructive items in #c0392b.
+ * Taken from `mdma/cloud` (the logged-in console) and the App Registry rather
+ * than re-derived: a 64px glass bar on a hairline, one centred column, a lime
+ * eyebrow over a 950-weight uppercase title, square cards on 1px lines that
+ * strengthen on hover, uppercase tracked buttons and labels, and a lime fill
+ * reserved for the one primary action.
  *
- * Shared by the three app screens because they ARE the same screen at different
- * depths — teams, then the vaults in one, then the secrets in one. MeroDesign
- * keeps a copy per page; one module here means the three cannot drift, which is
- * the failure that made this app look like four different products.
+ * Shared by every app screen because they ARE the same screen at different
+ * depths — teams, then the vaults in one, then the secrets in one. One module
+ * means they cannot drift.
  *
- * The accent is green, not MeroDesign's blue. See `src/index.css` for why
- * `--accent` is only ever a fill and `--accent-text` only ever an ink.
+ * Colour comes only from `src/index.css`. `--accent` is only ever a fill (with
+ * `--accent-ink` on it) and `--accent-text` only ever an ink or an outline.
  */
 
 .root {
+  position: relative;
   min-height: 100vh;
   background: var(--page);
+  isolation: isolate;
+}
+
+/* The console's backdrop: five faint column rules aligned to the content
+   column, and one lime wash at the top. Fixed, behind everything, inert. */
+.root::before {
+  content: '';
+  position: fixed;
+  inset: 0 calc(max(0px, (100% - 1000px) / 2) + 1.5rem);
+  z-index: -1;
+  pointer-events: none;
+  background:
+    linear-gradient(var(--grid-line), var(--grid-line)) 0 0 / 1px 100% no-repeat,
+    linear-gradient(var(--grid-line), var(--grid-line)) 25% 0 / 1px 100%
+      no-repeat,
+    linear-gradient(var(--grid-line), var(--grid-line)) 50% 0 / 1px 100%
+      no-repeat,
+    linear-gradient(var(--grid-line), var(--grid-line)) 75% 0 / 1px 100%
+      no-repeat,
+    linear-gradient(var(--grid-line), var(--grid-line)) 100% 0 / 1px 100%
+      no-repeat;
+}
+.root::after {
+  content: '';
+  position: fixed;
+  top: -40vh;
+  left: 50%;
+  z-index: -1;
+  width: min(1400px, 140vw);
+  height: 80vh;
+  transform: translateX(-50%);
+  pointer-events: none;
+  background: radial-gradient(
+    closest-side,
+    var(--accent-soft),
+    transparent 100%
+  );
 }
 
 /* ── Header ───────────────────────────────────────────────────────────────── */
@@ -24,11 +62,12 @@
 .header {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 0 40px;
-  height: 56px;
-  border-bottom: 1px solid var(--border-soft);
-  background: var(--surface);
+  gap: 1.25rem;
+  padding: 0 32px;
+  height: 64px;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--page) 92%, transparent);
+  backdrop-filter: blur(12px);
   position: sticky;
   top: 0;
   z-index: 50;
@@ -37,149 +76,178 @@
 .brand {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 15px;
-  font-weight: 600;
   background: none;
   border: none;
   padding: 0;
   color: var(--ink);
-}
-
-.mark {
-  width: 22px;
-  height: 22px;
-  border-radius: 6px;
-  /* The tile's colour is set inline from `lib/brandMark` — one source, and a
-     test pins it to `scripts/gen-icons.mjs`. This is only the fallback for a
-     render with no inline style. */
-  background: #090b10;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  /* The padlock is the gradient; this is only the fallback for a renderer
-     that drops the <linearGradient>. The LIGHT end, because the tile is
-     near-black — the UI's `--accent-ink` on it would be invisible. */
-  color: #34d399;
-  font-size: 12px;
   flex-shrink: 0;
 }
 
-/* The keyhole is knocked OUT of the padlock body, so it has to be painted in
-   the tile's fill rather than left transparent — an SVG child cannot punch a
-   hole through its own sibling. */
-.mark :global(.keyhole) {
-  fill: #090b10;
-  stroke: none;
+.back,
+.crumb {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .back {
-  background: none;
-  border: none;
-  font-size: 13px;
   color: var(--ink-dim);
-  padding: 0;
+  padding-left: 1.25rem;
+  border-left: 1px solid var(--border);
+  line-height: 32px;
 }
 .back:hover {
   color: var(--ink);
 }
 
 .crumb {
-  font-size: 13px;
-  color: var(--ink-faint);
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 
 .headerRight {
   margin-left: auto;
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 0.5rem;
 }
 
-/* The node this app is talking to. All that is left of the old ConnectButton,
-   which rendered the whole connection flow to somebody already connected. */
+/* The node this app is talking to. */
 .nodeChip {
-  font-size: 11px;
-  color: var(--ink-faint);
   font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0;
+  color: var(--ink-dim);
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--border);
   max-width: 260px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  margin-right: 0.25rem;
 }
 
 .logoutBtn {
-  padding: 6px 14px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--surface);
-  font-size: 12px;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid transparent;
+  background: none;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
   color: var(--ink-dim);
+  white-space: nowrap;
+  transition:
+    color 0.2s ease,
+    border-color 0.2s ease;
 }
 .logoutBtn:hover {
-  background: var(--surface-2);
+  color: var(--ink);
   border-color: var(--border-strong);
 }
 
 /* ── Column ───────────────────────────────────────────────────────────────── */
 
 .main {
-  padding: 48px 40px;
-  max-width: 800px;
+  padding: 2.5rem 1.5rem 5rem;
+  max-width: 1000px;
   margin: 0 auto;
+  animation: mp-slide-in 0.3s ease-out;
 }
 
 .mainWide {
-  padding: 32px 40px;
-  max-width: 900px;
+  padding: 2.5rem 1.5rem 5rem;
+  max-width: 1120px;
   margin: 0 auto;
+  animation: mp-slide-in 0.3s ease-out;
+}
+
+/* The lime label over a page title: a 24px rule, then the words. */
+.eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.875rem;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.5;
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+  color: var(--accent-text);
+}
+.eyebrow::before {
+  content: '';
+  flex: none;
+  width: 24px;
+  height: 1px;
+  background: currentColor;
 }
 
 .title {
-  font-size: 22px;
-  font-weight: 600;
-  margin-bottom: 6px;
+  font-size: clamp(2rem, 1.4rem + 1.6vw, 2.875rem);
+  font-weight: 950;
+  line-height: 1.04;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+  overflow-wrap: anywhere;
+  margin-bottom: 0.75rem;
 }
 
 .subtitle {
-  font-size: 13px;
-  color: var(--ink-faint);
-  margin-bottom: 24px;
+  font-size: 1rem;
+  font-weight: 300;
+  line-height: 1.6;
+  letter-spacing: 0.03em;
+  color: var(--ink-2);
+  max-width: 64ch;
+  margin-bottom: 2rem;
 }
 
 /* A heading WITHIN a screen — "Private", "Teams" — as opposed to `.title`,
-   which names the screen. Smaller and uppercase-tracked so the page still has
-   one visual h1 and the sections read as dividers rather than as competing
-   titles. The top margin is asymmetric on purpose: a section heading belongs to
-   what follows it, not to what it follows. */
+   which names the screen: the console's section-heading row, a label over a
+   hairline. */
 .sectionTitle {
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: var(--tracking-label);
   text-transform: uppercase;
-  color: var(--ink-faint);
-  margin: 32px 0 12px;
+  color: var(--ink-dim);
+  margin: 2.5rem 0 1rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--border);
 }
 .sectionTitle:first-of-type {
-  margin-top: 8px;
+  margin-top: 0.5rem;
 }
 
 .titleRow {
   display: flex;
-  align-items: flex-start;
-  gap: 16px;
-  margin-bottom: 24px;
+  align-items: flex-end;
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid var(--border);
 }
 .titleRow .title {
-  margin-bottom: 4px;
+  margin-bottom: 0;
 }
 .titleRow .subtitle {
-  margin-bottom: 0;
+  margin: 0.75rem 0 0;
 }
 .titleRowActions {
   margin-left: auto;
   display: flex;
-  gap: 8px;
+  gap: 0.5rem;
   flex-shrink: 0;
 }
 
@@ -187,137 +255,172 @@
 
 .createRow {
   display: flex;
-  gap: 10px;
-  margin-bottom: 32px;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 2rem;
 }
 
 .input {
   flex: 1;
-  padding: 9px 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  font-size: 13px;
+  padding: 0.75rem 0.875rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 0;
+  font-size: 14px;
+  letter-spacing: 0.02em;
   outline: none;
-  background: var(--surface);
+  background: var(--sunken);
   color: var(--ink);
   min-width: 0;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+.input:hover:not(:disabled) {
+  border-color: var(--ink-dim);
 }
 .input:focus {
-  border-color: var(--ink);
+  border-color: var(--accent-text);
+  box-shadow: inset 0 0 0 1px var(--accent-text);
 }
 .input::placeholder {
-  color: var(--ink-faint);
+  color: var(--ink-dim);
+}
+select.input {
+  cursor: pointer;
 }
 
-/* ONE button system for the whole app: a black primary, a bordered secondary,
-   a destructive. Not three per screen, which is what was here — mero-ui's
-   `variant="primary" | "secondary" | "error"` rendered differently on every
-   page that used it, and the vault page invented two more.
-   
-   The green is NOT a button. It is the accent inside this system — the mark,
-   the active tab, a badge, a membership hairline — always as a FILL with
-   near-black ink, never as a wall and never behind white text. */
-.btn {
-  padding: 9px 18px;
-  background: var(--ink);
-  color: #fff;
-  border: none;
-  border-radius: var(--radius);
-  font-size: 13px;
-  font-weight: 500;
+/* ONE button system: a lime primary, a neutral outline, a destructive. The
+   lime fill is the one primary action on a screen, never a wall of them. */
+.btn,
+.btnGhost,
+.btnDanger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-radius: 0;
+  border: 1px solid transparent;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: var(--tracking-button);
+  text-transform: uppercase;
   white-space: nowrap;
+  transition:
+    background-color 0.3s ease-out,
+    color 0.3s ease-out,
+    border-color 0.3s ease-out,
+    box-shadow 0.3s ease-out;
+}
+
+.btn {
+  padding: 0.75rem 1.25rem 0.75rem calc(1.25rem + var(--tracking-button));
+  font-size: 12px;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
 }
 .btn:hover:not(:disabled) {
-  background: var(--ink-2);
+  box-shadow: var(--shadow-button);
+}
+.btn:active:not(:disabled) {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
 }
 .btn:disabled {
   background: var(--surface-2);
-  color: var(--ink-faint);
-  cursor: default;
+  border-color: var(--border);
+  color: var(--ink-dim);
+  cursor: not-allowed;
 }
 
 .btnGhost {
-  padding: 8px 14px;
-  background: var(--surface);
-  color: var(--ink-dim);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  font-size: 12px;
-  font-weight: 500;
-  white-space: nowrap;
+  padding: 0.625rem 0.875rem 0.625rem calc(0.875rem + var(--tracking-button));
+  font-size: 11px;
+  background: transparent;
+  border-color: var(--border-strong);
+  color: var(--ink-2);
 }
 .btnGhost:hover:not(:disabled) {
-  background: var(--surface-2);
-  border-color: var(--border-strong);
-  color: var(--ink);
+  color: var(--accent-text);
+  border-color: var(--accent-text);
 }
 .btnGhost:disabled {
   opacity: 0.45;
-  cursor: default;
+  cursor: not-allowed;
 }
 
 .btnDanger {
-  padding: 8px 14px;
-  background: var(--surface);
+  padding: 0.625rem 0.875rem 0.625rem calc(0.875rem + var(--tracking-button));
+  font-size: 11px;
+  background: transparent;
+  border-color: var(--danger-edge);
   color: var(--danger);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  font-size: 12px;
-  font-weight: 500;
-  white-space: nowrap;
 }
 .btnDanger:hover:not(:disabled) {
-  background: var(--danger-soft);
+  background: var(--danger);
   border-color: var(--danger);
+  color: var(--danger-ink);
+}
+.btnDanger:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 /* ── Messages ─────────────────────────────────────────────────────────────── */
 
 .empty {
-  color: var(--ink-faint);
+  padding: 2rem 1.5rem;
+  border: 1px dashed var(--border-strong);
+  color: var(--ink-2);
+  font-size: 14px;
+  font-weight: 300;
+  line-height: 1.6;
+  text-align: center;
+}
+
+.error,
+.notice,
+.status {
   font-size: 13px;
+  line-height: 1.5;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+  border: 1px solid var(--border);
+  border-left-width: 3px;
+  background: var(--surface);
 }
 
 .error {
-  font-size: 12px;
   color: var(--danger);
+  border-color: var(--danger-edge);
+  border-left-color: var(--danger);
   background: var(--danger-soft);
-  border: 1px solid #f3d6d2;
-  border-radius: var(--radius);
-  padding: 9px 12px;
-  margin-bottom: 16px;
 }
 
 .notice {
-  font-size: 12px;
-  color: var(--ink-2);
-  background: var(--accent-soft);
-  border: 1px solid rgba(165, 255, 17, 0.5);
-  border-radius: var(--radius);
-  padding: 9px 12px;
-  margin-bottom: 16px;
+  color: var(--ink);
+  border-left-color: var(--accent-text);
 }
 
 .status {
-  font-size: 12px;
-  color: var(--ink-faint);
-  margin-bottom: 16px;
+  color: var(--ink-dim);
+  border-left-color: var(--border-strong);
 }
 
 /* ── Card grid ────────────────────────────────────────────────────────────── */
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  gap: 16px;
-  margin-bottom: 48px;
+  grid-template-columns: repeat(auto-fill, minmax(min(240px, 100%), 1fr));
+  gap: 1rem;
+  margin-bottom: 3rem;
 }
 
 .gridWide {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 18px;
-  margin-bottom: 40px;
+  grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 1fr));
+  gap: 1rem;
+  margin-bottom: 2.5rem;
 }
 
 .cardWrap {
@@ -328,96 +431,120 @@
 }
 
 .card {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  padding: 20px 18px;
+  gap: 0.375rem;
+  padding: 1.25rem;
   width: 100%;
+  min-height: 112px;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  border-radius: 0;
+  color: var(--ink);
   text-align: left;
-  transition:
-    border-color 0.15s,
-    box-shadow 0.15s;
+  transition: border-color 0.3s ease;
 }
 .card:hover {
-  border-color: var(--ink);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  border-color: var(--border-strong);
 }
 
 .cardName {
-  font-size: 13px;
-  font-weight: 600;
-  margin-bottom: 4px;
+  font-size: 1.125rem;
+  font-weight: 950;
+  line-height: 1.15;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
   word-break: break-word;
+  padding-right: 1.5rem;
 }
 
 .cardSub {
+  margin-top: auto;
   font-size: 11px;
-  color: var(--ink-faint);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--ink-dim);
 }
 
-/* A hairline of green along the top of a card the viewer is a member of.
-   An accent, not a fill: a column of solid green cards reads as highlighting
-   rather than as a list. */
+/* A card the viewer is a member of: the console's "glow" card — an accent
+   outline and a lime notch at the top-left corner. */
 .cardJoined {
-  box-shadow: inset 0 2px 0 0 var(--accent);
+  border-color: var(--accent-edge);
+}
+.cardJoined::before {
+  content: '';
+  position: absolute;
+  top: -1px;
+  left: -1px;
+  width: 48px;
+  height: 4px;
+  background: var(--accent);
 }
 
 .menuBtn {
   position: absolute;
-  top: 8px;
-  right: 8px;
-  width: 24px;
-  height: 24px;
+  top: 10px;
+  right: 10px;
+  width: 28px;
+  height: 28px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(255, 255, 255, 0.9);
-  border: 1px solid var(--border);
-  border-radius: 4px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: 0;
   font-size: 14px;
   color: var(--ink-dim);
   opacity: 0;
-  transition: opacity 0.15s;
+  transition:
+    opacity 0.15s,
+    color 0.15s,
+    border-color 0.15s;
   z-index: 2;
   line-height: 1;
   padding: 0;
 }
 .menuBtn:hover,
 .menuBtn:focus-visible {
-  background: #f0f0f0;
-  color: var(--ink);
+  color: var(--accent-text);
+  border-color: var(--accent-text);
   opacity: 1;
 }
 
 .dropdown {
   position: absolute;
-  top: 36px;
+  top: 42px;
   right: 0;
-  min-width: 150px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+  min-width: 180px;
+  padding: 0.25rem;
+  background: var(--page);
+  border: 1px solid var(--border-strong);
+  border-radius: 0;
+  box-shadow: var(--shadow-float);
   z-index: 100;
-  overflow: hidden;
 }
 
 .dropdownItem {
   display: block;
   width: 100%;
   text-align: left;
-  padding: 8px 14px;
-  font-size: 13px;
+  padding: 0.625rem 0.75rem;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
   background: none;
   border: none;
   color: var(--ink-2);
-  transition: background 0.1s;
+  transition:
+    background 0.1s,
+    color 0.1s;
 }
 .dropdownItem:hover {
-  background: var(--surface-2);
+  background: var(--accent-soft);
+  color: var(--ink);
 }
 
 .dropdownDanger {
@@ -425,6 +552,7 @@
 }
 .dropdownDanger:hover {
   background: var(--danger-soft);
+  color: var(--danger);
 }
 
 /* ── Tabs ─────────────────────────────────────────────────────────────────── */
@@ -432,30 +560,34 @@
 .tabs {
   display: flex;
   gap: 0;
-  border-bottom: 2px solid var(--border-soft);
-  margin-bottom: 28px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 2rem;
+  overflow-x: auto;
+  scrollbar-width: none;
 }
 
 .tab {
-  padding: 10px 18px;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--ink-faint);
+  padding: 0.875rem 1rem 0.75rem;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--ink-dim);
   background: none;
   border: none;
   border-bottom: 2px solid transparent;
-  margin-bottom: -2px;
+  margin-bottom: -1px;
+  white-space: nowrap;
   transition:
     color 0.15s,
     border-color 0.15s;
 }
 .tab:hover {
-  color: var(--ink-2);
+  color: var(--ink);
 }
 .tabActive {
   color: var(--ink);
-  /* The one structural place the green carries meaning: where you are. */
-  border-bottom-color: var(--accent);
+  border-bottom-color: var(--accent-text);
 }
 
 /* ── Rows (a list that is not a card grid) ────────────────────────────────── */
@@ -463,14 +595,18 @@
 .row {
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 14px 16px;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  border-radius: 0;
+  transition: border-color 0.3s ease;
+}
+.row:hover {
+  border-color: var(--border-strong);
 }
 .row + .row {
-  margin-top: 10px;
+  margin-top: 0.5rem;
 }
 
 .rowMain {
@@ -479,84 +615,178 @@
 }
 
 .rowName {
-  font-size: 13px;
-  font-weight: 600;
-  margin-bottom: 3px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.5rem;
+  font-size: 15px;
+  font-weight: 700;
+  margin-bottom: 0.25rem;
   word-break: break-word;
 }
 
 .rowSub {
-  font-size: 11px;
-  color: var(--ink-faint);
+  font-size: 12px;
+  font-weight: 300;
+  color: var(--ink-dim);
 }
 
 .rowActions {
   margin-left: auto;
   display: flex;
-  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
   flex-shrink: 0;
 }
 
 /* ── Section ──────────────────────────────────────────────────────────────── */
 
 .section {
-  border-top: 1px solid #ebebeb;
-  padding-top: 32px;
-  margin-top: 8px;
+  margin-top: 2.5rem;
+}
+.section + .section {
+  padding-top: 2.5rem;
+  border-top: 1px solid var(--border);
 }
 
 .sectionLabel {
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--ink-2);
-  margin-bottom: 6px;
+  font-size: 1.125rem;
+  font-weight: 950;
+  line-height: 1.15;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+  color: var(--ink);
+  margin-bottom: 0.5rem;
 }
 
 .sectionHint {
-  font-size: 12px;
-  color: var(--ink-faint);
-  margin-bottom: 12px;
-  line-height: 1.5;
-  max-width: 560px;
+  font-size: 14px;
+  font-weight: 300;
+  line-height: 1.6;
+  color: var(--ink-2);
+  margin-bottom: 1rem;
+  max-width: 64ch;
 }
 
 /* ── Small type ───────────────────────────────────────────────────────────── */
 
 .badge {
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.5rem 0.25rem calc(0.5rem + 0.14em);
+  border-radius: 0;
   font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  border: 1px solid var(--border);
-  color: var(--ink-dim);
-  background: var(--surface-2);
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  border: 1px solid var(--border-strong);
+  color: var(--ink-2);
+  background: transparent;
 }
 
-/* Green as an ink on white, never the fill behind text. */
 .badgeAccent {
-  border-color: rgba(165, 255, 17, 0.6);
+  border-color: var(--accent-edge);
   background: var(--accent-soft);
   color: var(--accent-text);
 }
 
 .mono {
   font-family: var(--mono);
-  font-size: 11px;
-  color: var(--ink-faint);
+  font-size: 12px;
+  letter-spacing: 0;
+  color: var(--ink-dim);
   word-break: break-all;
 }
 
-@media (max-width: 640px) {
-  .header {
-    padding: 0 16px;
-  }
-  .main,
-  .mainWide {
-    padding: 28px 16px;
-  }
+/* The console's key box: a secret or an id, on the sunken ground, with a lime
+   rule down the left. For values meant to be copied, such as a recovery code. */
+.keyBox {
+  display: block;
+  padding: 1rem 1.125rem;
+  margin: 0.75rem 0 1rem;
+  background: var(--sunken);
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--accent-text);
+  font-family: var(--mono);
+  font-size: 14px;
+  line-height: 1.7;
+  letter-spacing: 0.04em;
+  color: var(--ink);
+  word-break: break-all;
+  white-space: pre-wrap;
+}
+
+@media (max-width: 1100px) {
   .nodeChip {
     display: none;
   }
+}
+
+@media (max-width: 720px) {
+  .header {
+    padding: 0 16px;
+    gap: 0.75rem;
+  }
+  .back {
+    display: none;
+  }
+  .main,
+  .mainWide {
+    padding: 1.75rem 1rem 4rem;
+  }
+  .titleRow {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .titleRowActions {
+    margin-left: 0;
+  }
+}
+
+@media (pointer: coarse) {
+  .btn,
+  .btnGhost,
+  .btnDanger,
+  .input {
+    min-height: 44px;
+  }
+  .input {
+    font-size: 16px;
+  }
+  .menuBtn {
+    opacity: 1;
+  }
+}
+
+/* An empty state that shares a row with its own call to action. */
+.emptyInline {
+  flex: 1;
+  margin: 0;
+  padding: 0.875rem 1.25rem;
+  text-align: left;
+}
+
+/* Something on this screen needs a decision — an approval request. The
+   console's attention card: an accent line down the left, a faint lime wash. */
+.attention {
+  margin: 0 0 2rem;
+  padding: 1.25rem 1.25rem 0.5rem;
+  border: 1px solid var(--accent-edge);
+  border-left: 3px solid var(--accent-text);
+  background: var(--accent-soft);
+}
+.attention .row {
+  background: var(--surface);
+}
+.attention .row:last-child {
+  margin-bottom: 0.75rem;
+}
+
+/* A heading that follows a list inside the same section gets air above it. */
+.sectionLabel:not(:first-child) {
+  margin-top: 2.25rem;
 }
