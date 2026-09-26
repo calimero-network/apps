@@ -14,6 +14,7 @@
  */
 
 import { test, expect } from "@playwright/test";
+import { aliceB58, bobB58 } from "./helpers/ids";
 import {
   makeClient,
   makeClient2,
@@ -58,8 +59,8 @@ test.describe("set_profile / get_profiles / get_username", () => {
     // Profiles are keyed by the caller's ACCOUNT (`UserId(env::account_id())`),
     // not by the per-context member key, so match on the account the setup
     // reports. The username may be frozen to an earlier value if pre-seeded.
-    const account = process.env.E2E_ACCOUNT_ID ?? "";
-    const ours = profiles.find((p) => p.identity === account);
+    // …as base58, the contract's UserId encoding.
+    const ours = profiles.find((p) => p.identity === aliceB58());
     expect(ours).toBeTruthy();
     expect(typeof ours!.username).toBe("string");
     expect(ours!.username.length).toBeGreaterThan(0);
@@ -350,7 +351,7 @@ test.describe("send_message / get_messages", () => {
 
     const msg = await client.call<MessageOut>("send_message", {
       message: `mention-test-${ts}`,
-      mentions: [env.memberKey],
+      mentions: [aliceB58()],
       mentions_usernames: ["TestUser"],
       parent_message: null,
       timestamp: ts,
@@ -359,7 +360,7 @@ test.describe("send_message / get_messages", () => {
     });
 
     expect(Array.isArray(msg.mentions)).toBe(true);
-    expect(msg.mentions).toContain(env.memberKey);
+    expect(msg.mentions).toContain(aliceB58());
     expect(Array.isArray(msg.mentions_usernames)).toBe(true);
     expect(msg.mentions_usernames).toContain("TestUser");
   });
@@ -391,7 +392,6 @@ test.describe("update_reaction", () => {
     const result = await client.call<string>("update_reaction", {
       message_id: msg.id,
       emoji: "👍",
-      user: getEnv().memberKey,
       add: true,
     });
     expect(result).toMatch(/added/i);
@@ -406,7 +406,6 @@ test.describe("update_reaction", () => {
     await client.call("update_reaction", {
       message_id: msg.id,
       emoji: "❤️",
-      user: env.memberKey,
       add: true,
     });
 
@@ -419,7 +418,7 @@ test.describe("update_reaction", () => {
     const found = result.messages.find((m) => m.id === msg.id);
     expect(found).toBeTruthy();
     expect(found!.reactions).toBeTruthy();
-    expect(found!.reactions!["❤️"]).toContain(env.memberKey);
+    expect(found!.reactions!["❤️"]).toContain(aliceB58());
   });
 
   test("update_reaction remove clears the reaction", async () => {
@@ -431,13 +430,11 @@ test.describe("update_reaction", () => {
     await client.call("update_reaction", {
       message_id: msg.id,
       emoji: "🔥",
-      user: env.memberKey,
       add: true,
     });
     await client.call("update_reaction", {
       message_id: msg.id,
       emoji: "🔥",
-      user: env.memberKey,
       add: false,
     });
 
@@ -462,13 +459,11 @@ test.describe("update_reaction", () => {
     await client.call("update_reaction", {
       message_id: msg.id,
       emoji: "😂",
-      user: env.memberKey,
       add: true,
     });
     await client.call("update_reaction", {
       message_id: msg.id,
       emoji: "😂",
-      user: env.memberKey,
       add: true,
     });
 
@@ -793,7 +788,6 @@ test.describe("threads (send_message with parent_message)", () => {
     await client.call("update_reaction", {
       message_id: reply.id,
       emoji: "👍",
-      user: env.memberKey,
       add: true,
     });
 
@@ -804,7 +798,7 @@ test.describe("threads (send_message with parent_message)", () => {
       search_term: null,
     });
     const found = thread.messages.find((m) => m.id === reply.id);
-    expect(found?.reactions?.["👍"]).toContain(env.memberKey);
+    expect(found?.reactions?.["👍"]).toContain(aliceB58());
   });
 
   test("get_messages without parent does not include thread replies", async () => {
@@ -1098,7 +1092,7 @@ test.describe("multi-user (2-node)", () => {
       "get_profiles", {},
     );
 
-    const alice = profiles.find((p) => p.identity === env.memberKey);
+    const alice = profiles.find((p) => p.identity === aliceB58());
     expect(alice).toBeTruthy();
     expect(typeof alice!.username).toBe("string");
     expect(alice!.username.length).toBeGreaterThan(0);
@@ -1245,21 +1239,29 @@ test.describe("multi-user (2-node)", () => {
     const msg = await aliceSends(marker);
 
     await makeClient().call("update_reaction", {
-      message_id: msg.id, emoji: "👍", user: env.memberKey, add: true,
+      message_id: msg.id, emoji: "👍", add: true,
     });
-    await makeClient({
-      executorPublicKey: env.memberKey2,
-    }).call("update_reaction", {
-      message_id: msg.id, emoji: "👍", user: env.memberKey2, add: true,
+    // Bob reacts from HIS node. `executorPublicKey` never picked the actor —
+    // the node ignores it — so the old call reacted as Alice a second time.
+    await pollUntil(async () => {
+      const r = await makeClient2().call<GetMessagesOut>("get_messages", {
+        parent_message: null, limit: 50, offset: 0, search_term: marker,
+      });
+      return r.messages.find((m) => m.id === msg.id);
+    }, 30000);
+    await makeClient2().call("update_reaction", {
+      message_id: msg.id, emoji: "👍", add: true,
     });
 
-    const result = await makeClient().call<GetMessagesOut>("get_messages", {
-      parent_message: null, limit: 50, offset: 0, search_term: marker,
-    });
-    const found = result.messages.find((m) => m.id === msg.id);
-    const reactors = found?.reactions?.["👍"] ?? [];
-    expect(reactors).toContain(env.memberKey);
-    expect(reactors).toContain(env.memberKey2);
+    const reactors = await pollUntil(async () => {
+      const result = await makeClient().call<GetMessagesOut>("get_messages", {
+        parent_message: null, limit: 50, offset: 0, search_term: marker,
+      });
+      const r = result.messages.find((m) => m.id === msg.id)?.reactions?.["👍"] ?? [];
+      return r.length >= 2 ? r : null;
+    }, 30000);
+    expect(reactors).toContain(aliceB58());
+    expect(reactors).toContain(bobB58());
     expect(new Set(reactors).size).toBe(reactors.length); // no duplicate keys
   });
 
@@ -1269,18 +1271,27 @@ test.describe("multi-user (2-node)", () => {
     const msg = await aliceSends(marker);
 
     await makeClient().call("update_reaction", {
-      message_id: msg.id, emoji: "❤️", user: env.memberKey, add: true,
+      message_id: msg.id, emoji: "❤️", add: true,
     });
-    await makeClient({ executorPublicKey: env.memberKey2 }).call("update_reaction", {
-      message_id: msg.id, emoji: "😂", user: env.memberKey2, add: true,
+    await pollUntil(async () => {
+      const r = await makeClient2().call<GetMessagesOut>("get_messages", {
+        parent_message: null, limit: 50, offset: 0, search_term: marker,
+      });
+      return r.messages.find((m) => m.id === msg.id);
+    }, 30000);
+    await makeClient2().call("update_reaction", {
+      message_id: msg.id, emoji: "😂", add: true,
     });
 
-    const result = await makeClient().call<GetMessagesOut>("get_messages", {
-      parent_message: null, limit: 50, offset: 0, search_term: marker,
-    });
-    const found = result.messages.find((m) => m.id === msg.id);
-    expect(found?.reactions?.["❤️"]).toContain(env.memberKey);
-    expect(found?.reactions?.["😂"]).toContain(env.memberKey2);
+    const found = await pollUntil(async () => {
+      const result = await makeClient().call<GetMessagesOut>("get_messages", {
+        parent_message: null, limit: 50, offset: 0, search_term: marker,
+      });
+      const m = result.messages.find((x) => x.id === msg.id);
+      return m?.reactions?.["😂"]?.length ? m : null;
+    }, 30000);
+    expect(found?.reactions?.["❤️"]).toContain(aliceB58());
+    expect(found?.reactions?.["😂"]).toContain(bobB58());
   });
 
   // ── Thread replies across users ────────────────────────────────────────────
