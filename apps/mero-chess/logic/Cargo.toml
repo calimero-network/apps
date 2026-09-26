@@ -45,7 +45,7 @@ category = "games"
 tags = ["game", "chess", "two-player", "crdt"]
 github = "https://github.com/calimero-network/apps"
 # Asserted equal to [workspace.metadata.mero-apps] in CI.
-min-runtime-version = "0.11.0-rc.45"
+min-runtime-version = "0.11.0-rc.48"
 # Doubles as this app's registered redirect URI: the auth frontend treats the
 # registry-declared frontend origin as the only callback it will authorize, and
 # compares it by EXACT ORIGIN. Get it wrong and hosted login breaks *after*

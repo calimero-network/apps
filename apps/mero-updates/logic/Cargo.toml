@@ -25,7 +25,7 @@ icon        = "../app/public/icon-512.png"
 category    = "productivity"
 tags        = ["investor-updates", "investor-relations", "startups", "newsletter"]
 github      = "https://github.com/calimero-network/apps"
-min-runtime-version = "0.11.0-rc.45"
+min-runtime-version = "0.11.0-rc.48"
 frontend    = "https://mero-updates.vercel.app"
 
 [dependencies]
