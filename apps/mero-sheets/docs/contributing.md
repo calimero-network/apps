@@ -34,6 +34,11 @@ cd test/perf/lib && python3 -m pytest
 # two-node smoke workflow (Docker)
 pnpm test:smoke
 
+# node-level scenarios (Docker + merobox), from logic/ after
+# `cargo mero bundle` has written dist/com.calimero.mero-sheets.mpk
+merobox bootstrap run workflows/spec-smoke.yml   # every shared-state method, two nodes
+merobox bootstrap run workflows/links.yml        # linked workbooks over xcall
+
 # node-side perf sweeps (Docker) — see the Perf suite page
 bash test/perf/run-perf.sh
 
@@ -51,6 +56,10 @@ across real nodes. Start from fresh nodes: a node that has kept dozens of
 workbooks from earlier runs syncs them all and slows every spec down.
 
 ## CI
+
+Every contract method must be called by a merobox scenario under
+`logic/workflows/` (`scripts/check-merobox-coverage.py`, in the monorepo's
+App metadata job); a new method needs a step there in the same change.
 
 - **`verify.yml`** — Calimero-Studio-managed gate; fires on `workshop/**` /
   `ai-builder/**` branches (dormant on `main`).

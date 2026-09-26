@@ -1,0 +1,413 @@
+# Linked workbooks for mero-sheets: one workbook pushes a range into another
+# over a cross-context call (xcall), which the node runs after the source's
+# call commits.
+#
+# Both workbooks are contexts of one namespace on ONE node: an xcall goes to a
+# context on the node making the change. Covers publish, the automatic re-push
+# when a published cell changes, the explicit push, unlink on the target,
+# unpublish on the source, and the guard on the xcall entry points: a direct
+# call to receive_link or drop_link is refused.
+#
+# Run by hand from logic/ once `cargo mero bundle` has written
+# dist/com.calimero.mero-sheets.mpk:
+#
+#   merobox bootstrap run workflows/links.yml
+
+name: mero-sheets linked workbooks
+description: A range pushed between two workbooks over xcall, kept up to date, then unlinked.
+log_level: info
+# ⚠️ REQUIRED: clears the public devnet boot-node from `bootstrap.nodes`; see
+# spec-smoke.yml.
+e2e_mode: true
+
+nodes:
+  count: 1
+  prefix: link-node
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.45
+  base_port: 12428
+  base_rpc_port: 12528
+nuke_on_start: true
+nuke_on_end: true
+wait_timeout: 90
+
+steps:
+  - type: install_application
+    name: Install mero-sheets bundle
+    node: link-node-1
+    dev: true
+    path: dist/com.calimero.mero-sheets.mpk
+    outputs:
+      app_id: applicationId
+
+  - name: Settle before the first admin call
+    type: wait
+    seconds: 12
+
+  - type: create_namespace
+    name: Create namespace
+    node: link-node-1
+    application_id: '{{app_id}}'
+    outputs:
+      namespace_id: namespaceId
+
+  - type: create_context
+    name: Create the source workbook
+    node: link-node-1
+    application_id: '{{app_id}}'
+    group_id: '{{namespace_id}}'
+    service_name: spreadsheet
+    outputs:
+      src: contextId
+
+  - type: create_context
+    name: Create the target workbook
+    node: link-node-1
+    application_id: '{{app_id}}'
+    group_id: '{{namespace_id}}'
+    service_name: spreadsheet
+    outputs:
+      dst: contextId
+
+
+  # ---- Two workbooks ----
+
+
+  - type: call
+    name: "init_project on the source"
+    node: link-node-1
+    context_id: '{{src}}'
+    method: init_project
+    args:
+      name: "FX desk"
+
+  - type: call
+    name: "join the source"
+    node: link-node-1
+    context_id: '{{src}}'
+    method: join
+    args:
+      nickname: "Ada"
+
+  - type: call
+    name: "init_project on the target"
+    node: link-node-1
+    context_id: '{{dst}}'
+    method: init_project
+    args:
+      name: "Budget"
+
+  - type: call
+    name: "join the target"
+    node: link-node-1
+    context_id: '{{dst}}'
+    method: join
+    args:
+      nickname: "Ada"
+
+  - type: call
+    name: "create the source sheet"
+    node: link-node-1
+    context_id: '{{src}}'
+    method: create_sheet
+    args:
+      name: "Rates"
+    outputs:
+      rates: result.output
+
+  - type: call
+    name: "A1: a rate"
+    node: link-node-1
+    context_id: '{{src}}'
+    method: set_cell
+    args:
+      sheet_id: '{{rates}}'
+      row_id: "0"
+      col_id: "0"
+      raw_value: "1.08"
+
+  - type: call
+    name: "B1: a formula on it"
+    node: link-node-1
+    context_id: '{{src}}'
+    method: set_cell
+    args:
+      sheet_id: '{{rates}}'
+      row_id: "0"
+      col_id: "1"
+      raw_value: "=A1*100"
+
+
+  # ---- Publish A1:B1 into the target ----
+
+
+  - type: call
+    name: "a workbook cannot link to itself"
+    node: link-node-1
+    context_id: '{{src}}'
+    method: publish_range
+    args:
+      sheet_id: '{{rates}}'
+      top_row_id: "0"
+      left_col_id: "0"
+      bottom_row_id: "0"
+      right_col_id: "1"
+      target_context: '{{src}}'
+      name: "Rates"
+    expected_failure: true
+
+  - type: call
+    name: "publish_range"
+    node: link-node-1
+    context_id: '{{src}}'
+    method: publish_range
+    args:
+      sheet_id: '{{rates}}'
+      top_row_id: "0"
+      left_col_id: "0"
+      bottom_row_id: "0"
+      right_col_id: "1"
+      target_context: '{{dst}}'
+      name: "Rates"
+    outputs:
+      publication: result.output
+
+  # The xcall runs after the publishing call commits.
+  - type: wait
+    seconds: 3
+
+  - type: call
+    name: "get_publications on the source"
+    node: link-node-1
+    context_id: '{{src}}'
+    method: get_publications
+    args: {}
+    outputs:
+      pub_0: result.output.0
+
+  - type: json_assert
+    name: "the source records the link"
+    statements:
+      - "json_subset({{pub_0}}, {\"id\": \"{{publication}}\", \"target_context\": \"{{dst}}\", \"name\": \"Rates\"})"
+
+  - type: call
+    name: "get_links on the target"
+    node: link-node-1
+    context_id: '{{dst}}'
+    method: get_links
+    args: {}
+    outputs:
+      link_0: result.output.0
+      link_id: result.output.0.id
+
+  - type: json_assert
+    name: "the target received the range, computed"
+    statements:
+      - "json_subset({{link_0}}, {\"name\": \"Rates\", \"source_name\": \"FX desk\", \"rows\": 1, \"cols\": 2})"
+
+  - type: call
+    name: "the linked sheet is listed on the target"
+    node: link-node-1
+    context_id: '{{dst}}'
+    method: list_sheets
+    args: {}
+    outputs:
+      dst_sheets: result.output
+
+  - type: assert
+    name: "the target lists the linked sheet"
+    statements:
+      - "contains({{dst_sheets}}, '{{link_id}}')"
+      - "contains({{dst_sheets}}, 'FX desk')"
+
+  - type: call
+    name: "the target's formulas can read it"
+    node: link-node-1
+    context_id: '{{dst}}'
+    method: create_sheet
+    args:
+      name: "Plan"
+    outputs:
+      plan: result.output
+
+  - type: call
+    name: "a formula over the linked sheet"
+    node: link-node-1
+    context_id: '{{dst}}'
+    method: set_cell
+    args:
+      sheet_id: '{{plan}}'
+      row_id: "0"
+      col_id: "0"
+      raw_value: "=[{{link_id}}]!B1+1"
+
+  - type: call
+    name: "get_cells on the plan"
+    node: link-node-1
+    context_id: '{{dst}}'
+    method: get_cells
+    args:
+      sheet_id: '{{plan}}'
+    outputs:
+      plan_a1: result.output.0
+
+  - type: json_assert
+    name: "the formula computes from the pushed value"
+    statements:
+      - "json_subset({{plan_a1}}, {\"computed_value\": \"109\"})"
+
+
+  # ---- A change on the source is pushed again ----
+
+
+  - type: call
+    name: "change the rate"
+    node: link-node-1
+    context_id: '{{src}}'
+    method: set_cell
+    args:
+      sheet_id: '{{rates}}'
+      row_id: "0"
+      col_id: "0"
+      raw_value: "1.1"
+
+  - type: wait
+    seconds: 3
+
+  - type: call
+    name: "get_cells on the plan after the change"
+    node: link-node-1
+    context_id: '{{dst}}'
+    method: get_cells
+    args:
+      sheet_id: '{{plan}}'
+    outputs:
+      plan_a1_after: result.output.0
+
+  - type: json_assert
+    name: "the target recomputed from the new value"
+    statements:
+      - "json_subset({{plan_a1_after}}, {\"computed_value\": \"111\"})"
+
+  - type: call
+    name: "push_publication on demand"
+    node: link-node-1
+    context_id: '{{src}}'
+    method: push_publication
+    args:
+      id: '{{publication}}'
+
+
+  # ---- Only the source workbook can push ----
+
+
+  - type: call
+    name: "a direct receive_link is refused"
+    node: link-node-1
+    context_id: '{{dst}}'
+    method: receive_link
+    args:
+      from_context: '{{src}}'
+      publication_id: '{{publication}}'
+      name: "Rates"
+      source_name: "FX desk"
+      rows: 1
+      cols: 1
+      values: ["forged"]
+    expected_failure: true
+
+  - type: call
+    name: "a direct drop_link is refused"
+    node: link-node-1
+    context_id: '{{dst}}'
+    method: drop_link
+    args:
+      from_context: '{{src}}'
+      publication_id: '{{publication}}'
+    expected_failure: true
+
+  - type: call
+    name: "get_links after the forged calls"
+    node: link-node-1
+    context_id: '{{dst}}'
+    method: get_links
+    args: {}
+    outputs:
+      link_after_forge: result.output.0
+
+  - type: json_assert
+    name: "the link is untouched"
+    statements:
+      - "json_subset({{link_after_forge}}, {\"id\": \"{{link_id}}\", \"cols\": 2})"
+
+
+  # ---- Unlink on the target, unpublish on the source ----
+
+
+  - type: call
+    name: "unlink on the target"
+    node: link-node-1
+    context_id: '{{dst}}'
+    method: unlink
+    args:
+      id: '{{link_id}}'
+
+  - type: call
+    name: "get_links after unlink"
+    node: link-node-1
+    context_id: '{{dst}}'
+    method: get_links
+    args: {}
+    outputs:
+      links_after: result.output
+
+  - type: json_assert
+    name: "the target has no links"
+    statements:
+      - "json_equal({{links_after}}, [])"
+
+  - type: call
+    name: "a later push is ignored by the target"
+    node: link-node-1
+    context_id: '{{src}}'
+    method: push_publication
+    args:
+      id: '{{publication}}'
+
+  - type: wait
+    seconds: 3
+
+  - type: call
+    name: "get_links after the ignored push"
+    node: link-node-1
+    context_id: '{{dst}}'
+    method: get_links
+    args: {}
+    outputs:
+      links_still: result.output
+
+  - type: json_assert
+    name: "the unlinked sheet stays gone"
+    statements:
+      - "json_equal({{links_still}}, [])"
+
+  - type: call
+    name: "unpublish on the source"
+    node: link-node-1
+    context_id: '{{src}}'
+    method: unpublish
+    args:
+      id: '{{publication}}'
+
+  - type: call
+    name: "get_publications after unpublish"
+    node: link-node-1
+    context_id: '{{src}}'
+    method: get_publications
+    args: {}
+    outputs:
+      pubs_after: result.output
+
+  - type: json_assert
+    name: "the source has no publications"
+    statements:
+      - "json_equal({{pubs_after}}, [])"

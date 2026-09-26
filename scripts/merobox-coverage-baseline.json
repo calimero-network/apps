@@ -88,14 +88,6 @@
     "update_text",
     "update_transform"
   ],
-  "mero-sheets": [
-    "apply_cell_ops",
-    "get_all_cells",
-    "get_members",
-    "get_project",
-    "set_cell_format",
-    "whoami"
-  ],
   "mero-sign": [
     "get_identity_mapping",
     "get_shared_identity",
