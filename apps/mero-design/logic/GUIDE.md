@@ -90,6 +90,30 @@ Change text later with `update_text_style`; `null` leaves a field unchanged:
 {"id": "0d6f3a52-1b7e-4c9a-8e2d-5a4b3c2d1e0f", "content": "Hello there", "font_family": null, "font_size": 32, "bold": true, "italic": null, "text_align": "center", "vertical_align": null, "updated_at": 1727000005000}
 ```
 
+### Batch operations
+
+Editing many elements at once (a paste, a multi-select drag, a bulk delete) is one call instead of one per element.
+
+`add_elements` adds a whole selection and returns every new id, in order:
+
+```json
+{"elements": [{"id": "5f0c2b9e-8c1a-4d3e-9b7f-2a6d1e4c8b90", "data": {"kind": "rect"}, "x": 40, "y": 60, "width": 120, "height": 80, "rotation": 0, "fill": "#ef4444", "stroke": "transparent", "strokeWidth": 0, "opacity": 100, "layerIndex": 0, "createdBy": "", "createdAt": 1727000000000, "updatedAt": 1727000000000}]}
+```
+
+`update_elements` applies one `updated_at` and one patch per element (same fields as `update_element`); `update_element_labels` does the same for layer labels. An id that does not exist is skipped in either, not an error:
+
+```json
+{"patches": [{"id": "5f0c2b9e-8c1a-4d3e-9b7f-2a6d1e4c8b90", "x": 40, "y": 50}], "updated_at": 1727000010000}
+```
+
+`delete_elements` removes a whole selection; `get_elements_by_ids` reads one back in a single call instead of one `get_element` per shape (both take a plain list of ids):
+
+```json
+{"ids": ["5f0c2b9e-8c1a-4d3e-9b7f-2a6d1e4c8b90"]}
+```
+
+`add_elements`, `update_elements`, `update_element_labels` and `delete_elements` each hold at most 200 items; a bigger call is refused whole, so chunk a large selection client-side. `get_elements_by_ids` has no such cap.
+
 ### Move, resize or restyle an element
 
 Call `update_element` with only the fields to change and a newer `updated_at`:
@@ -158,5 +182,6 @@ As the owner, `update_board` renames it (`null` leaves a field unchanged):
 - An element is replaced as a whole by the write with the larger `updated_at`, so always send a timestamp newer than the element's current one.
 - Update calls on an unknown element id succeed and change nothing; check `get_element` first.
 - `add_element` with an existing id replaces that element.
+- A batch call (`add_elements`, `update_elements`, `update_element_labels`, `delete_elements`) holds at most 200 items; over that the whole call is refused and nothing changes. A `delete_elements` batch can still run out of gas on a large board before it hits that count; halve the batch and retry.
 - Image and SVG elements need `blobId` of a blob already on the node (`upload_blob`); the contract announces it to the board's members.
 - `/` is reserved in layer names: it separates groups.

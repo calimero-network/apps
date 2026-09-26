@@ -373,8 +373,12 @@ pub enum Event {
     /// The board changed owner; the payload is the id the caller passed.
     OwnerTransferred(String),
     // One event per batch call, carrying every id it touched.
+    /// A batch added elements; the payload is every id added, in the same order as the call.
     ElementsAdded(Vec<String>),
+    /// A batch changed elements; the payload is every id that actually existed and
+    /// changed (unknown ids named in the call are left out).
     ElementsUpdated(Vec<String>),
+    /// A batch deleted elements; the payload is every id the call named.
     ElementsDeleted(Vec<String>),
 }
 
@@ -871,7 +875,19 @@ impl MeroDesign {
 
     /// `add_element` for a whole selection — a paste, an import, a batch of
     /// rerouted connectors. An id that already exists is overwritten, exactly as
-    /// `add_element` does. At most `MAX_BATCH` elements.
+    /// `add_element` does.
+    ///
+    /// # Returns
+    /// The new elements' ids, in the same order as `elements`.
+    ///
+    /// # Errors
+    /// Fails if the caller is not an editor or admin, or if `elements` has more than
+    /// `MAX_BATCH` elements — the whole call is refused and nothing is added.
+    ///
+    /// # Examples
+    /// ```json
+    /// {"elements":[{"id":"5f0c2b9e-8c1a-4d3e-9b7f-2a6d1e4c8b90","data":{"kind":"rect"},"x":40,"y":60,"width":120,"height":80,"rotation":0,"fill":"#ef4444","stroke":"transparent","strokeWidth":0,"opacity":100,"layerIndex":0,"createdBy":"","createdAt":1727000000000,"updatedAt":1727000000000}]}
+    /// ```
     pub fn add_elements(&mut self, elements: Vec<Element>) -> app::Result<Vec<String>> {
         self.require_editor()?;
         Self::require_batch(elements.len())?;
@@ -982,7 +998,20 @@ impl MeroDesign {
 
     /// `update_element` for a whole selection — a multi-drag, a fill applied to
     /// many shapes. Every patch shares one `updated_at`, as they are one edit.
-    /// Unknown ids are skipped. At most `MAX_BATCH` patches.
+    ///
+    /// # Arguments
+    /// * `patches` - one `ElementPatch` per element; a `null` field is left unchanged,
+    ///   as in `update_element`. A patch naming an unknown id is skipped, not an error.
+    /// * `updated_at` - unix milliseconds, shared by every patch in the call.
+    ///
+    /// # Errors
+    /// Fails if the caller is not an editor or admin, or if `patches` has more than
+    /// `MAX_BATCH` entries — the whole call is refused and nothing is changed.
+    ///
+    /// # Examples
+    /// ```json
+    /// {"patches":[{"id":"5f0c2b9e-8c1a-4d3e-9b7f-2a6d1e4c8b90","x":40,"y":50}],"updated_at":1727000010000}
+    /// ```
     pub fn update_elements(
         &mut self,
         patches: Vec<ElementPatch>,
@@ -1086,7 +1115,21 @@ impl MeroDesign {
     }
 
     /// `update_element_label` for a whole selection — grouping, ungrouping,
-    /// renaming a group. Unknown ids are skipped. At most `MAX_BATCH` labels.
+    /// renaming a group.
+    ///
+    /// # Arguments
+    /// * `labels` - one `LabelUpdate` per element; a `null` label clears it, as in
+    ///   `update_element_label`. An unknown id is skipped, not an error.
+    /// * `updated_at` - unix milliseconds, shared by every label in the call.
+    ///
+    /// # Errors
+    /// Fails if the caller is not an editor or admin, or if `labels` has more than
+    /// `MAX_BATCH` entries — the whole call is refused and nothing is changed.
+    ///
+    /// # Examples
+    /// ```json
+    /// {"labels":[{"id":"5f0c2b9e-8c1a-4d3e-9b7f-2a6d1e4c8b90","label":"screen/01 Sign in"}],"updated_at":1727000030000}
+    /// ```
     pub fn update_element_labels(
         &mut self,
         labels: Vec<LabelUpdate>,
@@ -1280,7 +1323,20 @@ impl MeroDesign {
     }
 
     /// `delete_element` for a whole selection. Ids that are already gone are
-    /// fine — a peer may have deleted them first. At most `MAX_BATCH` ids.
+    /// fine — a peer may have deleted them first.
+    ///
+    /// # Arguments
+    /// * `ids` - the elements to delete.
+    ///
+    /// # Errors
+    /// Fails if the caller is not an editor or admin, or if `ids` has more than
+    /// `MAX_BATCH` entries — the whole call is refused and nothing is deleted. A
+    /// batch this size can still run out of gas on a large board; halve it and retry.
+    ///
+    /// # Examples
+    /// ```json
+    /// {"ids":["5f0c2b9e-8c1a-4d3e-9b7f-2a6d1e4c8b90","0d6f3a52-1b7e-4c9a-8e2d-5a4b3c2d1e0f"]}
+    /// ```
     pub fn delete_elements(&mut self, ids: Vec<String>) -> app::Result<()> {
         self.require_editor()?;
         Self::require_batch(ids.len())?;
@@ -1323,7 +1379,16 @@ impl MeroDesign {
     }
 
     /// The elements a batch event named, in one read instead of one
-    /// `get_element` each. Ids that no longer exist are left out.
+    /// `get_element` each. Ids that no longer exist are left out. Not capped by
+    /// `MAX_BATCH`: this is a read, not a write.
+    ///
+    /// # Returns
+    /// The elements that still exist, in `ids` order.
+    ///
+    /// # Examples
+    /// ```json
+    /// {"ids":["5f0c2b9e-8c1a-4d3e-9b7f-2a6d1e4c8b90","0d6f3a52-1b7e-4c9a-8e2d-5a4b3c2d1e0f"]}
+    /// ```
     pub fn get_elements_by_ids(&self, ids: Vec<String>) -> Vec<Element> {
         let Some(map) = self.element_map() else {
             return Vec::new();
