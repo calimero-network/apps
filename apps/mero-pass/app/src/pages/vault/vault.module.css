@@ -33,13 +33,6 @@
   color: var(--ink-dim);
 }
 
-.filters {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  margin-bottom: 1.25rem;
-}
-
 .select {
   padding: 0.75rem 0.875rem;
   border: 1px solid var(--border-strong);
@@ -73,67 +66,10 @@
   position: relative;
 }
 
-.secretHead {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  width: 100%;
-  padding: 1rem 1.25rem;
-  background: none;
-  border: none;
-  color: var(--ink);
-  text-align: left;
-}
-.secretHead:hover {
-  background: var(--hover-wash);
-}
-
-.secretKind {
-  width: 36px;
-  height: 36px;
-  flex-shrink: 0;
-  border: 1px solid var(--accent-edge);
-  background: var(--accent-soft);
-  color: var(--accent-text);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
 .secretName {
   font-size: 15px;
   font-weight: 700;
   word-break: break-word;
-}
-
-.secretMeta {
-  /* `block`, or the name and the meta render as one run of text —
-     "GitHublogin · v3". Caught in the screenshots, not by any test. */
-  display: block;
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--ink-dim);
-  margin-top: 0.25rem;
-}
-
-.tags {
-  display: flex;
-  gap: 0.375rem;
-  flex-wrap: wrap;
-  align-items: center;
-  margin-left: auto;
-  flex-shrink: 0;
-}
-
-.chevron {
-  width: 1.25rem;
-  text-align: center;
-  color: var(--accent-text);
-  font-size: 18px;
-  font-weight: 300;
-  line-height: 1;
-  flex-shrink: 0;
 }
 
 .secretBody {
@@ -309,11 +245,6 @@
   gap: 0.5rem;
   margin-bottom: 1rem;
 }
-.history {
-  border-top: 1px solid var(--border);
-  margin-top: 0.75rem;
-  padding-top: 0.75rem;
-}
 .historyRow {
   display: flex;
   gap: 0.75rem;
@@ -345,9 +276,6 @@
 }
 
 @media (max-width: 720px) {
-  .tags {
-    display: none;
-  }
   .field {
     flex-wrap: wrap;
   }

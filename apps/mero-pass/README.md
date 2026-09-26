@@ -173,6 +173,20 @@ marketing site:
 
 It is dark only, like those pages.
 
+A vault is laid out the way 1Password and LastPass lay one out
+(`app/src/pages/vault/`):
+
+- **sidebar:** categories by kind, tags, and the vault's tools (password
+  health, people, activity, import and export, trash);
+- **item list:** searchable, with `/` to focus the search and arrow keys to
+  move;
+- **detail pane:** each field on a row with a one-click copy, secrets hidden
+  until revealed, and the password's strength shown.
+
+A login's tile shows the first letter of its name. It does not fetch the site's
+favicon, because that request would tell a third party which sites are in the
+vault. On a phone the three panes collapse to one at a time.
+
 Screenshots of every screen, with no node: `SHOTS_CHROMIUM=<chromium> node
 app/e2e/shots.mjs --out /tmp/shots`.
 

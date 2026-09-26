@@ -16,6 +16,7 @@ import {
 } from '../../lib/vaults';
 import type { TeamRow } from '../../lib/vaults';
 import styles from '../../styles/shell.module.css';
+import { describeError } from '../../lib/errors';
 
 /**
  * Your teams. The app's front screen once you are signed in.
@@ -96,7 +97,7 @@ export default function TeamsPage() {
       }
       setError(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(describeError(e));
     } finally {
       setLoading(false);
     }
@@ -155,7 +156,7 @@ export default function TeamsPage() {
       await load();
       navigate(`/teams/${namespaceId}`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(describeError(e));
     } finally {
       setBusy(null);
     }
@@ -173,7 +174,7 @@ export default function TeamsPage() {
       await load();
       navigate(`/vault/${contextId}`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(describeError(e));
     } finally {
       setBusy(null);
     }
@@ -192,7 +193,7 @@ export default function TeamsPage() {
         );
         setInvite({ code, scope: `Whole team · ${team.name}` });
       } catch (e) {
-        setError(e instanceof Error ? e.message : String(e));
+        setError(describeError(e));
       } finally {
         setBusy(null);
       }

@@ -21,6 +21,7 @@ import {
 } from '../../lib/recoveryKey';
 import { migrateDevice } from '../../lib/vaults';
 import shell from '../../styles/shell.module.css';
+import { describeError, rawReason } from '../../lib/errors';
 
 interface NodeDevice {
   deviceId: string;
@@ -53,6 +54,10 @@ export default function SecurityPage() {
   const [shownCode, setShownCode] = useState<string | null>(null);
   const [restoreCode, setRestoreCode] = useState('');
   const [devices, setDevices] = useState<NodeDevice[]>([]);
+  // The node lists its account's devices only to a session with admin scope.
+  // A browser signed in for this app alone is refused with a 403; that is the
+  // node working as intended, so it reads as a note, not an error.
+  const [devicesHidden, setDevicesHidden] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -61,8 +66,10 @@ export default function SecurityPage() {
     if (!mero) return;
     try {
       setDevices((await mero.admin.listAccountDevices()) as NodeDevice[]);
+      setDevicesHidden(false);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      if (/403|forbidden/i.test(rawReason(e))) setDevicesHidden(true);
+      else setError(describeError(e));
     }
   }, [mero]);
 
@@ -103,7 +110,7 @@ export default function SecurityPage() {
       );
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(describeError(e));
     }
   };
 
@@ -124,7 +131,7 @@ export default function SecurityPage() {
       setRecovery(rememberedRecoveryKey());
       setStatus(`Recovery key created for ${vaults} vault(s).`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(describeError(e));
     }
   };
 
@@ -148,7 +155,7 @@ export default function SecurityPage() {
         `${n} vault(s) restored to this browser. Revoke the device you lost in each vault's People tab.`,
       );
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(describeError(e));
     }
   };
 
@@ -164,7 +171,7 @@ export default function SecurityPage() {
       );
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(describeError(e));
     }
   };
 
@@ -323,7 +330,14 @@ export default function SecurityPage() {
             Machines that sign as your account. Revoke one you lost; then open
             each vault as an Admin, or ask one to, so its key rotates.
           </p>
-          {devices.length === 0 && (
+          {devicesHidden && (
+            <p className={shell.empty} data-testid="devices-hidden">
+              This sign-in may use its vaults but not manage the node, so the
+              node keeps its device list to itself. Revoke devices from the
+              node's own admin dashboard.
+            </p>
+          )}
+          {!devicesHidden && devices.length === 0 && (
             <p className={shell.empty}>No devices reported.</p>
           )}
           {devices.map((d) => (

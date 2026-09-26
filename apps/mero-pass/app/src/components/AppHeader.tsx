@@ -1,7 +1,9 @@
 import { useNavigate } from 'react-router-dom';
 import { useMero } from '@calimero-network/mero-react';
+import { Lock } from '@calimero-network/mero-icons';
 
 import ThemeToggle from './ThemeToggle';
+import { LogOutIcon, ShieldIcon } from './icons';
 import Wordmark from './Wordmark';
 import { useDeviceUnlocked } from '../hooks/useDeviceLock';
 import { deviceKeeper } from '../lib/deviceKey';
@@ -86,18 +88,22 @@ export default function AppHeader({
             className={styles.logoutBtn}
             onClick={() => deviceKeeper.lock()}
             title="Clear vault keys from memory"
+            aria-label="Lock"
             data-testid="lock-now"
           >
-            Lock
+            <Lock size={16} className={styles.headerIcon} />
+            <span className={styles.headerLabel}>Lock</span>
           </button>
         )}
         <button
           type="button"
           className={styles.logoutBtn}
           onClick={() => navigate('/security')}
+          aria-label="Security"
           data-testid="security"
         >
-          Security
+          <ShieldIcon size={16} className={styles.headerIcon} />
+          <span className={styles.headerLabel}>Security</span>
         </button>
         <button
           type="button"
@@ -109,9 +115,11 @@ export default function AppHeader({
             logout();
             navigate('/', { replace: true });
           }}
+          aria-label="Log out"
           data-testid="logout"
         >
-          Log out
+          <LogOutIcon size={16} className={styles.headerIcon} />
+          <span className={styles.headerLabel}>Log out</span>
         </button>
       </div>
     </header>

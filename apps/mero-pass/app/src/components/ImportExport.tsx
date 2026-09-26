@@ -4,6 +4,7 @@ import { decryptExport, encryptExport, importCsv } from '../lib/portability';
 import type { Secret, SecretDraft, VaultSession } from '../lib/vaultSession';
 import shell from '../styles/shell.module.css';
 import styles from '../pages/vault/vault.module.css';
+import { describeError } from '../lib/errors';
 
 /**
  * Bring secrets in from Bitwarden, 1Password or a browser, move them between
@@ -58,7 +59,7 @@ export default function ImportExport({
       setPending(null);
       setPass('');
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(describeError(e));
     }
   };
 
@@ -93,7 +94,7 @@ export default function ImportExport({
       setPass('');
       setStatus('Encrypted backup downloaded.');
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(describeError(e));
     }
   };
 

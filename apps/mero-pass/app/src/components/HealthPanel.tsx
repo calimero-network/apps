@@ -4,6 +4,7 @@ import { analyse, breachedIds } from '../lib/health';
 import type { Secret } from '../lib/vaultSession';
 import shell from '../styles/shell.module.css';
 import styles from '../pages/vault/vault.module.css';
+import { describeError } from '../lib/errors';
 
 const ISSUE_TEXT: Record<string, string> = {
   weak: 'weak',
@@ -34,7 +35,7 @@ export default function HealthPanel({
       setBreached(await breachedIds(secrets));
       setChecked(true);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(describeError(e));
     } finally {
       setChecking(false);
     }

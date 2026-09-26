@@ -1,14 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useMero } from '@calimero-network/mero-react';
-import {
-  Clock,
-  FileText,
-  Lock,
-  LockBox,
-  LockStar,
-  ShieldCheck,
-} from '@calimero-network/mero-icons';
 
 import AppHeader from '../../components/AppHeader';
 import DeviceApprovals from '../../components/DeviceApprovals';
@@ -18,14 +10,17 @@ import InviteModal from '../../components/InviteModal';
 import LockGate from '../../components/LockGate';
 import SecretForm from '../../components/SecretForm';
 import ShareModal from '../../components/ShareModal';
-import TotpCode from '../../components/TotpCode';
 import VaultPeople from '../../components/VaultPeople';
+import { PlusIcon } from '../../components/icons';
 import type { AuditView } from '../../generated/MeroPassClient';
 import { useApplicationId } from '../../hooks/useApplicationId';
 import { useVaultSession } from '../../hooks/useVaultSession';
-import { copySecret } from '../../lib/clipboard';
+import { CLIPBOARD_CLEAR_MS, copySecret } from '../../lib/clipboard';
 import { deviceKeeper } from '../../lib/deviceKey';
-import { isSensitive, isTotpField } from '../../lib/secretKinds';
+import { describeError } from '../../lib/errors';
+import { analyse } from '../../lib/health';
+import { CATEGORIES, asDate, byName, matches, who } from '../../lib/itemView';
+import type { Kind } from '../../lib/secretKinds';
 import { useVaultClient, useVaultName } from '../../lib/vault';
 import {
   type Revision,
@@ -34,37 +29,11 @@ import {
 } from '../../lib/vaultSession';
 import { findVaultByContext, mintVaultInvite } from '../../lib/vaults';
 import shell from '../../styles/shell.module.css';
-import styles from './vault.module.css';
-
-type Tab = 'secrets' | 'trash' | 'health' | 'people' | 'activity' | 'transfer';
-
-/**
- * Line icons from the Calimero set, one per kind, drawn in the accent-text
- * colour. Not emoji: an emoji is a fixed-colour bitmap that cannot follow the
- * theme.
- */
-const KIND_ICON: Record<string, typeof Lock> = {
-  login: Lock,
-  secure_note: FileText,
-  totp: Clock,
-  ssh_key: LockStar,
-  payment_card: LockBox,
-  identity: ShieldCheck,
-};
-
-function KindIcon({ kind, size = 16 }: { kind: string; size?: number }) {
-  const Icon = KIND_ICON[kind] ?? Lock;
-  return <Icon size={size} />;
-}
-
-/** Calimero stamps in nanoseconds; anything that large is not milliseconds. */
-function asDate(stamp: number): Date {
-  return new Date(stamp > 1e12 ? Math.floor(stamp / 1e6) : stamp);
-}
-
-function short(account: string, me?: string): string {
-  return account && account === me ? 'you' : `${account.slice(0, 10)}…`;
-}
+import ItemDetail from './ItemDetail';
+import ItemList, { KindIcon, SearchBox } from './ItemList';
+import VaultSidebar, { type View } from './VaultSidebar';
+import styles from './items.module.css';
+import vault from './vault.module.css';
 
 interface Found {
   namespaceId: string;
@@ -74,44 +43,43 @@ interface Found {
   personal: boolean;
 }
 
+const ROLE_TEXT: Record<string, string> = {
+  admin: 'you are an Admin',
+  editor: 'you are an Editor',
+  viewer: 'you can view',
+  pending: 'waiting for an Admin to let you in',
+  removed: 'you were removed from this vault',
+};
+
 /**
- * One vault: its secrets, decrypted in this browser, and everything around them.
+ * One vault, laid out as a password manager is: categories and tags on the
+ * left, the matching items in the middle, the picked item on the right.
  *
  * ── What the page can and cannot see ─────────────────────────────────────────
  *
  * Every secret arrives from the node as ciphertext and is opened here with the
  * vault key, which this device receives wrapped to its own public key (see
- * `lib/vaultSession`). So the page has three honest states before a list:
+ * `lib/vaultSession`). So before a list there are these honest states:
  *
- *   * locked      — the device key is not in memory (auto-lock, or first load
- *                   with a passkey or passphrase). Nothing renders.
- *   * waiting     — this device is registered but nobody holding the key has
- *                   wrapped it to us yet. We can see THAT secrets exist, not
- *                   what they are. When the account already has a browser
- *                   that holds the key, this one waits for that browser (or
- *                   an admin) to approve it, and shows the code to compare.
- *   * ready       — the key is here; values open on Reveal.
- *
- * A concealed value renders a fixed run of dots, not the value under a mask —
- * a mask leaves the characters in the DOM for anything that reads the page.
+ *   * locked   — the device key is not in memory. Nothing renders.
+ *   * loading  — opening; while the node is still joining or syncing the
+ *                vault this retries, and the strip says what it waits for.
+ *   * failed   — a refusal that will not clear by itself, with Retry.
+ *   * waiting  — registered, but nobody holding the key has wrapped it to us.
+ *                We see THAT items exist, not what they are. When the account
+ *                already has a browser that holds the key, this one waits for
+ *                that browser (or an admin) to approve it, and shows the code.
+ *   * ready    — the key is here; values open on Reveal.
  */
 export default function VaultPage() {
-  return (
-    <VaultShell>
-      <LockGate>
-        <VaultBody />
-      </LockGate>
-    </VaultShell>
-  );
-}
-
-function VaultShell({ children }: { children: React.ReactNode }) {
   const { vaultId } = useParams<{ vaultId: string }>();
   const vaultName = useVaultName(vaultId ?? null);
   return (
     <div className={shell.root}>
       <AppHeader back={{ label: 'Teams', to: '/teams' }} crumb={vaultName} />
-      <main className={shell.mainWide}>{children}</main>
+      <LockGate>
+        <VaultBody />
+      </LockGate>
     </div>
   );
 }
@@ -135,25 +103,22 @@ function VaultBody() {
     state,
     secrets,
     error: sessionError,
+    notice,
     approvals,
     awaitingApproval,
     holders,
     reload,
+    retry,
   } = useVaultSession(contextId, team);
 
-  const [tab, setTab] = useState<Tab>('secrets');
+  const [view, setView] = useState<View>({ type: 'all' });
+  const [query, setQuery] = useState('');
+  const [selected, setSelected] = useState<string | null>(null);
   const [events, setEvents] = useState<AuditView[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [query, setQuery] = useState('');
-  const [tag, setTag] = useState('all');
-  const [openId, setOpenId] = useState<string | null>(null);
-  const [revealed, setRevealed] = useState<Set<string>>(new Set());
-  const [history, setHistory] = useState<{
-    id: string;
-    rows: Revision[];
-  } | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
   const [editing, setEditing] = useState<Secret | null>(null);
-  const [adding, setAdding] = useState(false);
+  const [adding, setAdding] = useState<Kind | null>(null);
   const [sharing, setSharing] = useState<Secret | null>(null);
   const [minting, setMinting] = useState(false);
   const [invite, setInvite] = useState<{
@@ -161,6 +126,7 @@ function VaultBody() {
     scope: string;
     hint: string;
   } | null>(null);
+  const searchRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (!mero || !appId || !contextId) return;
@@ -173,17 +139,30 @@ function VaultBody() {
     };
   }, [mero, appId, contextId]);
 
-  const loadActivity = useCallback(async () => {
-    if (!client) return;
-    setEvents(await client.getAuditLogs().catch(() => []));
-  }, [client]);
+  const tool = view.type === 'tool' ? view.tool : null;
 
   useEffect(() => {
-    if (tab === 'activity') void loadActivity();
-  }, [tab, loadActivity, secrets]);
+    if (tool !== 'activity' || !client) return;
+    void client
+      .getAuditLogs()
+      .then(setEvents)
+      .catch(() => setEvents([]));
+  }, [tool, client, secrets]);
 
-  // Hide everything that was revealed whenever the list changes under us.
-  useEffect(() => setRevealed(new Set()), [state]);
+  // `/` jumps to search from anywhere that is not already a text field.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== '/' || e.metaKey || e.ctrlKey) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.isContentEditable || /INPUT|TEXTAREA|SELECT/.test(t.tagName)))
+        return;
+      e.preventDefault();
+      if (view.type === 'tool') setView({ type: 'all' });
+      requestAnimationFrame(() => searchRef.current?.focus());
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [view]);
 
   const live = useMemo(() => secrets.filter((s) => !s.trashed), [secrets]);
   const trashed = useMemo(() => secrets.filter((s) => s.trashed), [secrets]);
@@ -191,21 +170,37 @@ function VaultBody() {
     () => Array.from(new Set(live.flatMap((s) => s.tags))).sort(),
     [live],
   );
+  const counts = useMemo(() => {
+    const c: Record<string, number> = { all: live.length };
+    for (const s of live) c[s.kind] = (c[s.kind] ?? 0) + 1;
+    return c;
+  }, [live]);
+  const flagged = useMemo(
+    () => analyse(live).filter((r) => r.issues.length > 0).length,
+    [live],
+  );
 
-  const shown = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return live
-      .filter((s) => {
-        const hit =
-          !q ||
-          s.name.toLowerCase().includes(q) ||
-          s.tags.some((t) => t.toLowerCase().includes(q)) ||
-          (s.fields.url ?? '').toLowerCase().includes(q) ||
-          (s.fields.username ?? '').toLowerCase().includes(q);
-        return hit && (tag === 'all' || s.tags.includes(tag));
-      })
-      .sort((a, b) => a.name.localeCompare(b.name));
-  }, [live, query, tag]);
+  const shown = useMemo(
+    () =>
+      live
+        .filter((s) =>
+          view.type === 'kind'
+            ? s.kind === view.kind
+            : view.type === 'tag'
+              ? s.tags.includes(view.tag)
+              : true,
+        )
+        .filter((s) => matches(s, query))
+        .sort(byName),
+    [live, view, query],
+  );
+
+  const current = shown.find((s) => s.id === selected) ?? null;
+
+  // Keep something picked on a wide screen, as the list changes under us.
+  useEffect(() => {
+    if (selected && !live.some((s) => s.id === selected)) setSelected(null);
+  }, [live, selected]);
 
   const run = useCallback(
     async (fn: () => Promise<unknown>) => {
@@ -214,34 +209,25 @@ function VaultBody() {
         await fn();
         await reload();
       } catch (e) {
-        setError(e instanceof Error ? e.message : String(e));
+        setError(describeError(e));
       }
     },
     [reload],
   );
 
-  const toggleReveal = (id: string) =>
-    setRevealed((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-
-  const copy = async (value: string) => {
+  const copy = async (value: string, what: string) => {
     try {
       await copySecret(value);
-      setError(null);
+      setToast(`${what} copied — clears in ${CLIPBOARD_CLEAR_MS / 1000}s`);
     } catch {
-      setError('Could not reach the clipboard — reveal the value and copy it.');
+      setToast('Could not reach the clipboard — reveal the value and copy it.');
     }
   };
-
-  const showHistory = async (s: Secret) => {
-    if (!session) return;
-    if (history?.id === s.id) return setHistory(null);
-    setHistory({ id: s.id, rows: await session.history(s.id) });
-  };
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 2_500);
+    return () => clearTimeout(t);
+  }, [toast]);
 
   const restore = (s: Secret, r: Revision) =>
     run(async () => {
@@ -257,7 +243,6 @@ function VaultBody() {
         after.tags = JSON.parse(r.previous || '[]') as string[];
       else after.fields[r.field] = r.previous;
       await session.update(s, after);
-      setHistory(null);
     });
 
   const inviteMember = async () => {
@@ -285,7 +270,7 @@ function VaultBody() {
           : `This link lands them in “${found.vaultName}”, but the access it grants is the whole of ${found.teamName} — every open vault in the team, including ones added later. It expires in 24 hours.`,
       });
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(describeError(e));
     } finally {
       setMinting(false);
     }
@@ -294,220 +279,43 @@ function VaultBody() {
   const role = session?.info?.my_role;
   const me = session?.info?.my_account;
   const canWrite = !!session?.canWrite;
-  const personal = found?.personal;
+  const personal = found?.personal === true;
+  const readable = !!session && (state === 'ready' || state === 'waiting');
+  const newKind: Kind = view.type === 'kind' ? (view.kind as Kind) : 'login';
 
-  const tabs: [Tab, string][] = [
-    ['secrets', `Secrets (${live.length})`],
-    ['trash', `Trash (${trashed.length})`],
-    ['health', 'Health'],
-    ...(personal ? [] : ([['people', 'People & devices']] as [Tab, string][])),
-    ['activity', 'Activity'],
-    ['transfer', 'Import & export'],
-  ];
+  const heading =
+    view.type === 'kind'
+      ? (CATEGORIES.find((c) => c.id === view.kind)?.label ?? 'Items')
+      : view.type === 'tag'
+        ? `Tagged “${view.tag}”`
+        : 'All items';
 
-  const renderSecret = (secret: Secret) => {
-    const open = openId === secret.id;
-    return (
-      <div key={secret.id} className={styles.secret} data-testid="secret-row">
-        <button
-          type="button"
-          className={styles.secretHead}
-          onClick={() => {
-            setOpenId(open ? null : secret.id);
-            setHistory(null);
-          }}
-          aria-expanded={open}
-        >
-          <span className={styles.secretKind} aria-hidden="true">
-            <KindIcon kind={secret.kind} />
-          </span>
-          <span>
-            <span className={styles.secretName}>{secret.name}</span>
-            <span className={styles.secretMeta}>
-              {secret.kind.replace('_', ' ')} ·{' '}
-              {asDate(secret.updatedAt).toLocaleDateString()} · by{' '}
-              {short(secret.updatedBy, me)}
-              {secret.unreadable ? ' · not readable on this device' : ''}
-            </span>
-          </span>
-          <span className={styles.tags}>
-            {secret.tags.map((t) => (
-              <span key={t} className={shell.badge}>
-                {t}
-              </span>
-            ))}
-            <span className={styles.chevron}>{open ? '−' : '+'}</span>
-          </span>
-        </button>
+  const subtitle = personal
+    ? 'Private · only your own devices can open it'
+    : role
+      ? `End-to-end encrypted · ${ROLE_TEXT[role] ?? role}`
+      : 'End-to-end encrypted';
 
-        {open && (
-          <div className={styles.secretBody}>
-            {Object.entries(secret.fields).map(([key, text]) => {
-              const id = `${secret.id}:${key}`;
-              const hide = isSensitive(secret.kind, key);
-              const show = !hide || revealed.has(id);
-              return (
-                <div key={key} className={styles.field}>
-                  <span className={styles.fieldName}>
-                    {key.replace(/_/g, ' ')}
-                  </span>
-                  {isTotpField(secret.kind, key) ? (
-                    <TotpCode seed={text} />
-                  ) : (
-                    <span
-                      className={`${styles.fieldValue} ${show ? '' : styles.fieldMasked}`}
-                      data-testid={show ? 'field-shown' : 'field-hidden'}
-                    >
-                      {show ? text || '—' : '••••••••••••'}
-                    </span>
-                  )}
-                  <span className={styles.fieldActions}>
-                    {hide && !isTotpField(secret.kind, key) && (
-                      <button
-                        type="button"
-                        className={styles.mini}
-                        onClick={() => toggleReveal(id)}
-                        data-testid="reveal"
-                      >
-                        {show ? 'Hide' : 'Reveal'}
-                      </button>
-                    )}
-                    {!isTotpField(secret.kind, key) && (
-                      <button
-                        type="button"
-                        className={styles.mini}
-                        onClick={() => void copy(text)}
-                      >
-                        Copy
-                      </button>
-                    )}
-                    {key === 'url' && /^https?:\/\//i.test(text) && (
-                      <a
-                        className={styles.mini}
-                        href={text}
-                        target="_blank"
-                        rel="noreferrer noopener"
-                      >
-                        Open
-                      </a>
-                    )}
-                  </span>
-                </div>
-              );
-            })}
-
-            {history?.id === secret.id && (
-              <div className={styles.history} data-testid="secret-history">
-                {history.rows.length === 0 ? (
-                  <span className={styles.secretFooterNote}>
-                    No earlier values.
-                  </span>
-                ) : (
-                  history.rows.map((r, i) => (
-                    <div key={i} className={styles.historyRow}>
-                      <span className={styles.historyMeta}>
-                        {asDate(r.replacedAt).toLocaleString()} ·{' '}
-                        {short(r.replacedBy, me)}
-                      </span>
-                      <span>{r.field.replace(/_/g, ' ')}</span>
-                      <span className={styles.fieldValue}>
-                        {r.unreadable
-                          ? 'sealed under a key this device never had'
-                          : isSensitive(secret.kind, r.field)
-                            ? '••••••••'
-                            : r.previous}
-                      </span>
-                      {!r.unreadable && canWrite && (
-                        <button
-                          type="button"
-                          className={styles.mini}
-                          onClick={() => void restore(secret, r)}
-                        >
-                          Restore
-                        </button>
-                      )}
-                    </div>
-                  ))
-                )}
-              </div>
-            )}
-
-            <div className={styles.secretFooter}>
-              <span className={styles.secretFooterNote}>
-                Added {asDate(secret.createdAt).toLocaleString()} by{' '}
-                {short(secret.createdBy, me)}
-              </span>
-              <button
-                type="button"
-                className={styles.mini}
-                onClick={() => void showHistory(secret)}
-              >
-                History
-              </button>
-              {!secret.unreadable && (
-                <button
-                  type="button"
-                  className={styles.mini}
-                  onClick={() => setSharing(secret)}
-                  data-testid="secret-share"
-                >
-                  Share
-                </button>
-              )}
-              {canWrite && !secret.unreadable && (
-                <button
-                  type="button"
-                  className={styles.mini}
-                  onClick={() => setEditing(secret)}
-                  data-testid="secret-edit"
-                >
-                  Edit
-                </button>
-              )}
-              {canWrite && (
-                <button
-                  type="button"
-                  className={styles.mini}
-                  onClick={() =>
-                    void run(() => client!.trashSecret({ id: secret.id }))
-                  }
-                  data-testid="secret-trash"
-                >
-                  Move to trash
-                </button>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  };
+  const shownError = error ?? sessionError;
 
   return (
-    <>
-      <div className={shell.titleRow}>
-        <div>
-          <p className={shell.eyebrow}>
-            {personal === true ? 'Private vault' : 'Vault'}
-          </p>
-          <h1 className={shell.title} data-testid="vault-heading">
+    <main className={styles.main}>
+      <div className={styles.bar}>
+        <div className={styles.barTitle}>
+          <h1 className={styles.barName} data-testid="vault-heading">
             {vaultName}
           </h1>
-          <p className={shell.subtitle} data-testid="vault-scope">
-            {personal === true
-              ? 'Private. Only your own devices can open this vault.'
-              : personal === false
-                ? `End-to-end encrypted · you are ${role === 'admin' ? 'an Admin' : role === 'editor' ? 'an Editor' : role === 'viewer' ? 'a Viewer' : 'not yet admitted'}`
-                : ' '}
+          <p className={styles.barSub} data-testid="vault-scope">
+            {subtitle}
           </p>
         </div>
-        <div className={shell.titleRowActions}>
-          {personal === false && (
+        <div className={styles.barActions}>
+          {found && !personal && (
             <button
               type="button"
               className={shell.btnGhost}
               onClick={() => void inviteMember()}
-              disabled={minting || !found}
+              disabled={minting}
               data-testid="vault-invite"
             >
               {minting ? 'Minting…' : 'Invite'}
@@ -516,252 +324,276 @@ function VaultBody() {
           <button
             type="button"
             className={shell.btn}
-            onClick={() => setAdding(true)}
+            onClick={() => setAdding(newKind)}
             disabled={!canWrite}
             data-testid="secret-add"
           >
-            New secret
+            <PlusIcon size={14} /> New item
           </button>
         </div>
       </div>
 
-      {(error || sessionError) && (
-        <p className={shell.error} data-testid="error">
-          {error ?? sessionError}
-        </p>
+      {shownError && (
+        <div
+          className={`${styles.strip} ${styles.stripError}`}
+          data-testid="error"
+        >
+          <span className={styles.stripText}>{shownError}</span>
+          {state === 'failed' && (
+            <button type="button" className={shell.btnGhost} onClick={retry}>
+              Try again
+            </button>
+          )}
+        </div>
       )}
-
+      {state === 'loading' && (
+        <div className={styles.strip} data-testid="opening">
+          <span className={styles.stripText}>
+            {notice ? (
+              <>
+                <strong>{notice}</strong> Trying again on its own.
+              </>
+            ) : (
+              'Opening the vault…'
+            )}
+          </span>
+        </div>
+      )}
       {state === 'no-identity' && (
-        <p className={shell.empty} data-testid="no-identity">
-          This node does not hold an identity in this vault yet. Open it from
-          its team to join.
-        </p>
-      )}
-      {state === 'loading' && <p className={shell.empty}>Opening the vault…</p>}
-      {state === 'waiting' && awaitingApproval && (
-        <div className={styles.banner} data-testid="waiting-for-approval">
-          This browser needs approval. Open this vault on another device of
-          yours that already reads it, or ask a vault Admin, and approve the
-          request showing code{' '}
-          <strong className={shell.mono} data-testid="my-approval-code">
-            {deviceKeeper.fingerprint
-              ? confirmationCode(deviceKeeper.fingerprint)
-              : ''}
-          </strong>
-          . No other device left? Restore with your recovery key on the{' '}
-          <Link to="/security">Security page</Link>.
+        <div
+          className={`${styles.strip} ${styles.stripWarn}`}
+          data-testid="no-identity"
+        >
+          <span className={styles.stripText}>
+            This node does not hold an identity in this vault yet. Open it from
+            its <Link to="/teams">team</Link> to join.
+          </span>
         </div>
       )}
-      {state === 'waiting' && !awaitingApproval && (
-        <div className={styles.banner} data-testid="waiting-for-key">
-          This device is registered but has not been given the vault key yet. It
-          arrives as soon as a member who holds it opens the vault — nothing to
-          do here, this page checks every few seconds.
+      {state === 'waiting' && role === 'pending' && (
+        <div
+          className={`${styles.strip} ${styles.stripWarn}`}
+          data-testid="waiting-for-admission"
+        >
+          <span className={styles.stripText}>
+            <strong>You are in, but not admitted yet.</strong> A vault Admin
+            lets you in the next time they open this vault. This page updates by
+            itself.
+          </span>
         </div>
       )}
-      {session && state === 'ready' && (
-        <DeviceApprovals
-          session={session}
-          requests={approvals}
-          me={session.info?.my_account}
-          onChanged={() => void reload()}
-        />
+      {state === 'waiting' && role !== 'pending' && awaitingApproval && (
+        <div
+          className={`${styles.strip} ${styles.stripWarn}`}
+          data-testid="waiting-for-approval"
+        >
+          <span className={styles.stripText}>
+            <strong>Approve this browser.</strong> On another device of yours
+            that opens this vault, or from a vault Admin, approve the request
+            showing{' '}
+            <span className={styles.code} data-testid="my-approval-code">
+              {deviceKeeper.fingerprint
+                ? confirmationCode(deviceKeeper.fingerprint)
+                : ''}
+            </span>
+            . Lost every other device? Use your{' '}
+            <Link to="/security">recovery key</Link>.
+          </span>
+        </div>
       )}
-      {holders && holders.browsers <= 1 && holders.recovery === 0 && (
-        <div className={styles.banner} data-testid="single-holder">
-          <strong>Only this browser holds this vault's key.</strong> If you lose
-          it, nobody can open the vault again. Create a recovery key on the{' '}
-          <Link to="/security">Security page</Link>, open the vault from a
-          second device, or download an encrypted backup.
+      {state === 'waiting' && role !== 'pending' && !awaitingApproval && (
+        <div
+          className={`${styles.strip} ${styles.stripWarn}`}
+          data-testid="waiting-for-key"
+        >
+          <span className={styles.stripText}>
+            <strong>Waiting for the vault key.</strong> It arrives as soon as a
+            member who holds it opens the vault. Nothing to do here.
+          </span>
         </div>
       )}
       {state === 'uninitialised' && (
-        <div className={styles.banner}>
-          This vault has no key yet. It is created the first time its Admin
-          opens it.
+        <div className={`${styles.strip} ${styles.stripWarn}`}>
+          <span className={styles.stripText}>
+            This vault has no key yet. It is created the first time its Admin
+            opens it.
+          </span>
         </div>
       )}
-      {session && state === 'ready' && role === 'viewer' && (
-        <div className={styles.banner}>
-          You can read this vault but not change it.
+      {holders && holders.browsers <= 1 && holders.recovery === 0 && (
+        <div
+          className={`${styles.strip} ${styles.stripWarn}`}
+          data-testid="single-holder"
+        >
+          <span className={styles.stripText}>
+            <strong>Only this browser can open this vault.</strong> Lose it and
+            the items are gone.{' '}
+            <Link to="/security">Create a recovery key</Link> or open the vault
+            on a second device.
+          </span>
         </div>
       )}
-
-      {session && (state === 'ready' || state === 'waiting') && (
-        <>
-          <div className={shell.tabs} role="tablist">
-            {tabs.map(([id, label]) => (
-              <button
-                key={id}
-                type="button"
-                role="tab"
-                aria-selected={tab === id}
-                className={`${shell.tab} ${tab === id ? shell.tabActive : ''}`}
-                onClick={() => setTab(id)}
-                data-testid={`tab-${id}`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-
-          {tab === 'secrets' && (
-            <>
-              <div className={styles.filters}>
-                <input
-                  className={shell.input}
-                  placeholder="Search names, tags, usernames, sites…"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  data-testid="secret-search"
-                />
-                <select
-                  className={styles.select}
-                  value={tag}
-                  onChange={(e) => setTag(e.target.value)}
-                  aria-label="Filter by tag"
-                >
-                  <option value="all">All tags</option>
-                  {tags.map((t) => (
-                    <option key={t} value={t}>
-                      {t}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              {shown.length === 0 ? (
-                <p className={shell.empty} data-testid="secrets-empty">
-                  {live.length === 0
-                    ? 'No secrets yet. Everything you add is encrypted in this browser first.'
-                    : 'Nothing matches that search.'}
-                </p>
-              ) : (
-                <div data-testid="secret-list">{shown.map(renderSecret)}</div>
-              )}
-            </>
-          )}
-
-          {tab === 'trash' &&
-            (trashed.length === 0 ? (
-              <p className={shell.empty}>The trash is empty.</p>
-            ) : (
-              <div data-testid="trash-list">
-                <p className={shell.sectionHint}>
-                  Trashed secrets stay recoverable until an Admin deletes them
-                  permanently.
-                </p>
-                {trashed.map((s) => (
-                  <div key={s.id} className={shell.row}>
-                    <div className={shell.rowMain}>
-                      <div className={shell.rowName}>
-                        <KindIcon kind={s.kind} size={14} /> {s.name}
-                      </div>
-                      <div className={shell.rowSub}>
-                        Trashed {asDate(s.trashedAt).toLocaleString()}
-                      </div>
-                    </div>
-                    <div className={shell.rowActions}>
-                      {canWrite && (
-                        <button
-                          type="button"
-                          className={shell.btnGhost}
-                          onClick={() =>
-                            void run(() => client!.restoreSecret({ id: s.id }))
-                          }
-                        >
-                          Restore
-                        </button>
-                      )}
-                      {role === 'admin' && (
-                        <button
-                          type="button"
-                          className={shell.btnDanger}
-                          onClick={() =>
-                            void run(() => client!.purgeSecret({ id: s.id }))
-                          }
-                          data-testid="secret-purge"
-                        >
-                          Delete forever
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ))}
-
-          {tab === 'health' && (
-            <HealthPanel
-              secrets={live}
-              onOpen={(id) => {
-                setTab('secrets');
-                setOpenId(id);
-              }}
-            />
-          )}
-
-          {tab === 'people' && client && (
-            <VaultPeople
-              client={client}
+      {session && state === 'ready' && approvals.length > 0 && (
+        <div className={styles.strip}>
+          <div className={styles.stripText}>
+            <DeviceApprovals
               session={session}
-              team={team}
+              requests={approvals}
+              me={session.info?.my_account}
               onChanged={() => void reload()}
             />
-          )}
+          </div>
+        </div>
+      )}
 
-          {tab === 'activity' &&
-            (events.length === 0 ? (
-              <p className={shell.empty} data-testid="activity-empty">
-                Nothing has happened in this vault yet.
-              </p>
-            ) : (
-              <div data-testid="activity-list">
-                {events.map((e, i) => (
-                  <div key={i} className={styles.event}>
-                    <span className={styles.eventDot} aria-hidden="true" />
-                    <div>
-                      <div className={styles.eventAction}>
-                        {e.redacted
-                          ? 'entry redacted by its author'
-                          : e.action.replace(/[_:]/g, ' ')}
-                      </div>
-                      <div className={styles.eventDetail}>
-                        {secrets.find((s) => s.id === e.target)?.name ??
-                          e.target.slice(0, 24)}
-                      </div>
-                      <div className={styles.eventMeta}>
-                        {asDate(e.timestamp).toLocaleString()} ·{' '}
-                        {short(e.account, me)} · device {e.device.slice(0, 8)}
-                      </div>
-                    </div>
+      {readable && (
+        <div className={styles.panes} data-picked={current ? 'true' : 'false'}>
+          <VaultSidebar
+            view={view}
+            onView={(v) => {
+              setView(v);
+              setSelected(null);
+            }}
+            counts={counts}
+            tags={tags}
+            trashed={trashed.length}
+            flagged={flagged}
+            personal={personal}
+          />
+
+          {tool ? (
+            <section className={styles.wide}>
+              {tool === 'health' && (
+                <HealthPanel
+                  secrets={live}
+                  onOpen={(id) => {
+                    setView({ type: 'all' });
+                    setSelected(id);
+                  }}
+                />
+              )}
+              {tool === 'trash' && (
+                <TrashList
+                  items={trashed}
+                  canWrite={canWrite}
+                  canPurge={role === 'admin'}
+                  onRestore={(s) =>
+                    void run(() => client!.restoreSecret({ id: s.id }))
+                  }
+                  onPurge={(s) =>
+                    void run(() => client!.purgeSecret({ id: s.id }))
+                  }
+                />
+              )}
+              {tool === 'people' && client && (
+                <VaultPeople
+                  client={client}
+                  session={session}
+                  team={team}
+                  onChanged={() => void reload()}
+                />
+              )}
+              {tool === 'activity' && (
+                <ActivityList events={events} secrets={secrets} me={me} />
+              )}
+              {tool === 'transfer' && (
+                <ImportExport
+                  session={session}
+                  secrets={secrets}
+                  vaultName={vaultName}
+                  onDone={() => void reload()}
+                />
+              )}
+            </section>
+          ) : (
+            <>
+              <section className={styles.list} aria-label="Items">
+                <SearchBox
+                  ref={searchRef}
+                  value={query}
+                  onChange={setQuery}
+                  placeholder={`Search ${vaultName || 'this vault'}`}
+                />
+                <ItemList
+                  heading={heading}
+                  items={shown}
+                  selected={current?.id ?? null}
+                  onSelect={setSelected}
+                  onCopy={(v, what) => void copy(v, what)}
+                  empty={
+                    query ? (
+                      'Nothing matches that search.'
+                    ) : state === 'waiting' ? (
+                      'Items appear here once this device has the vault key.'
+                    ) : live.length === 0 ? (
+                      <>
+                        This vault is empty.
+                        <br />
+                        {canWrite && (
+                          <button
+                            type="button"
+                            className={shell.btn}
+                            style={{ marginTop: '1rem' }}
+                            onClick={() => setAdding('login')}
+                          >
+                            Add your first item
+                          </button>
+                        )}
+                      </>
+                    ) : (
+                      'Nothing here yet.'
+                    )
+                  }
+                />
+              </section>
+              <section className={styles.detailPane} aria-label="Item">
+                {current ? (
+                  <ItemDetail
+                    secret={current}
+                    me={me}
+                    canWrite={canWrite}
+                    onBack={() => setSelected(null)}
+                    onCopy={(v, what) => void copy(v, what)}
+                    onEdit={() => setEditing(current)}
+                    onShare={() => setSharing(current)}
+                    onTrash={() =>
+                      void run(async () => {
+                        await client!.trashSecret({ id: current.id });
+                        setSelected(null);
+                      })
+                    }
+                    loadHistory={() => session!.history(current.id)}
+                    onRestore={(r) => void restore(current, r)}
+                  />
+                ) : (
+                  <div className={styles.detailEmpty}>
+                    {shown.length > 0
+                      ? 'Pick an item to see it here.'
+                      : state === 'ready'
+                        ? 'Everything you add is encrypted in this browser before it leaves.'
+                        : ''}
                   </div>
-                ))}
-              </div>
-            ))}
-
-          {tab === 'transfer' && (
-            <ImportExport
-              session={session}
-              secrets={secrets}
-              vaultName={vaultName}
-              onDone={() => void reload()}
-            />
+                )}
+              </section>
+            </>
           )}
-        </>
+        </div>
       )}
 
       {session && (adding || editing) && (
         <SecretForm
           session={session}
           secret={editing ?? undefined}
+          initialKind={adding ?? undefined}
           open
           onClose={() => {
-            setAdding(false);
+            setAdding(null);
             setEditing(null);
           }}
-          onSuccess={() => {
-            setAdding(false);
+          onSuccess={(id) => {
+            setAdding(null);
             setEditing(null);
+            if (id) setSelected(id);
             void reload();
           }}
         />
@@ -776,6 +608,112 @@ function VaultBody() {
         hint={invite?.hint}
         onClose={() => setInvite(null)}
       />
-    </>
+
+      {toast && (
+        <div className={styles.toast} role="status" data-testid="toast">
+          {toast}
+        </div>
+      )}
+    </main>
+  );
+}
+
+function TrashList({
+  items,
+  canWrite,
+  canPurge,
+  onRestore,
+  onPurge,
+}: {
+  items: Secret[];
+  canWrite: boolean;
+  canPurge: boolean;
+  onRestore: (s: Secret) => void;
+  onPurge: (s: Secret) => void;
+}) {
+  if (items.length === 0)
+    return <p className={shell.empty}>The trash is empty.</p>;
+  return (
+    <div data-testid="trash-list">
+      <h2 className={shell.sectionLabel}>Trash</h2>
+      <p className={shell.sectionHint}>
+        Items stay recoverable here until an Admin deletes them for good.
+      </p>
+      {items.map((s) => (
+        <div key={s.id} className={shell.row}>
+          <div className={shell.rowMain}>
+            <div className={shell.rowName}>
+              <KindIcon kind={s.kind} size={14} /> {s.name}
+            </div>
+            <div className={shell.rowSub}>
+              Trashed {asDate(s.trashedAt).toLocaleString()}
+            </div>
+          </div>
+          <div className={shell.rowActions}>
+            {canWrite && (
+              <button
+                type="button"
+                className={shell.btnGhost}
+                onClick={() => onRestore(s)}
+              >
+                Restore
+              </button>
+            )}
+            {canPurge && (
+              <button
+                type="button"
+                className={shell.btnDanger}
+                onClick={() => onPurge(s)}
+                data-testid="secret-purge"
+              >
+                Delete forever
+              </button>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ActivityList({
+  events,
+  secrets,
+  me,
+}: {
+  events: AuditView[];
+  secrets: Secret[];
+  me?: string;
+}) {
+  if (events.length === 0)
+    return (
+      <p className={shell.empty} data-testid="activity-empty">
+        Nothing has happened in this vault yet.
+      </p>
+    );
+  return (
+    <div data-testid="activity-list">
+      <h2 className={shell.sectionLabel}>Activity</h2>
+      {events.map((e, i) => (
+        <div key={i} className={vault.event}>
+          <span className={vault.eventDot} aria-hidden="true" />
+          <div>
+            <div className={vault.eventAction}>
+              {e.redacted
+                ? 'entry redacted by its author'
+                : e.action.replace(/[_:]/g, ' ')}
+            </div>
+            <div className={vault.eventDetail}>
+              {secrets.find((s) => s.id === e.target)?.name ??
+                e.target.slice(0, 24)}
+            </div>
+            <div className={vault.eventMeta}>
+              {asDate(e.timestamp).toLocaleString()} · {who(e.account, me)} ·
+              device {e.device.slice(0, 8)}
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }

@@ -6,6 +6,7 @@ import {
   confirmationCode,
 } from '../lib/vaultSession';
 import shell from '../styles/shell.module.css';
+import { describeError } from '../lib/errors';
 
 /**
  * Requests from new devices for this vault's key, for a device that may
@@ -36,7 +37,7 @@ export default function DeviceApprovals({
       await fn();
       onChanged();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(describeError(e));
     } finally {
       setBusy(null);
     }

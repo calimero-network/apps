@@ -10,6 +10,7 @@ import type {
 } from '../lib/vaultSession';
 import { vaultAudience } from '../lib/vaults';
 import shell from '../styles/shell.module.css';
+import { describeError } from '../lib/errors';
 
 const ROLE_HELP: Record<string, string> = {
   admin: 'can change roles, rotate the key and permanently delete',
@@ -60,7 +61,7 @@ export default function VaultPeople({
       setDevices(d);
       setError(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(describeError(e));
     }
   }, [client]);
 
@@ -77,7 +78,7 @@ export default function VaultPeople({
       onChanged();
       setStatus(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(describeError(e));
       setStatus(null);
     }
   };

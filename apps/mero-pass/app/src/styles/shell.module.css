@@ -747,6 +747,35 @@ select.input {
   }
 }
 
+/* Header buttons: words on a wide screen, icons on a phone, where three
+   labels and the lockup do not fit in 390px. */
+.headerIcon {
+  display: none;
+}
+
+@media (max-width: 560px) {
+  .crumb {
+    display: none;
+  }
+  .headerRight {
+    gap: 0.125rem;
+  }
+  .headerLabel {
+    display: none;
+  }
+  .headerIcon {
+    display: block;
+  }
+  .logoutBtn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+  }
+}
+
 @media (pointer: coarse) {
   .btn,
   .btnGhost,

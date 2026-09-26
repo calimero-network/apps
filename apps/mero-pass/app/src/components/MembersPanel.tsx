@@ -17,6 +17,7 @@ import {
 } from '../lib/vaults';
 import type { TeamMember } from '../lib/vaults';
 import styles from '../styles/shell.module.css';
+import { describeError } from '../lib/errors';
 
 /**
  * Who is in a team, what they may do, and the controls to change it.
@@ -67,7 +68,7 @@ export default function MembersPanel({
       setMembers(await listTeamMembers(mero.admin, namespaceId, myAccountId));
       setError(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(describeError(e));
     } finally {
       setLoading(false);
     }
@@ -97,7 +98,7 @@ export default function MembersPanel({
         await load();
         onRolesChanged();
       } catch (e) {
-        setError(e instanceof Error ? e.message : String(e));
+        setError(describeError(e));
       } finally {
         setBusy(null);
       }
@@ -122,7 +123,7 @@ export default function MembersPanel({
         );
         await load();
       } catch (e) {
-        setError(e instanceof Error ? e.message : String(e));
+        setError(describeError(e));
       } finally {
         setBusy(null);
       }
