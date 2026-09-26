@@ -58,9 +58,7 @@ export function FolderTree({
   );
   const byId = useMemo(() => new Map(folders.map((f) => [f.id, f])), [folders]);
 
-  // The raw error is implementation detail (which internal fetch failed,
-  // in whatever words the server used); keep it in the console and show
-  // plain copy on screen.
+  // The raw error is implementation detail; keep it in the console and show plain copy.
   useEffect(() => {
     if (error) console.error('Failed to load folders', error);
   }, [error]);
@@ -96,10 +94,11 @@ export function FolderTree({
         <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           Folders
         </span>
-        {/* Top-level new-folder CTA. Self-gates: NewFolderButton
-            returns null when the caller lacks canCreateFolder on
-            the namespace root. */}
-        <NewFolderButton parentFolderId={null} label="New" />
+        {/* Self-gates on canCreateFolder. Hidden while empty because
+            NoFoldersState carries the create action then. */}
+        {tree.roots.length > 0 && (
+          <NewFolderButton parentFolderId={null} label="New" />
+        )}
       </div>
 
       {tree.roots.length === 0 ? (

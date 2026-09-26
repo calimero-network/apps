@@ -18,6 +18,8 @@ test.describe('Empty states (single-node)', () => {
     await expect(
       page.getByRole('main').getByRole('heading', { name: 'No folders yet' }),
     ).toBeVisible();
+    const headerNew = sidebar.getByRole('button', { name: 'New', exact: true });
+    await expect(headerNew).toHaveCount(0);
 
     await sidebar.getByRole('button', { name: 'New folder' }).click();
     const dialog = page.getByRole('dialog');
@@ -26,6 +28,7 @@ test.describe('Empty states (single-node)', () => {
     await expect(dialog).toBeHidden({ timeout: 15_000 });
     await alice.tree.expectFolderVisible('Notes');
     await expect(sidebar.getByText('No folders yet.')).toBeHidden();
+    await expect(headerNew).toBeVisible();
     await expect(
       page.getByRole('main').getByRole('heading', { name: 'Select a folder' }),
     ).toBeVisible();

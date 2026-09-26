@@ -28,6 +28,7 @@ describe('FolderTree with no folders', () => {
   it('offers a New folder button that opens the New folder dialog', () => {
     render(<FolderTree selectedDocId={null} onSelectFolder={vi.fn()} onOpenDoc={vi.fn()} />);
     expect(screen.getByText('No folders yet.')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'New' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'New folder' }));
     expect(screen.getByRole('dialog')).toBeTruthy();
   });

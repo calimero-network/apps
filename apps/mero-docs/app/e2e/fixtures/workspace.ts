@@ -180,13 +180,11 @@ export class WorkspaceDriver {
         .getByRole('menuitem', { name: /New subfolder/i })
         .click();
     } else {
-      // Scope the "New" button to the FolderTree's <aside>. There
-      // are multiple "New" buttons in the workspace shell (folder
-      // tree, doc list); the role+name locator would otherwise
-      // match the first DOM occurrence non-deterministically.
+      // Scoped to the FolderTree's <aside>: its header "New", or
+      // "New folder" while the workspace has no folders yet.
       await this.page
         .locator('aside')
-        .getByRole('button', { name: /^New$/ })
+        .getByRole('button', { name: /^New( folder)?$/ })
         .click();
     }
     const dialog = this.page.getByRole('dialog');
