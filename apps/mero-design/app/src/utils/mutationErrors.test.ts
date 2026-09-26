@@ -9,6 +9,8 @@ describe("isVersionSkew", () => {
       "unknown field `corner_radius`",
       "invalid type: map, expected unit variant ElementData::Line",
       "failed to deserialize args",
+      // merod 0.11.0-rc.43, verbatim.
+      'method "add_elements" not found',
     ]) {
       expect(isVersionSkew(m), m).toBe(true);
     }

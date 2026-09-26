@@ -44,7 +44,6 @@
     "set_layer_index",
     "transfer_ownership",
     "update_cursor",
-    "update_element_label",
     "update_member_username",
     "update_shadow"
   ],

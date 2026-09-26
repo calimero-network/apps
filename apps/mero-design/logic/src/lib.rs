@@ -235,6 +235,68 @@ pub struct CursorState {
 // collections, so this also emits the required no-op `RekeyTarget`.
 calimero_storage::impl_atomic_lww_leaf!(CursorState, updated_at);
 
+// ── Batches ───────────────────────────────────────────────────────────────────
+//
+// A multi-selection used to be written one element per call: pasting 3000
+// shapes was 3000 concurrent `add_element` requests, and deleting a selection
+// was a queue of `delete_element` round-trips. Each batch method below does the
+// whole selection in ONE call and emits ONE event, so a peer re-reads a batch
+// with one `get_elements_by_ids` instead of one `get_element` per shape.
+//
+// Every call still runs inside one gas budget (1e9 points on core 0.11), so a
+// batch is capped, and an over-sized one is refused up front instead of being
+// charged for and then dropped as out-of-gas.
+//
+// Measured on merod 0.11.0-rc.43 with 300-element batches: `add_elements`,
+// `update_elements`, `update_element_labels` and `get_elements_by_ids` cost the
+// same on an empty board and on a 3000-element one, ~0.1s each.
+//
+// `delete_elements` is the exception. A storage remove costs in proportion to
+// how many elements the board holds, so what fits in one call is roughly
+// 22 000 / board-size ids — 150 on an empty board, 23 at 1000, 6 at 4000 (a
+// single `delete_element` at 4400 already spends a sixth of the budget). The
+// cap cannot express that; the client sizes delete chunks from the board it
+// has, and halves a chunk that still runs out.
+
+/// Largest batch any `*_elements` method accepts.
+pub const MAX_BATCH: usize = 200;
+
+/// One element's share of an `update_elements` call. Field names and meaning
+/// match `update_element`'s arguments: `None` leaves a field alone.
+#[derive(AbiType, Serialize, Deserialize, Clone, Debug, Default)]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct ElementPatch {
+    pub id: String,
+    #[serde(default)]
+    pub x: Option<i64>,
+    #[serde(default)]
+    pub y: Option<i64>,
+    #[serde(default)]
+    pub width: Option<u32>,
+    #[serde(default)]
+    pub height: Option<u32>,
+    #[serde(default)]
+    pub rotation: Option<i32>,
+    #[serde(default)]
+    pub fill: Option<String>,
+    #[serde(default)]
+    pub stroke: Option<String>,
+    #[serde(default)]
+    pub stroke_width: Option<u32>,
+    #[serde(default)]
+    pub opacity: Option<u8>,
+    #[serde(default)]
+    pub corner_radius: Option<u32>,
+}
+
+/// One element's share of an `update_element_labels` call.
+#[derive(AbiType, Serialize, Deserialize, Clone, Debug)]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct LabelUpdate {
+    pub id: String,
+    pub label: Option<String>,
+}
+
 // ── Events ────────────────────────────────────────────────────────────────────
 
 #[app::event]
@@ -252,6 +314,10 @@ pub enum Event {
     CursorMoved(String),
     RoleUpdated(String),
     OwnerTransferred(String),
+    // One event per batch call, carrying every id it touched.
+    ElementsAdded(Vec<String>),
+    ElementsUpdated(Vec<String>),
+    ElementsDeleted(Vec<String>),
 }
 
 // ── App state ─────────────────────────────────────────────────────────────────
@@ -660,6 +726,31 @@ impl MeroDesign {
 
     pub fn add_element(&mut self, element: Element) -> app::Result<String> {
         self.require_editor()?;
+        let id = self.insert_element(element);
+        app::emit!(Event::ElementAdded(id.clone()));
+        Ok(id)
+    }
+
+    /// `add_element` for a whole selection — a paste, an import, a batch of
+    /// rerouted connectors. An id that already exists is overwritten, exactly as
+    /// `add_element` does. At most `MAX_BATCH` elements.
+    pub fn add_elements(&mut self, elements: Vec<Element>) -> app::Result<Vec<String>> {
+        self.require_editor()?;
+        Self::require_batch(elements.len())?;
+        if elements.is_empty() {
+            return Ok(Vec::new());
+        }
+        let ids: Vec<String> = elements
+            .into_iter()
+            .map(|el| self.insert_element(el))
+            .collect();
+        app::emit!(Event::ElementsAdded(ids.clone()));
+        Ok(ids)
+    }
+
+    /// Stores one element and announces its blob, if it has one. No event and
+    /// no permission check: the public methods own both.
+    fn insert_element(&mut self, element: Element) -> String {
         let id = element.id.clone();
         // Announce image/svg blobs to context so they propagate to all members
         let blob_id_str = match &element.data {
@@ -674,8 +765,14 @@ impl MeroDesign {
             }
         }
         let _ = self.elements.insert(id.clone(), element);
-        app::emit!(Event::ElementAdded(id.clone()));
-        Ok(id)
+        id
+    }
+
+    fn require_batch(len: usize) -> app::Result<()> {
+        if len > MAX_BATCH {
+            app::bail!("a batch holds at most {} elements, got {}", MAX_BATCH, len);
+        }
+        Ok(())
     }
 
     // Clippy's 7-argument limit, allowed rather than refactored: this is a
@@ -700,43 +797,84 @@ impl MeroDesign {
         updated_at: u64,
     ) -> app::Result<()> {
         self.require_editor()?;
-        if let Ok(Some(mut el)) = self.elements.get_mut(&id) {
-            if let Some(v) = x {
-                el.x = v;
-            }
-            if let Some(v) = y {
-                el.y = v;
-            }
-            if let Some(v) = width {
-                el.width = v;
-            }
-            if let Some(v) = height {
-                el.height = v;
-            }
-            if let Some(v) = rotation {
-                el.rotation = v;
-            }
-            if let Some(v) = fill {
-                el.fill = v;
-            }
-            if let Some(v) = stroke {
-                el.stroke = v;
-            }
-            if let Some(v) = stroke_width {
-                el.stroke_width = v;
-            }
-            if let Some(v) = opacity {
-                el.opacity = v;
-            }
-            // None means "leave alone"; 0 means "square corners".
-            if let Some(v) = corner_radius {
-                el.corner_radius = Some(v);
-            }
-            el.updated_at = updated_at;
-            drop(el);
+        let patch = ElementPatch {
+            id,
+            x,
+            y,
+            width,
+            height,
+            rotation,
+            fill,
+            stroke,
+            stroke_width,
+            opacity,
+            corner_radius,
+        };
+        if let Some(id) = self.patch_element(patch, updated_at) {
             app::emit!(Event::ElementUpdated(id));
         }
         Ok(())
+    }
+
+    /// `update_element` for a whole selection — a multi-drag, a fill applied to
+    /// many shapes. Every patch shares one `updated_at`, as they are one edit.
+    /// Unknown ids are skipped. At most `MAX_BATCH` patches.
+    pub fn update_elements(
+        &mut self,
+        patches: Vec<ElementPatch>,
+        updated_at: u64,
+    ) -> app::Result<()> {
+        self.require_editor()?;
+        Self::require_batch(patches.len())?;
+        let ids: Vec<String> = patches
+            .into_iter()
+            .filter_map(|patch| self.patch_element(patch, updated_at))
+            .collect();
+        if !ids.is_empty() {
+            app::emit!(Event::ElementsUpdated(ids));
+        }
+        Ok(())
+    }
+
+    /// Applies one patch. Returns the id when the element exists.
+    fn patch_element(&mut self, patch: ElementPatch, updated_at: u64) -> Option<String> {
+        let Ok(Some(mut el)) = self.elements.get_mut(&patch.id) else {
+            return None;
+        };
+        if let Some(v) = patch.x {
+            el.x = v;
+        }
+        if let Some(v) = patch.y {
+            el.y = v;
+        }
+        if let Some(v) = patch.width {
+            el.width = v;
+        }
+        if let Some(v) = patch.height {
+            el.height = v;
+        }
+        if let Some(v) = patch.rotation {
+            el.rotation = v;
+        }
+        if let Some(v) = patch.fill {
+            el.fill = v;
+        }
+        if let Some(v) = patch.stroke {
+            el.stroke = v;
+        }
+        if let Some(v) = patch.stroke_width {
+            el.stroke_width = v;
+        }
+        if let Some(v) = patch.opacity {
+            el.opacity = v;
+        }
+        // None means "leave alone"; 0 means "square corners".
+        if let Some(v) = patch.corner_radius {
+            el.corner_radius = Some(v);
+        }
+        el.updated_at = updated_at;
+        drop(el);
+        Some(patch.id)
     }
 
     pub fn update_element_label(
@@ -746,13 +884,39 @@ impl MeroDesign {
         updated_at: u64,
     ) -> app::Result<()> {
         self.require_editor()?;
-        if let Ok(Some(mut el)) = self.elements.get_mut(&id) {
-            el.label = label;
-            el.updated_at = updated_at;
-            drop(el);
+        if self.set_label(&id, label, updated_at) {
             app::emit!(Event::ElementUpdated(id));
         }
         Ok(())
+    }
+
+    /// `update_element_label` for a whole selection — grouping, ungrouping,
+    /// renaming a group. Unknown ids are skipped. At most `MAX_BATCH` labels.
+    pub fn update_element_labels(
+        &mut self,
+        labels: Vec<LabelUpdate>,
+        updated_at: u64,
+    ) -> app::Result<()> {
+        self.require_editor()?;
+        Self::require_batch(labels.len())?;
+        let ids: Vec<String> = labels
+            .into_iter()
+            .filter(|u| self.set_label(&u.id, u.label.clone(), updated_at))
+            .map(|u| u.id)
+            .collect();
+        if !ids.is_empty() {
+            app::emit!(Event::ElementsUpdated(ids));
+        }
+        Ok(())
+    }
+
+    fn set_label(&mut self, id: &str, label: Option<String>, updated_at: u64) -> bool {
+        let Ok(Some(mut el)) = self.elements.get_mut(id) else {
+            return false;
+        };
+        el.label = label;
+        el.updated_at = updated_at;
+        true
     }
 
     // Clippy's 7-argument limit, allowed rather than refactored: this is a
@@ -870,6 +1034,21 @@ impl MeroDesign {
         Ok(())
     }
 
+    /// `delete_element` for a whole selection. Ids that are already gone are
+    /// fine — a peer may have deleted them first. At most `MAX_BATCH` ids.
+    pub fn delete_elements(&mut self, ids: Vec<String>) -> app::Result<()> {
+        self.require_editor()?;
+        Self::require_batch(ids.len())?;
+        if ids.is_empty() {
+            return Ok(());
+        }
+        for id in &ids {
+            let _ = self.elements.remove(id);
+        }
+        app::emit!(Event::ElementsDeleted(ids));
+        Ok(())
+    }
+
     pub fn get_elements(&self) -> Vec<Element> {
         let mut els: Vec<Element> = self.elements.entries().unwrap().map(|(_, v)| v).collect();
         els.sort_by_key(|e| e.layer_index);
@@ -878,6 +1057,14 @@ impl MeroDesign {
 
     pub fn get_element(&self, id: String) -> Option<Element> {
         self.elements.get(&id).ok().flatten().map(|v| v.clone())
+    }
+
+    /// The elements a batch event named, in one read instead of one
+    /// `get_element` each. Ids that no longer exist are left out.
+    pub fn get_elements_by_ids(&self, ids: Vec<String>) -> Vec<Element> {
+        ids.iter()
+            .filter_map(|id| self.elements.get(id).ok().flatten().map(|v| v.clone()))
+            .collect()
     }
 
     // ── Layer order ───────────────────────────────────────────────────────────
@@ -1505,5 +1692,329 @@ mod tests {
             ElementData::Line { points } => assert!(points.is_empty()),
             other => panic!("expected a line, got {other:?}"),
         }
+    }
+
+    // ── Batches ─────────────────────────────────────────────────────────────
+
+    fn ids(n: usize) -> Vec<String> {
+        (0..n).map(|i| format!("e{i}")).collect()
+    }
+
+    fn many(n: usize) -> Vec<Element> {
+        ids(n).iter().map(|id| sample_element(id)).collect()
+    }
+
+    #[test]
+    fn add_elements_stores_the_whole_batch_in_one_call() {
+        let mut app = new_board();
+        let _ = app.take_events();
+        let added = app.call(|s| s.add_elements(many(3))).unwrap();
+        assert_eq!(added, ids(3));
+        assert_eq!(app.view(|s| s.get_elements()).len(), 3);
+    }
+
+    /// The client parses these payloads (CanvasPage's SSE handler): one event
+    /// per call, its data a JSON array of every id.
+    #[test]
+    fn each_batch_emits_one_event_carrying_every_id() {
+        let mut app = new_board();
+        let _ = app.take_events();
+        let expect = |app: &TestHost<MeroDesign>, kind: &str, ids: &[&str]| {
+            let events = app.take_events();
+            assert_eq!(
+                events.len(),
+                1,
+                "{kind}: {:?}",
+                events.iter().map(|e| &e.kind).collect::<Vec<_>>()
+            );
+            assert_eq!(events[0].kind, kind);
+            let got: Vec<String> = calimero_sdk::serde_json::from_slice(&events[0].data).unwrap();
+            assert_eq!(got, ids.iter().map(|s| s.to_string()).collect::<Vec<_>>());
+        };
+        app.call(|s| s.add_elements(many(3))).unwrap();
+        expect(&app, "ElementsAdded", &["e0", "e1", "e2"]);
+        app.call(|s| {
+            s.update_elements(
+                vec![
+                    ElementPatch {
+                        id: "e0".to_owned(),
+                        x: Some(1),
+                        ..Default::default()
+                    },
+                    ElementPatch {
+                        id: "gone".to_owned(),
+                        x: Some(1),
+                        ..Default::default()
+                    },
+                ],
+                2,
+            )
+        })
+        .unwrap();
+        expect(&app, "ElementsUpdated", &["e0"]);
+        app.call(|s| {
+            s.update_element_labels(
+                vec![LabelUpdate {
+                    id: "e1".to_owned(),
+                    label: None,
+                }],
+                3,
+            )
+        })
+        .unwrap();
+        expect(&app, "ElementsUpdated", &["e1"]);
+        app.call(|s| s.delete_elements(vec!["e0".to_owned(), "e2".to_owned()]))
+            .unwrap();
+        expect(&app, "ElementsDeleted", &["e0", "e2"]);
+        // A batch that touched nothing says nothing.
+        app.call(|s| {
+            s.update_elements(
+                vec![ElementPatch {
+                    id: "gone".to_owned(),
+                    ..Default::default()
+                }],
+                4,
+            )
+        })
+        .unwrap();
+        assert!(app.take_events().is_empty());
+    }
+
+    #[test]
+    fn add_elements_overwrites_an_existing_id_like_add_element_does() {
+        let mut app = new_board();
+        app.call(|s| s.add_element(sample_element("e0"))).unwrap();
+        let mut again = sample_element("e0");
+        again.fill = "#123456".to_owned();
+        app.call(|s| s.add_elements(vec![again])).unwrap();
+        let els = app.view(|s| s.get_elements());
+        assert_eq!(els.len(), 1);
+        assert_eq!(els[0].fill, "#123456");
+    }
+
+    #[test]
+    fn a_batch_over_the_cap_is_refused_whole() {
+        let mut app = new_board();
+        assert!(app.call(|s| s.add_elements(many(MAX_BATCH + 1))).is_err());
+        assert!(app.view(|s| s.get_elements()).is_empty());
+        app.call(|s| s.add_elements(many(MAX_BATCH))).unwrap();
+        assert!(app.call(|s| s.delete_elements(ids(MAX_BATCH + 1))).is_err());
+        assert_eq!(app.view(|s| s.get_elements()).len(), MAX_BATCH);
+        let patches: Vec<ElementPatch> = ids(MAX_BATCH + 1)
+            .into_iter()
+            .map(|id| ElementPatch {
+                id,
+                ..Default::default()
+            })
+            .collect();
+        assert!(app.call(|s| s.update_elements(patches, 2)).is_err());
+    }
+
+    #[test]
+    fn viewers_cannot_run_any_batch() {
+        let mut app = new_board();
+        app.call(|s| s.add_elements(many(2))).unwrap();
+        app.call_as_account(OTHER_ACCOUNT, OTHER, |s| s.join("bob".to_owned(), None, 1));
+        assert!(app
+            .call_as_account(OTHER_ACCOUNT, OTHER, |s| s.add_elements(many(1)))
+            .is_err());
+        assert!(app
+            .call_as_account(OTHER_ACCOUNT, OTHER, |s| s.delete_elements(ids(2)))
+            .is_err());
+        assert!(app
+            .call_as_account(OTHER_ACCOUNT, OTHER, |s| s.update_elements(
+                vec![ElementPatch {
+                    id: "e0".to_owned(),
+                    x: Some(5),
+                    ..Default::default()
+                }],
+                2
+            ))
+            .is_err());
+        assert!(app
+            .call_as_account(OTHER_ACCOUNT, OTHER, |s| s.update_element_labels(
+                vec![LabelUpdate {
+                    id: "e0".to_owned(),
+                    label: Some("g".to_owned())
+                }],
+                2
+            ))
+            .is_err());
+        assert_eq!(app.view(|s| s.get_elements()).len(), 2);
+    }
+
+    #[test]
+    fn update_elements_patches_only_the_fields_given() {
+        let mut app = new_board();
+        app.call(|s| s.add_elements(many(2))).unwrap();
+        app.call(|s| {
+            s.update_elements(
+                vec![
+                    ElementPatch {
+                        id: "e0".to_owned(),
+                        x: Some(40),
+                        y: Some(50),
+                        ..Default::default()
+                    },
+                    ElementPatch {
+                        id: "e1".to_owned(),
+                        fill: Some("#f00".to_owned()),
+                        ..Default::default()
+                    },
+                    ElementPatch {
+                        id: "gone".to_owned(),
+                        x: Some(1),
+                        ..Default::default()
+                    },
+                ],
+                7,
+            )
+        })
+        .unwrap();
+        let e0 = app.view(|s| s.get_element("e0".to_owned())).unwrap();
+        let e1 = app.view(|s| s.get_element("e1".to_owned())).unwrap();
+        assert_eq!(
+            (e0.x, e0.y, e0.fill.as_str(), e0.updated_at),
+            (40, 50, "#fff", 7)
+        );
+        assert_eq!((e1.x, e1.fill.as_str(), e1.updated_at), (0, "#f00", 7));
+        assert!(app.view(|s| s.get_element("gone".to_owned())).is_none());
+    }
+
+    #[test]
+    fn update_elements_matches_update_element_field_for_field() {
+        // The batch is the single-element method applied N times; the single
+        // path now goes through the same helper, so the two cannot drift.
+        // One TestHost at a time: they share the thread's mock state.
+        let single = {
+            let mut app = new_board();
+            app.call(|s| s.add_element(sample_element("e0"))).unwrap();
+            app.call(|s| {
+                s.update_element(
+                    "e0".to_owned(),
+                    Some(1),
+                    Some(2),
+                    Some(3),
+                    Some(4),
+                    Some(5),
+                    Some("#a".to_owned()),
+                    Some("#b".to_owned()),
+                    Some(6),
+                    Some(7),
+                    Some(0),
+                    9,
+                )
+            })
+            .unwrap();
+            app.view(|s| s.get_element("e0".to_owned())).unwrap()
+        };
+        let batched = {
+            let mut app = new_board();
+            app.call(|s| s.add_element(sample_element("e0"))).unwrap();
+            app.call(|s| {
+                s.update_elements(
+                    vec![ElementPatch {
+                        id: "e0".to_owned(),
+                        x: Some(1),
+                        y: Some(2),
+                        width: Some(3),
+                        height: Some(4),
+                        rotation: Some(5),
+                        fill: Some("#a".to_owned()),
+                        stroke: Some("#b".to_owned()),
+                        stroke_width: Some(6),
+                        opacity: Some(7),
+                        corner_radius: Some(0),
+                    }],
+                    9,
+                )
+            })
+            .unwrap();
+            app.view(|s| s.get_element("e0".to_owned())).unwrap()
+        };
+        assert_eq!(
+            calimero_sdk::serde_json::to_string(&single).unwrap(),
+            calimero_sdk::serde_json::to_string(&batched).unwrap()
+        );
+    }
+
+    #[test]
+    fn an_element_patch_with_only_an_id_deserializes() {
+        let patch: ElementPatch =
+            calimero_sdk::serde_json::from_str(r#"{"id":"e0","x":3}"#).unwrap();
+        assert_eq!(
+            (patch.id.as_str(), patch.x, patch.fill),
+            ("e0", Some(3), None)
+        );
+    }
+
+    #[test]
+    fn update_element_labels_sets_and_clears_labels() {
+        let mut app = new_board();
+        app.call(|s| s.add_elements(many(2))).unwrap();
+        app.call(|s| {
+            s.update_element_labels(
+                vec![
+                    LabelUpdate {
+                        id: "e0".to_owned(),
+                        label: Some("Group/a".to_owned()),
+                    },
+                    LabelUpdate {
+                        id: "e1".to_owned(),
+                        label: None,
+                    },
+                    LabelUpdate {
+                        id: "gone".to_owned(),
+                        label: Some("x".to_owned()),
+                    },
+                ],
+                4,
+            )
+        })
+        .unwrap();
+        let e0 = app.view(|s| s.get_element("e0".to_owned())).unwrap();
+        let e1 = app.view(|s| s.get_element("e1".to_owned())).unwrap();
+        assert_eq!((e0.label.as_deref(), e0.updated_at), (Some("Group/a"), 4));
+        assert_eq!((e1.label.as_deref(), e1.updated_at), (None, 4));
+    }
+
+    #[test]
+    fn delete_elements_removes_the_batch_and_tolerates_missing_ids() {
+        let mut app = new_board();
+        app.call(|s| s.add_elements(many(4))).unwrap();
+        app.call(|s| s.delete_elements(vec!["e1".to_owned(), "e3".to_owned(), "gone".to_owned()]))
+            .unwrap();
+        let left: Vec<String> = app
+            .view(|s| s.get_elements())
+            .into_iter()
+            .map(|e| e.id)
+            .collect();
+        assert_eq!(left.len(), 2);
+        assert!(left.contains(&"e0".to_owned()) && left.contains(&"e2".to_owned()));
+    }
+
+    #[test]
+    fn get_elements_by_ids_returns_only_what_exists() {
+        let mut app = new_board();
+        app.call(|s| s.add_elements(many(3))).unwrap();
+        let got: Vec<String> = app
+            .view(|s| {
+                s.get_elements_by_ids(vec!["e2".to_owned(), "gone".to_owned(), "e0".to_owned()])
+            })
+            .into_iter()
+            .map(|e| e.id)
+            .collect();
+        assert_eq!(got, vec!["e2".to_owned(), "e0".to_owned()]);
+    }
+
+    #[test]
+    fn empty_batches_are_no_ops() {
+        let mut app = new_board();
+        assert!(app.call(|s| s.add_elements(Vec::new())).unwrap().is_empty());
+        app.call(|s| s.delete_elements(Vec::new())).unwrap();
+        app.call(|s| s.update_elements(Vec::new(), 1)).unwrap();
+        app.call(|s| s.update_element_labels(Vec::new(), 1))
+            .unwrap();
+        assert!(app.view(|s| s.get_elements()).is_empty());
     }
 }

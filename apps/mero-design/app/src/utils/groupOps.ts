@@ -1,5 +1,6 @@
 import { v4 as uuid } from "uuid";
 import { rpcCall, adminUploadBlob } from "../api/rpc";
+import { deleteElements, updateElementLabels } from "../api/elementBatch";
 import type { Element } from "../types";
 import { toDataUrl } from "./image";
 import { boundsOf, elementsToSvg, svgToPngDataUrl } from "./svgExport";
@@ -22,25 +23,17 @@ export interface OpDeps {
 }
 
 /**
- * Persists a label patch. Every element is written with `update_element_label`,
- * the contract method the board already has — which is the whole reason groups
- * are paths in the label rather than a new field that would need new WASM.
+ * Persists a label patch — groups are paths in the label, so grouping,
+ * ungrouping and renaming a group are all label writes.
  *
- * Local state is updated first: regrouping 40 layers should not look frozen
- * while 40 round-trips land.
+ * Local state is updated first, then the whole patch goes out with
+ * `update_element_labels`, in chunks. This was one `update_element_label`
+ * round-trip per element: regrouping 400 layers queued 400 of them.
  */
 export async function applyLabelPatch(patch: LabelPatch, deps: OpDeps): Promise<void> {
-  const ids = Object.keys(patch);
-  if (ids.length === 0) return;
+  if (Object.keys(patch).length === 0) return;
   deps.applyLabels(patch);
-  const updatedAt = Date.now();
-  for (const id of ids) {
-    await rpcCall(deps.contextId, "update_element_label", {
-      id,
-      label: patch[id],
-      updated_at: updatedAt,
-    }).catch((e) => deps.onError("update_element_label", e));
-  }
+  await updateElementLabels(deps.contextId, patch, Date.now(), deps.onError);
 }
 
 /** id → data: URL for every image/svg element that has cached bytes. */
@@ -102,6 +95,8 @@ export interface FlattenDeps extends OpDeps {
   /** Local mirror of the contract write, so the canvas updates immediately. */
   onFlattened: (created: Element, removedIds: string[]) => void;
   cacheImage: (elementId: string, url: string) => void;
+  /** How many elements the board holds — sizes the delete batches. */
+  boardSize: number;
 }
 
 /**
@@ -161,8 +156,8 @@ export async function flattenElements(
   deps.cacheImage(created.id, `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`);
   deps.onFlattened(created, removedIds);
 
-  for (const id of removedIds) {
-    await rpcCall(deps.contextId, "delete_element", { id }).catch((e) => deps.onError("delete_element", e));
-  }
+  // `onFlattened` already dropped them locally; the board it shrank from is
+  // what prices the deletes.
+  await deleteElements(deps.contextId, removedIds, deps.boardSize, deps.onError);
   return created;
 }
