@@ -55,8 +55,11 @@ test.describe("set_profile / get_profiles / get_username", () => {
       {},
     );
     expect(Array.isArray(profiles)).toBe(true);
-    // Find by identity — username may be frozen to an earlier value if pre-seeded
-    const ours = profiles.find((p) => p.identity === getEnv().memberKey);
+    // Profiles are keyed by the caller's ACCOUNT (`UserId(env::account_id())`),
+    // not by the per-context member key, so match on the account the setup
+    // reports. The username may be frozen to an earlier value if pre-seeded.
+    const account = process.env.E2E_ACCOUNT_ID ?? "";
+    const ours = profiles.find((p) => p.identity === account);
     expect(ours).toBeTruthy();
     expect(typeof ours!.username).toBe("string");
     expect(ours!.username.length).toBeGreaterThan(0);
@@ -163,7 +166,8 @@ interface MessageOut {
   id: string;
   text: string;
   sender: string;
-  sender_username: string;
+  /** Position in the channel's message vector (the contract's get_messages_from paging key). */
+  index: number;
   timestamp: number;
   mentions: string[];
   mentions_usernames: string[];
@@ -204,7 +208,6 @@ test.describe("send_message / get_messages", () => {
       mentions_usernames: [],
       parent_message: null,
       timestamp: ts,
-      sender_username: "TestUser",
       files: null,
       images: null,
     });
@@ -229,7 +232,6 @@ test.describe("send_message / get_messages", () => {
       mentions_usernames: [],
       parent_message: null,
       timestamp: Math.floor(Date.now() / 1000),
-      sender_username: "TestUser",
       files: null,
       images: null,
     });
@@ -268,7 +270,6 @@ test.describe("send_message / get_messages", () => {
         mentions_usernames: [],
         parent_message: null,
         timestamp: Math.floor(Date.now() / 1000),
-        sender_username: "TestUser",
         files: null,
         images: null,
       });
@@ -293,7 +294,6 @@ test.describe("send_message / get_messages", () => {
       mentions_usernames: [],
       parent_message: null,
       timestamp: Math.floor(Date.now() / 1000),
-      sender_username: "TestUser",
       files: null,
       images: null,
     });
@@ -333,7 +333,7 @@ test.describe("send_message / get_messages", () => {
     expect(typeof m.id).toBe("string");
     expect(typeof m.text).toBe("string");
     expect(typeof m.sender).toBe("string");
-    expect(typeof m.sender_username).toBe("string");
+    expect(typeof m.index).toBe("number");
     expect(typeof m.timestamp).toBe("number");
     expect(Array.isArray(m.mentions)).toBe(true);
     expect(Array.isArray(m.mentions_usernames)).toBe(true);
@@ -354,7 +354,6 @@ test.describe("send_message / get_messages", () => {
       mentions_usernames: ["TestUser"],
       parent_message: null,
       timestamp: ts,
-      sender_username: "TestUser",
       files: null,
       images: null,
     });
@@ -381,7 +380,6 @@ test.describe("update_reaction", () => {
       mentions_usernames: [],
       parent_message: null,
       timestamp: Math.floor(Date.now() / 1000),
-      sender_username: "TestUser",
       files: null,
       images: null,
     });
@@ -502,7 +500,6 @@ test.describe("edit_message", () => {
       mentions_usernames: [],
       parent_message: null,
       timestamp: Math.floor(Date.now() / 1000),
-      sender_username: "TestUser",
       files: null,
       images: null,
     });
@@ -590,7 +587,6 @@ test.describe("delete_message", () => {
       mentions_usernames: [],
       parent_message: null,
       timestamp: Math.floor(Date.now() / 1000),
-      sender_username: "TestUser",
       files: null,
       images: null,
     });
@@ -650,7 +646,6 @@ test.describe("threads (send_message with parent_message)", () => {
       mentions_usernames: [],
       parent_message: null,
       timestamp: Math.floor(Date.now() / 1000),
-      sender_username: "TestUser",
       files: null,
       images: null,
     });
@@ -667,7 +662,6 @@ test.describe("threads (send_message with parent_message)", () => {
       mentions_usernames: [],
       parent_message: parent.id,
       timestamp: Math.floor(Date.now() / 1000),
-      sender_username: "TestUser",
       files: null,
       images: null,
     });
@@ -687,7 +681,6 @@ test.describe("threads (send_message with parent_message)", () => {
       mentions_usernames: [],
       parent_message: parent.id,
       timestamp: Math.floor(Date.now() / 1000),
-      sender_username: "TestUser",
       files: null,
       images: null,
     });
@@ -713,7 +706,6 @@ test.describe("threads (send_message with parent_message)", () => {
       mentions_usernames: [],
       parent_message: parent.id,
       timestamp: Math.floor(Date.now() / 1000),
-      sender_username: "TestUser",
       files: null,
       images: null,
     });
@@ -739,7 +731,6 @@ test.describe("threads (send_message with parent_message)", () => {
       mentions_usernames: [],
       parent_message: parent.id,
       timestamp: Math.floor(Date.now() / 1000),
-      sender_username: "TestUser",
       files: null,
       images: null,
     });
@@ -764,7 +755,6 @@ test.describe("threads (send_message with parent_message)", () => {
       mentions_usernames: [],
       parent_message: parent.id,
       timestamp: Math.floor(Date.now() / 1000),
-      sender_username: "TestUser",
       files: null,
       images: null,
     });
@@ -796,7 +786,6 @@ test.describe("threads (send_message with parent_message)", () => {
       mentions_usernames: [],
       parent_message: parent.id,
       timestamp: Math.floor(Date.now() / 1000),
-      sender_username: "TestUser",
       files: null,
       images: null,
     });
@@ -830,7 +819,6 @@ test.describe("threads (send_message with parent_message)", () => {
       mentions_usernames: [],
       parent_message: parent.id,
       timestamp: Math.floor(Date.now() / 1000),
-      sender_username: "TestUser",
       files: null,
       images: null,
     });
@@ -870,13 +858,13 @@ test.describe("error guards", () => {
     const parent = await client.call<MessageOut>("send_message", {
       message: `thread-parent-noid-${Date.now()}`,
       mentions: [], mentions_usernames: [], parent_message: null,
-      timestamp: Math.floor(Date.now() / 1000), sender_username: "T",
+      timestamp: Math.floor(Date.now() / 1000),
       files: null, images: null,
     });
     const reply = await client.call<MessageOut>("send_message", {
       message: `reply-noid-${Date.now()}`,
       mentions: [], mentions_usernames: [], parent_message: parent.id,
-      timestamp: Math.floor(Date.now() / 1000), sender_username: "T",
+      timestamp: Math.floor(Date.now() / 1000),
       files: null, images: null,
     });
     // Without parent_id, the message won't be found in main feed → error
@@ -891,62 +879,9 @@ test.describe("error guards", () => {
   });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// 9. Presence (heartbeat / get_presence)
-// ─────────────────────────────────────────────────────────────────────────────
-
-test.describe("heartbeat / get_presence", () => {
-  test.beforeAll(requireEnv);
-
-  test("heartbeat returns null (void)", async () => {
-    const client = makeClient();
-    // heartbeat is a mutating call — WASM returns null for void methods.
-    const result = await client.call("heartbeat", {});
-    expect(result === null || result === undefined).toBe(true);
-  });
-
-  test("get_presence returns an array", async () => {
-    const client = makeClient();
-    const result = await client.call<string[]>("get_presence", {
-      threshold_ns: 90_000 * 1_000_000,
-    });
-    expect(Array.isArray(result)).toBe(true);
-  });
-
-  test("caller appears in get_presence after heartbeat", async () => {
-    const client = makeClient();
-    const env = getEnv();
-
-    // Stamp a heartbeat first
-    await client.call("heartbeat", {});
-
-    // Use a large threshold (5 minutes in ns) so the test is not timing-sensitive
-    const online = await client.call<string[]>("get_presence", {
-      threshold_ns: 5 * 60 * 1_000_000_000,
-    });
-    expect(Array.isArray(online)).toBe(true);
-    expect(online).toContain(env.memberKey);
-  });
-
-  test("get_presence with zero threshold returns empty array", async () => {
-    const client = makeClient();
-    // threshold_ns = 0 means "online only if heartbeat was received at the exact
-    // current nanosecond" — effectively nobody is ever online.
-    const online = await client.call<string[]>("get_presence", {
-      threshold_ns: 0,
-    });
-    expect(Array.isArray(online)).toBe(true);
-    expect(online).toHaveLength(0);
-  });
-
-  test("heartbeat is idempotent — calling twice does not error", async () => {
-    const client = makeClient();
-    await client.call("heartbeat", {});
-    const result = await client.call("heartbeat", {});
-    expect(result === null || result === undefined).toBe(true);
-  });
-});
-
+// (Presence tests removed: `heartbeat` / `get_presence` left the contract when
+// presence moved to ephemeral state — useEphemeralPresence.ts. Calling them is
+// `method "heartbeat" not found`.)
 // ─────────────────────────────────────────────────────────────────────────────
 // 10. search_all_messages
 // ─────────────────────────────────────────────────────────────────────────────
@@ -962,7 +897,6 @@ test.describe("search_all_messages", () => {
       mentions_usernames: [],
       parent_message: null,
       timestamp: Math.floor(Date.now() / 1000),
-      sender_username: "TestUser",
       files: null,
       images: null,
     });
@@ -1102,7 +1036,7 @@ test.describe("multi-user (2-node)", () => {
     await makeClient().call("send_message", {
       message: probe, mentions: [], mentions_usernames: [],
       parent_message: null, timestamp: Math.floor(Date.now() / 1000),
-      sender_username: "probe", files: null, images: null,
+      files: null, images: null,
     });
     let p2pActive = false;
     try {
@@ -1130,7 +1064,7 @@ test.describe("multi-user (2-node)", () => {
       mentions_usernames: [],
       parent_message: null,
       timestamp: Math.floor(Date.now() / 1000),
-      sender_username: "Alice",
+     
       files: null,
       images: null,
     });
@@ -1143,7 +1077,7 @@ test.describe("multi-user (2-node)", () => {
       mentions_usernames: [],
       parent_message: null,
       timestamp: Math.floor(Date.now() / 1000),
-      sender_username: "Bob",
+     
       files: null,
       images: null,
     });
@@ -1361,7 +1295,7 @@ test.describe("multi-user (2-node)", () => {
       mentions_usernames: [],
       parent_message: parent.id,
       timestamp: Math.floor(Date.now() / 1000),
-      sender_username: "Bob",
+     
       files: null,
       images: null,
     });
@@ -1388,17 +1322,17 @@ test.describe("multi-user (2-node)", () => {
     await makeClient().call<MessageOut>("send_message", {
       message: `${tag}-1`, mentions: [], mentions_usernames: [],
       parent_message: null, timestamp: ts,
-      sender_username: "Alice", files: null, images: null,
+      files: null, images: null,
     });
     await makeClient2().call<MessageOut>("send_message", {
       message: `${tag}-2`, mentions: [], mentions_usernames: [],
       parent_message: null, timestamp: ts + 1,
-      sender_username: "Bob", files: null, images: null,
+      files: null, images: null,
     });
     await makeClient().call<MessageOut>("send_message", {
       message: `${tag}-3`, mentions: [], mentions_usernames: [],
       parent_message: null, timestamp: ts + 2,
-      sender_username: "Alice", files: null, images: null,
+      files: null, images: null,
     });
 
     // Poll until all three are visible on node-1

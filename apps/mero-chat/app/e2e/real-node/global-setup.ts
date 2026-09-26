@@ -21,7 +21,7 @@
  */
 import { execFileSync, spawn } from "node:child_process";
 import { generateKeyPairSync } from "node:crypto";
-import { createWriteStream, existsSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { createWriteStream, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -32,10 +32,14 @@ const LOGIC_DIR = path.resolve(APP_DIR, "..", "logic");
 export const DATA_DIR = path.resolve(APP_DIR, ".playwright-data");
 export const STATE_FILE = path.resolve(DATA_DIR, "state.json");
 
-const NODE_NAME = "chat-pw";
-const SERVER_PORT = Number(process.env.PW_SERVER_PORT) || 2620;
-const SWARM_PORT = Number(process.env.PW_SWARM_PORT) || 2520;
-const NODE_URL = `http://localhost:${SERVER_PORT}`;
+// Two nodes: Alice's (the one the browser drives) and Bob's, peered, so the
+// specs that need a second member — cross-node sync, multi-user rpc — run too.
+const NODES = [
+  { name: "chat-pw-1", server: Number(process.env.PW_SERVER_PORT) || 2620, swarm: Number(process.env.PW_SWARM_PORT) || 2520 },
+  { name: "chat-pw-2", server: (Number(process.env.PW_SERVER_PORT) || 2620) + 1, swarm: (Number(process.env.PW_SWARM_PORT) || 2520) + 1 },
+];
+const urlOf = (n: (typeof NODES)[number]) => `http://localhost:${n.server}`;
+const NODE_URL = urlOf(NODES[0]);
 
 // Throwaway credentials for a loopback node deleted at teardown (8-char min).
 const ADMIN_USER = "admin";
@@ -113,8 +117,8 @@ async function authenticate(url: string) {
   return { accessToken: t.access_token as string, refreshToken: t.refresh_token as string };
 }
 
-async function api<T>(token: string, method: string, route: string, body?: unknown): Promise<T> {
-  const resp = await fetch(`${NODE_URL}${route}`, {
+async function api<T>(base: string, token: string, method: string, route: string, body?: unknown): Promise<T> {
+  const resp = await fetch(`${base}${route}`, {
     method,
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
     body: body === undefined ? undefined : JSON.stringify(body),
@@ -138,6 +142,44 @@ function initParams(name: string, creator: string): number[] {
   return Array.from(new TextEncoder().encode(json));
 }
 
+/**
+ * Clear the PUBLIC devnet bootstrap peer `init` seeds (left in, startup dials
+ * unreachable addresses and a later join dies as `KeyDelivery timed out`), turn
+ * mDNS on (opt-in since rc.26), and point node 2 at node 1 explicitly — mDNS on
+ * a CI runner is not something to depend on.
+ */
+function patchConfig(home: string, name: string, bootstrap: string[]) {
+  const file = path.join(home, name, "config.toml");
+  let text = readFileSync(file, "utf8");
+  const list = `[${bootstrap.map((a) => JSON.stringify(a)).join(", ")}]`;
+  const before = text;
+  text = text.replace(/(\[bootstrap\][^[]*?\bnodes\s*=\s*)\[[^\]]*\]/s, `$1${list}`);
+  if (text === before && !before.includes(`nodes = ${list}`)) throw new Error(`no [bootstrap] nodes in ${file}`);
+  text = text.replace(/(\bmdns\s*=\s*)(true|false)/, "$1true");
+  writeFileSync(file, text);
+  return text;
+}
+
+function peerIdOf(configText: string): string {
+  const m = /\[identity\][^[]*?\bpeer_id\s*=\s*"([^"]+)"/s.exec(configText);
+  if (!m) throw new Error("no [identity] peer_id in config.toml");
+  return m[1];
+}
+
+async function retry<T>(what: string, fn: () => Promise<T>, attempts = 10, delayMs = 3000): Promise<T> {
+  let last: unknown;
+  for (let i = 1; i <= attempts; i++) {
+    try {
+      return await fn();
+    } catch (e) {
+      last = e;
+      console.log(`[real-node] ${what}: attempt ${i}/${attempts} failed — ${String(e).slice(0, 200)}`);
+      await new Promise((r) => setTimeout(r, delayMs));
+    }
+  }
+  throw new Error(`${what} failed after ${attempts} attempts: ${String(last)}`);
+}
+
 export default async function globalSetup() {
   const MEROD = resolveMerod();
   const MPK = resolveMpk();
@@ -149,62 +191,87 @@ export default async function globalSetup() {
   }
 
   const pids: number[] = [];
-  if (await healthy(NODE_URL)) {
-    console.log(`[real-node] reusing the healthy node on ${NODE_URL}`);
-    mkdirSync(DATA_DIR, { recursive: true });
-  } else {
-    if (existsSync(DATA_DIR)) rmSync(DATA_DIR, { recursive: true, force: true });
-    mkdirSync(DATA_DIR, { recursive: true });
+  if (existsSync(DATA_DIR)) rmSync(DATA_DIR, { recursive: true, force: true });
+  mkdirSync(DATA_DIR, { recursive: true });
+
+  const configs: string[] = [];
+  for (const n of NODES) {
     execFileSync(
       MEROD,
       [
-        "--home", DATA_DIR, "--node", NODE_NAME, "init",
-        "--server-port", String(SERVER_PORT), "--swarm-port", String(SWARM_PORT),
+        "--home", DATA_DIR, "--node", n.name, "init",
+        "--server-port", String(n.server), "--swarm-port", String(n.swarm),
         "--auth-mode", "embedded", "--auth-storage", "memory",
       ],
       // `--auth-storage memory` mints the admin from the environment at every
       // start, so the credentials go to both commands.
       { stdio: "pipe", env: { ...process.env, ...ADMIN_ENV } },
     );
-    const proc = spawn(MEROD, ["--home", DATA_DIR, "--node", NODE_NAME, "run"], {
+  }
+  configs.push(patchConfig(DATA_DIR, NODES[0].name, []));
+  const peer1 = peerIdOf(configs[0]);
+  configs.push(
+    patchConfig(DATA_DIR, NODES[1].name, [
+      `/ip4/127.0.0.1/tcp/${NODES[0].swarm}/p2p/${peer1}`,
+      `/ip4/127.0.0.1/udp/${NODES[0].swarm}/quic-v1/p2p/${peer1}`,
+    ]),
+  );
+
+  for (const n of NODES) {
+    const proc = spawn(MEROD, ["--home", DATA_DIR, "--node", n.name, "run"], {
       stdio: ["ignore", "pipe", "pipe"],
       env: { ...process.env, ...ADMIN_ENV },
     });
-    const log = createWriteStream(path.join(DATA_DIR, `${NODE_NAME}.log`));
+    const log = createWriteStream(path.join(DATA_DIR, `${n.name}.log`));
     proc.stdout?.pipe(log);
     proc.stderr?.pipe(log);
     if (proc.pid) pids.push(proc.pid);
-    console.log(`[real-node] ${NODE_NAME} started (pid ${proc.pid}) with ${path.basename(MPK)}`);
+    console.log(`[real-node] ${n.name} started (pid ${proc.pid}) on :${n.server}`);
+  }
+  // Written now, so teardown stops both nodes even if seeding fails below.
+  writeFileSync(STATE_FILE, JSON.stringify({ pids }, null, 2));
+
+  const [url1, url2] = NODES.map(urlOf);
+  await Promise.all([waitForHealth(url1), waitForHealth(url2)]);
+  const [tok1, tok2] = await Promise.all([authenticate(url1), authenticate(url2)]);
+  const t1 = tok1.accessToken;
+  const t2 = tok2.accessToken;
+
+  // On BOTH nodes: since rc.31 a node serves no bytecode to peers.
+  const [{ applicationId }, installed2] = await Promise.all([
+    api<{ applicationId: string }>(url1, t1, "POST", "/admin-api/install-dev-application", { path: MPK }),
+    api<{ applicationId: string }>(url2, t2, "POST", "/admin-api/install-dev-application", { path: MPK }),
+  ]);
+  if (installed2.applicationId !== applicationId) {
+    throw new Error(`the two nodes installed different app ids: ${applicationId} vs ${installed2.applicationId}`);
   }
 
-  await waitForHealth(NODE_URL);
-  const tokens = await authenticate(NODE_URL);
-  const t = tokens.accessToken;
-
-  const { applicationId } = await api<{ applicationId: string }>(t, "POST", "/admin-api/install-dev-application", {
-    path: MPK,
-  });
-
   // The workspace, as CreateWorkspacePopup makes it.
-  const { namespaceId } = await api<{ namespaceId: string }>(t, "POST", "/admin-api/namespaces", {
+  const { namespaceId } = await api<{ namespaceId: string }>(url1, t1, "POST", "/admin-api/namespaces", {
     applicationId,
     name: "E2E Workspace",
   });
-  await api(t, "PUT", `/admin-api/groups/${namespaceId}/metadata`, { name: "E2E Workspace" }).catch(
-    (e) => console.warn(`[real-node] workspace metadata not set (non-fatal): ${e}`),
-  );
+  await api(url1, t1, "PUT", `/admin-api/groups/${namespaceId}/metadata`, { name: "E2E Workspace" });
+
+  // Alice's display name, as the app's Join step writes it: the namespace's
+  // member metadata is what the message list resolves a sender to.
+  const members1 = await api<{ members: { identity: string }[] }>(url1, t1, "GET", `/admin-api/groups/${namespaceId}/members`);
+  const account1 = members1.members[0]?.identity;
+  if (!account1) throw new Error("the new workspace lists no member");
+  await api(url1, t1, "PUT", `/admin-api/groups/${namespaceId}/members/${account1}/metadata`, { name: "Alice" });
 
   // #general, as ChannelHeader makes a public channel: subgroup → open → context.
   const { groupId: generalGroupId } = await api<{ groupId: string }>(
-    t,
+    url1,
+    t1,
     "POST",
     `/admin-api/namespaces/${namespaceId}/groups`,
     { groupName: "general" },
   );
-  await api(t, "PUT", `/admin-api/groups/${generalGroupId}/settings/subgroup-visibility`, {
+  await api(url1, t1, "PUT", `/admin-api/groups/${generalGroupId}/settings/subgroup-visibility`, {
     subgroupVisibility: "open",
   });
-  const ctx = await api<{ contextId: string; memberPublicKey: string }>(t, "POST", "/admin-api/contexts", {
+  const ctx = await api<{ contextId: string; memberPublicKey: string }>(url1, t1, "POST", "/admin-api/contexts", {
     applicationId,
     groupId: generalGroupId,
     name: "general",
@@ -213,18 +280,48 @@ export default async function globalSetup() {
 
   console.log(
     `[real-node] app=${applicationId.slice(0, 8)}… workspace=${namespaceId.slice(0, 8)}… ` +
-      `#general=${ctx.contextId.slice(0, 8)}…`,
+      `#general=${ctx.contextId.slice(0, 8)}… alice=${account1.slice(0, 8)}…`,
   );
 
+  // Bob joins the workspace from node 2 with an invitation, as the app's
+  // join-by-invite does, then joins #general. Retried: the peers need a moment.
+  const invite = await api<{ invitation: unknown }>(url1, t1, "POST", `/admin-api/namespaces/${namespaceId}/invite`, {});
+  await retry("node 2 joins the workspace", () =>
+    api(url2, t2, "POST", `/admin-api/namespaces/${namespaceId}/join`, { invitation: invite.invitation }),
+  );
+  const members2 = await retry("node 2 sees itself as a member", async () => {
+    await api(url2, t2, "POST", `/admin-api/groups/${namespaceId}/sync`, {}).catch(() => {});
+    const m = await api<{ members: { identity: string }[] }>(url2, t2, "GET", `/admin-api/groups/${namespaceId}/members`);
+    if ((m.members ?? []).length < 2) throw new Error(`only ${(m.members ?? []).length} member(s) visible on node 2`);
+    return m;
+  });
+  const account2 = members2.members.map((m) => m.identity).find((id) => id !== account1) ?? "";
+  if (account2) {
+    await api(url2, t2, "PUT", `/admin-api/groups/${namespaceId}/members/${account2}/metadata`, { name: "Bob" }).catch(
+      (e) => console.warn(`[real-node] Bob's name not set (non-fatal): ${e}`),
+    );
+  }
+  const joined = await retry("node 2 joins #general", async () => {
+    await api(url2, t2, "POST", `/admin-api/groups/${generalGroupId}/sync`, {}).catch(() => {});
+    return api<{ contextId: string; memberPublicKey: string }>(url2, t2, "POST", `/admin-api/contexts/${ctx.contextId}/join`, {});
+  });
+  console.log(`[real-node] bob=${account2.slice(0, 8)}… joined #general as ${joined.memberPublicKey?.slice(0, 8)}…`);
+
   const env = {
-    E2E_NODE_URL: NODE_URL,
-    E2E_ACCESS_TOKEN: tokens.accessToken,
-    E2E_REFRESH_TOKEN: tokens.refreshToken,
+    E2E_NODE_URL: url1,
+    E2E_NODE_URL_2: url2,
+    E2E_ACCESS_TOKEN: tok1.accessToken,
+    E2E_REFRESH_TOKEN: tok1.refreshToken,
+    E2E_ACCESS_TOKEN_2: tok2.accessToken,
+    E2E_REFRESH_TOKEN_2: tok2.refreshToken,
     E2E_APP_ID: applicationId,
     E2E_GROUP_ID: namespaceId,
     E2E_CONTEXT_GROUP_ID: generalGroupId,
     E2E_CONTEXT_ID: ctx.contextId,
     E2E_MEMBER_KEY: ctx.memberPublicKey,
+    E2E_MEMBER_KEY_2: joined.memberPublicKey ?? "",
+    E2E_ACCOUNT_ID: account1,
+    E2E_ACCOUNT_ID_2: account2,
     // Real tokens from embedded auth: the browser can log in with these.
     E2E_BROWSER_AUTH: "1",
   };
