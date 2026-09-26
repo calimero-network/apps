@@ -58,7 +58,7 @@ test.describe('Member metadata propagation (two-node)', () => {
 
     await bob.joinNamespaceKeepGate(inviteUrl);
     const members = alice.page
-      .getByRole('region', { name: 'Namespace members' })
+      .getByRole('region', { name: 'Workspace members' })
       .getByRole('listitem');
     await expect(members).toHaveCount(2, { timeout: 60_000 });
 
