@@ -3,8 +3,8 @@
   "short_name": "Mero Docs",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0f131a",
-  "theme_color": "#0f131a",
+  "background_color": "#ffffff",
+  "theme_color": "#0e140f",
   "icons": [
     {
       "src": "/icons/icon.svg",
