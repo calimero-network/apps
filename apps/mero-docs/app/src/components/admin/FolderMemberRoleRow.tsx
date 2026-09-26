@@ -36,10 +36,8 @@ import type { Role } from '@/generated/registry/RegistryClient';
 interface Props {
   folderId: string;
   identity: string;
-  /** Pre-resolved label (server-reported `m.name` or the shared
-   *  unnamed-member fallback). Used as the MemberLabel fallback for
-   *  callers that haven't set a display name, and reused in remove
-   *  dialogs. */
+  /** Server-reported name or the shared unnamed fallback; MemberLabel's
+   *  fallback and the remove dialog's text. */
   label: string;
   /** Server-reported core role: Admin / Member / ReadOnly. */
   coreRole?: string;

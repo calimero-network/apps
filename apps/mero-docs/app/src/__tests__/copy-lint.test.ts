@@ -1,42 +1,32 @@
 import { describe, it, expect } from 'vitest';
 import ts from 'typescript';
 
-// Mechanical enforcement for the copy rules: no em dash, no literal "..."
-// (should be the "…" character) in anything a user actually sees. Only
-// string literals / template literals / JSX text are checked — comments,
-// imports and non-rendered strings are out of scope by design.
-//
-// Reads file contents via Vite's own `import.meta.glob` (not `node:fs`)
-// because this app's dev config polyfills Node builtins for the browser
-// bundle, which also stubs them out inside vitest.
+// Enforces the copy rules (no em dash, "…" not "...") on string and JSX text; comments are out of scope.
+// Uses import.meta.glob, not node:fs, because the app's Node polyfills stub fs inside vitest.
 const tsxFiles = import.meta.glob('../**/*.tsx', {
   query: '?raw',
   import: 'default',
   eager: true,
 }) as Record<string, string>;
 
-// .ts files are mostly hooks/logic where a string literal is an internal
-// key, a regex, or a console-only diagnostic — scanning all of them would
-// be mostly false positives. This allowlist covers the handful of .ts
-// files whose string literals are known to reach the screen: the
-// generated landing copy and the role/error copy tables consumed by
-// components as-is.
+// Most .ts strings are internal keys or diagnostics, so only the copy tables that reach the screen are scanned.
 const tsFiles = import.meta.glob(
   '../{pages/landing/landing.config,lib/roles,lib/folderLoadError}.ts',
   { query: '?raw', import: 'default', eager: true },
 ) as Record<string, string>;
+
+const TS_COPY_FILE_COUNT = 3; // entries in the tsFiles glob; a rename must not drop one silently
+const TEMPLATE_PART_KINDS: ts.SyntaxKind[] = [ // template literal chunks around ${} holes
+  ts.SyntaxKind.TemplateHead,
+  ts.SyntaxKind.TemplateMiddle,
+  ts.SyntaxKind.TemplateTail,
+];
 
 interface Violation {
   file: string;
   text: string;
   reason: 'em-dash' | 'triple-dot';
 }
-
-const TEMPLATE_PART_KINDS: ts.SyntaxKind[] = [
-  ts.SyntaxKind.TemplateHead,
-  ts.SyntaxKind.TemplateMiddle,
-  ts.SyntaxKind.TemplateTail,
-];
 
 function findViolations(
   file: string,
@@ -59,9 +49,7 @@ function findViolations(
     }
   }
 
-  // A module specifier (`import x from '...'`) is a StringLiteral too, but
-  // it is never shown to anyone — skip it explicitly rather than relying on
-  // its contents happening not to match.
+  // A module specifier is a StringLiteral too, but it is never shown to anyone.
   function isModuleSpecifier(node: ts.Node): boolean {
     const parent = node.parent;
     return (
@@ -86,9 +74,8 @@ function findViolations(
 }
 
 describe('copy lint: no em dash or literal ellipsis in user-visible strings', () => {
-  // LandingPage.tsx is copied byte-for-byte from scripts/landing/template
-  // and shared by every app in the repo (see generate.mjs's VERBATIM list);
-  // fixing its copy is a repo-wide change, out of scope for this app alone.
+  // LandingPage.tsx is a verbatim copy of the shared landing template, so its
+  // copy is fixed repo-wide, not here.
   const scannedTsx = Object.entries(tsxFiles).filter(
     ([path]) =>
       !path.includes('/__tests__/') &&
@@ -99,7 +86,7 @@ describe('copy lint: no em dash or literal ellipsis in user-visible strings', ()
 
   it('found files to scan', () => {
     expect(scannedTsx.length).toBeGreaterThan(0);
-    expect(scannedTs.length).toBeGreaterThan(0);
+    expect(scannedTs.length).toBe(TS_COPY_FILE_COUNT);
   });
 
   it('has no em dash or literal "..." in string literals / JSX text', () => {

@@ -1,19 +1,11 @@
-// Universal render site for a member identity. Shows the member's
-// per-namespace display name (set via core's setMemberMetadata) when
-// present, otherwise the shared "unnamed member" fallback so the row
-// is never empty and never shows a raw key as visible text.
-//
-// All call sites that previously rendered a raw or truncated key
-// should route through here so a rename surfaces consistently across
-// member lists, sharing panels, and confirmation dialogs. The full key
-// stays reachable via the `title` tooltip below.
+// The one render site for a member: display name, else UNNAMED_MEMBER_LABEL, never a raw key.
+// Route every member mention through here so renames show everywhere; the key stays in `title`.
 
 import React from 'react';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useMemberDisplayName } from '@/hooks/useMemberDisplayName';
 
-// Shared fallback so a member with no display name is never shown by a raw key.
-export const UNNAMED_MEMBER_LABEL = 'Unnamed member';
+export const UNNAMED_MEMBER_LABEL = 'Unnamed member'; // shown instead of a raw key
 
 interface Props {
   namespaceId: string | null | undefined;
