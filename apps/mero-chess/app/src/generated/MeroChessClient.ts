@@ -114,6 +114,7 @@ export interface Seat {
   member: string;
   name: string;
   claimed_at: number;
+  vacated_at: number;
 }
 
 export interface SeatView {

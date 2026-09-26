@@ -489,6 +489,12 @@
           "type": {
             "kind": "u64"
           }
+        },
+        {
+          "name": "vacated_at",
+          "type": {
+            "kind": "u64"
+          }
         }
       ]
     },

@@ -279,6 +279,69 @@ fn a_draw_cannot_be_claimed_out_of_a_position_that_does_not_allow_one() {
 }
 
 #[test]
+fn standing_up_does_not_erase_the_games_already_played() {
+    // The regression for the bug the two-node scenario found: a player leaving
+    // the table reset it to game 0 for EVERYONE.
+    //
+    // `current_game` counts up a chain — game n + 1 exists only if a seat
+    // holder of game n validly claimed it — and it used to ask who holds that
+    // chair NOW. `stand` deleted the claim rows, so every rematch Alice had
+    // claimed stopped being valid the moment she stood up. The walk stops at
+    // the FIRST broken link, so a table four games deep did not fall back to
+    // three: it fell back to 0, hiding a live game behind an empty board, which
+    // is the exact failure the counted index exists to prevent.
+    //
+    // Neither half was untested; the SEQUENCE was. Nothing stood up after a
+    // rematch.
+    let mut app = seated();
+
+    // Two games behind us, both rematches claimed by Alice.
+    app.call_as_account(ALICE, ALICE, |s| s.resign(at(4)))
+        .expect("alice resigns game 0");
+    assert_eq!(
+        app.call_as_account(ALICE, ALICE, |s| s.rematch(at(5)))
+            .expect("alice claims game 1"),
+        1
+    );
+    app.call_as_account(ALICE, ALICE, |s| s.resign(at(6)))
+        .expect("alice resigns game 1");
+    assert_eq!(
+        app.call_as_account(ALICE, ALICE, |s| s.rematch(at(7)))
+            .expect("alice claims game 2"),
+        2
+    );
+
+    let before = table_as(&mut app, BOB, at(8));
+    assert_eq!(before.game, 2);
+    assert_eq!(before.games_played, 3);
+
+    // Alice gets up. Game 2 has no moves yet, so this is a stand, not a resign.
+    app.call_as_account(ALICE, ALICE, |s| s.stand(at(9)))
+        .expect("alice stands");
+
+    // Read by BOB, who never left: the history is the table's, not Alice's, so
+    // her departure cannot take it with her.
+    let after = table_as(&mut app, BOB, at(10));
+    assert_eq!(after.game, 2, "a departure must not rewind the game count");
+    assert_eq!(after.games_played, 3);
+    // The chair is genuinely free, which is the other half of the contract —
+    // keeping the claim as evidence must not keep her sitting in it.
+    assert!(after.white.member.is_empty() || after.black.member.is_empty());
+
+    // And it is free to take: Alice's retained claim must not lock the chair.
+    app.call_as_account(BOB, BOB, |s| {
+        s.sit("white".to_owned(), "Bob".to_owned(), at(11))
+    })
+    .or_else(|_| {
+        app.call_as_account(BOB, BOB, |s| {
+            s.sit("black".to_owned(), "Bob".to_owned(), at(11))
+        })
+    })
+    .expect("the vacated chair can be taken");
+    assert_eq!(table_as(&mut app, BOB, at(12)).game, 2);
+}
+
+#[test]
 fn a_rematch_swaps_the_colours_and_needs_a_finished_game() {
     let mut app = seated();
 
@@ -958,6 +1021,7 @@ fn a_seat_claim_filed_on_someone_elses_behalf_moves_no_chair() {
                 member: alice.clone(),
                 name: "Alice".to_owned(),
                 claimed_at: at(1),
+                vacated_at: 0,
             },
         );
     });

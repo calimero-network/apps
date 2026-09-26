@@ -187,16 +187,33 @@ pub struct Seat {
     pub member: MemberId,
     pub name: String,
     pub claimed_at: u64,
+    /// When the holder stood up, or 0 while they are still seated.
+    ///
+    /// A vacated claim is KEPT rather than deleted, because two different
+    /// questions are asked of these rows and only one of them is about now.
+    /// "Who is sitting there?" must stop counting it; "was this person entitled
+    /// to claim that rematch, back then?" must not — a fact about the past does
+    /// not change because somebody got up. Deleting the row answered both at
+    /// once, which collapsed the whole game history to game 0 the moment a
+    /// player left (see `seat_member_of_record`).
+    pub vacated_at: u64,
 }
 
 impl MergeableTrait for Seat {
     fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        // Monotonic, and settled BEFORE the claim itself is chosen. `sit`
+        // always writes a fresh key, so one key only ever goes seated ->
+        // vacated, never back — but the pre-stand and post-stand copies of this
+        // key share a `claimed_at`, so leaving this to the tie-break below
+        // would let the seated copy win and sit the player back down.
+        let vacated_at = self.vacated_at.max(other.vacated_at);
         // Two versions of ONE person's claim — only they can write this key, so
         // this is a retry, not a race. The race between two DIFFERENT claimants
         // is resolved by the reader, over separate keys.
         if earlier_wins(self.claimed_at, other.claimed_at, self, other) {
             *self = other.clone();
         }
+        self.vacated_at = vacated_at;
         Ok(())
     }
 }
@@ -651,8 +668,8 @@ impl MeroChess {
                 result,
                 reason,
                 plies: replayed.applied as u32,
-                white: self.seat_member(self.seat_for_color(index, Color::White))?,
-                black: self.seat_member(self.seat_for_color(index, Color::Black))?,
+                white: self.seat_member_of_record(self.seat_for_color(index, Color::White))?,
+                black: self.seat_member_of_record(self.seat_for_color(index, Color::Black))?,
             });
         }
         Ok(out)
@@ -746,6 +763,7 @@ impl MeroChess {
                 member: id.clone(),
                 name: display,
                 claimed_at: now,
+                vacated_at: 0,
             },
         )?;
         app::emit!(Event::Seated {
@@ -767,16 +785,25 @@ impl MeroChess {
             app::bail!("this game has started — resign instead");
         }
         // Every row this player wrote for that chair — a squatted key can have
-        // forced a retry, so there may be more than one. `remove` is
-        // owner-enforced by the collection itself, so this can only ever take
-        // away the caller's own claims.
-        let mine: Vec<String> = Self::valid_rows(&self.seat_claims, &seat_prefix(&seat))?
+        // forced a retry, so there may be more than one. Marked vacated rather
+        // than removed: the row is the only durable evidence that this player
+        // held the chair, and `rematch_is_valid` still needs it to answer a
+        // question about the past. `put` is owner-enforced by the collection
+        // itself, so this can only ever touch the caller's own claims.
+        let mine: Vec<(String, Seat)> = Self::valid_rows(&self.seat_claims, &seat_prefix(&seat))?
             .into_iter()
-            .map(|(key, _)| key)
-            .filter(|key| key_author(key) == Some(id.as_str()))
+            .filter(|(key, _)| key_author(key) == Some(id.as_str()))
             .collect();
-        for key in mine {
-            let _removed = self.seat_claims.remove(&key)?;
+        for (key, claim) in mine {
+            self.put(
+                |state| &mut state.seat_claims,
+                key,
+                &id,
+                Seat {
+                    vacated_at: now,
+                    ..claim
+                },
+            )?;
         }
         // Standing up is still a sign of life, and the parameter has to be
         // named `now` regardless: the ABI carries the RUST parameter names, so
@@ -1117,7 +1144,10 @@ impl MeroChess {
             return Ok(false);
         }
         for color in [Color::White, Color::Black] {
-            let holder = self.seat_member(self.seat_for_color(previous, color))?;
+            // Of record, not live: whoever held this chair during game
+            // `previous` was entitled to claim the rematch, and standing up
+            // afterwards does not take that back.
+            let holder = self.seat_member_of_record(self.seat_for_color(previous, color))?;
             if holder.is_empty() {
                 continue;
             }
@@ -1144,7 +1174,10 @@ impl MeroChess {
         }
         let mut claims = Vec::new();
         for color in [Color::White, Color::Black] {
-            let holder = self.seat_member(self.seat_for_color(index - 1, color))?;
+            // Same claim as `rematch_is_valid` accepted, so it must be found the
+            // same way — otherwise a game opened by someone who has since left
+            // would be valid but lose the timestamp that says when it began.
+            let holder = self.seat_member_of_record(self.seat_for_color(index - 1, color))?;
             if holder.is_empty() {
                 continue;
             }
@@ -1172,8 +1205,8 @@ impl MeroChess {
     /// the odd ones — and core's owner stamp agrees. Anything else is somebody
     /// else's row, and the game simply has no move at that ply yet.
     fn moves_of(&self, index: u32) -> app::Result<Vec<MoveRecord>> {
-        let white = self.seat_member(self.seat_for_color(index, Color::White))?;
-        let black = self.seat_member(self.seat_for_color(index, Color::Black))?;
+        let white = self.seat_member_of_record(self.seat_for_color(index, Color::White))?;
+        let black = self.seat_member_of_record(self.seat_for_color(index, Color::Black))?;
         if white.is_empty() || black.is_empty() {
             return Ok(Vec::new());
         }
@@ -1282,11 +1315,35 @@ impl MeroChess {
     /// Ties on the clock break on the canonical encoding, so every replica
     /// elects the same holder independently.
     fn seat_member(&self, seat: &str) -> app::Result<MemberId> {
+        self.elect_seat(seat, false)
+    }
+
+    /// Who held `seat` as the table's history records it, INCLUDING a holder
+    /// who has since stood up.
+    ///
+    /// The distinction from [`seat_member`](Self::seat_member) is the whole
+    /// point: entitlement to have claimed a rematch is a fact about the past,
+    /// so it must not be re-derived from who is sitting there now. Answering it
+    /// with the live election made a player's departure retroactively invalidate
+    /// every rematch they had claimed — `current_game` walks a chain and stops
+    /// at the first broken link, so one player standing up reset a four-game
+    /// table to game 0 for everybody, which is exactly the "move every reader to
+    /// an empty board" failure the counted index exists to prevent.
+    ///
+    /// Elected the same way over the same rows, so before anyone stands up this
+    /// returns precisely what `seat_member` returns.
+    fn seat_member_of_record(&self, seat: &str) -> app::Result<MemberId> {
+        self.elect_seat(seat, true)
+    }
+
+    /// Shared election. `include_vacated` picks the tense.
+    fn elect_seat(&self, seat: &str, include_vacated: bool) -> app::Result<MemberId> {
         let rows = Self::valid_rows(&self.seat_claims, &seat_prefix(seat))?;
         let claims: Vec<(String, Seat)> = rows
             .into_iter()
             // The claim has to be about the person who wrote it.
             .filter(|(key, claim)| key_author(key) == Some(claim.member.as_str()))
+            .filter(|(_, claim)| include_vacated || claim.vacated_at == 0)
             .collect();
         Ok(Self::elect(claims, |claim| claim.claimed_at, true)
             .map_or_else(String::new, |claim| claim.member))
@@ -1298,6 +1355,9 @@ impl MeroChess {
         let mine: Vec<(String, Seat)> = rows
             .into_iter()
             .filter(|(key, _)| key_author(key) == Some(member))
+            // A name is a property of the person sitting there now: someone who
+            // left and sat back down under a new name must not read as the old.
+            .filter(|(_, claim)| claim.vacated_at == 0)
             .collect();
         Ok(Self::elect(mine, |claim| claim.claimed_at, true))
     }
@@ -1600,7 +1660,7 @@ impl MeroChess {
 
         let mut winner: Option<(u64, Vec<u8>, String, String)> = None;
         for color in [Color::White, Color::Black] {
-            let holder = self.seat_member(self.seat_for_color(index, color))?;
+            let holder = self.seat_member_of_record(self.seat_for_color(index, color))?;
             if holder.is_empty() {
                 continue;
             }
@@ -1671,7 +1731,8 @@ impl MeroChess {
                 if ending.result != "1/2-1/2" {
                     return Ok(false);
                 }
-                let opponent = self.seat_member(self.seat_for_color(index, color.other()))?;
+                let opponent =
+                    self.seat_member_of_record(self.seat_for_color(index, color.other()))?;
                 Ok(!opponent.is_empty() && self.offer_stands(index, &opponent, ending.ply)?)
             }
             "threefold" => Ok(ending.result == "1/2-1/2"
@@ -1699,7 +1760,7 @@ impl MeroChess {
         }
 
         for color in [Color::White, Color::Black] {
-            let other = self.seat_member(self.seat_for_color(index, color))?;
+            let other = self.seat_member_of_record(self.seat_for_color(index, color))?;
             if other.is_empty() || other == member {
                 continue;
             }
