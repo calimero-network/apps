@@ -336,6 +336,103 @@ export const APPS = {
       { icon: 'Cube3D', title: 'Free transform', body: 'Move, scale, rotate, shear, mirror, and a corner-pin warp for perspective.' },
       { icon: 'Circle', title: 'Paint tools', body: 'Brush, eraser, bucket fill and eyedropper, each re-rendering the layer to a new blob.' },
     ],
+    overview: {
+      headline: 'Your images. Your layers. Your nodes.',
+      // Recorded from the real editor by `pnpm landing:media` in
+      // apps/mero-pixart/app, against the mocked node the `mocked` Playwright
+      // project uses (no merod). The chapter times match CHAPTERS in
+      // e2e/media/capture-landing-media.spec.ts.
+      showcase: {
+        heading: 'A launch poster, edited in layers',
+        sub: 'Recorded from the real editor on the bundled Aurora Edition project: 23 layers in six folders, all drawn by the app’s own compositor.',
+        video: {
+          src: '/landing/demo.webm',
+          poster: '/landing/demo-poster.jpg',
+          chapters: [
+            { at: 0, title: 'Open a project', body: 'A finished poster on your node, in folders, with Ada from your team already in it.' },
+            { at: 3.5, title: 'Adjust, non-destructively', body: 'Swing the backdrop’s hue and saturation. They are stored as settings, so the pixels underneath never change.' },
+            { at: 8.5, title: 'Change a blend mode', body: 'Set the brightest ribbon to Multiply and it sinks into the night sky, then back to Screen.' },
+            { at: 12, title: 'Hide a whole folder', body: 'One eye hides the product card and everything in it. Nothing is deleted.' },
+            { at: 15.5, title: 'Paint on a new layer', body: 'Add a raster layer and draw a stroke. It lands on that layer alone.' },
+          ],
+        },
+      },
+      comparison: {
+        heading: 'An image editor, without the landlord',
+        sub: 'Layers, masks, blend modes and curves, the way a desktop editor does them. The difference is where the file lives.',
+        themLabel: 'A typical cloud image editor',
+        rows: [
+          { label: 'Where the file lives', them: 'On the vendor’s servers', us: 'On your node, and the nodes of the people you invite' },
+          { label: 'Your uploaded images', them: 'In the vendor’s storage bucket', us: 'Stored as blobs on your node' },
+          { label: 'Who can open it', them: 'The vendor, and whoever it grants access', us: 'Only members of the project’s namespace' },
+          { label: 'Adding a collaborator', them: 'Another seat on the monthly bill', us: 'An invite. The app is open source and free' },
+          { label: 'Getting your work out', them: 'Often a proprietary format', us: 'Export PNG, JPEG or SVG whenever you want' },
+        ],
+      },
+      collaboration: {
+        heading: 'Several people, one image, no server in the middle',
+        sub: 'Everyone in a project sees each other’s cursors and changes, and two people can work on it at once without either losing work, because of how a document is stored.',
+        points: [
+          { title: 'Every layer is its own record', body: 'Two people working on different layers never queue behind each other.' },
+          { title: 'Pixels, mask, transform and adjustments are separate', body: 'One person paints on a layer while another moves it or tunes its curves, and both changes land.' },
+          { title: 'Adjustments are settings, not pixels', body: 'They are applied when the image is drawn, so undoing a change never needs the original back from anyone.' },
+          { title: 'Presence stays out of the file', body: 'Cursors travel separately from the document, so they can never touch the artwork.' },
+        ],
+        roles: [
+          { name: 'Owner', can: 'Names the document, sets its size and background, grants and revokes the editor role, and can hand ownership on.' },
+          { name: 'Editor', can: 'Adds, paints, transforms, adjusts and deletes layers.' },
+          { name: 'Viewer', can: 'Watches the image change without being able to change it.' },
+        ],
+        rolesNote: 'The contract checks these, not just the interface: a layer change from a viewer, or a rename from a non-owner, is refused wherever it came from.',
+      },
+      audiences: {
+        heading: 'Made for images that are nobody else’s business',
+        items: [
+          {
+            label: 'Design & marketing teams',
+            title: 'Campaign artwork that stays off a vendor’s cloud until launch day',
+            body: 'Posters, ads and social assets built in layers and folders by the whole team, on your own nodes.',
+            uses: ['Layer folders', 'Blend modes', 'PNG and JPEG export'],
+          },
+          {
+            label: 'Photographers & retouchers',
+            title: 'Non-destructive edits you can revisit a week later',
+            body: 'Curves, exposure and masks are stored as settings, so a client’s change of mind is a slider, not a redo.',
+            uses: ['Curves', 'Paintable masks', 'Adjustments'],
+          },
+          {
+            label: 'Agencies & freelancers',
+            title: 'Client work shared with the client, and nobody else',
+            body: 'Invite the client as a viewer to watch the image take shape, or as an editor to work on it with you.',
+            uses: ['Owner, editor and viewer roles', 'Live cursors', 'Invite links'],
+          },
+          {
+            label: 'Open-source communities',
+            title: 'An image editor the community owns',
+            body: 'No seats and no terms that can change under you. If a tool is missing, fork it and add it.',
+            uses: ['Free for everyone', 'MIT or Apache-2.0', 'Fork and customise'],
+          },
+        ],
+      },
+      openSource: {
+        // The workspace licence logic/Cargo.toml inherits. The Makefile's own
+        // targets: `setup` checks prerequisites and builds, `dev` starts two
+        // local nodes, invites the second and serves the app on :5176.
+        license: 'MIT or Apache-2.0',
+        commands: [
+          '# fork calimero-network/apps on GitHub, then',
+          'git clone https://github.com/<you>/apps',
+          'cd apps/apps/mero-pixart',
+          'make setup   # check tools, build logic, install app deps',
+          'make dev     # 2 local nodes + app on :5176',
+        ],
+      },
+      alwaysOn: true,
+      closing: {
+        title: 'Start your first image',
+        body: 'Connect a node, or install the desktop app that bundles one, then invite the people you make things with.',
+      },
+    },
   },
 
   'mero-sheets': {
