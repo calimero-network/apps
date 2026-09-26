@@ -26,7 +26,7 @@ import { useStreamReconnect } from './useStreamReconnect';
 import { SpreadsheetClient } from '../api/spreadsheet/SpreadsheetClient';
 import type {
   Sheet, FunctionDef, Member, Project, NamedRange, SheetLayout, AxisOpPayload, ActivityEntry, Comment,
-  NotedCell, NoteChangePayload, Protection,
+  NotedCell, NoteChangePayload, Protection, SheetView,
 } from '../api/spreadsheet/SpreadsheetClient';
 import { AxisOp as AxisOpWire, CellOp as CellOpWire } from '../api/spreadsheet/SpreadsheetClient';
 import { chunkOps, MAX_OPS_PER_APPLY, type CellOp } from '../spreadsheet/ops';
@@ -49,6 +49,14 @@ export type Cell = GridCell;
 
 /** Rows or columns. */
 export type Axis = 'row' | 'col';
+
+/** A sheet's frozen panes and resized rows and columns, by position. */
+export interface SheetViewAt {
+  frozenRows: number;
+  frozenCols: number;
+  rowSizes: ReadonlyMap<number, number>;
+  colSizes: ReadonlyMap<number, number>;
+}
 
 /** A cell op by id, raw value in stored form. */
 type IdOp =
@@ -144,6 +152,12 @@ export interface UseSpreadsheetReturn {
   createPrivateSheet: (name: string) => Promise<string | null>;
   renamePrivateSheet: (sheetId: string, name: string) => Promise<void>;
   deletePrivateSheet: (sheetId: string) => Promise<void>;
+  /** A sheet's frozen panes and resized rows and columns, by position. */
+  viewOf: (sheetId: string) => SheetViewAt;
+  /** Resize these rows or columns (by position) to `size` pixels. */
+  setAxisSize: (sheetId: string, axis: Axis, positions: number[], size: number) => Promise<void>;
+  /** Freeze the first `rows` rows and `cols` columns (0 unfreezes). */
+  setFrozen: (sheetId: string, rows: number, cols: number) => Promise<void>;
   /** Protected ranges, by corner ids. */
   protections: Protection[];
   /** Set a member's workbook role (owners only). */
@@ -212,13 +226,17 @@ export function useSpreadsheet({
   const [mentions, setMentions] = useState<Mention[]>([]);
   const [notedCells, setNotedCells] = useState<NotedCell[]>([]);
   const [protections, setProtections] = useState<Protection[]>([]);
+  const [sheetViews, setSheetViews] = useState<SheetView[]>([]);
   // Why the node last refused a write, until dismissed.
   const [writeError, setWriteError] = useState<unknown>(null);
+  // Bumps whenever rows or columns move, for anything that maps ids to positions.
+  const [layoutTick, setLayoutTick] = useState(0);
   const applyStructureTo = useCallback((layouts: SheetLayout[], named: NamedRange[]) => {
     layoutsRef.current = layouts;
     namesRef.current = named;
     setStructure(layouts, named);
     setNames(named);
+    setLayoutTick((t) => t + 1);
   }, []);
   const [engineTick, setEngineTick] = useState(0); // bump to re-derive after init
 
@@ -354,7 +372,7 @@ export function useSpreadsheet({
       const [
         fetchedSheets, allCells,
         fetchedMembers, fetchedProject, me, layouts, named, fetchedComments, noted, prots,
-        mine, privateCells,
+        mine, privateCells, views,
       ] = await Promise.all([
         client.listSheets(),
         client.getAllCells(),
@@ -368,7 +386,9 @@ export function useSpreadsheet({
         client.getProtections(),
         client.getPrivateSheets(),
         client.getPrivateCells(),
+        client.getSheetViews(),
       ]);
+      setSheetViews(views);
       setPrivateSheets(mine);
       privateIdsRef.current = new Set(mine.map((x) => x.id));
       applyStructureTo(layouts, named);
@@ -432,7 +452,7 @@ export function useSpreadsheet({
     // would find it empty and wipe it.
     if (sheetIds.size > 0 && active && !privateIdsRef.current.has(active)) sheetIds.add(active);
     const ids = [...sheetIds];
-    const [bySheet, fetchedSheets, fetchedMembers, layouts, named, fetchedComments, noted, prots] = await Promise.all([
+    const [bySheet, fetchedSheets, fetchedMembers, layouts, named, fetchedComments, noted, prots, views] = await Promise.all([
       Promise.all(ids.map((id) => client.getCells({ sheet_id: id }))),
       plan.sheetList ? client.listSheets() : null,
       plan.members ? client.getMembers() : null,
@@ -441,7 +461,9 @@ export function useSpreadsheet({
       plan.comments ? client.getComments() : null,
       plan.notes ? client.getNotedCells() : null,
       plan.protections ? client.getProtections() : null,
+      plan.views ? client.getSheetViews() : null,
     ]);
+    if (views) setSheetViews(views);
     if (prots) setProtections(prots);
     if (fetchedComments) setComments(fetchedComments);
     if (noted) setNotedCells(noted);
@@ -500,7 +522,7 @@ export function useSpreadsheet({
     const forMe = mentionsIn(event).filter((m) => me && m.author !== me && m.mentions.includes(me));
     if (forMe.length) setMentions((prev) => [...prev, ...forMe.filter((m) => !prev.some((p) => p.commentId === m.commentId))]);
   });
-  useEffect(() => { setMentions([]); setComments([]); setNotedCells([]); setProtections([]); setWriteError(null); setPrivateSheets([]); }, [client]);
+  useEffect(() => { setMentions([]); setComments([]); setNotedCells([]); setProtections([]); setWriteError(null); setPrivateSheets([]); setSheetViews([]); }, [client]);
   // …and after the stream reconnects: nothing replays what changed while it was down.
   useStreamReconnect(() => schedule({ full: true }));
 
@@ -960,6 +982,69 @@ export function useSpreadsheet({
   );
   const dismissWriteError = useCallback(() => setWriteError(null), []);
 
+  // Sheet views: stored by id, shown by position.
+  const viewOf = useCallback((sheetId: string): SheetViewAt => {
+    const v = sheetViews.find((x) => x.sheet_id === sheetId);
+    const rows = new Map<number, number>();
+    const cols = new Map<number, number>();
+    if (v && v.sizes.length > 0) {
+      const order = visibleOrder(sheetId);
+      const rowAt = new Map(order.rows.map((id, i) => [id, i]));
+      const colAt = new Map(order.cols.map((id, i) => [id, i]));
+      for (const s of v.sizes) {
+        const at = s.axis === 'row' ? rowAt.get(s.id) : colAt.get(s.id);
+        if (at !== undefined) (s.axis === 'row' ? rows : cols).set(at, s.size);
+      }
+    }
+    return { frozenRows: v?.frozen_rows ?? 0, frozenCols: v?.frozen_cols ?? 0, rowSizes: rows, colSizes: cols };
+    // `layoutTick` / `engineTick`: positions move when rows or columns do, and
+    // when the engine arrives with the real layout.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sheetViews, layoutTick, engineTick]);
+
+  // Optimistic: show the change at once, put it back if the node refuses.
+  const changeView = useCallback(
+    async (sheetId: string, change: (v: SheetView) => SheetView, write: () => Promise<unknown>) => {
+      if (!client) return;
+      const before = sheetViews;
+      const current = before.find((x) => x.sheet_id === sheetId)
+        ?? { sheet_id: sheetId, frozen_rows: 0, frozen_cols: 0, sizes: [] };
+      setSheetViews([...before.filter((x) => x.sheet_id !== sheetId), change(current)]);
+      try {
+        await enqueue(write);
+      } catch (err) {
+        setSheetViews(before);
+        setWriteError(err);
+      }
+    },
+    [client, enqueue, sheetViews],
+  );
+  const setAxisSize = useCallback(
+    async (sheetId: string, axis: Axis, positions: number[], size: number) => {
+      const order = visibleOrder(sheetId);
+      const ids = positions.map((p) => (axis === 'row' ? order.rows : order.cols)[p]).filter((id): id is string => !!id);
+      const key = axis === 'row' ? 'row' : 'col';
+      const sizes = ids.map((id) => ({ axis: key, id, size: Math.round(size) }));
+      if (sizes.length === 0) return;
+      await changeView(
+        sheetId,
+        (v) => ({ ...v, sizes: [...v.sizes.filter((s) => !(s.axis === key && ids.includes(s.id))), ...sizes] }),
+        async () => {
+          for (let i = 0; i < sizes.length; i += MAX_OPS_PER_APPLY) {
+            await client!.setSizes({ sheet_id: sheetId, sizes: sizes.slice(i, i + MAX_OPS_PER_APPLY) });
+          }
+        },
+      );
+    },
+    [client, changeView],
+  );
+  const setFrozen = useCallback(
+    (sheetId: string, rows: number, cols: number) =>
+      changeView(sheetId, (v) => ({ ...v, frozen_rows: rows, frozen_cols: cols }),
+        () => client!.setFrozen({ sheet_id: sheetId, rows, cols })),
+    [client, changeView],
+  );
+
   const createPrivateSheet = useCallback(async (name: string): Promise<string | null> => {
     if (!client) return null;
     const id = await enqueue(() => client.createPrivateSheet({ name }));
@@ -1054,6 +1139,9 @@ export function useSpreadsheet({
     notedCells,
     loadNote,
     editNote,
+    viewOf,
+    setAxisSize,
+    setFrozen,
     privateSheets,
     createPrivateSheet,
     renamePrivateSheet,

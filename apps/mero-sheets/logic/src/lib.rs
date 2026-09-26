@@ -267,6 +267,55 @@ impl Mergeable for ProtectionData {
     }
 }
 
+/// A resized row or column. Keyed `"{sheet_id}|r|{id}"` or `"{sheet_id}|c|{id}"`.
+#[app::mergeable(id = "mero_sheets::SizeData")]
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, AbiType)]
+#[borsh(crate = "calimero_sdk::borsh")]
+pub struct SizeData {
+    /// Pixels.
+    pub size: u32,
+    pub updated_at: u64,
+}
+
+impl Mergeable for SizeData {
+    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        if (other.updated_at, other.size) > (self.updated_at, self.size) {
+            self.size = other.size;
+            self.updated_at = other.updated_at;
+        }
+        Ok(())
+    }
+}
+
+/// How a sheet is shown: its frozen rows and columns. Keyed by sheet id.
+#[app::mergeable(id = "mero_sheets::SheetViewData")]
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, AbiType)]
+#[borsh(crate = "calimero_sdk::borsh")]
+pub struct SheetViewData {
+    pub frozen_rows: u32,
+    pub frozen_cols: u32,
+    pub updated_at: u64,
+}
+
+impl Mergeable for SheetViewData {
+    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        if (other.updated_at, other.frozen_rows, other.frozen_cols)
+            > (self.updated_at, self.frozen_rows, self.frozen_cols)
+        {
+            self.frozen_rows = other.frozen_rows;
+            self.frozen_cols = other.frozen_cols;
+            self.updated_at = other.updated_at;
+        }
+        Ok(())
+    }
+}
+
+/// The most rows and columns a sheet can freeze.
+pub const MAX_FROZEN: u32 = 20;
+/// Row and column sizes, in pixels.
+pub const MIN_AXIS_SIZE: u32 = 16;
+pub const MAX_AXIS_SIZE: u32 = 1000;
+
 /// What a role may do.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum Role {
@@ -555,6 +604,25 @@ pub struct Member {
     pub role: String,
 }
 
+/// A row's or column's size: `axis` is `row` or `col`.
+#[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct AxisSize {
+    pub axis: String,
+    pub id: String,
+    pub size: u32,
+}
+
+/// A sheet's frozen rows and columns and resized rows and columns.
+#[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct SheetView {
+    pub sheet_id: String,
+    pub frozen_rows: u32,
+    pub frozen_cols: u32,
+    pub sizes: Vec<AxisSize>,
+}
+
 /// A live protected range.
 #[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
 #[serde(crate = "calimero_sdk::serde")]
@@ -795,6 +863,12 @@ pub struct Spreadsheet {
     /// Protected ranges, keyed by id.
     #[migrate(new = UnorderedMap::new_with_field_name("spreadsheet:protections"))]
     protections: UnorderedMap<String, ProtectionData>,
+    /// Resized rows and columns, keyed like `axes`.
+    #[migrate(new = UnorderedMap::new_with_field_name("spreadsheet:sizes"))]
+    sizes: UnorderedMap<String, SizeData>,
+    /// Frozen rows and columns per sheet.
+    #[migrate(new = UnorderedMap::new_with_field_name("spreadsheet:views"))]
+    views: UnorderedMap<String, SheetViewData>,
 }
 
 /// This node's private sheets: scratch space for what-if work that never
@@ -871,6 +945,8 @@ impl Spreadsheet {
             accounts: UnorderedMap::new_with_field_name("spreadsheet:accounts"),
             roles: UnorderedMap::new_with_field_name("spreadsheet:roles"),
             protections: UnorderedMap::new_with_field_name("spreadsheet:protections"),
+            sizes: UnorderedMap::new_with_field_name("spreadsheet:sizes"),
+            views: UnorderedMap::new_with_field_name("spreadsheet:views"),
         }
     }
 
@@ -2048,6 +2124,120 @@ impl Spreadsheet {
             )));
         }
         Ok(description)
+    }
+
+    // ---- Sheet view: sizes and frozen panes ----
+
+    /// Resize rows and columns (`axis` `row` or `col`, size in pixels).
+    pub fn set_sizes(&mut self, sheet_id: String, sizes: Vec<AxisSize>) -> app::Result<()> {
+        self.require_role(Role::Editor)?;
+        self.require_sheet(&sheet_id)?;
+        if sizes.len() > MAX_OPS_PER_APPLY {
+            return Err(AppError::from(Error::Invalid(format!(
+                "{} sizes in one call; the limit is {MAX_OPS_PER_APPLY}",
+                sizes.len()
+            ))));
+        }
+        let now = storage_env::time_now();
+        for s in sizes {
+            let axis = match s.axis.as_str() {
+                "row" => 'r',
+                "col" => 'c',
+                other => {
+                    return Err(AppError::from(Error::Invalid(format!(
+                        "axis is row or col, got {other:?}"
+                    ))))
+                }
+            };
+            Spreadsheet::check_id(&s.id)?;
+            if !(MIN_AXIS_SIZE..=MAX_AXIS_SIZE).contains(&s.size) {
+                return Err(AppError::from(Error::Invalid(format!(
+                    "a size is {MIN_AXIS_SIZE} to {MAX_AXIS_SIZE} pixels, got {}",
+                    s.size
+                ))));
+            }
+            self.sizes
+                .insert(
+                    format!("{sheet_id}|{axis}|{}", s.id),
+                    SizeData {
+                        size: s.size,
+                        updated_at: now,
+                    },
+                )
+                .map_err(|e| AppError::msg(format!("sizes.insert: {e}")))?;
+        }
+        app::emit!(Event::SheetViewChanged {
+            sheet_id: &sheet_id
+        });
+        Ok(())
+    }
+
+    /// Freeze the first `rows` rows and `cols` columns of a sheet (0 unfreezes).
+    pub fn set_frozen(&mut self, sheet_id: String, rows: u32, cols: u32) -> app::Result<()> {
+        self.require_role(Role::Editor)?;
+        self.require_sheet(&sheet_id)?;
+        if rows > MAX_FROZEN || cols > MAX_FROZEN {
+            return Err(AppError::from(Error::Invalid(format!(
+                "a sheet freezes at most {MAX_FROZEN} rows and {MAX_FROZEN} columns"
+            ))));
+        }
+        self.views
+            .insert(
+                sheet_id.clone(),
+                SheetViewData {
+                    frozen_rows: rows,
+                    frozen_cols: cols,
+                    updated_at: storage_env::time_now(),
+                },
+            )
+            .map_err(|e| AppError::msg(format!("views.insert: {e}")))?;
+        app::emit!(Event::SheetViewChanged {
+            sheet_id: &sheet_id
+        });
+        Ok(())
+    }
+
+    /// Every sheet's frozen panes and resized rows and columns (sheets with
+    /// neither are left out).
+    pub fn get_sheet_views(&self) -> app::Result<Vec<SheetView>> {
+        let mut by_sheet: BTreeMap<String, SheetView> = BTreeMap::new();
+        let blank = |sheet_id: &str| SheetView {
+            sheet_id: sheet_id.to_string(),
+            frozen_rows: 0,
+            frozen_cols: 0,
+            sizes: Vec::new(),
+        };
+        for (sheet_id, v) in self
+            .views
+            .entries()
+            .map_err(|e| AppError::msg(format!("views.entries: {e}")))?
+        {
+            let view = by_sheet
+                .entry(sheet_id.clone())
+                .or_insert_with(|| blank(&sheet_id));
+            view.frozen_rows = v.frozen_rows;
+            view.frozen_cols = v.frozen_cols;
+        }
+        for (key, d) in self
+            .sizes
+            .entries()
+            .map_err(|e| AppError::msg(format!("sizes.entries: {e}")))?
+        {
+            let Some((sheet_id, axis, id)) = split_key(&key) else {
+                continue;
+            };
+            let axis = if axis == "r" { "row" } else { "col" };
+            by_sheet
+                .entry(sheet_id.to_string())
+                .or_insert_with(|| blank(sheet_id))
+                .sizes
+                .push(AxisSize {
+                    axis: axis.into(),
+                    id: id.to_string(),
+                    size: d.size,
+                });
+        }
+        Ok(by_sheet.into_values().collect())
     }
 
     // ---- Private sheets ----
@@ -4591,5 +4781,49 @@ mod tests {
         app.call(|s| s.delete_private_sheet(pid.clone())).unwrap();
         assert!(app.view(|s| s.get_private_sheets()).unwrap().is_empty());
         assert!(app.view(|s| s.get_private_cells()).unwrap().is_empty());
+    }
+
+    #[test]
+    fn sizes_and_frozen_panes_are_kept_per_sheet() {
+        let mut app = make_app();
+        let sid = new_sheet(&mut app);
+        let size = |axis: &str, id: &str, size| AxisSize {
+            axis: axis.into(),
+            id: id.into(),
+            size,
+        };
+        app.call(|s| {
+            s.set_sizes(
+                sid.clone(),
+                vec![size("col", "0", 180), size("row", "3", 40)],
+            )
+        })
+        .unwrap();
+        app.call(|s| s.set_frozen(sid.clone(), 1, 2)).unwrap();
+        // A later resize of the same column wins.
+        app.call(|s| s.set_sizes(sid.clone(), vec![size("col", "0", 120)]))
+            .unwrap();
+        let views = app.view(|s| s.get_sheet_views()).unwrap();
+        assert_eq!(views.len(), 1);
+        let v = &views[0];
+        assert_eq!((v.frozen_rows, v.frozen_cols), (1, 2));
+        let col0 = v
+            .sizes
+            .iter()
+            .find(|s| s.axis == "col" && s.id == "0")
+            .unwrap();
+        assert_eq!(col0.size, 120);
+        assert!(v
+            .sizes
+            .iter()
+            .any(|s| s.axis == "row" && s.id == "3" && s.size == 40));
+
+        assert!(app
+            .call(|s| s.set_sizes(sid.clone(), vec![size("col", "0", 5)]))
+            .is_err());
+        assert!(app
+            .call(|s| s.set_sizes(sid.clone(), vec![size("depth", "0", 50)]))
+            .is_err());
+        assert!(app.call(|s| s.set_frozen(sid.clone(), 99, 0)).is_err());
     }
 }

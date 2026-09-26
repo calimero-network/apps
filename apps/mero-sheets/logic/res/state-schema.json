@@ -453,6 +453,46 @@
         }
       ]
     },
+    "SheetViewData": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "frozen_rows",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "frozen_cols",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "SizeData": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "size",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
     "Span": {
       "kind": "record",
       "fields": [
@@ -683,6 +723,32 @@
             },
             "value": {
               "$ref": "ProtectionData"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "sizes",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "SizeData"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "views",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "SheetViewData"
             },
             "crdt_type": "unordered_map"
           }

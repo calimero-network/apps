@@ -54,6 +54,8 @@ interface FormulaBarProps {
   onGridClearClipboard?: () => void;
   /** Open the selected cell's note (Shift+F2). */
   onGridOpenNote?: () => void;
+  /** Navigation keys (arrows, Page Up/Down) while not editing, for the grid. */
+  onGridKey?: (e: React.KeyboardEvent) => void;
   /** Why the selected cell cannot be edited (a protected range, a role); null when it can. */
   lockedReason?: string | null;
 }
@@ -76,6 +78,7 @@ export default function FormulaBar({
   onGridClearClipboard,
   onGridOpenNote,
   lockedReason = null,
+  onGridKey,
 }: FormulaBarProps) {
   const internalInputRef = useRef<HTMLInputElement>(null);
   const inputRef = externalInputRef ?? internalInputRef;
@@ -127,6 +130,18 @@ export default function FormulaBar({
       if (e.key === 'F2' && e.shiftKey) {
         e.preventDefault();
         onGridOpenNote?.();
+        return;
+      }
+      // Not editing, the bar only holds focus for the grid: arrows move the
+      // selection (Shift extends it), and typing replaces the cell, as in any
+      // spreadsheet, rather than appending to its old value.
+      if (/^(Arrow(Up|Down|Left|Right)|Page(Up|Down))$/.test(e.key)) {
+        onGridKey?.(e);
+        return;
+      }
+      if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey && !lockedReason) {
+        e.preventDefault();
+        onChange(e.key);
         return;
       }
     }

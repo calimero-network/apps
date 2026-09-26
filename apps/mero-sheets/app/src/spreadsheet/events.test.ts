@@ -97,3 +97,11 @@ describe('roles and protections', () => {
     expect(p.sheets.size).toBe(0);
   });
 });
+
+describe('sheet views', () => {
+  it('re-reads only the sheet views on a resize or freeze', () => {
+    const p = partial(planFor(mutation(['SheetViewChanged', { sheet_id: 's1' }])));
+    expect(p.views).toBe(true);
+    expect(p.sheets.size).toBe(0);
+  });
+});

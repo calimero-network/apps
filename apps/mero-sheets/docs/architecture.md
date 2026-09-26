@@ -151,6 +151,26 @@ and no comments, notes, protection or named ranges. The app does not publish
 your cursor while you are on one. "Private" means this node: another device of
 yours does not see it, and anyone who can read this node's storage could.
 
+## The grid
+
+Every sheet is the engine's full layout, 1000 rows by 702 columns (A to ZZ),
+and the grid renders only what is on screen: the visible rows and columns
+(`spreadsheet/viewport.ts` finds them from the scroll position and each row's
+and column's size), with spacers keeping the scroll size true. Frozen rows and
+columns are rendered always and stick below the header and beside the row
+numbers; their tints are inset shadows over an opaque background, so what
+scrolls under them does not show through.
+
+Column widths, row heights and frozen panes are shared workbook state
+(`sizes`, keyed like `axes` so a size follows its row or column; `views`, per
+sheet), last writer wins, changed by editors and shown optimistically. Private
+sheets keep the defaults.
+
+The formula bar holds focus while a cell is selected, so it passes arrows and
+Page Up/Down to the grid (Shift extends the selection from where it started,
+as does Shift-click), and a typed character replaces the cell's value rather
+than appending to it.
+
 ## Derive-on-read
 
 If values aren't stored, they have to be produced somehow when a peer asks

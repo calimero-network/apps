@@ -1,7 +1,10 @@
 /**
  * SpreadsheetGrid — the main spreadsheet table.
  *
- * Renders a 50-row × 26-column (A–Z) grid with:
+ * The whole sheet (1000 rows × 702 columns, A–ZZ) is virtualized: only the
+ * rows and columns on screen are rendered, between spacers that keep the
+ * scroll size true. Frozen rows and columns stay in view (sticky), and rows
+ * and columns resize by dragging their header edge. With:
  *  - Sticky column headers (A, B, …) and row number column
  *  - Click-to-select cells, drag-to-select ranges, click a header to select a
  *    whole column/row (highlighted with blue accent)
@@ -15,7 +18,7 @@
  * Keyboard navigation: arrow keys move selection, Enter/Tab commit + move, F2
  * enters edit mode.
  */
-import React, { memo, useCallback, useMemo, useRef, useState } from 'react';
+import React, { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import styled from 'styled-components';
 import { C } from '../theme';
 import { type Cell } from '../hooks/useSpreadsheet';
@@ -23,9 +26,15 @@ import type { PeerCursor } from '../spreadsheet/presence';
 import { columnLabel, normalizeRect, type CellCoord, type Rect } from '../spreadsheet/refs';
 import { resolvePoint, type PointAction } from '../spreadsheet/pointing';
 import { formatValue } from '../spreadsheet/format';
+import type { SheetViewAt } from '../hooks/useSpreadsheet';
+import {
+  AxisMetrics, DEFAULT_COL_WIDTH, DEFAULT_ROW_HEIGHT, GRID_COLS, GRID_ROWS, MAX_AXIS_SIZE,
+  MIN_COL_WIDTH, MIN_ROW_HEIGHT, scrollToShow, visibleRange,
+} from '../spreadsheet/viewport';
 
-const ROWS = 50;
-const COLS = 26; // A–Z
+/** The column-header row and the row-number column. */
+const HEADER_HEIGHT = 26;
+const ROW_HEADER_WIDTH = 52;
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -43,6 +52,13 @@ interface SpreadsheetGridProps {
   notes: ReadonlyMap<string, string>;
   /** Protected ranges on this sheet; `allowed` ones this user may still edit. */
   protectedRanges: readonly { rect: Rect; allowed: boolean }[];
+  /** Frozen panes and resized rows and columns. */
+  view: SheetViewAt;
+  /** Resize a row or column (by position); absent where the sheet cannot be resized. */
+  onResize?: (axis: 'row' | 'col', index: number, size: number) => void;
+  /** Receives the grid's key handler, so the formula bar (which holds focus
+   *  while a cell is selected) can pass navigation keys on. */
+  keyHandlerRef?: React.MutableRefObject<((e: React.KeyboardEvent) => void) | null>;
   selectedCell: CellCoord | null;
   /** Committed multi-cell selection (column/row/range), highlighted. */
   selectionRange: Rect | null;
@@ -80,6 +96,9 @@ function SpreadsheetGrid({
   commented,
   notes,
   protectedRanges,
+  view,
+  onResize,
+  keyHandlerRef,
   selectedCell,
   selectionRange,
   editingValue,
@@ -103,6 +122,11 @@ function SpreadsheetGrid({
   // Drag state: `anchor` is where the drag began; `dragRect` is the live
   // rectangle highlighted while dragging (both for range-select and point-mode).
   const dragAnchorRef = useRef<CellCoord | null>(null);
+  // Shift-selection: `anchorRef` is where it started (the last plain
+  // selection), `keyEndRef` the end Shift+arrows have moved to.
+  const anchorRef = useRef<CellCoord | null>(null);
+  const keyEndRef = useRef<CellCoord | null>(null);
+  if (!selectionRange) { anchorRef.current = selectedCell; keyEndRef.current = null; }
   const [dragRect, setDragRect] = useState<Rect | null>(null);
 
   // Fill-drag: `fillAnchorRef` holds the source rect while the fill handle is
@@ -128,20 +152,94 @@ function SpreadsheetGrid({
     return m;
   }, [cursors, sheetId]);
 
-  // Cells inside a peer's selected range, tinted in their colour. Clamped to
-  // the grid, so a whole-column selection costs at most one column of entries.
-  const peerRangeMap = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const cur of cursors) {
-      if (cur.sheet_id !== sheetId || !cur.range) continue;
-      for (let r = cur.range.top; r <= Math.min(cur.range.bottom, ROWS - 1); r++) {
-        for (let c = cur.range.left; c <= Math.min(cur.range.right, COLS - 1); c++) {
-          m.set(`${r}-${c}`, cur.color);
-        }
-      }
-    }
-    return m;
-  }, [cursors, sheetId]);
+  // Peers' selected ranges, tinted in their colour. Checked per rendered cell:
+  // a whole-column range would be a thousand map entries.
+  const peerRanges = useMemo(
+    () => cursors.filter((cur) => cur.sheet_id === sheetId && cur.range),
+    [cursors, sheetId],
+  );
+  const peerTintAt = (row: number, col: number) => peerRanges.find(({ range: r }) =>
+    r && row >= r.top && row <= r.bottom && col >= r.left && col <= r.right)?.color;
+
+  // ── Geometry: sizes (with a live resize drag on top), scroll, viewport ────
+  const [liveResize, setLiveResize] = useState<{ axis: 'row' | 'col'; index: number; size: number } | null>(null);
+  const rowMetrics = useMemo(() => {
+    const sizes = new Map(view.rowSizes);
+    if (liveResize?.axis === 'row') sizes.set(liveResize.index, liveResize.size);
+    return new AxisMetrics(GRID_ROWS, DEFAULT_ROW_HEIGHT, sizes);
+  }, [view.rowSizes, liveResize]);
+  const colMetrics = useMemo(() => {
+    const sizes = new Map(view.colSizes);
+    if (liveResize?.axis === 'col') sizes.set(liveResize.index, liveResize.size);
+    return new AxisMetrics(GRID_COLS, DEFAULT_COL_WIDTH, sizes);
+  }, [view.colSizes, liveResize]);
+  const frozenRows = Math.min(view.frozenRows, GRID_ROWS);
+  const frozenCols = Math.min(view.frozenCols, GRID_COLS);
+
+  const [scroll, setScroll] = useState({ top: 0, left: 0 });
+  const [viewport, setViewport] = useState({ width: 1200, height: 800 });
+  useLayoutEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const measure = () => setViewport({ width: el.clientWidth, height: el.clientHeight });
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const scrollFrame = useRef<number | null>(null);
+  const handleScroll = useCallback(() => {
+    if (scrollFrame.current !== null) return;
+    scrollFrame.current = requestAnimationFrame(() => {
+      scrollFrame.current = null;
+      const el = containerRef.current;
+      if (el) setScroll({ top: el.scrollTop, left: el.scrollLeft });
+    });
+  }, []);
+  // A new sheet starts at its top-left.
+  useEffect(() => {
+    containerRef.current?.scrollTo({ top: 0, left: 0 });
+  }, [sheetId]);
+
+  const bodyHeight = viewport.height - HEADER_HEIGHT;
+  const bodyWidth = viewport.width - ROW_HEADER_WIDTH;
+  const rowRange = visibleRange(rowMetrics, frozenRows, scroll.top, bodyHeight);
+  const colRange = visibleRange(colMetrics, frozenCols, scroll.left, bodyWidth);
+
+  // Keep the selected cell (the moving end of a keyboard selection) in view.
+  const focusCell = keyEndRef.current ?? selectedCell;
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el || !focusCell) return;
+    const top = scrollToShow(rowMetrics, frozenRows, focusCell.row, el.scrollTop, bodyHeight);
+    const left = scrollToShow(colMetrics, frozenCols, focusCell.col, el.scrollLeft, bodyWidth);
+    if (top !== el.scrollTop || left !== el.scrollLeft) el.scrollTo({ top, left });
+    // Only when the selection moves, not on every resize or scroll.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusCell?.row, focusCell?.col]);
+
+  // ── Resizing: drag a header's edge ───────────────────────────────────────
+  const startResize = (e: React.MouseEvent, axis: 'row' | 'col', index: number) => {
+    if (!onResize) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const origin = axis === 'col' ? e.clientX : e.clientY;
+    const start = axis === 'col' ? colMetrics.size(index) : rowMetrics.size(index);
+    const min = axis === 'col' ? MIN_COL_WIDTH : MIN_ROW_HEIGHT;
+    let size = start;
+    const move = (ev: MouseEvent) => {
+      size = Math.max(min, Math.min(MAX_AXIS_SIZE, start + (axis === 'col' ? ev.clientX : ev.clientY) - origin));
+      setLiveResize({ axis, index, size });
+    };
+    const up = () => {
+      window.removeEventListener('mousemove', move);
+      window.removeEventListener('mouseup', up);
+      setLiveResize(null);
+      if (size !== start) onResize(axis, index, size);
+    };
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+  };
 
   // Dispatch a resolved point action to the right callback.
   const dispatch = useCallback(
@@ -209,6 +307,12 @@ function SpreadsheetGrid({
       if (pointMode) {
         // Keep the formula input focused so its caret survives the click.
         e.preventDefault();
+      } else if (e.shiftKey && anchorRef.current) {
+        // Shift-click: extend from where the selection started.
+        e.preventDefault();
+        keyEndRef.current = cell;
+        onSelectRange(anchorRef.current, cell);
+        return;
       } else {
         // Move selection immediately on press (single-click select). The formula
         // bar auto-focuses on selection and owns clipboard/Delete when not editing.
@@ -217,7 +321,7 @@ function SpreadsheetGrid({
       dragAnchorRef.current = cell;
       setDragRect(normalizeRect(cell, cell));
     },
-    [pointMode, onSelectCell],
+    [pointMode, onSelectCell, onSelectRange],
   );
 
   const handleCellMouseOver = useCallback(
@@ -292,26 +396,31 @@ function SpreadsheetGrid({
 
   // Keyboard navigation on the grid container
   const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLDivElement>) => {
+    (e: React.KeyboardEvent) => {
       if (!selectedCell) return;
       const { row, col } = selectedCell;
+      const page = Math.max(1, Math.floor(bodyHeight / DEFAULT_ROW_HEIGHT) - 1);
+      const step: Record<string, [number, number]> = {
+        ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1],
+        PageUp: [-page, 0], PageDown: [page, 0],
+      };
+      if (e.key in step) {
+        e.preventDefault();
+        const [dr, dc] = step[e.key];
+        const from = e.shiftKey ? keyEndRef.current ?? selectedCell : selectedCell;
+        const to = {
+          row: Math.max(0, Math.min(GRID_ROWS - 1, from.row + dr)),
+          col: Math.max(0, Math.min(GRID_COLS - 1, from.col + dc)),
+        };
+        if (e.shiftKey && anchorRef.current) {
+          keyEndRef.current = to;
+          onSelectRange(anchorRef.current, to);
+        } else {
+          onSelectCell(to.row, to.col);
+        }
+        return;
+      }
       switch (e.key) {
-        case 'ArrowUp':
-          e.preventDefault();
-          if (row > 0) onSelectCell(row - 1, col);
-          break;
-        case 'ArrowDown':
-          e.preventDefault();
-          if (row < ROWS - 1) onSelectCell(row + 1, col);
-          break;
-        case 'ArrowLeft':
-          e.preventDefault();
-          if (col > 0) onSelectCell(row, col - 1);
-          break;
-        case 'ArrowRight':
-          e.preventDefault();
-          if (col < COLS - 1) onSelectCell(row, col + 1);
-          break;
         case 'F2':
           e.preventDefault();
           // Shift+F2 opens the cell's note, as in other spreadsheets.
@@ -338,46 +447,156 @@ function SpreadsheetGrid({
           break;
       }
     },
-    [selectedCell, onSelectCell, onEditCell, onOpenNote, onCommitAndMove, onDelete, onClearClipboard],
+    [selectedCell, bodyHeight, onSelectCell, onSelectRange, onEditCell, onOpenNote, onCommitAndMove, onDelete, onClearClipboard],
   );
+  useEffect(() => {
+    if (keyHandlerRef) keyHandlerRef.current = handleKeyDown;
+  }, [keyHandlerRef, handleKeyDown]);
 
   // The rectangle to highlight: the live drag while dragging, else the
   // committed multi-cell selection.
   const highlightRect = dragRect ?? selectionRange;
+
+  const rows = [
+    ...Array.from({ length: frozenRows }, (_, i) => i),
+    ...Array.from({ length: rowRange.end - rowRange.start }, (_, i) => rowRange.start + i),
+  ];
+  const cols = [
+    ...Array.from({ length: frozenCols }, (_, i) => i),
+    ...Array.from({ length: colRange.end - colRange.start }, (_, i) => colRange.start + i),
+  ];
+  const leftGap = colMetrics.offset(colRange.start) - colMetrics.offset(frozenCols);
+  const rightGap = colMetrics.total - colMetrics.offset(colRange.end);
+  const topGap = rowMetrics.offset(rowRange.start) - rowMetrics.offset(frozenRows);
+  const bottomGap = rowMetrics.total - rowMetrics.offset(rowRange.end);
+
+  // Frozen rows and columns stick below the header and beside the row numbers.
+  const stickyRow = (row: number): React.CSSProperties =>
+    row < frozenRows ? { position: 'sticky', top: HEADER_HEIGHT + rowMetrics.offset(row), zIndex: 2 } : {};
+  const stickyCol = (col: number): React.CSSProperties =>
+    col < frozenCols ? { position: 'sticky', left: ROW_HEADER_WIDTH + colMetrics.offset(col), zIndex: 2 } : {};
+  const frozenEdge = (row: number, col: number): React.CSSProperties => ({
+    ...(row === frozenRows - 1 ? { borderBottom: `2px solid ${C.muted}` } : {}),
+    ...(col === frozenCols - 1 ? { borderRight: `2px solid ${C.muted}` } : {}),
+  });
+
+  const selBottom = selectionRange ? selectionRange.bottom : selectedCell?.row;
+  const selRight = selectionRange ? selectionRange.right : selectedCell?.col;
+
+  const renderCell = (row: number, col: number) => {
+    const key = `${row}-${col}`;
+    const cell = cellMap.get(key);
+    const cursor = cursorMap.get(key);
+    const isSelected = selectedCell?.row === row && selectedCell?.col === col;
+    const inRange = highlightRect !== null &&
+      row >= highlightRect.top && row <= highlightRect.bottom &&
+      col >= highlightRect.left && col <= highlightRect.right;
+    const inFillTarget = fillTarget !== null &&
+      row >= fillTarget.top && row <= fillTarget.bottom &&
+      col >= fillTarget.left && col <= fillTarget.right &&
+      !(selectionRange
+        ? row >= selectionRange.top && row <= selectionRange.bottom &&
+          col >= selectionRange.left && col <= selectionRange.right
+        : isSelected);
+    const copiedHere = copiedRegion != null &&
+      row >= copiedRegion.rect.top && row <= copiedRegion.rect.bottom &&
+      col >= copiedRegion.rect.left && col <= copiedRegion.rect.right;
+    const copiedKind = copiedHere ? (copiedRegion!.cut ? 'cut' : 'copy') : undefined;
+    // The handle sits on the selection's bottom-right cell.
+    const isFillCorner = !pointMode && editingValue === null && row === selBottom && col === selRight &&
+      (isSelected || (selectionRange != null && inRange));
+    const isEditingThis = isSelected && editingValue !== null;
+    const shownValue = isEditingThis ? editingValue : formatValue(cell?.computed_value ?? '', cell?.format ?? '');
+    const shownIsFormula = isEditingThis ? editingValue.startsWith('=') : (cell?.raw_value.startsWith('=') ?? false);
+    const sticky = { ...stickyRow(row), ...stickyCol(col) };
+    if (row < frozenRows && col < frozenCols) sticky.zIndex = 3;
+
+    return (
+      <DataCell
+        key={col}
+        data-row={row}
+        data-col={col}
+        data-testid="item-cell"
+        $selected={isSelected}
+        $cursorColor={cursor?.color}
+        $peerTint={peerTintAt(row, col)}
+        $inRange={inRange && !isSelected}
+        $inFillTarget={inFillTarget}
+        $copied={copiedKind}
+        $locked={lockAt(protectedRanges, row, col)}
+        style={{ ...sticky, ...frozenEdge(row, col) }}
+        aria-selected={isSelected}
+        role="gridcell"
+        onContextMenu={(e) => {
+          if (!onCellContextMenu) return;
+          e.preventDefault();
+          onCellContextMenu(row, col, e.clientX, e.clientY);
+        }}
+        title={cellTitle(`${columnLabel(col)}${row + 1}`, cell, editedBy, notes.get(key))}
+      >
+        <CellValue $isFormula={shownIsFormula}>{shownValue}</CellValue>
+        {notes.has(key) && <NoteMark data-testid="note-mark" aria-label="Has a note" />}
+        {commented.has(key) && <CommentMark data-testid="comment-mark" aria-label="Has comments" />}
+        {cursor && !isSelected && (
+          <CursorTag style={{ background: cursor.color }}>{cursorLabel(cursor.author)}</CursorTag>
+        )}
+        {isFillCorner && <FillHandle data-testid="fill-handle" onMouseDown={handleFillStart} aria-label="Fill handle" />}
+      </DataCell>
+    );
+  };
+
+  const colSelected = (col: number) => selectedCell?.col === col ||
+    (!!highlightRect && highlightRect.left <= col && col <= highlightRect.right);
+  const rowSelected = (row: number) => selectedCell?.row === row ||
+    (!!highlightRect && highlightRect.top <= row && row <= highlightRect.bottom);
 
   return (
     <GridContainer
       ref={containerRef}
       tabIndex={0}
       onKeyDown={handleKeyDown}
+      onScroll={handleScroll}
       aria-label="Spreadsheet grid"
+      aria-rowcount={GRID_ROWS}
+      aria-colcount={GRID_COLS}
       role="grid"
     >
-      <Table role="presentation">
+      <Table role="presentation" style={{ width: ROW_HEADER_WIDTH + colMetrics.total }}>
         <colgroup>
-          <col style={{ width: '52px', minWidth: '52px' }} />
-          {Array.from({ length: COLS }, (_, i) => (
-            <col key={i} style={{ width: '100px', minWidth: '60px' }} />
-          ))}
+          <col style={{ width: ROW_HEADER_WIDTH }} />
+          {cols.slice(0, frozenCols).map((c) => <col key={c} style={{ width: colMetrics.size(c) }} />)}
+          {leftGap > 0 && <col style={{ width: leftGap }} />}
+          {cols.slice(frozenCols).map((c) => <col key={c} style={{ width: colMetrics.size(c) }} />)}
+          {rightGap > 0 && <col style={{ width: rightGap }} />}
         </colgroup>
 
-        {/* Column headers — sticky, clickable */}
+        {/* Column headers — sticky, clickable, resizable at the right edge */}
         <thead>
-          <tr>
+          <tr style={{ height: HEADER_HEIGHT }}>
             <CornerTh aria-label="Row / Column" />
-            {Array.from({ length: COLS }, (_, col) => (
-              <ColTh
-                key={col}
-                $selected={
-                  selectedCell?.col === col ||
-                  (!!highlightRect && highlightRect.left <= col && col <= highlightRect.right)
-                }
-                onMouseDown={(e) => handleColHeader(e, col)}
-                aria-label={`Column ${columnLabel(col)}`}
-              >
-                {columnLabel(col)}
-              </ColTh>
+            {cols.map((col, i) => (
+              <React.Fragment key={col}>
+                {i === frozenCols && leftGap > 0 && <GapTh aria-hidden="true" />}
+                <ColTh
+                  $selected={colSelected(col)}
+                  style={col < frozenCols ? { left: ROW_HEADER_WIDTH + colMetrics.offset(col), zIndex: 4, ...frozenEdge(-1, col) } : undefined}
+                  onMouseDown={(e) => handleColHeader(e, col)}
+                  aria-label={`Column ${columnLabel(col)}`}
+                  data-col={col}
+                >
+                  {columnLabel(col)}
+                  {onResize && (
+                    <ResizeHandle
+                      $axis="col"
+                      onMouseDown={(e) => startResize(e, 'col', col)}
+                      aria-label={`Resize column ${columnLabel(col)}`}
+                      data-testid="resize-col"
+                    />
+                  )}
+                </ColTh>
+              </React.Fragment>
             ))}
+            {rightGap > 0 && <GapTh aria-hidden="true" />}
           </tr>
         </thead>
 
@@ -388,107 +607,37 @@ function SpreadsheetGrid({
           onMouseUp={handleCellMouseUp}
           onDoubleClick={handleCellDoubleClick}
         >
-          {Array.from({ length: ROWS }, (_, row) => (
-            <tr key={row}>
-              <RowTh
-                $selected={
-                  selectedCell?.row === row ||
-                  (!!highlightRect && highlightRect.top <= row && row <= highlightRect.bottom)
-                }
-                onMouseDown={(e) => handleRowHeader(e, row)}
-                aria-label={`Row ${row + 1}`}
-              >
-                {row + 1}
-              </RowTh>
-
-              {Array.from({ length: COLS }, (_, col) => {
-                const key = `${row}-${col}`;
-                const cell = cellMap.get(key);
-                const cursor = cursorMap.get(key);
-                const isSelected =
-                  selectedCell?.row === row && selectedCell?.col === col;
-
-                const inRange =
-                  highlightRect !== null &&
-                  row >= highlightRect.top &&
-                  row <= highlightRect.bottom &&
-                  col >= highlightRect.left &&
-                  col <= highlightRect.right;
-
-                const inFillTarget =
-                  fillTarget !== null &&
-                  row >= fillTarget.top && row <= fillTarget.bottom &&
-                  col >= fillTarget.left && col <= fillTarget.right &&
-                  !(
-                    selectionRange
-                      ? row >= selectionRange.top && row <= selectionRange.bottom &&
-                        col >= selectionRange.left && col <= selectionRange.right
-                      : selectedCell?.row === row && selectedCell?.col === col
-                  );
-
-                const copiedHere =
-                  copiedRegion != null &&
-                  row >= copiedRegion.rect.top && row <= copiedRegion.rect.bottom &&
-                  col >= copiedRegion.rect.left && col <= copiedRegion.rect.right;
-                const copiedKind = copiedHere ? (copiedRegion!.cut ? 'cut' : 'copy') : undefined;
-
-                // The handle sits on the selection's bottom-right cell.
-                const selBottom = selectionRange ? selectionRange.bottom : selectedCell?.row;
-                const selRight = selectionRange ? selectionRange.right : selectedCell?.col;
-                const isFillCorner =
-                  !pointMode && editingValue === null && row === selBottom && col === selRight &&
-                  (isSelected || (selectionRange != null && inRange));
-
-                const isEditingThis = isSelected && editingValue !== null;
-                const shownValue = isEditingThis
-                  ? editingValue
-                  : formatValue(cell?.computed_value ?? '', cell?.format ?? '');
-                const shownIsFormula = isEditingThis
-                  ? editingValue.startsWith('=')
-                  : (cell?.raw_value.startsWith('=') ?? false);
-
-                return (
-                  <DataCell
-                    key={col}
-                    data-row={row}
-                    data-col={col}
-                    data-testid="item-cell"
-                    $selected={isSelected}
-                    $cursorColor={cursor?.color}
-                    $peerTint={peerRangeMap.get(key)}
-                    $inRange={inRange && !isSelected}
-                    $inFillTarget={inFillTarget}
-                    $copied={copiedKind}
-                    $locked={lockAt(protectedRanges, row, col)}
-                    aria-selected={isSelected}
-                    role="gridcell"
-                    onContextMenu={(e) => {
-                      if (!onCellContextMenu) return;
-                      e.preventDefault();
-                      onCellContextMenu(row, col, e.clientX, e.clientY);
-                    }}
-                    title={cellTitle(`${columnLabel(col)}${row + 1}`, cell, editedBy, notes.get(key))}
-                  >
-                    <CellValue $isFormula={shownIsFormula}>{shownValue}</CellValue>
-                    {notes.has(key) && <NoteMark data-testid="note-mark" aria-label="Has a note" />}
-                    {commented.has(key) && <CommentMark data-testid="comment-mark" aria-label="Has comments" />}
-                    {cursor && !isSelected && (
-                      <CursorTag style={{ background: cursor.color }}>
-                        {cursorLabel(cursor.author)}
-                      </CursorTag>
-                    )}
-                    {isFillCorner && (
-                      <FillHandle
-                        data-testid="fill-handle"
-                        onMouseDown={handleFillStart}
-                        aria-label="Fill handle"
-                      />
-                    )}
-                  </DataCell>
-                );
-              })}
-            </tr>
+          {rows.map((row, i) => (
+            <React.Fragment key={row}>
+              {i === frozenRows && topGap > 0 && <tr aria-hidden="true" style={{ height: topGap }} />}
+              <tr style={{ height: rowMetrics.size(row) }}>
+                <RowTh
+                  $selected={rowSelected(row)}
+                  style={row < frozenRows ? { top: HEADER_HEIGHT + rowMetrics.offset(row), zIndex: 3, ...frozenEdge(row, -1) } : undefined}
+                  onMouseDown={(e) => handleRowHeader(e, row)}
+                  aria-label={`Row ${row + 1}`}
+                >
+                  {row + 1}
+                  {onResize && (
+                    <ResizeHandle
+                      $axis="row"
+                      onMouseDown={(e) => startResize(e, 'row', row)}
+                      aria-label={`Resize row ${row + 1}`}
+                      data-testid="resize-row"
+                    />
+                  )}
+                </RowTh>
+                {cols.map((col, j) => (
+                  <React.Fragment key={col}>
+                    {j === frozenCols && leftGap > 0 && <GapTd aria-hidden="true" style={stickyRow(row)} />}
+                    {renderCell(row, col)}
+                  </React.Fragment>
+                ))}
+                {rightGap > 0 && <GapTd aria-hidden="true" style={stickyRow(row)} />}
+              </tr>
+            </React.Fragment>
           ))}
+          {bottomGap > 0 && <tr aria-hidden="true" style={{ height: bottomGap }} />}
         </tbody>
       </Table>
     </GridContainer>
@@ -547,7 +696,7 @@ const CornerTh = styled.th`
   position: sticky;
   top: 0;
   left: 0;
-  z-index: 3;
+  z-index: 5;
   background: ${C.paper2};
   border-right: 2px solid ${C.line};
   border-bottom: 2px solid ${C.line};
@@ -559,7 +708,9 @@ const ColTh = styled.th<{ $selected: boolean }>`
   position: sticky;
   top: 0;
   z-index: 2;
-  background: ${(p) => (p.$selected ? 'rgba(164,255,17,0.12)' : C.paper2)};
+  /* Opaque, tint as an inset shadow: frozen headers sit over scrolled ones. */
+  background: ${C.paper2};
+  box-shadow: ${(p) => (p.$selected ? 'inset 0 0 0 999px rgba(164,255,17,0.12)' : 'none')};
   border-right: 1px solid ${C.line};
   border-bottom: 2px solid ${C.line};
   text-align: center;
@@ -569,15 +720,38 @@ const ColTh = styled.th<{ $selected: boolean }>`
   padding: 4px 2px;
   cursor: pointer;
   user-select: none;
+  overflow: hidden;
+  white-space: nowrap;
   transition: background 0.1s, color 0.1s;
-  &:hover { background: rgba(164,255,17,0.10); }
+  &:hover { box-shadow: inset 0 0 0 999px rgba(164,255,17,0.10); }
+`;
+
+/** The strip at a header's edge that resizes its row or column. */
+const ResizeHandle = styled.span<{ $axis: 'row' | 'col' }>`
+  position: absolute;
+  ${(p) => (p.$axis === 'col'
+    ? 'top: 0; right: -3px; width: 7px; height: 100%; cursor: col-resize;'
+    : 'left: 0; bottom: -3px; height: 7px; width: 100%; cursor: row-resize;')}
+  z-index: 1;
+  &:hover { background: ${C.green}; opacity: 0.6; }
+`;
+
+/** Header and body cells standing in for the columns scrolled out of view. */
+const GapTh = styled.th`
+  position: sticky; top: 0; z-index: 1;
+  background: ${C.paper2}; border-bottom: 2px solid ${C.line};
+`;
+const GapTd = styled.td`
+  padding: 0; border: none; background: ${C.paper};
 `;
 
 const RowTh = styled.td<{ $selected: boolean }>`
   position: sticky;
   left: 0;
-  z-index: 1;
-  background: ${(p) => (p.$selected ? 'rgba(164,255,17,0.12)' : C.paper2)};
+  z-index: 2;
+  /* Opaque, tint as an inset shadow: frozen headers sit over scrolled ones. */
+  background: ${C.paper2};
+  box-shadow: ${(p) => (p.$selected ? 'inset 0 0 0 999px rgba(164,255,17,0.12)' : 'none')};
   border-right: 2px solid ${C.line};
   border-bottom: 1px solid ${C.line};
   text-align: center;
@@ -588,13 +762,10 @@ const RowTh = styled.td<{ $selected: boolean }>`
   cursor: pointer;
   user-select: none;
   transition: background 0.1s, color 0.1s;
-  &:hover { background: rgba(164,255,17,0.10); }
+  &:hover { box-shadow: inset 0 0 0 999px rgba(164,255,17,0.10); }
 `;
 
 const DataCell = styled.td<{ $selected: boolean; $cursorColor?: string; $peerTint?: string; $inRange?: boolean; $inFillTarget?: boolean; $copied?: 'copy' | 'cut'; $locked?: 'blocked' | 'allowed' }>`
-  height: 24px;
-  min-width: 60px;
-  max-width: 200px;
   padding: 0 4px;
   font-size: 13px;
   font-family: ui-monospace, 'SF Mono', Menlo, monospace;
@@ -614,7 +785,7 @@ const DataCell = styled.td<{ $selected: boolean; $cursorColor?: string; $peerTin
     `
     outline: 2px solid ${ACCENT};
     outline-offset: -2px;
-    background: rgba(164, 255, 17, 0.06);
+    box-shadow: inset 0 0 0 999px rgba(164, 255, 17, 0.06);
     z-index: 1;
   `}
 
@@ -635,7 +806,7 @@ const DataCell = styled.td<{ $selected: boolean; $cursorColor?: string; $peerTin
   ${(p) =>
     p.$inRange &&
     `
-    background: rgba(164, 255, 17, 0.12);
+    box-shadow: inset 0 0 0 999px rgba(164, 255, 17, 0.12);
   `}
 
   ${(p) => p.$locked && `background-image: repeating-linear-gradient(135deg, transparent 0 6px, ${p.$locked === 'blocked' ? 'rgba(128, 128, 128, 0.16)' : 'rgba(164, 255, 17, 0.08)'} 6px 7px);`}

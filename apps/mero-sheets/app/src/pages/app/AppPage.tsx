@@ -29,7 +29,7 @@ import { describeError } from '../../utils/errors';
 import { cellRef } from '../../components/FormulaBar';
 import { isFormula, insertReference, type AutoRef } from '../../spreadsheet/formulaEdit';
 import { JoinSyncBanner } from '@calimero-apps/join-sync';
-import { normalizeRect, rangeRef, sheetPrefix, rectCells, type CellCoord, type Rect } from '../../spreadsheet/refs';
+import { columnLabel, normalizeRect, rangeRef, sheetPrefix, rectCells, type CellCoord, type Rect } from '../../spreadsheet/refs';
 import { planFill } from '../../spreadsheet/fill';
 import { toTSV, fromTSV } from '../../spreadsheet/clipboard';
 import { planPaste, type ClipPayload, type ClipCell, type PasteWrite } from '../../spreadsheet/paste';
@@ -49,6 +49,7 @@ import NotePanel from '../../components/NotePanel';
 import PeoplePanel from '../../components/PeoplePanel';
 import ProtectModal from '../../components/ProtectModal';
 import { lockedReason, placeProtections } from '../../spreadsheet/access';
+import { GRID_COLS, GRID_ROWS } from '../../spreadsheet/viewport';
 import type { NoteOp } from '../../spreadsheet/notes';
 import { ago, nsToMs } from '../../lib/time';
 import { sheetsToCsv } from '../../spreadsheet/download';
@@ -59,8 +60,6 @@ import { useSheetPresence } from '../../hooks/useSheetPresence';
 import { labelMembers, labelsById } from '../../lib/people';
 import { rememberName, rememberedName } from '../../lib/displayName';
 
-const COLS = 26;
-const ROWS = 50;
 
 export default function AppPage() {
   const { logout, mero } = useMero();
@@ -194,6 +193,8 @@ export default function AppPage() {
   const [namesSaving, setNamesSaving] = useState(false);
   const [namesError, setNamesError] = useState<string | null>(null);
   const formulaInputRef = useRef<HTMLInputElement>(null);
+  // The grid's key handler, for navigation keys pressed in the formula bar.
+  const gridKeyRef = useRef<((e: React.KeyboardEvent) => void) | null>(null);
   // Marks the reference the last point-click inserted, so the next click can
   // replace it (Sheets behaviour: click A1 then B2 → `=B2`, not `=A1B2`).
   const autoRefRef = useRef<AutoRef | undefined>(undefined);
@@ -400,7 +401,7 @@ export default function AppPage() {
     async (col: number) => {
       if (isDirty && selectedCell && activeSheetId) await commitCellRef.current?.();
       setSelectedCell({ row: 0, col });
-      setSelectionRange({ top: 0, left: col, bottom: ROWS - 1, right: col });
+      setSelectionRange({ top: 0, left: col, bottom: GRID_ROWS - 1, right: col });
       setEditing(false);
       setEditAnchor(null);
       autoRefRef.current = undefined;
@@ -412,7 +413,7 @@ export default function AppPage() {
     async (row: number) => {
       if (isDirty && selectedCell && activeSheetId) await commitCellRef.current?.();
       setSelectedCell({ row, col: 0 });
-      setSelectionRange({ top: row, left: 0, bottom: row, right: COLS - 1 });
+      setSelectionRange({ top: row, left: 0, bottom: row, right: GRID_COLS - 1 });
       setEditing(false);
       setEditAnchor(null);
       autoRefRef.current = undefined;
@@ -463,6 +464,28 @@ export default function AppPage() {
     return () => window.clearTimeout(t);
   }, [writeError, dismissWriteError]);
 
+  // ── Sheet view: frozen panes and row/column sizes (shared; editors change them)
+  const { viewOf, setAxisSize, setFrozen } = ss;
+  const activeView = useMemo(
+    () => (activeSheetId && !isPrivateActive
+      ? viewOf(activeSheetId)
+      : { frozenRows: 0, frozenCols: 0, rowSizes: new Map<number, number>(), colSizes: new Map<number, number>() }),
+    [activeSheetId, isPrivateActive, viewOf],
+  );
+  const canResize = !!activeSheetId && !isPrivateActive && (myRole === 'owner' || myRole === 'editor');
+  // Dragging one of several selected whole columns (or rows) resizes them all.
+  const handleResize = useCallback((axis: 'row' | 'col', index: number, size: number) => {
+    if (!activeSheetId) return;
+    const r = selectionRange;
+    const whole = r && (axis === 'col'
+      ? r.top === 0 && r.bottom === GRID_ROWS - 1 && index >= r.left && index <= r.right
+      : r.left === 0 && r.right === GRID_COLS - 1 && index >= r.top && index <= r.bottom);
+    const positions = whole
+      ? Array.from({ length: axis === 'col' ? r.right - r.left + 1 : r.bottom - r.top + 1 }, (_, i) => (axis === 'col' ? r.left : r.top) + i)
+      : [index];
+    void setAxisSize(activeSheetId, axis, positions, size);
+  }, [activeSheetId, selectionRange, setAxisSize]);
+
   // Shift+F2 / "Note…": open a cell's note.
   const { idsOf, loadNote, editNote } = ss;
   const openNote = useCallback(
@@ -487,8 +510,8 @@ export default function AppPage() {
       await commitCellRef.current?.();
       if (!selectedCell) return;
       const { row, col } = selectedCell;
-      if (direction === 'down' && row < ROWS - 1) setSelectedCell({ row: row + 1, col });
-      else if (direction === 'right' && col < COLS - 1) setSelectedCell({ row, col: col + 1 });
+      if (direction === 'down' && row < GRID_ROWS - 1) setSelectedCell({ row: row + 1, col });
+      else if (direction === 'right' && col < GRID_COLS - 1) setSelectedCell({ row, col: col + 1 });
     },
     [selectedCell],
   );
@@ -519,7 +542,7 @@ export default function AppPage() {
     if (home && home.sheetId !== activeSheetId) setActiveSheetId(home.sheetId);
     // Move down after commit via formula bar Enter
     setSelectedCell((prev) =>
-      prev && prev.row < ROWS - 1 ? { row: prev.row + 1, col: prev.col } : prev,
+      prev && prev.row < GRID_ROWS - 1 ? { row: prev.row + 1, col: prev.col } : prev,
     );
     setSelectionRange(null);
   }, [editAnchor, activeSheetId]);
@@ -705,6 +728,17 @@ export default function AppPage() {
             onClick: () => { setCtxMenu(null); if (selectedCell) openNote(selectedCell.row, selectedCell.col); } },
         ],
       },
+      ...(canResize ? [{
+        label: 'Freeze',
+        actions: [
+          { label: `Freeze up to row ${r.bottom + 1}`, testId: 'freeze-rows',
+            onClick: () => { setCtxMenu(null); if (activeSheetId) void setFrozen(activeSheetId, r.bottom + 1, activeView.frozenCols); } },
+          { label: `Freeze up to column ${columnLabel(r.right)}`, testId: 'freeze-cols',
+            onClick: () => { setCtxMenu(null); if (activeSheetId) void setFrozen(activeSheetId, activeView.frozenRows, r.right + 1); } },
+          ...(activeView.frozenRows || activeView.frozenCols ? [{ label: 'Unfreeze', testId: 'unfreeze',
+            onClick: () => { setCtxMenu(null); if (activeSheetId) void setFrozen(activeSheetId, 0, 0); } }] : []),
+        ],
+      }] : []),
       ...(isOwner ? [{
         label: 'Protect',
         actions: [
@@ -880,7 +914,7 @@ export default function AppPage() {
 
       const pasteOps: CellOp[] = [];
       for (const w of writes) {
-        if (w.row < 0 || w.row >= ROWS || w.col < 0 || w.col >= COLS) continue; // clip
+        if (w.row < 0 || w.row >= GRID_ROWS || w.col < 0 || w.col >= GRID_COLS) continue; // clip
         if (w.raw.trim() === '') {
           pasteOps.push(clearOp(w.row, w.col));
         } else {
@@ -1287,6 +1321,7 @@ export default function AppPage() {
         onGridDelete={handleDelete}
         onGridClearClipboard={handleClearClipboard}
         onGridOpenNote={() => { if (selectedCell) openNote(selectedCell.row, selectedCell.col); }}
+        onGridKey={(e) => gridKeyRef.current?.(e)}
         lockedReason={selectedLock}
       />
 
@@ -1322,6 +1357,9 @@ export default function AppPage() {
         commented={commented}
         notes={notes}
         protectedRanges={placed}
+        view={activeView}
+        keyHandlerRef={gridKeyRef}
+        onResize={canResize ? handleResize : undefined}
         selectedCell={pickingForeignSheet ? null : selectedCell}
         selectionRange={pickingForeignSheet ? null : selectionRange}
         editingValue={pickingForeignSheet ? null : isDirty ? formulaInput : null}

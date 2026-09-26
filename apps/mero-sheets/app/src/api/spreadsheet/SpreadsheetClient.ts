@@ -86,6 +86,12 @@ export interface AxisOp_RestoreRow {
   id: string;
 }
 
+export interface AxisSize {
+  axis: string;
+  id: string;
+  size: number;
+}
+
 export interface Cell {
   id: string;
   sheet_id: string;
@@ -264,6 +270,10 @@ export interface Event_SheetRenamed {
   name: string;
 }
 
+export interface Event_SheetViewChanged {
+  sheet_id: string;
+}
+
 export interface FormatData {
   format: string;
   updated_at: number;
@@ -393,6 +403,24 @@ export interface SheetLayout {
   cols: AxisEntryView[];
 }
 
+export interface SheetView {
+  sheet_id: string;
+  frozen_rows: number;
+  frozen_cols: number;
+  sizes: AxisSize[];
+}
+
+export interface SheetViewData {
+  frozen_rows: number;
+  frozen_cols: number;
+  updated_at: number;
+}
+
+export interface SizeData {
+  size: number;
+  updated_at: number;
+}
+
 export interface Span {
   text: string;
   attributes: Record<string, string>;
@@ -415,7 +443,10 @@ export interface Spreadsheet {
   accounts: Record<string, AccountData>;
   roles: Record<string, RoleData>;
   protections: Record<string, ProtectionData>;
+  sizes: Record<string, SizeData>;
+  views: Record<string, SheetViewData>;
 }
+
 
 
 
@@ -452,6 +483,7 @@ export type AbiEvent =
   | { name: "SheetCreated"; payload: Event_SheetCreated }
   | { name: "SheetDeleted"; payload: Event_SheetDeleted }
   | { name: "SheetRenamed"; payload: Event_SheetRenamed }
+  | { name: "SheetViewChanged"; payload: Event_SheetViewChanged }
 ;
 
 
@@ -745,6 +777,16 @@ export class SpreadsheetClient {
   }
 
   /**
+   * get_sheet_views
+   *
+   * @intent read_only
+   */
+  public async getSheetViews(): Promise<SheetView[]> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_sheet_views', argsJson: {} });
+    return response as SheetView[];
+  }
+
+  /**
    * init
    */
   public async init(): Promise<void> {
@@ -863,6 +905,16 @@ export class SpreadsheetClient {
   }
 
   /**
+   * set_frozen
+   *
+   * @intent mutating
+   */
+  public async setFrozen(params: { sheet_id: string; rows: number; cols: number }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_frozen', argsJson: params });
+    return response as void;
+  }
+
+  /**
    * set_named_range
    *
    * @intent mutating
@@ -879,6 +931,16 @@ export class SpreadsheetClient {
    */
   public async setRole(params: { member_id: string; role: string }): Promise<void> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_role', argsJson: params });
+    return response as void;
+  }
+
+  /**
+   * set_sizes
+   *
+   * @intent mutating
+   */
+  public async setSizes(params: { sheet_id: string; sizes: AxisSize[] }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_sizes', argsJson: params });
     return response as void;
   }
 
