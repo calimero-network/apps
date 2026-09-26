@@ -36,6 +36,7 @@ github = "https://github.com/calimero-network/mero-blocks"
 # nothing.
 min-runtime-version = "0.11.0-rc.54"
 frontend = "https://mero-blocks.vercel.app/"
+guide = "GUIDE.md"
 
 [dependencies]
 borsh = "1.6.1"

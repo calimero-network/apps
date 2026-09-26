@@ -1,19 +1,19 @@
-//! Mero Blocks — shared voxel-world state on Calimero.
+//! Mero Blocks - shared voxel-world state on Calimero.
 //!
 //! The world itself is NEVER stored here. Every client generates identical
 //! terrain from `seed`; this contract carries only:
-//!   - **block overrides** — the diff against generated terrain (place = block
+//!   - **block overrides** - the diff against generated terrain (place = block
 //!     id, break = 0/air). Set-only map: breaking writes a 0 value, we never
 //!     `remove` a key (the UnorderedSet/insert-after-remove tombstone class of
 //!     bugs is designed out).
-//!   - **player presence** — name + transform, heartbeat-refreshed, with the
+//!   - **player presence** - name + transform, heartbeat-refreshed, with the
 //!     mero-meet room-clock normalization so clock skew between laptops can
 //!     never mark live players offline.
 //!
 //! Who may write what is held by storage, on every node, not by the checks
 //! here: the world's name/seed/clock are `Frozen` at creation, and each
 //! account's avatars sit in that account's `UserStorage` slot. The overrides
-//! stay a public map on purpose — anyone may place or break any block.
+//! stay a public map on purpose - anyone may place or break any block.
 //!
 //! Lighting and chunk data are client-derived from (seed, overrides) and cost
 //! zero network traffic.
@@ -31,7 +31,7 @@ use calimero_storage::collections::{
 
 type MemberId = String;
 
-/// World bounds — must match `app/src/engine/world.ts`.
+/// World bounds - must match `app/src/engine/world.ts`.
 const WORLD_SX: i32 = 128;
 const WORLD_SY: i32 = 64;
 const WORLD_SZ: i32 = 128;
@@ -59,7 +59,7 @@ const MAX_CLOCK_SKEW_SECS: u64 = 900;
 /// differing content each replica keeps its own copy: `merge` changes nothing
 /// on either side, so re-merging never closes the gap and the two stay
 /// divergent permanently, with no error. Breaking the tie on the borsh
-/// encoding — a total order over values — makes both replicas elect the same
+/// encoding - a total order over values - makes both replicas elect the same
 /// winner independently, which is what convergence requires.
 ///
 /// Before [core#3807] a collection value's `merge` was never called (entries
@@ -75,9 +75,9 @@ fn lww_take<T: BorshSerialize>(mine_ts: u64, theirs_ts: u64, mine: &T, theirs: &
         // elect the same side.
         //
         // Infallible on purpose. Core's contract for a dispatched merge
-        // requires a TOTAL rule — "`Err` is not validation, it is a refusal to
+        // requires a TOTAL rule - "`Err` is not validation, it is a refusal to
         // converge: the entity stays divergent and repair retries it
-        // indefinitely" — so this must not surface an encoding error. A value
+        // indefinitely" - so this must not surface an encoding error. A value
         // that came back out of storage was borsh-encoded to get there, which
         // is why the fallback is unreachable rather than merely unlikely.
         Ordering::Equal => {
@@ -302,13 +302,13 @@ impl MeroBlocks {
     /// **`device_id()` on purpose, and it stays that way at rc.23.** The rule
     /// core states for the account/device split is that an identity used for
     /// OWNERSHIP takes the account: writer sets, `Map<identity, Vote>`, "is the
-    /// caller the owner/a member". This contract has none of those — it stores
+    /// caller the owner/a member". This contract has none of those - it stores
     /// no owner, no roles, and never compares a caller against the group's
     /// member list (membership is enforced by the node before a call reaches us,
     /// and group members are accounts now anyway).
     ///
     /// What it keys by this value is a PLAYER ROW: a name, a transform and a
-    /// heartbeat — presence for one running instance of the game. That is the
+    /// heartbeat - presence for one running instance of the game. That is the
     /// "this installation" case the split keeps `device_id()` for. Two devices of
     /// one person are two avatars standing in two places, and they must be:
     /// `account_id()` would collapse them onto one row whose position is decided
@@ -413,6 +413,8 @@ impl MeroBlocks {
     /// ```json
     /// {"edits":[{"x":5,"y":20,"z":5,"b":3}],"now":1727000000}
     /// ```
+    #[app::destructive]
+    #[app::idempotent]
     pub fn set_blocks(&mut self, edits: Vec<Edit>, now: u64) -> app::Result<u32> {
         if edits.len() > MAX_EDITS_PER_CALL {
             app::bail!("too many edits in one batch");
@@ -511,6 +513,7 @@ impl MeroBlocks {
     /// ```json
     /// {"name":"bot","now":1727000000}
     /// ```
+    #[app::idempotent]
     pub fn join(&mut self, name: String, now: u64) -> app::Result<PlayerView> {
         let id = Self::caller_id();
         let existing = self.my_player(&id)?;
@@ -555,6 +558,7 @@ impl MeroBlocks {
     /// ```json
     /// {"t":{"name":"bot","x":64.5,"y":44.0,"z":64.5,"yaw":0.0,"pitch":0.0,"sel":0},"now":1727000000}
     /// ```
+    #[app::idempotent]
     pub fn heartbeat(&mut self, t: Transform, now: u64) -> app::Result<()> {
         let id = Self::caller_id();
         let existing = self.my_player(&id)?;
@@ -593,6 +597,7 @@ impl MeroBlocks {
     /// ```json
     /// {"now":1727000000}
     /// ```
+    #[app::idempotent]
     pub fn leave(&mut self, now: u64) -> app::Result<()> {
         let id = Self::caller_id();
         let Some(mut p) = self.my_player(&id)? else {
@@ -909,7 +914,7 @@ mod tests {
         // Bob's clock runs 10 minutes ahead: room time jumps forward.
         app.call_as(BOB, |s| s.heartbeat(t("Bob", 0.0), 1600))
             .unwrap();
-        // Alice heartbeats on her own slow clock — room-time stamping keeps her live.
+        // Alice heartbeats on her own slow clock - room-time stamping keeps her live.
         app.call_as(ALICE, |s| s.heartbeat(t("Alice", 0.0), 1002))
             .unwrap();
         let players = app.view(|s| s.get_players(1603));
@@ -1125,7 +1130,7 @@ mod tests {
     /// Pins the account/device decision made at rc.23 (see `caller`): a player
     /// row is per-INSTALLATION, so one person on two devices is two avatars in
     /// two places. If someone "fixes" `caller()` to `account_id()`, the two
-    /// heartbeats below collapse onto one row and this fails — which is the
+    /// heartbeats below collapse onto one row and this fails - which is the
     /// point, because nothing else in the app would have complained.
     #[test]
     fn one_account_on_two_devices_is_two_players() {
