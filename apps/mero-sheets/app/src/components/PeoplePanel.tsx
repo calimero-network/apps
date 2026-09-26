@@ -9,6 +9,10 @@
  *    by every node, not just this app. Removing someone takes them out of
  *    every spreadsheet in the workspace and rotates the group key, so they get
  *    nothing written after that.
+ *
+ * And an always-on copy: TEE replicas (hardware-attested, read-only nodes)
+ * that admit themselves when their measurements match the workspace's
+ * admission policy, so the data stays available while everyone is offline.
  */
 import React, { useEffect, useState } from 'react';
 import styled, { keyframes } from 'styled-components';
@@ -28,6 +32,13 @@ const NETWORK_ROLES: { value: string; label: string }[] = [
   { value: 'ReadOnly', label: 'Read only' },
 ];
 
+/** The workspace's rule for admitting always-on replicas. */
+export interface ReplicaPolicy {
+  /** Approved image measurements; none means no replica is admitted. */
+  mrtd: string[];
+  tcbStatuses: string[];
+}
+
 interface PeoplePanelProps {
   members: Member[];
   group: GroupPerson[];
@@ -41,6 +52,9 @@ interface PeoplePanelProps {
   onSetRole: (memberId: string, role: string) => Promise<void>;
   onSetGroupRole: (account: string, role: string) => Promise<void>;
   onRemove: (account: string) => Promise<void>;
+  /** The replica admission policy, once read (null while unknown). */
+  policy: ReplicaPolicy | null;
+  onSetPolicy: (policy: ReplicaPolicy) => Promise<void>;
   onClose: () => void;
 }
 
@@ -121,7 +135,9 @@ export default function PeoplePanel(props: PeoplePanelProps) {
                         onChange={(e) => void run(() => props.onSetGroupRole(person.identity, e.target.value))}
                       >
                         {NETWORK_ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
-                        {!NETWORK_ROLES.some((r) => r.value === person.role) && <option value={person.role}>{person.role}</option>}
+                        {!NETWORK_ROLES.some((r) => r.value === person.role) && (
+                          <option value={person.role}>{person.role === 'ReadOnlyTee' ? 'Always-on replica' : person.role}</option>
+                        )}
                       </select>
                     </label>
                   )}
@@ -154,12 +170,67 @@ export default function PeoplePanel(props: PeoplePanelProps) {
             );
           })}
         </List>
+        <AlwaysOn
+          replicas={group.filter((g) => g.role === 'ReadOnlyTee').length}
+          policy={props.policy}
+          canEdit={props.isGroupAdmin}
+          onSave={(p) => run(() => props.onSetPolicy(p))}
+        />
         <Help>
           <p><b>Workbook</b> roles are this spreadsheet&apos;s: owners set them, and the contract checks every write.</p>
           <p><b>Workspace</b> access is the network&apos;s: <i>Read only</i> is refused by every node, and removing someone rotates the key.</p>
         </Help>
       </Panel>
     </Overlay>
+  );
+}
+
+function AlwaysOn({ replicas, policy, canEdit, onSave }: {
+  replicas: number;
+  policy: ReplicaPolicy | null;
+  canEdit: boolean;
+  onSave: (p: ReplicaPolicy) => Promise<void>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [mrtd, setMrtd] = useState('');
+  const on = !!policy && policy.mrtd.length > 0;
+  const lines = (s: string) => s.split(/[\s,]+/).map((x) => x.trim()).filter(Boolean);
+  return (
+    <Section data-testid="always-on">
+      <h4>Always-on copy</h4>
+      <p>
+        {replicas > 0
+          ? `${replicas} always-on replica${replicas === 1 ? '' : 's'} hold${replicas === 1 ? 's' : ''} a read-only copy, so the workspace stays available while everyone is offline.`
+          : 'No always-on replica yet: the workspace is available while at least one member is online.'}
+      </p>
+      <p className="muted">
+        {policy === null ? 'Reading the admission policy…'
+          : on ? `Replicas running one of ${policy.mrtd.length} approved image${policy.mrtd.length === 1 ? '' : 's'} admit themselves, read-only.`
+            : 'Replicas are not admitted.'}
+      </p>
+      {canEdit && !editing && (
+        <div className="row">
+          <button type="button" onClick={() => { setMrtd((policy?.mrtd ?? []).join('\n')); setEditing(true); }} data-testid="action-edit-replicas">
+            {on ? 'Change approved images' : 'Admit replicas…'}
+          </button>
+          {on && <button type="button" onClick={() => void onSave({ mrtd: [], tcbStatuses: [] })}>Stop admitting</button>}
+        </div>
+      )}
+      {canEdit && editing && (
+        <div>
+          <label htmlFor="mrtd">Approved image measurements (MRTD), one per line, from your replica provider</label>
+          <textarea id="mrtd" value={mrtd} onChange={(e) => setMrtd(e.target.value)} rows={3} data-testid="field-mrtd" />
+          <div className="row">
+            <button type="button" disabled={lines(mrtd).length === 0}
+              onClick={() => void onSave({ mrtd: lines(mrtd), tcbStatuses: ['UpToDate'] }).then(() => setEditing(false))}
+              data-testid="action-save-replicas">
+              Admit
+            </button>
+            <button type="button" onClick={() => setEditing(false)}>Cancel</button>
+          </div>
+        </div>
+      )}
+    </Section>
   );
 }
 
@@ -215,6 +286,18 @@ const Confirm = styled.div`
   button { font-size: 12px; padding: 5px 10px; border-radius: 8px; cursor: pointer; background: none; border: 1px solid ${C.line}; color: ${C.ink}; }
   .danger { color: #fff; background: ${C.danger}; border-color: ${C.danger}; }
 `;
+const Section = styled.section`
+  padding: 12px 18px; border-top: 1px solid ${C.line};
+  h4 { margin: 0 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: ${C.mutedSoft}; }
+  p { margin: 0 0 6px; font-size: 12.5px; line-height: 1.45; color: ${C.ink}; }
+  .muted { color: ${C.muted}; }
+  label { display: block; font-size: 11.5px; color: ${C.muted}; margin: 4px 0; }
+  textarea { width: 100%; box-sizing: border-box; font: 11.5px ui-monospace, 'SF Mono', Menlo, monospace; color: ${C.ink}; background: ${C.paper2}; border: 1px solid ${C.line}; border-radius: 8px; padding: 6px 8px; }
+  .row { display: flex; gap: 8px; margin-top: 6px; }
+  button { font-size: 12px; padding: 5px 10px; border-radius: 8px; cursor: pointer; background: none; border: 1px solid ${C.line}; color: ${C.ink}; }
+  button:disabled { opacity: 0.5; }
+`;
+
 const Help = styled.div`
   padding: 10px 18px 16px; border-top: 1px solid ${C.line};
   p { margin: 4px 0; font-size: 11.5px; line-height: 1.45; color: ${C.mutedSoft}; }

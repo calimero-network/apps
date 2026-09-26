@@ -9,7 +9,6 @@ import {
   type PresenceSlice,
   distinctCollaborators,
   peerCount,
-  syncLabel,
   peersLabel,
   cellsLabel,
 } from './presence';
@@ -155,10 +154,6 @@ describe('peerCount', () => {
 });
 
 describe('status labels', () => {
-  it('syncLabel', () => {
-    expect(syncLabel(true)).toBe('Synced');
-    expect(syncLabel(false)).toBe('Syncing…');
-  });
   it('peersLabel singular/plural', () => {
     expect(peersLabel(0)).toBe('0 peers');
     expect(peersLabel(1)).toBe('1 peer');

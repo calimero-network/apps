@@ -46,7 +46,7 @@ import NamesModal from '../../components/NamesModal';
 import ActivityPanel from '../../components/ActivityPanel';
 import CommentsPanel from '../../components/CommentsPanel';
 import NotePanel from '../../components/NotePanel';
-import PeoplePanel from '../../components/PeoplePanel';
+import PeoplePanel, { type ReplicaPolicy } from '../../components/PeoplePanel';
 import ProtectModal from '../../components/ProtectModal';
 import FormatBar from '../../components/FormatBar';
 import RulesModal, { conditionLabel } from '../../components/RulesModal';
@@ -59,6 +59,7 @@ import FilterModal from '../../components/FilterModal';
 import { dataRegion, looksLikeHeader, planSort, sortOrder } from '../../spreadsheet/sort';
 import { columnValues, hiddenRows, withColumn, type FilterView } from '../../spreadsheet/filter';
 import { chartModel } from '../../spreadsheet/chart';
+import { syncView } from '../../spreadsheet/sync';
 import { NO_EFFECT, placeRules, ruleEffect, scaleBounds } from '../../spreadsheet/styling';
 import { conditionDescribe, conditionMatches } from '../../engine/engine';
 import { lockedReason, placeProtections } from '../../spreadsheet/access';
@@ -200,6 +201,7 @@ export default function AppPage() {
   const [showActivity, setShowActivity] = useState(false);
   const [showComments, setShowComments] = useState(false);
   const [showPeople, setShowPeople] = useState(false);
+  const [replicaPolicy, setReplicaPolicy] = useState<ReplicaPolicy | null>(null);
   const [showProtect, setShowProtect] = useState(false);
   const [protectSaving, setProtectSaving] = useState(false);
   const [protectError, setProtectError] = useState<string | null>(null);
@@ -473,6 +475,15 @@ export default function AppPage() {
   useEffect(() => {
     if (showPeople) void refetchGroup();
   }, [showPeople, ss.members.length, refetchGroup]);
+  // The always-on replica admission policy, read when the panel opens.
+  useEffect(() => {
+    if (!showPeople || !mero || !ws.namespaceId) return;
+    let live = true;
+    mero.admin.getTeeAdmissionPolicy(ws.namespaceId)
+      .then((p) => { if (live) setReplicaPolicy({ mrtd: p.allowedMrtd, tcbStatuses: p.allowedTcbStatuses }); })
+      .catch(() => { if (live) setReplicaPolicy({ mrtd: [], tcbStatuses: [] }); });
+    return () => { live = false; };
+  }, [showPeople, mero, ws.namespaceId]);
   const selfMember = ss.members.find((m) => m.id === ss.selfId);
   const myRole = selfMember?.role ?? 'editor';
   const isOwner = myRole === 'owner';
@@ -1393,7 +1404,6 @@ export default function AppPage() {
   );
   const mention = ss.mentions[ss.mentions.length - 1];
   const mentionComment = mention ? ss.comments.find((c) => c.id === mention.commentId) : undefined;
-  const synced = ss.loaded && !ss.mutating;
 
   return (
     <AppShell>
@@ -1690,7 +1700,11 @@ export default function AppPage() {
           : allSheets.find((x) => x.id === id)?.linked_from ? ss.unlink(id) : ss.deleteSheet(id))}
       />
 
-      <StatusBar synced={synced} peers={peers} cells={ss.cells.length} />
+      <StatusBar
+        sync={syncView({ connected: ss.connected, loaded: ss.loaded, saving: ss.mutating, info: ss.sync })}
+        peers={peers}
+        cells={ss.cells.length}
+      />
 
       {/* ── Overlays ─────────────────────────────────────────────── */}
       {showHelp && (
@@ -1957,6 +1971,15 @@ export default function AppPage() {
             if (!mero || !ws.namespaceId) return;
             await mero.admin.removeGroupMembers(ws.namespaceId, { members: [account] });
             await refetchGroup();
+          }}
+          policy={replicaPolicy}
+          onSetPolicy={async (p) => {
+            if (!mero || !ws.namespaceId) return;
+            await mero.admin.setTeeAdmissionPolicy(ws.namespaceId, {
+              allowedMrtd: p.mrtd, allowedRtmr0: [], allowedRtmr1: [], allowedRtmr2: [], allowedRtmr3: [],
+              allowedTcbStatuses: p.tcbStatuses, acceptMock: false,
+            });
+            setReplicaPolicy(p);
           }}
           onClose={() => setShowPeople(false)}
         />

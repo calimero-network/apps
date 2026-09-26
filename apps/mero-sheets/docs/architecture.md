@@ -262,6 +262,22 @@ xcall runs on the node making the change, against a workbook that node has
 opened; a workbook this node has never opened does not receive the push
 until it is opened and the source pushes again.
 
+## Sync status and always-on replicas
+
+The status bar reports sync from the node's own signals rather than a guess:
+whether the browser reaches the node (the event stream's connect/error),
+whether a write is in flight, and the node's `SyncStatus` events for this
+workbook — up to date, waiting for a peer, syncing (with snapshot progress),
+or retrying after a failure with its reason (`spreadsheet/sync.ts`).
+
+A workbook is only reachable while some member's node is online. To keep it
+available when everyone's laptop is closed, an owner can admit **always-on
+replicas** from People: the workspace's TEE admission policy names the
+attested build (MRTD) and TCB status a node must present; such a node joins
+as a read-only replica, holds the state, and serves it to members who come
+online later. It cannot write, so it adds availability without adding an
+editor.
+
 ## Derive-on-read
 
 If values aren't stored, they have to be produced somehow when a peer asks

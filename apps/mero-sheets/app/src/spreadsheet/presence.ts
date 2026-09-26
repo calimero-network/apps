@@ -236,10 +236,6 @@ export function peerCount(
   return authors.size;
 }
 
-export function syncLabel(synced: boolean): string {
-  return synced ? 'Synced' : 'Syncing…';
-}
-
 export function peersLabel(peers: number): string {
   return `${peers} ${peers === 1 ? 'peer' : 'peers'}`;
 }

@@ -1,23 +1,24 @@
 /**
  * StatusBar — thin sync/presence footer below the sheet tabs.
- * Layout:  ● Synced · N peers · M cells
- * Pure presentation; all values are derived by AppPage from live hook state.
+ * Layout:  ● Up to date · N peers · M cells
+ * Pure presentation; the sync state comes from `spreadsheet/sync.ts`.
  */
 import styled from 'styled-components';
 import { C } from '../theme';
-import { syncLabel, peersLabel, cellsLabel } from '../spreadsheet/presence';
+import { peersLabel, cellsLabel } from '../spreadsheet/presence';
+import type { SyncTone, SyncView } from '../spreadsheet/sync';
 
 interface StatusBarProps {
-  synced: boolean;
+  sync: SyncView;
   peers: number;
   cells: number;
 }
 
-export default function StatusBar({ synced, peers, cells }: StatusBarProps) {
+export default function StatusBar({ sync, peers, cells }: StatusBarProps) {
   return (
     <Bar role="status" aria-live="polite">
-      <Dot $synced={synced} aria-hidden="true" />
-      <span>{syncLabel(synced)}</span>
+      <Dot $tone={sync.tone} aria-hidden="true" />
+      <span title={sync.detail} data-testid="sync-status">{sync.label}</span>
       <Sep aria-hidden="true">·</Sep>
       <span>{peersLabel(peers)}</span>
       <Sep aria-hidden="true">·</Sep>
@@ -40,12 +41,14 @@ const Bar = styled.footer`
   font-family: ui-monospace, 'SF Mono', Menlo, monospace;
 `;
 
-const Dot = styled.span<{ $synced: boolean }>`
+const TONE: Record<SyncTone, string> = { ok: C.green, busy: C.muted, warn: '#eda100', off: C.danger };
+
+const Dot = styled.span<{ $tone: SyncTone }>`
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: ${(p) => (p.$synced ? C.green : C.muted)};
-  box-shadow: ${(p) => (p.$synced ? `0 0 6px ${C.green}` : 'none')};
+  background: ${(p) => TONE[p.$tone]};
+  box-shadow: ${(p) => (p.$tone === 'ok' ? `0 0 6px ${C.green}` : 'none')};
 `;
 
 const Sep = styled.span`

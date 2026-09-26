@@ -32,6 +32,7 @@ import { AxisOp as AxisOpWire, CellOp as CellOpWire } from '../api/spreadsheet/S
 import { chunkOps, MAX_OPS_PER_APPLY, type CellOp } from '../spreadsheet/ops';
 import { alertsIn, isNoop, mentionsIn, mergePlans, planFor, type Alert, type Mention, type RefreshPlan } from '../spreadsheet/events';
 import type { NoteOp, Span } from '../spreadsheet/notes';
+import { syncInfoFrom, type SyncInfo } from '../spreadsheet/sync';
 import { newAxisId, positionOf, positionsBetween, type AxisEntry } from '../spreadsheet/axis';
 import { applicable, invert, pushBounded, type CellState, type UndoEntry } from '../spreadsheet/undo';
 import { rangeRef, type Rect } from '../spreadsheet/refs';
@@ -177,6 +178,10 @@ export interface UseSpreadsheetReturn {
   unpublish: (id: string) => Promise<void>;
   /** Remove a linked sheet here (later pushes of it are ignored). */
   unlink: (sheetId: string) => Promise<void>;
+  /** The node's latest sync status for this workbook (null until it reports). */
+  sync: SyncInfo | null;
+  /** Whether the node's event stream is up. */
+  connected: boolean;
   /** Alerts that name this user, newest last, until dismissed. */
   alerts: Alert[];
   dismissAlert: (index: number) => void;
@@ -272,6 +277,18 @@ export function useSpreadsheet({
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [publications, setPublications] = useState<Publication[]>([]);
   const [alerts, setAlerts] = useState<Alert[]>([]);
+  const [sync, setSync] = useState<SyncInfo | null>(null);
+  const [connected, setConnected] = useState(true);
+  // The stream drops and returns with the node: track it for the status bar.
+  useEffect(() => {
+    const sse = mero?.events;
+    if (!sse) return;
+    const up = () => setConnected(true);
+    const down = () => setConnected(false);
+    sse.on('connect', up);
+    sse.on('error', down);
+    return () => { sse.off('connect', up); sse.off('error', down); };
+  }, [mero]);
   // Why the node last refused a write, until dismissed.
   const [writeError, setWriteError] = useState<unknown>(null);
   // Bumps whenever rows or columns move, for anything that maps ids to positions.
@@ -586,10 +603,12 @@ export function useSpreadsheet({
     const me = selfIdRef.current;
     const forMe = mentionsIn(event).filter((m) => me && m.author !== me && m.mentions.includes(me));
     if (forMe.length) setMentions((prev) => [...prev, ...forMe.filter((m) => !prev.some((p) => p.commentId === m.commentId))]);
+    const status = syncInfoFrom(event);
+    if (status) setSync(status);
     const told = alertsIn(event).filter((a) => me && a.recipients.includes(me));
     if (told.length) setAlerts((prev) => [...prev, ...told]);
   });
-  useEffect(() => { setMentions([]); setComments([]); setNotedCells([]); setProtections([]); setWriteError(null); setPrivateSheets([]); setSheetViews([]); setStyles([]); setRules([]); setCharts([]); setAttachments([]); setPublications([]); setAlerts([]); }, [client]);
+  useEffect(() => { setMentions([]); setComments([]); setNotedCells([]); setProtections([]); setWriteError(null); setPrivateSheets([]); setSheetViews([]); setStyles([]); setRules([]); setCharts([]); setAttachments([]); setPublications([]); setAlerts([]); setSync(null); }, [client]);
   // …and after the stream reconnects: nothing replays what changed while it was down.
   useStreamReconnect(() => schedule({ full: true }));
 
@@ -1432,6 +1451,8 @@ export function useSpreadsheet({
     unlink,
     alerts,
     dismissAlert,
+    sync,
+    connected,
     attachments,
     attachFile,
     removeAttachment,
