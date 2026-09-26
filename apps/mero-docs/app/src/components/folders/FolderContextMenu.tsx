@@ -12,7 +12,7 @@
 // text to input in place). This component owns the "open rename"
 // intent, not the editing surface.
 
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { toast } from 'sonner';
 import {
   DropdownMenu,
@@ -77,6 +77,10 @@ export function FolderContextMenu({
 
   const [showNewSub, setShowNewSub] = useState(false);
   const [showInfo, setShowInfo] = useState(false);
+  // The menu's close hands focus back to its trigger AFTER a dialog it opened
+  // has mounted, stealing the first keystrokes; the dialog returns focus to
+  // the trigger itself, so skip the menu's hand-back when an item opens one.
+  const openingDialog = useRef(false);
   const confirm = useConfirm();
 
   const onDelete = async () => {
@@ -132,7 +136,14 @@ export function FolderContextMenu({
             <MoreHorizontal className="h-4 w-4" />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
+        <DropdownMenuContent
+          align="end"
+          onCloseAutoFocus={(e) => {
+            if (!openingDialog.current) return;
+            openingDialog.current = false;
+            e.preventDefault();
+          }}
+        >
           {perms.canEditDocs && (
             <DropdownMenuItem onClick={onNewDocument}>
               <FilePlus className="mr-2 h-4 w-4" />
@@ -149,6 +160,7 @@ export function FolderContextMenu({
             <DropdownMenuItem
               onClick={() => {
                 onNewSubfolder();
+                openingDialog.current = true;
                 setShowNewSub(true);
               }}
             >
@@ -156,7 +168,12 @@ export function FolderContextMenu({
               New subfolder
             </DropdownMenuItem>
           )}
-          <DropdownMenuItem onClick={() => setShowInfo(true)}>
+          <DropdownMenuItem
+            onClick={() => {
+              openingDialog.current = true;
+              setShowInfo(true);
+            }}
+          >
             <Info className="mr-2 h-4 w-4" />
             Info
           </DropdownMenuItem>
