@@ -31,6 +31,33 @@ export interface ActivityEntry {
   changes: CellChange[];
 }
 
+export interface Attachment {
+  id: string;
+  sheet_id: string;
+  row_id: string;
+  col_id: string;
+  blob_id: string;
+  name: string;
+  size: number;
+  mime: string;
+  created_by: string;
+  created_at: number;
+}
+
+export interface AttachmentData {
+  sheet_id: string;
+  row_id: string;
+  col_id: string;
+  blob_id: string;
+  name: string;
+  size: number;
+  mime: string;
+  created_by: string;
+  created_at: number;
+  deleted: boolean;
+  updated_at: number;
+}
+
 export interface AxisData {
   pos: string;
   deleted: boolean;
@@ -219,6 +246,10 @@ export interface CommentData {
   deleted: boolean;
   created_at: number;
   updated_at: number;
+}
+
+export interface Event_AttachmentsChanged {
+  sheet_id: string;
 }
 
 export interface Event_AxesChanged {
@@ -531,6 +562,7 @@ export interface Spreadsheet {
   styles: Record<string, StyleData>;
   rules: Record<string, RuleData>;
   charts: Record<string, ChartData>;
+  attachments: Record<string, AttachmentData>;
 }
 
 export interface StyleData {
@@ -576,7 +608,9 @@ export interface StylePair {
 
 
 
+
 export type AbiEvent =
+  | { name: "AttachmentsChanged"; payload: Event_AttachmentsChanged }
   | { name: "AxesChanged"; payload: Event_AxesChanged }
   | { name: "CellCleared"; payload: Event_CellCleared }
   | { name: "CellUpdated"; payload: Event_CellUpdated }
@@ -608,6 +642,16 @@ export class SpreadsheetClient {
   constructor(mero: MeroJs, contextId: string) {
     this._mero = mero;
     this._contextId = contextId;
+  }
+
+  /**
+   * add_attachment
+   *
+   * @intent mutating
+   */
+  public async addAttachment(params: { sheet_id: string; row_id: string; col_id: string; blob_id: string; name: string; size: number; mime: string }): Promise<string> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'add_attachment', argsJson: params });
+    return response as string;
   }
 
   /**
@@ -798,6 +842,16 @@ export class SpreadsheetClient {
   public async getAllCells(): Promise<Cell[]> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_all_cells', argsJson: {} });
     return response as Cell[];
+  }
+
+  /**
+   * get_attachments
+   *
+   * @intent read_only
+   */
+  public async getAttachments(): Promise<Attachment[]> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_attachments', argsJson: {} });
+    return response as Attachment[];
   }
 
   /**
@@ -1006,6 +1060,16 @@ export class SpreadsheetClient {
   public async protectRange(params: { sheet_id: string; top_row_id: string; left_col_id: string; bottom_row_id: string; right_col_id: string; description: string; editors: string[] }): Promise<string> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'protect_range', argsJson: params });
     return response as string;
+  }
+
+  /**
+   * remove_attachment
+   *
+   * @intent mutating
+   */
+  public async removeAttachment(params: { id: string }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'remove_attachment', argsJson: params });
+    return response as void;
   }
 
   /**

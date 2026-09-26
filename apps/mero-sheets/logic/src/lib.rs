@@ -421,6 +421,40 @@ impl Mergeable for ChartData {
     }
 }
 
+/// A file attached to a cell. The bytes are a blob in the node's blob store,
+/// announced to this context so members' nodes can fetch it; this is its
+/// record. Keyed by id.
+#[app::mergeable(id = "mero_sheets::AttachmentData")]
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, AbiType)]
+#[borsh(crate = "calimero_sdk::borsh")]
+pub struct AttachmentData {
+    pub sheet_id: String,
+    pub row_id: String,
+    pub col_id: String,
+    pub blob_id: String,
+    pub name: String,
+    pub size: u64,
+    pub mime: String,
+    pub created_by: String,
+    pub created_at: u64,
+    pub deleted: bool,
+    pub updated_at: u64,
+}
+
+impl Mergeable for AttachmentData {
+    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        // Only `deleted` ever changes.
+        if (other.updated_at, other.deleted) > (self.updated_at, self.deleted) {
+            self.deleted = other.deleted;
+            self.updated_at = other.updated_at;
+        }
+        Ok(())
+    }
+}
+
+/// The largest attachment recorded, in bytes.
+pub const MAX_ATTACHMENT_BYTES: u64 = 50 * 1024 * 1024;
+
 /// Style fields and what each takes (besides empty, which clears it).
 fn check_style_field(field: &str, value: &str) -> app::Result<()> {
     let ok = value.is_empty()
@@ -804,6 +838,22 @@ pub struct Chart {
     pub created_by: String,
 }
 
+/// A live attachment.
+#[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct Attachment {
+    pub id: String,
+    pub sheet_id: String,
+    pub row_id: String,
+    pub col_id: String,
+    pub blob_id: String,
+    pub name: String,
+    pub size: u64,
+    pub mime: String,
+    pub created_by: String,
+    pub created_at: u64,
+}
+
 /// A live rule.
 #[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
 #[serde(crate = "calimero_sdk::serde")]
@@ -1087,6 +1137,9 @@ pub struct Spreadsheet {
     /// Charts, keyed by id.
     #[migrate(new = UnorderedMap::new_with_field_name("spreadsheet:charts"))]
     charts: UnorderedMap<String, ChartData>,
+    /// Files attached to cells, keyed by id.
+    #[migrate(new = UnorderedMap::new_with_field_name("spreadsheet:attachments"))]
+    attachments: UnorderedMap<String, AttachmentData>,
 }
 
 /// This node's private sheets: scratch space for what-if work that never
@@ -1168,6 +1221,7 @@ impl Spreadsheet {
             styles: UnorderedMap::new_with_field_name("spreadsheet:styles"),
             rules: UnorderedMap::new_with_field_name("spreadsheet:rules"),
             charts: UnorderedMap::new_with_field_name("spreadsheet:charts"),
+            attachments: UnorderedMap::new_with_field_name("spreadsheet:attachments"),
         }
     }
 
@@ -2645,6 +2699,130 @@ impl Spreadsheet {
             }
         }
         Ok(())
+    }
+
+    // ---- Attachments ----
+
+    /// Record a file attached to a cell. Upload the bytes as a blob announced
+    /// to this context first; this stores what the cell shows. Returns its id.
+    #[allow(clippy::too_many_arguments, reason = "one argument per recorded field")]
+    pub fn add_attachment(
+        &mut self,
+        sheet_id: String,
+        row_id: String,
+        col_id: String,
+        blob_id: String,
+        name: String,
+        size: u64,
+        mime: String,
+    ) -> app::Result<String> {
+        self.require_sheet(&sheet_id)?;
+        Spreadsheet::check_id(&row_id)?;
+        Spreadsheet::check_id(&col_id)?;
+        self.require_cells_writable(&sheet_id, [(row_id.as_str(), col_id.as_str())])?;
+        let bad = |why: String| Err(AppError::from(Error::Invalid(why)));
+        if blob_id.is_empty()
+            || blob_id.len() > 128
+            || !blob_id.bytes().all(|b| b.is_ascii_alphanumeric())
+        {
+            return bad(format!("{blob_id:?} is not a blob id"));
+        }
+        let name = name.trim().to_string();
+        if name.is_empty() || name.chars().count() > 200 {
+            return bad("a file name is 1 to 200 characters".into());
+        }
+        if size > MAX_ATTACHMENT_BYTES {
+            return bad(format!(
+                "an attachment is at most {} MB",
+                MAX_ATTACHMENT_BYTES / 1024 / 1024
+            ));
+        }
+        if mime.len() > 100 {
+            return bad("a media type is at most 100 characters".into());
+        }
+        let now = storage_env::time_now();
+        let mut nonce = [0u8; 4];
+        env::random_bytes(&mut nonce);
+        let id = generate_id("file", now, &nonce);
+        let me = self.caller_hex();
+        self.attachments
+            .insert(
+                id.clone(),
+                AttachmentData {
+                    sheet_id: sheet_id.clone(),
+                    row_id,
+                    col_id,
+                    blob_id,
+                    name: name.clone(),
+                    size,
+                    mime,
+                    created_by: me,
+                    created_at: now,
+                    deleted: false,
+                    updated_at: now,
+                },
+            )
+            .map_err(|e| AppError::msg(format!("attachments.insert: {e}")))?;
+        self.log(&sheet_id, "file", format!("attached {name}"), 0, Vec::new())?;
+        app::emit!(Event::AttachmentsChanged {
+            sheet_id: &sheet_id
+        });
+        Ok(id)
+    }
+
+    /// Remove an attachment. Whoever attached it, or an owner, may.
+    pub fn remove_attachment(&mut self, id: String) -> app::Result<()> {
+        let Some(mut a) = self
+            .attachments
+            .get(&id)
+            .map_err(|e| AppError::msg(format!("attachments.get: {e}")))?
+            .filter(|a| !a.deleted)
+            .map(|a| a.clone())
+        else {
+            return Err(AppError::from(Error::NotFound(id)));
+        };
+        let role = self.require_role(Role::Editor)?;
+        if a.created_by != self.caller_hex() && role != Role::Owner {
+            return Err(AppError::from(Error::Forbidden(
+                "only whoever attached a file, or an owner, can remove it".into(),
+            )));
+        }
+        a.deleted = true;
+        a.updated_at = storage_env::time_now();
+        let sheet_id = a.sheet_id.clone();
+        let name = a.name.clone();
+        self.attachments
+            .insert(id, a)
+            .map_err(|e| AppError::msg(format!("attachments.insert: {e}")))?;
+        self.log(&sheet_id, "file", format!("removed {name}"), 0, Vec::new())?;
+        app::emit!(Event::AttachmentsChanged {
+            sheet_id: &sheet_id
+        });
+        Ok(())
+    }
+
+    /// Every live attachment, oldest first.
+    pub fn get_attachments(&self) -> app::Result<Vec<Attachment>> {
+        let mut out: Vec<Attachment> = self
+            .attachments
+            .entries()
+            .map_err(|e| AppError::msg(format!("attachments.entries: {e}")))?
+            .filter(|(_, a)| !a.deleted)
+            .map(|(id, a)| Attachment {
+                id,
+                sheet_id: a.sheet_id,
+                row_id: a.row_id,
+                col_id: a.col_id,
+                blob_id: a.blob_id,
+                name: a.name,
+                size: a.size,
+                mime: a.mime,
+                created_by: a.created_by,
+                created_at: a.created_at,
+            })
+            .collect();
+        out.sort_by(|a, b| (a.created_at, &a.id).cmp(&(b.created_at, &b.id)));
+        Ok(out)
     }
 
     // ---- Charts ----
@@ -5641,5 +5819,48 @@ mod tests {
         assert!(app.call(|s| s.add_chart(chart("pie", "x"))).is_err());
         app.call(|s| s.remove_chart(id.clone())).unwrap();
         assert!(app.view(|s| s.get_charts()).unwrap().is_empty());
+    }
+
+    #[test]
+    fn attachments_are_recorded_and_removed_by_their_author() {
+        let mut app = make_app();
+        let sid = new_sheet(&mut app);
+        let (ada, bob) = with_people(&mut app);
+        let id = app
+            .call_as(ada, |s| {
+                s.add_attachment(
+                    sid.clone(),
+                    "0".into(),
+                    "0".into(),
+                    "Bxyz123".into(),
+                    " receipt.pdf ".into(),
+                    2048,
+                    "application/pdf".into(),
+                )
+            })
+            .unwrap();
+        let files = app.view(|s| s.get_attachments()).unwrap();
+        assert_eq!(files.len(), 1);
+        assert_eq!(
+            (files[0].name.as_str(), files[0].size),
+            ("receipt.pdf", 2048)
+        );
+        assert!(app
+            .call_as(bob, |s| s.remove_attachment(id.clone()))
+            .is_err());
+        app.call_as(ada, |s| s.remove_attachment(id.clone()))
+            .unwrap();
+        assert!(app.view(|s| s.get_attachments()).unwrap().is_empty());
+        assert!(app
+            .call(|s| s.add_attachment(
+                sid.clone(),
+                "0".into(),
+                "0".into(),
+                "../etc".into(),
+                "x".into(),
+                1,
+                String::new()
+            ))
+            .is_err());
     }
 }

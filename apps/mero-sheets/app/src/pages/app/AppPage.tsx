@@ -51,6 +51,9 @@ import ProtectModal from '../../components/ProtectModal';
 import FormatBar from '../../components/FormatBar';
 import RulesModal, { conditionLabel } from '../../components/RulesModal';
 import ChartsPanel from '../../components/ChartsPanel';
+import AttachmentsPanel from '../../components/AttachmentsPanel';
+import { readXlsx, writeXlsx, type BookSheet } from '../../spreadsheet/xlsx';
+import { parseCsv } from '../../spreadsheet/csv';
 import FilterModal from '../../components/FilterModal';
 import { dataRegion, looksLikeHeader, planSort, sortOrder } from '../../spreadsheet/sort';
 import { columnValues, hiddenRows, withColumn, type FilterView } from '../../spreadsheet/filter';
@@ -201,6 +204,10 @@ export default function AppPage() {
   const [rulesSaving, setRulesSaving] = useState(false);
   const [rulesError, setRulesError] = useState<string | null>(null);
   const [showCharts, setShowCharts] = useState(false);
+  const [showFiles, setShowFiles] = useState(false);
+  // What an import is doing, while it runs.
+  const [importing, setImporting] = useState<string | null>(null);
+  const importInput = useRef<HTMLInputElement>(null);
   // Filter views: yours alone, kept in this browser per workbook and sheet.
   const [filters, setFilters] = useState<Record<string, FilterView>>({});
   const [filterCol, setFilterCol] = useState<number | null>(null);
@@ -833,6 +840,8 @@ export default function AppPage() {
         actions: [
           { label: 'Comment…', testId: 'open-comments',
             onClick: () => { setCtxMenu(null); setShowComments(true); } },
+          { label: 'Files…', testId: 'open-files',
+            onClick: () => { setCtxMenu(null); setShowFiles(true); } },
           { label: 'Note… (Shift+F2)', testId: 'open-note',
             onClick: () => { setCtxMenu(null); if (selectedCell) openNote(selectedCell.row, selectedCell.col); } },
         ],
@@ -1123,11 +1132,72 @@ export default function AppPage() {
     // The spreadsheet's own name, not the app's. Every export from every
     // project used to land in Downloads as `mero-sheets.csv`, so the second one
     // was `mero-sheets (1).csv` and neither file said what it held.
-    const title = ss.project?.name?.trim() || APP_DISPLAY_NAME;
-    a.download = `${title.replace(/[\\/:*?"<>|]/g, '').replace(/\s+/g, '-').toLowerCase()}.csv`;
+    a.download = `${fileTitle()}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   }, [ss]);
+
+  /** A file name from the spreadsheet's name, safe for any file system. */
+  const fileTitle = () => (ss.project?.name?.trim() || APP_DISPLAY_NAME)
+    .replace(/[\\/:*?"<>|]/g, '').replace(/\s+/g, '-').toLowerCase();
+
+  // Every shared sheet, formulas with sheet names, for Excel.
+  const handleDownloadXlsx = useCallback(async () => {
+    const sheets: BookSheet[] = await Promise.all(ss.sheets.map(async (sheet) => ({
+      name: sheet.name,
+      cells: (await ss.getSheetCells(sheet.id)).map((c) => ({
+        row: c.row, col: c.col,
+        raw: idsToNames(c.raw_value, idToName),
+        computed: c.computed_value,
+      })),
+    })));
+    const blob = new Blob([writeXlsx(sheets)], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${fileTitle()}.xlsx`;
+    a.click();
+    URL.revokeObjectURL(url);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ss, idToName]);
+
+  // An .xlsx (every sheet) or a CSV/TSV (one sheet) becomes new sheets.
+  const handleImport = useCallback(async (file: File) => {
+    setImporting(`Reading ${file.name}…`);
+    try {
+      const book: BookSheet[] = /\.xlsx$/i.test(file.name)
+        ? readXlsx(new Uint8Array(await file.arrayBuffer()))
+        : [{
+          name: file.name.replace(/\.[^.]+$/, '') || 'Imported',
+          cells: parseCsv(await file.text()).flatMap((row, r) => row.map((raw, c) => ({ row: r, col: c, raw }))),
+        }];
+      // Make the sheets first, so formulas can name any of them.
+      const ids: string[] = [];
+      for (const [i, sheet] of book.entries()) {
+        setImporting(`Creating sheet ${i + 1} of ${book.length}…`);
+        const id = await ss.createSheet(sheet.name);
+        if (!id) throw new Error('Could not create a sheet');
+        ids.push(id);
+      }
+      const byName = new Map(book.map((sh, i) => [sh.name, ids[i]]));
+      const resolve = (name: string) => byName.get(name) ?? nameToId(name);
+      let clipped = 0;
+      for (const [i, sheet] of book.entries()) {
+        setImporting(`Writing sheet ${i + 1} of ${book.length}…`);
+        const ops: CellOp[] = [];
+        for (const c of sheet.cells) {
+          if (c.row >= GRID_ROWS || c.col >= GRID_COLS) { clipped++; continue; }
+          if (c.raw.trim() === '') continue;
+          ops.push(setOp(c.row, c.col, c.raw.startsWith('=') ? namesToIds(c.raw, resolve) : c.raw));
+        }
+        if (ops.length > 0) await ss.applyCellOps(ids[i], ops);
+      }
+      setActiveSheetId(ids[0] ?? activeSheetId);
+      setImporting(clipped > 0 ? `Imported. ${clipped} cells past row ${GRID_ROWS} or column ZZ were left out.` : null);
+    } catch (err) {
+      setImporting(`Import failed: ${describeError(err)}`);
+    }
+  }, [ss, nameToId, activeSheetId]);
 
   // ════════════════════════════════════════════════════════════════
   //  RENDER
@@ -1305,6 +1375,13 @@ export default function AppPage() {
   }
   const noteLabel = noteCell ? commentWhere({ sheet_id: noteCell.sheetId, row_id: noteCell.rowId, col_id: noteCell.colId }) : null;
 
+  const attached = new Set(
+    ss.attachments
+      .filter((a) => a.sheet_id === activeSheetId)
+      .map((a) => ss.refOf(a.sheet_id, a.row_id, a.col_id))
+      .filter((at): at is CellCoord => at !== null)
+      .map((at) => `${at.row}-${at.col}`),
+  );
   const mention = ss.mentions[ss.mentions.length - 1];
   const mentionComment = mention ? ss.comments.find((c) => c.id === mention.commentId) : undefined;
   const synced = ss.loaded && !ss.mutating;
@@ -1395,6 +1472,30 @@ export default function AppPage() {
           </svg>
           <span>Download</span>
         </ToolBtn>
+        <IconBtn onClick={() => void handleDownloadXlsx()} title="Download as Excel (.xlsx)" aria-label="Download spreadsheet as Excel" data-testid="action-export_xlsx">
+          <span style={{ fontSize: 10.5, fontWeight: 700 }}>XLSX</span>
+        </IconBtn>
+
+        <ToolBtn onClick={() => importInput.current?.click()} title="Import a .xlsx, .csv or .tsv file as new sheets" aria-label="Import a file" data-testid="action-import">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" />
+          </svg>
+          <span>Import</span>
+        </ToolBtn>
+        <input
+          ref={importInput}
+          type="file"
+          accept=".xlsx,.csv,.tsv,.txt"
+          hidden
+          data-testid="field-import"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            e.target.value = '';
+            if (f) void handleImport(f);
+          }}
+        />
 
         <IconBtn onClick={() => void ss.undo()} disabled={!ss.canUndo} title="Undo your last edit (Ctrl/⌘+Z)" aria-label="Undo" data-testid="action-undo">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
@@ -1530,6 +1631,7 @@ export default function AppPage() {
         cursorLabel={cursorLabel}
         editedBy={editedBy}
         commented={commented}
+        attached={attached}
         notes={notes}
         protectedRanges={placed}
         view={activeView}
@@ -1758,6 +1860,26 @@ export default function AppPage() {
           }}
           onRemove={(id) => void runRules(() => ss.removeRule(id))}
           onClose={() => setRulesMode(null)}
+        />
+      )}
+      {importing && (
+        <ErrorToast role="status" data-testid="toast-import" style={{ borderColor: C.line, bottom: 140 }}>
+          <span>{importing}</span>
+          <button type="button" aria-label="Dismiss" onClick={() => setImporting(null)}>×</button>
+        </ErrorToast>
+      )}
+      {showFiles && selectedIds && activeSheetId && selectedCell && (
+        <AttachmentsPanel
+          label={cellRef(selectedCell.row, selectedCell.col)}
+          files={ss.attachments.filter((a) => a.sheet_id === activeSheetId && a.row_id === selectedIds.row_id && a.col_id === selectedIds.col_id)}
+          canEdit={canResize && !selectedLock}
+          selfId={ss.selfId}
+          isOwner={isOwner}
+          nameOf={personName}
+          onUpload={(file) => ss.attachFile(activeSheetId, selectedCell.row, selectedCell.col, file)}
+          onRemove={ss.removeAttachment}
+          onFetch={ss.fetchAttachment}
+          onClose={() => setShowFiles(false)}
         />
       )}
       {writeError != null && (

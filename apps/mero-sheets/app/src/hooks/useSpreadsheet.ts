@@ -26,7 +26,7 @@ import { useStreamReconnect } from './useStreamReconnect';
 import { SpreadsheetClient } from '../api/spreadsheet/SpreadsheetClient';
 import type {
   Sheet, FunctionDef, Member, Project, NamedRange, SheetLayout, AxisOpPayload, ActivityEntry, Comment,
-  NotedCell, NoteChangePayload, Protection, SheetView, CellStyle, Rule, RuleInput, Chart,
+  NotedCell, NoteChangePayload, Protection, SheetView, CellStyle, Rule, RuleInput, Chart, Attachment,
 } from '../api/spreadsheet/SpreadsheetClient';
 import { AxisOp as AxisOpWire, CellOp as CellOpWire } from '../api/spreadsheet/SpreadsheetClient';
 import { chunkOps, MAX_OPS_PER_APPLY, type CellOp } from '../spreadsheet/ops';
@@ -71,7 +71,7 @@ type IdOp =
 const EVENT_COALESCE_MS = 60;
 
 // Re-export domain types so components import from one place
-export type { Sheet, FunctionDef, Member, Project, NamedRange, ActivityEntry, Comment, NotedCell, Protection, Rule, RuleInput, Chart };
+export type { Sheet, FunctionDef, Member, Project, NamedRange, ActivityEntry, Comment, NotedCell, Protection, Rule, RuleInput, Chart, Attachment };
 
 // ── Hook interfaces ──────────────────────────────────────────────────────────
 
@@ -121,7 +121,8 @@ export interface UseSpreadsheetReturn {
   /** Announce (or rename) this device under a chosen nickname. */
   joinAs: (nickname: string) => Promise<void>;
   // Sheet mutations
-  createSheet: (name: string) => Promise<void>;
+  /** Make a sheet; resolves to its id. */
+  createSheet: (name: string) => Promise<string | null>;
   renameSheet: (sheetId: string, newName: string) => Promise<void>;
   deleteSheet: (sheetId: string) => Promise<void>;
   // Cell mutations
@@ -168,6 +169,13 @@ export interface UseSpreadsheetReturn {
   /** Add a rule over a range; the rest of `rule` is what it does. */
   addRule: (sheetId: string, rect: Rect, rule: RuleSpec) => Promise<void>;
   removeRule: (id: string) => Promise<void>;
+  /** Files attached to cells. */
+  attachments: Attachment[];
+  /** Upload a file as a blob for this workbook and attach it to a cell. */
+  attachFile: (sheetId: string, row: number, col: number, file: File) => Promise<void>;
+  removeAttachment: (id: string) => Promise<void>;
+  /** An attachment's bytes, fetched from the network if this node lacks them. */
+  fetchAttachment: (blobId: string) => Promise<ArrayBuffer>;
   /** Charts, shared. */
   charts: Chart[];
   addChart: (sheetId: string, rect: Rect, kind: 'bar' | 'line', title: string) => Promise<void>;
@@ -250,6 +258,7 @@ export function useSpreadsheet({
   const [styles, setStyles] = useState<CellStyle[]>([]);
   const [rules, setRules] = useState<Rule[]>([]);
   const [charts, setCharts] = useState<Chart[]>([]);
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
   // Why the node last refused a write, until dismissed.
   const [writeError, setWriteError] = useState<unknown>(null);
   // Bumps whenever rows or columns move, for anything that maps ids to positions.
@@ -395,7 +404,7 @@ export function useSpreadsheet({
       const [
         fetchedSheets, allCells,
         fetchedMembers, fetchedProject, me, layouts, named, fetchedComments, noted, prots,
-        mine, privateCells, views, fetchedStyles, fetchedRules, fetchedCharts,
+        mine, privateCells, views, fetchedStyles, fetchedRules, fetchedCharts, files,
       ] = await Promise.all([
         client.listSheets(),
         client.getAllCells(),
@@ -413,8 +422,10 @@ export function useSpreadsheet({
         client.getStyles(),
         client.getRules(),
         client.getCharts(),
+        client.getAttachments(),
       ]);
       setCharts(fetchedCharts);
+      setAttachments(files);
       setSheetViews(views);
       setStyles(fetchedStyles);
       setRules(fetchedRules);
@@ -481,7 +492,7 @@ export function useSpreadsheet({
     // would find it empty and wipe it.
     if (sheetIds.size > 0 && active && !privateIdsRef.current.has(active)) sheetIds.add(active);
     const ids = [...sheetIds];
-    const [bySheet, fetchedSheets, fetchedMembers, layouts, named, fetchedComments, noted, prots, views, fetchedStyles, fetchedRules, fetchedCharts] = await Promise.all([
+    const [bySheet, fetchedSheets, fetchedMembers, layouts, named, fetchedComments, noted, prots, views, fetchedStyles, fetchedRules, fetchedCharts, files] = await Promise.all([
       Promise.all(ids.map((id) => client.getCells({ sheet_id: id }))),
       plan.sheetList ? client.listSheets() : null,
       plan.members ? client.getMembers() : null,
@@ -494,7 +505,9 @@ export function useSpreadsheet({
       plan.styles ? client.getStyles() : null,
       plan.rules ? client.getRules() : null,
       plan.charts ? client.getCharts() : null,
+      plan.attachments ? client.getAttachments() : null,
     ]);
+    if (files) setAttachments(files);
     if (fetchedCharts) setCharts(fetchedCharts);
     if (fetchedStyles) setStyles(fetchedStyles);
     if (fetchedRules) setRules(fetchedRules);
@@ -557,7 +570,7 @@ export function useSpreadsheet({
     const forMe = mentionsIn(event).filter((m) => me && m.author !== me && m.mentions.includes(me));
     if (forMe.length) setMentions((prev) => [...prev, ...forMe.filter((m) => !prev.some((p) => p.commentId === m.commentId))]);
   });
-  useEffect(() => { setMentions([]); setComments([]); setNotedCells([]); setProtections([]); setWriteError(null); setPrivateSheets([]); setSheetViews([]); setStyles([]); setRules([]); setCharts([]); }, [client]);
+  useEffect(() => { setMentions([]); setComments([]); setNotedCells([]); setProtections([]); setWriteError(null); setPrivateSheets([]); setSheetViews([]); setStyles([]); setRules([]); setCharts([]); setAttachments([]); }, [client]);
   // …and after the stream reconnects: nothing replays what changed while it was down.
   useStreamReconnect(() => schedule({ full: true }));
 
@@ -584,10 +597,11 @@ export function useSpreadsheet({
     await refresh();
   }, [client, refresh, enqueue]);
 
-  const createSheet = useCallback(async (name: string) => {
-    if (!client) return;
-    await enqueue(() => client.createSheet({ name }));
+  const createSheet = useCallback(async (name: string): Promise<string | null> => {
+    if (!client) return null;
+    const id = await enqueue(() => client.createSheet({ name }));
     await refresh();
+    return id;
   }, [client, refresh, enqueue]);
 
   const renameSheet = useCallback(async (sheetId: string, newName: string) => {
@@ -1142,6 +1156,35 @@ export function useSpreadsheet({
     [client, enqueue],
   );
 
+  const attachFile = useCallback(
+    async (sheetId: string, row: number, col: number, file: File) => {
+      const at = idsAt(sheetId, row, col);
+      if (!client || !mero || !contextId || !at) return;
+      // Announced to this context, so members' nodes can find the bytes.
+      const blob = await mero.admin.uploadBlob({ data: file, contextId });
+      await enqueue(() => client.addAttachment({
+        sheet_id: sheetId, ...at, blob_id: blob.blobId, name: file.name, size: file.size, mime: file.type,
+      }));
+      setAttachments(await client.getAttachments());
+    },
+    [client, mero, contextId, enqueue],
+  );
+  const removeAttachment = useCallback(
+    async (id: string) => {
+      if (!client) return;
+      await enqueue(() => client.removeAttachment({ id }));
+      setAttachments(await client.getAttachments());
+    },
+    [client, enqueue],
+  );
+  const fetchAttachment = useCallback(
+    async (blobId: string) => {
+      if (!mero || !contextId) throw new Error('Not connected');
+      return mero.admin.getBlob(blobId, { contextId });
+    },
+    [mero, contextId],
+  );
+
   const addChart = useCallback(
     async (sheetId: string, rect: Rect, kind: 'bar' | 'line', title: string) => {
       const tl = idsAt(sheetId, rect.top, rect.left);
@@ -1328,6 +1371,10 @@ export function useSpreadsheet({
     moveStyles,
     clearStyles,
     rules,
+    attachments,
+    attachFile,
+    removeAttachment,
+    fetchAttachment,
     charts,
     addChart,
     removeChart,

@@ -215,6 +215,24 @@ a formula result that breaks a rule.
   colour-vision separation against the app's light and dark surfaces), with
   a legend, a hover tooltip and a table of the same numbers.
 
+## Files in and out
+
+- **Import** turns an `.xlsx` (every worksheet) or a `.csv`/`.tsv` (one
+  sheet; RFC 4180 quoting, delimiter guessed) into new sheets. Sheets are
+  made first, so imported formulas that name another imported sheet resolve;
+  values and formulas are written as ordinary cell writes. Excel's shared
+  formulas are re-based cell by cell. Cells past row 1000 or column ZZ are
+  left out, and the app says how many.
+- **Export** writes the shared sheets as CSV (values as shown) or `.xlsx`
+  (values and formulas with sheet names, plus each formula's last value so a
+  reader that does not recalculate still shows it). Styles and number
+  formats are not carried either way. Both are built in the browser
+  (`spreadsheet/xlsx.ts` on fflate, `spreadsheet/csv.ts`).
+- **Attachments**: a file on a cell is a blob uploaded to the node and
+  announced to this context, so members' nodes can fetch it from peers; the
+  contract records its name, size, type and who attached it
+  (`attachments`). Whoever attached a file, or an owner, can remove it.
+
 ## Derive-on-read
 
 If values aren't stored, they have to be produced somehow when a peer asks

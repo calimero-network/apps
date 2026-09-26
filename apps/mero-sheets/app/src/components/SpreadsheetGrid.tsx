@@ -49,6 +49,8 @@ interface SpreadsheetGridProps {
   editedBy: (cell: Cell) => string | null;
   /** "row-col" of cells with an open comment thread; they get a corner mark. */
   commented: ReadonlySet<string>;
+  /** "row-col" of cells with files attached; they get a clip. */
+  attached: ReadonlySet<string>;
   /** "row-col" → the start of that cell's note; noted cells get a mark. */
   notes: ReadonlyMap<string, string>;
   /** Protected ranges on this sheet; `allowed` ones this user may still edit. */
@@ -108,6 +110,7 @@ function SpreadsheetGrid({
   cursorLabel,
   editedBy,
   commented,
+  attached,
   notes,
   protectedRanges,
   view,
@@ -603,6 +606,7 @@ function SpreadsheetGrid({
             ▾
           </PickBtn>
         )}
+        {attached.has(key) && <AttachMark data-testid="attach-mark" aria-label="Has files">📎</AttachMark>}
         {notes.has(key) && <NoteMark data-testid="note-mark" aria-label="Has a note" />}
         {commented.has(key) && <CommentMark data-testid="comment-mark" aria-label="Has comments" />}
         {cursor && !isSelected && (
@@ -887,6 +891,11 @@ const DataCell = styled.td<{ $selected: boolean; $cursorColor?: string; $peerTin
   &:hover:not([aria-selected='true']) {
     background: ${C.paper2};
   }
+`;
+
+const AttachMark = styled.span`
+  position: absolute; right: 2px; top: 50%; transform: translateY(-50%);
+  font-size: 10px; line-height: 1; opacity: 0.75; pointer-events: none;
 `;
 
 const InvalidMark = styled.span`

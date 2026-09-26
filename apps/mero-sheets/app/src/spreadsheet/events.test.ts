@@ -120,3 +120,10 @@ describe('charts', () => {
     expect([p.charts, p.sheets.size]).toEqual([true, 0]);
   });
 });
+
+describe('attachments', () => {
+  it('re-reads only the attachments', () => {
+    const p = partial(planFor(mutation(['AttachmentsChanged', { sheet_id: 's1' }])));
+    expect([p.attachments, p.sheets.size]).toEqual([true, 0]);
+  });
+});

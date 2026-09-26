@@ -11,7 +11,7 @@
 /** A decided plan: either everything, or exactly these parts. */
 export type RefreshPlan =
   | { full: true }
-  | { full: false; sheets: Set<string>; sheetList: boolean; members: boolean; layouts: boolean; names: boolean; comments: boolean; notes: boolean; protections: boolean; views: boolean; styles: boolean; rules: boolean; charts: boolean };
+  | { full: false; sheets: Set<string>; sheetList: boolean; members: boolean; layouts: boolean; names: boolean; comments: boolean; notes: boolean; protections: boolean; views: boolean; styles: boolean; rules: boolean; charts: boolean; attachments: boolean };
 
 const empty = (): Extract<RefreshPlan, { full: false }> => ({
   full: false,
@@ -27,6 +27,7 @@ const empty = (): Extract<RefreshPlan, { full: false }> => ({
   styles: false,
   rules: false,
   charts: false,
+  attachments: false,
 });
 
 const FULL: RefreshPlan = { full: true };
@@ -137,6 +138,9 @@ export function planFor(event: NodeEvent): RefreshPlan | null {
       case 'ChartsChanged':
         plan.charts = true;
         break;
+      case 'AttachmentsChanged':
+        plan.attachments = true;
+        break;
       default:
         return FULL;
     }
@@ -163,12 +167,13 @@ export function mergePlans(a: RefreshPlan | null, b: RefreshPlan | null): Refres
     styles: a.styles || b.styles,
     rules: a.rules || b.rules,
     charts: a.charts || b.charts,
+    attachments: a.attachments || b.attachments,
   };
 }
 
 /** True when a plan reads nothing (every event was a no-op). */
 export function isNoop(plan: RefreshPlan): boolean {
-  return !plan.full && plan.sheets.size === 0 && !plan.sheetList && !plan.members && !plan.layouts && !plan.names && !plan.comments && !plan.notes && !plan.protections && !plan.views && !plan.styles && !plan.rules && !plan.charts;
+  return !plan.full && plan.sheets.size === 0 && !plan.sheetList && !plan.members && !plan.layouts && !plan.names && !plan.comments && !plan.notes && !plan.protections && !plan.views && !plan.styles && !plan.rules && !plan.charts && !plan.attachments;
 }
 
 /** A comment that names someone: who wrote it, where, and whom it names. */
