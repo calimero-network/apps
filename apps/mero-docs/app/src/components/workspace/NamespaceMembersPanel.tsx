@@ -17,6 +17,7 @@ import { namespaceLabel } from '@/lib/namespaceLabel';
 import { useFolderMembership } from '@/hooks/useFolderMembership';
 import { useNamespacePermissions } from '@/hooks/useNamespacePermissions';
 import { NamespaceMemberRow } from '@/components/admin/NamespaceMemberRow';
+import { UNNAMED_MEMBER_LABEL } from '@/components/common/MemberLabel';
 import { useMemberCaps } from '@/hooks/useMemberCaps';
 import { countAdmins, parseGroupRole } from '@/lib/roles';
 import { InviteDialog } from './InviteDialog';
@@ -104,7 +105,7 @@ export function NamespaceMembersPanel() {
             id="namespace-members-heading"
             className="text-sm font-semibold text-foreground"
           >
-            Namespace members
+            Workspace members
           </h3>
           <p className="mt-0.5 text-xs text-muted-foreground">
             People with access to this workspace.
@@ -156,7 +157,7 @@ export function NamespaceMembersPanel() {
             key={m.identity}
             groupId={rootGroupId}
             identity={m.identity}
-            label={m.name ?? `${m.identity.slice(0, 8)}…`}
+            label={m.name ?? UNNAMED_MEMBER_LABEL}
             role={m.role}
             actorRole={actorRole}
             actorCaps={selfCaps.caps}
@@ -179,11 +180,11 @@ export function NamespaceMembersPanel() {
             <>
               Share this link with people you want to give access to{' '}
               <span className="font-medium text-foreground">{aliasLabel}</span>
-              . They'll be added to the workspace root and will see every
-              folder that inherits from it.
+              . They'll join the workspace and see every folder that is open
+              to all workspace members.
             </>
           }
-          footnote="Anyone with this link and a Calimero identity can join the workspace."
+          footnote="Anyone with this link and a Calimero account can join the workspace."
           onCreate={() => createInvite(namespaceId)}
           onClose={() => setInviteOpen(false)}
         />

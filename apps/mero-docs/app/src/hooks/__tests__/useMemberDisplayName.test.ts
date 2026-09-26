@@ -17,14 +17,19 @@ vi.mock('@calimero-network/mero-react', () => ({
     error: null,
   }),
 }));
+const workspaceRefetch = vi.fn();
 vi.mock('../useDriveWorkspace', () => ({
-  useDriveWorkspace: () => ({ selfIdentity: 'self-pubkey' }),
+  useDriveWorkspace: () => ({
+    selfIdentity: 'self-pubkey',
+    refetch: workspaceRefetch,
+  }),
 }));
 
 describe('useMemberDisplayName', () => {
   beforeEach(() => {
     memberMetadataMock.mockReset();
     setMemberMetadataFn.mockReset();
+    workspaceRefetch.mockReset();
   });
 
   it('returns name from MetadataRecord.name', async () => {
@@ -86,6 +91,26 @@ describe('useMemberDisplayName', () => {
       data: {},
     });
     expect(refetch).toHaveBeenCalled();
+  });
+
+  it("setName refreshes the workspace's member rows", async () => {
+    memberMetadataMock.mockReturnValue({
+      metadata: null,
+      loading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    setMemberMetadataFn.mockResolvedValue(undefined);
+    const { result } = renderHook(() =>
+      useMemberDisplayName('ns1', 'self-pubkey'),
+    );
+    await act(async () => {
+      await result.current.setName('Bob');
+    });
+    expect(workspaceRefetch).toHaveBeenCalled();
+    expect(workspaceRefetch.mock.invocationCallOrder[0]).toBeGreaterThan(
+      setMemberMetadataFn.mock.invocationCallOrder[0],
+    );
   });
 
   it('setName trims and rejects empty', async () => {

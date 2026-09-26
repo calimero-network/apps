@@ -20,6 +20,8 @@ vi.mock('@/hooks/useFolderMembership', () => ({
     members: [
       { identity: 'alice', role: 'Member', name: 'Alice' },
       { identity: 'bob', role: 'Member', name: 'Bob' },
+      { identity: 'carol-identity-64charhexlikevalue', role: 'Member' },
+      { identity: 'dave-identity-64charhexlikevalue', role: 'Member' },
     ],
     loading: false,
     error: null,
@@ -71,8 +73,26 @@ describe('MemberDefaultsPanel apply-to-existing confirmation', () => {
       screen.getByRole('button', { name: /Apply to existing members/ }),
     );
     await waitFor(() =>
-      expect(setMemberCapabilitiesMock).toHaveBeenCalledTimes(2),
+      expect(setMemberCapabilitiesMock).toHaveBeenCalledTimes(4),
     );
     expect(confirmMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('names failed members and counts unnamed ones, never the raw identity', async () => {
+    confirmMock.mockResolvedValue(true);
+    setMemberCapabilitiesMock.mockImplementation((_group, identity: string) =>
+      identity === 'alice'
+        ? Promise.resolve(undefined)
+        : Promise.reject(new Error('boom')),
+    );
+    render(<MemberDefaultsPanel />);
+    fireEvent.click(
+      screen.getByRole('button', { name: /Apply to existing members/ }),
+    );
+    await waitFor(() => expect(setMemberCapabilitiesMock).toHaveBeenCalled());
+    const status = await screen.findByRole('status');
+    expect(status.textContent).toContain('Updated 1 of 4 members.');
+    expect(status.textContent).toContain('Failed for: Bob, 2 unnamed members.');
+    expect(status.textContent).not.toMatch(/-identity/);
   });
 });

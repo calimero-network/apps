@@ -145,7 +145,7 @@ export const EditorHeader: React.FC<EditorHeaderProps> = ({
           <DropdownMenuContent align="end">
             <DropdownMenuItem className="text-destructive" onClick={onDelete}>
               <Trash2 className="w-4 h-4 mr-2" />
-              Delete Document
+              Delete document
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

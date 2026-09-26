@@ -263,7 +263,7 @@ export function useCreateNamespaceInvite() {
       );
       if ('invitations' in (response as CreateRecursiveInvitationResponseData)) {
         throw new Error(
-          'Unexpected recursive invitation response — asked for single',
+          'Unexpected recursive invitation response: asked for single',
         );
       }
       const single = response as CreateNamespaceInvitationResponseData;
@@ -336,7 +336,7 @@ export function useCreateFolderInvite() {
         'invitations' in (response as CreateRecursiveGroupInvitationResponseData)
       ) {
         throw new Error(
-          'Unexpected recursive invitation response — asked for single',
+          'Unexpected recursive invitation response: asked for single',
         );
       }
       const single = response as CreateGroupInvitationResponseData;

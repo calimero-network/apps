@@ -21,7 +21,7 @@ test.describe('Folder tree keyboard access (single-node)', () => {
     await alice.page.keyboard.press('Enter');
 
     await expect(
-      alice.page.getByRole('heading', { name: 'No document open' }),
+      alice.page.getByRole('heading', { name: 'No documents yet' }),
     ).toBeVisible({ timeout: 15_000 });
     await expect(alice.tree.folderRow('Keyboard Only')).toHaveClass(
       /bg-selected/,

@@ -36,9 +36,8 @@ import type { Role } from '@/generated/registry/RegistryClient';
 interface Props {
   folderId: string;
   identity: string;
-  /** Pre-resolved label (server-reported `m.name` or a truncated
-   *  pubkey). Used as the MemberLabel fallback for callers that
-   *  haven't set a display name, and reused in remove dialogs. */
+  /** Server-reported name or the shared unnamed fallback; MemberLabel's
+   *  fallback and the remove dialog's text. */
   label: string;
   /** Server-reported core role: Admin / Member / ReadOnly. */
   coreRole?: string;
@@ -87,7 +86,7 @@ export function FolderMemberRoleRow({
 
   const onPreset = async (preset: FolderRolePreset) => {
     if (!registryClient) {
-      setUpdateError('Registry not ready');
+      setUpdateError('Workspace not ready');
       return;
     }
     setUpdating(true);
@@ -126,9 +125,6 @@ export function FolderMemberRoleRow({
               isSelf={isSelf}
               fallback={() => label}
             />
-          </div>
-          <div className="truncate text-xs text-muted-foreground">
-            <code>{identity.slice(0, 12)}…</code>
           </div>
         </div>
         <div className="flex items-center gap-2">

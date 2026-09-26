@@ -125,7 +125,7 @@ export function RestrictedFolderCard({
       //    internal context subscribe + sync, so once it resolves the
       //    docs context is queryable on this node.
       if (!registryClient) {
-        throw new Error('Workspace registry not ready — try again.');
+        throw new Error("The workspace isn't ready yet. Try again in a moment.");
       }
       const docsContextId = await registryClient.getFolderContext({
         folder_id: FolderId(folderId),
@@ -141,19 +141,13 @@ export function RestrictedFolderCard({
       refetchPerms?.();
       await refetch?.();
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e);
-      // Common failure modes — all collapse to the same UX: wait +
-      // retry, or ask admin. Core can surface "not a member of any
-      // ancestor with Open chain", a 5xx from a still-syncing node,
-      // or a transient KeyDelivery wait timeout.
-      const isTransient =
-        /not a member|has no group identity|HTTP 5|timeout/i.test(msg);
+      // Every failure mode (unsynced node, missing membership, timeout) has the
+      // same remedy, so the raw server text goes to the console only.
+      console.error('Folder join failed', e);
       setError(
-        isTransient
-          ? isSyncing
-            ? "Workspace sync isn't quite there yet — visibility op still propagating. Try again in a moment."
-            : "Your node can't reach this folder yet — either sync is still in progress or the workspace owner needs to add you. Try again, or ask the admin."
-          : msg,
+        isSyncing
+          ? "Workspace sync isn't quite there yet. Try again in a moment."
+          : "Your node can't reach this folder yet. Either sync is still in progress or the workspace owner needs to add you. Try again, or ask the admin.",
       );
     } finally {
       setJoining(false);
@@ -191,13 +185,12 @@ export function RestrictedFolderCard({
               </>
             ) : isSyncing ? (
               <>
-                Your node hasn't received the visibility metadata for{' '}
+                Your node hasn't finished syncing{' '}
                 <span className="font-medium text-foreground">
                   {folderAlias}
                 </span>{' '}
-                yet — namespace governance typically propagates within
-                a few seconds. Click <strong>Try joining</strong> to
-                retry now.
+                yet. That usually settles within a few seconds. Click{' '}
+                <strong>Try joining</strong> to retry now.
               </>
             ) : (
               <>
@@ -205,8 +198,7 @@ export function RestrictedFolderCard({
                   {folderAlias}
                 </span>{' '}
                 is open to all workspace members. Click{' '}
-                <strong>Join folder</strong> to materialize your access
-                and start reading + editing.
+                <strong>Join folder</strong> to start reading and editing.
               </>
             )}
           </p>
@@ -268,7 +260,7 @@ export function RestrictedFolderCard({
           {isRestricted && selfIdentity && (
             <div className="mt-4 space-y-1.5">
               <label className="block text-xs font-medium text-muted-foreground">
-                Your identity
+                Your member ID
               </label>
               <div className="flex gap-2">
                 <input
@@ -282,7 +274,7 @@ export function RestrictedFolderCard({
                   size="sm"
                   variant="outline"
                   onClick={onCopy}
-                  aria-label="Copy identity"
+                  aria-label="Copy member ID"
                 >
                   {copied ? (
                     <Check className="h-3.5 w-3.5" />

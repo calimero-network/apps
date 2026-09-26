@@ -142,11 +142,11 @@ export function JoinInviteCard({
         )}
         {parsed.kind === 'group' ? (
           <>
-            . You'll only gain access to this folder — not the workspace
-            root or other folders.
+            . You'll only gain access to this folder, not the rest of the
+            workspace.
           </>
         ) : (
-          <>. You'll be added to the workspace root group.</>
+          <>. You'll be added to the workspace.</>
         )}
       </p>
 
@@ -165,7 +165,7 @@ export function JoinInviteCard({
       ) : !isAuthenticated ? (
         <div className="space-y-3">
           <p className="text-sm">
-            Sign in with your Calimero identity to accept the invitation.
+            Sign in with your Calimero account to accept the invitation.
           </p>
           <ConnectButton />
         </div>

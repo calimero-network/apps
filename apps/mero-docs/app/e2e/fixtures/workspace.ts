@@ -136,13 +136,19 @@ export class WorkspaceDriver {
   // against the local dev server (auth tokens are already injected, so
   // the page renders the accept CTA directly, no ConnectButton detour).
   async joinNamespace(inviteUrl: string): Promise<void> {
+    await this.joinNamespaceKeepGate(inviteUrl);
+    await this.dismissNameGateIfPresent();
+  }
+
+  // Like joinNamespace but leaves the name gate up, so a spec can name the
+  // joiner only after peers have already seen them.
+  async joinNamespaceKeepGate(inviteUrl: string): Promise<void> {
     const parsed = new URL(inviteUrl, 'http://placeholder');
     await this.page.goto(`/${parsed.search}`);
     await this.page
       .getByRole('button', { name: /Accept & join/i })
       .click();
     await expect(this.page).toHaveURL(/\/app/, { timeout: 30_000 });
-    await this.dismissNameGateIfPresent();
   }
 
   // Opens the namespace settings pane.
@@ -174,13 +180,11 @@ export class WorkspaceDriver {
         .getByRole('menuitem', { name: /New subfolder/i })
         .click();
     } else {
-      // Scope the "New" button to the FolderTree's <aside>. There
-      // are multiple "New" buttons in the workspace shell (folder
-      // tree, doc list); the role+name locator would otherwise
-      // match the first DOM occurrence non-deterministically.
+      // Scoped to the FolderTree's <aside>: its header "New", or
+      // "New folder" while the workspace has no folders yet.
       await this.page
         .locator('aside')
-        .getByRole('button', { name: /^New$/ })
+        .getByRole('button', { name: /^New( folder)?$/ })
         .click();
     }
     const dialog = this.page.getByRole('dialog');
@@ -393,7 +397,7 @@ export class RestrictedCardDriver {
   async joinIfPrompted(opts: { timeout?: number } = {}): Promise<void> {
     const main = this.page.getByRole('main');
     const folderView = main.getByRole('heading', {
-      name: /^No document open$/,
+      name: /^(No document open|No documents yet)$/,
     });
     const join = main.getByRole('button', {
       name: /^(Join folder|Try joining)$/,
@@ -411,7 +415,7 @@ export class SharingDriver {
   // Picks a namespace member by display name in the folder's member picker.
   async addMember(name: string): Promise<void> {
     await this.page
-      .getByRole('combobox', { name: /identity pubkey/i })
+      .getByRole('combobox', { name: /member ID/i })
       .fill(name);
     // Scoped to the picker's listbox so no other option on the page can match.
     await this.page
@@ -601,7 +605,7 @@ export class SettingsDriver {
     opts: { timeout?: number } = {},
   ): Promise<void> {
     const row = this.page
-      .getByRole('region', { name: 'Namespace members' })
+      .getByRole('region', { name: 'Workspace members' })
       .getByRole('listitem')
       .filter({ hasText: label });
     await expect(row.getByRole('img', { name: state })).toBeVisible({

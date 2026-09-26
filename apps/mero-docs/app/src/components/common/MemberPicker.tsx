@@ -44,7 +44,7 @@ export function MemberPicker({
   namespaceId,
   onSelect,
   exclude,
-  placeholder = 'Search members or paste a pubkey…',
+  placeholder = 'Search members or paste a member ID…',
   ariaLabel,
   disabled,
   className,
@@ -203,9 +203,6 @@ export function MemberPicker({
                   memberId={m.identity}
                   className="truncate"
                 />
-                <code className="ml-2 truncate text-[10px] text-muted-foreground">
-                  {m.identity.slice(0, 12)}…
-                </code>
               </button>
             </li>
           ))}

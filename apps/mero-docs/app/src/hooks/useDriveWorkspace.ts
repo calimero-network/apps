@@ -784,6 +784,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
       })
       .catch((e) => {
         if (!cancelled) {
+          console.error('Failed to load registry owner and managers', e);
           setRegAdminError(e instanceof Error ? e : new Error(String(e)));
         }
       })

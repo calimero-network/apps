@@ -15,7 +15,7 @@ crate-type = ["cdylib", "rlib"]
 [package.metadata.calimero]
 package     = "com.calimero.mero-drive-docs"
 name        = "Mero Docs"
-description = "Namespace-based document workspace - registry + docs multi-service bundle."
+description = "A document workspace organized by folders, built as a multi-service bundle."
 author      = "Calimero"
 slug        = "com.calimero.mero-drive-docs"
 license     = "MIT"

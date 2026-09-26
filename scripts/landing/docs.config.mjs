@@ -410,15 +410,14 @@ export const DOCS = {
         id: 'concepts',
         heading: 'The words, and what they mean here',
         paragraphs: [
-          'Mero Docs is a multi-service bundle, and that structure is the product. A registry service holds the folder tree for a namespace; each folder is its own context holding its own documents.',
-          'That is what makes selective sharing real: giving somebody a folder replicates that folder’s documents to them and nothing else, because the other folders are different contexts they were never added to.',
+          'Mero Docs is built folder by folder, and that structure is the product. Your workspace holds the folder tree, and each folder holds its own documents separately.',
+          'That is what makes selective sharing real: giving somebody a folder replicates that folder’s documents to them and nothing else, because the other folders are separate and they were never added to them.',
         ],
         concepts: [
-          { term: 'Namespace', def: 'A workspace. The registry service in it holds the folder tree.' },
-          { term: 'Folder', def: 'A record in the registry, bound once to a context id. The binding never changes after it is made.' },
-          { term: 'Context', def: 'One folder’s documents. Sharing a folder means adding someone to this context.' },
+          { term: 'Workspace', def: 'The workspace you and your members share. It holds the folder tree.' },
+          { term: 'Folder', def: 'A folder in the tree. It holds its own documents, and sharing it gives access to those documents only.' },
           { term: 'Document', def: 'A rich-text document with an id like `doc-3`, allocated by a counter that produces distinct ids even when two people create a document at the same moment.' },
-          { term: 'Owner / manager / folder role', def: 'The registry has one owner and any number of managers who may set roles on any folder. Individual folders can also carry their own per-person roles.' },
+          { term: 'Owner / manager / folder role', def: 'The workspace has one owner and any number of managers who may set roles on any folder. Individual folders can also carry their own per-person roles.' },
         ],
       },
       {
@@ -426,9 +425,9 @@ export const DOCS = {
         heading: 'Getting started',
         steps: [
           { title: 'Connect a node', body: 'Press Connect to node and pick your node.' },
-          { title: 'Create a workspace', body: 'The first person to claim it is the registry owner.' },
-          { title: 'Make a folder', body: 'Registering a folder creates its context and binds the two together.' },
-          { title: 'Write', body: 'Documents live in the folder’s context. Editing is collaborative and merges as you type.' },
+          { title: 'Create a workspace', body: 'The first person to claim it is the workspace owner.' },
+          { title: 'Make a folder', body: 'A new folder can be shared on its own right away.' },
+          { title: 'Write', body: 'Documents live inside their folder. Editing is collaborative and merges as you type.' },
         ],
       },
       {
@@ -436,33 +435,40 @@ export const DOCS = {
         heading: 'Sharing a folder, not the workspace',
         paragraphs: [
           'Share at folder level. Someone given one folder gets that folder’s documents replicated to their node and has no copy of anything else in the workspace.',
-          'Managers may set roles on any folder; a folder role applies to that folder alone. Because a folder is a context, a revoked member stops receiving its documents rather than merely losing a menu item.',
+          'Managers may set roles on any folder; a folder role applies to that folder alone. Because each folder keeps its own membership, a revoked member stops receiving its documents rather than merely losing a menu item.',
         ],
       },
       {
         id: 'storage',
         heading: 'What is stored, and where',
         bullets: [
-          'Registry: folder records, the folder→context bindings, display order, colours and aliases, the owner and managers, and per-folder roles.',
-          'Each folder’s context: its documents with their tags and archive state, plus comments, each owned by its author.',
+          'Workspace: folder records, display order, colours and aliases, the owner and managers, and per-folder roles.',
+          'Each folder: its documents with their tags and archive state, plus comments, each owned by its author.',
           'Document edits are appended as updates, so concurrent typing merges rather than replacing.',
         ],
       },
-      OFFLINE,
+      {
+        id: 'offline',
+        heading: 'Offline, and what happens when you reconnect',
+        paragraphs: [
+          'Your node holds the whole state, so the app keeps working with no network. Every change is written locally and queued.',
+          'When your node reaches a peer again, the two exchange changes and merge them. Merging is CRDT-based, not last-write-wins-by-clock, so two people editing different things at the same time both keep their work. Where two people genuinely changed the same single value, the later write wins on that one value and nothing else is lost.',
+        ],
+      },
       {
         id: 'trouble',
         heading: 'When something looks wrong',
         concepts: [
-          { term: 'A shared folder is empty for them', def: 'Being in the workspace is not being in the folder. They must be added to that folder’s context before its documents replicate.' },
-          { term: 'A folder shows no documents after a move', def: 'Moving a folder changes its place in the tree, not its context binding, which is fixed once set. Reload the tree.' },
+          { term: 'A shared folder is empty for them', def: 'Being in the workspace is not being in the folder. They must be added to that folder itself before its documents replicate.' },
+          { term: 'A folder shows no documents after a move', def: 'Moving a folder changes its place in the tree, not the documents inside it. Reload the tree.' },
           { term: 'Two documents with the same name', def: 'Ids are allocated by counter and are always distinct; names are not unique by design. Rename one.' },
         ],
       },
     ],
     previewSteps: [
-      { title: 'A folder’s documents', body: 'What you see is one context. Other folders in the workspace are other contexts entirely.' },
+      { title: 'A folder’s documents', body: 'What you see belongs to one folder. Other folders in the workspace hold their own documents entirely.' },
       { title: 'An edit merges', body: 'Edits append as updates, so two people typing in one document converge instead of overwriting.' },
-      { title: 'A file uploads', body: 'Blobs replicate to the members of that folder — and to nobody else in the workspace.' },
+      { title: 'A file uploads', body: 'Blobs replicate to the members of that folder, and to nobody else in the workspace.' },
       { title: 'Private by default', body: 'A folder is shared with the people you add to it. Nothing is workspace-wide unless you make it so.' },
     ],
   },

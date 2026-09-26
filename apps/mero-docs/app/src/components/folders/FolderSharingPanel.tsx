@@ -35,9 +35,10 @@ import { useFolderRoles } from '@/hooks/useFolderRole';
 import { useCreateFolderInvite } from '@/hooks/useNamespaceInvitation';
 import { InviteDialog } from '@/components/workspace/InviteDialog';
 import { FolderMemberRoleRow } from '@/components/admin/FolderMemberRoleRow';
-import { MemberLabel } from '@/components/common/MemberLabel';
+import { MemberLabel, UNNAMED_MEMBER_LABEL } from '@/components/common/MemberLabel';
 import { MemberPicker } from '@/components/common/MemberPicker';
 import type { Role } from '@/generated/registry/RegistryClient';
+import { roleDisplayLabel } from '@/lib/roles';
 import { looksLikeMemberIdentity } from '@/utils/validation';
 
 interface Props {
@@ -102,11 +103,11 @@ export function FolderSharingPanel({ folderId }: Props) {
 
   const onInvite = async () => {
     if (!trimmedIdentity) {
-      setInviteError('Identity required');
+      setInviteError('Member ID required');
       return;
     }
     if (!looksLikeMemberIdentity(trimmedIdentity)) {
-      setInviteError('Identity doesn’t look like a valid pubkey');
+      setInviteError('Doesn’t look like a valid member ID');
       return;
     }
     if (members.some((m) => m.identity === trimmedIdentity)) {
@@ -193,7 +194,7 @@ export function FolderSharingPanel({ folderId }: Props) {
         <p className="flex items-start gap-2 border-b border-border/60 px-4 py-2.5 text-xs text-muted-foreground">
           <Globe className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
           <span>
-            Open to all workspace members — anyone in the workspace can join
+            Open to all workspace members. Anyone in the workspace can join
             and edit this folder. Use the role dropdowns below to pin a
             specific person to <strong>Viewer</strong> (read-only) or{' '}
             <strong>Manager</strong>.
@@ -217,7 +218,7 @@ export function FolderSharingPanel({ folderId }: Props) {
           </li>
         )}
         {members.map((m) => {
-          const label = m.name ?? `${m.identity.slice(0, 8)}…`;
+          const label = m.name ?? UNNAMED_MEMBER_LABEL;
           const rowErr =
             removeError?.identity === m.identity ? removeError.message : null;
           const isSelfRow = !!selfIdentity && m.identity === selfIdentity;
@@ -266,7 +267,7 @@ export function FolderSharingPanel({ folderId }: Props) {
                     />
                   </div>
                   <div className="truncate text-xs text-muted-foreground">
-                    {m.role}
+                    {roleDisplayLabel(m.role)}
                   </div>
                 </div>
                 {!isOpenFolder && perms.canManageMembers && (
@@ -296,7 +297,7 @@ export function FolderSharingPanel({ folderId }: Props) {
         <div className="space-y-3 border-t border-border/60 px-4 py-3">
           <div>
             <label className="mb-1 block text-xs font-medium text-muted-foreground">
-              Invite by identity
+              Invite by member ID
             </label>
             <div className="flex items-start gap-2">
               <div className="flex-1">
@@ -308,8 +309,8 @@ export function FolderSharingPanel({ folderId }: Props) {
                 <MemberPicker
                   namespaceId={namespaceId}
                   exclude={members.map((m) => m.identity)}
-                  placeholder="identity pubkey"
-                  ariaLabel="identity pubkey"
+                  placeholder="member ID"
+                  ariaLabel="member ID"
                   disabled={inviting}
                   onSelect={(id) => {
                     setIdentity(id);
@@ -319,9 +320,11 @@ export function FolderSharingPanel({ folderId }: Props) {
                 {identity && (
                   <p className="mt-1 truncate text-[11px] text-muted-foreground">
                     Selected:{' '}
-                    <code className="text-foreground">
-                      {identity.slice(0, 16)}…
-                    </code>
+                    <MemberLabel
+                      namespaceId={namespaceId}
+                      memberId={identity}
+                      className="text-foreground"
+                    />
                   </p>
                 )}
               </div>
@@ -364,11 +367,11 @@ export function FolderSharingPanel({ folderId }: Props) {
             <>
               Share this link to add someone to{' '}
               <span className="font-medium text-foreground">{folderAlias}</span>
-              {' '}only — they won't gain access to other folders or the
-              workspace root.
+              {' '}only. They won't gain access to the rest of the
+              workspace.
             </>
           }
-          footnote="Scope: this folder only. Anyone with this link and a Calimero identity can join."
+          footnote="Scope: this folder only. Anyone with this link and a Calimero account can join."
           onCreate={() => createFolderInvite(folderId)}
           onClose={() => setInviteLinkOpen(false)}
         />

@@ -1,6 +1,6 @@
-// Per-(namespace, member) display name backed by core's setMemberMetadata
-// (PR #2338). Returns null when unset — callers should render a truncated
-// pubkey as the visual fallback (see <MemberLabel>).
+// Per-(namespace, member) display name backed by core's setMemberMetadata.
+// Returns null when unset; callers render the shared "unnamed member"
+// fallback, never the raw key (see <MemberLabel>).
 //
 // Self-edit is the only mutation surface this hook exposes: the writer
 // methods always target `selfIdentity` and ignore the `memberId` arg, so a
@@ -53,7 +53,11 @@ export function useMemberDisplayName(
   namespaceId: string | null | undefined,
   memberId: string | null | undefined,
 ): MemberDisplayName {
-  const { selfIdentity, registryContextId } = useDriveWorkspace();
+  const {
+    selfIdentity,
+    registryContextId,
+    refetch: refetchWorkspace,
+  } = useDriveWorkspace();
   const { metadata, loading, error, refetch } = useMemberMetadata(
     namespaceId ?? null,
     memberId ?? null,
@@ -90,16 +94,25 @@ export function useMemberDisplayName(
       // metadata, leaving the caller's own state stale until next mount.
       if (memberId && memberId !== selfIdentity) {
         throw new Error(
-          'setName is self-only — bind useMemberDisplayName to selfIdentity to write',
+          'setName is self-only: bind useMemberDisplayName to selfIdentity to write',
         );
       }
       await setMemberMetadata(namespaceId, selfIdentity, {
         name: trimmed,
         data: {},
       });
-      await refetch();
+      // The workspace member rows name us in carets and member lists; without
+      // this they keep the old name until the next sync run.
+      await Promise.all([refetch(), refetchWorkspace()]);
     },
-    [namespaceId, memberId, selfIdentity, setMemberMetadata, refetch],
+    [
+      namespaceId,
+      memberId,
+      selfIdentity,
+      setMemberMetadata,
+      refetch,
+      refetchWorkspace,
+    ],
   );
 
   return { name, loading, loaded, error, setName, refetch };

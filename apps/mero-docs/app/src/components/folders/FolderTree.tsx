@@ -4,11 +4,13 @@
 // FolderTreeItem. Selection is also owned by useDriveWorkspace so
 // the right-pane DocumentList reads the same value.
 
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { buildTree } from '@/utils/ancestry';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
+import { folderLoadErrorMessage } from '@/lib/folderLoadError';
 import { FolderTreeItem } from './FolderTreeItem';
 import { NewFolderButton } from './NewFolderButton';
+import { NoFoldersState } from './NoFolderStates';
 
 // Map useDriveWorkspace's DriveLoadingStage values to user-facing
 // labels. Keys that don't appear here fall through to a generic
@@ -16,8 +18,8 @@ import { NewFolderButton } from './NewFolderButton';
 const STAGE_LABELS: Record<string, string> = {
   'awaiting-auth': 'Waiting for sign-in…',
   'resolving-namespaces': 'Loading workspaces…',
-  'resolving-registry-context': 'Bootstrapping workspace…',
-  'loading-subgroups': 'Loading subgroups…',
+  'resolving-registry-context': 'Setting up your workspace…',
+  'loading-subgroups': 'Preparing folders…',
   'loading-folders': 'Loading folders…',
   'syncing-from-peers': 'Syncing workspace from peers…',
 };
@@ -56,6 +58,11 @@ export function FolderTree({
   );
   const byId = useMemo(() => new Map(folders.map((f) => [f.id, f])), [folders]);
 
+  // The raw error is implementation detail; keep it in the console and show plain copy.
+  useEffect(() => {
+    if (error) console.error('Failed to load folders', error);
+  }, [error]);
+
   if (!namespaceId) {
     return (
       <div className="p-3 text-xs text-muted-foreground">
@@ -74,12 +81,9 @@ export function FolderTree({
 
   if (error) {
     return (
-      <div
-        className="p-3 text-xs text-destructive break-words"
-        title={error.message}
-      >
+      <div className="p-3 text-xs text-destructive break-words">
         <div className="font-medium mb-1">Failed to load folders</div>
-        <div className="font-mono opacity-80">{error.message}</div>
+        <div className="opacity-80">{folderLoadErrorMessage(error)}</div>
       </div>
     );
   }
@@ -90,16 +94,15 @@ export function FolderTree({
         <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           Folders
         </span>
-        {/* Top-level new-folder CTA. Self-gates: NewFolderButton
-            returns null when the caller lacks canCreateFolder on
-            the namespace root. */}
-        <NewFolderButton parentFolderId={null} label="New" />
+        {/* Self-gates on canCreateFolder. Hidden while empty because
+            NoFoldersState carries the create action then. */}
+        {tree.roots.length > 0 && (
+          <NewFolderButton parentFolderId={null} label="New" />
+        )}
       </div>
 
       {tree.roots.length === 0 ? (
-        <div className="p-3 text-xs text-muted-foreground">
-          No folders yet. Create one to get started.
-        </div>
+        <NoFoldersState />
       ) : (
         <ul className="flex-1 space-y-1.5 overflow-y-auto px-3 py-2">
           {tree.roots.map((n) => (

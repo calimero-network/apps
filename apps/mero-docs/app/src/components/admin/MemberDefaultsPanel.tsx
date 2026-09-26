@@ -215,27 +215,34 @@ export function MemberDefaultsPanel() {
     setApplying(true);
     try {
       const failures: string[] = [];
+      let unnamedFailures = 0;
       for (const m of sweep.apply) {
         try {
           await mero.admin.setMemberCapabilities(rootGroupId, m.identity, {
             capabilities: effectiveCurrent,
           });
         } catch {
-          failures.push(m.name ?? `${m.identity.slice(0, 8)}…`);
+          if (m.name) failures.push(m.name);
+          else unnamedFailures += 1;
         }
       }
       const parts: string[] = [];
       parts.push(
-        `Updated ${sweep.apply.length - failures.length} of ${sweep.apply.length} member${sweep.apply.length === 1 ? '' : 's'}.`,
+        `Updated ${sweep.apply.length - failures.length - unnamedFailures} of ${sweep.apply.length} member${sweep.apply.length === 1 ? '' : 's'}.`,
       );
       if (sweep.skippedAdmins.length > 0) {
         parts.push(
-          `${sweep.skippedAdmins.length} admin${sweep.skippedAdmins.length === 1 ? '' : 's'} skipped — admins already bypass this list.`,
+          `${sweep.skippedAdmins.length} admin${sweep.skippedAdmins.length === 1 ? '' : 's'} skipped. Admins already bypass this list.`,
         );
       }
       if (sweep.skippedReadOnly.length > 0) {
         parts.push(
-          `${sweep.skippedReadOnly.length} read-only member${sweep.skippedReadOnly.length === 1 ? '' : 's'} skipped — granting these would let them make changes.`,
+          `${sweep.skippedReadOnly.length} read-only member${sweep.skippedReadOnly.length === 1 ? '' : 's'} skipped. Granting these would let them make changes.`,
+        );
+      }
+      if (unnamedFailures > 0) {
+        failures.push(
+          `${unnamedFailures} unnamed member${unnamedFailures === 1 ? '' : 's'}`,
         );
       }
       if (failures.length > 0) {
@@ -330,7 +337,7 @@ export function MemberDefaultsPanel() {
             }
             title={
               dirty
-                ? 'Save the defaults first — this applies the saved value.'
+                ? 'Save the defaults first. This applies the saved value.'
                 : undefined
             }
             onClick={() => {
