@@ -1,8 +1,5 @@
-// Main-pane content for "a folder is open but no document is selected",
-// which reads "No documents yet" once the folder is known to be empty.
-// A quiet invitation to act: a New-document CTA (for editors) that
-// creates an Untitled doc and opens it inline. Read-only members get
-// guidance to pick a doc from the sidebar instead.
+// Main pane for an open folder with no document selected: offers New document
+// to editors, and says "No documents yet" once the folder is known to be empty.
 
 import React from 'react';
 import { FileText, Plus } from 'lucide-react';
@@ -11,7 +8,7 @@ import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useDocs } from '@/hooks/useDocs';
 import { useFolderPermissions } from '@/hooks/useFolderPermissions';
 import { useCreateDocument } from '@/hooks/useCreateDocument';
-import { EmptyState } from './EmptyState';
+import { EmptyState } from '@/components/ui/empty-state';
 
 interface Props {
   folderId: string;

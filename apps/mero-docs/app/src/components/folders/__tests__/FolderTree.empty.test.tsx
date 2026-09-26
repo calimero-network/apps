@@ -27,7 +27,7 @@ vi.mock('../NewFolderDialog', () => ({
 describe('FolderTree with no folders', () => {
   it('offers a New folder button that opens the New folder dialog', () => {
     render(<FolderTree selectedDocId={null} onSelectFolder={vi.fn()} onOpenDoc={vi.fn()} />);
-    expect(screen.getByRole('heading', { name: 'No folders yet' })).toBeTruthy();
+    expect(screen.getByText('No folders yet.')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'New folder' }));
     expect(screen.getByRole('dialog')).toBeTruthy();
   });

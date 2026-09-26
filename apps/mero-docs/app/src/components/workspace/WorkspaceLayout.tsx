@@ -32,7 +32,7 @@ import { WorkspaceSidebar } from './WorkspaceSidebar';
 import { FolderTree } from '@/components/folders/FolderTree';
 import { RestrictedFolderCard } from '@/components/folders/RestrictedFolderCard';
 import { FolderEmptyState } from './FolderEmptyState';
-import { EmptyState } from './EmptyState';
+import { EmptyState } from '@/components/ui/empty-state';
 import { SelectFolderState } from '@/components/folders/NoFolderStates';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
@@ -263,7 +263,7 @@ export function WorkspaceLayout() {
             // probe + read-only mode and shows its own "syncing folder"
             // state when its docs context isn't ready, so it is safe to
             // render here ahead of the syncing + access-gating branches.
-            <Suspense fallback={<EmptyState title="Loading editor…" body="" />}>
+            <Suspense fallback={<EmptyState title="Loading editor…" />}>
               <DocumentEditor
                 key={`${selectedFolderId}:${selectedDocId}`}
                 folderId={selectedFolderId}
@@ -285,9 +285,9 @@ export function WorkspaceLayout() {
             // during an SSE refetch. Show a neutral loading state rather
             // than flashing "Select a folder" (same stable-id reasoning as
             // the editor branch above).
-            <EmptyState title="Loading folder…" body="" />
+            <EmptyState title="Loading folder…" />
           ) : selectedFolderPerms.loading ? (
-            <EmptyState title="Checking access…" body="" />
+            <EmptyState title="Checking access…" />
           ) : lacksFolderAccess(selectedFolderPerms) ? (
             <div className="flex-1 overflow-y-auto p-6">
               <div className="mx-auto max-w-3xl">

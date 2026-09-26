@@ -32,10 +32,10 @@ test.describe('Display-name gate (single-node)', () => {
     await gate.getByPlaceholder('Your display name').fill('Gate Test User');
     await gate.getByRole('button', { name: /^Continue$/ }).click();
 
-    // Gate dismissed; sidebar/main now accessible — "Select a folder" shows.
+    // Gate dismissed; sidebar/main now accessible and the empty workspace shows.
     await expect(gate).toBeHidden({ timeout: 20_000 });
     await expect(
-      alice.page.getByRole('heading', { name: /Select a folder/i }),
+      alice.page.getByRole('heading', { name: 'No folders yet' }),
     ).toBeVisible({ timeout: 15_000 });
   });
 

@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils';
 
 interface Props {
   title: string;
-  body: string;
+  body?: string;
   icon?: LucideIcon;
   /** The one action that moves the user on, rendered under the copy. */
   children?: React.ReactNode;

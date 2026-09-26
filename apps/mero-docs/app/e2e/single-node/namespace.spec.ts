@@ -40,11 +40,11 @@ test.describe('Namespace (single-node)', () => {
     await expect(alice.page.getByTestId('workspace-switcher')).toContainText(a);
   });
 
-  test('empty workspace shows Select-a-folder state', async ({ alice }) => {
+  test('empty workspace asks for its first folder', async ({ alice }) => {
     await alice.goToWorkspace();
     await alice.createNamespace('Empty WS');
     await expect(
-      alice.page.getByRole('heading', { name: /Select a folder/i }),
+      alice.page.getByRole('heading', { name: 'No folders yet' }),
     ).toBeVisible({ timeout: 15_000 });
   });
 
