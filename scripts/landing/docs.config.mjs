@@ -578,10 +578,11 @@ export const DOCS = {
       },
     ],
     previewSteps: [
-      { title: 'A layer stack', body: 'Raster, text and fill layers in a tree — each one a separate record in the context.' },
-      { title: 'A stroke is drawn', body: 'Painting writes to that layer’s content field and nothing else on it.' },
-      { title: 'An adjustment applies', body: 'Non-destructive: parameters are stored, the pixels underneath are not rewritten.' },
-      { title: 'A collaborator joins', body: 'Their cursor rides separately from the document, so presence can never damage the art.' },
+      // The hero is interactive (animation.tsx), so these are things to try, in order.
+      { title: 'Paint on the canvas', body: 'Pick a colour and drag, or use the arrow keys and Space. The stroke lands on the layer you have selected.' },
+      { title: 'Ada draws at the same time', body: 'Your teammate paints on her own layer. Neither of you waits for the other, because every layer is a separate record.' },
+      { title: 'Hide a layer', body: 'Each eye hides one layer and leaves the others exactly as they were.' },
+      { title: 'Tune the hue', body: 'The slider is an adjustment on the selected layer: stored as a setting, so Reset brings the original pixels straight back.' },
     ],
   },
 

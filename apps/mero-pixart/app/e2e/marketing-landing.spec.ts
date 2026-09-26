@@ -189,6 +189,42 @@ test.describe('Mero PixArt landing page', () => {
   });
 
 
+
+  // ── Overview extras ─────────────────────────────────────────────────────
+  test('the overview carries its extra sections', async ({ page }) => {
+    await expect(page.locator('.cal-lp-headline')).toHaveText("Your images. Your layers. Your nodes.");
+    for (const id of ["showcase","compare","together","who","open-source","always-on","start"]) {
+      await expect(page.locator(`#${id}`)).toBeVisible();
+    }
+    await expect(page.locator('.cal-lp-cmprow:not(.cal-lp-cmprow--head)')).toHaveCount(5);
+    await expect(page.locator('#showcase .cal-lp-chapter')).toHaveCount(5);
+    await expect(page.locator('#open-source a[href="https://github.com/calimero-network/apps/fork"]')).toBeVisible();
+    await expect(page.locator('.cal-lp-persona')).toHaveCount(4);
+    await expect(page.locator('#always-on a[href="https://cloud.calimero.network/pricing"]')).toBeVisible();
+  });
+
+  test('every showcase file is actually served', async ({ page }) => {
+    // A renamed capture is a broken image on the front page, and nothing else
+    // would notice.
+    for (const src of ["/landing/demo.webm","/landing/demo-poster.jpg"]) {
+      const res = await page.request.get(src);
+      expect(res.ok(), src).toBe(true);
+    }
+  });
+
+  test('a showcase chapter seeks the clip and becomes the current one', async ({ page }) => {
+    const last = page.locator('#showcase .cal-lp-chapter').last();
+    await last.click();
+    await expect(last).toHaveAttribute('aria-current', 'step');
+    const t = await page.locator('#showcase video').evaluate((v) => (v as HTMLVideoElement).currentTime);
+    expect(t).toBeGreaterThanOrEqual(15.5);
+  });
+
+  test('the closing call to action replaces the low desktop band', async ({ page }) => {
+    await expect(page.locator('#start').locator('button').filter({ hasText: /^Connect to node$/ })).toBeVisible();
+    await expect(page.locator('.cal-lp-band')).toHaveCount(0);
+  });
+
   test('offers the desktop download', async ({ page }) => {
     await expect(
       page.locator('a[href="https://calimero.network/download"]').first(),

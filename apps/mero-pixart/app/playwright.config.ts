@@ -23,7 +23,8 @@ export default defineConfig({
       name: "mocked",
       use: { ...devices["Desktop Chrome"] },
       testMatch: "**/*.spec.ts",
-      testIgnore: "**/integration/**",
+      // media/ records the landing clip (`pnpm landing:media`), not a test.
+      testIgnore: ["**/integration/**", "**/media/**"],
     },
     {
       name: "integration",
