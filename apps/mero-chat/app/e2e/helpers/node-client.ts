@@ -254,9 +254,15 @@ export async function injectRealTokens(
     nodeUrl: string;
     accessToken: string;
     refreshToken: string;
+    /** The id the node installed the bundle under. Without it the app uses its
+     *  build-time default, and every create against this node names an app the
+     *  node does not have. Defaults to E2E_APP_ID. */
+    applicationId?: string;
   },
 ) {
-  await page.addInitScript(({ nodeUrl, accessToken, refreshToken }) => {
+  const withApp = { applicationId: process.env.E2E_APP_ID ?? "", ...opts };
+  await page.addInitScript(({ nodeUrl, accessToken, refreshToken, applicationId }) => {
+    if (applicationId) localStorage.setItem("calimero-application-id", applicationId);
     // MeroProvider internally uses mero-js's `LocalStorageTokenStore()`
     // which reads/writes a single JSON blob at `mero-tokens`.
     localStorage.setItem("mero:node_url", nodeUrl);
@@ -268,5 +274,5 @@ export async function injectRealTokens(
         expires_at: Date.now() + 3600_000,
       }),
     );
-  }, opts);
+  }, withApp);
 }

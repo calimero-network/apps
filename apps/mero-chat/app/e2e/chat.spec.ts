@@ -101,10 +101,37 @@ async function sendMessage(page: Page, text: string) {
   await page.keyboard.press("Enter");
 }
 
+/**
+ * The MessageContainer holding `text`: the parent of an actions bar, filtered to
+ * the one containing that message. Every message renders its own
+ * MessageContainer > ActionsContainer pair, grouped or not.
+ *
+ * It used to be `.msg-content` + `xpath=../../..`. Consecutive messages from one
+ * sender are grouped without an avatar, which changes the nesting, so once a new
+ * message joined the group "three levels up" named a different element: the
+ * hover saw the row detach and never found it again.
+ */
+function messageRow(page: Page, text: string) {
+  return page
+    .locator('[id^="actions-container-"]')
+    .locator("xpath=..")
+    .filter({ has: page.locator(".msg-content").filter({ hasText: text }) })
+    .first();
+}
+
 async function waitForMessage(page: Page, text: string) {
   await expect(
     page.locator(".msg-content").filter({ hasText: text }).first(),
   ).toBeVisible({ timeout: 10_000 });
+  // A sent message first renders as an optimistic `temp-…` row, which is
+  // replaced by the real one once the node answers. A hover or click that
+  // lands in between loses its element ("element was detached from the
+  // DOM") — so wait for the row to carry its real id before touching it.
+  await expect(
+    messageRow(page, text)
+      .locator('[id^="actions-container-"]')
+      .first(),
+  ).not.toHaveAttribute("id", /^actions-container-temp-/, { timeout: 15_000 });
 }
 
 /**
@@ -115,11 +142,7 @@ async function waitForMessage(page: Page, text: string) {
  * ActionsContainer is a direct child of MessageContainer.
  */
 function getMessageActionsBar(page: Page, text: string) {
-  return page
-    .locator(".msg-content")
-    .filter({ hasText: text })
-    .first()
-    .locator("xpath=../../..") // → MessageContainer
+  return messageRow(page, text)
     .locator('[id^="actions-container-"]')
     .first();
 }
@@ -127,11 +150,7 @@ function getMessageActionsBar(page: Page, text: string) {
 async function hoverMessage(page: Page, text: string) {
   // Hover the MessageContainer directly — the CSS rule is MessageContainer:hover → ActionsContainer visible.
   // Hovering a deep child sometimes doesn't reliably trigger :hover on the ancestor in Playwright.
-  await page
-    .locator(".msg-content")
-    .filter({ hasText: text })
-    .first()
-    .locator("xpath=../../..") // → MessageContainer
+  await messageRow(page, text)
     .hover();
 }
 
@@ -335,10 +354,7 @@ test.describe("Chat UI — reactions", () => {
     // The 👍 emoji should appear as a reaction badge below the message
     // Badge text is "👍1" (emoji + count); actionsBar button is just "👍" — this is unambiguous
     await expect(
-      page
-        .locator(".msg-content")
-        .filter({ hasText: marker })
-        .locator("xpath=../../..")
+      messageRow(page, marker)
         .getByText("👍1"),
     ).toBeVisible({ timeout: 5_000 });
   });
@@ -357,26 +373,17 @@ test.describe("Chat UI — reactions", () => {
       .click({ force: true, timeout: 5_000 });
     // Badge text is "✅1" (emoji + count); actionsBar button is just "✅" — this is unambiguous
     await expect(
-      page
-        .locator(".msg-content")
-        .filter({ hasText: marker })
-        .locator("xpath=../../..")
+      messageRow(page, marker)
         .getByText("✅1"),
     ).toBeVisible({ timeout: 5_000 });
 
     // Click the reaction badge itself to remove — badge is visible and its onClick calls handleReaction
     // which checks if user already reacted and sets isAdding=false (removes)
-    await page
-      .locator(".msg-content")
-      .filter({ hasText: marker })
-      .locator("xpath=../../..")
+    await messageRow(page, marker)
       .getByText("✅1")
       .click();
     await expect(
-      page
-        .locator(".msg-content")
-        .filter({ hasText: marker })
-        .locator("xpath=../../..")
+      messageRow(page, marker)
         .getByText("✅1"),
     ).not.toBeVisible({ timeout: 5_000 });
   });

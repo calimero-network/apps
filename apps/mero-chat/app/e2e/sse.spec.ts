@@ -194,7 +194,6 @@ function sendMessageArgs(message: string) {
     mentions_usernames: [],
     parent_message: null,
     timestamp: Math.floor(Date.now() / 1000),
-    sender_username: "sse-tester",
     files: null,
     images: null,
   };
@@ -457,30 +456,22 @@ test.describe("SSE — event kind: messages", () => {
   });
 });
 
-test.describe("SSE — event kind: channels", () => {
+// Channels are subgroups now (core groups-only model), so the old
+// create_channel / leave_channel contract methods and their ChannelCreated /
+// ChannelLeft events are gone. These are the events the app DOES rely on to
+// update an open channel live — both are in logic/res/abi.json.
+test.describe("SSE — event kind: reactions and edits", () => {
   test.beforeAll(requireEnv);
 
-  test("create_channel produces a ChannelCreated kind in StateMutation", async () => {
+  async function kindsAfter(action: (client: ReturnType<typeof makeClient>) => Promise<unknown>) {
     const env = getEnv();
     const client = makeClient();
     const sse = new SseListener(env.nodeUrl, env.accessToken);
-
-    const channelName = `sse-test-ch-${Date.now()}`;
-
     try {
       await sse.connect();
       await sse.subscribe([env.contextId]);
-
       const cursor = sse.getEventCount();
-      await client.call("create_channel", {
-        channel: channelName,
-        channel_type: "Public",
-        read_only: false,
-        moderators: [],
-        links_allowed: true,
-        created_at: Math.floor(Date.now() / 1000),
-      });
-
+      await action(client);
       const event = (await sse.waitForEvent(
         (d) =>
           (d as StateMutationPayload)?.result?.contextId === env.contextId &&
@@ -488,51 +479,30 @@ test.describe("SSE — event kind: channels", () => {
         10_000,
         cursor,
       )) as EventKindPayload;
-
-      const kinds = event.result?.data.events.map((e) => e.kind) ?? [];
-      expect(kinds).toContain("ChannelCreated");
+      return event.result?.data.events.map((e) => e.kind) ?? [];
     } finally {
       sse.disconnect();
     }
+  }
+
+  test("update_reaction produces a ReactionUpdated kind in StateMutation", async () => {
+    const sent = await makeClient().call<{ id: string }>("send_message", sendMessageArgs(`react-kind-${Date.now()}`));
+    const kinds = await kindsAfter((c) =>
+      c.call("update_reaction", { message_id: sent.id, emoji: "👍", add: true }),
+    );
+    expect(kinds).toContain("ReactionUpdated");
   });
 
-  test("leave_channel produces a ChannelLeft kind in StateMutation", async () => {
-    const env = getEnv();
-    const client = makeClient();
-    const sse = new SseListener(env.nodeUrl, env.accessToken);
-
-    const channelName = `sse-test-leave-${Date.now()}`;
-
-    try {
-      await sse.connect();
-      await sse.subscribe([env.contextId]);
-
-      // Create a channel to leave
-      await client.call("create_channel", {
-        channel: channelName,
-        channel_type: "Public",
-        read_only: false,
-        moderators: [],
-        links_allowed: true,
-        created_at: Math.floor(Date.now() / 1000),
-      });
-      await new Promise((r) => setTimeout(r, 200));
-
-      const cursor = sse.getEventCount();
-      await client.call("leave_channel", { channel: channelName });
-
-      const event = (await sse.waitForEvent(
-        (d) =>
-          (d as StateMutationPayload)?.result?.contextId === env.contextId &&
-          (d as StateMutationPayload)?.result?.type === "StateMutation",
-        10_000,
-        cursor,
-      )) as EventKindPayload;
-
-      const kinds = event.result?.data.events.map((e) => e.kind) ?? [];
-      expect(kinds).toContain("ChannelLeft");
-    } finally {
-      sse.disconnect();
-    }
+  test("edit_message produces a MessageEdited kind in StateMutation", async () => {
+    const sent = await makeClient().call<{ id: string }>("send_message", sendMessageArgs(`edit-kind-${Date.now()}`));
+    const kinds = await kindsAfter((c) =>
+      c.call("edit_message", {
+        message_id: sent.id,
+        new_message: "edited",
+        timestamp: Math.floor(Date.now() / 1000),
+        parent_id: null,
+      }),
+    );
+    expect(kinds).toContain("MessageEdited");
   });
 });

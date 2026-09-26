@@ -258,7 +258,7 @@ const ChannelHeader = memo(function ChannelHeader(props: ChannelHeaderProps) {
           placeholder={"# channel name"}
           buttonText={"Create"}
           toggle={
-            <PlusButton onClick={prepareCreateChannelModal}>
+            <PlusButton role="button" aria-label="Create channel" onClick={prepareCreateChannelModal}>
               <svg
                 width="13"
                 height="13"

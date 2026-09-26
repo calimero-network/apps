@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { fulfillChatApps } from "./helpers/chat-apps";
 import { injectMeroAuthTokens } from "./helpers/auth";
 import { closedBodyRefusal } from "./helpers/closed-bodies";
 
@@ -25,6 +26,7 @@ async function mockEmptyNode(page: import("@playwright/test").Page) {
 async function mockNodeWithWorkspace(page: import("@playwright/test").Page) {
   await page.route(`${MOCK_NODE_URL}/**`, (route) => {
     const url = route.request().url();
+    if (url.includes("/admin-api/applications")) return fulfillChatApps(route);
 
     // listGroups() calls GET /admin-api/namespaces
     if (url.includes("/admin-api/namespaces") && !url.includes("/invite") && !url.includes("/join")) {
@@ -167,6 +169,7 @@ test.describe("Enter-name step (workspace exists, no cached username)", () => {
 async function mockNodeWithAliaslessWorkspace(page: import("@playwright/test").Page) {
   await page.route(`${MOCK_NODE_URL}/**`, (route) => {
     const url = route.request().url();
+    if (url.includes("/admin-api/applications")) return fulfillChatApps(route);
     if (url.includes("/admin-api/namespaces") && !url.includes("/invite") && !url.includes("/join")) {
       return route.fulfill({
         status: 200,
@@ -327,5 +330,58 @@ test.describe("Create workspace submit", () => {
     expect(createBodies[0]).toEqual({ applicationId: APP_ID, name: "My Team" });
     await expect(page.getByText(/unknown field/i)).toHaveCount(0);
     await expect(page.getByText(/your name/i).first()).toBeVisible({ timeout: 10_000 });
+  });
+});
+
+// ── Only chat's workspaces ────────────────────────────────────────────────────
+//
+// A node holds the namespaces of every app installed on it. Reported: chat's
+// picker listed mero-design's workspaces too — the id filter failed and the app
+// fell back to the node's whole list. It must list chat's and nothing else.
+
+test.describe("Workspace picker lists only chat's workspaces", () => {
+  test("a mero-design namespace on the same node never appears", async ({ page }) => {
+    await injectMeroAuthTokens(page, {
+      nodeUrl: MOCK_NODE_URL,
+      accessToken: MOCK_ACCESS_TOKEN,
+      refreshToken: "mock-refresh",
+    });
+    await page.route(`${MOCK_NODE_URL}/**`, (route) => {
+      const url = route.request().url();
+      if (url.includes("/admin-api/applications")) {
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            data: {
+              apps: [
+                { id: "chat-app", package: "com.calimero.chat" },
+                { id: "design-app", package: "com.calimero.mero-design" },
+              ],
+            },
+          }),
+        });
+      }
+      if (url.includes("/admin-api/namespaces") && !url.includes("/invite") && !url.includes("/join")) {
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            data: [
+              { namespaceId: "ns-chat", name: "Chat Team", appKey: "", targetApplicationId: "chat-app", createdAt: 1 },
+              { namespaceId: "ns-design", name: "Design Board", appKey: "", targetApplicationId: "design-app", createdAt: 2 },
+            ],
+          }),
+        });
+      }
+      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: [] }) });
+    });
+
+    await page.goto("/login");
+    await expect(page.getByText("Select workspace")).toBeVisible({ timeout: 15_000 });
+    const select = page.locator("select");
+    await expect(select).toContainText("Chat Team");
+    await expect(select).not.toContainText("Design Board");
+    await expect(select.locator("option")).toHaveCount(1);
   });
 });

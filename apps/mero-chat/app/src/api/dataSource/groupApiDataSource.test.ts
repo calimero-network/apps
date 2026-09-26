@@ -14,6 +14,7 @@ const {
   mockCreateGroupInNamespace,
   mockListNamespaces,
   mockListNamespacesForApplication,
+  mockListApplications,
   mockReparentGroup,
   mockUpgradeGroup,
 } = vi.hoisted(() => ({
@@ -29,6 +30,7 @@ const {
   mockCreateGroupInNamespace: vi.fn(),
   mockListNamespaces: vi.fn(),
   mockListNamespacesForApplication: vi.fn(),
+  mockListApplications: vi.fn(),
   mockReparentGroup: vi.fn(),
   mockUpgradeGroup: vi.fn(),
 }));
@@ -68,6 +70,7 @@ vi.mock("../meroJsClient", () => ({
       createGroupInNamespace: mockCreateGroupInNamespace,
       listNamespaces: mockListNamespaces,
       listNamespacesForApplication: mockListNamespacesForApplication,
+      listApplications: mockListApplications,
       reparentGroup: mockReparentGroup,
       upgradeGroup: mockUpgradeGroup,
     },
@@ -104,38 +107,57 @@ describe("closed admin request bodies", () => {
 });
 
 describe("GroupApiDataSource", () => {
-  it("filters namespaces by the RUNTIME application id, not the build-time one", async () => {
-    // `getApplicationId()` resolves `app-id` (URL) -> stored -> env. Reading
-    // `import.meta.env.VITE_APPLICATION_ID` directly instead pins a deployed
-    // build to whatever was set when it was built, so it cannot follow an
-    // app-id change — and the app id changes whenever the wasm does.
-    //
-    // The node rejects an id it does not know with `400 Invalid application
-    // id`, which surfaced as an empty workspace list and a truncated group id
-    // where the workspace name should be.
-    mockListNamespacesForApplication.mockResolvedValue({
-      namespaces: [{ namespaceId: "ns-1", name: "Calimero" }],
-    });
-
-    const response = await new GroupApiDataSource().listGroups();
-
-    expect(mockListNamespacesForApplication).toHaveBeenCalledWith("runtime-app-id");
-    expect(response.data?.[0]).toMatchObject({ groupId: "ns-1", alias: "Calimero" });
+  // A node holds every installed app's namespaces. Chat must list ONLY its
+  // own: it used to fall back to the node's whole list when the id filter
+  // failed, and showed mero-design's workspaces as chat workspaces.
+  const ns = (namespaceId: string, targetApplicationId: string, name: string) => ({
+    namespaceId,
+    targetApplicationId,
+    name,
+    appKey: "",
+    createdAt: 1,
   });
 
-  it("falls back to every namespace when the node rejects the application id", async () => {
-    // A stale or unknown app id must not hide the user's workspaces. Showing
-    // all of them is wrong-ish; showing none looks like the workspace is gone.
-    const rejected = Object.assign(new Error("Invalid application id"), { status: 400 });
-    mockListNamespacesForApplication.mockRejectedValue(rejected);
+  it("lists only namespaces of the configured (runtime) app — never another app's", async () => {
+    mockListApplications.mockResolvedValue({ apps: [] });
     mockListNamespaces.mockResolvedValue({
-      namespaces: [{ namespaceId: "ns-1", name: "Calimero" }],
+      namespaces: [
+        ns("ns-chat", "runtime-app-id", "Calimero"),
+        ns("ns-design", "design-app-id", "Design Board"),
+      ],
     });
 
     const response = await new GroupApiDataSource().listGroups();
 
-    expect(mockListNamespaces).toHaveBeenCalled();
-    expect(response.data?.[0]).toMatchObject({ groupId: "ns-1", alias: "Calimero" });
+    expect(response.data?.map((g) => g.groupId)).toEqual(["ns-chat"]);
+  });
+
+  it("after an app-id change, finds chat's namespaces by PACKAGE — still never another app's", async () => {
+    // The configured id is stale; the node has chat under a new id.
+    mockListApplications.mockResolvedValue({
+      apps: [
+        { id: "chat-v2", package: "com.calimero.chat" },
+        { id: "design-app-id", package: "com.calimero.mero-design" },
+      ],
+    });
+    mockListNamespaces.mockResolvedValue({
+      namespaces: [ns("ns-chat", "chat-v2", "Calimero"), ns("ns-design", "design-app-id", "Design Board")],
+    });
+
+    const response = await new GroupApiDataSource().listGroups();
+
+    expect(response.data?.map((g) => g.groupId)).toEqual(["ns-chat"]);
+  });
+
+  it("filters by the configured id alone when the node will not list its applications", async () => {
+    mockListApplications.mockRejectedValue(new Error("403"));
+    mockListNamespaces.mockResolvedValue({
+      namespaces: [ns("ns-chat", "runtime-app-id", "Calimero"), ns("ns-design", "design-app-id", "Design Board")],
+    });
+
+    const response = await new GroupApiDataSource().listGroups();
+
+    expect(response.data?.map((g) => g.groupId)).toEqual(["ns-chat"]);
   });
 
   beforeEach(() => {

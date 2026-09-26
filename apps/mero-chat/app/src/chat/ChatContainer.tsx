@@ -329,10 +329,19 @@ function ChatContainer({
     const optimisticFiles = buildCurbFiles(payload.files);
     const optimisticImages = buildCurbFiles(payload.images);
 
+    // The ACCOUNT, as the contract stamps it (`env::account_id()`) and as every
+    // stored message carries it. This used to be `getExecutorPublicKey()`, the
+    // per-context member key: names resolve by account, so your own new message
+    // rendered as a truncated key ("1f32…5dc1") until the next reload, and the
+    // new-message indicator (`sender !== accountId`) fired on your own sends.
+    // The executor key stays as a fallback for the moment before the account is
+    // loaded; isSelfSender accepts either for edit/delete.
+    const selfSender = isDM
+      ? getSelfAccountHex() || activeChatRef.current?.contextIdentity || getExecutorPublicKey() || ""
+      : getSelfAccountHex() || getExecutorPublicKey() || "";
+
     if (optimisticFunction) {
-      const sender = isDM
-        ? activeChatRef.current?.contextIdentity || getExecutorPublicKey() || ""
-        : getExecutorPublicKey() || "";
+      const sender = selfSender;
 
       const optimisticMessage: CurbMessage = {
         id: tempId,
@@ -420,9 +429,7 @@ function ChatContainer({
         nonce: Math.random().toString(36).substring(2, 15),
         key: realMessageId,
         timestamp: Math.floor(Date.now() / 1000) * 1000,
-        sender: isDM
-          ? activeChatRef.current?.contextIdentity || getExecutorPublicKey() || ""
-          : getExecutorPublicKey() || "",
+        sender: response.data.sender || selfSender,
         reactions: {},
         editedOn: undefined,
         mentions,
