@@ -37,7 +37,7 @@ icon        = "../app/public/icon-512.png"
 category = "security"
 tags        = ["documents", "signing", "pdf"]
 github      = "https://github.com/calimero-network/apps"
-min-runtime-version = "0.11.0-rc.45"
+min-runtime-version = "0.11.0-rc.47"
 # ⚠️ `mero-sign-eta`, not `mero-sign`. The bare `mero-sign.vercel.app` project
 # serves a STALE build from another source entirely — a `spa-github-pages` shim
 # with `pathSegmentsToKeep = 1` that exists nowhere in this repo, emitting
