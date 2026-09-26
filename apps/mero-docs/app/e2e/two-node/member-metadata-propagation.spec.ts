@@ -96,9 +96,10 @@ test.describe('Member metadata propagation (two-node)', () => {
       { timeout: 60_000 },
     );
 
-    // Settings shares <main> with the editor, so closing it reopens the doc.
+    // Settings shares <main> with the editor, so closing it remounts the doc
+    // and Bob's caret is gone: the name must arrive without him typing.
     await bob.setMyDisplayName('Bob Beta');
-    await bob.editor.type('!');
+    await bob.editor.expectMounted();
     await expect(peersOf(alice.page)).toHaveAttribute(
       'aria-label',
       'Also here: Bob Beta',

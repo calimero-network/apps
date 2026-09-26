@@ -11,6 +11,7 @@ import {
 } from '@/lib/rich/presence';
 
 export const PRESENCE_THROTTLE_MS = 200; // bounds the burst while dragging
+const NO_CARET: CaretSlice = { blockId: null, anchor: '', head: '' }; // listed as here, drawn nowhere
 
 /** Where the caret is: a null block is the title, anchors are bs58 tokens. */
 export interface CaretSlice {
@@ -58,11 +59,12 @@ export function useDocPresence(
     [docId],
   );
 
-  // Peers only learn a name from a slice, so a rename resends this doc's caret.
+  // Peers only learn a name from a slice, and a remount forgets the caret, so
+  // opening a doc or renaming announces the current name without a caret move.
   const name = identity?.name;
   useEffect(() => {
     const last = lastCaretRef.current;
-    if (last?.docId === docId) publish(last.caret);
+    publish(last?.docId === docId ? last.caret : NO_CARET);
   }, [name, docId, publish]);
 
   const onDoc = useMemo(

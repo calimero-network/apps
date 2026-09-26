@@ -108,6 +108,9 @@ describe('useMemberDisplayName', () => {
       await result.current.setName('Bob');
     });
     expect(workspaceRefetch).toHaveBeenCalled();
+    expect(workspaceRefetch.mock.invocationCallOrder[0]).toBeGreaterThan(
+      setMemberMetadataFn.mock.invocationCallOrder[0],
+    );
   });
 
   it('setName trims and rejects empty', async () => {
