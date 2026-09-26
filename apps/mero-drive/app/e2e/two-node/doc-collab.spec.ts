@@ -9,7 +9,7 @@
 // which means sequencing them through the rig's offline switch. The rich
 // project owns that.
 
-import { test } from '../fixtures/two-user';
+import { expect, test } from '../fixtures/two-user';
 
 test.describe('Document collab (two-node)', () => {
   test('Both Alice and Bob open the same doc concurrently', async ({
@@ -37,6 +37,32 @@ test.describe('Document collab (two-node)', () => {
     await bob.openDoc('Joint');
     await alice.editor.expectMounted();
     await bob.editor.expectMounted();
+  });
+
+  test('Each sees the other in the editor header', async ({ alice, bob }) => {
+    await alice.goToWorkspace();
+    await alice.createNamespace('Avatars Setup');
+    await alice.createFolder({ name: 'Room', visibility: 'Open' });
+    await alice.tree.openFolder('Room');
+    await alice.createDoc('Together');
+    await alice.openSettings();
+    const inviteUrl = await alice.settings.copyNamespaceInvite();
+    await alice.closeSettings();
+
+    await bob.joinNamespace(inviteUrl);
+    await bob.tree.openFolder('Room');
+    await bob.restrictedCard.joinIfPrompted();
+    await bob.openDoc('Together');
+    await alice.openDoc('Together');
+
+    // A peer appears once it has a caret in the doc.
+    await alice.editor.type('hi');
+    await bob.editor.type('yo');
+    const others = (p: typeof alice.page) =>
+      p.getByRole('group', { name: /^Also here:/ });
+    await expect(others(alice.page)).toBeVisible({ timeout: 60_000 });
+    await expect(others(bob.page)).toBeVisible({ timeout: 60_000 });
+    await expect(others(alice.page).locator('span')).toHaveCount(1);
   });
 
   test("Alice's edits become visible to Bob", async ({ alice, bob }) => {

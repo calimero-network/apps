@@ -114,19 +114,30 @@ export function WorkspaceLayout() {
   // the doc) from "user opened a doc in another folder" (keep it).
   const selectedDocFolderRef = useRef<string | null>(null);
 
+  // Toggle between folder/editor view and the full-pane namespace
+  // settings. Closing settings preserves the previously-selected
+  // folder so the user lands back where they were.
+  const [showSettings, setShowSettings] = useState(false);
+
+  // Picking a folder or doc always leaves settings, even when it is the one
+  // already selected: settings shares <main> with them, so no state change fires.
+  const selectFolder = useCallback(
+    (folderId: string) => {
+      setShowSettings(false);
+      setSelectedFolder(folderId);
+    },
+    [setSelectedFolder],
+  );
+
   const openDoc = useCallback(
     (folderId: string, docId: string) => {
+      setShowSettings(false);
       selectedDocFolderRef.current = folderId;
       setSelectedFolder(folderId);
       setSelectedDocId(docId);
     },
     [setSelectedFolder],
   );
-
-  // Toggle between folder/editor view and the full-pane namespace
-  // settings. Closing settings preserves the previously-selected
-  // folder so the user lands back where they were.
-  const [showSettings, setShowSettings] = useState(false);
 
   // Clear the open doc when the active folder changes to a folder the
   // doc does NOT belong to — i.e. a folder-row click, remote delete,
@@ -146,15 +157,6 @@ export function WorkspaceLayout() {
   useEffect(() => {
     setShowSettings(false);
   }, [namespaceId]);
-
-  // Close settings when the user picks a folder from the sidebar.
-  // The settings pane sits in the same <main> slot as the folder
-  // view, so without this the folder click only updates
-  // selectedFolderId — the user stays staring at settings and has
-  // to either un-toggle the Settings button or reload the page.
-  useEffect(() => {
-    if (selectedFolderId) setShowSettings(false);
-  }, [selectedFolderId]);
 
   return (
     <div className="flex h-screen flex-col bg-background">
@@ -225,7 +227,11 @@ export function WorkspaceLayout() {
       <div className="relative flex min-h-0 flex-1">
         {!sidebarCollapsed && (
           <WorkspaceSidebar width={sidebarWidth} onWidthChange={setSidebarWidth}>
-            <FolderTree selectedDocId={selectedDocId} onOpenDoc={openDoc} />
+            <FolderTree
+              selectedDocId={selectedDocId}
+              onSelectFolder={selectFolder}
+              onOpenDoc={openDoc}
+            />
           </WorkspaceSidebar>
         )}
 

@@ -46,6 +46,8 @@ export function FolderTreeItem({
   const isHighlighted = isSelected && !selectedDocId;
   const isExpanded = expanded.has(node.id);
   const [renaming, setRenaming] = useState(false);
+  // Owned here, not by the leaves: expanding a collapsed folder mounts them fresh.
+  const [newDocPending, setNewDocPending] = useState(false);
   const [renameValue, setRenameValue] = useState('');
   // Re-entry guard for submitRename. Without this, pressing Enter
   // starts the async rename, and if the input loses focus before
@@ -64,6 +66,13 @@ export function FolderTreeItem({
     applicationId,
     refetch,
   );
+
+  const requestNewDoc = useCallback(() => {
+    if (!isExpanded) onToggleExpanded(node.id);
+    setNewDocPending(true);
+  }, [isExpanded, onToggleExpanded, node.id]);
+
+  const clearNewDocPending = useCallback(() => setNewDocPending(false), []);
 
   const startRename = useCallback(() => {
     setRenameValue(folder?.alias ?? '');
@@ -175,6 +184,7 @@ export function FolderTreeItem({
             onNewSubfolder={() => {
               if (!isExpanded) onToggleExpanded(node.id);
             }}
+            onNewDocument={requestNewDoc}
           />
         )}
       </div>
@@ -187,8 +197,11 @@ export function FolderTreeItem({
         <ul className="ml-4 mt-1.5 space-y-1.5 border-l border-border/50 pl-2">
           <FolderDocLeaves
             folderId={node.id}
-            selectedDocId={selectedDocId}
+            // Doc ids are per-folder counters, so only the open doc's folder may match.
+            selectedDocId={isSelected ? selectedDocId : null}
             onOpenDoc={onOpenDoc}
+            createPending={newDocPending}
+            onCreateStarted={clearNewDocPending}
           />
           {node.children.map((c) => (
             <FolderTreeItem

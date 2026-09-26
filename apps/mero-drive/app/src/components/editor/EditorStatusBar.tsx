@@ -4,8 +4,9 @@
 // file no longer imports Tiptap.
 
 import React from 'react';
-import { Shield, AlertCircle, Clock, FileText, WifiOff } from 'lucide-react';
+import { Shield, AlertCircle, FileText, WifiOff } from 'lucide-react';
 import type { SaveStatus } from './types';
+import { useSettledSaveStatus } from './useSettledSaveStatus';
 
 interface EditorStatusBarProps {
   documentName: string;
@@ -25,9 +26,7 @@ export const EditorStatusBar: React.FC<EditorStatusBarProps> = ({
   lastSavedAt,
   isAppReady = true,
 }) => {
-  const formatTime = (date: Date) => {
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  };
+  const shownStatus = useSettledSaveStatus(saveStatus);
 
   const getSaveStatusDisplay = () => {
     if (!isAppReady) {
@@ -39,10 +38,18 @@ export const EditorStatusBar: React.FC<EditorStatusBarProps> = ({
       );
     }
 
-    switch (saveStatus) {
+    switch (shownStatus) {
       case 'saved':
         return (
-          <div className="flex items-center gap-1.5 text-success" data-testid="save-status">
+          <div
+            className="flex items-center gap-1.5 text-success"
+            data-testid="save-status"
+            title={
+              lastSavedAt
+                ? `Last saved ${lastSavedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                : undefined
+            }
+          >
             <div className="w-2 h-2 rounded-full bg-current opacity-80" />
             <span>Saved</span>
           </div>
@@ -52,13 +59,6 @@ export const EditorStatusBar: React.FC<EditorStatusBarProps> = ({
           <div className="flex items-center gap-1.5 text-warning" data-testid="save-status">
             <div className="w-2 h-2 rounded-full bg-current animate-pulse" />
             <span>Saving…</span>
-          </div>
-        );
-      case 'unsaved':
-        return (
-          <div className="flex items-center gap-1.5 text-muted-foreground" data-testid="save-status">
-            <div className="w-2 h-2 rounded-full bg-current animate-pulse" />
-            <span>Unsaved changes</span>
           </div>
         );
       case 'error':
@@ -72,13 +72,14 @@ export const EditorStatusBar: React.FC<EditorStatusBarProps> = ({
   };
 
   return (
-    <div className="flex items-center justify-between px-4 py-2 border-t border-border/50 bg-muted/30 text-xs">
-      <div className="flex items-center gap-4">
-        <div className="flex items-center gap-1.5 text-muted-foreground">
-          <FileText className="w-3.5 h-3.5" />
-          <span>{documentName}</span>
+    // Nothing wraps: on a narrow window the lesser items drop out instead.
+    <div className="flex items-center justify-between gap-4 whitespace-nowrap px-4 py-2 border-t border-border/50 bg-muted/30 text-xs">
+      <div className="flex min-w-0 items-center gap-4">
+        <div className="hidden min-w-0 items-center gap-1.5 text-muted-foreground lg:flex">
+          <FileText className="w-3.5 h-3.5 shrink-0" />
+          <span className="truncate">{documentName}</span>
         </div>
-        <div className="flex items-center gap-1.5 text-muted-foreground">
+        <div className="hidden items-center gap-1.5 text-muted-foreground md:flex">
           <span>{wordCount} words</span>
           <span className="text-border">•</span>
           <span>{charCount} characters</span>
@@ -86,13 +87,6 @@ export const EditorStatusBar: React.FC<EditorStatusBarProps> = ({
       </div>
 
       <div className="flex items-center gap-4">
-        {lastSavedAt && (
-          <div className="flex items-center gap-1.5 text-muted-foreground">
-            <Clock className="w-3.5 h-3.5" />
-            <span>Last saved {formatTime(lastSavedAt)}</span>
-          </div>
-        )}
-
         {getSaveStatusDisplay()}
 
         <div className="security-badge">

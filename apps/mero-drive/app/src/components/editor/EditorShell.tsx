@@ -31,6 +31,7 @@ import '@blocknote/mantine/style.css';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { EditorStatusBar } from './EditorStatusBar';
 import { EditorHeader, type TitleBinding } from './EditorHeader';
+import type { Peer } from './PeerAvatars';
 import { useTheme } from '@/components/theme/ThemeProvider';
 import { schema, type DriveEditor } from './blocknote/schema';
 import { presencePlugin } from './presence/presencePlugin';
@@ -70,6 +71,8 @@ export interface EditorShellProps {
    *  renders the title as plain text. Callers should ALSO gate the
    *  mutation callbacks at the binding level (defense in depth). */
   readOnly?: boolean;
+  /** Everyone else with this document open. */
+  peers?: Peer[];
 }
 
 // BlockNote renders its own block ids as `data-id`, which are the backend's
@@ -99,6 +102,7 @@ export const EditorShell: React.FC<EditorShellProps> = ({
   isLoading = false,
   readOnly = false,
   onEditorReady,
+  peers,
 }) => {
   const { theme } = useTheme();
 
@@ -283,6 +287,7 @@ export const EditorShell: React.FC<EditorShellProps> = ({
           onBack={onBack}
           onUndo={readOnly ? undefined : onUndo}
           onRedo={readOnly ? undefined : onRedo}
+          peers={peers}
         />
 
         <div className="flex-1 flex flex-col overflow-hidden">

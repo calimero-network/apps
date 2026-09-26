@@ -4,22 +4,38 @@
 // for every folder in the tree on load. Collapsing the folder
 // unmounts this and releases the subscription.
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { FileText } from 'lucide-react';
 import { useDocs } from '@/hooks/useDocs';
+import { useCreateDocument } from '@/hooks/useCreateDocument';
 
 interface Props {
   folderId: string;
   selectedDocId: string | null;
   onOpenDoc: (folderId: string, docId: string) => void;
+  /** A "New document" request is waiting; cleared through onCreateStarted. */
+  createPending: boolean;
+  onCreateStarted: () => void;
 }
 
 export function FolderDocLeaves({
   folderId,
   selectedDocId,
   onOpenDoc,
+  createPending,
+  onCreateStarted,
 }: Props) {
   const docs = useDocs(folderId);
+  const newDoc = useCreateDocument(docs, folderId, onOpenDoc);
+  const { contextId } = docs;
+  const { create } = newDoc;
+
+  // Waits for the context: a request can arrive before a just-expanded folder resolves it.
+  useEffect(() => {
+    if (!contextId || !createPending) return;
+    onCreateStarted();
+    void create();
+  }, [contextId, createPending, onCreateStarted, create]);
 
   // Context not yet bound: a brief muted hint, never a red error —
   // folders sync from peers and the context lands a moment later.
@@ -42,6 +58,11 @@ export function FolderDocLeaves({
 
   return (
     <>
+      {newDoc.error && (
+        <li className="px-2 py-1 text-xs text-destructive" role="alert">
+          Couldn't create a document: {newDoc.error}
+        </li>
+      )}
       {docs.list.map((d) => {
         const isSelected = d.id === selectedDocId;
         return (

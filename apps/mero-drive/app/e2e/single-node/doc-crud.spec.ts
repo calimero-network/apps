@@ -10,6 +10,61 @@ test.describe('Document CRUD (single-node)', () => {
     await alice.tree.openFolder('Drafts');
   });
 
+  for (const via of ['row', 'menu'] as const) {
+    test(`new document from the sidebar ${via} while a doc is open`, async ({
+      alice,
+    }) => {
+      await alice.createDoc('Existing');
+      await alice.openDoc('Existing');
+      await alice.tree.newDocument('Drafts', via);
+      await alice.editor.expectMounted();
+      await expect(alice.page.getByTestId('doc-title-input')).toHaveValue(
+        'Untitled',
+        { timeout: 15_000 },
+      );
+      await alice.docs.expectDocVisible('Untitled');
+      await alice.docs.expectDocVisible('Existing');
+    });
+
+    test(`new document from the sidebar ${via} on a collapsed folder`, async ({
+      alice,
+    }) => {
+      await alice.createFolder({ name: 'Later', visibility: 'Open' });
+      await alice.tree.newDocument('Later', via);
+      await alice.editor.expectMounted();
+      await expect(alice.page.getByTestId('doc-title-input')).toHaveValue(
+        'Untitled',
+        { timeout: 15_000 },
+      );
+    });
+  }
+
+  test('the save indicator stays calm while typing', async ({ alice }) => {
+    await alice.createDoc('Calm');
+    await alice.openDoc('Calm');
+    const status = alice.page.getByTestId('save-status');
+    await expect(status).toHaveText('Saved', { timeout: 15_000 });
+    // Record every text the indicator shows while typing key by key. Each state
+    // renders its own element, so watch the stable parent and re-read.
+    await status.evaluate((el) => {
+      const bar = el.parentElement!;
+      const seen: string[] = [];
+      (window as unknown as { __saveTexts: string[] }).__saveTexts = seen;
+      new MutationObserver(() =>
+        seen.push(
+          bar.querySelector('[data-testid="save-status"]')?.textContent ?? '',
+        ),
+      ).observe(bar, { subtree: true, childList: true, characterData: true });
+    });
+    await alice.page.locator('.ProseMirror').first().click();
+    await alice.page.keyboard.type('typing at a normal pace', { delay: 60 });
+    await expect(status).toHaveText('Saved', { timeout: 15_000 });
+    const seen = await alice.page.evaluate(
+      () => (window as unknown as { __saveTexts: string[] }).__saveTexts,
+    );
+    expect(seen.filter((t) => t !== 'Saved')).toEqual([]);
+  });
+
   test('create doc appears in the sidebar', async ({ alice }) => {
     await alice.createDoc('Hello World');
     await alice.docs.expectDocVisible('Hello World');

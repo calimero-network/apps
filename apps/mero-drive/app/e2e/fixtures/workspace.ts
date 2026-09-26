@@ -353,6 +353,18 @@ export class FolderTreeDriver {
     await expect(trigger).toBeVisible({ timeout: 30_000 });
     await trigger.click();
   }
+
+  // Creates an Untitled doc in `name` from the sidebar: the row's hover "+" or the ⋯ menu.
+  async newDocument(name: string, via: 'row' | 'menu'): Promise<void> {
+    if (via === 'menu') {
+      await this.openContextMenu(name);
+      await this.page.getByRole('menuitem', { name: /New document/i }).click();
+      return;
+    }
+    const row = this.folderRow(name).first();
+    await row.hover();
+    await row.getByRole('button', { name: 'New document' }).click();
+  }
 }
 
 export class RestrictedCardDriver {

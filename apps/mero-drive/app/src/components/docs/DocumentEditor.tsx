@@ -78,6 +78,11 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
     (ready: DriveEditor) => setEditor(ready),
     [],
   );
+  const peerList = useMemo(
+    () =>
+      [...peers].map(([id, p]) => ({ id, name: p.name, colour: p.colour })),
+    [peers],
+  );
   const titleCarets = useTitleCursors(client, openDocId, peers, title.title);
   useBodyCursors({
     client,
@@ -181,6 +186,7 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
         isAppReady={!!namespaceId && !!docsContextId}
         isLoading={body.loading}
         onEditorReady={onEditorReady}
+        peers={peerList}
       />
       <DocumentInspector client={client} docId={docId} />
     </>

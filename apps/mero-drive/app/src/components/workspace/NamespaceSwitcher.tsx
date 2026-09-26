@@ -15,16 +15,10 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
+import { initials } from '@/lib/initials';
 import { namespaceLabel } from '@/lib/namespaceLabel';
 import { NamespaceCreateDialog } from './NamespaceCreateDialog';
 import { NamespaceJoinDialog } from './NamespaceJoinDialog';
-
-function initials(label: string): string {
-  const words = label.trim().split(/\s+/).filter(Boolean);
-  const letters =
-    words.length > 1 ? words[0][0] + words[1][0] : label.slice(0, 2);
-  return letters.toUpperCase();
-}
 
 function WorkspaceTile({ label }: { label: string | null }) {
   return label ? (
