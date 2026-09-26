@@ -405,6 +405,67 @@ export const DOCS = {
     ],
   },
 
+  'mero-updates': {
+    docs: [
+      {
+        id: 'concepts',
+        heading: 'The words, and what they mean here',
+        concepts: [
+          { term: 'Company', def: 'A namespace the founder owns. Investors join it from an invitation link.' },
+          { term: 'Audience', def: 'A context inside the company — “All investors”, “Angels”. Its updates, replies and asks replicate between its members’ nodes. Every company member can open every audience, so a confidential group is its own company.' },
+          { term: 'Team', def: 'The creator is admin; admins make co-founders teammates. The role registry is checked at merge, so a reader cannot grant themselves publishing rights.' },
+          { term: 'Update', def: 'A structured post: category, TL;DR, sections, KPIs and asks. Only the team publishes them.' },
+          { term: 'Ask', def: 'A specific request inside an update — an intro, a hire, a customer. Investors answer with one click; accepted offers become contributions the next update thanks.' },
+          { term: 'Question', def: 'A thread any member can open. Answers are visible to the whole audience, so a question is asked once.' },
+          { term: 'Draft', def: 'Kept in the contract’s private storage: node-local, never replicated. An unfinished update does not exist anywhere but the author’s node.' },
+        ],
+      },
+      {
+        id: 'start',
+        heading: 'Getting started',
+        steps: [
+          { title: 'Connect a node', body: 'Press Connect to node and choose your node.' },
+          { title: 'Create your company', body: 'Then an audience inside it, such as “All investors”.' },
+          { title: 'Set it up', body: 'Name the company, pick a cadence and add categories — one click adds a starter set.' },
+          { title: 'Publish and invite', body: 'Write from a template, publish, and share the invitation link with your investors.' },
+        ],
+      },
+      {
+        id: 'sharing',
+        heading: 'Who can see it',
+        paragraphs: [
+          'Members of the company, and nobody else: there is no web view, no forwarded email and no vendor database. Everything except drafts replicates to every member of the audience.',
+          'Some views are team-only — the list of who offered help, the read report — but that is a presentation filter, not encryption. Every member’s node holds the same rows. For something confidential, make a separate company with only the people who should see it.',
+        ],
+      },
+      {
+        id: 'storage',
+        heading: 'What is stored, and where',
+        bullets: [
+          'Updates and questions in one map keyed by id; edits, triage status and deletes merge independently, so answering a question cannot be undone by a typo fix.',
+          'Asks and offers of help, keyed so one person makes one offer per ask.',
+          'Replies, reactions (one per person per emoji) and read receipts (first and latest open).',
+          'Profiles, categories and settings. Drafts only on the author’s own node.',
+        ],
+      },
+      OFFLINE,
+      {
+        id: 'trouble',
+        heading: 'When something looks wrong',
+        concepts: [
+          { term: 'An investor does not see the update', def: 'Updates appear as peers sync. If their node was offline, it catches up on reconnect.' },
+          { term: 'You cannot publish', def: 'Only the team can. An admin makes you a teammate from the People tab.' },
+          { term: 'A read count looks low', def: 'A read is recorded when the member opens the update in the app, not when it arrives on their node.' },
+        ],
+      },
+    ],
+    previewSteps: [
+      { title: 'An update lands', body: 'Published by the team, replicated to every investor’s node — nothing was emailed.' },
+      { title: 'KPIs with context', body: 'Each tile shows the change since the last report, computed rather than typed.' },
+      { title: 'An investor offers help', body: 'One click on an ask; the founder accepts it and it becomes a contribution.' },
+      { title: 'The conversation goes both ways', body: 'Replies, reactions and questions from investors, visible to the team as they sync.' },
+    ],
+  },
   'mero-forum': {
     docs: [
       {

@@ -1,0 +1,44 @@
+[package]
+# Directory == cargo package == npm package, which publish-bundle.yml relies on
+# (it uses one value as both `apps/$APP/logic` and `pnpm -F $APP`).
+name        = "mero-updates"
+description = "Investor updates and investor relations, peer to peer, on Calimero"
+version     = "0.1.0"
+edition.workspace    = true
+authors.workspace    = true
+license.workspace    = true
+repository.workspace = true
+
+[lib]
+# `rlib` alongside cdylib so the TestHost tests in src/tests.rs can link it.
+crate-type = ["cdylib", "rlib"]
+
+[package.metadata.calimero]
+package     = "com.calimero.mero-updates"
+name        = "Mero Updates"
+description = "Investor updates without the platform: categories, KPIs, asks and two-way replies, replicated between the company's and its investors' own nodes."
+author      = "Calimero"
+slug        = "com.calimero.mero-updates"
+# A real icon, not cargo-mero's placeholder — see scripts/check-app-icons.py.
+# Regenerate with `node app/scripts/gen-icons.mjs`.
+icon        = "../app/public/icon-512.png"
+category    = "productivity"
+tags        = ["investor-updates", "investor-relations", "startups", "newsletter"]
+github      = "https://github.com/calimero-network/apps"
+min-runtime-version = "0.11.0-rc.45"
+frontend    = "https://mero-updates.vercel.app"
+
+[dependencies]
+calimero-sdk            = { workspace = true }
+calimero-storage        = { workspace = true }
+calimero-storage-macros = { workspace = true }
+# `fresh_id` renders 16 random bytes from the host as hex.
+hex                     = { workspace = true }
+
+[dev-dependencies]
+# Enables register_crdt_merge + the native mock host so TestHost can drive CRDT
+# state under `cargo test`.
+calimero-storage = { workspace = true, features = ["testing"] }
+
+# NOTE: no [profile.*] — cargo ignores profiles in a workspace member and
+# `cargo mero build` then fails with `profile 'app-release' is not defined`.
