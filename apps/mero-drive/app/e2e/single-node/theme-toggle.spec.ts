@@ -1,47 +1,47 @@
 // Theme toggle — new coverage for the PR1 top-bar dark/light switch.
 //
-// The app defaults to dark mode. The toggle button aria-label reads
-// "Switch to light mode" when dark, "Switch to dark mode" when light.
-// Toggling removes/adds the `dark` class on <html>. The choice
+// The app defaults to light mode. The toggle button aria-label reads
+// "Switch to dark mode" when light, "Switch to light mode" when dark.
+// Toggling adds/removes the `dark` class on <html>. The choice
 // persists across page reloads.
 
 import { test, expect } from '../fixtures/single-user';
 
 test.describe('Theme toggle (single-node)', () => {
-  test('dark → light removes dark class and flips label', async ({ alice }) => {
+  test('light → dark adds dark class and flips label', async ({ alice }) => {
     await alice.goToWorkspace();
 
-    // App starts in dark mode — toggle shows "Switch to light mode".
-    const toggleDark = alice.page.getByRole('button', {
-      name: /Switch to light mode/i,
+    // App starts in light mode: the toggle shows "Switch to dark mode".
+    const toggleLight = alice.page.getByRole('button', {
+      name: /Switch to dark mode/i,
     });
-    await expect(toggleDark).toBeVisible({ timeout: 15_000 });
-
-    // Click to switch to light.
-    await toggleDark.click();
-
-    // Button label flips to "Switch to dark mode".
-    await expect(
-      alice.page.getByRole('button', { name: /Switch to dark mode/i }),
-    ).toBeVisible();
-
-    // <html> no longer has the `dark` class.
+    await expect(toggleLight).toBeVisible({ timeout: 15_000 });
     expect(
       await alice.page.evaluate(() =>
         document.documentElement.classList.contains('dark'),
       ),
     ).toBe(false);
+
+    await toggleLight.click();
+
+    await expect(
+      alice.page.getByRole('button', { name: /Switch to light mode/i }),
+    ).toBeVisible();
+    expect(
+      await alice.page.evaluate(() =>
+        document.documentElement.classList.contains('dark'),
+      ),
+    ).toBe(true);
   });
 
-  test('light mode persists across page reload', async ({ alice }) => {
+  test('dark mode persists across page reload', async ({ alice }) => {
     await alice.goToWorkspace();
 
-    // Switch to light.
     await alice.page
-      .getByRole('button', { name: /Switch to light mode/i })
+      .getByRole('button', { name: /Switch to dark mode/i })
       .click();
     await expect(
-      alice.page.getByRole('button', { name: /Switch to dark mode/i }),
+      alice.page.getByRole('button', { name: /Switch to light mode/i }),
     ).toBeVisible();
 
     // Reload and wait for the shell to remount.
@@ -50,15 +50,14 @@ test.describe('Theme toggle (single-node)', () => {
       timeout: 30_000,
     });
 
-    // Light preference persisted — still no `dark` class and toggle
-    // still reads "Switch to dark mode".
+    // The index.html bootstrap re-applies the saved dark choice.
     expect(
       await alice.page.evaluate(() =>
         document.documentElement.classList.contains('dark'),
       ),
-    ).toBe(false);
+    ).toBe(true);
     await expect(
-      alice.page.getByRole('button', { name: /Switch to dark mode/i }),
+      alice.page.getByRole('button', { name: /Switch to light mode/i }),
     ).toBeVisible({ timeout: 10_000 });
   });
 });

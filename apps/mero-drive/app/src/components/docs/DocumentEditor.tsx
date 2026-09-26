@@ -25,9 +25,15 @@ interface Props {
   folderId: string;
   docId: string;
   onClose: () => void;
+  folderName?: string;
 }
 
-export function DocumentEditor({ folderId, docId, onClose }: Props) {
+export function DocumentEditor({
+  folderId,
+  docId,
+  onClose,
+  folderName,
+}: Props) {
   const { namespaceId, selfIdentity, namespaceMemberNames } =
     useDriveWorkspace();
   const perms = useFolderPermissions(namespaceId ?? '', folderId);
@@ -177,6 +183,7 @@ export function DocumentEditor({ folderId, docId, onClose }: Props) {
             : undefined
         }
         onBack={onClose}
+        folderName={folderName}
         onDelete={canEditDocs ? onDelete : undefined}
         onUndo={canEditDocs ? body.undo : undefined}
         onRedo={canEditDocs ? body.redo : undefined}

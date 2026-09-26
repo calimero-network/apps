@@ -15,28 +15,9 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
-import { initials } from '@/lib/initials';
 import { namespaceLabel } from '@/lib/namespaceLabel';
 import { NamespaceCreateDialog } from './NamespaceCreateDialog';
 import { NamespaceJoinDialog } from './NamespaceJoinDialog';
-
-function WorkspaceTile({ label }: { label: string | null }) {
-  return label ? (
-    <span
-      aria-hidden
-      className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-[5px] border border-border bg-secondary text-[10px] font-bold text-secondary-foreground"
-    >
-      {initials(label)}
-    </span>
-  ) : (
-    <span
-      aria-hidden
-      className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-[5px] border border-dashed border-muted-foreground/50 text-muted-foreground"
-    >
-      <Plus className="!size-3" />
-    </span>
-  );
-}
 
 export function NamespaceSwitcher() {
   const {
@@ -82,9 +63,8 @@ export function NamespaceSwitcher() {
             variant="ghost"
             size="sm"
             data-testid="workspace-switcher"
-            className="gap-2 px-1.5 data-[state=open]:bg-accent"
+            className="gap-1.5 px-2 data-[state=open]:bg-accent"
           >
-            <WorkspaceTile label={currentLabel} />
             {currentLabel ? (
               <span className="max-w-[24ch] truncate">{currentLabel}</span>
             ) : (
@@ -117,9 +97,8 @@ export function NamespaceSwitcher() {
                       key={n.namespaceId}
                       value={n.namespaceId}
                       textValue={label}
-                      className="gap-2.5 rounded-md"
+                      className="rounded-md"
                     >
-                      <WorkspaceTile label={label} />
                       <span className="min-w-0 flex-1 leading-tight">
                         <span className="block truncate">{label}</span>
                         <span className="block text-xs text-muted-foreground">

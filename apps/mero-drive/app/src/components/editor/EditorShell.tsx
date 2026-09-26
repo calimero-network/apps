@@ -50,6 +50,7 @@ export interface EditorShellProps {
    *  the header (read-only mode). */
   title?: TitleBinding;
   onBack?: () => void;
+  folderName?: string;
   onUndo?: () => void;
   onRedo?: () => void;
   onDelete?: () => void;
@@ -91,6 +92,7 @@ export const EditorShell: React.FC<EditorShellProps> = ({
   documentName,
   title,
   onBack,
+  folderName,
   onUndo,
   onRedo,
   onDelete,
@@ -285,6 +287,7 @@ export const EditorShell: React.FC<EditorShellProps> = ({
           title={readOnly ? undefined : title}
           onDelete={onDelete}
           onBack={onBack}
+          folderName={folderName}
           onUndo={readOnly ? undefined : onUndo}
           onRedo={readOnly ? undefined : onRedo}
           peers={peers}

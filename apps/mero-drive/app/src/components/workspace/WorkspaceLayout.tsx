@@ -267,6 +267,7 @@ export function WorkspaceLayout() {
                 folderId={selectedFolderId}
                 docId={selectedDocId}
                 onClose={() => setSelectedDocId(null)}
+                folderName={selectedFolder?.alias}
               />
             </Suspense>
           ) : stage === 'syncing-from-peers' ? (

@@ -40,6 +40,8 @@ interface EditorHeaderProps {
   title?: TitleBinding;
   onDelete?: () => void;
   onBack?: () => void;
+  /** The folder the back button returns to; unknown while the tree refetches. */
+  folderName?: string;
   onUndo?: () => void;
   onRedo?: () => void;
   peers?: Peer[];
@@ -50,15 +52,23 @@ export const EditorHeader: React.FC<EditorHeaderProps> = ({
   title,
   onDelete,
   onBack,
+  folderName,
   onUndo,
   onRedo,
   peers = [],
 }) => (
   <header className="flex items-center justify-between px-4 py-3 border-b border-border bg-card">
     <div className="flex shrink-0 items-center gap-4">
-      <Button variant="ghost" size="sm" className="gap-1.5" onClick={onBack}>
-        <ChevronLeft className="w-4 h-4" />
-        <span className="hidden sm:inline">Documents</span>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="max-w-48 gap-1.5"
+        aria-label={folderName ? `Back to ${folderName}` : 'Back'}
+        title={folderName ? `Back to ${folderName}` : undefined}
+        onClick={onBack}
+      >
+        <ChevronLeft className="w-4 h-4 shrink-0" />
+        <span className="hidden truncate sm:inline">{folderName ?? 'Back'}</span>
       </Button>
     </div>
 

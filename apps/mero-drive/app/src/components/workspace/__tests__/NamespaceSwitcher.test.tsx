@@ -42,7 +42,7 @@ describe('NamespaceSwitcher', () => {
   it('shows the active workspace on the trigger', () => {
     render(<NamespaceSwitcher />);
     expect(screen.getByTestId('workspace-switcher').textContent).toBe(
-      'APAcme Product',
+      'Acme Product',
     );
   });
 
@@ -62,7 +62,7 @@ describe('NamespaceSwitcher', () => {
       'true',
       'false',
     ]);
-    expect(items[1].textContent).toBe('PEPersonal1 member');
+    expect(items[1].textContent).toBe('Personal1 member');
     fireEvent.click(items[1]);
     expect(selectNamespace).toHaveBeenCalledWith('ns-solo');
   });

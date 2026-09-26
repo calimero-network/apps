@@ -14,24 +14,24 @@ describe('ThemeProvider', () => {
     document.documentElement.classList.remove('dark');
   });
 
-  it('defaults to dark and applies the dark class', () => {
+  it('defaults to light without the dark class', () => {
     render(<ThemeProvider><Probe /></ThemeProvider>);
-    expect(screen.getByRole('button').textContent).toBe('theme:dark');
-    expect(document.documentElement.classList.contains('dark')).toBe(true);
-  });
-
-  it('toggles to light, removes the class, and persists', () => {
-    render(<ThemeProvider><Probe /></ThemeProvider>);
-    fireEvent.click(screen.getByRole('button'));
     expect(screen.getByRole('button').textContent).toBe('theme:light');
     expect(document.documentElement.classList.contains('dark')).toBe(false);
-    expect(localStorage.getItem('mero-theme')).toBe('"light"');
+  });
+
+  it('toggles to dark, adds the class, and persists', () => {
+    render(<ThemeProvider><Probe /></ThemeProvider>);
+    fireEvent.click(screen.getByRole('button'));
+    expect(screen.getByRole('button').textContent).toBe('theme:dark');
+    expect(document.documentElement.classList.contains('dark')).toBe(true);
+    expect(localStorage.getItem('mero-theme')).toBe('"dark"');
   });
 
   it('reads a persisted theme on mount', () => {
-    localStorage.setItem('mero-theme', '"light"');
+    localStorage.setItem('mero-theme', '"dark"');
     render(<ThemeProvider><Probe /></ThemeProvider>);
-    expect(screen.getByRole('button').textContent).toBe('theme:light');
-    expect(document.documentElement.classList.contains('dark')).toBe(false);
+    expect(screen.getByRole('button').textContent).toBe('theme:dark');
+    expect(document.documentElement.classList.contains('dark')).toBe(true);
   });
 });
