@@ -187,7 +187,6 @@ interface UpgradeTabProps {
   onTriggerUpgrade: (
     groupId: string,
     targetApplicationId: string,
-    migrateMethod?: string,
   ) => Promise<boolean>;
   onRefreshStatus: (groupId: string) => Promise<void>;
 }
@@ -201,7 +200,6 @@ export default function UpgradeTab({
   onRefreshStatus,
 }: UpgradeTabProps) {
   const [targetAppId, setTargetAppId] = useState("");
-  const [migrateMethod, setMigrateMethod] = useState("");
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const isInProgress =
@@ -222,11 +220,7 @@ export default function UpgradeTab({
 
   const handleTrigger = async () => {
     if (!targetAppId.trim()) return;
-    await onTriggerUpgrade(
-      groupId,
-      targetAppId.trim(),
-      migrateMethod.trim() || undefined,
-    );
+    await onTriggerUpgrade(groupId, targetAppId.trim());
   };
 
   const progressPercent =
@@ -311,12 +305,6 @@ export default function UpgradeTab({
           value={targetAppId}
           onChange={(e) => setTargetAppId(e.target.value)}
           placeholder="New application ID (base58)"
-        />
-        <InputLabel>Migration Method (optional)</InputLabel>
-        <TextInput
-          value={migrateMethod}
-          onChange={(e) => setMigrateMethod(e.target.value)}
-          placeholder="e.g. migrate_v2"
         />
         <TriggerButton
           onClick={handleTrigger}

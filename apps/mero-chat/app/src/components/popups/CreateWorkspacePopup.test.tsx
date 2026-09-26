@@ -199,8 +199,7 @@ describe("CreateWorkspacePopup", () => {
     await waitFor(() => {
       expect(mockCreateGroup).toHaveBeenCalledWith({
         applicationId: "app-1",
-        upgradePolicy: "Automatic",
-        alias: "Team Space",
+        name: "Team Space",
       });
     });
 

@@ -330,20 +330,21 @@ export class GroupApiDataSource implements GroupApi {
       //
       // Only when a name was actually supplied — a namespace may be created
       // without one, and rejecting that would refuse a legitimate call.
-      if (request.alias) {
-        const problem = groupNameError(request.alias);
+      if (request.name) {
+        const problem = groupNameError(request.name);
         if (problem) {
           return { data: null, error: { code: 400, message: problem } };
         }
       }
 
-      // Server expects `name` post-054a784f; keep `alias` for older nodes.
-      const body = { ...request, name: request.alias };
-      const data = (await getMeroJs().admin.createNamespace(
-        body as unknown as Parameters<
-          ReturnType<typeof getMeroJs>["admin"]["createNamespace"]
-        >[0],
-      )) as unknown as { namespaceId?: string; groupId?: string; id?: string };
+      // Built key by key, never spread: core's CreateNamespaceApiRequest is
+      // `deny_unknown_fields`, so one stray key (it was `upgradePolicy` and
+      // `alias`) refuses the whole create with a 400. No cast either — the
+      // SDK's request type is what keeps this body honest.
+      const data = (await getMeroJs().admin.createNamespace({
+        applicationId: request.applicationId,
+        ...(request.name ? { name: request.name } : {}),
+      })) as unknown as { namespaceId?: string; groupId?: string; id?: string };
       const groupId = data?.namespaceId ?? data?.groupId ?? data?.id;
       if (!groupId) {
         return fail(500, "Namespace creation response missing ID");
@@ -485,9 +486,7 @@ export class GroupApiDataSource implements GroupApi {
     try {
       const created = await getMeroJs().admin.createNamespaceInvitation(
         groupId,
-        request as unknown as Parameters<
-          ReturnType<typeof getMeroJs>["admin"]["createNamespaceInvitation"]
-        >[1],
+        request,
       );
 
       const invitationPayload = normalizeGroupInvitationPayload(created);
@@ -520,10 +519,10 @@ export class GroupApiDataSource implements GroupApi {
       }
 
       const data = (await getMeroJs().admin.joinNamespace(namespaceId, {
-        invitation: request.invitation,
-      } as unknown as Parameters<
-        ReturnType<typeof getMeroJs>["admin"]["joinNamespace"]
-      >[1])) as unknown as {
+        invitation: request.invitation as unknown as Parameters<
+          ReturnType<typeof getMeroJs>["admin"]["joinNamespace"]
+        >[1]["invitation"],
+      })) as unknown as {
         namespaceId?: string;
         groupId?: string;
         memberIdentity?: string;
@@ -1022,12 +1021,12 @@ export class GroupApiDataSource implements GroupApi {
     request: ReparentGroupRequest,
   ): ApiResponse<void> {
     try {
-      // Core takes snake_case here; the SDK request type mirrors the wire.
+      // camelCase on the wire: core's ReparentGroupApiRequest is
+      // `rename_all = "camelCase", deny_unknown_fields`, so the old
+      // `new_parent_id` was refused as an unknown field.
       await getMeroJs().admin.reparentGroup(groupId, {
-        new_parent_id: request.newParentId,
-      } as unknown as Parameters<
-        ReturnType<typeof getMeroJs>["admin"]["reparentGroup"]
-      >[1]);
+        newParentId: request.newParentId,
+      });
       return ok(undefined);
     } catch (error) {
       return catchError("reparentGroup", error);
@@ -1039,12 +1038,9 @@ export class GroupApiDataSource implements GroupApi {
     request: UpgradeGroupRequest,
   ): ApiResponse<UpgradeGroupResponse> {
     try {
-      const data = await getMeroJs().admin.upgradeGroup(
-        groupId,
-        request as unknown as Parameters<
-          ReturnType<typeof getMeroJs>["admin"]["upgradeGroup"]
-        >[1],
-      );
+      const data = await getMeroJs().admin.upgradeGroup(groupId, {
+        targetApplicationId: request.targetApplicationId,
+      });
       return ok(data as unknown as UpgradeGroupResponse);
     } catch (error) {
       return catchError("triggerUpgrade", error);

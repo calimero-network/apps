@@ -135,8 +135,7 @@ export default function CreateWorkspacePopup({
 
     const groupResult = await groupApi.createGroup({
       applicationId,
-      upgradePolicy: "Automatic",
-      alias: trimmedWorkspaceName,
+      name: trimmedWorkspaceName,
     });
     if (groupResult.error || !groupResult.data) {
       throw new Error(groupResult.error?.message || "Failed to create group");
