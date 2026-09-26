@@ -7,6 +7,7 @@ const OWNER = 'o'.repeat(64);
 const NAMED = 'a'.repeat(64);
 const UNNAMED = 'b'.repeat(64);
 const PICKED = 'c'.repeat(64);
+const SELF = 'd'.repeat(64);
 
 vi.mock('@/hooks/useDriveWorkspace', () => ({
   useDriveWorkspace: () => ({
@@ -15,11 +16,17 @@ vi.mock('@/hooks/useDriveWorkspace', () => ({
     registryClient: {},
     registryContextId: 'ctx',
     registryDuplicates: [],
-    namespaceMemberNames: { [NAMED]: 'Dana', [PICKED]: 'Carol' },
+    // SELF is deliberately stale here vs. the per-member metadata fetch
+    // below, to catch anything that reads this map without also checking
+    // the fresher per-member name (the fresh name must win, as it does
+    // for the visible <MemberLabel>).
+    namespaceMemberNames: { [NAMED]: 'Dana', [PICKED]: 'Carol', [SELF]: 'Old Self Name' },
   }),
 }));
 vi.mock('@/hooks/useMemberDisplayName', () => ({
-  useMemberDisplayName: () => ({ name: null }),
+  useMemberDisplayName: (_ns: unknown, memberId: string | null | undefined) => ({
+    name: memberId === SELF ? 'Fresh Self Name' : null,
+  }),
 }));
 vi.mock('@/hooks/useNamespacePermissions', () => ({
   useNamespacePermissions: () => ({ canManageNamespace: true }),
@@ -48,6 +55,7 @@ vi.mock('@/components/common/MemberPicker', () => ({
 describe('WorkspaceSettingsPanel managers', () => {
   afterEach(() => {
     registryAdmin.error = null;
+    registryAdmin.managers = [NAMED, UNNAMED];
   });
 
   it('shows plain copy, not the raw error, when roles fail to load', () => {
@@ -63,6 +71,15 @@ describe('WorkspaceSettingsPanel managers', () => {
     expect(
       screen.getByRole('button', { name: 'Remove manager Unnamed member' }),
     ).toBeTruthy();
+  });
+
+  it('names the remove button by the same fresh name shown on the row', () => {
+    registryAdmin.managers = [NAMED, UNNAMED, SELF];
+    render(<WorkspaceSettingsPanel />);
+    expect(
+      screen.getByRole('button', { name: 'Remove manager Fresh Self Name' }),
+    ).toBeTruthy();
+    expect(screen.getByText('Fresh Self Name')).toBeTruthy();
   });
 
   it('echoes a picked member by name, not by key', () => {

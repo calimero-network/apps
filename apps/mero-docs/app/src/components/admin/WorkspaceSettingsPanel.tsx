@@ -19,7 +19,49 @@ import { useNamespacePermissions } from '@/hooks/useNamespacePermissions';
 import { useRegistryAdmin } from '@/hooks/useRegistryAdmin';
 import { MemberLabel, UNNAMED_MEMBER_LABEL } from '@/components/common/MemberLabel';
 import { MemberPicker } from '@/components/common/MemberPicker';
+import { useMemberDisplayName } from '@/hooks/useMemberDisplayName';
 import { looksLikeMemberIdentity } from '@/utils/validation';
+
+// Resolves the name the same way <MemberLabel> does, so the remove
+// button's aria-label can never disagree with the visible label.
+function ManagerRow({
+  namespaceId,
+  memberId,
+  canRemove,
+  busy,
+  onRemove,
+}: {
+  namespaceId: string | null | undefined;
+  memberId: string;
+  canRemove: boolean;
+  busy: boolean;
+  onRemove: (memberId: string) => void;
+}) {
+  const { name } = useMemberDisplayName(namespaceId, memberId);
+  const { namespaceMemberNames } = useDriveWorkspace();
+  const resolvedName = name ?? namespaceMemberNames[memberId] ?? UNNAMED_MEMBER_LABEL;
+  return (
+    <li className="flex items-center justify-between gap-3 rounded border border-border/60 px-2 py-1">
+      <MemberLabel
+        namespaceId={namespaceId}
+        memberId={memberId}
+        className="truncate text-xs text-foreground"
+      />
+      {canRemove && (
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-6 w-6 text-muted-foreground hover:text-destructive"
+          disabled={busy}
+          aria-label={`Remove manager ${resolvedName}`}
+          onClick={() => onRemove(memberId)}
+        >
+          <span aria-hidden>×</span>
+        </Button>
+      )}
+    </li>
+  );
+}
 
 export function WorkspaceSettingsPanel() {
   const {
@@ -28,7 +70,6 @@ export function WorkspaceSettingsPanel() {
     registryClient,
     registryContextId,
     registryDuplicates,
-    namespaceMemberNames,
   } = useDriveWorkspace();
   // Display-name routing in this panel uses the namespace id (not the
   // registry context id) — display names are per-namespace, the same
@@ -238,30 +279,16 @@ export function WorkspaceSettingsPanel() {
               ) : (
                 <ul className="space-y-1">
                   {reg.managers.map((m) => (
-                    <li
+                    <ManagerRow
                       key={m}
-                      className="flex items-center justify-between gap-3 rounded border border-border/60 px-2 py-1"
-                    >
-                      <MemberLabel
-                        namespaceId={namespaceId}
-                        memberId={m}
-                        className="truncate text-xs text-foreground"
-                      />
-                      {canEditManagers && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-6 w-6 text-muted-foreground hover:text-destructive"
-                          disabled={busy}
-                          aria-label={`Remove manager ${namespaceMemberNames[m] ?? UNNAMED_MEMBER_LABEL}`}
-                          onClick={() => {
-                            void onRemoveManager(m);
-                          }}
-                        >
-                          <span aria-hidden>×</span>
-                        </Button>
-                      )}
-                    </li>
+                      namespaceId={namespaceId}
+                      memberId={m}
+                      canRemove={canEditManagers}
+                      busy={busy}
+                      onRemove={(memberId) => {
+                        void onRemoveManager(memberId);
+                      }}
+                    />
                   ))}
                 </ul>
               )}

@@ -31,7 +31,9 @@ export function EmptyState({
           />
         )}
         <h2 className="text-lg font-semibold text-foreground">{title}</h2>
-        {body && <p className="mt-1 text-sm text-muted-foreground">{body}</p>}
+        {body && (
+          <p className="mt-1 text-sm text-muted-foreground text-balance">{body}</p>
+        )}
         {children && (
           <div className="mt-4 flex flex-col items-center gap-2">{children}</div>
         )}
