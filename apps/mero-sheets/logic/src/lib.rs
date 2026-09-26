@@ -3223,7 +3223,9 @@ impl Spreadsheet {
             ))));
         }
         let now = storage_env::time_now();
-        for s in sizes {
+        // Strictly increasing per entry, like `apply_axis_ops`: sizing the same
+        // row twice in one batch must end on the last size on every replica.
+        for (i, s) in sizes.into_iter().enumerate() {
             let axis = match s.axis.as_str() {
                 "row" => 'r',
                 "col" => 'c',
@@ -3245,7 +3247,7 @@ impl Spreadsheet {
                     format!("{sheet_id}|{axis}|{}", s.id),
                     SizeData {
                         size: s.size,
-                        updated_at: now,
+                        updated_at: now + i as u64,
                     },
                 )
                 .map_err(|e| AppError::msg(format!("sizes.insert: {e}")))?;
@@ -3530,7 +3532,12 @@ impl Spreadsheet {
         } else {
             "cols"
         };
-        for op in ops {
+        // One timestamp per op, strictly increasing: a replica replays these
+        // writes through `AxisData::merge`, where an exact tie keeps a row
+        // deleted, so a Delete then Restore sharing one clock reading would
+        // stay restored here and deleted on every other node.
+        for (i, op) in ops.into_iter().enumerate() {
+            let at = now + i as u64;
             let (axis, id, insert_pos, deleted) = match op {
                 AxisOp::InsertRow { id, pos } => ('r', id, Some(pos), false),
                 AxisOp::InsertCol { id, pos } => ('c', id, Some(pos), false),
@@ -3570,7 +3577,7 @@ impl Spreadsheet {
                             AxisData {
                                 pos,
                                 deleted: false,
-                                updated_at: now,
+                                updated_at: at,
                             },
                         )
                         .map_err(|e| AppError::msg(format!("axes.insert: {e}")))?;
@@ -3582,7 +3589,7 @@ impl Spreadsheet {
                         .map_err(|e| AppError::msg(format!("axes.get_mut: {e}")))?
                     {
                         guard.deleted = deleted;
-                        guard.updated_at = now;
+                        guard.updated_at = at;
                     }
                 }
                 // An implicit row that was never deleted is already there.
@@ -3597,7 +3604,7 @@ impl Spreadsheet {
                             AxisData {
                                 pos: layout::implicit_pos(k),
                                 deleted: true,
-                                updated_at: now,
+                                updated_at: at,
                             },
                         )
                         .map_err(|e| AppError::msg(format!("axes.insert: {e}")))?;
