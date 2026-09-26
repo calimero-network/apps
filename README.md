@@ -12,7 +12,8 @@ This repository consolidates apps that used to live in their own repos, so they 
 one dependency graph, one CI pipeline, and one release process instead of drifting apart in sixteen
 places.
 
-> **Status: migration complete.** All **16** apps are here and this repo is the source of truth.
+> **Status: migration complete.** All **16** migrated apps are here and this repo is the source of
+> truth; apps written since — [mero-chess](apps/mero-chess) — were born in it.
 > Fifteen of the sixteen source repositories are archived with a pointer back — several under their
 > older names (`p2p-sheets`, `only-peers-client`, `meropass`, `MeroSign`,
 > `scaffolding-e2e-application`); only [`kv-store`](https://github.com/calimero-network/kv-store)
@@ -50,7 +51,7 @@ single atomic change with a single CI signal.
 
 ## Apps
 
-Sixteen apps, each `apps/<name>/{logic,app}`. **Package** is the registry id; the linked name is the
+Seventeen apps, each `apps/<name>/{logic,app}`. **Package** is the registry id; the linked name is the
 live deployment. Versions are owned by the registry, not by `Cargo.toml` — the release workflow
 increments them on publish.
 
@@ -93,6 +94,7 @@ Start here. These exist to be read, not shipped.
 | [mero-blocks](apps/mero-blocks) | [↗](https://mero-blocks.vercel.app/) | Minecraft-style multiplayer voxel sandbox. No game server — the world is a context: seed + block-edit diff + player presence. | `com.calimero.mero-blocks` |
 | [merraria](apps/merraria) | [↗](https://merraria.vercel.app/) | Terraria-style 2D mining sandbox — seed-generated terrain, CRDT tile diff, player presence. | `com.calimero.merraria` |
 | [battleships](apps/battleships) | [↗](https://battleships-fawn.vercel.app) | Two-player Battleships — a lobby service for matchmaking and one game service per match, with commit-reveal ship placement. | `com.calimero.battleships` |
+| [mero-chess](apps/mero-chess) | [↗](https://mero-chess.vercel.app) | Two-player chess. A table is a context: the move list replicates as CRDT state and the rules — legal moves, check, mate, the draws — run inside the contract. | `com.calimero.mero-chess` |
 
 ### Experiments
 
@@ -135,10 +137,19 @@ The frontend never talks to a server. It talks to *its own* node over JSON-RPC, 
 contract locally, and the resulting state delta gossips to the other members of the context. The
 "multiplayer" is a property of the network, not of the application code.
 
+**And a receiving node does not execute the contract at all** — it verifies the delta's signature,
+authorizes the author, and folds the actions into storage. So an `if` inside a `#[app::logic]` method
+binds only the node that ran it, and a patched peer can write bytes your code would never have
+produced. Choosing the right storage tier (`Public`, `Authored`, `Shared`, `Permissioned`, `Frozen`)
+and deriving on read rather than trusting stored fields is what actually holds.
+[**`apps/mero-chess/docs/trust-model.md`**](apps/mero-chess/docs/trust-model.md) is the worked
+example: what each tier enforces and when to use it, fourteen real defects with the exploit for each,
+and a checklist for your own `#[app::state]`. Read it before you design state for a new app.
+
 ## Layout
 
 ```
-apps/                       sixteen directories, one per application
+apps/                       seventeen directories, one per application
                             (see Anatomy above for what each contains)
 
 scripts/
@@ -155,7 +166,7 @@ scripts/
 
 docs/
   SESSION-AND-INVITES.md    the login / desktop hand-off / invitation audit
-  VERCEL.md                 one deploy convention for all sixteen apps
+  VERCEL.md                 one deploy convention for every app
 
 .github/workflows/          ci.yml · release.yml · publish-bundle.yml (reusable)
 
@@ -257,7 +268,7 @@ from running on frontend-only PRs to running on none of them, green by absence.
 consumer.
 
 ⚠️ **`Cargo.lock` and `pnpm-lock.yaml` are flat filters** — a one-app change
-touching either fans CI out to all sixteen. `scripts/lockfile-fanout.py` answers
+touching either fans CI out to every one of them. `scripts/lockfile-fanout.py` answers
 the narrower question of which apps a given lockfile diff can actually affect.
 
 ### Bumping core
@@ -315,7 +326,7 @@ hand-off works.
 
 ⚠️ **Name the directory exactly like the crate.** `publish-bundle.yml` uses the
 answer from `app-packages.sh` as *both* a path (`apps/$APP/logic`) and a cargo
-package name (`select(.name == $app)`). All sixteen currently agree; the first
+package name (`select(.name == $app)`). All of them currently agree; the first
 app where they differ fails with `no [package.metadata.calimero].package`, and
 only on the changed-app path — never on a manual dispatch, which is the one you
 would reach for to reproduce it.

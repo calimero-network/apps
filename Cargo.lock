@@ -855,6 +855,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "mero-chess"
+version = "0.0.1"
+dependencies = [
+ "calimero-sdk",
+ "calimero-storage",
+ "calimero-storage-macros",
+]
+
+[[package]]
 name = "mero-crm"
 version = "0.1.0"
 dependencies = [
