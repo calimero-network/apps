@@ -170,7 +170,8 @@ calimero-sdk = { git = "https://github.com/calimero-network/core", tag = "0.11.0
 The rc is published only as a git tag (crates.io stops at rc.5) and the workspace
 package version at the tag is `0.0.0`, so a plain version requirement can't match —
 the git-tag form is required. Uses `borsh` 1.x. The merod runtime image used by the
-merobox workflows is `ghcr.io/calimero-network/merod:0.11.0-rc.25`.
+merobox workflows is the workspace's `merod-image` pin in the root `Cargo.toml`
+(the same tag as the SDK), so it moves with every core bump.
 
 ## Data Model
 
