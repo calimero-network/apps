@@ -34,6 +34,7 @@ import {
   withCap,
   withoutCap,
 } from '@/constants/config';
+import { UNNAMED_MEMBER_LABEL } from '@/components/common/MemberLabel';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useFolderMembership } from '@/hooks/useFolderMembership';
 import { useNamespacePermissions } from '@/hooks/useNamespacePermissions';
@@ -221,7 +222,7 @@ export function MemberDefaultsPanel() {
             capabilities: effectiveCurrent,
           });
         } catch {
-          failures.push(m.name ?? `${m.identity.slice(0, 8)}…`);
+          failures.push(m.name ?? UNNAMED_MEMBER_LABEL);
         }
       }
       const parts: string[] = [];
