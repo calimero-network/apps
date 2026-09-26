@@ -105,6 +105,19 @@ async function waitForMessage(page: Page, text: string) {
   await expect(
     page.locator(".msg-content").filter({ hasText: text }).first(),
   ).toBeVisible({ timeout: 10_000 });
+  // A sent message first renders as an optimistic `temp-…` row, which is
+  // replaced by the real one once the node answers. A hover or click that
+  // lands in between loses its element ("element was detached from the
+  // DOM") — so wait for the row to carry its real id before touching it.
+  await expect(
+    page
+      .locator(".msg-content")
+      .filter({ hasText: text })
+      .first()
+      .locator("xpath=../../..")
+      .locator('[id^="actions-container-"]')
+      .first(),
+  ).not.toHaveAttribute("id", /^actions-container-temp-/, { timeout: 15_000 });
 }
 
 /**
