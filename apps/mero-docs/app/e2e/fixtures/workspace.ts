@@ -136,13 +136,19 @@ export class WorkspaceDriver {
   // against the local dev server (auth tokens are already injected, so
   // the page renders the accept CTA directly, no ConnectButton detour).
   async joinNamespace(inviteUrl: string): Promise<void> {
+    await this.joinNamespaceKeepGate(inviteUrl);
+    await this.dismissNameGateIfPresent();
+  }
+
+  // Like joinNamespace but leaves the name gate up, so a spec can name the
+  // joiner only after peers have already seen them.
+  async joinNamespaceKeepGate(inviteUrl: string): Promise<void> {
     const parsed = new URL(inviteUrl, 'http://placeholder');
     await this.page.goto(`/${parsed.search}`);
     await this.page
       .getByRole('button', { name: /Accept & join/i })
       .click();
     await expect(this.page).toHaveURL(/\/app/, { timeout: 30_000 });
-    await this.dismissNameGateIfPresent();
   }
 
   // Opens the namespace settings pane.

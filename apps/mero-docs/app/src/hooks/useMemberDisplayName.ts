@@ -53,7 +53,11 @@ export function useMemberDisplayName(
   namespaceId: string | null | undefined,
   memberId: string | null | undefined,
 ): MemberDisplayName {
-  const { selfIdentity, registryContextId } = useDriveWorkspace();
+  const {
+    selfIdentity,
+    registryContextId,
+    refetch: refetchWorkspace,
+  } = useDriveWorkspace();
   const { metadata, loading, error, refetch } = useMemberMetadata(
     namespaceId ?? null,
     memberId ?? null,
@@ -97,9 +101,18 @@ export function useMemberDisplayName(
         name: trimmed,
         data: {},
       });
-      await refetch();
+      // The workspace member rows name us in carets and member lists; without
+      // this they keep the old name until the next sync run.
+      await Promise.all([refetch(), refetchWorkspace()]);
     },
-    [namespaceId, memberId, selfIdentity, setMemberMetadata, refetch],
+    [
+      namespaceId,
+      memberId,
+      selfIdentity,
+      setMemberMetadata,
+      refetch,
+      refetchWorkspace,
+    ],
   );
 
   return { name, loading, loaded, error, setName, refetch };

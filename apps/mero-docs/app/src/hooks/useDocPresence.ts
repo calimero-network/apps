@@ -2,7 +2,7 @@
 // single publisher: two of them would overwrite each other's caret, and the
 // node keeps only the latest value an author wrote.
 
-import { useCallback, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useEphemeral } from '@calimero-network/mero-react';
 import {
   peersOnDoc,
@@ -39,10 +39,15 @@ export function useDocPresence(
   const identityRef = useRef(identity);
   identityRef.current = identity;
 
+  const lastCaretRef = useRef<{ docId: string; caret: CaretSlice } | null>(
+    null,
+  );
+
   const publish = useCallback(
     (caret: CaretSlice) => {
       const who = identityRef.current;
       if (!docId || !who) return;
+      lastCaretRef.current = { docId, caret };
       publishRef.current({
         docId,
         ...caret,
@@ -52,6 +57,13 @@ export function useDocPresence(
     },
     [docId],
   );
+
+  // Peers only learn a name from a slice, so a rename resends this doc's caret.
+  const name = identity?.name;
+  useEffect(() => {
+    const last = lastCaretRef.current;
+    if (last?.docId === docId) publish(last.caret);
+  }, [name, docId, publish]);
 
   const onDoc = useMemo(
     () => peersOnDoc(peers, docId ?? ''),
