@@ -142,8 +142,35 @@ jobs:
               echo "::error::registry listed $count bundle(s) for $PACKAGE but none had a readable X.Y.Z appVersion"
               exit 1
             fi
-            echo "::notice::highest published is $(jq -r '[.[].appVersion // empty]|join(", ")' <<<"$response") — releasing $version"
+            echo "::notice::highest published is $(jq -r '[.[].appVersion // empty]|join(", ")' <<<"$response") — proposing $version"
           fi
+
+          # The LISTING is eventually consistent; the per-version lookup is not.
+          # Two merges seconds apart ran two releases back to back (the per-app
+          # concurrency group queues them): the second read a listing that did
+          # not show the first one's publish yet, proposed the same number, and
+          # the check below refused it — so that merge never shipped. The direct
+          # lookup is authoritative, so walk up from the listing's proposal until
+          # a version is free. Bounded, and anything but 200/404 stops the run:
+          # an unreadable registry must not be guessed past.
+          for _ in $(seq 1 20); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --retry 3 --retry-delay 2 --max-time 30 \
+              "https://apps.calimero.network/api/v2/bundles/$PACKAGE/$version" || echo "000")
+            case "$code" in
+              404) break ;;
+              200)
+                next=$(awk -F. '{ printf "%d.%d.%d", $1, $2, $3 + 1 }' <<<"$version")
+                echo "::notice::$PACKAGE $version is already published (the listing lags) — trying $next"
+                version=$next
+                ;;
+              *) echo "::error::registry returned $code for $PACKAGE $version — refusing to guess"; exit 1 ;;
+            esac
+          done
+          if [ "$code" != "404" ]; then
+            echo "::error::no free version found within 20 patches of the listing's proposal"
+            exit 1
+          fi
+          echo "::notice::releasing $PACKAGE $version"
 
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
