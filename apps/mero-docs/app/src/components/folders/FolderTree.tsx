@@ -4,9 +4,10 @@
 // FolderTreeItem. Selection is also owned by useDriveWorkspace so
 // the right-pane DocumentList reads the same value.
 
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { buildTree } from '@/utils/ancestry';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
+import { folderLoadErrorMessage } from '@/lib/folderLoadError';
 import { FolderTreeItem } from './FolderTreeItem';
 import { NewFolderButton } from './NewFolderButton';
 
@@ -16,8 +17,8 @@ import { NewFolderButton } from './NewFolderButton';
 const STAGE_LABELS: Record<string, string> = {
   'awaiting-auth': 'Waiting for sign-in…',
   'resolving-namespaces': 'Loading workspaces…',
-  'resolving-registry-context': 'Bootstrapping workspace…',
-  'loading-subgroups': 'Loading subgroups…',
+  'resolving-registry-context': 'Setting up your workspace…',
+  'loading-subgroups': 'Preparing folders…',
   'loading-folders': 'Loading folders…',
   'syncing-from-peers': 'Syncing workspace from peers…',
 };
@@ -56,6 +57,13 @@ export function FolderTree({
   );
   const byId = useMemo(() => new Map(folders.map((f) => [f.id, f])), [folders]);
 
+  // The raw error is implementation detail (which internal fetch failed,
+  // in whatever words the server used); keep it in the console and show
+  // plain copy on screen.
+  useEffect(() => {
+    if (error) console.error('Failed to load folders', error);
+  }, [error]);
+
   if (!namespaceId) {
     return (
       <div className="p-3 text-xs text-muted-foreground">
@@ -74,12 +82,9 @@ export function FolderTree({
 
   if (error) {
     return (
-      <div
-        className="p-3 text-xs text-destructive break-words"
-        title={error.message}
-      >
+      <div className="p-3 text-xs text-destructive break-words">
         <div className="font-medium mb-1">Failed to load folders</div>
-        <div className="font-mono opacity-80">{error.message}</div>
+        <div className="opacity-80">{folderLoadErrorMessage(error)}</div>
       </div>
     );
   }

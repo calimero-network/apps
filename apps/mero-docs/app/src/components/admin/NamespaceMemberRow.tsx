@@ -237,7 +237,7 @@ export function NamespaceMemberRow({
       body: (
         <>
           Remove <code className="text-xs">{label}</code> from this
-          namespace?
+          workspace?
         </>
       ),
       confirmLabel: 'Remove',

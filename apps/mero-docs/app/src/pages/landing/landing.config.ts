@@ -24,7 +24,7 @@ export const CONFIG: LandingConfig = {
   availability: "web+desktop",
   trust: ["Folders have their own members", "Rich-text editing", "Private by default"],
   explainer: [
-    "A document workspace — folders, rich-text documents, and the tags you need to find them again six months later. Each folder holds its own documents separately, so sharing one project does not hand over the whole workspace.",
+    "A document workspace: folders, rich-text documents, and the tags you need to find them again six months later. Each folder holds its own documents separately, so sharing one project does not hand over the whole workspace.",
     "That structure is the point. A folder’s documents replicate only to the people who have that folder, so sharing one project does not hand over the whole workspace.",
   ],
   features: [
@@ -102,7 +102,7 @@ export const CONFIG: LandingConfig = {
       id: "offline",
       heading: "Offline, and what happens when you reconnect",
       paragraphs: [
-        "Your node holds the whole state, so the app keeps working with no network — every change is written locally and queued.",
+        "Your node holds the whole state, so the app keeps working with no network. Every change is written locally and queued.",
         "When your node reaches a peer again, the two exchange changes and merge them. Merging is CRDT-based, not last-write-wins-by-clock, so two people editing different things at the same time both keep their work. Where two people genuinely changed the same single value, the later write wins on that one value and nothing else is lost.",
       ],
     },
@@ -119,7 +119,7 @@ export const CONFIG: LandingConfig = {
   previewSteps: [
     { title: "A folder’s documents", body: "What you see belongs to one folder. Other folders in the workspace hold their own documents entirely." },
     { title: "An edit merges", body: "Edits append as updates, so two people typing in one document converge instead of overwriting." },
-    { title: "A file uploads", body: "Blobs replicate to the members of that folder — and to nobody else in the workspace." },
+    { title: "A file uploads", body: "Blobs replicate to the members of that folder, and to nobody else in the workspace." },
     { title: "Private by default", body: "A folder is shared with the people you add to it. Nothing is workspace-wide unless you make it so." },
   ],
   loginPopup: LoginPopup,

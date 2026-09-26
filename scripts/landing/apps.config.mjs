@@ -387,7 +387,7 @@ export const APPS = {
     availability: 'web+desktop',
     trust: ['Folders have their own members', 'Rich-text editing', 'Private by default'],
     explainer: [
-      'A document workspace — folders, rich-text documents, and the tags you need to find them again six months later. Each folder holds its own documents separately, so sharing one project does not hand over the whole workspace.',
+      'A document workspace: folders, rich-text documents, and the tags you need to find them again six months later. Each folder holds its own documents separately, so sharing one project does not hand over the whole workspace.',
       'That structure is the point. A folder’s documents replicate only to the people who have that folder, so sharing one project does not hand over the whole workspace.',
     ],
     features: [
