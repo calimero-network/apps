@@ -55,15 +55,6 @@ export const JOIN_ACTION = 'join';
 export const INVITATION_PARAM = 'invitation';
 
 /**
- * The parameter an older hand-rolled link might carry.
- *
- * Never written, still read. mero-sheets never shipped one, but the other apps
- * in this monorepo did, and a person who has both installed will sooner or later
- * paste one shape into the other's field.
- */
-export const LEGACY_INVITE_PARAM = 'invite';
-
-/**
  * Canonical shareable invitation link — HTTPS, via the platform SDK.
  *
  * `host` exists for tests and for pointing a dev build at a non-default link
@@ -122,14 +113,12 @@ export function invitationFromRaw(raw: string): string | null {
   const isPlatformIntent = intent.slug !== null && intent.action !== null;
   if (isPlatformIntent && intent.slug !== APP_SLUG) return null;
 
-  const value =
-    intent.params[INVITATION_PARAM] ?? intent.params[LEGACY_INVITE_PARAM];
-  const code = value?.trim();
+  const code = intent.params[INVITATION_PARAM]?.trim();
   return code ? code : null;
 }
 
 /**
- * Strip both invitation parameters from a URL, preserving everything else.
+ * Strip the invitation parameter from a URL, preserving everything else.
  *
  * The platform store is what makes redemption durable, so this is not how the
  * intent is remembered — it is hygiene. An invitation is a signed capability,
@@ -148,7 +137,6 @@ export function urlWithoutInvitation(url: string): string {
   const base = beforeHash.slice(0, q);
   const params = new URLSearchParams(beforeHash.slice(q + 1));
   params.delete(INVITATION_PARAM);
-  params.delete(LEGACY_INVITE_PARAM);
   const rest = params.toString();
   return `${base}${rest ? `?${rest}` : ''}${hash}`;
 }
