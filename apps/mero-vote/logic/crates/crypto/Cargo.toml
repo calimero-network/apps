@@ -1,0 +1,20 @@
+[package]
+name        = "mero-vote-crypto"
+description = "The ballot cryptography behind mero-vote: exponential ElGamal on ristretto255 and the Sigma-protocol proofs that keep it honest."
+version     = "0.0.1"
+edition.workspace    = true
+authors.workspace    = true
+license.workspace    = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+# Already in the lockfile through the SDK's ed25519 stack, so this adds no new
+# crate to the fleet. `precomputed-tables` stays off: it buys basepoint speed
+# with ~30 KiB of wasm, and a tally is a few thousand multiplications.
+curve25519-dalek = { version = "5.0.0", default-features = false, features = ["alloc", "zeroize"] }
+sha2             = { workspace = true }
+hex              = { workspace = true }
+
+[dev-dependencies]
+serde_json = "1"

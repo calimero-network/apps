@@ -56,6 +56,7 @@ export default defineConfig({
       },
       testMatch: [
         "**/landing.spec.ts",
+        "**/marketing-landing.spec.ts",
         "**/workspace.spec.ts",
         "**/auth.spec.ts",
       ],

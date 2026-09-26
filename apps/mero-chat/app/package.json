@@ -18,7 +18,7 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:e2e": "playwright test --project=mocked",
-    "test:e2e:ci": "playwright test --project=mocked",
+    "test:e2e:ci": "playwright test -c playwright.ci.config.ts",
     "preview": "vite preview",
     "prettier": "prettier --check 'src/**/*.{js,jsx,ts,tsx,json}'",
     "prettier:write": "prettier --write 'src/**/*.{js,jsx,ts,tsx,json}'",
@@ -28,10 +28,12 @@
     "e2e:live": "../scripts/setup-nodes.sh --restart && playwright test --project=mocked --project=live; ../scripts/setup-nodes.sh --stop",
     "e2e:nodes": "../scripts/setup-nodes.sh --restart && playwright test --project=rpc --project=rpc-admin --project=integration; ../scripts/setup-nodes.sh --stop",
     "e2e:all": "../scripts/setup-nodes.sh --restart && playwright test; ../scripts/setup-nodes.sh --stop",
-    "test:sse": "vitest run src/hooks/useSseSubscription.test.ts && playwright test --project=sse"
+    "test:sse": "vitest run src/hooks/useSseSubscription.test.ts && playwright test --project=sse",
+    "landing:media": "vite build --config e2e/media/vite.config.ts && node e2e/media/record.mjs"
   },
   "dependencies": {
     "@braintree/sanitize-url": "^7.1.2",
+    "@calimero-network/mero-icons": "catalog:",
     "@calimero-network/mero-js": "catalog:",
     "@calimero-network/mero-platform": "catalog:",
     "@calimero-network/mero-platform-react": "catalog:",

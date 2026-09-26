@@ -67,7 +67,9 @@ describe("WorkspaceSwitcher", () => {
       expect(mockListGroups).toHaveBeenCalled();
     });
 
-    fireEvent.click(screen.getByText("Current"));
+    // findBy, not getBy: `listGroups` being CALLED does not mean its result has
+    // rendered, and on a slow runner the name is not there yet.
+    fireEvent.click(await screen.findByText("Current"));
     fireEvent.click(await screen.findByText("Other"));
 
     // Without this the previous workspace's chat is restored on mount and SSE
@@ -83,7 +85,9 @@ describe("WorkspaceSwitcher", () => {
       expect(mockListGroups).toHaveBeenCalled();
     });
 
-    fireEvent.click(screen.getByText("Current"));
+    // findBy, not getBy: `listGroups` being CALLED does not mean its result has
+    // rendered, and on a slow runner the name is not there yet.
+    fireEvent.click(await screen.findByText("Current"));
     const entries = await screen.findAllByText("Current");
     fireEvent.click(entries[entries.length - 1]);
 

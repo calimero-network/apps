@@ -1,0 +1,13 @@
+{
+  "name": "Mero Vote",
+  "short_name": "Mero Vote",
+  "description": "Private polls with verifiable tallies: ballots encrypted in the browser, proven in zero knowledge, counted by every member.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0b1012",
+  "theme_color": "#4ade80",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

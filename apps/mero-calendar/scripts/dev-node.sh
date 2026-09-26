@@ -127,7 +127,7 @@ else
   # cosmetic: the node reads it to plan an upgrade, so a wasm built the old way is
   # not the artifact CI and the registry publish produce.
   # Install it with:  cargo install --git https://github.com/calimero-network/core \
-  #                     --tag 0.11.0-rc.43 cargo-mero --locked
+  #                     --tag 0.11.0-rc.45 cargo-mero --locked
   command -v cargo-mero >/dev/null 2>&1 \
     || { red "cargo-mero not found — install it (see comment above)"; exit 1; }
   (cd "$REPO_ROOT/logic" && cargo mero build)
@@ -236,7 +236,7 @@ step "Creating workspace"
 NS_RES=$(curl -sf -X POST "${NODE_URL}/admin-api/namespaces" \
   -H "Authorization: Bearer ${ACCESS_TOKEN}" \
   -H "Content-Type: application/json" \
-  -d "$(jq -n --arg a "$APP_ID" '{applicationId: $a, upgradePolicy: "LazyOnAccess", alias: "Dev Workspace", name: "Dev Workspace"}')" \
+  -d "$(jq -n --arg a "$APP_ID" '{applicationId: $a, name: "Dev Workspace"}')" \
   2>/dev/null) || NS_RES="{}"
 NAMESPACE_ID=$(echo "$NS_RES" | jq -r '.data.namespaceId // .data.groupId // .data.id // empty' 2>/dev/null || true)
 

@@ -1,12 +1,17 @@
 import { useNavigate } from 'react-router-dom';
-import BrandMark from './BrandMark';
-import { MARK_BG } from '../lib/brandMark';
 import { useMero } from '@calimero-network/mero-react';
+import { Lock } from '@calimero-network/mero-icons';
 
+import ThemeToggle from './ThemeToggle';
+import { LogOutIcon, ShieldIcon } from './icons';
+import Wordmark from './Wordmark';
+import { useDeviceUnlocked } from '../hooks/useDeviceLock';
+import { deviceKeeper } from '../lib/deviceKey';
 import styles from '../styles/shell.module.css';
 
 /**
- * The app bar: a mark, a trail, and a way out. 56px on a hairline.
+ * The app bar: the Calimero lockup, a trail, and a way out. 64px on a
+ * hairline, the same bar as the Calimero Cloud console.
  *
  * ── What was removed, and why ────────────────────────────────────────────────
  *
@@ -22,8 +27,8 @@ import styles from '../styles/shell.module.css';
  * the whole component is gone rather than replaced.
  *
  * The old `PassNavbar` wrapped mero-ui's `Navbar`/`NavbarBrand`/`NavbarMenu`,
- * which brought its own dark elevated surface into a light app and could not be
- * made to match the rest without fighting it.
+ * which brought its own elevated surface and could not be made to match the
+ * rest without fighting it.
  */
 export default function AppHeader({
   /** A back affordance, when this screen is inside something. */
@@ -36,6 +41,7 @@ export default function AppHeader({
 }) {
   const navigate = useNavigate();
   const { nodeUrl, logout } = useMero();
+  const unlocked = useDeviceUnlocked();
 
   // The host only. A full URL with a scheme and a port is noise in a header,
   // and on a hosted node it is long enough to push the logout button off.
@@ -54,20 +60,7 @@ export default function AppHeader({
         onClick={() => navigate('/teams')}
         data-testid="brand"
       >
-        {/* Green as a FILL with near-black ink — the one mark on the screen.
-            The glyph is the PADLOCK from `public/favicon.svg`; it used to be a
-            `●`, so the tab and the header showed different products. */}
-        {/* The tile's colour comes from `lib/brandMark`, which a test pins to
-            `scripts/gen-icons.mjs` — see the note there. The stylesheet keeps
-            the size, radius and centring. */}
-        <span
-          className={styles.mark}
-          style={{ background: MARK_BG }}
-          aria-hidden="true"
-        >
-          <BrandMark />
-        </span>
-        Mero Pass
+        <Wordmark size="sm" />
       </button>
 
       {back && (
@@ -88,16 +81,45 @@ export default function AppHeader({
             {host}
           </span>
         )}
+        <ThemeToggle />
+        {unlocked && (
+          <button
+            type="button"
+            className={styles.logoutBtn}
+            onClick={() => deviceKeeper.lock()}
+            title="Clear vault keys from memory"
+            aria-label="Lock"
+            data-testid="lock-now"
+          >
+            <Lock size={16} className={styles.headerIcon} />
+            <span className={styles.headerLabel}>Lock</span>
+          </button>
+        )}
+        <button
+          type="button"
+          className={styles.logoutBtn}
+          onClick={() => navigate('/security')}
+          aria-label="Security"
+          data-testid="security"
+        >
+          <ShieldIcon size={16} className={styles.headerIcon} />
+          <span className={styles.headerLabel}>Security</span>
+        </button>
         <button
           type="button"
           className={styles.logoutBtn}
           onClick={() => {
+            // Logging out drops the vault keys too: a signed-out tab should
+            // hold nothing that opens a vault.
+            deviceKeeper.lock();
             logout();
             navigate('/', { replace: true });
           }}
+          aria-label="Log out"
           data-testid="logout"
         >
-          Log out
+          <LogOutIcon size={16} className={styles.headerIcon} />
+          <span className={styles.headerLabel}>Log out</span>
         </button>
       </div>
     </header>

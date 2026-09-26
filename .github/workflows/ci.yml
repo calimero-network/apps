@@ -12,10 +12,22 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      all:
+        # Re-verify the whole fleet on demand — e.g. after an SDK bump whose own
+        # run was cancelled (see concurrency below). A dispatch otherwise has
+        # no diff to scope from.
+        description: Run every app, not only what changed
+        type: boolean
+        default: true
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  # Supersede stale runs on a PR branch only. On main every merge must finish:
+  # cancelling there meant two merges seconds apart discarded the first one's
+  # run — which is how the rc.45 SDK bump (#215) landed without its fleet-wide
+  # run ever completing, hidden under the next merge's app-scoped run.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -42,11 +54,14 @@ jobs:
       # runs over `apps` — see the note on the wasm job's matrix.
       contract_apps: ${{ steps.set.outputs.contract_apps }}
       logic: ${{ steps.filter.outputs.logic }}
-      frontend: ${{ steps.filter.outputs.frontend }}
+      # pnpm workspace dirs the frontend job typechecks/tests/builds, or
+      # ["*"] for all of them. Frontend-only apps (no crate) appear here and
+      # nowhere in `apps`.
+      frontend_dirs: ${{ steps.set.outputs.frontend_dirs }}
       # `shared` and `js_deps` are the EFFECTIVE verdicts, not the raw path
       # filters: a lockfile that changed only for the app being touched does not
       # make this a workspace-level change. See the `locks` step below.
-      shared: ${{ steps.locks.outputs.shared }}
+      shared: ${{ (github.event_name == 'workflow_dispatch' && inputs.all) && 'true' || steps.locks.outputs.shared }}
       tooling: ${{ steps.filter.outputs.tooling }}
       js_deps: ${{ steps.locks.outputs.js_deps }}
     steps:
@@ -85,10 +100,23 @@ jobs:
               - 'Cargo.lock'
             # The pipeline itself changed, so the pipeline has to be exercised —
             # including the e2e, since these are what drive it.
+            #
+            # NOT `.github/**` and NOT `scripts/**`. release.yml and
+            # publish-bundle.yml drive nothing here, and the `check-*.py` guards,
+            # their tests and `merobox-coverage-baseline.json` run ONLY in the
+            # `metadata` job, which always runs. Listing them here meant a
+            # mero-design PR that moved the coverage baseline (#204) rebuilt and
+            # browser-tested all 17 apps.
             tooling:
-              - '.github/**'
-              - 'scripts/**'
+              - '.github/workflows/ci.yml'
+              - '.github/actions/**'
+              - 'scripts/app-packages.sh'
+              - 'scripts/ci-scope.py'
+              - 'scripts/lockfile-fanout.py'
               - 'requirements-e2e.txt'
+            # Runs only in the frontend job, over every app's build output.
+            frontend_tooling:
+              - 'scripts/check-vercel-output.sh'
             # JS-only: a catalog bump or a tsconfig change cannot alter a
             # contract, so it must not start merod containers.
             #
@@ -97,6 +125,7 @@ jobs:
             # rewrites it without changing what any other app resolves.
             js_config:
               - 'tsconfig.base.json'
+              - 'package.json'
             # The catalog SOURCE. Split out of `js_config` because it answers
             # differently for the same reason the lockfiles do: an arriving app
             # only ADDS catalog entries for dependencies no one else has, which
@@ -110,8 +139,12 @@ jobs:
               - 'apps/*/logic/**'
             frontend:
               - 'apps/*/app/**'
+            # Everything that can reach an app. scripts/ci-scope.py decides
+            # WHICH apps: a README or a dev script beside an app reaches none,
+            # and a shared package reaches every app that imports it.
             app:
               - 'apps/**'
+              - 'packages/**'
 
       # DID THE LOCKFILES CHANGE FOR ANYONE ELSE?
       #
@@ -213,23 +246,38 @@ jobs:
       - name: Resolve the app matrix
         id: set
         env:
-          SHARED: ${{ steps.locks.outputs.shared }}
+          # A manual "run every app" dispatch counts as a workspace-level change.
+          SHARED: ${{ (github.event_name == 'workflow_dispatch' && inputs.all) && 'true' || steps.locks.outputs.shared }}
           TOOLING: ${{ steps.filter.outputs.tooling }}
+          FRONTEND_TOOLING: ${{ steps.filter.outputs.frontend_tooling }}
           JS_DEPS: ${{ steps.locks.outputs.js_deps }}
           APP_FILES: ${{ steps.filter.outputs.app_files }}
-          LOGIC_FILES: ${{ steps.filter.outputs.logic_files }}
           EXTRA_PATHS: ${{ steps.locks.outputs.extra_paths }}
         run: |
           set -euo pipefail
+          # pnpm importers arrive as bare dirs (`apps/x/app`); give them a file
+          # so they map the way a changed source file does.
+          importers=$(printf '%s\n' "$EXTRA_PATHS" | sed '/^$/d; s|$|/package.json|')
+          if ! scope=$(printf '%s\n%s\n' "$APP_FILES" "$importers" | python3 scripts/ci-scope.py); then
+            echo "::warning::ci-scope.py failed — covering every app"
+            SHARED=true
+            scope='{"app_paths":[],"logic_paths":[],"frontend_dirs":[]}'
+          fi
+          echo "scope: $scope"
+
           if [ "$SHARED" = "true" ] || [ "$TOOLING" = "true" ] || [ "$JS_DEPS" = "true" ]; then
             apps=$(bash scripts/app-packages.sh all)
+            frontend_dirs='["*"]'
             echo "::notice::workspace-level change — covering every app: $apps"
           else
-            apps=$(printf '%s\n%s' "$APP_FILES" "$EXTRA_PATHS" \
-                   | bash scripts/app-packages.sh from-paths)
+            apps=$(jq -r '.app_paths[]' <<<"$scope" | bash scripts/app-packages.sh from-paths)
+            frontend_dirs=$(jq -c '.frontend_dirs' <<<"$scope")
+            [ "$FRONTEND_TOOLING" = "true" ] && frontend_dirs='["*"]'
             echo "::notice::changed apps: $apps"
           fi
           echo "apps=$apps" >> "$GITHUB_OUTPUT"
+          echo "frontend_dirs=$frontend_dirs" >> "$GITHUB_OUTPUT"
+          echo "::notice::frontend dirs: $frontend_dirs"
 
           # Contracts only. A frontend edit or a lockfile importer cannot alter
           # what a two-node merobox run does, so neither belongs in the matrix
@@ -238,7 +286,7 @@ jobs:
             contract_apps=$(bash scripts/app-packages.sh all)
             echo "::notice::contract-level change — merobox covers every app: $contract_apps"
           else
-            contract_apps=$(printf '%s' "$LOGIC_FILES" | bash scripts/app-packages.sh from-paths)
+            contract_apps=$(jq -r '.logic_paths[]' <<<"$scope" | bash scripts/app-packages.sh from-paths)
             echo "::notice::merobox apps: $contract_apps"
           fi
           echo "contract_apps=$contract_apps" >> "$GITHUB_OUTPUT"
@@ -330,11 +378,19 @@ jobs:
       - name: Assert each live deployment is the app this repo builds
         run: python3 scripts/check-live-frontends.py
 
+      - name: Assert the live-frontend history survives an app rename
+        run: python3 scripts/tests/live-frontends-history-test.py
+
       # The matrix resolver decides what the rest of this file runs, and both of
       # its wrong answers are silent — too broad only costs money, too narrow
       # skips an app with nothing to notice. So its rules are tested.
       - name: Test the lockfile fan-out rules
         run: python3 scripts/tests/lockfile-fanout-test.py
+
+      # The per-app scope. Wrong in either direction and nothing fails: too
+      # broad costs the whole matrix, too narrow skips an app silently.
+      - name: Assert the app scope picks the apps a change reaches, and only those
+        run: python3 scripts/tests/ci-scope-test.py
 
       # A consumer job cannot run where its artifact's producer is gated off —
       # GitHub skips a job whose `needs:` was skipped, whatever its own `if:`
@@ -419,7 +475,7 @@ jobs:
     #
     # `apps != '[]'` is what makes an empty matrix a skipped job rather than a
     # job that silently succeeds having built nothing.
-    if: (needs.changes.outputs.frontend == 'true' || needs.changes.outputs.logic == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.tooling == 'true' || needs.changes.outputs.js_deps == 'true') && needs.changes.outputs.apps != '[]'
+    if: needs.changes.outputs.apps != '[]'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -581,7 +637,7 @@ jobs:
   frontend:
     name: Frontend (typecheck, test, build)
     needs: changes
-    if: needs.changes.outputs.frontend == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.logic == 'true' || needs.changes.outputs.tooling == 'true' || needs.changes.outputs.js_deps == 'true'
+    if: needs.changes.outputs.frontend_dirs != '[]'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -595,16 +651,35 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      # Only the workspace members this change reaches (`["*"]` = all). It was
+      # `pnpm -r` over every app on every PR — a mero-chat fix typechecked,
+      # tested and built all 17 frontends.
+      - name: Scope the workspace to this change
+        env:
+          DIRS: ${{ needs.changes.outputs.frontend_dirs }}
+        run: |
+          set -euo pipefail
+          if [ "$(jq -r '.[0]' <<<"$DIRS")" = "*" ]; then
+            filter=""
+            apps=""
+          else
+            filter=$(jq -r '.[] | "--filter ./" + .' <<<"$DIRS" | tr '\n' ' ')
+            apps=$(jq -r '.[] | select(startswith("apps/"))' <<<"$DIRS" | tr '\n' ' ')
+          fi
+          echo "PNPM_FILTER=$filter" >> "$GITHUB_ENV"
+          echo "VERCEL_APPS=$apps" >> "$GITHUB_ENV"
+          echo "scope: ${filter:-every workspace member}"
+
       # `tsc -b`, never `tsc --noEmit`: the app tsconfig is a solution file, and
       # --noEmit on a solution file checks nothing and exits 0.
-      - run: pnpm -r typecheck
+      - run: pnpm -r $PNPM_FILTER typecheck
 
       # Regenerating and diffing is what turns a contract/frontend mismatch into
       # a failed build rather than a runtime 500. It needs no node and no wasm —
       # it reads the committed ABI, which the `wasm` job proves is current.
       - name: Assert the generated clients are current
         run: |
-          pnpm -r codegen
+          pnpm -r $PNPM_FILTER codegen
           # Same reason as the ABI gate: untracked generated output is invisible
           # to `git diff`, so a new app could pass with no client committed.
           git add --intent-to-add -- 'apps/*/app/src/generated' 2>/dev/null || true
@@ -615,8 +690,8 @@ jobs:
           fi
           echo "generated clients match the committed ABIs"
 
-      - run: pnpm -r test
-      - run: pnpm -r build
+      - run: pnpm -r $PNPM_FILTER test
+      - run: pnpm -r $PNPM_FILTER build
 
       # `pnpm -r build` succeeding does not mean Vercel will serve anything: it
       # uploads whatever `outputDirectory` names, and an empty or wrong path is
@@ -625,7 +700,8 @@ jobs:
       # app's declared output directory is the one its build produced, and that
       # each carries the SPA rewrite its client-side router needs.
       - name: Assert vercel.json matches the real build output
-        run: scripts/check-vercel-output.sh
+        # shellcheck disable=SC2086 — word-splitting the list is the point
+        run: scripts/check-vercel-output.sh $VERCEL_APPS
 
   browser:
     name: Browser E2E (${{ matrix.app }})
@@ -636,7 +712,7 @@ jobs:
     # Frontend OR contract: this drives the UI against a real node, so either
     # side can break it — unlike the merobox e2e, which a frontend-only change
     # cannot affect.
-    if: (needs.changes.outputs.frontend == 'true' || needs.changes.outputs.logic == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.tooling == 'true' || needs.changes.outputs.js_deps == 'true') && needs.changes.outputs.apps != '[]'
+    if: needs.changes.outputs.apps != '[]'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     strategy:
@@ -713,11 +789,11 @@ jobs:
           if-no-files-found: ignore
 
   browser-e2e-rich:
-    name: Browser E2E rich (mero-drive)
+    name: Browser E2E rich (mero-docs)
     needs: [changes, wasm]
-    # The `browser` gate, narrowed to mero-drive: the `rich` project needs the
+    # The `browser` gate, narrowed to mero-docs: the `rich` project needs the
     # three-node rig, which the `browser` job's own two nodes cannot stand in for.
-    if: (needs.changes.outputs.frontend == 'true' || needs.changes.outputs.logic == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.tooling == 'true' || needs.changes.outputs.js_deps == 'true') && contains(fromJSON(needs.changes.outputs.apps), 'mero-drive')
+    if: contains(fromJSON(needs.changes.outputs.apps), 'mero-docs')
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
@@ -725,7 +801,7 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: mpk-mero-drive-${{ github.sha }}
+          name: mpk-mero-docs-${{ github.sha }}
           path: bundle
 
       - name: Verify the bundle arrived
@@ -767,28 +843,28 @@ jobs:
       - uses: ./.github/actions/setup-playwright
         timeout-minutes: 15
         with:
-          working-directory: apps/mero-drive/app
+          working-directory: apps/mero-docs/app
 
       - name: Bring the three-node rig up
         id: rig
-        run: apps/mero-drive/scripts/local-rig.sh up
+        run: apps/mero-docs/scripts/local-rig.sh up
 
       - name: Run the rich project
-        working-directory: apps/mero-drive/app
+        working-directory: apps/mero-docs/app
         run: npx playwright test --project=rich
 
       - name: Take the rig down
         if: always() && steps.rig.outcome != 'skipped'
-        run: apps/mero-drive/scripts/local-rig.sh down
+        run: apps/mero-docs/scripts/local-rig.sh down
 
       - name: Upload the report
         if: failure() || cancelled()
         uses: actions/upload-artifact@v4
         with:
-          name: browser-e2e-rich-mero-drive-${{ github.sha }}
+          name: browser-e2e-rich-mero-docs-${{ github.sha }}
           path: |
-            apps/mero-drive/app/playwright-report
-            apps/mero-drive/app/test-results
+            apps/mero-docs/app/playwright-report
+            apps/mero-docs/app/test-results
           retention-days: 7
           if-no-files-found: ignore
 
@@ -798,7 +874,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: browser-e2e-rich-node-logs-${{ github.sha }}
-          path: /tmp/merodrive-rig/data/*/logs/*.log
+          path: /tmp/merodocs-rig/data/*/logs/*.log
           retention-days: 7
           if-no-files-found: ignore
 
@@ -819,7 +895,7 @@ jobs:
     # Only when a CONTRACT or the pipeline moved. A frontend-only change cannot
     # alter what a two-node merobox run does, and each of these pulls an image
     # and starts two merod containers.
-    if: (needs.changes.outputs.logic == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.tooling == 'true') && needs.changes.outputs.contract_apps != '[]'
+    if: needs.changes.outputs.contract_apps != '[]'
     runs-on: ubuntu-latest
     timeout-minutes: 40
     strategy:

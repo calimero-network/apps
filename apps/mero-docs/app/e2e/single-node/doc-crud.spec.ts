@@ -1,0 +1,137 @@
+// Document CRUD — tests 18-23 from the design catalog.
+
+import { test, expect } from '../fixtures/single-user';
+
+test.describe('Document CRUD (single-node)', () => {
+  test.beforeEach(async ({ alice }) => {
+    await alice.goToWorkspace();
+    await alice.createNamespace(`Doc WS ${Date.now()}`);
+    await alice.createFolder({ name: 'Drafts', visibility: 'Open' });
+    await alice.tree.openFolder('Drafts');
+  });
+
+  for (const via of ['row', 'menu'] as const) {
+    test(`new document from the sidebar ${via} while a doc is open`, async ({
+      alice,
+    }) => {
+      await alice.createDoc('Existing');
+      await alice.openDoc('Existing');
+      await alice.tree.newDocument('Drafts', via);
+      await alice.editor.expectMounted();
+      await expect(alice.page.getByTestId('doc-title-input')).toHaveValue(
+        'Untitled',
+        { timeout: 15_000 },
+      );
+      await alice.docs.expectDocVisible('Untitled');
+      await alice.docs.expectDocVisible('Existing');
+    });
+
+    test(`new document from the sidebar ${via} on a collapsed folder`, async ({
+      alice,
+    }) => {
+      await alice.createFolder({ name: 'Later', visibility: 'Open' });
+      await alice.tree.newDocument('Later', via);
+      await alice.editor.expectMounted();
+      await expect(alice.page.getByTestId('doc-title-input')).toHaveValue(
+        'Untitled',
+        { timeout: 15_000 },
+      );
+    });
+  }
+
+  test('the save indicator stays calm while typing', async ({ alice }) => {
+    await alice.createDoc('Calm');
+    await alice.openDoc('Calm');
+    const status = alice.page.getByTestId('save-status');
+    await expect(status).toHaveText('Saved', { timeout: 15_000 });
+    // Record every text the indicator shows while typing key by key. Each state
+    // renders its own element, so watch the stable parent and re-read.
+    await status.evaluate((el) => {
+      const bar = el.parentElement!;
+      const seen: string[] = [];
+      (window as unknown as { __saveTexts: string[] }).__saveTexts = seen;
+      new MutationObserver(() =>
+        seen.push(
+          bar.querySelector('[data-testid="save-status"]')?.textContent ?? '',
+        ),
+      ).observe(bar, { subtree: true, childList: true, characterData: true });
+    });
+    await alice.page.locator('.ProseMirror').first().click();
+    await alice.page.keyboard.type('typing at a normal pace', { delay: 60 });
+    await expect(status).toHaveText('Saved', { timeout: 15_000 });
+    const seen = await alice.page.evaluate(
+      () => (window as unknown as { __saveTexts: string[] }).__saveTexts,
+    );
+    expect(seen.filter((t) => t !== 'Saved')).toEqual([]);
+  });
+
+  test('create doc appears in the sidebar', async ({ alice }) => {
+    await alice.createDoc('Hello World');
+    await alice.docs.expectDocVisible('Hello World');
+  });
+
+  test('open doc mounts the inline editor', async ({ alice }) => {
+    await alice.createDoc('Open Me');
+    await alice.openDoc('Open Me');
+    await alice.editor.expectMounted();
+  });
+
+  test('edit doc persists across editor close/open', async ({ alice }) => {
+    await alice.createDoc('Persistent');
+    await alice.openDoc('Persistent');
+    await alice.editor.type('First content');
+    await alice.editor.expectContent('First content');
+    await alice.editor.close();
+    await alice.openDoc('Persistent');
+    await alice.editor.expectContent('First content');
+  });
+
+  test('close editor returns to folder view', async ({ alice }) => {
+    await alice.createDoc('Returnable');
+    await alice.openDoc('Returnable');
+    await alice.editor.close();
+    await alice.docs.expectDocVisible('Returnable');
+    await expect(
+      alice.page.getByRole('heading', { name: /No document open/i }),
+    ).toBeVisible();
+  });
+
+  test('delete doc removes from list', async ({ alice }) => {
+    await alice.createDoc('To Trash');
+    await alice.openDoc('To Trash');
+    await alice.editor.deleteDocument();
+    await alice.docs.expectDocHidden('To Trash');
+  });
+
+  for (const dismiss of ['escape', 'outside click'] as const) {
+    test(`${dismiss} cancels the delete confirm opened from the menu`, async ({
+      alice,
+    }) => {
+      await alice.createDoc('Keep Me');
+      await alice.openDoc('Keep Me');
+      const actions = alice.page.getByRole('button', {
+        name: /Document actions/i,
+      });
+      const confirm = await alice.editor.openDeleteConfirm();
+      await expect(confirm).toBeVisible();
+      // Let the menu finish unmounting, as it would at human pace.
+      await expect(alice.page.locator('[role="menu"]')).toHaveCount(0);
+      if (dismiss === 'escape') await alice.page.keyboard.press('Escape');
+      else await alice.page.mouse.click(5, 5);
+      await expect(confirm).toBeHidden();
+      await expect(actions).toBeFocused();
+      await alice.docs.expectDocVisible('Keep Me');
+    });
+  }
+
+  test('switching folders clears the open document', async ({ alice }) => {
+    await alice.createDoc('Doc A');
+    await alice.createFolder({ name: 'Other', visibility: 'Open' });
+    await alice.tree.openFolder('Other');
+    // No doc open in the new folder — editor unmounts, empty state shows.
+    await expect(alice.page.locator('.ProseMirror').first()).toBeHidden();
+    await expect(
+      alice.page.getByRole('heading', { name: /No document open/i }),
+    ).toBeVisible({ timeout: 15_000 });
+  });
+});

@@ -212,6 +212,72 @@ export const DOCS = {
       { title: 'Names, not keys', body: 'Each member carries a username so the calendar reads like a calendar.' },
     ],
   },
+  'mero-chat': {
+    docs: [
+      {
+        id: 'concepts',
+        heading: 'The words, and what they mean here',
+        paragraphs: [
+          'Mero Chat maps the platform’s nouns onto the ones a chat app already has. Knowing which is which explains who can see what.',
+        ],
+        concepts: [
+          { term: 'Namespace', def: 'A workspace — the team you invite people into. Joining it is what makes you a member.' },
+          { term: 'Subgroup', def: 'A channel’s membership. A public channel’s subgroup is open, so any workspace member can join; a private one is restricted to the people added to it.' },
+          { term: 'Context', def: 'One channel or one direct message: its messages, threads, reactions, profiles and roles, replicated only to its members’ nodes.' },
+          { term: 'Account', def: 'Who you are across your devices. A message’s sender and a reaction are stamped with your account, which is how your name is shown next to them.' },
+          { term: 'Presence', def: 'Who is here and who is typing. Ephemeral — it is never written into the channel’s history.' },
+        ],
+      },
+      {
+        id: 'start',
+        heading: 'Getting started',
+        steps: [
+          { title: 'Connect a node', body: 'Press Connect to node and choose your node in the popup, or open the app from the Calimero desktop.' },
+          { title: 'Create a workspace', body: 'Name it and pick the name people will see you by. You are its admin.' },
+          { title: 'Create channels', body: 'Press + next to Channels. Choose Public for anyone in the workspace, or Private for only the people you add.' },
+          { title: 'Invite your team', body: 'Share an invite link. Whoever opens it joins the workspace from their own node.' },
+        ],
+      },
+      {
+        id: 'sharing',
+        heading: 'Working together',
+        paragraphs: [
+          'Everyone in a channel can post, react, reply in threads and edit or delete their own messages. Admins and moderators can delete any message and ban a member; only admins grant roles.',
+          'Roles are checked by the contract when changes merge, so a message deleted by someone without the right is refused on every node — not just hidden in one interface.',
+        ],
+      },
+      {
+        id: 'storage',
+        heading: 'What is stored, and where',
+        bullets: [
+          'Messages, in order, each stamped with its sender’s account and a timestamp.',
+          'Thread replies, kept beside the message they answer.',
+          'Reactions: for each message and emoji, the set of accounts that reacted.',
+          'Profiles (display name, avatar), roles and per-member read positions.',
+          'Files and images as blobs on the channel members’ nodes, referenced from the message.',
+          'NOT stored: drafts, which stay on your node and are never synced, and typing, which is presence.',
+        ],
+      },
+      OFFLINE,
+      {
+        id: 'trouble',
+        heading: 'When something looks wrong',
+        concepts: [
+          { term: 'A message you sent is not on their screen yet', def: 'Their node has not synced with a peer since you sent it. It arrives when it does; nothing is lost.' },
+          { term: 'You cannot see a channel', def: 'It is private and you have not been added. Ask a member of it to add you.' },
+          { term: 'Your delete was undone', def: 'You deleted someone else’s message without being an admin or moderator. The contract refused it when it merged.' },
+          { term: 'Creating a channel or workspace fails', def: 'The node may be on an older runtime than the app expects. Update the node, then try again.' },
+        ],
+      },
+    ],
+    previewSteps: [
+      { title: 'Pick a channel', body: 'Click between #general, #design and the private #leadership — each keeps its own conversation.' },
+      { title: 'Send a message', body: 'Type in the box and press Enter. It lands in the channel straight away.' },
+      { title: 'A teammate answers', body: 'Ada is typing — a moment later her reply arrives from her own node.' },
+      { title: 'React', body: 'Click a reaction under any message to add yours, and again to take it back.' },
+    ],
+  },
+
   'mero-design': {
     docs: [
       {
@@ -276,13 +342,13 @@ export const DOCS = {
     ],
   },
 
-  'mero-drive': {
+  'mero-docs': {
     docs: [
       {
         id: 'concepts',
         heading: 'The words, and what they mean here',
         paragraphs: [
-          'Mero Drive Docs is a multi-service bundle, and that structure is the product. A registry service holds the folder tree for a namespace; each folder is its own context holding its own documents.',
+          'Mero Docs is a multi-service bundle, and that structure is the product. A registry service holds the folder tree for a namespace; each folder is its own context holding its own documents.',
           'That is what makes selective sharing real: giving somebody a folder replicates that folder’s documents to them and nothing else, because the other folders are different contexts they were never added to.',
         ],
         concepts: [
@@ -459,6 +525,72 @@ export const DOCS = {
     ],
   },
 
+  'mero-crm': {
+    docs: [
+      {
+        id: 'concepts',
+        heading: 'The words, and what they mean here',
+        paragraphs: [
+          'The model is deliberately small: a pipeline of stages, deals moving through them, the people behind the deals, and the activities that move them forward.',
+        ],
+        concepts: [
+          { term: 'Namespace', def: 'Your sales team. Its members are the people who can see and work the pipelines.' },
+          { term: 'Pipeline', def: 'One sales process — say New business or Renewals — and one Calimero context. It holds its stages, deals, people, activities, notes and automations.' },
+          { term: 'Stage', def: 'A column of the pipeline with a win probability. The probability is what turns a pipeline total into a weighted forecast.' },
+          { term: 'Deal', def: 'An opportunity with a value, an owner, a contact person and an expected close date. Every field is its own register, so two people editing different fields never collide.' },
+          { term: 'Activity', def: 'A call, meeting, task, email or deadline, due on a date. The earliest open one is the deal’s next step.' },
+          { term: 'Rotting', def: 'An open deal nobody has touched for longer than the pipeline allows (14 days by default). It is flagged on the board.' },
+          { term: 'Automation', def: 'A rule of the form “when a deal enters this stage, schedule this activity”. It runs inside the contract, so it fires whoever moves the deal.' },
+        ],
+      },
+      {
+        id: 'start',
+        heading: 'Getting started',
+        steps: [
+          { title: 'Connect a node', body: 'Press Connect to node and pick your node in the popup.' },
+          { title: 'Create a workspace and a pipeline', body: 'A workspace for the team, then a pipeline with its currency. It starts with five stages you can rename, reorder and re-weight in Settings.' },
+          { title: 'Add your deals', body: 'Press N anywhere. Only a title is required; the value accepts shorthand like 12k.' },
+          { title: 'Work the board', body: 'Drag deals forward, schedule the next step on each, and let the Activities list tell you what is due today.' },
+        ],
+      },
+      {
+        id: 'sharing',
+        heading: 'The deal assistant',
+        paragraphs: [
+          'Every open deal gets a health score from the signals a sales manager checks by eye: is there a next step, is it overdue, has anyone touched the deal lately, has the close date slipped, is there a contact person.',
+          'From those it suggests the next best step for the deal’s stage — a discovery call, a demo, the proposal, the follow-up — and schedules it in one click. It also drafts a stage-appropriate follow-up email.',
+          'The assistant runs in your browser on your own data; nothing is sent anywhere. For open-ended coaching, Copy AI coaching prompt packages the deal’s context for whichever AI assistant you already use.',
+        ],
+      },
+      {
+        id: 'storage',
+        heading: 'What is stored, and where',
+        bullets: [
+          'Stages, deals, people, activities, notes and automations, each in its own map keyed by id, in the pipeline’s context.',
+          'Every mutable field as its own last-writer-wins register; edits only write the fields that changed, so a teammate’s concurrent edit to another field survives.',
+          'Money as whole units of the pipeline currency, never floats, so every node computes identical totals.',
+          'Only a deal’s creator can delete it, and only a note’s author can delete the note — enforced in the contract, not the UI.',
+        ],
+      },
+      OFFLINE,
+      {
+        id: 'trouble',
+        heading: 'When something looks wrong',
+        concepts: [
+          { term: 'A stage will not delete', def: 'It still has open deals. Move them to another stage, or close them, first.' },
+          { term: 'A deal cannot be dragged', def: 'Closed deals leave the board. Reopen it from its page to put it back in the stage it closed from.' },
+          { term: 'A teammate’s move has not shown up', def: 'Their node is behind or offline. The board catches up on sync without any action.' },
+        ],
+      },
+    ],
+    previewSteps: [
+      { title: 'A pipeline of stages', body: 'Five columns, each with its count, value and weighted forecast — replicated to every member, with no server hosting it.' },
+      { title: 'A deal moves', body: 'The stage is one register on the deal. Moving it collides with nothing else on the card.' },
+      { title: 'A follow-up appears', body: 'Entering Proposal fired an automation, and the owner now has “Send the proposal” due tomorrow.' },
+      { title: 'The assistant flags a deal', body: 'No activity in three weeks and a slipped close date: the card is marked rotting, with the next step one click away.' },
+    ],
+  },
+
   'mero-issue-tracker': {
     docs: [
       {
@@ -524,65 +656,6 @@ export const DOCS = {
   },
 
 
-  'mero-pass': {
-    docs: [
-      {
-        id: 'concepts',
-        heading: 'The words, and what they mean here',
-        concepts: [
-          { term: 'Namespace', def: 'A vault. You create it and invite the people who should hold its secrets.' },
-          { term: 'Context', def: 'The vault’s contents — the secrets themselves and the audit log.' },
-          { term: 'Secret', def: 'One entry in a map keyed by id. Five kinds: a login, a secure note, a TOTP seed, an SSH key, and free-form.' },
-          { term: 'TOTP', def: 'A time-based one-time-password seed. Codes are generated locally from the seed; no code is ever stored or transmitted.' },
-          { term: 'Audit log', def: 'A record of what happened in the vault, replicated with it, so the history is not something a vendor could withhold.' },
-        ],
-      },
-      {
-        id: 'start',
-        heading: 'Getting started',
-        steps: [
-          { title: 'Connect a node', body: 'Press Connect to node and choose your node.' },
-          { title: 'Create a vault', body: 'A namespace you own. Nothing in it leaves the members you invite.' },
-          { title: 'Add a secret', body: 'Pick one of the five types. Logins carry a URL; TOTP entries carry a seed and generate codes on your own machine.' },
-          { title: 'Share with the team', body: 'Invite the people who need it. Their node replicates the vault; there is no vendor holding a copy.' },
-        ],
-      },
-      {
-        id: 'sharing',
-        heading: 'Sharing, and taking it back',
-        paragraphs: [
-          'Membership is the access model. Revoking someone stops the vault replicating to them — it is an action you take, not a support request.',
-          'Because there is no central store, there is no central store to breach. The threat model moves from "a vendor is compromised" to "a member’s node is compromised", which is a risk you can see and act on.',
-        ],
-      },
-      {
-        id: 'storage',
-        heading: 'What is stored, and where',
-        bullets: [
-          'Secrets, keyed by id, each with its type, tags and payload.',
-          'An audit log of vault activity.',
-          'Nothing on any server: the vault exists on the nodes of the people you invited, and nowhere else.',
-        ],
-      },
-      OFFLINE,
-      {
-        id: 'trouble',
-        heading: 'When something looks wrong',
-        concepts: [
-          { term: 'A TOTP code is rejected', def: 'Codes are time-based and generated locally. A wrong code almost always means your machine’s clock has drifted.' },
-          { term: 'A teammate cannot see a secret', def: 'They must be a member of that vault. Being in another vault with you grants nothing here.' },
-          { term: 'A secret you deleted is back', def: 'A peer that was offline when you deleted it can resurface its copy on reconnect if it also edited it. Delete it again once both nodes are in sync.' },
-        ],
-      },
-    ],
-    previewSteps: [
-      { title: 'A vault of secrets', body: 'Entries in a context replicated only to the people invited to that vault.' },
-      { title: 'One reveals', body: 'Decryption happens on your machine. Nothing is fetched from a service to show it.' },
-      { title: 'A TOTP ticks', body: 'Generated locally from a stored seed — the code itself is never stored or sent.' },
-      { title: 'A member is added', body: 'Sharing is membership. Revoking it stops replication rather than filing a request.' },
-    ],
-  },
-
   'mero-pixart': {
     docs: [
       {
@@ -639,10 +712,11 @@ export const DOCS = {
       },
     ],
     previewSteps: [
-      { title: 'A layer stack', body: 'Raster, text and fill layers in a tree — each one a separate record in the context.' },
-      { title: 'A stroke is drawn', body: 'Painting writes to that layer’s content field and nothing else on it.' },
-      { title: 'An adjustment applies', body: 'Non-destructive: parameters are stored, the pixels underneath are not rewritten.' },
-      { title: 'A collaborator joins', body: 'Their cursor rides separately from the document, so presence can never damage the art.' },
+      // The hero is interactive (animation.tsx), so these are things to try, in order.
+      { title: 'Paint on the canvas', body: 'Pick a colour and drag, or use the arrow keys and Space. The stroke lands on the layer you have selected.' },
+      { title: 'Ada draws at the same time', body: 'Your teammate paints on her own layer. Neither of you waits for the other, because every layer is a separate record.' },
+      { title: 'Hide a layer', body: 'Each eye hides one layer and leaves the others exactly as they were.' },
+      { title: 'Tune the hue', body: 'The slider is an adjustment on the selected layer: stored as a setting, so Reset brings the original pixels straight back.' },
     ],
   },
 

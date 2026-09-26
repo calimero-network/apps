@@ -63,12 +63,22 @@ class MessageStore<
   }
 
   initial(messages: T[]): void {
+    // Messages appended WHILE the initial load was in flight — your optimistic
+    // send, or a live message that arrived meanwhile — are newer than the
+    // snapshot the load returns, which was queried before them. Resetting
+    // dropped them: the first message sent into a freshly opened (empty)
+    // channel was stored on the node and never shown until a reload. Keep
+    // anything newer than the snapshot; older rows are the snapshot's to
+    // decide, so a refetch cannot mix in stale out-of-window rows.
+    const newest = messages.reduce((max, m) => Math.max(max, m.timestamp), -Infinity);
+    const arrivedDuringLoad = this.messages.filter((m) => m.timestamp > newest);
     this.reset();
     // Sort messages by timestamp to ensure correct chronological order
     const sortedMessages = [...messages].sort(
       (a, b) => a.timestamp - b.timestamp,
     );
     this.append(sortedMessages);
+    if (arrivedDuringLoad.length) this.append(arrivedDuringLoad);
   }
 
   append(messages: T[]): { addedCount: number; updatedCount: number } {

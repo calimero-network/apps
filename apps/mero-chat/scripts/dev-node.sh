@@ -383,7 +383,7 @@ step "Setting up workspace"
 NS_RES=$(curl -sf -X POST "${NODE_URL}/admin-api/namespaces" \
   -H "Authorization: Bearer ${ACCESS_TOKEN}" \
   -H "Content-Type: application/json" \
-  -d "$(jq -n --arg a "$APP_ID" '{applicationId: $a, upgradePolicy: "LazyOnAccess", alias: "Dev Workspace"}')" \
+  -d "$(jq -n --arg a "$APP_ID" '{applicationId: $a, name: "Dev Workspace"}')" \
   2>/dev/null) || NS_RES="{}"
 NAMESPACE_ID=$(echo "$NS_RES" | jq -r '.data.namespaceId // .data.groupId // .data.id // empty' 2>/dev/null || true)
 
