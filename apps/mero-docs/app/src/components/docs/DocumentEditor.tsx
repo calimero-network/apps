@@ -132,7 +132,7 @@ export function DocumentEditor({
       title: 'Delete document?',
       body: (
         <>
-          Delete <code className="text-xs">{title.title || 'Untitled'}</code>?
+          Delete <span className="font-medium">{title.title || 'Untitled'}</span>?
           This can't be undone.
         </>
       ),

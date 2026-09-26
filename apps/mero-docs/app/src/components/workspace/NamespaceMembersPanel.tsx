@@ -180,8 +180,8 @@ export function NamespaceMembersPanel() {
             <>
               Share this link with people you want to give access to{' '}
               <span className="font-medium text-foreground">{aliasLabel}</span>
-              . They'll be added to the workspace root and will see every
-              folder that inherits from it.
+              . They'll join the workspace and see every folder that is open
+              to all workspace members.
             </>
           }
           footnote="Anyone with this link and a Calimero account can join the workspace."

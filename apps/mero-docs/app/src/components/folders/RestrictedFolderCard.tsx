@@ -141,21 +141,13 @@ export function RestrictedFolderCard({
       refetchPerms?.();
       await refetch?.();
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e);
-      // Common failure modes — all collapse to the same UX: wait +
-      // retry, or ask admin. Core can surface "not a member of any
-      // ancestor with Open chain", a 5xx from a still-syncing node,
-      // or a transient KeyDelivery wait timeout.
-      const isTransient =
-        /not a member|has no group identity|owned identity|HTTP 5|timeout/i.test(
-          msg,
-        );
+      // Every failure mode (unsynced node, missing membership, timeout) has the
+      // same remedy, so the raw server text goes to the console only.
+      console.error('Folder join failed', e);
       setError(
-        isTransient
-          ? isSyncing
-            ? "Workspace sync isn't quite there yet. Try again in a moment."
-            : "Your node can't reach this folder yet. Either sync is still in progress or the workspace owner needs to add you. Try again, or ask the admin."
-          : msg,
+        isSyncing
+          ? "Workspace sync isn't quite there yet. Try again in a moment."
+          : "Your node can't reach this folder yet. Either sync is still in progress or the workspace owner needs to add you. Try again, or ask the admin.",
       );
     } finally {
       setJoining(false);
@@ -193,7 +185,7 @@ export function RestrictedFolderCard({
               </>
             ) : isSyncing ? (
               <>
-                Your node hasn't received the visibility metadata for{' '}
+                Your node hasn't finished syncing{' '}
                 <span className="font-medium text-foreground">
                   {folderAlias}
                 </span>{' '}
@@ -206,8 +198,7 @@ export function RestrictedFolderCard({
                   {folderAlias}
                 </span>{' '}
                 is open to all workspace members. Click{' '}
-                <strong>Join folder</strong> to materialize your access
-                and start reading + editing.
+                <strong>Join folder</strong> to start reading and editing.
               </>
             )}
           </p>

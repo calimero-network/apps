@@ -142,11 +142,11 @@ export function JoinInviteCard({
         )}
         {parsed.kind === 'group' ? (
           <>
-            . You'll only gain access to this folder, not the workspace
-            root or other folders.
+            . You'll only gain access to this folder, not the rest of the
+            workspace.
           </>
         ) : (
-          <>. You'll be added to the workspace root group.</>
+          <>. You'll be added to the workspace.</>
         )}
       </p>
 
