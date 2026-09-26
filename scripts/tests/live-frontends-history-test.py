@@ -1,10 +1,5 @@
 #!/usr/bin/env python3
-"""check-live-frontends.py must read titles from before an app directory rename.
-
-Its history lookup used to `git show <sha>:<current path>`, which does not exist
-on the pre-rename side, so a renamed app's live deployment read as "never built
-here" and failed the build instead of reporting a deploy lag.
-"""
+"""check-live-frontends.py must read titles from before an app directory rename."""
 
 import importlib.util
 import pathlib
