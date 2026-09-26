@@ -172,7 +172,8 @@ export function distinctCollaborators(
     const isSelf = author === selfKey;
     seen.set(author, {
       author,
-      color: isSelf ? selfColor : '',
+      // The colour a cursor would carry, so it does not change when one arrives.
+      color: isSelf ? selfColor : presenceColor(author),
       name: label.label,
       label: avatarLabel(label.label),
       anonymous: label.anonymous,
@@ -185,10 +186,7 @@ export function distinctCollaborators(
   for (const c of cursors) {
     const isSelf = c.author === selfKey;
     const existing = seen.get(c.author);
-    if (existing) {
-      if (!existing.isSelf) existing.color = c.color;
-      continue;
-    }
+    if (existing) continue;
     const n = named(c.author);
     seen.set(c.author, {
       author: c.author,
@@ -218,7 +216,6 @@ export function distinctCollaborators(
   // Self first, then named people, then placeholders; ties broken on the id so
   // the bar does not reshuffle on every sync event.
   return [...seen.values()]
-    .map((c) => ({ ...c, color: c.color || '#8a8f8a' }))
     .sort((a, b) => {
       if (a.isSelf !== b.isSelf) return a.isSelf ? -1 : 1;
       if (a.anonymous !== b.anonymous) return a.anonymous ? 1 : -1;

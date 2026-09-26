@@ -49,7 +49,7 @@ describe('distinctCollaborators', () => {
     // The point of the whole change: the roster and the cursors are keyed by the
     // same id, so "who moved that cell" has an answer a person can read.
     const result = distinctCollaborators(
-      [cur(BOB, '#f00'), cur(ME, '#0f0')],
+      [cur(BOB, presenceColor(BOB)), cur(ME, '#0f0')],
       ME,
       'SELF',
       roster(
@@ -62,7 +62,7 @@ describe('distinctCollaborators', () => {
     );
     expect(result).toEqual([
       { author: ME, color: 'SELF', name: 'Ada', label: 'AD', anonymous: false, isSelf: true },
-      { author: BOB, color: '#f00', name: 'Bob', label: 'BO', anonymous: false, isSelf: false },
+      { author: BOB, color: presenceColor(BOB), name: 'Bob', label: 'BO', anonymous: false, isSelf: false },
     ]);
   });
 
@@ -100,15 +100,24 @@ describe('distinctCollaborators', () => {
     expect(result[0]).toMatchObject({ author: ME, color: 'SELF', isSelf: true });
   });
 
-  it('dedupes by author and keeps the cursor colour for peers', () => {
+  it('dedupes by author', () => {
     const result = distinctCollaborators(
-      [cur(BOB, '#f00'), cur(BOB, '#f00')],
+      [cur(BOB, presenceColor(BOB)), cur(BOB, presenceColor(BOB))],
       ME,
       'SELF',
       roster([{ id: BOB, nickname: 'Bob' }], ME),
     );
     expect(result.filter((c) => c.author === BOB)).toHaveLength(1);
-    expect(result.find((c) => c.author === BOB)!.color).toBe('#f00');
+  });
+
+  it("keeps a member's colour when their cursor comes and goes", () => {
+    // The avatar used to be grey until the peer's first cursor arrived, then
+    // changed colour mid-session.
+    const people = roster([{ id: BOB, nickname: 'Bob' }], ME);
+    const colour = (cursors: PeerCursor[]) =>
+      distinctCollaborators(cursors, ME, 'SELF', people).find((c) => c.author === BOB)!.color;
+    expect(colour([])).toBe(presenceColor(BOB));
+    expect(colour([cur(BOB, presenceColor(BOB))])).toBe(presenceColor(BOB));
   });
 
   it('orders named collaborators ahead of unnamed ones', () => {
