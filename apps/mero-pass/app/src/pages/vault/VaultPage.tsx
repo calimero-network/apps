@@ -1,6 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useMero } from '@calimero-network/mero-react';
+import {
+  Clock,
+  FileText,
+  Lock,
+  LockBox,
+  LockStar,
+  ShieldCheck,
+} from '@calimero-network/mero-icons';
 
 import AppHeader from '../../components/AppHeader';
 import DeviceApprovals from '../../components/DeviceApprovals';
@@ -30,14 +38,24 @@ import styles from './vault.module.css';
 
 type Tab = 'secrets' | 'trash' | 'health' | 'people' | 'activity' | 'transfer';
 
-const KIND_MARK: Record<string, string> = {
-  login: '🔑',
-  secure_note: '📝',
-  totp: '⏱',
-  ssh_key: '🔐',
-  payment_card: '💳',
-  identity: '🪪',
+/**
+ * Line icons from the Calimero set, one per kind, drawn in the accent-text
+ * colour. Not emoji: an emoji is a fixed-colour bitmap that cannot follow the
+ * theme.
+ */
+const KIND_ICON: Record<string, typeof Lock> = {
+  login: Lock,
+  secure_note: FileText,
+  totp: Clock,
+  ssh_key: LockStar,
+  payment_card: LockBox,
+  identity: ShieldCheck,
 };
+
+function KindIcon({ kind, size = 16 }: { kind: string; size?: number }) {
+  const Icon = KIND_ICON[kind] ?? Lock;
+  return <Icon size={size} />;
+}
 
 /** Calimero stamps in nanoseconds; anything that large is not milliseconds. */
 function asDate(stamp: number): Date {
@@ -301,7 +319,7 @@ function VaultBody() {
           aria-expanded={open}
         >
           <span className={styles.secretKind} aria-hidden="true">
-            {KIND_MARK[secret.kind] ?? '🔒'}
+            <KindIcon kind={secret.kind} />
           </span>
           <span>
             <span className={styles.secretName}>{secret.name}</span>
@@ -318,7 +336,7 @@ function VaultBody() {
                 {t}
               </span>
             ))}
-            <span className={styles.chevron}>{open ? '▲' : '▼'}</span>
+            <span className={styles.chevron}>{open ? '−' : '+'}</span>
           </span>
         </button>
 
@@ -469,6 +487,9 @@ function VaultBody() {
     <>
       <div className={shell.titleRow}>
         <div>
+          <p className={shell.eyebrow}>
+            {personal === true ? 'Private vault' : 'Vault'}
+          </p>
           <h1 className={shell.title} data-testid="vault-heading">
             {vaultName}
           </h1>
@@ -633,7 +654,7 @@ function VaultBody() {
                   <div key={s.id} className={shell.row}>
                     <div className={shell.rowMain}>
                       <div className={shell.rowName}>
-                        {KIND_MARK[s.kind] ?? '🔒'} {s.name}
+                        <KindIcon kind={s.kind} size={14} /> {s.name}
                       </div>
                       <div className={shell.rowSub}>
                         Trashed {asDate(s.trashedAt).toLocaleString()}

@@ -172,7 +172,12 @@ export default function SecurityPage() {
     <div className={shell.root}>
       <AppHeader back={{ label: 'Teams', to: '/teams' }} crumb="Security" />
       <main className={shell.main}>
+        <p className={shell.eyebrow}>This browser</p>
         <h1 className={shell.title}>Security</h1>
+        <p className={shell.subtitle}>
+          How this browser guards its key, how you get back in if you lose it,
+          and which machines can sign as you.
+        </p>
         {error && <p className={shell.error}>{error}</p>}
         {status && <p className={shell.notice}>{status}</p>}
 
@@ -269,7 +274,7 @@ export default function SecurityPage() {
                 <p className={shell.notice}>
                   Shown once. Store it now; it is not kept anywhere.
                 </p>
-                <pre className={shell.mono}>{shownCode}</pre>
+                <pre className={shell.keyBox}>{shownCode}</pre>
                 <button
                   type="button"
                   className={shell.btn}

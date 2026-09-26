@@ -238,6 +238,7 @@ export default function TeamPage() {
       <main className={styles.mainWide}>
         <div className={styles.titleRow}>
           <div>
+            <p className={styles.eyebrow}>Team</p>
             <h1 className={styles.title} data-testid="team-heading">
               {heading}
             </h1>

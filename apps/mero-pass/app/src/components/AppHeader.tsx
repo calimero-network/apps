@@ -1,14 +1,15 @@
 import { useNavigate } from 'react-router-dom';
-import BrandMark from './BrandMark';
-import { MARK_BG } from '../lib/brandMark';
 import { useMero } from '@calimero-network/mero-react';
 
+import ThemeToggle from './ThemeToggle';
+import Wordmark from './Wordmark';
 import { useDeviceUnlocked } from '../hooks/useDeviceLock';
 import { deviceKeeper } from '../lib/deviceKey';
 import styles from '../styles/shell.module.css';
 
 /**
- * The app bar: a mark, a trail, and a way out. 56px on a hairline.
+ * The app bar: the Calimero lockup, a trail, and a way out. 64px on a
+ * hairline, the same bar as the Calimero Cloud console.
  *
  * ── What was removed, and why ────────────────────────────────────────────────
  *
@@ -24,8 +25,8 @@ import styles from '../styles/shell.module.css';
  * the whole component is gone rather than replaced.
  *
  * The old `PassNavbar` wrapped mero-ui's `Navbar`/`NavbarBrand`/`NavbarMenu`,
- * which brought its own dark elevated surface into a light app and could not be
- * made to match the rest without fighting it.
+ * which brought its own elevated surface and could not be made to match the
+ * rest without fighting it.
  */
 export default function AppHeader({
   /** A back affordance, when this screen is inside something. */
@@ -57,20 +58,7 @@ export default function AppHeader({
         onClick={() => navigate('/teams')}
         data-testid="brand"
       >
-        {/* Green as a FILL with near-black ink — the one mark on the screen.
-            The glyph is the PADLOCK from `public/favicon.svg`; it used to be a
-            `●`, so the tab and the header showed different products. */}
-        {/* The tile's colour comes from `lib/brandMark`, which a test pins to
-            `scripts/gen-icons.mjs` — see the note there. The stylesheet keeps
-            the size, radius and centring. */}
-        <span
-          className={styles.mark}
-          style={{ background: MARK_BG }}
-          aria-hidden="true"
-        >
-          <BrandMark />
-        </span>
-        Mero Pass
+        <Wordmark size="sm" />
       </button>
 
       {back && (
@@ -91,6 +79,7 @@ export default function AppHeader({
             {host}
           </span>
         )}
+        <ThemeToggle />
         {unlocked && (
           <button
             type="button"

@@ -147,6 +147,35 @@ default role, Editor or Viewer, by the next admin who opens the vault.
   - remove a member, which is finished inside each vault by key rotation;
   - revoke devices on the Security page.
 
+## Design
+
+Mero Pass uses the same design language as the Calimero landing, Calimero
+Cloud, the App Registry and the desktop app:
+
+- charcoal `#131215` by default, with light available from the header toggle;
+- Power Grotesk, self-hosted in `app/public/fonts`;
+- square corners and 1px hairlines, with 950-weight uppercase headings and
+  tracked uppercase labels;
+- one lime.
+
+`#a5ff11` is only ever a fill, always with dark ink on it. Lime used as text
+is `--accent-text`, which turns olive `#487800` on the light theme. The tokens
+live in `app/src/index.css`, the app shell in `app/src/styles/shell.module.css`.
+
+The landing page (`app/src/pages/landing/`) is hand-owned rather than generated
+from `scripts/landing/`. It follows the Calimero home page and the Cloud
+marketing site:
+
+- a hero with a product shot;
+- numbered chapters;
+- a lime Cloud band;
+- a comparison and an FAQ.
+
+It is dark only, like those pages.
+
+Screenshots of every screen, with no node: `SHOTS_CHROMIUM=<chromium> node
+app/e2e/shots.mjs --out /tmp/shots`.
+
 ## Layout
 
 ```
@@ -157,7 +186,8 @@ logic/            Rust contract → WASM
 app/              React + Vite frontend
   src/lib/        crypto, deviceKey, recoveryKey, vaultSession, vaults, totp,
                   health, portability, shareLink
-  src/pages/      teams, team, vault, security, share
+  src/pages/      landing, teams, team, vault, security, share
+  e2e/shots/      screenshot harness (fixtures in place of a node)
 ```
 
 ## Develop

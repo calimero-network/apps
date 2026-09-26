@@ -34,6 +34,11 @@
  * `kv-store`      contract/test fixture, no user-facing frontend.
  * `scaffolding-e2e`  e2e harness app, same.
  *
+ * `mero-pass`     has its own hand-owned landing (`src/pages/landing/`), built
+ *                 in the calimero.network language the Calimero landing,
+ *                 Cloud, the App Registry and the desktop app share. Its
+ *                 contract lives in its own `tests/marketing-landing.spec.ts`.
+ *
  * `mero-blocks` and `merraria` ARE included, but they need one extra piece.
  * Neither is a React app — both boot from `src/main.ts` with no `.tsx` — and
  * their `Landing` (`src/ui/landing.ts`) is an imperative launcher resolving a
@@ -300,24 +305,6 @@ export const APPS = {
     ],
   },
 
-
-  'mero-pass': {
-    displayName: 'Mero Pass',
-    e2eDir: 'tests',
-    availability: 'web+desktop',
-    trust: ['Vault on your nodes', 'Five secret types', 'No vendor to breach'],
-    explainer: [
-      'A secret manager for a team, where the vault sits on your own nodes rather than in a company whose breach notification you will read about later. You create a vault, invite the people who need it, and the contents replicate only between their nodes and yours.',
-      'It handles the five things teams actually share: logins, notes, one-time-password seeds, SSH keys, and free-form secrets — with roles, so not everyone who can read a vault can change who else does.',
-    ],
-    features: [
-      { icon: 'LockBox', title: 'Vaults with roles', body: 'Owner, admin and member. Reading a vault and controlling its membership are different powers.' },
-      { icon: 'LockStar', title: 'Five secret types', body: 'Logins with URLs, secure notes, TOTP seeds, SSH keypairs, and free-form entries.' },
-      { icon: 'Clock', title: 'TOTP codes', body: 'Time-based one-time passwords generated locally from a seed that never leaves your nodes.' },
-      { icon: 'ShieldCheck', title: 'Share with members', body: 'Scoped to the people you invited. Revoking access is something you do, not request.' },
-      { icon: 'CloudX', title: 'No vendor to breach', body: 'There is no central vault to attack, because there is no central vault.' },
-    ],
-  },
 
   'mero-pixart': {
     displayName: 'Mero PixArt',

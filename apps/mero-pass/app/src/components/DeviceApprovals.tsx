@@ -43,7 +43,7 @@ export default function DeviceApprovals({
   };
 
   return (
-    <section className={shell.section} data-testid="device-approvals">
+    <section className={shell.attention} data-testid="device-approvals">
       <h3 className={shell.sectionLabel}>Devices asking for this vault</h3>
       <p className={shell.sectionHint}>
         Approve only a device you recognise, showing the same code. Approving
