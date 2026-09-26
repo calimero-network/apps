@@ -85,8 +85,7 @@ export function invitationDeepLink(code: string): string {
 
 /**
  * Pull an invitation payload out of anything a person might hand us: a platform
- * link, a `calimero://` deep link, an older `?invite=` link, a bare query
- * string, or the code itself.
+ * link, a `calimero://` deep link, a bare query string, or the code itself.
  *
  * Parsing goes through the SDK's `parseIntent`, which matters for one specific
  * reason: `calimero://<slug>/<action>` is split by hand there rather than with
