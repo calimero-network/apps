@@ -27,9 +27,10 @@ test.describe("Landing page (unauthenticated)", () => {
 
   test("Connect to node opens the node picker", async ({ page }) => {
     await page.getByRole("button", { name: /connect to node/i }).first().click();
-    // mero-react's LoginModal carries no dialog role, so assert what a person
-    // sees in it: the manual node-URL option it always offers.
-    await expect(page.getByText("Enter node URL manually")).toBeVisible({ timeout: 10_000 });
+    // mero-react's LoginModal carries no dialog role, and its body changes
+    // with what it finds (a list of local nodes, or straight to a URL field
+    // when there are none, as on a CI runner). Its title is always there.
+    await expect(page.getByText("Connect to Calimero")).toBeVisible({ timeout: 10_000 });
   });
 
   test("/docs and /preview open cold", async ({ page }) => {
