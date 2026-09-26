@@ -35,7 +35,7 @@ import { useFolderRoles } from '@/hooks/useFolderRole';
 import { useCreateFolderInvite } from '@/hooks/useNamespaceInvitation';
 import { InviteDialog } from '@/components/workspace/InviteDialog';
 import { FolderMemberRoleRow } from '@/components/admin/FolderMemberRoleRow';
-import { MemberLabel } from '@/components/common/MemberLabel';
+import { MemberLabel, UNNAMED_MEMBER_LABEL } from '@/components/common/MemberLabel';
 import { MemberPicker } from '@/components/common/MemberPicker';
 import type { Role } from '@/generated/registry/RegistryClient';
 import { looksLikeMemberIdentity } from '@/utils/validation';
@@ -217,7 +217,7 @@ export function FolderSharingPanel({ folderId }: Props) {
           </li>
         )}
         {members.map((m) => {
-          const label = m.name ?? `${m.identity.slice(0, 8)}…`;
+          const label = m.name ?? UNNAMED_MEMBER_LABEL;
           const rowErr =
             removeError?.identity === m.identity ? removeError.message : null;
           const isSelfRow = !!selfIdentity && m.identity === selfIdentity;

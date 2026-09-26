@@ -39,10 +39,10 @@ import {
 interface Props {
   groupId: string;
   identity: string;
-  /** Pre-resolved label (e.g. server-reported `m.name`, or a
-   *  truncated pubkey). Used as the MemberLabel fallback so a member
-   *  with no display name still gets the parent panel's chosen text;
-   *  also reused for the "Remove member?" confirm dialog. */
+  /** Pre-resolved label (e.g. server-reported `m.name`, or the shared
+   *  unnamed-member fallback). Used as the MemberLabel fallback so a
+   *  member with no display name still gets the parent panel's chosen
+   *  text; also reused for the "Remove member?" confirm dialog. */
   label: string;
   /** Server-reported core group role: Admin / Member / ReadOnly.
    *  Undefined if the caller didn't resolve it. */
@@ -343,9 +343,6 @@ export function NamespaceMemberRow({
                 )}
               </>
             )}
-          </div>
-          <div className="truncate text-xs text-muted-foreground">
-            <code>{identity.slice(0, 12)}…</code>
           </div>
         </div>
         <div className="flex items-center gap-2">

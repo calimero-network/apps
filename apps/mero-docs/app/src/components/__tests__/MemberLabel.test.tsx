@@ -1,7 +1,7 @@
 import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { MemberLabel } from '../common/MemberLabel';
+import { MemberLabel, UNNAMED_MEMBER_LABEL } from '../common/MemberLabel';
 
 vi.mock('@/hooks/useDriveWorkspace', () => ({
   useDriveWorkspace: () => ({ namespaceMemberNames: {} }),
@@ -40,21 +40,20 @@ describe('MemberLabel', () => {
     expect(screen.getByText('Alice')).toBeTruthy();
   });
 
-  it('falls back to truncated pubkey when no name', () => {
+  it('falls back to "Unnamed member" when no name resolves, never the raw key', () => {
     render(
       <MemberLabel
         namespaceId="ns1"
         memberId="abcdef0123456789abcdef0123456789"
       />,
     );
-    // default truncate is "first8…last4"
-    expect(screen.getByText('abcdef01…6789')).toBeTruthy();
+    expect(screen.getByText(UNNAMED_MEMBER_LABEL)).toBeTruthy();
+    expect(screen.queryByText(/abcdef01/)).toBeNull();
   });
 
-  it('renders fallback while loading (no flash of name)', () => {
+  it('keeps the full key reachable via the title tooltip, never as visible text', () => {
     render(<MemberLabel namespaceId="ns1" memberId="loading-key" />);
-    // "loading-key" is 11 chars → returned verbatim by defaultTruncate.
-    expect(screen.getByText('loading-key')).toBeTruthy();
+    expect(screen.getByText(UNNAMED_MEMBER_LABEL).title).toBe('loading-key');
   });
 
   it('uses provided fallback when given', () => {
