@@ -27,6 +27,7 @@ import { columnLabel, normalizeRect, type CellCoord, type Rect } from '../spread
 import { resolvePoint, type PointAction } from '../spreadsheet/pointing';
 import { formatValue } from '../spreadsheet/format';
 import type { SheetViewAt } from '../hooks/useSpreadsheet';
+import { NO_EFFECT, styleCss, type RuleEffect, type Style } from '../spreadsheet/styling';
 import {
   AxisMetrics, DEFAULT_COL_WIDTH, DEFAULT_ROW_HEIGHT, GRID_COLS, GRID_ROWS, MAX_AXIS_SIZE,
   MIN_COL_WIDTH, MIN_ROW_HEIGHT, scrollToShow, visibleRange,
@@ -54,6 +55,14 @@ interface SpreadsheetGridProps {
   protectedRanges: readonly { rect: Rect; allowed: boolean }[];
   /** Frozen panes and resized rows and columns. */
   view: SheetViewAt;
+  /** Each styled cell's own style, by "row-col". */
+  cellStyles: ReadonlyMap<string, Style>;
+  /** What conditional formats, colour scales and validations do to a cell with this value. */
+  ruleAt: (row: number, col: number, value: string) => RuleEffect;
+  /** Flip a checkbox cell between TRUE and FALSE. */
+  onToggleCheckbox: (row: number, col: number) => void;
+  /** Open a list validation's choices for a cell, under `anchor`. */
+  onPickOption: (row: number, col: number, options: string[], anchor: DOMRect) => void;
   /** Resize a row or column (by position); absent where the sheet cannot be resized. */
   onResize?: (axis: 'row' | 'col', index: number, size: number) => void;
   /** Receives the grid's key handler, so the formula bar (which holds focus
@@ -97,6 +106,10 @@ function SpreadsheetGrid({
   notes,
   protectedRanges,
   view,
+  cellStyles,
+  ruleAt,
+  onToggleCheckbox,
+  onPickOption,
   onResize,
   keyHandlerRef,
   selectedCell,
@@ -508,6 +521,9 @@ function SpreadsheetGrid({
     const isEditingThis = isSelected && editingValue !== null;
     const shownValue = isEditingThis ? editingValue : formatValue(cell?.computed_value ?? '', cell?.format ?? '');
     const shownIsFormula = isEditingThis ? editingValue.startsWith('=') : (cell?.raw_value.startsWith('=') ?? false);
+    const effect = cell ? ruleAt(row, col, cell.computed_value) : ruleAt(row, col, '');
+    const own = cellStyles.get(key);
+    const look = styleCss(effect === NO_EFFECT ? own : { ...own, ...effect.style });
     const sticky = { ...stickyRow(row), ...stickyCol(col) };
     if (row < frozenRows && col < frozenCols) sticky.zIndex = 3;
 
@@ -524,7 +540,7 @@ function SpreadsheetGrid({
         $inFillTarget={inFillTarget}
         $copied={copiedKind}
         $locked={lockAt(protectedRanges, row, col)}
-        style={{ ...sticky, ...frozenEdge(row, col) }}
+        style={{ ...look, ...sticky, ...frozenEdge(row, col) }}
         aria-selected={isSelected}
         role="gridcell"
         onContextMenu={(e) => {
@@ -532,9 +548,37 @@ function SpreadsheetGrid({
           e.preventDefault();
           onCellContextMenu(row, col, e.clientX, e.clientY);
         }}
-        title={cellTitle(`${columnLabel(col)}${row + 1}`, cell, editedBy, notes.get(key))}
+        title={[cellTitle(`${columnLabel(col)}${row + 1}`, cell, editedBy, notes.get(key)), effect.invalid].filter(Boolean).join('\n') || undefined}
       >
-        <CellValue $isFormula={shownIsFormula}>{shownValue}</CellValue>
+        {effect.checkbox && !isEditingThis ? (
+          <Checkbox
+            role="checkbox"
+            aria-checked={cell?.computed_value.toUpperCase() === 'TRUE'}
+            data-testid="cell-checkbox"
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={() => onToggleCheckbox(row, col)}
+          >
+            {cell?.computed_value.toUpperCase() === 'TRUE' ? '☑' : '☐'}
+          </Checkbox>
+        ) : (
+          <CellValue $isFormula={shownIsFormula} style={look.color ? { color: look.color } : undefined}>{shownValue}</CellValue>
+        )}
+        {effect.invalid && <InvalidMark data-testid="invalid-mark" aria-label={effect.invalid} />}
+        {isSelected && effect.options && (
+          <PickBtn
+            type="button"
+            aria-label="Choose a value"
+            data-testid="cell-pick"
+            onMouseDown={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              const td = (e.currentTarget as HTMLElement).closest('td');
+              if (td) onPickOption(row, col, effect.options ?? [], td.getBoundingClientRect());
+            }}
+          >
+            ▾
+          </PickBtn>
+        )}
         {notes.has(key) && <NoteMark data-testid="note-mark" aria-label="Has a note" />}
         {commented.has(key) && <CommentMark data-testid="comment-mark" aria-label="Has comments" />}
         {cursor && !isSelected && (
@@ -819,6 +863,25 @@ const DataCell = styled.td<{ $selected: boolean; $cursorColor?: string; $peerTin
   &:hover:not([aria-selected='true']) {
     background: ${C.paper2};
   }
+`;
+
+const InvalidMark = styled.span`
+  position: absolute; bottom: 0; left: 0;
+  border-style: solid; border-width: 6px 0 0 6px;
+  border-color: transparent transparent transparent ${C.danger};
+  pointer-events: none;
+`;
+
+const Checkbox = styled.span`
+  display: block; text-align: center; font-size: 15px; line-height: 1; cursor: pointer;
+  color: ${C.greenDeep};
+`;
+
+const PickBtn = styled.button`
+  position: absolute; top: 2px; right: 2px; bottom: 2px; width: 18px;
+  border: none; border-radius: 4px; cursor: pointer; padding: 0;
+  font-size: 11px; color: ${C.ink}; background: ${C.paper2};
+  &:hover { background: ${C.line}; }
 `;
 
 const NoteMark = styled.span`

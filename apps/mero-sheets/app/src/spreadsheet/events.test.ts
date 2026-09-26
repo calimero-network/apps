@@ -105,3 +105,11 @@ describe('sheet views', () => {
     expect(p.sheets.size).toBe(0);
   });
 });
+
+describe('styles and rules', () => {
+  it('re-reads styles or rules, and no cells', () => {
+    const st = partial(planFor(mutation(['StylesChanged', { sheet_id: 's1' }])));
+    expect([st.styles, st.rules, st.sheets.size]).toEqual([true, false, 0]);
+    expect(partial(planFor(mutation(['RulesChanged', { sheet_id: 's1' }]))).rules).toBe(true);
+  });
+});

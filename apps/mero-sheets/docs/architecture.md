@@ -171,6 +171,31 @@ Page Up/Down to the grid (Shift extends the selection from where it started,
 as does Shift-click), and a typed character replaces the cell's value rather
 than appending to it.
 
+## Formatting and rules
+
+A cell has three kinds of presentation, each stored on its own:
+
+- **Number format** (`formats`): `number:2`, `currency:EUR:0`, `percent:1`,
+  `date:us`, `text`, … (`spreadsheet/format.ts`). One value per cell.
+- **Style** (`styles`): bold, italic, underline, strikethrough, wrap, text
+  and fill colour, alignment. Each field is its own last-writer-wins value
+  inside one entry per cell, so one person bolding a cell and another
+  colouring it both keep their change.
+- **Rules** (`rules`), over a range anchored on corner row and column ids:
+  a conditional format (style the cells that meet a condition; the first
+  matching rule wins a field), a colour scale (shade numbers between two
+  colours), or a validation (values must meet a condition). A validation is
+  strict (the contract refuses a literal value that breaks it, naming what it
+  must be) or loose (the app marks the cell). A checkbox validation draws a
+  checkbox; a list validation offers its choices.
+
+Conditions are evaluated by one function in the engine crate
+(`crates/recalc/src/rules.rs`): the contract calls it for strict validations,
+and the browser calls the same code through `recalc-wasm` to colour and mark
+cells, so the two never disagree about what a rule means. Formulas are not
+validated on write, since their value is not known there; the app still marks
+a formula result that breaks a rule.
+
 ## Derive-on-read
 
 If values aren't stored, they have to be produced somehow when a peer asks

@@ -48,6 +48,10 @@ import CommentsPanel from '../../components/CommentsPanel';
 import NotePanel from '../../components/NotePanel';
 import PeoplePanel from '../../components/PeoplePanel';
 import ProtectModal from '../../components/ProtectModal';
+import FormatBar from '../../components/FormatBar';
+import RulesModal, { conditionLabel } from '../../components/RulesModal';
+import { NO_EFFECT, placeRules, ruleEffect, scaleBounds } from '../../spreadsheet/styling';
+import { conditionDescribe, conditionMatches } from '../../engine/engine';
 import { lockedReason, placeProtections } from '../../spreadsheet/access';
 import { GRID_COLS, GRID_ROWS } from '../../spreadsheet/viewport';
 import type { NoteOp } from '../../spreadsheet/notes';
@@ -188,6 +192,11 @@ export default function AppPage() {
   const [showProtect, setShowProtect] = useState(false);
   const [protectSaving, setProtectSaving] = useState(false);
   const [protectError, setProtectError] = useState<string | null>(null);
+  const [rulesMode, setRulesMode] = useState<'format' | 'validate' | null>(null);
+  const [rulesSaving, setRulesSaving] = useState(false);
+  const [rulesError, setRulesError] = useState<string | null>(null);
+  // A list validation's choices, open under a cell.
+  const [pick, setPick] = useState<{ row: number; col: number; options: string[]; x: number; y: number } | null>(null);
   // The cell whose note is open, by id so it stays on that cell as rows move.
   const [noteCell, setNoteCell] = useState<{ sheetId: string; rowId: string; colId: string } | null>(null);
   const [namesSaving, setNamesSaving] = useState(false);
@@ -486,6 +495,35 @@ export default function AppPage() {
     void setAxisSize(activeSheetId, axis, positions, size);
   }, [activeSheetId, selectionRange, setAxisSize]);
 
+  // ── Styles and rules: the cell's own style, then what rules add ──────────
+  const { stylesOf } = ss;
+  const cellStyles = useMemo(
+    () => (activeSheetId ? stylesOf(activeSheetId) : new Map<string, Record<string, string>>()),
+    [activeSheetId, stylesOf],
+  );
+  const placedRules = useMemo(
+    () => (activeSheetId ? placeRules(ss.rules, activeSheetId, (r, c) => ss.refOf(activeSheetId, r, c)) : []),
+    // `ss.cells` changes when the layout does, so positions stay current.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [activeSheetId, ss.rules, ss.cells],
+  );
+  const scales = useMemo(() => scaleBounds(placedRules, ss.cells), [placedRules, ss.cells]);
+  const ruleAt = useCallback(
+    (row: number, col: number, value: string) => (placedRules.length === 0
+      ? NO_EFFECT
+      : ruleEffect(placedRules, scales, row, col, value, conditionMatches, conditionDescribe)),
+    [placedRules, scales],
+  );
+
+  // The choice list closes on any click elsewhere, or when the selection moves.
+  useEffect(() => {
+    if (!pick) return;
+    const close = () => setPick(null);
+    window.addEventListener('mousedown', close);
+    return () => window.removeEventListener('mousedown', close);
+  }, [pick]);
+  useEffect(() => setPick(null), [selectedCell, activeSheetId]);
+
   // Shift+F2 / "Note…": open a cell's note.
   const { idsOf, loadNote, editNote } = ss;
   const openNote = useCallback(
@@ -762,6 +800,18 @@ export default function AppPage() {
     const name = idToName(activeSheetId);
     return `${name ? sheetPrefix(name) : ''}${rangeRef({ row: r.top, col: r.left }, { row: r.bottom, col: r.right })}`;
   })();
+
+  const runRules = async (fn: () => Promise<void>) => {
+    setRulesSaving(true);
+    setRulesError(null);
+    try {
+      await fn();
+    } catch (err) {
+      setRulesError(describeError(err));
+    } finally {
+      setRulesSaving(false);
+    }
+  };
 
   const runProtect = async (fn: () => Promise<void>) => {
     setProtectSaving(true);
@@ -1347,6 +1397,26 @@ export default function AppPage() {
         </CommitBar>
       )}
 
+      {/* ── Format bar ───────────────────────────────────────────── */}
+      <FormatBar
+        style={(selectedCell && cellStyles.get(`${selectedCell.row}-${selectedCell.col}`)) || {}}
+        format={activeCellFormat}
+        disabled={!activeSheetId || isPrivateActive || !!selectedLock}
+        formatDisabled={!activeSheetId || !!selectedLock}
+        onStyle={(field, value) => {
+          const r = menuRect();
+          if (activeSheetId && r) void ss.applyStyle(activeSheetId, r, field, value);
+        }}
+        onFormat={(fmt) => void applyFormat(fmt)}
+        onClear={() => {
+          const r = menuRect();
+          if (!activeSheetId || !r) return;
+          void ss.clearStyles(activeSheetId, r);
+          void applyFormat('');
+        }}
+        onRules={(kind) => { setRulesError(null); setRulesMode(kind); }}
+      />
+
       {/* ── Spreadsheet grid ─────────────────────────────────────── */}
       <SpreadsheetGrid
         sheetId={activeSheetId}
@@ -1358,6 +1428,14 @@ export default function AppPage() {
         notes={notes}
         protectedRanges={placed}
         view={activeView}
+        cellStyles={cellStyles}
+        ruleAt={ruleAt}
+        onToggleCheckbox={(row, col) => {
+          if (!activeSheetId || lockedReason(placed, myRole, row, col)) return;
+          const current = ss.cells.find((c) => c.sheet_id === activeSheetId && c.row === row && c.col === col);
+          void ss.setCell(activeSheetId, row, col, current?.computed_value.toUpperCase() === 'TRUE' ? 'FALSE' : 'TRUE');
+        }}
+        onPickOption={(row, col, options, anchor) => setPick({ row, col, options, x: anchor.left, y: anchor.bottom })}
         keyHandlerRef={gridKeyRef}
         onResize={canResize ? handleResize : undefined}
         selectedCell={pickingForeignSheet ? null : selectedCell}
@@ -1499,6 +1577,45 @@ export default function AppPage() {
           <button type="button" aria-label="Dismiss" onClick={() => ss.dismissMention(mention.commentId)}>×</button>
         </MentionToast>
       )}
+      {pick && (
+        <PickMenu role="listbox" aria-label="Choose a value" style={{ left: pick.x, top: pick.y }} data-testid="menu-pick">
+          {pick.options.map((o) => (
+            <li key={o} role="option" aria-selected={false}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                if (activeSheetId) void ss.setCell(activeSheetId, pick.row, pick.col, o);
+                setPick(null);
+              }}
+            >
+              {o}
+            </li>
+          ))}
+        </PickMenu>
+      )}
+      {rulesMode && activeSheetId && (
+        <RulesModal
+          mode={rulesMode}
+          selection={namesSelection}
+          items={placedRules
+            .filter((p) => (rulesMode === 'format' ? p.rule.kind !== 'validate' : p.rule.kind === 'validate'))
+            .map((p) => ({
+              id: p.id,
+              where: rangeRef({ row: p.rect.top, col: p.rect.left }, { row: p.rect.bottom, col: p.rect.right }),
+              summary: p.rule.kind === 'scale'
+                ? 'Colour scale'
+                : `${p.rule.kind === 'validate' ? (p.rule.strict ? 'Only' : 'Mark if not') : 'When'} ${conditionLabel(p.rule.condition)}${p.rule.args.length ? ` ${p.rule.args.join(p.rule.condition === 'one_of' ? ', ' : ' and ')}` : ''}`,
+            }))}
+          saving={rulesSaving}
+          error={rulesError}
+          onAdd={(spec) => {
+            const r = menuRect();
+            if (!r) return;
+            void runRules(() => ss.addRule(activeSheetId, r, spec));
+          }}
+          onRemove={(id) => void runRules(() => ss.removeRule(id))}
+          onClose={() => setRulesMode(null)}
+        />
+      )}
       {writeError != null && (
         <ErrorToast role="alert" data-testid="toast-write-error">
           <span>Not saved: {describeError(writeError)}</span>
@@ -1572,6 +1689,15 @@ export default function AppPage() {
 }
 
 // ── Styled components ────────────────────────────────────────────────────────
+
+const PickMenu = styled.ul`
+  position: fixed; z-index: 150; margin: 2px 0 0; padding: 4px; list-style: none;
+  min-width: 140px; max-height: 240px; overflow-y: auto;
+  background: ${C.paper}; border: 1px solid ${C.line}; border-radius: 10px;
+  box-shadow: 0 12px 40px -12px rgba(14, 20, 15, 0.35);
+  li { padding: 6px 10px; font-size: 13px; color: ${C.ink}; border-radius: 6px; cursor: pointer; }
+  li:hover { background: ${C.paper2}; }
+`;
 
 const ErrorToast = styled.div`
   position: fixed; left: 50%; bottom: 96px; transform: translateX(-50%); z-index: 250;

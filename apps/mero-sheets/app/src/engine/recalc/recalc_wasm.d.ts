@@ -2,6 +2,17 @@
 /* eslint-disable */
 
 /**
+ * What a value must be to meet a condition, in words.
+ */
+export function condition_describe(condition: string, args: string): string;
+
+/**
+ * Whether `value` meets a rule's condition (`args` a JSON array of strings):
+ * the same test the contract applies to a strict validation.
+ */
+export function condition_matches(condition: string, args: string, value: string): boolean;
+
+/**
  * Browser entry point for [`evaluate_json`].
  */
 export function evaluate(input: string): string;
@@ -35,6 +46,8 @@ export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembl
 
 export interface InitOutput {
     readonly memory: WebAssembly.Memory;
+    readonly condition_describe: (a: number, b: number, c: number, d: number) => [number, number];
+    readonly condition_matches: (a: number, b: number, c: number, d: number, e: number, f: number) => number;
     readonly evaluate: (a: number, b: number) => [number, number];
     readonly functions: () => [number, number];
     readonly set_structure: (a: number, b: number) => number;

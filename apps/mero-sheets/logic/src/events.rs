@@ -39,6 +39,10 @@ pub enum Event<'a> {
     RolesChanged { member_id: &'a str },
     /// A protected range was added, changed or removed.
     ProtectionsChanged { sheet_id: &'a str },
+    /// Cells' styles changed.
+    StylesChanged { sheet_id: &'a str },
+    /// A conditional format, colour scale or validation changed.
+    RulesChanged { sheet_id: &'a str },
     /// A sheet's frozen panes or row and column sizes changed.
     SheetViewChanged { sheet_id: &'a str },
     /// A cell's note was edited.

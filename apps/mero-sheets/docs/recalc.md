@@ -147,3 +147,9 @@ artifact is built ahead of time and committed to the repo (see
 [Contributing](contributing)) so that deploys don't need a Rust toolchain
 on the build machine — only the prebuilt `.wasm` and its glue code, bundled
 like any other client asset.
+
+The crate also holds the conditions that conditional formats and data
+validation test values with (`rules.rs`: comparisons, between, text
+matches, one of a list, a number, a checkbox). The contract uses them to
+refuse a value a strict validation would not accept, and the browser uses
+them, through `recalc-wasm`'s `condition_matches`, to colour and mark cells.

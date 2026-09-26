@@ -1,6 +1,8 @@
 /* tslint:disable */
 /* eslint-disable */
 export const memory: WebAssembly.Memory;
+export const condition_describe: (a: number, b: number, c: number, d: number) => [number, number];
+export const condition_matches: (a: number, b: number, c: number, d: number, e: number, f: number) => number;
 export const evaluate: (a: number, b: number) => [number, number];
 export const functions: () => [number, number];
 export const set_structure: (a: number, b: number) => number;

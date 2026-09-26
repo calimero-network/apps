@@ -14,6 +14,7 @@ use std::collections::{BTreeMap, HashSet};
 use mero_sheets_recalc::formula::{self, Env, CATALOG};
 use mero_sheets_recalc::layout::{Axis, AxisEntry, Layout};
 use mero_sheets_recalc::recalc::{evaluate as recalc_evaluate, CellRef, WorkbookInputs};
+use mero_sheets_recalc::rules;
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::wasm_bindgen;
 
@@ -250,6 +251,21 @@ pub fn visible_order(sheet_id: &str) -> String {
 #[wasm_bindgen]
 pub fn functions() -> String {
     functions_json()
+}
+
+/// Whether `value` meets a rule's condition (`args` a JSON array of strings):
+/// the same test the contract applies to a strict validation.
+#[wasm_bindgen]
+pub fn condition_matches(condition: &str, args: &str, value: &str) -> bool {
+    let args: Vec<String> = serde_json::from_str(args).unwrap_or_default();
+    rules::matches(condition, &args, value)
+}
+
+/// What a value must be to meet a condition, in words.
+#[wasm_bindgen]
+pub fn condition_describe(condition: &str, args: &str) -> String {
+    let args: Vec<String> = serde_json::from_str(args).unwrap_or_default();
+    rules::describe(condition, &args)
 }
 
 #[cfg(test)]

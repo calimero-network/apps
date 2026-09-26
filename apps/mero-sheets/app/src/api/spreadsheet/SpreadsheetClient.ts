@@ -157,6 +157,13 @@ export interface CellOp_Set {
   raw_value: string;
 }
 
+export interface CellStyle {
+  sheet_id: string;
+  row_id: string;
+  col_id: string;
+  style: Record<string, string>;
+}
+
 export interface Comment {
   id: string;
   sheet_id: string;
@@ -256,6 +263,10 @@ export interface Event_RolesChanged {
   member_id: string;
 }
 
+export interface Event_RulesChanged {
+  sheet_id: string;
+}
+
 export interface Event_SheetCreated {
   id: string;
   name: string;
@@ -271,6 +282,10 @@ export interface Event_SheetRenamed {
 }
 
 export interface Event_SheetViewChanged {
+  sheet_id: string;
+}
+
+export interface Event_StylesChanged {
   sheet_id: string;
 }
 
@@ -382,6 +397,41 @@ export interface RoleData {
   updated_at: number;
 }
 
+export interface Rule {
+  id: string;
+  rule: RuleInput;
+  created_by: string;
+}
+
+export interface RuleData {
+  sheet_id: string;
+  top_row_id: string;
+  left_col_id: string;
+  bottom_row_id: string;
+  right_col_id: string;
+  kind: string;
+  condition: string;
+  args: string[];
+  style: StylePair[];
+  strict: boolean;
+  created_by: string;
+  deleted: boolean;
+  updated_at: number;
+}
+
+export interface RuleInput {
+  sheet_id: string;
+  top_row_id: string;
+  left_col_id: string;
+  bottom_row_id: string;
+  right_col_id: string;
+  kind: string;
+  condition: string;
+  args: string[];
+  style: Record<string, string>;
+  strict: boolean;
+}
+
 export interface Sheet {
   id: string;
   name: string;
@@ -445,7 +495,33 @@ export interface Spreadsheet {
   protections: Record<string, ProtectionData>;
   sizes: Record<string, SizeData>;
   views: Record<string, SheetViewData>;
+  styles: Record<string, StyleData>;
+  rules: Record<string, RuleData>;
 }
+
+export interface StyleData {
+  fields: StyleField[];
+}
+
+export interface StyleField {
+  field: string;
+  value: string;
+  updated_at: number;
+}
+
+export interface StyleOp {
+  row_id: string;
+  col_id: string;
+  field: string;
+  value: string;
+}
+
+export interface StylePair {
+  field: string;
+  value: string;
+}
+
+
 
 
 
@@ -480,10 +556,12 @@ export type AbiEvent =
   | { name: "ProjectInitialized"; payload: Event_ProjectInitialized }
   | { name: "ProtectionsChanged"; payload: Event_ProtectionsChanged }
   | { name: "RolesChanged"; payload: Event_RolesChanged }
+  | { name: "RulesChanged"; payload: Event_RulesChanged }
   | { name: "SheetCreated"; payload: Event_SheetCreated }
   | { name: "SheetDeleted"; payload: Event_SheetDeleted }
   | { name: "SheetRenamed"; payload: Event_SheetRenamed }
   | { name: "SheetViewChanged"; payload: Event_SheetViewChanged }
+  | { name: "StylesChanged"; payload: Event_StylesChanged }
 ;
 
 
@@ -503,6 +581,16 @@ export class SpreadsheetClient {
    */
   public async addComment(params: { sheet_id: string; row_id: string; col_id: string; text: string; parent: string }): Promise<string> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'add_comment', argsJson: params });
+    return response as string;
+  }
+
+  /**
+   * add_rule
+   *
+   * @intent mutating
+   */
+  public async addRule(params: { rule: RuleInput }): Promise<string> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'add_rule', argsJson: params });
     return response as string;
   }
 
@@ -533,6 +621,16 @@ export class SpreadsheetClient {
    */
   public async applyPrivateCellOps(params: { sheet_id: string; ops: CellOpPayload[] }): Promise<void> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'apply_private_cell_ops', argsJson: params });
+    return response as void;
+  }
+
+  /**
+   * apply_style_ops
+   *
+   * @intent mutating
+   */
+  public async applyStyleOps(params: { sheet_id: string; ops: StyleOp[] }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'apply_style_ops', argsJson: params });
     return response as void;
   }
 
@@ -777,6 +875,16 @@ export class SpreadsheetClient {
   }
 
   /**
+   * get_rules
+   *
+   * @intent read_only
+   */
+  public async getRules(): Promise<Rule[]> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_rules', argsJson: {} });
+    return response as Rule[];
+  }
+
+  /**
    * get_sheet_views
    *
    * @intent read_only
@@ -784,6 +892,16 @@ export class SpreadsheetClient {
   public async getSheetViews(): Promise<SheetView[]> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_sheet_views', argsJson: {} });
     return response as SheetView[];
+  }
+
+  /**
+   * get_styles
+   *
+   * @intent read_only
+   */
+  public async getStyles(): Promise<CellStyle[]> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_styles', argsJson: {} });
+    return response as CellStyle[];
   }
 
   /**
@@ -841,6 +959,16 @@ export class SpreadsheetClient {
    */
   public async removeProtection(params: { id: string }): Promise<void> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'remove_protection', argsJson: params });
+    return response as void;
+  }
+
+  /**
+   * remove_rule
+   *
+   * @intent mutating
+   */
+  public async removeRule(params: { id: string }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'remove_rule', argsJson: params });
     return response as void;
   }
 
@@ -951,6 +1079,16 @@ export class SpreadsheetClient {
    */
   public async updateProtection(params: { id: string; description: string; editors: string[] }): Promise<void> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'update_protection', argsJson: params });
+    return response as void;
+  }
+
+  /**
+   * update_rule
+   *
+   * @intent mutating
+   */
+  public async updateRule(params: { id: string; rule: RuleInput }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'update_rule', argsJson: params });
     return response as void;
   }
 

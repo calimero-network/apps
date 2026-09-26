@@ -418,6 +418,95 @@
         }
       ]
     },
+    "RuleData": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "top_row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "left_col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "bottom_row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "right_col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "kind",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "condition",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "args",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "style",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "StylePair"
+            }
+          }
+        },
+        {
+          "name": "strict",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "created_by",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "deleted",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
     "SheetData": {
       "kind": "record",
       "fields": [
@@ -751,6 +840,86 @@
               "$ref": "SheetViewData"
             },
             "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "styles",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "StyleData"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "rules",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "RuleData"
+            },
+            "crdt_type": "unordered_map"
+          }
+        }
+      ]
+    },
+    "StyleData": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "fields",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "StyleField"
+            }
+          }
+        }
+      ]
+    },
+    "StyleField": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "field",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "StylePair": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "field",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
           }
         }
       ]

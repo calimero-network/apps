@@ -562,6 +562,41 @@
         }
       ]
     },
+    "CellStyle": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "style",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "string"
+            }
+          }
+        }
+      ]
+    },
     "Comment": {
       "kind": "record",
       "fields": [
@@ -957,6 +992,17 @@
         }
       ]
     },
+    "Event_RulesChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
     "Event_SheetCreated": {
       "kind": "record",
       "fields": [
@@ -1003,6 +1049,17 @@
       ]
     },
     "Event_SheetViewChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_StylesChanged": {
       "kind": "record",
       "fields": [
         {
@@ -1454,6 +1511,192 @@
         }
       ]
     },
+    "Rule": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "rule",
+          "type": {
+            "$ref": "RuleInput"
+          }
+        },
+        {
+          "name": "created_by",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "RuleData": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "top_row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "left_col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "bottom_row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "right_col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "kind",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "condition",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "args",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "style",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "StylePair"
+            }
+          }
+        },
+        {
+          "name": "strict",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "created_by",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "deleted",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "RuleInput": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "top_row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "left_col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "bottom_row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "right_col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "kind",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "condition",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "args",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "style",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "strict",
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ]
+    },
     "Sheet": {
       "kind": "record",
       "fields": [
@@ -1878,6 +2121,115 @@
             },
             "crdt_type": "unordered_map"
           }
+        },
+        {
+          "name": "styles",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "StyleData"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "rules",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "RuleData"
+            },
+            "crdt_type": "unordered_map"
+          }
+        }
+      ]
+    },
+    "StyleData": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "fields",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "StyleField"
+            }
+          }
+        }
+      ]
+    },
+    "StyleField": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "field",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "StyleOp": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "field",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "StylePair": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "field",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          }
         }
       ]
     }
@@ -1914,6 +2266,21 @@
           "name": "parent",
           "type": {
             "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "add_rule",
+      "params": [
+        {
+          "name": "rule",
+          "type": {
+            "$ref": "RuleInput"
           }
         }
       ],
@@ -1985,6 +2352,30 @@
             "kind": "list",
             "items": {
               "$ref": "CellOp"
+            }
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "apply_style_ops",
+      "params": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "ops",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "StyleOp"
             }
           }
         }
@@ -2370,12 +2761,34 @@
       "intent": "read_only"
     },
     {
+      "name": "get_rules",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "Rule"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
       "name": "get_sheet_views",
       "params": [],
       "returns": {
         "kind": "list",
         "items": {
           "$ref": "SheetView"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_styles",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "CellStyle"
         }
       },
       "intent": "read_only"
@@ -2484,6 +2897,21 @@
     },
     {
       "name": "remove_protection",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "remove_rule",
       "params": [
         {
           "name": "id",
@@ -2768,6 +3196,27 @@
       "intent": "mutating"
     },
     {
+      "name": "update_rule",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "rule",
+          "type": {
+            "$ref": "RuleInput"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
       "name": "whoami",
       "params": [],
       "returns": {
@@ -2862,6 +3311,12 @@
       }
     },
     {
+      "name": "RulesChanged",
+      "payload": {
+        "$ref": "Event_RulesChanged"
+      }
+    },
+    {
       "name": "SheetCreated",
       "payload": {
         "$ref": "Event_SheetCreated"
@@ -2883,6 +3338,12 @@
       "name": "SheetViewChanged",
       "payload": {
         "$ref": "Event_SheetViewChanged"
+      }
+    },
+    {
+      "name": "StylesChanged",
+      "payload": {
+        "$ref": "Event_StylesChanged"
       }
     }
   ],

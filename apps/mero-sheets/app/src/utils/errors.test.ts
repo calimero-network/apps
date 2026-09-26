@@ -73,4 +73,9 @@ describe('describeError', () => {
     const err = { message: 'FunctionCallError', data: '"forbidden: A1 is in a protected range (\\"Totals\\")"' };
     expect(describeError(err)).toBe('Forbidden: A1 is in a protected range ("Totals")');
   });
+  it('reads a message the node sends as the bytes of a JSON string', () => {
+    const bytes = Array.from(new TextEncoder().encode(JSON.stringify('invalid input: B1 must be one of Yes, No')));
+    const err = { message: 'FunctionCallError', data: `the method call returned an error: [${bytes.join(', ')}]` };
+    expect(describeError(err)).toBe('Invalid input: B1 must be one of Yes, No');
+  });
 });

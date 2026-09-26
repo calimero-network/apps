@@ -18,7 +18,7 @@ use calimero_storage::collections::{
 use calimero_storage::env as storage_env;
 use std::collections::{BTreeMap, HashSet};
 
-use mero_sheets_recalc::{formula, layout, recalc};
+use mero_sheets_recalc::{formula, layout, recalc, rules};
 use mero_sheets_types::{generate_id, validate_label, validate_sheet_name, Error};
 
 pub mod events;
@@ -307,6 +307,116 @@ impl Mergeable for SheetViewData {
             self.updated_at = other.updated_at;
         }
         Ok(())
+    }
+}
+
+/// A cell's style, one last-writer-wins value per field, so one person
+/// making a cell bold and another colouring it both keep their change.
+/// Keyed like `cells`.
+#[app::mergeable(id = "mero_sheets::StyleData")]
+#[derive(Debug, Clone, Default, BorshSerialize, BorshDeserialize, AbiType)]
+#[borsh(crate = "calimero_sdk::borsh")]
+pub struct StyleData {
+    /// One entry per field, sorted by field. An empty value is a cleared field.
+    pub fields: Vec<StyleField>,
+}
+
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, AbiType)]
+#[borsh(crate = "calimero_sdk::borsh")]
+pub struct StyleField {
+    pub field: String,
+    pub value: String,
+    pub updated_at: u64,
+}
+
+impl StyleData {
+    /// Set a field, keeping the newer of this and what is there.
+    fn set(&mut self, theirs: StyleField) {
+        match self.fields.binary_search_by(|f| f.field.cmp(&theirs.field)) {
+            Ok(i) => {
+                let mine = &self.fields[i];
+                if (theirs.updated_at, &theirs.value) > (mine.updated_at, &mine.value) {
+                    self.fields[i] = theirs;
+                }
+            }
+            Err(i) => self.fields.insert(i, theirs),
+        }
+    }
+}
+
+impl Mergeable for StyleData {
+    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        for theirs in &other.fields {
+            self.set(theirs.clone());
+        }
+        Ok(())
+    }
+}
+
+/// A conditional format, colour scale or validation over a range, anchored on
+/// corner row and column ids like a protected range. Keyed by id.
+#[app::mergeable(id = "mero_sheets::RuleData")]
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, AbiType)]
+#[borsh(crate = "calimero_sdk::borsh")]
+pub struct RuleData {
+    pub sheet_id: String,
+    pub top_row_id: String,
+    pub left_col_id: String,
+    pub bottom_row_id: String,
+    pub right_col_id: String,
+    /// `format`, `scale` or `validate`.
+    pub kind: String,
+    pub condition: String,
+    pub args: Vec<String>,
+    /// The style a matching `format` rule applies, as (field, value) pairs.
+    pub style: Vec<StylePair>,
+    /// A `validate` rule that refuses values instead of marking them.
+    pub strict: bool,
+    pub created_by: String,
+    pub deleted: bool,
+    pub updated_at: u64,
+}
+
+impl Mergeable for RuleData {
+    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        // A rule changes as a whole; last writer wins.
+        if (other.updated_at, other.deleted) > (self.updated_at, self.deleted) {
+            *self = other.clone();
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, AbiType)]
+#[borsh(crate = "calimero_sdk::borsh")]
+pub struct StylePair {
+    pub field: String,
+    pub value: String,
+}
+
+/// Style fields and what each takes (besides empty, which clears it).
+fn check_style_field(field: &str, value: &str) -> app::Result<()> {
+    let ok = value.is_empty()
+        || match field {
+            "bold" | "italic" | "underline" | "strike" | "wrap" => value == "1",
+            "color" | "fill" => {
+                value.len() == 7
+                    && value.starts_with('#')
+                    && value[1..].bytes().all(|b| b.is_ascii_hexdigit())
+            }
+            "align" => matches!(value, "left" | "center" | "right"),
+            _ => {
+                return Err(AppError::from(Error::Invalid(format!(
+            "{field:?} is not a style: bold, italic, underline, strike, wrap, color, fill or align"
+        ))))
+            }
+        };
+    if ok {
+        Ok(())
+    } else {
+        Err(AppError::from(Error::Invalid(format!(
+            "{value:?} is not a value for {field}"
+        ))))
     }
 }
 
@@ -604,6 +714,54 @@ pub struct Member {
     pub role: String,
 }
 
+/// One style change: set `field` of a cell to `value` (empty clears it).
+#[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct StyleOp {
+    pub row_id: String,
+    pub col_id: String,
+    pub field: String,
+    pub value: String,
+}
+
+/// A styled cell.
+#[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct CellStyle {
+    pub sheet_id: String,
+    pub row_id: String,
+    pub col_id: String,
+    pub style: BTreeMap<String, String>,
+}
+
+/// A rule as written or read: its range by corner ids, and what it does.
+#[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct RuleInput {
+    pub sheet_id: String,
+    pub top_row_id: String,
+    pub left_col_id: String,
+    pub bottom_row_id: String,
+    pub right_col_id: String,
+    /// `format` (style cells that meet the condition), `scale` (shade numbers
+    /// from `args[0]` at the lowest to `args[1]` at the highest) or
+    /// `validate` (values must meet the condition).
+    pub kind: String,
+    pub condition: String,
+    pub args: Vec<String>,
+    pub style: BTreeMap<String, String>,
+    pub strict: bool,
+}
+
+/// A live rule.
+#[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct Rule {
+    pub id: String,
+    pub rule: RuleInput,
+    pub created_by: String,
+}
+
 /// A row's or column's size: `axis` is `row` or `col`.
 #[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
 #[serde(crate = "calimero_sdk::serde")]
@@ -869,6 +1027,12 @@ pub struct Spreadsheet {
     /// Frozen rows and columns per sheet.
     #[migrate(new = UnorderedMap::new_with_field_name("spreadsheet:views"))]
     views: UnorderedMap<String, SheetViewData>,
+    /// Cell styles, keyed like `cells`.
+    #[migrate(new = UnorderedMap::new_with_field_name("spreadsheet:styles"))]
+    styles: UnorderedMap<String, StyleData>,
+    /// Conditional formats, colour scales and validations, keyed by id.
+    #[migrate(new = UnorderedMap::new_with_field_name("spreadsheet:rules"))]
+    rules: UnorderedMap<String, RuleData>,
 }
 
 /// This node's private sheets: scratch space for what-if work that never
@@ -947,6 +1111,8 @@ impl Spreadsheet {
             protections: UnorderedMap::new_with_field_name("spreadsheet:protections"),
             sizes: UnorderedMap::new_with_field_name("spreadsheet:sizes"),
             views: UnorderedMap::new_with_field_name("spreadsheet:views"),
+            styles: UnorderedMap::new_with_field_name("spreadsheet:styles"),
+            rules: UnorderedMap::new_with_field_name("spreadsheet:rules"),
         }
     }
 
@@ -1500,6 +1666,7 @@ impl Spreadsheet {
             sheet_id,
             touched.values().map(|(r, c, _)| (r.as_str(), c.as_str())),
         )?;
+        self.require_valid_values(sheet_id, &ops)?;
         for op in ops {
             match op {
                 CellOp::Set {
@@ -2124,6 +2291,305 @@ impl Spreadsheet {
             )));
         }
         Ok(description)
+    }
+
+    // ---- Styles and rules ----
+
+    /// Change cells' styles: bold, italic, underline, strike, wrap (`1`),
+    /// color and fill (`#rrggbb`), align (`left`, `center`, `right`); an
+    /// empty value clears the field. Each field merges on its own.
+    pub fn apply_style_ops(&mut self, sheet_id: String, ops: Vec<StyleOp>) -> app::Result<()> {
+        if ops.len() > MAX_OPS_PER_APPLY {
+            return Err(AppError::from(Error::Invalid(format!(
+                "{} style ops in one call; the limit is {MAX_OPS_PER_APPLY}",
+                ops.len()
+            ))));
+        }
+        self.require_sheet(&sheet_id)?;
+        for op in &ops {
+            Spreadsheet::check_id(&op.row_id)?;
+            Spreadsheet::check_id(&op.col_id)?;
+            check_style_field(&op.field, &op.value)?;
+        }
+        self.require_cells_writable(
+            &sheet_id,
+            ops.iter().map(|o| (o.row_id.as_str(), o.col_id.as_str())),
+        )?;
+        let now = storage_env::time_now();
+        let mut by_cell: BTreeMap<String, Vec<StyleOp>> = BTreeMap::new();
+        for op in ops {
+            by_cell
+                .entry(Spreadsheet::cell_key(&sheet_id, &op.row_id, &op.col_id))
+                .or_default()
+                .push(op);
+        }
+        let count = by_cell.len() as u32;
+        for (key, cell_ops) in by_cell {
+            let mut style = self
+                .styles
+                .get(&key)
+                .map_err(|e| AppError::msg(format!("styles.get: {e}")))?
+                .map(|s| s.clone())
+                .unwrap_or_default();
+            for op in cell_ops {
+                style.set(StyleField {
+                    field: op.field,
+                    value: op.value,
+                    updated_at: now,
+                });
+            }
+            self.styles
+                .insert(key, style)
+                .map_err(|e| AppError::msg(format!("styles.insert: {e}")))?;
+        }
+        self.log(
+            &sheet_id,
+            "style",
+            format!(
+                "formatted {count} cell{}",
+                if count == 1 { "" } else { "s" }
+            ),
+            count,
+            Vec::new(),
+        )?;
+        app::emit!(Event::StylesChanged {
+            sheet_id: &sheet_id
+        });
+        Ok(())
+    }
+
+    /// Every styled cell, with its set fields.
+    pub fn get_styles(&self) -> app::Result<Vec<CellStyle>> {
+        Ok(self
+            .styles
+            .entries()
+            .map_err(|e| AppError::msg(format!("styles.entries: {e}")))?
+            .filter_map(|(key, s)| {
+                let (sheet_id, row_id, col_id) = split_key(&key)?;
+                let style: BTreeMap<String, String> = s
+                    .fields
+                    .into_iter()
+                    .filter(|f| !f.value.is_empty())
+                    .map(|f| (f.field, f.value))
+                    .collect();
+                (!style.is_empty()).then(|| CellStyle {
+                    sheet_id: sheet_id.to_string(),
+                    row_id: row_id.to_string(),
+                    col_id: col_id.to_string(),
+                    style,
+                })
+            })
+            .collect())
+    }
+
+    /// Add a conditional format, colour scale or validation. Returns its id.
+    pub fn add_rule(&mut self, rule: RuleInput) -> app::Result<String> {
+        self.require_role(Role::Editor)?;
+        self.check_rule(&rule)?;
+        let now = storage_env::time_now();
+        let mut nonce = [0u8; 4];
+        env::random_bytes(&mut nonce);
+        let id = generate_id("rule", now, &nonce);
+        let sheet_id = rule.sheet_id.clone();
+        self.put_rule(&id, rule, now)?;
+        self.log(&sheet_id, "rule", "added a rule".into(), 0, Vec::new())?;
+        app::emit!(Event::RulesChanged {
+            sheet_id: &sheet_id
+        });
+        Ok(id)
+    }
+
+    /// Replace a rule.
+    pub fn update_rule(&mut self, id: String, rule: RuleInput) -> app::Result<()> {
+        self.require_role(Role::Editor)?;
+        self.check_rule(&rule)?;
+        self.live_rule(&id)?;
+        let sheet_id = rule.sheet_id.clone();
+        self.put_rule(&id, rule, storage_env::time_now())?;
+        self.log(&sheet_id, "rule", "changed a rule".into(), 0, Vec::new())?;
+        app::emit!(Event::RulesChanged {
+            sheet_id: &sheet_id
+        });
+        Ok(())
+    }
+
+    pub fn remove_rule(&mut self, id: String) -> app::Result<()> {
+        self.require_role(Role::Editor)?;
+        let mut rule = self.live_rule(&id)?;
+        rule.deleted = true;
+        rule.updated_at = storage_env::time_now();
+        let sheet_id = rule.sheet_id.clone();
+        self.rules
+            .insert(id, rule)
+            .map_err(|e| AppError::msg(format!("rules.insert: {e}")))?;
+        self.log(&sheet_id, "rule", "removed a rule".into(), 0, Vec::new())?;
+        app::emit!(Event::RulesChanged {
+            sheet_id: &sheet_id
+        });
+        Ok(())
+    }
+
+    /// Every live rule.
+    pub fn get_rules(&self) -> app::Result<Vec<Rule>> {
+        let mut out: Vec<Rule> = self
+            .rules
+            .entries()
+            .map_err(|e| AppError::msg(format!("rules.entries: {e}")))?
+            .filter(|(_, r)| !r.deleted)
+            .map(|(id, r)| Rule {
+                id,
+                created_by: r.created_by,
+                rule: RuleInput {
+                    sheet_id: r.sheet_id,
+                    top_row_id: r.top_row_id,
+                    left_col_id: r.left_col_id,
+                    bottom_row_id: r.bottom_row_id,
+                    right_col_id: r.right_col_id,
+                    kind: r.kind,
+                    condition: r.condition,
+                    args: r.args,
+                    style: r.style.into_iter().map(|p| (p.field, p.value)).collect(),
+                    strict: r.strict,
+                },
+            })
+            .collect();
+        out.sort_by(|a, b| a.id.cmp(&b.id));
+        Ok(out)
+    }
+
+    fn check_rule(&self, rule: &RuleInput) -> app::Result<()> {
+        self.require_sheet(&rule.sheet_id)?;
+        for c in [
+            &rule.top_row_id,
+            &rule.left_col_id,
+            &rule.bottom_row_id,
+            &rule.right_col_id,
+        ] {
+            Spreadsheet::check_id(c)?;
+        }
+        let bad = |why: &str| Err(AppError::from(Error::Invalid(why.into())));
+        match rule.kind.as_str() {
+            "format" => {
+                if !rules::is_valid(&rule.condition, &rule.args) {
+                    return bad("that condition does not take those values");
+                }
+                if rule.style.is_empty() {
+                    return bad("a conditional format needs a style");
+                }
+                for (field, value) in &rule.style {
+                    check_style_field(field, value)?;
+                }
+            }
+            "scale" => {
+                if rule.args.len() != 2 {
+                    return bad("a colour scale takes two colours");
+                }
+                for colour in &rule.args {
+                    check_style_field("fill", colour)?;
+                }
+            }
+            "validate" => {
+                if !rules::is_valid(&rule.condition, &rule.args) {
+                    return bad("that condition does not take those values");
+                }
+            }
+            _ => return bad("a rule is format, scale or validate"),
+        }
+        if rule.args.iter().map(String::len).sum::<usize>() > 2000 {
+            return bad("a rule's values are at most 2000 characters");
+        }
+        Ok(())
+    }
+
+    fn put_rule(&mut self, id: &str, rule: RuleInput, now: u64) -> app::Result<()> {
+        let me = self.caller_hex();
+        self.rules
+            .insert(
+                id.to_string(),
+                RuleData {
+                    sheet_id: rule.sheet_id,
+                    top_row_id: rule.top_row_id,
+                    left_col_id: rule.left_col_id,
+                    bottom_row_id: rule.bottom_row_id,
+                    right_col_id: rule.right_col_id,
+                    kind: rule.kind,
+                    condition: rule.condition,
+                    args: rule.args,
+                    style: rule
+                        .style
+                        .into_iter()
+                        .map(|(field, value)| StylePair { field, value })
+                        .collect(),
+                    strict: rule.strict,
+                    created_by: me,
+                    deleted: false,
+                    updated_at: now,
+                },
+            )
+            .map_err(|e| AppError::msg(format!("rules.insert: {e}")))?;
+        Ok(())
+    }
+
+    fn live_rule(&self, id: &str) -> app::Result<RuleData> {
+        self.rules
+            .get(id)
+            .map_err(|e| AppError::msg(format!("rules.get: {e}")))?
+            .filter(|r| !r.deleted)
+            .map(|r| r.clone())
+            .ok_or_else(|| AppError::from(Error::NotFound(id.to_string())))
+    }
+
+    /// Refuse a literal value a strict validation over its cell would not
+    /// accept. Formulas are not checked: their value is not known here.
+    fn require_valid_values(&self, sheet_id: &str, ops: &[CellOp]) -> app::Result<()> {
+        let strict: Vec<RuleData> = self
+            .rules
+            .entries()
+            .map_err(|e| AppError::msg(format!("rules.entries: {e}")))?
+            .map(|(_, r)| r)
+            .filter(|r| !r.deleted && r.strict && r.kind == "validate" && r.sheet_id == sheet_id)
+            .collect();
+        if strict.is_empty() {
+            return Ok(());
+        }
+        let l = self.sheet_layout(sheet_id)?;
+        for op in ops {
+            let CellOp::Set {
+                row_id,
+                col_id,
+                raw_value,
+            } = op
+            else {
+                continue;
+            };
+            if raw_value.starts_with('=') {
+                continue;
+            }
+            let (Some(r), Some(c)) = (l.rows.index_of(row_id), l.cols.index_of(col_id)) else {
+                continue;
+            };
+            for rule in &strict {
+                let inside = corner_rect(
+                    [
+                        &rule.top_row_id,
+                        &rule.left_col_id,
+                        &rule.bottom_row_id,
+                        &rule.right_col_id,
+                    ],
+                    &l,
+                )
+                .is_some_and(|x| x.contains(r, c));
+                if inside && !rules::matches(&rule.condition, &rule.args, raw_value) {
+                    return Err(AppError::from(Error::Invalid(format!(
+                        "{}{} must be {}",
+                        formula::col_label(c as u32),
+                        r + 1,
+                        rules::describe(&rule.condition, &rule.args)
+                    ))));
+                }
+            }
+        }
+        Ok(())
     }
 
     // ---- Sheet view: sizes and frozen panes ----
@@ -3046,14 +3512,23 @@ fn protected_rect(p: &ProtectionData, l: &layout::Layout) -> Option<Rect> {
             right: usize::MAX,
         });
     }
-    let (r1, r2) = (
-        l.rows.index_of(&p.top_row_id)?,
-        l.rows.index_of(&p.bottom_row_id)?,
-    );
-    let (c1, c2) = (
-        l.cols.index_of(&p.left_col_id)?,
-        l.cols.index_of(&p.right_col_id)?,
-    );
+    corner_rect(
+        [
+            &p.top_row_id,
+            &p.left_col_id,
+            &p.bottom_row_id,
+            &p.right_col_id,
+        ],
+        l,
+    )
+}
+
+/// A range given by corner ids (top row, left column, bottom row, right
+/// column) as positions, or `None` when a corner row or column is gone.
+fn corner_rect(corners: [&String; 4], l: &layout::Layout) -> Option<Rect> {
+    let [top, left, bottom, right] = corners;
+    let (r1, r2) = (l.rows.index_of(top)?, l.rows.index_of(bottom)?);
+    let (c1, c2) = (l.cols.index_of(left)?, l.cols.index_of(right)?);
     Some(Rect {
         top: r1.min(r2),
         left: c1.min(c2),
@@ -4825,5 +5300,141 @@ mod tests {
             .call(|s| s.set_sizes(sid.clone(), vec![size("depth", "0", 50)]))
             .is_err());
         assert!(app.call(|s| s.set_frozen(sid.clone(), 99, 0)).is_err());
+    }
+
+    fn style_op(row: &str, field: &str, value: &str) -> StyleOp {
+        StyleOp {
+            row_id: row.into(),
+            col_id: "0".into(),
+            field: field.into(),
+            value: value.into(),
+        }
+    }
+
+    #[test]
+    fn concurrent_style_changes_to_different_fields_both_survive() {
+        let field = |f: &str, v: &str, at| StyleField {
+            field: f.into(),
+            value: v.into(),
+            updated_at: at,
+        };
+        let mut ada = StyleData {
+            fields: vec![field("bold", "1", 5)],
+        };
+        let bob = StyleData {
+            fields: vec![field("bold", "", 3), field("fill", "#ff0000", 4)],
+        };
+        ada.merge(&bob).unwrap();
+        let got: Vec<(&str, &str)> = ada
+            .fields
+            .iter()
+            .map(|f| (f.field.as_str(), f.value.as_str()))
+            .collect();
+        assert_eq!(got, vec![("bold", "1"), ("fill", "#ff0000")]);
+    }
+
+    #[test]
+    fn styles_are_set_and_cleared_per_field() {
+        let mut app = make_app();
+        let sid = new_sheet(&mut app);
+        app.call(|s| {
+            s.apply_style_ops(
+                sid.clone(),
+                vec![style_op("0", "bold", "1"), style_op("0", "fill", "#a4ff11")],
+            )
+        })
+        .unwrap();
+        app.call(|s| s.apply_style_ops(sid.clone(), vec![style_op("0", "bold", "")]))
+            .unwrap();
+        let styles = app.view(|s| s.get_styles()).unwrap();
+        assert_eq!(styles.len(), 1);
+        assert_eq!(
+            styles[0].style,
+            BTreeMap::from([("fill".to_string(), "#a4ff11".to_string())])
+        );
+        assert!(app
+            .call(|s| s.apply_style_ops(sid.clone(), vec![style_op("0", "fill", "red")]))
+            .is_err());
+        assert!(app
+            .call(|s| s.apply_style_ops(sid.clone(), vec![style_op("0", "blink", "1")]))
+            .is_err());
+    }
+
+    fn rule(sid: &str, kind: &str, condition: &str, args: &[&str], strict: bool) -> RuleInput {
+        RuleInput {
+            sheet_id: sid.into(),
+            top_row_id: "0".into(),
+            left_col_id: "0".into(),
+            bottom_row_id: "9".into(),
+            right_col_id: "0".into(),
+            kind: kind.into(),
+            condition: condition.into(),
+            args: args.iter().map(|a| a.to_string()).collect(),
+            style: if kind == "format" {
+                BTreeMap::from([("fill".to_string(), "#ff0000".to_string())])
+            } else {
+                BTreeMap::new()
+            },
+            strict,
+        }
+    }
+
+    #[test]
+    fn a_strict_validation_refuses_bad_values_and_a_loose_one_does_not() {
+        let mut app = make_app();
+        let sid = new_sheet(&mut app);
+        let id = app
+            .call(|s| s.add_rule(rule(&sid, "validate", "between", &["1", "10"], true)))
+            .unwrap();
+        let set = |app: &mut TestHost<Spreadsheet>, row: &str, v: &str| {
+            app.call(|s| s.set_cell(sid.clone(), row.into(), "0".into(), v.into()))
+        };
+        let err = set(&mut app, "2", "42").unwrap_err();
+        assert!(
+            format!("{err:?}").contains("A3 must be a number between 1 and 10"),
+            "{err:?}"
+        );
+        assert!(set(&mut app, "2", "7").is_ok());
+        // Formulas are not checked; cells outside the range are not either.
+        assert!(set(&mut app, "3", "=40+2").is_ok());
+        assert!(app
+            .call(|s| s.set_cell(sid.clone(), "2".into(), "1".into(), "42".into()))
+            .is_ok());
+
+        app.call(|s| {
+            s.update_rule(
+                id.clone(),
+                rule(&sid, "validate", "between", &["1", "10"], false),
+            )
+        })
+        .unwrap();
+        assert!(set(&mut app, "2", "42").is_ok());
+        app.call(|s| s.remove_rule(id.clone())).unwrap();
+        assert!(app.view(|s| s.get_rules()).unwrap().is_empty());
+    }
+
+    #[test]
+    fn rules_are_checked_when_made() {
+        let mut app = make_app();
+        let sid = new_sheet(&mut app);
+        assert!(app
+            .call(|s| s.add_rule(rule(&sid, "format", "gt", &["x"], false)))
+            .is_err());
+        assert!(app
+            .call(|s| s.add_rule(rule(&sid, "scale", "", &["#000000"], false)))
+            .is_err());
+        assert!(app
+            .call(|s| s.add_rule(rule(&sid, "glow", "gt", &["1"], false)))
+            .is_err());
+        let id = app
+            .call(|s| s.add_rule(rule(&sid, "format", "gt", &["100"], false)))
+            .unwrap();
+        let rules = app.view(|s| s.get_rules()).unwrap();
+        assert_eq!(rules.len(), 1);
+        assert_eq!(rules[0].id, id);
+        assert_eq!(
+            rules[0].rule.style.get("fill").map(String::as_str),
+            Some("#ff0000")
+        );
     }
 }

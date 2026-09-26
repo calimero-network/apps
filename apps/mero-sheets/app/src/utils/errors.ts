@@ -48,6 +48,15 @@ export function bytesToText(bytes: number[]): string {
 /** If `text` parses as a `{ kind, data }` contract error, format it nicely. */
 function formatContractError(text: string): string {
   const trimmed = text.trim();
+  // A contract's error message, as a JSON string.
+  if (trimmed.startsWith('"')) {
+    try {
+      const inner: unknown = JSON.parse(trimmed);
+      if (typeof inner === 'string') return inner;
+    } catch {
+      /* not JSON after all */
+    }
+  }
   if (!(trimmed.startsWith('{') || trimmed.startsWith('['))) return trimmed;
   try {
     return extractDetail(JSON.parse(trimmed)) ?? trimmed;

@@ -1,6 +1,48 @@
 /* @ts-self-types="./recalc_wasm.d.ts" */
 
 /**
+ * What a value must be to meet a condition, in words.
+ * @param {string} condition
+ * @param {string} args
+ * @returns {string}
+ */
+export function condition_describe(condition, args) {
+    let deferred3_0;
+    let deferred3_1;
+    try {
+        const ptr0 = passStringToWasm0(condition, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ptr1 = passStringToWasm0(args, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len1 = WASM_VECTOR_LEN;
+        const ret = wasm.condition_describe(ptr0, len0, ptr1, len1);
+        deferred3_0 = ret[0];
+        deferred3_1 = ret[1];
+        return getStringFromWasm0(ret[0], ret[1]);
+    } finally {
+        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+    }
+}
+
+/**
+ * Whether `value` meets a rule's condition (`args` a JSON array of strings):
+ * the same test the contract applies to a strict validation.
+ * @param {string} condition
+ * @param {string} args
+ * @param {string} value
+ * @returns {boolean}
+ */
+export function condition_matches(condition, args, value) {
+    const ptr0 = passStringToWasm0(condition, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ptr1 = passStringToWasm0(args, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len1 = WASM_VECTOR_LEN;
+    const ptr2 = passStringToWasm0(value, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len2 = WASM_VECTOR_LEN;
+    const ret = wasm.condition_matches(ptr0, len0, ptr1, len1, ptr2, len2);
+    return ret !== 0;
+}
+
+/**
  * Browser entry point for [`evaluate_json`].
  * @param {string} input
  * @returns {string}

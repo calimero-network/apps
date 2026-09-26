@@ -26,7 +26,7 @@ import { useStreamReconnect } from './useStreamReconnect';
 import { SpreadsheetClient } from '../api/spreadsheet/SpreadsheetClient';
 import type {
   Sheet, FunctionDef, Member, Project, NamedRange, SheetLayout, AxisOpPayload, ActivityEntry, Comment,
-  NotedCell, NoteChangePayload, Protection, SheetView,
+  NotedCell, NoteChangePayload, Protection, SheetView, CellStyle, Rule, RuleInput,
 } from '../api/spreadsheet/SpreadsheetClient';
 import { AxisOp as AxisOpWire, CellOp as CellOpWire } from '../api/spreadsheet/SpreadsheetClient';
 import { chunkOps, MAX_OPS_PER_APPLY, type CellOp } from '../spreadsheet/ops';
@@ -50,6 +50,9 @@ export type Cell = GridCell;
 /** Rows or columns. */
 export type Axis = 'row' | 'col';
 
+/** What a rule does, without where: `addRule` takes the range. */
+export type RuleSpec = Pick<RuleInput, 'kind' | 'condition' | 'args' | 'style' | 'strict'>;
+
 /** A sheet's frozen panes and resized rows and columns, by position. */
 export interface SheetViewAt {
   frozenRows: number;
@@ -68,7 +71,7 @@ type IdOp =
 const EVENT_COALESCE_MS = 60;
 
 // Re-export domain types so components import from one place
-export type { Sheet, FunctionDef, Member, Project, NamedRange, ActivityEntry, Comment, NotedCell, Protection };
+export type { Sheet, FunctionDef, Member, Project, NamedRange, ActivityEntry, Comment, NotedCell, Protection, Rule, RuleInput };
 
 // ── Hook interfaces ──────────────────────────────────────────────────────────
 
@@ -152,6 +155,17 @@ export interface UseSpreadsheetReturn {
   createPrivateSheet: (name: string) => Promise<string | null>;
   renamePrivateSheet: (sheetId: string, name: string) => Promise<void>;
   deletePrivateSheet: (sheetId: string) => Promise<void>;
+  /** A sheet's cell styles by `"row-col"` position. */
+  stylesOf: (sheetId: string) => ReadonlyMap<string, Readonly<Record<string, string>>>;
+  /** Set one style field over a range (empty value clears it). */
+  applyStyle: (sheetId: string, rect: Rect, field: string, value: string) => Promise<void>;
+  /** Clear every style field over a range. */
+  clearStyles: (sheetId: string, rect: Rect) => Promise<void>;
+  /** Conditional formats, colour scales and validations. */
+  rules: Rule[];
+  /** Add a rule over a range; the rest of `rule` is what it does. */
+  addRule: (sheetId: string, rect: Rect, rule: RuleSpec) => Promise<void>;
+  removeRule: (id: string) => Promise<void>;
   /** A sheet's frozen panes and resized rows and columns, by position. */
   viewOf: (sheetId: string) => SheetViewAt;
   /** Resize these rows or columns (by position) to `size` pixels. */
@@ -227,6 +241,8 @@ export function useSpreadsheet({
   const [notedCells, setNotedCells] = useState<NotedCell[]>([]);
   const [protections, setProtections] = useState<Protection[]>([]);
   const [sheetViews, setSheetViews] = useState<SheetView[]>([]);
+  const [styles, setStyles] = useState<CellStyle[]>([]);
+  const [rules, setRules] = useState<Rule[]>([]);
   // Why the node last refused a write, until dismissed.
   const [writeError, setWriteError] = useState<unknown>(null);
   // Bumps whenever rows or columns move, for anything that maps ids to positions.
@@ -372,7 +388,7 @@ export function useSpreadsheet({
       const [
         fetchedSheets, allCells,
         fetchedMembers, fetchedProject, me, layouts, named, fetchedComments, noted, prots,
-        mine, privateCells, views,
+        mine, privateCells, views, fetchedStyles, fetchedRules,
       ] = await Promise.all([
         client.listSheets(),
         client.getAllCells(),
@@ -387,8 +403,12 @@ export function useSpreadsheet({
         client.getPrivateSheets(),
         client.getPrivateCells(),
         client.getSheetViews(),
+        client.getStyles(),
+        client.getRules(),
       ]);
       setSheetViews(views);
+      setStyles(fetchedStyles);
+      setRules(fetchedRules);
       setPrivateSheets(mine);
       privateIdsRef.current = new Set(mine.map((x) => x.id));
       applyStructureTo(layouts, named);
@@ -452,7 +472,7 @@ export function useSpreadsheet({
     // would find it empty and wipe it.
     if (sheetIds.size > 0 && active && !privateIdsRef.current.has(active)) sheetIds.add(active);
     const ids = [...sheetIds];
-    const [bySheet, fetchedSheets, fetchedMembers, layouts, named, fetchedComments, noted, prots, views] = await Promise.all([
+    const [bySheet, fetchedSheets, fetchedMembers, layouts, named, fetchedComments, noted, prots, views, fetchedStyles, fetchedRules] = await Promise.all([
       Promise.all(ids.map((id) => client.getCells({ sheet_id: id }))),
       plan.sheetList ? client.listSheets() : null,
       plan.members ? client.getMembers() : null,
@@ -462,7 +482,11 @@ export function useSpreadsheet({
       plan.notes ? client.getNotedCells() : null,
       plan.protections ? client.getProtections() : null,
       plan.views ? client.getSheetViews() : null,
+      plan.styles ? client.getStyles() : null,
+      plan.rules ? client.getRules() : null,
     ]);
+    if (fetchedStyles) setStyles(fetchedStyles);
+    if (fetchedRules) setRules(fetchedRules);
     if (views) setSheetViews(views);
     if (prots) setProtections(prots);
     if (fetchedComments) setComments(fetchedComments);
@@ -522,7 +546,7 @@ export function useSpreadsheet({
     const forMe = mentionsIn(event).filter((m) => me && m.author !== me && m.mentions.includes(me));
     if (forMe.length) setMentions((prev) => [...prev, ...forMe.filter((m) => !prev.some((p) => p.commentId === m.commentId))]);
   });
-  useEffect(() => { setMentions([]); setComments([]); setNotedCells([]); setProtections([]); setWriteError(null); setPrivateSheets([]); setSheetViews([]); }, [client]);
+  useEffect(() => { setMentions([]); setComments([]); setNotedCells([]); setProtections([]); setWriteError(null); setPrivateSheets([]); setSheetViews([]); setStyles([]); setRules([]); }, [client]);
   // …and after the stream reconnects: nothing replays what changed while it was down.
   useStreamReconnect(() => schedule({ full: true }));
 
@@ -982,6 +1006,108 @@ export function useSpreadsheet({
   );
   const dismissWriteError = useCallback(() => setWriteError(null), []);
 
+  // Styles: stored by id, shown by position.
+  const stylesOf = useCallback((sheetId: string) => {
+    const out = new Map<string, Readonly<Record<string, string>>>();
+    const mine = styles.filter((s) => s.sheet_id === sheetId);
+    if (mine.length === 0) return out;
+    const order = visibleOrder(sheetId);
+    const rowAt = new Map(order.rows.map((id, i) => [id, i]));
+    const colAt = new Map(order.cols.map((id, i) => [id, i]));
+    for (const s of mine) {
+      const r = rowAt.get(s.row_id);
+      const c = colAt.get(s.col_id);
+      if (r !== undefined && c !== undefined) out.set(`${r}-${c}`, s.style);
+    }
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [styles, layoutTick, engineTick]);
+
+  /** Send style ops for a range: shown at once, put back if the node refuses. */
+  const writeStyles = useCallback(
+    async (sheetId: string, rect: Rect, fieldsFor: (current: Readonly<Record<string, string>>) => Record<string, string>) => {
+      if (!client) return;
+      if (privateIdsRef.current.has(sheetId)) {
+        setWriteError(new Error('A private sheet keeps plain cells: no styles'));
+        return;
+      }
+      const order = visibleOrder(sheetId);
+      const current = new Map(styles.filter((s) => s.sheet_id === sheetId).map((s) => [`${s.row_id}|${s.col_id}`, s.style]));
+      const ops: { row_id: string; col_id: string; field: string; value: string }[] = [];
+      const next = new Map(current);
+      for (let r = rect.top; r <= rect.bottom; r++) {
+        for (let c = rect.left; c <= rect.right; c++) {
+          const row_id = order.rows[r];
+          const col_id = order.cols[c];
+          if (row_id === undefined || col_id === undefined) continue;
+          const key = `${row_id}|${col_id}`;
+          const style = { ...(current.get(key) ?? {}) };
+          for (const [field, value] of Object.entries(fieldsFor(current.get(key) ?? {}))) {
+            ops.push({ row_id, col_id, field, value });
+            if (value) style[field] = value; else delete style[field];
+          }
+          next.set(key, style);
+        }
+      }
+      if (ops.length === 0) return;
+      const before = styles;
+      setStyles([
+        ...styles.filter((s) => s.sheet_id !== sheetId),
+        ...[...next].filter(([, st]) => Object.keys(st).length > 0).map(([key, style]) => {
+          const [row_id, col_id] = key.split('|');
+          return { sheet_id: sheetId, row_id, col_id, style };
+        }),
+      ]);
+      try {
+        await enqueue(async () => {
+          for (let i = 0; i < ops.length; i += MAX_OPS_PER_APPLY) {
+            await client.applyStyleOps({ sheet_id: sheetId, ops: ops.slice(i, i + MAX_OPS_PER_APPLY) });
+          }
+        });
+      } catch (err) {
+        setStyles(before);
+        setWriteError(err);
+      }
+    },
+    [client, enqueue, styles],
+  );
+  const applyStyle = useCallback(
+    (sheetId: string, rect: Rect, field: string, value: string) =>
+      writeStyles(sheetId, rect, () => ({ [field]: value })),
+    [writeStyles],
+  );
+  const clearStyles = useCallback(
+    (sheetId: string, rect: Rect) =>
+      writeStyles(sheetId, rect, (current) => Object.fromEntries(Object.keys(current).map((f) => [f, '']))),
+    [writeStyles],
+  );
+
+  const addRule = useCallback(
+    async (sheetId: string, rect: Rect, spec: RuleSpec) => {
+      const tl = idsAt(sheetId, rect.top, rect.left);
+      const br = idsAt(sheetId, rect.bottom, rect.right);
+      if (!client || !tl || !br) return;
+      await enqueue(() => client.addRule({
+        rule: {
+          sheet_id: sheetId,
+          top_row_id: tl.row_id, left_col_id: tl.col_id,
+          bottom_row_id: br.row_id, right_col_id: br.col_id,
+          ...spec,
+        },
+      }));
+      setRules(await client.getRules());
+    },
+    [client, enqueue],
+  );
+  const removeRule = useCallback(
+    async (id: string) => {
+      if (!client) return;
+      await enqueue(() => client.removeRule({ id }));
+      setRules(await client.getRules());
+    },
+    [client, enqueue],
+  );
+
   // Sheet views: stored by id, shown by position.
   const viewOf = useCallback((sheetId: string): SheetViewAt => {
     const v = sheetViews.find((x) => x.sheet_id === sheetId);
@@ -1139,6 +1265,12 @@ export function useSpreadsheet({
     notedCells,
     loadNote,
     editNote,
+    stylesOf,
+    applyStyle,
+    clearStyles,
+    rules,
+    addRule,
+    removeRule,
     viewOf,
     setAxisSize,
     setFrozen,

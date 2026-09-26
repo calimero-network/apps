@@ -2,6 +2,8 @@
 import type { FunctionDef, NamedRange, SheetLayout } from '../api/spreadsheet/SpreadsheetClient';
 import type { Order } from './derive';
 import init, {
+  condition_describe as wasmConditionDescribe,
+  condition_matches as wasmConditionMatches,
   evaluate as wasmEvaluate,
   functions as wasmFunctions,
   set_structure as wasmSetStructure,
@@ -94,4 +96,18 @@ export function toStored(formula: string, home: string): string {
 /** A formula as stored (ids) → as shown (positions), on sheet `home`. */
 export function toDisplay(formula: string, home: string): string {
   return ready && formula.startsWith('=') ? wasmToDisplay(formula, home) : formula;
+}
+
+/**
+ * Whether a value meets a rule's condition: the contract's own test, so a
+ * cell the app marks invalid is one a strict rule would refuse. False before
+ * the engine loads.
+ */
+export function conditionMatches(condition: string, args: readonly string[], value: string): boolean {
+  return ready && wasmConditionMatches(condition, JSON.stringify(args), value);
+}
+
+/** What a value must be to meet a condition, in words ("a number between 1 and 10"). */
+export function conditionDescribe(condition: string, args: readonly string[]): string {
+  return ready ? wasmConditionDescribe(condition, JSON.stringify(args)) : condition;
 }
