@@ -10,9 +10,10 @@
  * the real thing, and it corrected three guesses:
  *   • the shell is full-bleed. One bar across the top with a hairline under it
  *     and a hairline between rail and main — not floating rounded cards.
- *   • the top bar carries a sidebar toggle, the mark, the name, then a
- *     workspace SELECT with New workspace / Join workspace beside it, and on
- *     the right the node dot, the node URL, a theme toggle and Log out.
+ *   • the top bar carries a sidebar toggle, the mark, the name, then the
+ *     workspace switcher (name and an up/down chevron; New and Join live in
+ *     its menu), and on the right the node dot, the node URL, a theme toggle
+ *     and Log out.
  *   • the rail has its own header row — FOLDERS, a New button, a bottom rule —
  *     above the tree.
  *
@@ -22,13 +23,11 @@
  *     on a restricted folder. The selected row is tinted.
  *   • `folders/FolderDocLeaves.tsx` — documents nested under their expanded
  *     folder with a file icon, indented past the chevron column.
- *   • `editor/EditorHeader.tsx` — "‹ Documents", the file icon and title
- *     centred, a menu on the right.
+ *   • `editor/EditorHeader.tsx` — "‹" and the folder it returns to, the file
+ *     icon and title centred, then who else is here and a menu on the right.
  *   • `editor/EditorStatusBar.tsx` — save state, word count, character count.
  *
- * ⚠️ COLOUR stays the page's. The app is dark by default with a teal primary;
- * this page is light by default and themes on a toggle, so a hero that used
- * the app's palette would be wrong in one theme or the other.
+ * COLOUR stays the page's tokens so the hero follows the page's theme toggle.
  *
  * Coordinates are literal pixels against a 495x341 box — see STAGE_DESIGN_W in
  * LandingPage.tsx.
@@ -143,37 +142,6 @@ const BLOCKS: { w: number; kind: 'h' | 'p' | 'li'; d: string }[] = [
 ];
 
 /** A bordered control in the top bar, the app's `Button variant="outline"`. */
-function BarButton({
-  left,
-  width,
-  children,
-}: {
-  left: number;
-  width: number;
-  children: React.ReactNode;
-}) {
-  return (
-    <span
-      className="cal-lp-a-box"
-      style={{
-        left,
-        top: BAR_TOP + 5,
-        width,
-        height: 16,
-        borderRadius: 4,
-        background: 'var(--cal-lp-bg-1)',
-        ...ROW,
-        justifyContent: 'center',
-        gap: 3,
-        overflow: 'hidden',
-        whiteSpace: 'nowrap',
-      }}
-    >
-      {children}
-    </span>
-  );
-}
-
 export default function DriveAnimation() {
   const mainW = R - MAIN_X;
   const docX = MAIN_X + 26;
@@ -202,21 +170,13 @@ export default function DriveAnimation() {
       </span>
       <span className="cal-lp-a-line" style={{ left: L + 92, top: BAR_TOP + 6, width: 1, height: 14 }} />
 
-      {/* The namespace switcher is a <select>: one workspace, one context. */}
-      <BarButton left={L + 100} width={74}>
-        <span style={{ ...TXT, fontSize: 7.5, color: 'var(--cal-lp-text)' }}>Product team</span>
-        <span style={{ ...TXT, fontSize: 7, color: 'var(--cal-lp-text-faint)' }}>▾</span>
-      </BarButton>
-      {/* ⚠️ The app says "New workspace" / "Join workspace" and these keep its
-          words, so they need the room its 1440px bar has and this one does
-          not. Measured at 7px: 62 and 60, ending 23px clear of the node dot.
-          Undersized, the label does not shrink — it spills past the button. */}
-      <BarButton left={L + 178} width={62}>
-        <span style={{ ...TXT, fontSize: 7, color: 'var(--cal-lp-text-dim)' }}>New workspace</span>
-      </BarButton>
-      <BarButton left={L + 244} width={60}>
-        <span style={{ ...TXT, fontSize: 7, color: 'var(--cal-lp-text-dim)' }}>Join workspace</span>
-      </BarButton>
+      {/* NamespaceSwitcher: a ghost button, the name and an up/down chevron. */}
+      <span
+        style={{ ...ROW, ...TXT, position: 'absolute', left: L + 100, top: BAR_TOP + 9, gap: 4, fontSize: 7.5, color: 'var(--cal-lp-text)' }}
+      >
+        Product team
+        <span style={{ fontSize: 7, color: 'var(--cal-lp-text-faint)' }}>⇅</span>
+      </span>
 
       <span
         className="cal-lp-a-dot"
@@ -334,7 +294,7 @@ export default function DriveAnimation() {
         }}
       />
       <span className="cal-lp-a-txt cal-lp-a-txt--dim" style={{ left: MAIN_X + 10, top: BODY_TOP + 9, fontSize: 8 }}>
-        ‹ Documents
+        ‹ specs
       </span>
       <span
         style={{
@@ -355,6 +315,25 @@ export default function DriveAnimation() {
           <FileIcon />
         </span>
         Q3 roadmap
+      </span>
+      {/* PeerAvatars: Ana, in her caret colour. */}
+      <span
+        className="cal-lp-a-dot"
+        style={{
+          ...ROW,
+          ...TXT,
+          left: R - 40,
+          top: BODY_TOP + 5,
+          width: 14,
+          height: 14,
+          justifyContent: 'center',
+          fontSize: 5.5,
+          fontWeight: 700,
+          background: 'var(--cal-lp-accent)',
+          color: 'var(--cal-lp-accent-text)',
+        }}
+      >
+        AN
       </span>
       <span className="cal-lp-a-txt cal-lp-a-txt--dim" style={{ left: R - 20, top: BODY_TOP + 7, fontSize: 10 }}>
         ⋯

@@ -32,7 +32,7 @@ const noop = () => {};
 
 function openPreview(onClose = vi.fn()) {
   render(<NamespaceJoinDialog onClose={onClose} onJoined={noop} />);
-  fireEvent.change(screen.getByPlaceholderText(/mero-drive.vercel.app/i), {
+  fireEvent.change(screen.getByPlaceholderText(/mero-docs.vercel.app/i), {
     target: { value: VALID_URL },
   });
   fireEvent.click(screen.getByRole('button', { name: /continue/i }));
