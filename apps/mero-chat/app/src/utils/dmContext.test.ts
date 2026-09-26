@@ -116,7 +116,6 @@ describe("dmContext", () => {
     expect(createGroupContext).toHaveBeenCalledWith(
       expect.objectContaining({
         groupId: "dm-sg-1",
-        alias: buildDmAlias("member-a", "member-b"),
         initializationParams: expect.objectContaining({
           context_type: "Dm",
           name: "DM: Alice",

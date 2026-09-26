@@ -14,6 +14,8 @@ import type { Request } from "@playwright/test";
 const CLOSED_BODIES: Array<{ method: string; path: RegExp; keys: string[] }> = [
   // CreateNamespaceApiRequest (`bytecodeId` is a serde alias of `appKey`)
   { method: "POST", path: /\/admin-api\/namespaces$/, keys: ["applicationId", "name", "appKey", "bytecodeId"] },
+  // CreateContextRequest — `protocol` and `alias` here refused every channel
+  { method: "POST", path: /\/admin-api\/contexts$/, keys: ["applicationId", "serviceName", "contextSeed", "initializationParams", "groupId", "identitySecret", "name"] },
   // CreateGroupInvitationApiRequest
   { method: "POST", path: /\/admin-api\/namespaces\/[^/]+\/invite$/, keys: ["expirationTimestamp", "recursive"] },
   // JoinGroupApiRequest

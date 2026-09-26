@@ -23,11 +23,9 @@ interface CreateDmContextParams {
   contextApi: {
     createGroupContext(params: {
       applicationId: string;
-      protocol: string;
       groupId: string;
       initializationParams: Record<string, unknown>;
       identitySecret?: string;
-      alias?: string;
     }): ApiResponse<CreateContextResponse>;
   };
   groupApi: {
@@ -382,9 +380,7 @@ export async function createDmContextInGroup(
   });
   const createResponse = await params.contextApi.createGroupContext({
     applicationId: params.applicationId,
-    protocol: "near",
     groupId: dmSubgroupId,
-    alias,
     initializationParams: {
       name: params.otherUsername
         ? `DM: ${params.otherUsername}`

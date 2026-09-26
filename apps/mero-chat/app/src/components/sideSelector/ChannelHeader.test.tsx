@@ -195,7 +195,7 @@ describe("ChannelHeader (1-group-per-context)", () => {
     expect(mockCreateGroupContext).toHaveBeenCalledWith(
       expect.objectContaining({
         groupId: "channel-sg-1",
-        alias: "project-alpha",
+        name: "project-alpha",
         initializationParams: expect.objectContaining({
           name: "project-alpha",
           context_type: "Channel",
@@ -226,7 +226,7 @@ describe("ChannelHeader (1-group-per-context)", () => {
     expect(mockCreateGroupContext).toHaveBeenCalledWith(
       expect.objectContaining({
         groupId: "channel-sg-1",
-        alias: "secret-room",
+        name: "secret-room",
       }),
     );
   });
