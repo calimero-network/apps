@@ -32,6 +32,8 @@ import { WorkspaceSidebar } from './WorkspaceSidebar';
 import { FolderTree } from '@/components/folders/FolderTree';
 import { RestrictedFolderCard } from '@/components/folders/RestrictedFolderCard';
 import { FolderEmptyState } from './FolderEmptyState';
+import { EmptyState } from '@/components/ui/empty-state';
+import { SelectFolderState } from '@/components/folders/NoFolderStates';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { usePublishWorkspacePresence } from '@/hooks/useWorkspacePresence';
@@ -261,7 +263,7 @@ export function WorkspaceLayout() {
             // probe + read-only mode and shows its own "syncing folder"
             // state when its docs context isn't ready, so it is safe to
             // render here ahead of the syncing + access-gating branches.
-            <Suspense fallback={<EmptyState title="Loading editor…" body="" />}>
+            <Suspense fallback={<EmptyState title="Loading editor…" />}>
               <DocumentEditor
                 key={`${selectedFolderId}:${selectedDocId}`}
                 folderId={selectedFolderId}
@@ -276,19 +278,16 @@ export function WorkspaceLayout() {
               onRetry={onRetrySync}
             />
           ) : !selectedFolderId ? (
-            <EmptyState
-              title="Select a folder"
-              body="Pick a folder from the left rail to see its documents."
-            />
+            <SelectFolderState />
           ) : !selectedFolder ? (
             // A folder IS selected (selectedFolderId set) but its object
             // isn't in the recomputed `folders` list yet — a transient gap
             // during an SSE refetch. Show a neutral loading state rather
             // than flashing "Select a folder" (same stable-id reasoning as
             // the editor branch above).
-            <EmptyState title="Loading folder…" body="" />
+            <EmptyState title="Loading folder…" />
           ) : selectedFolderPerms.loading ? (
-            <EmptyState title="Checking access…" body="" />
+            <EmptyState title="Checking access…" />
           ) : lacksFolderAccess(selectedFolderPerms) ? (
             <div className="flex-1 overflow-y-auto p-6">
               <div className="mx-auto max-w-3xl">
@@ -307,17 +306,6 @@ export function WorkspaceLayout() {
           )}
         </main>
         <DisplayNameGate />
-      </div>
-    </div>
-  );
-}
-
-function EmptyState({ title, body }: { title: string; body: string }) {
-  return (
-    <div className="flex h-full items-center justify-center p-8">
-      <div className="max-w-md text-center">
-        <h2 className="text-xl font-semibold text-foreground">{title}</h2>
-        <p className="mt-2 text-sm text-muted-foreground">{body}</p>
       </div>
     </div>
   );
