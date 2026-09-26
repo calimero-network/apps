@@ -49,7 +49,7 @@ export function useAdminRenameMember(
       }
       if (selfIdentity && memberId === selfIdentity) {
         throw new Error(
-          'renameTo refuses self — use useMemberDisplayName.setName for self edits',
+          'renameTo refuses self: use useMemberDisplayName.setName for self edits',
         );
       }
       const trimmed = next.trim();

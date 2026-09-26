@@ -44,7 +44,7 @@ export async function reparentGroup(
 ): Promise<void> {
   const token = readAccessToken();
   if (!token) {
-    throw new Error('Not authenticated — missing access token');
+    throw new Error('Not authenticated: missing access token');
   }
   // Trailing slash on nodeUrl can cause double-slash URL — strip once.
   const base = nodeUrl.replace(/\/+$/, '');
@@ -62,7 +62,7 @@ export async function reparentGroup(
   if (!res.ok) {
     const body = await res.text().catch(() => '');
     throw new Error(
-      `reparent failed: ${res.status} ${res.statusText}${body ? ` — ${body}` : ''}`,
+      `reparent failed: ${res.status} ${res.statusText}${body ? `: ${body}` : ''}`,
     );
   }
 }

@@ -327,14 +327,14 @@ function describeSync(snap: SyncSnapshot | null): {
     case 'syncing':
       return {
         title: 'Syncing workspace…',
-        body: 'Found a peer — pulling the latest workspace state.',
+        body: 'Found a peer. Pulling the latest workspace state.',
       };
     case 'receivingSnapshot':
       return {
         title: 'Receiving workspace…',
         body:
           snap.etaSecs != null
-            ? `Downloading state — about ${snap.etaSecs}s left.`
+            ? `Downloading state. About ${snap.etaSecs}s left.`
             : 'Downloading workspace state from a peer.',
       };
     case 'backingOff': {

@@ -11,7 +11,12 @@
 // should answer in place.
 
 import React from 'react';
-import { GROUP_ROLES, ROLE_DESCRIPTIONS, type GroupRole } from '@/lib/roles';
+import {
+  GROUP_ROLES,
+  ROLE_DESCRIPTIONS,
+  roleDisplayLabel,
+  type GroupRole,
+} from '@/lib/roles';
 
 interface Props {
   value: GroupRole;
@@ -50,8 +55,8 @@ export function GroupRoleSelect({
             disabled={!!reason}
             title={reason ?? ROLE_DESCRIPTIONS[role]}
           >
-            {role}
-            {reason ? ' —  unavailable' : ''}
+            {roleDisplayLabel(role)}
+            {reason ? ' (unavailable)' : ''}
           </option>
         );
       })}

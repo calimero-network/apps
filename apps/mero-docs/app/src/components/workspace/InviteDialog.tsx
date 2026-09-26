@@ -135,7 +135,7 @@ export function InviteDialog({
                 className="text-xs text-amber-600 dark:text-amber-400"
                 role="status"
               >
-                Couldn't copy automatically — the link is selected
+                Couldn't copy automatically. The link is selected
                 above; press <kbd className="rounded border px-1">⌘/Ctrl</kbd>
                 + <kbd className="rounded border px-1">C</kbd> to copy.
               </p>

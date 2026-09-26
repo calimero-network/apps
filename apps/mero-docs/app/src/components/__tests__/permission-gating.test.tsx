@@ -335,7 +335,7 @@ describe('permission-gating', () => {
   it('FolderSharingPanel hides the invite form without canInviteMembers', () => {
     (useFolderPermissions as ReturnType<typeof vi.fn>).mockReturnValue(noFolderPerms);
     render(<FolderSharingPanel folderId="f1" />);
-    expect(screen.queryByPlaceholderText('identity pubkey')).toBeNull();
+    expect(screen.queryByPlaceholderText('member ID')).toBeNull();
   });
 
   it('FolderSharingPanel shows the invite form when canInviteMembers', () => {
@@ -344,7 +344,7 @@ describe('permission-gating', () => {
       canInviteMembers: true,
     });
     render(<FolderSharingPanel folderId="f1" />);
-    expect(screen.getByPlaceholderText('identity pubkey')).toBeTruthy();
+    expect(screen.getByPlaceholderText('member ID')).toBeTruthy();
   });
 
   it('FolderRoleSelect lists the Viewer / Editor / Manager presets', () => {
@@ -396,7 +396,7 @@ describe('permission-gating', () => {
   it('WorkspaceSettingsPanel renders nothing without canManageNamespace', () => {
     (useNamespacePermissions as ReturnType<typeof vi.fn>).mockReturnValue(noNsPerms);
     render(<WorkspaceSettingsPanel />);
-    expect(screen.queryByText(/Registry owner/i)).toBeNull();
+    expect(screen.queryByText(/Workspace owner/i)).toBeNull();
   });
 
   it('WorkspaceSettingsPanel renders the owner/managers section when canManageNamespace', () => {
@@ -405,7 +405,7 @@ describe('permission-gating', () => {
       canManageNamespace: true,
     });
     render(<WorkspaceSettingsPanel />);
-    expect(screen.getByText(/Registry owner/i)).toBeTruthy();
+    expect(screen.getByText(/Workspace owner/i)).toBeTruthy();
   });
 
   it('MemberDefaultsPanel renders nothing without canManageNamespace', () => {

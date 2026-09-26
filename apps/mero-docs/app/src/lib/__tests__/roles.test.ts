@@ -7,6 +7,7 @@ import {
   parseGroupRole,
   planDefaultsSweep,
   registryManagerIntent,
+  roleDisplayLabel,
   type GroupRole,
 } from '../roles';
 import { CAPABILITIES, DEFAULT_NEW_MEMBER_CAPS } from '@/constants/config';
@@ -279,5 +280,16 @@ describe('planDefaultsSweep', () => {
     expect(plan.apply).toEqual([]);
     expect(plan.skippedAdmins).toEqual([]);
     expect(plan.skippedReadOnly).toEqual([]);
+  });
+});
+
+describe('roleDisplayLabel', () => {
+  it('renders ReadOnly as "Read only" for display', () => {
+    expect(roleDisplayLabel('ReadOnly')).toBe('Read only');
+  });
+
+  it('leaves other role names as the server spells them', () => {
+    expect(roleDisplayLabel('Admin')).toBe('Admin');
+    expect(roleDisplayLabel('Member')).toBe('Member');
   });
 });

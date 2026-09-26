@@ -82,7 +82,7 @@ export function useFolderOperations(
       // gets a meaningful message instead of a raw 400.
       if (!applicationId) {
         throw new Error(
-          'Application ID not resolved — reconnect or set VITE_APPLICATION_ID',
+          'Application ID not resolved. Reconnect or set VITE_APPLICATION_ID',
         );
       }
 

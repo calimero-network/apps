@@ -29,8 +29,6 @@ export function NamespaceSettingsPanel() {
             <>
               {' '}
               · {ns.memberCount} member{ns.memberCount === 1 ? '' : 's'}
-              {' '}
-              · {ns.contextCount} context{ns.contextCount === 1 ? '' : 's'}
             </>
           )}
         </p>

@@ -385,16 +385,16 @@ export const APPS = {
     // directory rather than inside it is collected by no project and never runs.
     e2eDir: 'e2e/landing',
     availability: 'web+desktop',
-    trust: ['Folders are contexts', 'Rich-text editing', 'Private by default'],
+    trust: ['Folders have their own members', 'Rich-text editing', 'Private by default'],
     explainer: [
-      'A document workspace — folders, rich-text documents, and the tags you need to find them again six months later. Built as a multi-service bundle: a registry service holds the folder tree for a namespace, and each folder is its own context holding its documents.',
+      'A document workspace: folders, rich-text documents, and the tags you need to find them again six months later. Each folder holds its own documents separately, so sharing one project does not hand over the whole workspace.',
       'That structure is the point. A folder’s documents replicate only to the people who have that folder, so sharing one project does not hand over the whole workspace.',
     ],
     features: [
-      { icon: 'Folder', title: 'Folders are contexts', body: 'Each folder’s documents live in their own context, so access is per folder rather than all-or-nothing.' },
+      { icon: 'Folder', title: 'Folders have their own members', body: 'Each folder’s documents live separately, so access is per folder rather than all-or-nothing.' },
       { icon: 'FileText', title: 'Rich-text documents', body: 'A real editor with formatting, headings and lists, syncing as you type.' },
       { icon: 'Table', title: 'Tags and archive', body: 'Organise by tag and retire what is finished without deleting anything.' },
-      { icon: 'Shield', title: 'Namespace-scoped', body: 'The workspace is a namespace you control. Membership is how access works.' },
+      { icon: 'Shield', title: 'You control the workspace', body: 'You decide who is a member. Membership is how access works.' },
       { icon: 'Eye', title: 'Per-folder visibility', body: 'Decide what is shared and what stays yours, folder by folder.' },
     ],
   },
