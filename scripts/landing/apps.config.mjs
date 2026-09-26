@@ -248,7 +248,7 @@ export const APPS = {
     },
   },
 
-  'mero-drive': {
+  'mero-docs': {
     markSrc: '/icons/icon.svg',
     // Nested, because this app's playwright config gives its node-free specs
     // their own project globbed as `**/landing/**` — a spec written beside that

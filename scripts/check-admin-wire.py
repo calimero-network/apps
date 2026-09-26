@@ -251,7 +251,7 @@ def normalise_route(raw):
     r = r.split("?", 1)[0]
     # A call may build the URL with a base: `${base}/admin-api/groups/${id}/...`
     # or `new URL('/admin-api/blobs', nodeUrl)`. Anchor on the API prefix
-    # wherever it appears and drop whatever came before it — mero-drive's
+    # wherever it appears and drop whatever came before it - mero-docs's
     # reparent call is spelled that way and was invisible while this only
     # handled a leading slash.
     i = r.find("/admin-api")

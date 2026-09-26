@@ -7,10 +7,12 @@ export type UpgradePolicy =
   | "LazyOnAccess"
   | { Coordinated: { deadline: number } };
 
+// Mirrors core's `CreateNamespaceApiRequest`, which is `deny_unknown_fields`:
+// ANY other key (`upgradePolicy`, `alias`, …) is a 400 and no namespace is
+// created. `name` is the namespace's display name.
 export interface CreateGroupRequest {
   applicationId: string;
-  upgradePolicy: UpgradePolicy;
-  alias?: string;
+  name?: string;
 }
 
 export interface CreateGroupResponse {
@@ -80,9 +82,11 @@ export interface GroupContextEntry {
   metadata?: Record<string, unknown>;
 }
 
+// Mirrors core's closed `CreateGroupInvitationApiRequest`; the old
+// `requester` / `expirationBlockHeight` keys would each be a 400.
 export interface CreateInvitationRequest {
-  requester?: string;
-  expirationBlockHeight?: number;
+  expirationTimestamp?: number;
+  recursive?: boolean;
 }
 
 export interface CreateInvitationResponse {
@@ -188,9 +192,10 @@ export interface SetContextVisibilityRequest {
   mode: VisibilityMode;
 }
 
+// Core's `UpgradeGroupApiRequest` is closed: `migrateMethod` is not a field
+// (a migration is declared by the app itself) and sending it is a 400.
 export interface UpgradeGroupRequest {
   targetApplicationId: string;
-  migrateMethod?: string;
 }
 
 export interface UpgradeGroupResponse {

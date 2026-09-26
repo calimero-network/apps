@@ -243,7 +243,7 @@ function slide(index, name, { col, row, height = H, kicker, page }) {
   const apps = [
     ["MeroDesign", "Collaborative canvas", C.lime],
     ["MeroSign", "Sign agreements", C.blue],
-    ["MeroDrive", "Shared documents", C.violet],
+    ["MeroDocs", "Shared documents", C.violet],
     ["MeroPass", "Team password vault", C.amber],
     ["MeroCalendar", "Shared calendars", C.rose],
     ["MeroSheets", "Spreadsheets", C.lime],

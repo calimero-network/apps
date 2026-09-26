@@ -276,13 +276,13 @@ export const DOCS = {
     ],
   },
 
-  'mero-drive': {
+  'mero-docs': {
     docs: [
       {
         id: 'concepts',
         heading: 'The words, and what they mean here',
         paragraphs: [
-          'Mero Drive Docs is a multi-service bundle, and that structure is the product. A registry service holds the folder tree for a namespace; each folder is its own context holding its own documents.',
+          'Mero Docs is a multi-service bundle, and that structure is the product. A registry service holds the folder tree for a namespace; each folder is its own context holding its own documents.',
           'That is what makes selective sharing real: giving somebody a folder replicates that folder’s documents to them and nothing else, because the other folders are different contexts they were never added to.',
         ],
         concepts: [

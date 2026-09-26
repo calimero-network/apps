@@ -330,6 +330,9 @@ jobs:
       - name: Assert each live deployment is the app this repo builds
         run: python3 scripts/check-live-frontends.py
 
+      - name: Assert the live-frontend history survives an app rename
+        run: python3 scripts/tests/live-frontends-history-test.py
+
       # The matrix resolver decides what the rest of this file runs, and both of
       # its wrong answers are silent — too broad only costs money, too narrow
       # skips an app with nothing to notice. So its rules are tested.
@@ -713,11 +716,11 @@ jobs:
           if-no-files-found: ignore
 
   browser-e2e-rich:
-    name: Browser E2E rich (mero-drive)
+    name: Browser E2E rich (mero-docs)
     needs: [changes, wasm]
-    # The `browser` gate, narrowed to mero-drive: the `rich` project needs the
+    # The `browser` gate, narrowed to mero-docs: the `rich` project needs the
     # three-node rig, which the `browser` job's own two nodes cannot stand in for.
-    if: (needs.changes.outputs.frontend == 'true' || needs.changes.outputs.logic == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.tooling == 'true' || needs.changes.outputs.js_deps == 'true') && contains(fromJSON(needs.changes.outputs.apps), 'mero-drive')
+    if: (needs.changes.outputs.frontend == 'true' || needs.changes.outputs.logic == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.tooling == 'true' || needs.changes.outputs.js_deps == 'true') && contains(fromJSON(needs.changes.outputs.apps), 'mero-docs')
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
@@ -725,7 +728,7 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: mpk-mero-drive-${{ github.sha }}
+          name: mpk-mero-docs-${{ github.sha }}
           path: bundle
 
       - name: Verify the bundle arrived
@@ -767,28 +770,28 @@ jobs:
       - uses: ./.github/actions/setup-playwright
         timeout-minutes: 15
         with:
-          working-directory: apps/mero-drive/app
+          working-directory: apps/mero-docs/app
 
       - name: Bring the three-node rig up
         id: rig
-        run: apps/mero-drive/scripts/local-rig.sh up
+        run: apps/mero-docs/scripts/local-rig.sh up
 
       - name: Run the rich project
-        working-directory: apps/mero-drive/app
+        working-directory: apps/mero-docs/app
         run: npx playwright test --project=rich
 
       - name: Take the rig down
         if: always() && steps.rig.outcome != 'skipped'
-        run: apps/mero-drive/scripts/local-rig.sh down
+        run: apps/mero-docs/scripts/local-rig.sh down
 
       - name: Upload the report
         if: failure() || cancelled()
         uses: actions/upload-artifact@v4
         with:
-          name: browser-e2e-rich-mero-drive-${{ github.sha }}
+          name: browser-e2e-rich-mero-docs-${{ github.sha }}
           path: |
-            apps/mero-drive/app/playwright-report
-            apps/mero-drive/app/test-results
+            apps/mero-docs/app/playwright-report
+            apps/mero-docs/app/test-results
           retention-days: 7
           if-no-files-found: ignore
 
@@ -798,7 +801,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: browser-e2e-rich-node-logs-${{ github.sha }}
-          path: /tmp/merodrive-rig/data/*/logs/*.log
+          path: /tmp/merodocs-rig/data/*/logs/*.log
           retention-days: 7
           if-no-files-found: ignore
 

@@ -10,7 +10,7 @@
  *   3. A non-zero override REPLACES the default; it is not OR'd with it.
  *
  * The behaviour is pinned against live nodes by
- * `apps/mero-drive/logic/workflows/probes/workflow-mero-drive-members.yml`
+ * `apps/mero-docs/logic/workflows/workflow-mero-docs-members.yml`
  * (role round-trip leaves the override untouched; bitmasks stored verbatim).
  * These tests pin this app's reading of it.
  */

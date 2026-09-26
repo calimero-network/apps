@@ -14,6 +14,8 @@ const {
   mockCreateGroupInNamespace,
   mockListNamespaces,
   mockListNamespacesForApplication,
+  mockReparentGroup,
+  mockUpgradeGroup,
 } = vi.hoisted(() => ({
   mockAxiosGet: vi.fn(),
   mockAxiosPost: vi.fn(),
@@ -27,6 +29,8 @@ const {
   mockCreateGroupInNamespace: vi.fn(),
   mockListNamespaces: vi.fn(),
   mockListNamespacesForApplication: vi.fn(),
+  mockReparentGroup: vi.fn(),
+  mockUpgradeGroup: vi.fn(),
 }));
 
 vi.mock("axios", () => ({
@@ -64,9 +68,40 @@ vi.mock("../meroJsClient", () => ({
       createGroupInNamespace: mockCreateGroupInNamespace,
       listNamespaces: mockListNamespaces,
       listNamespacesForApplication: mockListNamespacesForApplication,
+      reparentGroup: mockReparentGroup,
+      upgradeGroup: mockUpgradeGroup,
     },
   }),
 }));
+
+// core's `CreateNamespaceApiRequest` (server/primitives admin/mod.rs), which is
+// `deny_unknown_fields`. `bytecodeId` is a deserialize alias of `appKey`.
+const CREATE_NAMESPACE_KEYS = new Set(["applicationId", "name", "appKey", "bytecodeId"]);
+
+describe("closed admin request bodies", () => {
+  beforeEach(() => {
+    mockReparentGroup.mockReset();
+    mockUpgradeGroup.mockReset();
+  });
+
+  it("reparents with camelCase `newParentId` — core refused `new_parent_id`", async () => {
+    mockReparentGroup.mockResolvedValue(undefined);
+    const parent = "a".repeat(64);
+
+    const response = await new GroupApiDataSource().reparentGroup("g-1", { newParentId: parent });
+
+    expect(response.error).toBeNull();
+    expect(mockReparentGroup).toHaveBeenCalledWith("g-1", { newParentId: parent });
+  });
+
+  it("upgrades with only `targetApplicationId` — `migrateMethod` is not a core field", async () => {
+    mockUpgradeGroup.mockResolvedValue({ groupId: "g-1", status: "InProgress" });
+
+    await new GroupApiDataSource().triggerUpgrade("g-1", { targetApplicationId: "app-2" });
+
+    expect(mockUpgradeGroup).toHaveBeenCalledWith("g-1", { targetApplicationId: "app-2" });
+  });
+});
 
 describe("GroupApiDataSource", () => {
   it("filters namespaces by the RUNTIME application id, not the build-time one", async () => {
@@ -115,24 +150,22 @@ describe("GroupApiDataSource", () => {
     mockSetMemberMetadata.mockReset();
   });
 
-  it("passes the optional alias when creating a namespace (workspace)", async () => {
+  it("sends ONLY the keys core's closed CreateNamespaceApiRequest accepts", async () => {
+    // core refuses any other key with a 400 — this test used to assert that
+    // `upgradePolicy` and `alias` WERE sent, and the first real create
+    // failed with `unknown field \`upgradePolicy\``. Assert the key set, not
+    // `toHaveBeenCalledWith` a literal a stray key can hide beside.
     mockCreateNamespace.mockResolvedValue({ namespaceId: "group-1" });
 
     const dataSource = new GroupApiDataSource();
     const response = await dataSource.createGroup({
       applicationId: "app-1",
-      upgradePolicy: "LazyOnAccess",
-      alias: "Product Team",
-    });
-
-    expect(mockCreateNamespace).toHaveBeenCalledWith({
-      applicationId: "app-1",
-      upgradePolicy: "LazyOnAccess",
-      alias: "Product Team",
-      // Post-054a784f the server field is `name`; createGroup now sends
-      // both for transition compat.
       name: "Product Team",
     });
+
+    const body = mockCreateNamespace.mock.calls[0][0];
+    expect(Object.keys(body).every((k) => CREATE_NAMESPACE_KEYS.has(k))).toBe(true);
+    expect(body).toEqual({ applicationId: "app-1", name: "Product Team" });
     expect(response).toEqual({
       data: {
         groupId: "group-1",
@@ -147,9 +180,9 @@ describe("GroupApiDataSource", () => {
     const dataSource = new GroupApiDataSource();
     const response = await dataSource.createGroup({
       applicationId: "app-1",
-      upgradePolicy: "Automatic",
     });
 
+    expect(mockCreateNamespace).toHaveBeenCalledWith({ applicationId: "app-1" });
     expect(response).toEqual({ data: { groupId: "group-2" }, error: null });
   });
 
@@ -368,8 +401,7 @@ describe("GroupApiDataSource", () => {
 
     const response = await dataSource.createGroup({
       applicationId: "app-1",
-      upgradePolicy: "Automatic",
-      alias: "n".repeat(80),
+      name: "n".repeat(80),
     });
 
     expect(response.error).not.toBeNull();
