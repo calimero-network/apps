@@ -161,9 +161,7 @@ const ChannelHeader = memo(function ChannelHeader(props: ChannelHeaderProps) {
     // 3) Create the channel's single context inside the new subgroup.
     const createResp = await nodeApi.createGroupContext({
       applicationId: getApplicationId(),
-      protocol: "near",
       groupId: channelGroupId,
-      alias: channelName,
       name: channelName,
       initializationParams: {
         name: channelName,
