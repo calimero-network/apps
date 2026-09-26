@@ -305,6 +305,7 @@ impl IssueTracker {
     /// ```json
     /// {"url":"https://github.com/calimero-network/apps"}
     /// ```
+    #[app::idempotent]
     pub fn set_repo_url(&mut self, url: String) -> app::Result<()> {
         validate_repo_url(&url)?;
         self.repo_url.set(url.clone());
@@ -426,6 +427,7 @@ impl IssueTracker {
     /// ```json
     /// {"issue_id":"<issue id>","status":"In progress"}
     /// ```
+    #[app::idempotent]
     pub fn set_status(&mut self, issue_id: String, status: String) -> app::Result<()> {
         validate_status(&status)?;
         self.triage(&issue_id, |issue| issue.status.set(status.clone()))?;
@@ -446,6 +448,8 @@ impl IssueTracker {
     /// ```json
     /// {"issue_id":"<issue id>","summary":"Fails on every third run."}
     /// ```
+    #[app::destructive]
+    #[app::idempotent]
     pub fn set_summary(&mut self, issue_id: String, summary: String) -> app::Result<()> {
         validate_section("summary", &summary)?;
         self.triage(&issue_id, |issue| issue.summary.set(summary))?;
@@ -463,6 +467,8 @@ impl IssueTracker {
     /// ```json
     /// {"issue_id":"<issue id>","impact":"Every merge waits for a manual re-run."}
     /// ```
+    #[app::destructive]
+    #[app::idempotent]
     pub fn set_impact(&mut self, issue_id: String, impact: String) -> app::Result<()> {
         validate_section("impact", &impact)?;
         self.triage(&issue_id, |issue| issue.impact.set(impact))?;
@@ -480,6 +486,8 @@ impl IssueTracker {
     /// ```json
     /// {"issue_id":"<issue id>","repro":"Run the e2e job three times on main."}
     /// ```
+    #[app::destructive]
+    #[app::idempotent]
     pub fn set_repro(&mut self, issue_id: String, repro: String) -> app::Result<()> {
         validate_section("repro", &repro)?;
         self.triage(&issue_id, |issue| issue.repro.set(repro))?;
@@ -497,6 +505,8 @@ impl IssueTracker {
     /// ```json
     /// {"issue_id":"<issue id>","resolution_criteria":"Twenty consecutive green runs."}
     /// ```
+    #[app::destructive]
+    #[app::idempotent]
     pub fn set_resolution_criteria(
         &mut self,
         issue_id: String,
@@ -523,6 +533,7 @@ impl IssueTracker {
     /// ```json
     /// {"issue_id":"<issue id>","priority":"urgent"}
     /// ```
+    #[app::idempotent]
     pub fn set_priority(&mut self, issue_id: String, priority: String) -> app::Result<()> {
         validate_priority(&priority)?;
         self.triage(&issue_id, |issue| issue.priority.set(priority.clone()))?;
@@ -546,6 +557,7 @@ impl IssueTracker {
     /// ```json
     /// {"issue_id":"<issue id>","assignee":"<account id>"}
     /// ```
+    #[app::idempotent]
     pub fn set_assignee(&mut self, issue_id: String, assignee: Option<String>) -> app::Result<()> {
         self.triage(&issue_id, |issue| issue.assignee.set(assignee))?;
 
@@ -565,6 +577,7 @@ impl IssueTracker {
     /// ```json
     /// {"issue_id":"<issue id>","label":"ci"}
     /// ```
+    #[app::idempotent]
     pub fn add_label(&mut self, issue_id: String, label: String) -> app::Result<()> {
         validate_user_label(&label)?;
         if !self.issue_exists(&issue_id)? {
@@ -586,6 +599,7 @@ impl IssueTracker {
     /// ```json
     /// {"issue_id":"<issue id>","label":"ci"}
     /// ```
+    #[app::idempotent]
     pub fn remove_label(&mut self, issue_id: String, label: String) -> app::Result<()> {
         if !self.issue_exists(&issue_id)? {
             app::bail!(Error::NotFound(issue_id));
@@ -815,6 +829,8 @@ impl IssueTracker {
     /// ```json
     /// {"comment_id":"<comment id>","new_body":"Seen twice on main."}
     /// ```
+    #[app::destructive]
+    #[app::idempotent]
     pub fn edit_comment(&mut self, comment_id: String, new_body: String) -> app::Result<()> {
         if new_body.trim().is_empty() {
             app::bail!(Error::Invalid("comment body must not be empty".into()));
@@ -841,6 +857,7 @@ impl IssueTracker {
     /// ```json
     /// {"comment_id":"<comment id>"}
     /// ```
+    #[app::destructive]
     pub fn delete_comment(&mut self, comment_id: String) -> app::Result<()> {
         self.require_comment_author(&comment_id, "delete")?;
         let _ = self
@@ -865,6 +882,7 @@ impl IssueTracker {
     /// ```json
     /// {"issue_id":"<issue id>"}
     /// ```
+    #[app::destructive]
     pub fn delete_issue(&mut self, issue_id: String) -> app::Result<()> {
         if !self.issue_exists(&issue_id)? {
             app::bail!(Error::NotFound(issue_id));
