@@ -1,16 +1,19 @@
-// Maps the workspace-wide load error (see useDriveWorkspace) to plain,
-// user-facing copy. The raw error can come from several internal fetches
-// (registry, subgroups, members) and its message is implementation detail;
-// callers should log the raw error to the console and show this instead.
+import { HTTPError } from '@calimero-network/mero-js';
 
-const PERMISSION_PATTERN = /not a member|permission|forbidden/i;
-const CONNECTION_PATTERN = /network|fetch|ECONNREFUSED|timeout|HTTP 5/i;
+// The raw load error is implementation detail, so callers log it and show this plain copy instead.
+
+const ACCESS_STATUSES = new Set([401, 403]); // node refused this caller
+const NETWORK_ERROR_STATUS = 0; // mero-js status when fetch itself failed
 
 export function folderLoadErrorMessage(error: Error): string {
-  if (PERMISSION_PATTERN.test(error.message)) {
+  if (error instanceof HTTPError && ACCESS_STATUSES.has(error.status)) {
     return "You don't have access to this workspace's folders.";
   }
-  if (CONNECTION_PATTERN.test(error.message)) {
+  const unreachable =
+    error instanceof TypeError ||
+    (error instanceof HTTPError &&
+      (error.status === NETWORK_ERROR_STATUS || error.status >= 500));
+  if (unreachable) {
     return "Couldn't reach your node. Check your connection and try again.";
   }
   return "Couldn't load your folders. Try refreshing the page.";

@@ -1,20 +1,32 @@
+import { HTTPError } from '@calimero-network/mero-js';
 import { describe, expect, it } from 'vitest';
 import { folderLoadErrorMessage } from '../folderLoadError';
 
+const ACCESS = "You don't have access to this workspace's folders.";
+const CONNECTION = "Couldn't reach your node. Check your connection and try again.";
+const GENERIC = "Couldn't load your folders. Try refreshing the page.";
+
+const httpError = (status: number) =>
+  new HTTPError(status, 'x', 'http://node/admin-api', new Headers());
+
 describe('folderLoadErrorMessage', () => {
-  it('maps a permission-flavored error to plain access copy', () => {
-    const msg = folderLoadErrorMessage(new Error('caller is not a member of this group'));
-    expect(msg).toBe("You don't have access to this workspace's folders.");
+  it.each([401, 403])('maps HTTP %i to plain access copy', (status) => {
+    expect(folderLoadErrorMessage(httpError(status))).toBe(ACCESS);
   });
 
-  it('maps a connection-flavored error to plain retry copy', () => {
-    const msg = folderLoadErrorMessage(new Error('fetch failed: HTTP 503'));
-    expect(msg).toBe("Couldn't reach your node. Check your connection and try again.");
+  it.each([0, 500, 503])('maps HTTP %i to plain retry copy', (status) => {
+    expect(folderLoadErrorMessage(httpError(status))).toBe(CONNECTION);
   });
 
-  it('falls back to a generic message for anything else, never the raw text', () => {
-    const msg = folderLoadErrorMessage(new Error('registry context has no owned identity'));
-    expect(msg).toBe("Couldn't load your folders. Try refreshing the page.");
-    expect(msg).not.toMatch(/registry|context|identity/i);
+  it('maps a failed fetch (TypeError) to plain retry copy', () => {
+    expect(folderLoadErrorMessage(new TypeError('Failed to fetch'))).toBe(CONNECTION);
+  });
+
+  it('ignores the wording of an untyped error', () => {
+    expect(folderLoadErrorMessage(new Error('permission denied: network timeout'))).toBe(GENERIC);
+  });
+
+  it('falls back to generic copy for other HTTP statuses', () => {
+    expect(folderLoadErrorMessage(httpError(404))).toBe(GENERIC);
   });
 });
