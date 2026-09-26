@@ -44,7 +44,7 @@ export function MemberPicker({
   namespaceId,
   onSelect,
   exclude,
-  placeholder = 'Search members or paste a pubkey…',
+  placeholder = 'Search members or paste a member ID…',
   ariaLabel,
   disabled,
   className,

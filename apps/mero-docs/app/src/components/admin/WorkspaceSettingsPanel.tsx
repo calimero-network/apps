@@ -60,11 +60,11 @@ export function WorkspaceSettingsPanel() {
   const onAddManager = async () => {
     const m = managerInput.trim();
     if (!m) {
-      setAdminError('Identity required');
+      setAdminError('Member ID required');
       return;
     }
     if (!looksLikeMemberIdentity(m)) {
-      setAdminError("Identity doesn't look like a valid pubkey");
+      setAdminError("Doesn't look like a valid member ID");
       return;
     }
     if (reg.managers.includes(m)) {
@@ -98,8 +98,8 @@ export function WorkspaceSettingsPanel() {
             memberId={m}
             className="font-medium"
           />
-          {' '}from the registry managers? They'll keep any folder access they
-          have through namespace membership, but lose the ability to change
+          {' '}from the managers? They'll keep any folder access they
+          have as a workspace member, but lose the ability to change
           folder roles.
         </>
       ),
@@ -142,7 +142,7 @@ export function WorkspaceSettingsPanel() {
         data-testid="registry-owner-managers"
       >
         <div className="text-sm font-medium text-foreground">
-          Registry owner &amp; managers
+          Workspace owner &amp; managers
         </div>
         <p className="text-xs text-muted-foreground">
           The owner (and managers they appoint) can change per-folder
@@ -151,7 +151,7 @@ export function WorkspaceSettingsPanel() {
 
         {reg.error && (
           <p className="text-xs text-destructive" role="alert">
-            Couldn't load registry roles: {reg.error.message}
+            Couldn't load roles: {reg.error.message}
           </p>
         )}
 
@@ -167,8 +167,8 @@ export function WorkspaceSettingsPanel() {
         {registryDuplicates.length > 0 && (
           <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2">
             <p className="text-xs font-medium text-amber-700 dark:text-amber-400">
-              This workspace has {registryDuplicates.length + 1} registry
-              contexts.
+              This workspace has {registryDuplicates.length + 1} duplicate
+              copies of its folder data.
             </p>
             <p className="mt-1 text-xs text-amber-700/90 dark:text-amber-400/90">
               Older versions of this app picked one by list order, which two
@@ -193,7 +193,7 @@ export function WorkspaceSettingsPanel() {
         {unclaimed ? (
           <div className="flex items-center justify-between gap-3 rounded-md border border-dashed border-border bg-muted/30 px-3 py-2">
             <span className="text-xs text-muted-foreground">
-              This workspace's registry has no owner yet.
+              This workspace has no owner yet.
             </span>
             <Button
               size="sm"
@@ -281,8 +281,8 @@ export function WorkspaceSettingsPanel() {
                       exclude={[reg.owner, ...reg.managers].filter(
                         (s): s is string => !!s,
                       )}
-                      placeholder="Search members or paste a pubkey…"
-                      ariaLabel="manager identity"
+                      placeholder="Search members or paste a member ID…"
+                      ariaLabel="manager member ID"
                       disabled={busy}
                       onSelect={(identity) => {
                         setManagerInput(identity);

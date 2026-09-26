@@ -21,7 +21,7 @@ test.describe('Settings + sharing (single-node)', () => {
       alice.page.getByRole('heading', { name: /^Members$/i }),
     ).toBeVisible({ timeout: 30_000 });
     await expect(
-      alice.page.getByPlaceholder(/identity pubkey/i),
+      alice.page.getByPlaceholder(/member ID/i),
     ).toBeVisible();
     await alice.closeFolderInfo();
   });

@@ -165,7 +165,7 @@ export function JoinInviteCard({
       ) : !isAuthenticated ? (
         <div className="space-y-3">
           <p className="text-sm">
-            Sign in with your Calimero identity to accept the invitation.
+            Sign in with your Calimero account to accept the invitation.
           </p>
           <ConnectButton />
         </div>

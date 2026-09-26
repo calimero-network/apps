@@ -123,4 +123,18 @@ describe('RestrictedFolderCard', () => {
       );
     });
   });
+
+  describe('error copy', () => {
+    it('maps a "no owned identity" join failure to plain retry copy, not raw jargon', async () => {
+      joinContext.mockRejectedValue(
+        new Error('No owned identity found for this context'),
+      );
+      render(<RestrictedFolderCard {...baseProps} visibility="Open" />);
+      fireEvent.click(screen.getByRole('button', { name: /join folder/i }));
+
+      const alert = await screen.findByRole('alert');
+      expect(alert.textContent).not.toMatch(/context/i);
+      expect(alert.textContent).toMatch(/try again/i);
+    });
+  });
 });

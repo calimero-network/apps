@@ -416,7 +416,7 @@ export default function DriveAnimation() {
       </span>
 
       <span className="cal-lp-a-txt cal-lp-a-txt--dim" style={{ left: 20, bottom: 3, fontSize: 8.5 }}>
-        Each folder is its own context — a lock means it replicates to its members and nobody else
+        Each folder has its own members. A lock means it replicates only to them, not the rest of the workspace.
       </span>
     </div>
   );

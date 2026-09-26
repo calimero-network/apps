@@ -125,7 +125,7 @@ export function RestrictedFolderCard({
       //    internal context subscribe + sync, so once it resolves the
       //    docs context is queryable on this node.
       if (!registryClient) {
-        throw new Error('Workspace registry not ready — try again.');
+        throw new Error("The workspace isn't ready yet. Try again in a moment.");
       }
       const docsContextId = await registryClient.getFolderContext({
         folder_id: FolderId(folderId),
@@ -147,7 +147,9 @@ export function RestrictedFolderCard({
       // ancestor with Open chain", a 5xx from a still-syncing node,
       // or a transient KeyDelivery wait timeout.
       const isTransient =
-        /not a member|has no group identity|HTTP 5|timeout/i.test(msg);
+        /not a member|has no group identity|owned identity|HTTP 5|timeout/i.test(
+          msg,
+        );
       setError(
         isTransient
           ? isSyncing
@@ -268,7 +270,7 @@ export function RestrictedFolderCard({
           {isRestricted && selfIdentity && (
             <div className="mt-4 space-y-1.5">
               <label className="block text-xs font-medium text-muted-foreground">
-                Your identity
+                Your member ID
               </label>
               <div className="flex gap-2">
                 <input
@@ -282,7 +284,7 @@ export function RestrictedFolderCard({
                   size="sm"
                   variant="outline"
                   onClick={onCopy}
-                  aria-label="Copy identity"
+                  aria-label="Copy member ID"
                 >
                   {copied ? (
                     <Check className="h-3.5 w-3.5" />

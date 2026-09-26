@@ -411,7 +411,7 @@ export class SharingDriver {
   // Picks a namespace member by display name in the folder's member picker.
   async addMember(name: string): Promise<void> {
     await this.page
-      .getByRole('combobox', { name: /identity pubkey/i })
+      .getByRole('combobox', { name: /member ID/i })
       .fill(name);
     // Scoped to the picker's listbox so no other option on the page can match.
     await this.page
@@ -601,7 +601,7 @@ export class SettingsDriver {
     opts: { timeout?: number } = {},
   ): Promise<void> {
     const row = this.page
-      .getByRole('region', { name: 'Namespace members' })
+      .getByRole('region', { name: 'Workspace members' })
       .getByRole('listitem')
       .filter({ hasText: label });
     await expect(row.getByRole('img', { name: state })).toBeVisible({

@@ -104,7 +104,7 @@ export function NamespaceMembersPanel() {
             id="namespace-members-heading"
             className="text-sm font-semibold text-foreground"
           >
-            Namespace members
+            Workspace members
           </h3>
           <p className="mt-0.5 text-xs text-muted-foreground">
             People with access to this workspace.
@@ -183,7 +183,7 @@ export function NamespaceMembersPanel() {
               folder that inherits from it.
             </>
           }
-          footnote="Anyone with this link and a Calimero identity can join the workspace."
+          footnote="Anyone with this link and a Calimero account can join the workspace."
           onCreate={() => createInvite(namespaceId)}
           onClose={() => setInviteOpen(false)}
         />

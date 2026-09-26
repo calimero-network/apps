@@ -87,7 +87,7 @@ export function FolderMemberRoleRow({
 
   const onPreset = async (preset: FolderRolePreset) => {
     if (!registryClient) {
-      setUpdateError('Registry not ready');
+      setUpdateError('Workspace not ready');
       return;
     }
     setUpdating(true);

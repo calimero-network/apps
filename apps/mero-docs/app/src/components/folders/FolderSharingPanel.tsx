@@ -102,11 +102,11 @@ export function FolderSharingPanel({ folderId }: Props) {
 
   const onInvite = async () => {
     if (!trimmedIdentity) {
-      setInviteError('Identity required');
+      setInviteError('Member ID required');
       return;
     }
     if (!looksLikeMemberIdentity(trimmedIdentity)) {
-      setInviteError('Identity doesn’t look like a valid pubkey');
+      setInviteError('Doesn’t look like a valid member ID');
       return;
     }
     if (members.some((m) => m.identity === trimmedIdentity)) {
@@ -296,7 +296,7 @@ export function FolderSharingPanel({ folderId }: Props) {
         <div className="space-y-3 border-t border-border/60 px-4 py-3">
           <div>
             <label className="mb-1 block text-xs font-medium text-muted-foreground">
-              Invite by identity
+              Invite by member ID
             </label>
             <div className="flex items-start gap-2">
               <div className="flex-1">
@@ -308,8 +308,8 @@ export function FolderSharingPanel({ folderId }: Props) {
                 <MemberPicker
                   namespaceId={namespaceId}
                   exclude={members.map((m) => m.identity)}
-                  placeholder="identity pubkey"
-                  ariaLabel="identity pubkey"
+                  placeholder="member ID"
+                  ariaLabel="member ID"
                   disabled={inviting}
                   onSelect={(id) => {
                     setIdentity(id);
@@ -368,7 +368,7 @@ export function FolderSharingPanel({ folderId }: Props) {
               workspace root.
             </>
           }
-          footnote="Scope: this folder only. Anyone with this link and a Calimero identity can join."
+          footnote="Scope: this folder only. Anyone with this link and a Calimero account can join."
           onCreate={() => createFolderInvite(folderId)}
           onClose={() => setInviteLinkOpen(false)}
         />
