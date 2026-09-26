@@ -158,7 +158,6 @@ export function WorkspaceLayout() {
     setShowSettings(false);
   }, [namespaceId]);
 
-
   return (
     <div className="flex h-screen flex-col bg-background">
       {/* Top bar */}

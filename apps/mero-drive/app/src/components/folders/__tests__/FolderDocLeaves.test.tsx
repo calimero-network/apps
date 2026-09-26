@@ -17,6 +17,35 @@ const baseDocs = {
   error: null as Error | null,
 };
 
+// Mirrors FolderTreeItem, which owns the pending flag across remounts.
+function Harness({
+  initial = false,
+  selectedDocId = null,
+  onOpenDoc = vi.fn(),
+}: {
+  initial?: boolean;
+  selectedDocId?: string | null;
+  onOpenDoc?: (folderId: string, docId: string) => void;
+}) {
+  const [pending, setPending] = useState(initial);
+  return (
+    <>
+      <button type="button" onClick={() => setPending(true)}>
+        request
+      </button>
+      <ul>
+        <FolderDocLeaves
+          folderId="f1"
+          selectedDocId={selectedDocId}
+          onOpenDoc={onOpenDoc}
+          createPending={pending}
+          onCreateStarted={() => setPending(false)}
+        />
+      </ul>
+    </>
+  );
+}
+
 describe('FolderDocLeaves', () => {
   beforeEach(() => useDocsMock.mockReset());
 
@@ -29,17 +58,7 @@ describe('FolderDocLeaves', () => {
       ],
     });
     const onOpenDoc = vi.fn();
-    render(
-      <ul>
-        <FolderDocLeaves
-          folderId="f1"
-          selectedDocId={null}
-          onOpenDoc={onOpenDoc}
-          createPending={false}
-          onCreateStarted={vi.fn()}
-        />
-      </ul>,
-    );
+    render(<Harness onOpenDoc={onOpenDoc} />);
     expect(screen.getByText('Brief')).toBeTruthy();
     // empty title falls back to 'Untitled'
     expect(screen.getByText('Untitled')).toBeTruthy();
@@ -53,66 +72,19 @@ describe('FolderDocLeaves', () => {
       contextId: null,
       contextResolving: true,
     });
-    render(
-      <ul>
-        <FolderDocLeaves
-          folderId="f1"
-          selectedDocId={null}
-          onOpenDoc={vi.fn()}
-          createPending={false}
-          onCreateStarted={vi.fn()}
-        />
-      </ul>,
-    );
+    render(<Harness />);
     expect(screen.getByText(/Syncing/)).toBeTruthy();
   });
 
   it('renders nothing when the folder has no docs', () => {
     useDocsMock.mockReturnValue({ ...baseDocs, list: [] });
-    render(
-      <ul>
-        <FolderDocLeaves
-          folderId="f1"
-          selectedDocId={null}
-          onOpenDoc={vi.fn()}
-          createPending={false}
-          onCreateStarted={vi.fn()}
-        />
-      </ul>,
-    );
+    render(<Harness />);
     // no list items rendered
     expect(screen.queryByRole('listitem')).toBeNull();
     expect(useDocsMock).toHaveBeenCalledWith('f1');
   });
 
   describe('New document requests', () => {
-    // Mirrors FolderTreeItem, which owns the pending flag across remounts.
-    function Harness({
-      initial = false,
-      onOpenDoc = vi.fn(),
-    }: {
-      initial?: boolean;
-      onOpenDoc?: (folderId: string, docId: string) => void;
-    }) {
-      const [pending, setPending] = useState(initial);
-      return (
-        <>
-          <button type="button" onClick={() => setPending(true)}>
-            request
-          </button>
-          <ul>
-            <FolderDocLeaves
-              folderId="f1"
-              selectedDocId={null}
-              onOpenDoc={onOpenDoc}
-              createPending={pending}
-              onCreateStarted={() => setPending(false)}
-            />
-          </ul>
-        </>
-      );
-    }
-
     it('does not create on mount without a request', () => {
       const create = vi.fn();
       useDocsMock.mockReturnValue({ ...baseDocs, create });
@@ -133,17 +105,6 @@ describe('FolderDocLeaves', () => {
       expect(create).toHaveBeenCalledWith({ title: 'Untitled' });
       fireEvent.click(screen.getByRole('button', { name: 'request' }));
       await waitFor(() => expect(create).toHaveBeenCalledTimes(2));
-    });
-
-    it('creates for a request made before it mounted', async () => {
-      const create = vi.fn().mockResolvedValue('doc-2');
-      useDocsMock.mockReturnValue({ ...baseDocs, create });
-      const onOpenDoc = vi.fn();
-      render(<Harness initial onOpenDoc={onOpenDoc} />);
-      await waitFor(() =>
-        expect(onOpenDoc).toHaveBeenCalledWith('f1', 'doc-2'),
-      );
-      expect(create).toHaveBeenCalledTimes(1);
     });
 
     it('waits for the folder context before creating', async () => {

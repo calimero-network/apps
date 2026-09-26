@@ -3,9 +3,9 @@ import { act, renderHook } from '@testing-library/react';
 import { useSettledSaveStatus } from '../useSettledSaveStatus';
 import type { SaveStatus } from '../types';
 
-function setup(initial: SaveStatus = 'saved') {
-  return renderHook(({ s }) => useSettledSaveStatus(s), {
-    initialProps: { s: initial },
+function setup() {
+  return renderHook(({ s }: { s: SaveStatus }) => useSettledSaveStatus(s), {
+    initialProps: { s: 'saved' },
   });
 }
 

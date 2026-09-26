@@ -50,31 +50,32 @@ vi.mock('../FolderDocLeaves', () => ({
 }));
 vi.mock('../NewFolderButton', () => ({ NewFolderButton: () => null }));
 
+function renderTree(
+  selectedDocId: string | null = null,
+  onSelectFolder = vi.fn(),
+) {
+  render(
+    <FolderTree
+      selectedDocId={selectedDocId}
+      onSelectFolder={onSelectFolder}
+      onOpenDoc={vi.fn()}
+    />,
+  );
+}
+
 function folderRow() {
   return screen.getByText('Budget').parentElement as HTMLElement;
 }
 
 describe('selected folder highlight', () => {
   it('highlights the selected folder when no document is open', () => {
-    render(
-      <FolderTree
-        selectedDocId={null}
-        onSelectFolder={vi.fn()}
-        onOpenDoc={vi.fn()}
-      />,
-    );
+    renderTree();
     expect(folderRow().className).toContain('bg-selected');
   });
 
   // Only one row carries the selection: the open doc, not its folder too.
   it('drops the folder highlight while one of its documents is open', () => {
-    render(
-      <FolderTree
-        selectedDocId="d1"
-        onSelectFolder={vi.fn()}
-        onOpenDoc={vi.fn()}
-      />,
-    );
+    renderTree('d1');
     expect(folderRow().className).not.toContain('bg-selected');
   });
 });
@@ -84,13 +85,7 @@ describe('selecting a folder', () => {
   // selected must still be reported rather than skipped as a no-op.
   it('reports every row click, including the selected folder', () => {
     const onSelectFolder = vi.fn();
-    render(
-      <FolderTree
-        selectedDocId={null}
-        onSelectFolder={onSelectFolder}
-        onOpenDoc={vi.fn()}
-      />,
-    );
+    renderTree(null, onSelectFolder);
     fireEvent.click(screen.getByText('Budget'));
     expect(onSelectFolder).toHaveBeenCalledWith('f1');
   });
@@ -99,13 +94,7 @@ describe('selecting a folder', () => {
 describe('open document highlight', () => {
   // Every folder has its own doc-1, so the open doc must only reach its own folder.
   it('passes the open doc id only to the folder that owns it', () => {
-    render(
-      <FolderTree
-        selectedDocId="doc-1"
-        onSelectFolder={vi.fn()}
-        onOpenDoc={vi.fn()}
-      />,
-    );
+    renderTree('doc-1');
     for (const expand of screen.getAllByRole('button', { name: 'Expand' })) {
       fireEvent.click(expand);
     }

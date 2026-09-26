@@ -28,10 +28,6 @@ export const EditorStatusBar: React.FC<EditorStatusBarProps> = ({
 }) => {
   const shownStatus = useSettledSaveStatus(saveStatus);
 
-  const formatTime = (date: Date) => {
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  };
-
   const getSaveStatusDisplay = () => {
     if (!isAppReady) {
       return (
@@ -48,7 +44,11 @@ export const EditorStatusBar: React.FC<EditorStatusBarProps> = ({
           <div
             className="flex items-center gap-1.5 text-success"
             data-testid="save-status"
-            title={lastSavedAt ? `Last saved ${formatTime(lastSavedAt)}` : undefined}
+            title={
+              lastSavedAt
+                ? `Last saved ${lastSavedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                : undefined
+            }
           >
             <div className="w-2 h-2 rounded-full bg-current opacity-80" />
             <span>Saved</span>
