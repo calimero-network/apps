@@ -49,13 +49,13 @@ repository = "https://github.com/calimero-network/apps"
 # Bumping core: edit these three lines, update `min-runtime-version` and
 # `merod-image` below, run `cargo update`, and let CI rebuild every app.
 [workspace.dependencies]
-calimero-sdk            = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.45" }
-calimero-storage        = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.45" }
-calimero-storage-macros = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.45" }
+calimero-sdk            = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.49" }
+calimero-storage        = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.49" }
+calimero-storage-macros = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.49" }
 # Host-build only, for apps that describe their own id newtypes with
 # `impl_bytes32_abi!` (mero-chat). Same tag as the SDK, always — fleet-bump
 # rewrites every core git tag in this table together.
-calimero-wasm-abi       = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.45" }
+calimero-wasm-abi       = { git = "https://github.com/calimero-network/core.git", tag = "0.11.0-rc.49" }
 
 thiserror = "1.0.56"
 bs58      = "0.5.1"
@@ -97,10 +97,10 @@ borsh     = "1.6.1"
 # Keep equal to the SDK tag above. A build imports host functions that only
 # exist from that release on; an older node installs the bundle happily and then
 # dies at context creation with `link error: unknown import`.
-min-runtime-version = "0.11.0-rc.45"
+min-runtime-version = "0.11.0-rc.49"
 # The merod image every merobox workflow runs against, matched to the SDK tag so
 # contract and node always agree.
-merod-image = "ghcr.io/calimero-network/merod:0.11.0-rc.45"
+merod-image = "ghcr.io/calimero-network/merod:0.11.0-rc.49"
 
 # ── profiles MUST live here ──────────────────────────────────────────────────
 #

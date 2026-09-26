@@ -75,7 +75,7 @@ github      = "https://github.com/calimero-network/apps"
 #          how, or it does not compile (see `src/lib.rs`)
 #   rc.38  37 admin request bodies closed: an extra key is now a 400/422
 #   rc.39  the blob DHT is gone; `?context_id=` is the only discovery path
-min-runtime-version = "0.11.0-rc.45"
+min-runtime-version = "0.11.0-rc.49"
 
 # NOTE: no [profile.*] — cargo ignores profiles in a workspace member and
 # `cargo mero build` then fails with `profile 'app-release' is not defined`.
