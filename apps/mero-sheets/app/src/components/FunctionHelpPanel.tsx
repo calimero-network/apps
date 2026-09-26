@@ -123,13 +123,13 @@ export default function FunctionHelpPanel({
         </CountLine>
 
         {/* Function list */}
-        <FnList>
-          {sorted.length === 0 ? (
-            <EmptyState>No functions match{query ? ` "${query}"` : ''}</EmptyState>
-          ) : (
-            sorted.map((fn) => <FnCard key={fn.name} fn={fn} />)
-          )}
-        </FnList>
+        {sorted.length === 0 ? (
+          <EmptyState>No functions match{query ? ` "${query}"` : ''}</EmptyState>
+        ) : (
+          <FnList aria-label="Functions">
+            {sorted.map((fn) => <FnCard key={fn.name} fn={fn} />)}
+          </FnList>
+        )}
       </Panel>
     </Overlay>
   );
@@ -338,7 +338,9 @@ const CountLine = styled.div`
   flex-shrink: 0;
 `;
 
-const FnList = styled.div`
+const FnList = styled.ul`
+  list-style: none;
+  margin: 0;
   flex: 1;
   overflow-y: auto;
   padding: 8px 0;
@@ -346,7 +348,7 @@ const FnList = styled.div`
   scrollbar-color: ${C.line} transparent;
 `;
 
-const FnItem = styled.div`
+const FnItem = styled.li`
   padding: 14px 18px;
   border-bottom: 1px solid ${C.line};
 
@@ -403,6 +405,7 @@ const FnExample = styled.div`
 `;
 
 const EmptyState = styled.div`
+  flex: 1;
   padding: 40px 18px;
   text-align: center;
   font-size: 14px;

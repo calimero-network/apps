@@ -41,6 +41,15 @@ bash test/perf/run-perf.sh
 cd app && npx playwright test
 ```
 
+The Playwright global setup starts real `merod` nodes (three by default,
+`NODE_COUNT` to change it) bootstrapped to each other, and installs the bundle
+on each. Specs seed their own state through the UI with the helpers in
+`app/e2e/helpers.ts`: `openNewWorkbook` creates a workbook on a node,
+`enterCell` types into a cell, and `withTwoMembers` has a second member join
+from another node with an invitation link, so the collaboration specs run
+across real nodes. Start from fresh nodes: a node that has kept dozens of
+workbooks from earlier runs syncs them all and slows every spec down.
+
 ## CI
 
 - **`verify.yml`** — Calimero-Studio-managed gate; fires on `workshop/**` /

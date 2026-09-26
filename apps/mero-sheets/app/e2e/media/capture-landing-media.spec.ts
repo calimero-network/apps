@@ -13,8 +13,8 @@ import { getNode, loginViaHash } from '../helpers';
  * Everything on screen is the node's own state: the workbook is seeded through
  * the contract, you type through the UI, and formulas recompute in the app's
  * recalc engine. The one stand-in is the teammate, Ada. A second member needs a
- * second node, and cross-node sync is what the multi-node e2e specs mark
- * `fixme`, so Ada lives on the same node: her edits are real `set_cell` writes
+ * second node, whose sync timing would shift the chapters from run to run, so
+ * Ada lives on the same node: her edits are real `set_cell` writes
  * to it (arriving over the node's real event stream), her name is added to the
  * node's `get_members` reply, and her cursor is a presence slice injected into
  * that same event stream, exactly as a peer's arrives.

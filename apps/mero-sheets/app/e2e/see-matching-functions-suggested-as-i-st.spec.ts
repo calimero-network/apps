@@ -3,7 +3,7 @@
 // writer subagent enriches `test.skip` lines into real assertions; you can
 // too. Do NOT delete the smoke test (it's the floor the verify gate trusts).
 import { test, expect } from '@playwright/test';
-import { loginViaHash, clearAuth } from './helpers';
+import { loginViaHash, clearAuth, cell, openNewWorkbook } from './helpers';
 
 test.describe(`collaborator: see matching functions suggested as I start typing a formula`, () => {
   test.beforeEach(async ({ page }) => {
@@ -23,56 +23,45 @@ test.describe(`collaborator: see matching functions suggested as I start typing 
     await expect(errorBanner).toBeHidden({ timeout: 5_000 }).catch(() => {});
   });
 
-  // FIXME(mero-sheets): the browser harness logs in but never opens a
-  // spreadsheet — global-setup seeds no context_id, so the app sits on the
-  // project picker and any test that touches a cell/toolbar hangs. Every
-  // spreadsheet-touching test (single-node feature AND multi-node collab) is
-  // deferred until the harness creates+seeds a context. Real behaviour is
-  // covered by the merobox E2E (mero-sheets) scenario and the vitest suite.
-  test.fixme(`after typing '=' followed by one or more letters, a dropdown appears listing all functions whose names start with those letters`, async ({ page }) => {
-    // Select a cell, type '=SU' in the formula bar — a dropdown with SUM must appear.
-    await page.getByTestId('item-Cell-0-0').click();
-    await page.getByTestId('field-formula').fill('=SU');
-
-    // A dropdown listing functions starting with 'SU' (e.g. SUM) should appear
-    await expect(page.getByTestId('item-FunctionDef').filter({ hasText: 'SUM' })).toBeVisible({ timeout: 3_000 });
+  test(`after typing '=' followed by one or more letters, a dropdown appears listing all functions whose names start with those letters`, async ({ page }) => {
+    await openNewWorkbook(page, { name: 'Suggestions' });
+    await cell(page, 0, 0).click();
+    await page.keyboard.type('=SU');
+    const options = page.getByRole('listbox', { name: 'Function suggestions' }).getByRole('option');
+    await expect(options.first()).toBeVisible();
+    const names = await options.locator('.fn-name').allInnerTexts();
+    expect(names).toContain('SUM');
+    for (const n of names) expect(n.startsWith('SU')).toBe(true);
   });
 
-  // FIXME(mero-sheets): the browser harness logs in but never opens a
-  // spreadsheet — global-setup seeds no context_id, so the app sits on the
-  // project picker and any test that touches a cell/toolbar hangs. Every
-  // spreadsheet-touching test (single-node feature AND multi-node collab) is
-  // deferred until the harness creates+seeds a context. Real behaviour is
-  // covered by the merobox E2E (mero-sheets) scenario and the vitest suite.
-  test.fixme(`selecting a suggestion from the dropdown inserts the function name and opening parenthesis into the cell`, async ({ page }) => {
-    // Type '=SU', wait for dropdown, click SUM suggestion — formula bar should contain 'SUM('.
-    await page.getByTestId('item-Cell-0-0').click();
-    await page.getByTestId('field-formula').fill('=SU');
+  test(`selecting a suggestion from the dropdown inserts the function name and opening parenthesis into the cell`, async ({ page }) => {
+    await openNewWorkbook(page, { name: 'Suggestions' });
+    await cell(page, 0, 0).click();
+    await page.keyboard.type('=AVER');
+    await page.getByRole('option').filter({ has: page.locator('.fn-name', { hasText: /^AVERAGE$/ }) }).click();
+    const bar = page.getByLabel('Formula bar');
+    await expect(bar).toHaveValue('=AVERAGE(');
+    await expect(page.getByRole('listbox', { name: 'Function suggestions' })).toBeHidden();
 
-    const suggestion = page.getByTestId('item-FunctionDef').filter({ hasText: 'SUM' });
-    await expect(suggestion).toBeVisible({ timeout: 3_000 });
-    await suggestion.click();
-
-    // The formula bar now contains 'SUM(' (function name + opening parenthesis)
-    await expect(page.getByTestId('field-formula')).toHaveValue(/SUM\(/);
+    // And the formula can be finished and committed from there.
+    await page.keyboard.type('4,8)');
+    await page.keyboard.press('Enter');
+    await expect(cell(page, 0, 0)).toHaveText('6');
   });
 
-  // FIXME(mero-sheets): the browser harness logs in but never opens a
-  // spreadsheet — global-setup seeds no context_id, so the app sits on the
-  // project picker and any test that touches a cell/toolbar hangs. Every
-  // spreadsheet-touching test (single-node feature AND multi-node collab) is
-  // deferred until the harness creates+seeds a context. Real behaviour is
-  // covered by the merobox E2E (mero-sheets) scenario and the vitest suite.
-  test.fixme(`the dropdown disappears when the user clears the formula bar or presses Escape`, async ({ page }) => {
-    // Type '=SU' to trigger the autocomplete dropdown, then press Escape to dismiss it.
-    await page.getByTestId('item-Cell-0-0').click();
-    await page.getByTestId('field-formula').fill('=SU');
-
-    // Verify dropdown is visible first
-    await expect(page.getByTestId('item-FunctionDef')).toBeVisible({ timeout: 3_000 });
-
-    // Press Escape — the dropdown must disappear
+  test(`the dropdown disappears when the user clears the formula bar or presses Escape`, async ({ page }) => {
+    await openNewWorkbook(page, { name: 'Suggestions' });
+    const list = page.getByRole('listbox', { name: 'Function suggestions' });
+    await cell(page, 0, 0).click();
+    await page.keyboard.type('=MA');
+    await expect(list).toBeVisible();
     await page.keyboard.press('Escape');
-    await expect(page.getByTestId('item-FunctionDef')).toBeHidden({ timeout: 2_000 });
+    await expect(list).toBeHidden();
+
+    await cell(page, 1, 0).click();
+    await page.keyboard.type('=MI');
+    await expect(list).toBeVisible();
+    await page.getByLabel('Formula bar').fill('');
+    await expect(list).toBeHidden();
   });
 });
