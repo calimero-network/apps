@@ -112,13 +112,7 @@ test.describe('Document CRUD (single-node)', () => {
       const actions = alice.page.getByRole('button', {
         name: /Document actions/i,
       });
-      await actions.click();
-      await alice.page
-        .getByRole('menuitem', { name: /Delete Document/i })
-        .click();
-      const confirm = alice.page.getByRole('dialog', {
-        name: 'Delete document?',
-      });
+      const confirm = await alice.editor.openDeleteConfirm();
       await expect(confirm).toBeVisible();
       // Let the menu finish unmounting, as it would at human pace.
       await expect(alice.page.locator('[role="menu"]')).toHaveCount(0);

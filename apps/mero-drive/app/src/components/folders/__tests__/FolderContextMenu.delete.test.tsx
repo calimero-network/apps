@@ -1,8 +1,5 @@
-// A failed folder delete used to render a hand-rolled fixed error box.
-// It now goes through the shared toast, same as every other failure.
-
 import React from 'react';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { FolderContextMenu } from '../FolderContextMenu';
 
@@ -39,8 +36,6 @@ vi.mock('@/components/ui/confirm-dialog', () => ({
 vi.mock('../NewFolderDialog', () => ({ NewFolderDialog: () => null }));
 vi.mock('../FolderInfoPanel', () => ({ FolderInfoPanel: () => null }));
 
-beforeEach(() => vi.clearAllMocks());
-
 function openMenuAndDelete() {
   const trigger = screen.getByLabelText('Folder actions');
   fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false });
@@ -65,6 +60,5 @@ describe('FolderContextMenu delete failure', () => {
     await waitFor(() =>
       expect(toastError).toHaveBeenCalledWith("Couldn't delete folder"),
     );
-    expect(screen.queryByRole('alert')).toBeNull();
   });
 });

@@ -23,9 +23,6 @@ import {
   FOLDER_ROLE_PRESETS,
 } from '@/components/admin/FolderRoleSelect';
 
-vi.mock('sonner', () => ({
-  toast: { error: vi.fn() },
-}));
 vi.mock('@/hooks/useFolderPermissions', () => ({
   useFolderPermissions: vi.fn(),
 }));

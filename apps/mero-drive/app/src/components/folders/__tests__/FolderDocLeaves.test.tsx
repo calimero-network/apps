@@ -92,17 +92,7 @@ describe('FolderDocLeaves', () => {
         { id: 'd2', title: 'Notes' },
       ],
     });
-    render(
-      <ul>
-        <FolderDocLeaves
-          folderId="f1"
-          selectedDocId="d1"
-          onOpenDoc={vi.fn()}
-          createPending={false}
-          onCreateStarted={vi.fn()}
-        />
-      </ul>,
-    );
+    render(<Harness selectedDocId="d1" />);
     const rows = screen.getAllByTestId('doc-row');
     const brief = rows.find((r) => r.getAttribute('data-doc-id') === 'd1');
     const notes = rows.find((r) => r.getAttribute('data-doc-id') === 'd2');

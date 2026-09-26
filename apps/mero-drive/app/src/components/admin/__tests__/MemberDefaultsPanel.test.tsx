@@ -7,7 +7,6 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemberDefaultsPanel } from '../MemberDefaultsPanel';
 
 const setMemberCapabilitiesMock = vi.fn().mockResolvedValue(undefined);
-const refetchMembershipMock = vi.fn().mockResolvedValue(undefined);
 const confirmMock = vi.fn();
 
 vi.mock('@/hooks/useDriveWorkspace', () => ({
@@ -26,7 +25,7 @@ vi.mock('@/hooks/useFolderMembership', () => ({
     error: null,
     add: vi.fn(),
     remove: vi.fn(),
-    refetch: refetchMembershipMock,
+    refetch: vi.fn().mockResolvedValue(undefined),
   }),
 }));
 vi.mock('@calimero-network/mero-react', () => ({
@@ -52,7 +51,6 @@ vi.mock('@/components/ui/confirm-dialog', () => ({
 describe('MemberDefaultsPanel apply-to-existing confirmation', () => {
   beforeEach(() => {
     setMemberCapabilitiesMock.mockClear();
-    refetchMembershipMock.mockClear();
     confirmMock.mockReset();
   });
 

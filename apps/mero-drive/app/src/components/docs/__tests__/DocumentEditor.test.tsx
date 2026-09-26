@@ -93,7 +93,6 @@ beforeEach(() => {
   getDoc.mockResolvedValue(DOC);
   getTitle.mockResolvedValue('Notes');
   getDocument.mockResolvedValue([]);
-  docsRemove.mockResolvedValue(undefined);
 });
 
 describe('DocumentEditor', () => {

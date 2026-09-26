@@ -56,13 +56,14 @@ describe('useFolderOperations.create — members', () => {
       useFolderOperations(registry, ROOT, 'app-1', refetch),
     );
 
-    await result.current.create({
+    const outcome = await result.current.create({
       namespaceId: 'ns-1',
       parentGroupId: ROOT,
       alias: 'Secret',
       visibility: 'Restricted',
       members: ['member-a', 'member-b'],
     });
+    expect(outcome).toEqual([]);
 
     // Role MUST be the PascalCase core MemberRole variant — lowercase
     // 'member' is rejected by the server with a deserialize 400.
@@ -124,10 +125,9 @@ describe('useFolderOperations.create — members', () => {
       visibility: 'Restricted',
       members: ['member-a'],
     });
-    expect(outcome.groupId).toBe('new-folder');
     // The caller (NewFolderDialog) needs to know which adds failed so
     // it can tell the user, instead of only logging it.
-    expect(outcome.failedMembers).toEqual(['member-a']);
+    expect(outcome).toEqual(['member-a']);
 
     // Folder stays put (no rollback), rail is refreshed, and the failure
     // is surfaced loudly to the console rather than silently swallowed.
@@ -140,22 +140,6 @@ describe('useFolderOperations.create — members', () => {
     expect(refetch).toHaveBeenCalled();
     expect(errSpy).toHaveBeenCalled();
     errSpy.mockRestore();
-  });
-
-  it('reports no failed members on a clean add', async () => {
-    const registry = makeRegistry();
-    const refetch = vi.fn().mockResolvedValue(undefined);
-    const { result } = renderHook(() =>
-      useFolderOperations(registry, ROOT, 'app-1', refetch),
-    );
-    const outcome = await result.current.create({
-      namespaceId: 'ns-1',
-      parentGroupId: ROOT,
-      alias: 'Secret',
-      visibility: 'Restricted',
-      members: ['member-a', 'member-b'],
-    });
-    expect(outcome.failedMembers).toEqual([]);
   });
 });
 
@@ -178,7 +162,6 @@ describe('useFolderOperations.rename', () => {
   it('resolves and refreshes the folder list on success', async () => {
     const registry = makeRegistry();
     const refetch = vi.fn().mockResolvedValue(undefined);
-    setGroupMetadata.mockResolvedValue(undefined);
     const { result } = renderHook(() =>
       useFolderOperations(registry, ROOT, 'app-1', refetch),
     );

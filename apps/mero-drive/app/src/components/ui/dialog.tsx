@@ -5,8 +5,6 @@ import { cn } from "@/lib/utils";
 
 const Dialog = DialogPrimitive.Root;
 
-const DialogTrigger = DialogPrimitive.Trigger;
-
 const DialogClose = DialogPrimitive.Close;
 
 // A menu item unmounts with its menu, so return focus to the trigger that labels the menu.
@@ -103,7 +101,6 @@ DialogDescription.displayName = DialogPrimitive.Description.displayName;
 
 export {
   Dialog,
-  DialogTrigger,
   DialogClose,
   DialogContent,
   DialogHeader,

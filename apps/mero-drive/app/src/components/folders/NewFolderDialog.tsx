@@ -113,7 +113,7 @@ export function NewFolderDialog({ parentFolderId, onClose }: Props) {
     setError(null);
     let failedMembers: string[] = [];
     try {
-      ({ failedMembers } = await ops.create({
+      failedMembers = await ops.create({
         namespaceId,
         parentGroupId: parentFolderId ?? rootGroupId,
         alias,
@@ -122,7 +122,7 @@ export function NewFolderDialog({ parentFolderId, onClose }: Props) {
         // Open folders inherit members from the namespace, so only
         // Restricted folders carry an explicit member list.
         members: visibility === 'Restricted' ? members : [],
-      }));
+      });
     } catch (e: unknown) {
       const err = e instanceof Error ? e : new Error(String(e));
       setError(err.message);

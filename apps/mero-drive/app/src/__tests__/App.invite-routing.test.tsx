@@ -25,7 +25,6 @@ vi.mock('@calimero-network/mero-react', () => ({
 }));
 vi.mock('sonner', () => ({
   Toaster: () => null,
-  toast: { error: vi.fn() },
 }));
 vi.mock('@/components/ui/tooltip', () => ({
   TooltipProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,

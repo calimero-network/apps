@@ -48,14 +48,9 @@ export interface CreateFolderInput {
   members?: string[];
 }
 
-export interface CreateFolderResult {
-  groupId: string;
-  /** Identities from `input.members` that failed to be added; empty on a clean add. */
-  failedMembers: string[];
-}
-
 export interface FolderOperations {
-  create: (input: CreateFolderInput) => Promise<CreateFolderResult>;
+  /** Resolves to the identities from `input.members` that failed to be added; empty on a clean add. */
+  create: (input: CreateFolderInput) => Promise<string[]>;
   rename: (folderId: string, alias: string) => Promise<void>;
   remove: (folderId: string) => Promise<void>;
 }
@@ -78,7 +73,7 @@ export function useFolderOperations(
   const { mero, nodeUrl } = useMero();
 
   const create = useCallback(
-    async (input: CreateFolderInput): Promise<CreateFolderResult> => {
+    async (input: CreateFolderInput): Promise<string[]> => {
       if (!registryClient || !rootGroupId || !mero) {
         throw new Error('workspace not bootstrapped');
       }
@@ -237,7 +232,7 @@ export function useFolderOperations(
         await refetch().catch((e) =>
           console.error('[create] post-create refetch failed', e),
         );
-        return { groupId: createdGroupId, failedMembers };
+        return failedMembers;
       }
       // Unreachable in practice (a creation failure rethrows above), but
       // keeps the function total for TypeScript.

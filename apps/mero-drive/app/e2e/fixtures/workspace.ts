@@ -525,17 +525,21 @@ export class EditorDriver {
     await input.press('Enter');
   }
 
-  async deleteDocument(): Promise<void> {
-    // EditorHeader renders a 3-dot trigger with an explicit
-    // aria-label="Document actions"; that's the only consumer of
-    // the dropdown so the literal match is safe.
+  // EditorHeader renders a 3-dot trigger with an explicit
+  // aria-label="Document actions"; that's the only consumer of
+  // the dropdown so the literal match is safe.
+  async openDeleteConfirm(): Promise<Locator> {
     await this.page
       .getByRole('button', { name: /Document actions/i })
       .click();
     await this.page
       .getByRole('menuitem', { name: /Delete Document/i })
       .click();
-    const confirm = this.page.getByRole('dialog', { name: 'Delete document?' });
+    return this.page.getByRole('dialog', { name: 'Delete document?' });
+  }
+
+  async deleteDocument(): Promise<void> {
+    const confirm = await this.openDeleteConfirm();
     await confirm.getByRole('button', { name: /^Delete$/ }).click();
     await expect(confirm).toBeHidden();
   }

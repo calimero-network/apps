@@ -6,7 +6,7 @@ import userEvent from '@testing-library/user-event';
 // dependencies declared below.
 import { NewFolderDialog } from '../NewFolderDialog';
 
-const create = vi.fn().mockResolvedValue({ groupId: 'new-folder', failedMembers: [] });
+const create = vi.fn().mockResolvedValue([]);
 const toastError = vi.hoisted(() => vi.fn());
 
 vi.mock('@/hooks/useFolderOperations', () => ({
@@ -77,7 +77,8 @@ describe('NewFolderDialog member-picker', () => {
   });
 
   it('sends no members when visibility stays Open', async () => {
-    render(<NewFolderDialog parentFolderId={null} onClose={vi.fn()} />);
+    const onClose = vi.fn();
+    render(<NewFolderDialog parentFolderId={null} onClose={onClose} />);
     fireEvent.change(screen.getByPlaceholderText('Folder name'), {
       target: { value: 'Public' },
     });
@@ -87,60 +88,25 @@ describe('NewFolderDialog member-picker', () => {
         expect.objectContaining({ visibility: 'Open', members: [] }),
       ),
     );
-  });
-
-  it('toasts the display names of members that failed to be added', async () => {
-    create.mockResolvedValueOnce({
-      groupId: 'new-folder',
-      failedMembers: ['member-a', 'member-b'],
-    });
-    const onClose = vi.fn();
-    render(<NewFolderDialog parentFolderId={null} onClose={onClose} />);
-    fireEvent.click(screen.getByRole('button', { name: /Restricted/ }));
-    fireEvent.change(screen.getByPlaceholderText('Folder name'), {
-      target: { value: 'Secret' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
-
-    await waitFor(() => expect(onClose).toHaveBeenCalled());
-    expect(toastError).toHaveBeenCalledWith(
-      "Some members weren't added",
-      expect.objectContaining({ description: expect.stringContaining('Alice, Bob') }),
-    );
-  });
-
-  it('uses singular wording when exactly one member fails', async () => {
-    create.mockResolvedValueOnce({
-      groupId: 'new-folder',
-      failedMembers: ['member-a'],
-    });
-    const onClose = vi.fn();
-    render(<NewFolderDialog parentFolderId={null} onClose={onClose} />);
-    fireEvent.click(screen.getByRole('button', { name: /Restricted/ }));
-    fireEvent.change(screen.getByPlaceholderText('Folder name'), {
-      target: { value: 'Secret' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
-
-    await waitFor(() => expect(onClose).toHaveBeenCalled());
-    expect(toastError).toHaveBeenCalledWith(
-      "Some members weren't added",
-      expect.objectContaining({
-        description: "Alice wasn't added to the folder.",
-      }),
-    );
-  });
-
-  it('does not toast when every member is added cleanly', async () => {
-    create.mockResolvedValueOnce({ groupId: 'new-folder', failedMembers: [] });
-    const onClose = vi.fn();
-    render(<NewFolderDialog parentFolderId={null} onClose={onClose} />);
-    fireEvent.change(screen.getByPlaceholderText('Folder name'), {
-      target: { value: 'Public' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
     await waitFor(() => expect(onClose).toHaveBeenCalled());
     expect(toastError).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { failedMembers: ['member-a', 'member-b'], description: "Alice, Bob weren't added to the folder." },
+    { failedMembers: ['member-a'], description: "Alice wasn't added to the folder." },
+  ])('toasts the display names of members that failed to be added ($failedMembers.length)', async ({ failedMembers, description }) => {
+    create.mockResolvedValueOnce(failedMembers);
+    const onClose = vi.fn();
+    render(<NewFolderDialog parentFolderId={null} onClose={onClose} />);
+    fireEvent.click(screen.getByRole('button', { name: /Restricted/ }));
+    fireEvent.change(screen.getByPlaceholderText('Folder name'), {
+      target: { value: 'Secret' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(toastError).toHaveBeenCalledWith("Some members weren't added", { description });
   });
 });
 
