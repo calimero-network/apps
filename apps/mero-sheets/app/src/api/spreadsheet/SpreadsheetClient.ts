@@ -6,25 +6,156 @@ import {
 
 // Generated types
 
+export interface AccountData {
+  account: string;
+}
+
+export interface ActivityData {
+  author: string;
+  at: number;
+  sheet_id: string;
+  kind: string;
+  summary: string;
+  count: number;
+  changes: CellChange[];
+}
+
+export interface ActivityEntry {
+  id: string;
+  author: string;
+  at: number;
+  sheet_id: string;
+  kind: string;
+  summary: string;
+  count: number;
+  changes: CellChange[];
+}
+
+export interface AlertState {
+  cells: string[];
+  updated_at: number;
+}
+
+export interface Attachment {
+  id: string;
+  sheet_id: string;
+  row_id: string;
+  col_id: string;
+  blob_id: string;
+  name: string;
+  size: number;
+  mime: string;
+  created_by: string;
+  created_at: number;
+}
+
+export interface AttachmentData {
+  sheet_id: string;
+  row_id: string;
+  col_id: string;
+  blob_id: string;
+  name: string;
+  size: number;
+  mime: string;
+  created_by: string;
+  created_at: number;
+  deleted: boolean;
+  updated_at: number;
+}
+
+export interface AxisData {
+  pos: string;
+  deleted: boolean;
+  updated_at: number;
+}
+
+export interface AxisEntryView {
+  id: string;
+  pos: string;
+  deleted: boolean;
+}
+
+export type AxisOpPayload =
+  | { name: 'InsertRow'; payload: AxisOp_InsertRow }
+  | { name: 'InsertCol'; payload: AxisOp_InsertCol }
+  | { name: 'DeleteRow'; payload: AxisOp_DeleteRow }
+  | { name: 'DeleteCol'; payload: AxisOp_DeleteCol }
+  | { name: 'RestoreRow'; payload: AxisOp_RestoreRow }
+  | { name: 'RestoreCol'; payload: AxisOp_RestoreCol }
+
+export const AxisOp = {
+  InsertRow: (insertrow: AxisOp_InsertRow): AxisOpPayload => ({ name: 'InsertRow', payload: insertrow }),
+  InsertCol: (insertcol: AxisOp_InsertCol): AxisOpPayload => ({ name: 'InsertCol', payload: insertcol }),
+  DeleteRow: (deleterow: AxisOp_DeleteRow): AxisOpPayload => ({ name: 'DeleteRow', payload: deleterow }),
+  DeleteCol: (deletecol: AxisOp_DeleteCol): AxisOpPayload => ({ name: 'DeleteCol', payload: deletecol }),
+  RestoreRow: (restorerow: AxisOp_RestoreRow): AxisOpPayload => ({ name: 'RestoreRow', payload: restorerow }),
+  RestoreCol: (restorecol: AxisOp_RestoreCol): AxisOpPayload => ({ name: 'RestoreCol', payload: restorecol }),
+} as const;
+
+export interface AxisOp_DeleteCol {
+  id: string;
+}
+
+export interface AxisOp_DeleteRow {
+  id: string;
+}
+
+export interface AxisOp_InsertCol {
+  id: string;
+  pos: string;
+}
+
+export interface AxisOp_InsertRow {
+  id: string;
+  pos: string;
+}
+
+export interface AxisOp_RestoreCol {
+  id: string;
+}
+
+export interface AxisOp_RestoreRow {
+  id: string;
+}
+
+export interface AxisSize {
+  axis: string;
+  id: string;
+  size: number;
+}
+
 export interface Cell {
   id: string;
   sheet_id: string;
-  row: number;
-  col: number;
+  row_id: string;
+  col_id: string;
   raw_value: string;
   computed_value: string;
   format: string;
   updated_at: number;
+  last_editor: string;
+  last_edited_at: number;
+}
+
+export interface CellChange {
+  row_id: string;
+  col_id: string;
+  before_raw: string;
+  before_format: string;
+  after_raw: string;
+  after_format: string;
 }
 
 export interface CellData {
   id: string;
   sheet_id: string;
-  row: number;
-  col: number;
   raw_value: string;
-  format: string;
   updated_at: number;
+}
+
+export interface CellMeta {
+  author: string;
+  at: number;
 }
 
 export type CellOpPayload =
@@ -39,44 +170,106 @@ export const CellOp = {
 } as const;
 
 export interface CellOp_Clear {
-  row: number;
-  col: number;
+  row_id: string;
+  col_id: string;
 }
 
 export interface CellOp_Format {
-  row: number;
-  col: number;
+  row_id: string;
+  col_id: string;
   format: string;
 }
 
 export interface CellOp_Set {
-  row: number;
-  col: number;
+  row_id: string;
+  col_id: string;
   raw_value: string;
 }
 
-export interface Cursor {
-  id: string;
-  author: string;
+export interface CellStyle {
   sheet_id: string;
-  row: number;
-  col: number;
-  color: string;
+  row_id: string;
+  col_id: string;
+  style: Record<string, string>;
+}
+
+export interface Chart {
+  id: string;
+  chart: ChartInput;
+  created_by: string;
+}
+
+export interface ChartData {
+  sheet_id: string;
+  top_row_id: string;
+  left_col_id: string;
+  bottom_row_id: string;
+  right_col_id: string;
+  kind: string;
+  title: string;
+  created_by: string;
+  deleted: boolean;
   updated_at: number;
 }
 
-export interface CursorData {
+export interface ChartInput {
   sheet_id: string;
-  row: number;
-  col: number;
-  color: string;
+  top_row_id: string;
+  left_col_id: string;
+  bottom_row_id: string;
+  right_col_id: string;
+  kind: string;
+  title: string;
+}
+
+export interface Comment {
+  id: string;
+  sheet_id: string;
+  row_id: string;
+  col_id: string;
+  author: string;
+  text: string;
+  mentions: string[];
+  parent: string;
+  resolved: boolean;
+  created_at: number;
   updated_at: number;
+}
+
+export interface CommentData {
+  sheet_id: string;
+  row_id: string;
+  col_id: string;
+  author: string;
+  text: string;
+  mentions: string[];
+  parent: string;
+  resolved: boolean;
+  deleted: boolean;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface Event_AlertTriggered {
+  rule_id: string;
+  sheet_id: string;
+  recipients: string[];
+  message: string;
+}
+
+export interface Event_AttachmentsChanged {
+  sheet_id: string;
+}
+
+export interface Event_AxesChanged {
+  sheet_id: string;
+  count: number;
 }
 
 export interface Event_CellCleared {
   sheet_id: string;
-  row: number;
-  col: number;
+  row_id: string;
+  col_id: string;
 }
 
 export interface Event_CellUpdated {
@@ -89,13 +282,24 @@ export interface Event_CellsChanged {
   count: number;
 }
 
-export interface Event_CursorMoved {
-  author: string;
+export interface Event_ChartsChanged {
   sheet_id: string;
 }
 
-export interface Event_CursorRemoved {
+export interface Event_CommentAdded {
+  id: string;
+  sheet_id: string;
   author: string;
+  mentions: string[];
+}
+
+export interface Event_CommentChanged {
+  id: string;
+  sheet_id: string;
+}
+
+export interface Event_LinkedChanged {
+  sheet_id: string;
 }
 
 export interface Event_MemberJoined {
@@ -108,9 +312,35 @@ export interface Event_MemberRenamed {
   nickname: string;
 }
 
+export interface Event_NamedRangesChanged {
+  name: string;
+}
+
+export interface Event_NoteChanged {
+  sheet_id: string;
+  row_id: string;
+  col_id: string;
+}
+
 export interface Event_ProjectInitialized {
   id: string;
   name: string;
+}
+
+export interface Event_ProtectionsChanged {
+  sheet_id: string;
+}
+
+export interface Event_PublicationsChanged {
+  sheet_id: string;
+}
+
+export interface Event_RolesChanged {
+  member_id: string;
+}
+
+export interface Event_RulesChanged {
+  sheet_id: string;
 }
 
 export interface Event_SheetCreated {
@@ -127,11 +357,48 @@ export interface Event_SheetRenamed {
   name: string;
 }
 
+export interface Event_SheetViewChanged {
+  sheet_id: string;
+}
+
+export interface Event_StylesChanged {
+  sheet_id: string;
+}
+
+export interface FormatData {
+  format: string;
+  updated_at: number;
+}
+
 export interface FunctionDef {
   name: string;
+  category: string;
   syntax: string;
   description: string;
   example: string;
+}
+
+export interface Link {
+  id: string;
+  source_context: string;
+  source_name: string;
+  name: string;
+  rows: number;
+  cols: number;
+  updated_at: number;
+}
+
+export interface LinkedData {
+  source_context: string;
+  source_name: string;
+  name: string;
+  rows: number;
+  cols: number;
+  values: string[];
+  created_at: number;
+  blocked: boolean;
+  deleted: boolean;
+  updated_at: number;
 }
 
 export interface Member {
@@ -139,6 +406,8 @@ export interface Member {
   nickname: string;
   joined_at: number;
   updated_at: number;
+  account: string;
+  role: string;
 }
 
 export interface MemberData {
@@ -147,10 +416,146 @@ export interface MemberData {
   updated_at: number;
 }
 
+export interface NamedRange {
+  name: string;
+  target: string;
+}
+
+export interface NamedRangeData {
+  name: string;
+  target: string;
+  updated_at: number;
+}
+
+export type NoteChangePayload =
+  | { name: 'Retain'; payload: NoteChange_Retain }
+  | { name: 'Insert'; payload: NoteChange_Insert }
+  | { name: 'Delete'; payload: NoteChange_Delete }
+
+export const NoteChange = {
+  Retain: (retain: NoteChange_Retain): NoteChangePayload => ({ name: 'Retain', payload: retain }),
+  Insert: (insert: NoteChange_Insert): NoteChangePayload => ({ name: 'Insert', payload: insert }),
+  Delete: (delete_: NoteChange_Delete): NoteChangePayload => ({ name: 'Delete', payload: delete_ }),
+} as const;
+
+export interface NoteChange_Delete {
+  delete_: number;
+}
+
+export interface NoteChange_Insert {
+  insert: string;
+  attributes: Record<string, string>;
+}
+
+export interface NoteChange_Retain {
+  retain: number;
+  attributes: Record<string, string>;
+}
+
+export interface NotedCell {
+  sheet_id: string;
+  row_id: string;
+  col_id: string;
+  preview: string;
+}
+
 export interface Project {
   id: string;
   name: string;
   created_at: number;
+}
+
+export interface Protection {
+  id: string;
+  sheet_id: string;
+  top_row_id: string;
+  left_col_id: string;
+  bottom_row_id: string;
+  right_col_id: string;
+  description: string;
+  editors: string[];
+  created_by: string;
+}
+
+export interface ProtectionData {
+  sheet_id: string;
+  top_row_id: string;
+  left_col_id: string;
+  bottom_row_id: string;
+  right_col_id: string;
+  description: string;
+  editors: string[];
+  created_by: string;
+  deleted: boolean;
+  updated_at: number;
+}
+
+export interface Publication {
+  id: string;
+  sheet_id: string;
+  top_row_id: string;
+  left_col_id: string;
+  bottom_row_id: string;
+  right_col_id: string;
+  target_context: string;
+  name: string;
+  created_by: string;
+}
+
+export interface PublicationData {
+  sheet_id: string;
+  top_row_id: string;
+  left_col_id: string;
+  bottom_row_id: string;
+  right_col_id: string;
+  target_context: string;
+  name: string;
+  created_by: string;
+  deleted: boolean;
+  updated_at: number;
+}
+
+export interface RoleData {
+  role: string;
+  by: string;
+  updated_at: number;
+}
+
+export interface Rule {
+  id: string;
+  rule: RuleInput;
+  created_by: string;
+}
+
+export interface RuleData {
+  sheet_id: string;
+  top_row_id: string;
+  left_col_id: string;
+  bottom_row_id: string;
+  right_col_id: string;
+  kind: string;
+  condition: string;
+  args: string[];
+  style: StylePair[];
+  strict: boolean;
+  recipients: string[];
+  created_by: string;
+  deleted: boolean;
+  updated_at: number;
+}
+
+export interface RuleInput {
+  sheet_id: string;
+  top_row_id: string;
+  left_col_id: string;
+  bottom_row_id: string;
+  right_col_id: string;
+  kind: string;
+  condition: string;
+  args: string[];
+  style: Record<string, string>;
+  strict: boolean;
+  recipients: string[];
 }
 
 export interface Sheet {
@@ -158,6 +563,7 @@ export interface Sheet {
   name: string;
   position: number;
   created_at: number;
+  linked_from: string;
 }
 
 export interface SheetData {
@@ -168,15 +574,97 @@ export interface SheetData {
   updated_at: number;
 }
 
+export interface SheetLayout {
+  sheet_id: string;
+  rows: AxisEntryView[];
+  cols: AxisEntryView[];
+}
+
+export interface SheetView {
+  sheet_id: string;
+  frozen_rows: number;
+  frozen_cols: number;
+  sizes: AxisSize[];
+}
+
+export interface SheetViewData {
+  frozen_rows: number;
+  frozen_cols: number;
+  updated_at: number;
+}
+
+export interface SizeData {
+  size: number;
+  updated_at: number;
+}
+
+export interface Span {
+  text: string;
+  attributes: Record<string, string>;
+}
+
 export interface Spreadsheet {
   project_id: string;
   project_name: string;
   project_created_at: number;
   sheets: Record<string, SheetData>;
   cells: Record<string, CellData>;
-  cursors: Record<string, CursorData>;
   members: Record<string, MemberData>;
+  axes: Record<string, AxisData>;
+  formats: Record<string, FormatData>;
+  names: Record<string, NamedRangeData>;
+  cell_meta: Record<string, CellMeta>;
+  activity: Record<string, ActivityData>;
+  comments: Record<string, CommentData>;
+  notes: Record<string, Record<string, Span>>;
+  accounts: Record<string, AccountData>;
+  roles: Record<string, RoleData>;
+  protections: Record<string, ProtectionData>;
+  sizes: Record<string, SizeData>;
+  views: Record<string, SheetViewData>;
+  styles: Record<string, StyleData>;
+  rules: Record<string, RuleData>;
+  charts: Record<string, ChartData>;
+  attachments: Record<string, AttachmentData>;
+  publications: Record<string, PublicationData>;
+  linked: Record<string, LinkedData>;
+  alert_state: Record<string, AlertState>;
 }
+
+export interface StyleData {
+  fields: StyleField[];
+}
+
+export interface StyleField {
+  field: string;
+  value: string;
+  updated_at: number;
+}
+
+export interface StyleOp {
+  row_id: string;
+  col_id: string;
+  field: string;
+  value: string;
+}
+
+export interface StylePair {
+  field: string;
+  value: string;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -190,19 +678,101 @@ export interface Spreadsheet {
 
 
 export type AbiEvent =
+  | { name: "AlertTriggered"; payload: Event_AlertTriggered }
+  | { name: "AttachmentsChanged"; payload: Event_AttachmentsChanged }
+  | { name: "AxesChanged"; payload: Event_AxesChanged }
   | { name: "CellCleared"; payload: Event_CellCleared }
   | { name: "CellUpdated"; payload: Event_CellUpdated }
   | { name: "CellsChanged"; payload: Event_CellsChanged }
-  | { name: "CursorMoved"; payload: Event_CursorMoved }
-  | { name: "CursorRemoved"; payload: Event_CursorRemoved }
+  | { name: "ChartsChanged"; payload: Event_ChartsChanged }
+  | { name: "CommentAdded"; payload: Event_CommentAdded }
+  | { name: "CommentChanged"; payload: Event_CommentChanged }
+  | { name: "LinkedChanged"; payload: Event_LinkedChanged }
   | { name: "MemberJoined"; payload: Event_MemberJoined }
   | { name: "MemberRenamed"; payload: Event_MemberRenamed }
+  | { name: "NamedRangesChanged"; payload: Event_NamedRangesChanged }
+  | { name: "NoteChanged"; payload: Event_NoteChanged }
   | { name: "ProjectInitialized"; payload: Event_ProjectInitialized }
+  | { name: "ProtectionsChanged"; payload: Event_ProtectionsChanged }
+  | { name: "PublicationsChanged"; payload: Event_PublicationsChanged }
+  | { name: "RolesChanged"; payload: Event_RolesChanged }
+  | { name: "RulesChanged"; payload: Event_RulesChanged }
   | { name: "SheetCreated"; payload: Event_SheetCreated }
   | { name: "SheetDeleted"; payload: Event_SheetDeleted }
   | { name: "SheetRenamed"; payload: Event_SheetRenamed }
+  | { name: "SheetViewChanged"; payload: Event_SheetViewChanged }
+  | { name: "StylesChanged"; payload: Event_StylesChanged }
 ;
 
+
+/**
+ * Utility class for handling byte conversions in Calimero
+ */
+export class CalimeroBytes {
+  private data: Uint8Array;
+
+  constructor(input: string | number[] | Uint8Array) {
+    if (typeof input === "string") {
+      // Hex string
+      this.data = new Uint8Array(
+        input.match(/.{1,2}/g)?.map((byte) => parseInt(byte, 16)) || []
+      );
+    } else if (Array.isArray(input)) {
+      // Number array
+      this.data = new Uint8Array(input);
+    } else {
+      // Uint8Array
+      this.data = input;
+    }
+  }
+
+  toArray(): number[] {
+    return Array.from(this.data);
+  }
+
+  toUint8Array(): Uint8Array {
+    return this.data;
+  }
+
+  static fromHex(hex: string): CalimeroBytes {
+    return new CalimeroBytes(hex);
+  }
+
+  static fromArray(arr: number[]): CalimeroBytes {
+    return new CalimeroBytes(arr);
+  }
+
+  static fromUint8Array(bytes: Uint8Array): CalimeroBytes {
+    return new CalimeroBytes(bytes);
+  }
+}
+
+/**
+ * Convert CalimeroBytes instances to arrays for WASM compatibility
+ */
+function convertCalimeroBytesForWasm(obj: any): any {
+  if (obj === null || obj === undefined) {
+    return obj;
+  }
+
+  if (obj instanceof CalimeroBytes) {
+    return obj.toArray();
+  }
+
+  if (Array.isArray(obj)) {
+    return obj.map(item => convertCalimeroBytesForWasm(item));
+  }
+
+  if (typeof obj === "object") {
+    const result: any = {};
+    for (const [key, value] of Object.entries(obj)) {
+      result[key] = convertCalimeroBytesForWasm(value);
+    }
+    return result;
+  }
+
+  return obj;
+}
 
 export class SpreadsheetClient {
   private _mero: MeroJs;
@@ -211,6 +781,56 @@ export class SpreadsheetClient {
   constructor(mero: MeroJs, contextId: string) {
     this._mero = mero;
     this._contextId = contextId;
+  }
+
+  /**
+   * add_attachment
+   *
+   * @intent mutating
+   */
+  public async addAttachment(params: { sheet_id: string; row_id: string; col_id: string; blob_id: string; name: string; size: number; mime: string }): Promise<string> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'add_attachment', argsJson: params });
+    return response as string;
+  }
+
+  /**
+   * add_chart
+   *
+   * @intent mutating
+   */
+  public async addChart(params: { chart: ChartInput }): Promise<string> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'add_chart', argsJson: params });
+    return response as string;
+  }
+
+  /**
+   * add_comment
+   *
+   * @intent mutating
+   */
+  public async addComment(params: { sheet_id: string; row_id: string; col_id: string; text: string; parent: string }): Promise<string> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'add_comment', argsJson: params });
+    return response as string;
+  }
+
+  /**
+   * add_rule
+   *
+   * @intent mutating
+   */
+  public async addRule(params: { rule: RuleInput }): Promise<string> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'add_rule', argsJson: params });
+    return response as string;
+  }
+
+  /**
+   * apply_axis_ops
+   *
+   * @intent mutating
+   */
+  public async applyAxisOps(params: { sheet_id: string; ops: AxisOpPayload[] }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'apply_axis_ops', argsJson: params });
+    return response as void;
   }
 
   /**
@@ -224,13 +844,43 @@ export class SpreadsheetClient {
   }
 
   /**
+   * apply_private_cell_ops
+   *
+   * @intent mutating
+   */
+  public async applyPrivateCellOps(params: { sheet_id: string; ops: CellOpPayload[] }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'apply_private_cell_ops', argsJson: params });
+    return response as void;
+  }
+
+  /**
+   * apply_style_ops
+   *
+   * @intent mutating
+   */
+  public async applyStyleOps(params: { sheet_id: string; ops: StyleOp[] }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'apply_style_ops', argsJson: params });
+    return response as void;
+  }
+
+  /**
    * clear_cell
    *
    * @intent mutating
    */
-  public async clearCell(params: { sheet_id: string; row: number; col: number }): Promise<void> {
+  public async clearCell(params: { sheet_id: string; row_id: string; col_id: string }): Promise<void> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'clear_cell', argsJson: params });
     return response as void;
+  }
+
+  /**
+   * create_private_sheet
+   *
+   * @intent mutating
+   */
+  public async createPrivateSheet(params: { name: string }): Promise<string> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'create_private_sheet', argsJson: params });
+    return response as string;
   }
 
   /**
@@ -244,12 +894,74 @@ export class SpreadsheetClient {
   }
 
   /**
+   * delete_comment
+   *
+   * @intent mutating
+   */
+  public async deleteComment(params: { id: string }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'delete_comment', argsJson: params });
+    return response as void;
+  }
+
+  /**
+   * delete_named_range
+   *
+   * @intent mutating
+   */
+  public async deleteNamedRange(params: { name: string }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'delete_named_range', argsJson: params });
+    return response as void;
+  }
+
+  /**
+   * delete_private_sheet
+   *
+   * @intent mutating
+   */
+  public async deletePrivateSheet(params: { sheet_id: string }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'delete_private_sheet', argsJson: params });
+    return response as void;
+  }
+
+  /**
    * delete_sheet
    *
    * @intent mutating
    */
   public async deleteSheet(params: { sheet_id: string }): Promise<void> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'delete_sheet', argsJson: params });
+    return response as void;
+  }
+
+  /**
+   * drop_link
+   *
+   * @intent mutating
+   *
+   * @xcall same_app (callers must run the same application id)
+   */
+  public async dropLink(params: { from_context: CalimeroBytes; publication_id: string }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'drop_link', argsJson: convertCalimeroBytesForWasm(params) });
+    return response as void;
+  }
+
+  /**
+   * edit_comment
+   *
+   * @intent mutating
+   */
+  public async editComment(params: { id: string; text: string }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'edit_comment', argsJson: params });
+    return response as void;
+  }
+
+  /**
+   * edit_note
+   *
+   * @intent mutating
+   */
+  public async editNote(params: { sheet_id: string; row_id: string; col_id: string; ops: NoteChangePayload[] }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'edit_note', argsJson: params });
     return response as void;
   }
 
@@ -264,6 +976,16 @@ export class SpreadsheetClient {
   }
 
   /**
+   * get_activity
+   *
+   * @intent read_only
+   */
+  public async getActivity(params: { since: number; limit: number }): Promise<ActivityEntry[]> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_activity', argsJson: params });
+    return response as ActivityEntry[];
+  }
+
+  /**
    * get_all_cells
    *
    * @intent read_only
@@ -271,6 +993,16 @@ export class SpreadsheetClient {
   public async getAllCells(): Promise<Cell[]> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_all_cells', argsJson: {} });
     return response as Cell[];
+  }
+
+  /**
+   * get_attachments
+   *
+   * @intent read_only
+   */
+  public async getAttachments(): Promise<Attachment[]> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_attachments', argsJson: {} });
+    return response as Attachment[];
   }
 
   /**
@@ -284,13 +1016,23 @@ export class SpreadsheetClient {
   }
 
   /**
-   * get_cursors
+   * get_charts
    *
    * @intent read_only
    */
-  public async getCursors(): Promise<Cursor[]> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_cursors', argsJson: {} });
-    return response as Cursor[];
+  public async getCharts(): Promise<Chart[]> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_charts', argsJson: {} });
+    return response as Chart[];
+  }
+
+  /**
+   * get_comments
+   *
+   * @intent read_only
+   */
+  public async getComments(): Promise<Comment[]> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_comments', argsJson: {} });
+    return response as Comment[];
   }
 
   /**
@@ -304,6 +1046,26 @@ export class SpreadsheetClient {
   }
 
   /**
+   * get_layouts
+   *
+   * @intent read_only
+   */
+  public async getLayouts(): Promise<SheetLayout[]> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_layouts', argsJson: {} });
+    return response as SheetLayout[];
+  }
+
+  /**
+   * get_links
+   *
+   * @intent read_only
+   */
+  public async getLinks(): Promise<Link[]> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_links', argsJson: {} });
+    return response as Link[];
+  }
+
+  /**
    * get_members
    *
    * @intent read_only
@@ -314,6 +1076,56 @@ export class SpreadsheetClient {
   }
 
   /**
+   * get_named_ranges
+   *
+   * @intent read_only
+   */
+  public async getNamedRanges(): Promise<NamedRange[]> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_named_ranges', argsJson: {} });
+    return response as NamedRange[];
+  }
+
+  /**
+   * get_note
+   *
+   * @intent read_only
+   */
+  public async getNote(params: { sheet_id: string; row_id: string; col_id: string }): Promise<Span[]> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_note', argsJson: params });
+    return response as Span[];
+  }
+
+  /**
+   * get_noted_cells
+   *
+   * @intent read_only
+   */
+  public async getNotedCells(): Promise<NotedCell[]> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_noted_cells', argsJson: {} });
+    return response as NotedCell[];
+  }
+
+  /**
+   * get_private_cells
+   *
+   * @intent read_only
+   */
+  public async getPrivateCells(): Promise<Cell[]> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_private_cells', argsJson: {} });
+    return response as Cell[];
+  }
+
+  /**
+   * get_private_sheets
+   *
+   * @intent read_only
+   */
+  public async getPrivateSheets(): Promise<Sheet[]> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_private_sheets', argsJson: {} });
+    return response as Sheet[];
+  }
+
+  /**
    * get_project
    *
    * @intent read_only
@@ -321,6 +1133,56 @@ export class SpreadsheetClient {
   public async getProject(): Promise<Project> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_project', argsJson: {} });
     return response as Project;
+  }
+
+  /**
+   * get_protections
+   *
+   * @intent read_only
+   */
+  public async getProtections(): Promise<Protection[]> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_protections', argsJson: {} });
+    return response as Protection[];
+  }
+
+  /**
+   * get_publications
+   *
+   * @intent read_only
+   */
+  public async getPublications(): Promise<Publication[]> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_publications', argsJson: {} });
+    return response as Publication[];
+  }
+
+  /**
+   * get_rules
+   *
+   * @intent read_only
+   */
+  public async getRules(): Promise<Rule[]> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_rules', argsJson: {} });
+    return response as Rule[];
+  }
+
+  /**
+   * get_sheet_views
+   *
+   * @intent read_only
+   */
+  public async getSheetViews(): Promise<SheetView[]> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_sheet_views', argsJson: {} });
+    return response as SheetView[];
+  }
+
+  /**
+   * get_styles
+   *
+   * @intent read_only
+   */
+  public async getStyles(): Promise<CellStyle[]> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_styles', argsJson: {} });
+    return response as CellStyle[];
   }
 
   /**
@@ -362,12 +1224,94 @@ export class SpreadsheetClient {
   }
 
   /**
-   * remove_cursor
+   * protect_range
    *
    * @intent mutating
    */
-  public async removeCursor(): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'remove_cursor', argsJson: {} });
+  public async protectRange(params: { sheet_id: string; top_row_id: string; left_col_id: string; bottom_row_id: string; right_col_id: string; description: string; editors: string[] }): Promise<string> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'protect_range', argsJson: params });
+    return response as string;
+  }
+
+  /**
+   * publish_range
+   *
+   * @intent mutating
+   */
+  public async publishRange(params: { sheet_id: string; top_row_id: string; left_col_id: string; bottom_row_id: string; right_col_id: string; target_context: string; name: string }): Promise<string> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'publish_range', argsJson: params });
+    return response as string;
+  }
+
+  /**
+   * push_publication
+   *
+   * @intent mutating
+   */
+  public async pushPublication(params: { id: string }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'push_publication', argsJson: params });
+    return response as void;
+  }
+
+  /**
+   * receive_link
+   *
+   * @intent mutating
+   *
+   * @xcall same_app (callers must run the same application id)
+   */
+  public async receiveLink(params: { from_context: CalimeroBytes; publication_id: string; name: string; source_name: string; rows: number; cols: number; values: string[] }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'receive_link', argsJson: convertCalimeroBytesForWasm(params) });
+    return response as void;
+  }
+
+  /**
+   * remove_attachment
+   *
+   * @intent mutating
+   */
+  public async removeAttachment(params: { id: string }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'remove_attachment', argsJson: params });
+    return response as void;
+  }
+
+  /**
+   * remove_chart
+   *
+   * @intent mutating
+   */
+  public async removeChart(params: { id: string }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'remove_chart', argsJson: params });
+    return response as void;
+  }
+
+  /**
+   * remove_protection
+   *
+   * @intent mutating
+   */
+  public async removeProtection(params: { id: string }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'remove_protection', argsJson: params });
+    return response as void;
+  }
+
+  /**
+   * remove_rule
+   *
+   * @intent mutating
+   */
+  public async removeRule(params: { id: string }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'remove_rule', argsJson: params });
+    return response as void;
+  }
+
+  /**
+   * rename_private_sheet
+   *
+   * @intent mutating
+   */
+  public async renamePrivateSheet(params: { sheet_id: string; name: string }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'rename_private_sheet', argsJson: params });
     return response as void;
   }
 
@@ -396,7 +1340,7 @@ export class SpreadsheetClient {
    *
    * @intent mutating
    */
-  public async setCell(params: { sheet_id: string; row: number; col: number; raw_value: string }): Promise<string> {
+  public async setCell(params: { sheet_id: string; row_id: string; col_id: string; raw_value: string }): Promise<string> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_cell', argsJson: params });
     return response as string;
   }
@@ -406,28 +1350,108 @@ export class SpreadsheetClient {
    *
    * @intent mutating
    */
-  public async setCellFormat(params: { sheet_id: string; row: number; col: number; format: string }): Promise<string> {
+  public async setCellFormat(params: { sheet_id: string; row_id: string; col_id: string; format: string }): Promise<string> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_cell_format', argsJson: params });
     return response as string;
   }
 
   /**
-   * set_cell_formula
+   * set_comment_resolved
    *
    * @intent mutating
    */
-  public async setCellFormula(params: { sheet_id: string; row: number; col: number; formula: string }): Promise<string> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_cell_formula', argsJson: params });
-    return response as string;
+  public async setCommentResolved(params: { id: string; resolved: boolean }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_comment_resolved', argsJson: params });
+    return response as void;
   }
 
   /**
-   * update_cursor
+   * set_frozen
    *
    * @intent mutating
    */
-  public async updateCursor(params: { sheet_id: string; row: number; col: number }): Promise<void> {
-    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'update_cursor', argsJson: params });
+  public async setFrozen(params: { sheet_id: string; rows: number; cols: number }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_frozen', argsJson: params });
+    return response as void;
+  }
+
+  /**
+   * set_named_range
+   *
+   * @intent mutating
+   */
+  public async setNamedRange(params: { name: string; target: string }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_named_range', argsJson: params });
+    return response as void;
+  }
+
+  /**
+   * set_role
+   *
+   * @intent mutating
+   */
+  public async setRole(params: { member_id: string; role: string }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_role', argsJson: params });
+    return response as void;
+  }
+
+  /**
+   * set_sizes
+   *
+   * @intent mutating
+   */
+  public async setSizes(params: { sheet_id: string; sizes: AxisSize[] }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_sizes', argsJson: params });
+    return response as void;
+  }
+
+  /**
+   * unlink
+   *
+   * @intent mutating
+   */
+  public async unlink(params: { id: string }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'unlink', argsJson: params });
+    return response as void;
+  }
+
+  /**
+   * unpublish
+   *
+   * @intent mutating
+   */
+  public async unpublish(params: { id: string }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'unpublish', argsJson: params });
+    return response as void;
+  }
+
+  /**
+   * update_chart
+   *
+   * @intent mutating
+   */
+  public async updateChart(params: { id: string; chart: ChartInput }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'update_chart', argsJson: params });
+    return response as void;
+  }
+
+  /**
+   * update_protection
+   *
+   * @intent mutating
+   */
+  public async updateProtection(params: { id: string; description: string; editors: string[] }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'update_protection', argsJson: params });
+    return response as void;
+  }
+
+  /**
+   * update_rule
+   *
+   * @intent mutating
+   */
+  public async updateRule(params: { id: string; rule: RuleInput }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'update_rule', argsJson: params });
     return response as void;
   }
 

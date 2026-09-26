@@ -66,7 +66,7 @@ def run():
         # Correctness: bottom-right cell equals rows*cols (numeric-tolerant).
         got = None
         for cell in (cells or []):
-            if cell.get("row") == lr and cell.get("col") == lc:
+            if b.cell_pos(cell) == (lr, lc):
                 got = cell.get("computed_value")
                 break
         correct = False

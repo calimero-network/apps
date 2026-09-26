@@ -1,8 +1,9 @@
 # mero-sheets
 
 A collaborative, peer-to-peer spreadsheet built on [Calimero](https://calimero.network).
-Live cursors, multiple sheet tabs, a formula engine (`SUM`/`AVERAGE`/`MIN`/`MAX`/
-`COUNT`, cross-sheet references), formula autocomplete, and CSV download — with
+Live cursors, multiple sheet tabs, a formula engine (94 functions — lookups,
+conditional aggregates, text and dates — plus cross-sheet references), formula
+autocomplete, and CSV download — with
 all data replicated between peers as CRDTs, no central server.
 
 - **Live app:** deployed on Vercel (see the repo's Deployments).

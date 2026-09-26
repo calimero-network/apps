@@ -1,36 +1,23 @@
-# Spec smoke workflow for mero-sheets — exercises all mutate API methods end-to-end
-# across two merod nodes. The deterministic floor installs the bundle, bootstraps
-# namespace + context, then calls every parameterless view. Mutate steps follow and
-# each is paired with a wait_for_sync + view assertion on node 2.
+# Spec smoke for mero-sheets: every shared-state method, called by a real node
+# over the wire, with the result read back on the OTHER node after sync.
 #
-# Usage:  merobox bootstrap run test/spec-smoke.workflow.yml
-# Pre-flight: `bash logic/build-bundle.sh` must have produced
-#   logic/res/mero-sheets-1.0.0.mpk  (appName/appVersion from studio.config.json)
+# app-node-1 creates the workbook; app-node-2 joins the namespace and is the
+# second member. Private sheets are asserted NOT to reach node 2; roles and
+# protected ranges are asserted to refuse node 2's writes. The cross-workbook
+# (xcall) methods need two contexts on one node and live in links.yml.
+#
+# Run by hand from logic/ once `cargo mero bundle` has written
+# dist/com.calimero.mero-sheets.mpk:
+#
+#   merobox bootstrap run workflows/spec-smoke.yml
 
 name: mero-sheets spec smoke
-description: Smoke-test all spreadsheet service mutate methods across two merod nodes.
+description: Every shared-state method across two merod nodes, read back after sync.
 log_level: info
-# ⚠️ REQUIRED, and its absence is why namespace joins kept dying on
-# `KeyDelivery timed out`.
-#
-# Without it, `merod init`'s default `bootstrap.nodes` survives — the PUBLIC
-# calimero devnet boot-node. Every container then spends its startup dialing
-# unreachable public addresses, and the node log fills with
-#
-#     libp2p_relay: Dropping in-flight connect request because we are at capacity
-#     autonat: ✗ Address /ip4/52.226.124.20/udp/... test failed
-#
-# until the join gives up with
-#
-#     join_group: direct namespace-join request found no reachable mesh peer
-#     join_group: join response contained no group key
-#     KeyDelivery timed out for group ContextGroupId(...)
-#
-# The peers never found each other; it was never a timing race. `e2e_mode`
-# clears `bootstrap.nodes`, gives the workflow its own rendezvous namespace,
-# turns multicast discovery on (which is what populates the kad table on a
-# single Docker bridge) and tightens the sync intervals. merobox's own
-# `apply_e2e_defaults` documents measuring this exact failure with it off.
+# ⚠️ REQUIRED. Without it, `merod init`'s default `bootstrap.nodes` survives (the
+# public devnet boot-node), the containers never find each other, and the
+# namespace join dies on `KeyDelivery timed out`. `e2e_mode` clears it, turns on
+# multicast discovery and tightens the sync intervals.
 e2e_mode: true
 
 nodes:
@@ -44,7 +31,7 @@ nuke_on_end: true
 wait_timeout: 90
 
 steps:
-  # ---- Bootstrap: install + namespace + context ----
+  # ---- Bootstrap: install, namespace, context, second member ----
 
   - type: install_application
     name: Install mero-sheets bundle on app-node-1
@@ -60,11 +47,8 @@ steps:
     dev: true
     path: dist/com.calimero.mero-sheets.mpk
 
-  # ⚠️ The nodes must be UP before the first admin call. merobox waits for
-  # container health, which is not the same as ready: on a genuinely cold
-  # host `create_namespace` returns 500 about four seconds into the run.
-  # This was masked while the teardown left the previous scenario's
-  # containers behind, because the nodes were then already warm.
+  # ⚠️ Container health is not readiness: on a cold host the first admin call
+  # 500s a few seconds in.
   - name: Settle before the first admin call
     type: wait
     seconds: 12
@@ -83,7 +67,7 @@ steps:
     group_id: '{{namespace_id}}'
     service_name: spreadsheet
     outputs:
-      spreadsheet_ctx: contextId
+      ctx: contextId
 
   - type: create_namespace_invitation
     name: Issue namespace invitation from app-node-1
@@ -92,11 +76,8 @@ steps:
     outputs:
       invitation: invitation
 
-  # ⚠️ A join races core's KeyDelivery window: the group key is gossiped with a
-  # ~5s budget and, on fresh nodes, mDNS discovery has to complete inside it too.
-  # Without a settle the join 500s. 12s, matching every other join in the fleet
-  # and the write-up in
-  # apps/scaffolding-e2e/logic/workflows/group-late-joiner.yml.
+  # ⚠️ The join races core's KeyDelivery window (~5s, with mDNS discovery inside
+  # it on fresh nodes). See apps/scaffolding-e2e/logic/workflows/group-late-joiner.yml.
   - type: wait
     seconds: 12
 
@@ -106,307 +87,1149 @@ steps:
     namespace_id: '{{namespace_id}}'
     invitation: '{{invitation}}'
 
-  # ---- Floor: parameterless view calls (baseline assertions) ----
+
+  # ---- Empty workbook: views before anything is written ----
+
 
   - type: call
-    name: View list_sheets on app-node-1 (baseline)
+    name: "get_project before init_project"
     node: app-node-1
-    context_id: '{{spreadsheet_ctx}}'
+    context_id: '{{ctx}}'
+    method: get_project
+    args: {}
+    outputs:
+      project_before: result.output
+
+  - type: json_assert
+    name: "no project yet"
+    statements:
+      - "json_subset({{project_before}}, {\"name\": \"\"})"
+
+  - type: call
+    name: "list_sheets is empty"
+    node: app-node-1
+    context_id: '{{ctx}}'
     method: list_sheets
     args: {}
     outputs:
-      sheets_baseline: result.output
+      sheets_before: result.output
 
   - type: json_assert
-    name: list_sheets returns empty list initially
+    name: "no sheets yet"
     statements:
-      - 'json_equal({{sheets_baseline}}, [])'
+      - "json_equal({{sheets_before}}, [])"
 
   - type: call
-    name: View get_cursors on app-node-1 (baseline)
+    name: "get_functions"
     node: app-node-1
-    context_id: '{{spreadsheet_ctx}}'
-    method: get_cursors
-    args: {}
-    outputs:
-      cursors_baseline: result.output
-
-  - type: json_assert
-    name: get_cursors returns empty list initially
-    statements:
-      - 'json_equal({{cursors_baseline}}, [])'
-
-  - type: call
-    name: View get_functions on app-node-1
-    node: app-node-1
-    context_id: '{{spreadsheet_ctx}}'
+    context_id: '{{ctx}}'
     method: get_functions
     args: {}
     outputs:
-      functions_list: result.output
+      fn_sum: result.output
+
+  - type: assert
+    name: "the catalog has SUM and IF"
+    statements:
+      - "contains({{fn_sum}}, 'SUM')"
+      - "contains({{fn_sum}}, 'IF')"
 
   - type: call
-    name: View search_functions("SU") on app-node-1
+    name: "search_functions by prefix"
     node: app-node-1
-    context_id: '{{spreadsheet_ctx}}'
+    context_id: '{{ctx}}'
     method: search_functions
     args:
-      prefix: "SU"
+      prefix: "AVER"
     outputs:
-      su_functions: result.output
+      fn_aver: result.output.0.name
 
-  - type: call
-    name: View export_all on app-node-1 (baseline)
-    node: app-node-1
-    context_id: '{{spreadsheet_ctx}}'
-    method: export_all
-    args: {}
-    outputs:
-      all_sheets_baseline: result.output
-
-  - type: json_assert
-    name: export_all returns empty list initially
+  - type: assert
+    name: "AVER finds AVERAGE first"
     statements:
-      - 'json_equal({{all_sheets_baseline}}, [])'
+      - "equal({{fn_aver}}, 'AVERAGE')"
 
-  # ---- Mutate: init_project ----
+
+  # ---- Project, members, sheets ----
+
 
   - type: call
-    name: Exercise init_project on app-node-1
+    name: "init_project"
     node: app-node-1
-    context_id: '{{spreadsheet_ctx}}'
+    context_id: '{{ctx}}'
     method: init_project
     args:
       name: "Q3 Budget"
     outputs:
       project_id: result.output
 
-  - type: wait_for_sync
-    name: Wait for sync after init_project
-    context_id: '{{spreadsheet_ctx}}'
-    nodes: [app-node-1, app-node-2]
-    timeout: 30
-    trigger_sync: true
-
-  # ---- Mutate: create_sheet ----
+  - type: call
+    name: "node 1 joins as Ada"
+    node: app-node-1
+    context_id: '{{ctx}}'
+    method: join
+    args:
+      nickname: "Ada"
 
   - type: call
-    name: Exercise create_sheet on app-node-1
+    name: "whoami on node 1"
     node: app-node-1
-    context_id: '{{spreadsheet_ctx}}'
+    context_id: '{{ctx}}'
+    method: whoami
+    args: {}
+    outputs:
+      ada: result.output
+
+  - type: call
+    name: "create_sheet"
+    node: app-node-1
+    context_id: '{{ctx}}'
     method: create_sheet
     args:
       name: "Revenue"
     outputs:
-      sheet_id: result.output
+      sheet: result.output
 
   - type: wait_for_sync
-    name: Wait for sync after create_sheet
-    context_id: '{{spreadsheet_ctx}}'
+    name: "sync the project and sheet"
+    context_id: '{{ctx}}'
     nodes: [app-node-1, app-node-2]
-    timeout: 30
+    timeout: 60
     trigger_sync: true
 
   - type: call
-    name: Confirm new sheet visible on app-node-2 after create_sheet
+    name: "node 2 joins as Bob"
     node: app-node-2
-    context_id: '{{spreadsheet_ctx}}'
-    method: list_sheets
+    context_id: '{{ctx}}'
+    method: join
+    args:
+      nickname: "Bob"
+
+  - type: call
+    name: "whoami on node 2"
+    node: app-node-2
+    context_id: '{{ctx}}'
+    method: whoami
     args: {}
     outputs:
-      sheet_0: result.output.0
-
-  - type: json_assert
-    name: create_sheet produced a visible Sheet on app-node-2
-    statements:
-      - 'json_subset({{sheet_0}}, {"name": "Revenue"})'
-
-  # ---- Mutate: set_cell ----
+      bob: result.output
 
   - type: call
-    name: Exercise set_cell on app-node-1
-    node: app-node-1
-    context_id: '{{spreadsheet_ctx}}'
-    method: set_cell
-    args:
-      sheet_id: '{{sheet_id}}'
-      row: 0
-      col: 0
-      raw_value: "1500"
-    outputs:
-      cell_id: result.output
-
-  # ---- Mutate: set_cell_formula ----
-
-  - type: call
-    name: Exercise set_cell_formula on app-node-1
-    node: app-node-1
-    context_id: '{{spreadsheet_ctx}}'
-    method: set_cell_formula
-    args:
-      sheet_id: '{{sheet_id}}'
-      row: 5
-      col: 0
-      formula: "=SUM(A1:A5)"
-    outputs:
-      formula_cell_id: result.output
-
-  - type: wait_for_sync
-    name: Wait for sync after set_cell operations
-    context_id: '{{spreadsheet_ctx}}'
-    nodes: [app-node-1, app-node-2]
-    timeout: 30
-    trigger_sync: true
-
-  - type: call
-    name: Confirm cell visible on app-node-2 after set_cell
+    name: "get_project on node 2"
     node: app-node-2
-    context_id: '{{spreadsheet_ctx}}'
-    method: get_cells
-    args:
-      sheet_id: '{{sheet_id}}'
-    outputs:
-      cell_0: result.output.0
-
-  - type: json_assert
-    name: set_cell produced a visible Cell on app-node-2
-    statements:
-      - 'json_subset({{cell_0}}, {"raw_value": "1500"})'
-
-  # ---- Mutate: update_cursor ----
-
-  - type: call
-    name: Exercise update_cursor on app-node-1
-    node: app-node-1
-    context_id: '{{spreadsheet_ctx}}'
-    method: update_cursor
-    args:
-      sheet_id: '{{sheet_id}}'
-      row: 2
-      col: 3
-
-  - type: wait_for_sync
-    name: Wait for sync after update_cursor
-    context_id: '{{spreadsheet_ctx}}'
-    nodes: [app-node-1, app-node-2]
-    timeout: 30
-    trigger_sync: true
-
-  - type: call
-    name: Confirm cursor visible on app-node-2 after update_cursor
-    node: app-node-2
-    context_id: '{{spreadsheet_ctx}}'
-    method: get_cursors
+    context_id: '{{ctx}}'
+    method: get_project
     args: {}
     outputs:
-      cursor_0: result.output.0
+      project_after: result.output
 
   - type: json_assert
-    name: update_cursor produced a visible Cursor on app-node-2
+    name: "node 2 sees the project"
     statements:
-      - 'json_subset({{cursor_0}}, {"row": 2, "col": 3})'
+      - "json_subset({{project_after}}, {\"name\": \"Q3 Budget\"})"
 
-  # ---- Mutate: rename_sheet ----
+  - type: wait_for_sync
+    name: "sync Bob's join"
+    context_id: '{{ctx}}'
+    nodes: [app-node-1, app-node-2]
+    timeout: 60
+    trigger_sync: true
 
   - type: call
-    name: Exercise rename_sheet on app-node-1
+    name: "get_members on node 1"
     node: app-node-1
-    context_id: '{{spreadsheet_ctx}}'
+    context_id: '{{ctx}}'
+    method: get_members
+    args: {}
+    outputs:
+      members: result.output
+
+  - type: assert
+    name: "both members are on the roster"
+    statements:
+      - "contains({{members}}, 'Ada')"
+      - "contains({{members}}, 'Bob')"
+
+  - type: call
+    name: "rename_sheet"
+    node: app-node-1
+    context_id: '{{ctx}}'
     method: rename_sheet
     args:
-      sheet_id: '{{sheet_id}}'
-      new_name: "Revenue Q3"
+      sheet_id: '{{sheet}}'
+      new_name: "Income"
 
-  - type: wait_for_sync
-    name: Wait for sync after rename_sheet
-    context_id: '{{spreadsheet_ctx}}'
-    nodes: [app-node-1, app-node-2]
-    timeout: 30
-    trigger_sync: true
+
+  # ---- Cells: values, formulas, formats, batches ----
+
 
   - type: call
-    name: Confirm sheet renamed on app-node-2
-    node: app-node-2
-    context_id: '{{spreadsheet_ctx}}'
-    method: list_sheets
-    args: {}
-    outputs:
-      renamed_sheet: result.output.0
-
-  - type: json_assert
-    name: rename_sheet updated the sheet name visible on app-node-2
-    statements:
-      - 'json_subset({{renamed_sheet}}, {"name": "Revenue Q3"})'
-
-  # ---- Mutate: clear_cell ----
-
-  - type: call
-    name: Exercise clear_cell on app-node-1
+    name: "set_cell A1"
     node: app-node-1
-    context_id: '{{spreadsheet_ctx}}'
+    context_id: '{{ctx}}'
+    method: set_cell
+    args:
+      sheet_id: '{{sheet}}'
+      row_id: "0"
+      col_id: "0"
+      raw_value: "1500"
+
+  - type: call
+    name: "set_cell A2 to a formula"
+    node: app-node-1
+    context_id: '{{ctx}}'
+    method: set_cell
+    args:
+      sheet_id: '{{sheet}}'
+      row_id: "1"
+      col_id: "0"
+      raw_value: "=A1*2"
+
+  - type: call
+    name: "set_cell_format A1"
+    node: app-node-1
+    context_id: '{{ctx}}'
+    method: set_cell_format
+    args:
+      sheet_id: '{{sheet}}'
+      row_id: "0"
+      col_id: "0"
+      format: "currency"
+
+  - type: call
+    name: "apply_cell_ops: set, format and clear in one batch"
+    node: app-node-1
+    context_id: '{{ctx}}'
+    method: apply_cell_ops
+    args:
+      sheet_id: '{{sheet}}'
+      ops: [{"name": "Set", "payload": {"row_id": "0", "col_id": "1", "raw_value": "10"}}, {"name": "Format", "payload": {"row_id": "0", "col_id": "1", "format": "percent"}}, {"name": "Set", "payload": {"row_id": "2", "col_id": "0", "raw_value": "scratch"}}, {"name": "Clear", "payload": {"row_id": "2", "col_id": "0"}}]
+
+  - type: call
+    name: "clear_cell B1"
+    node: app-node-1
+    context_id: '{{ctx}}'
     method: clear_cell
     args:
-      sheet_id: '{{sheet_id}}'
-      row: 0
-      col: 0
-
-  # ---- Mutate: remove_cursor ----
-
-  - type: call
-    name: Exercise remove_cursor on app-node-1
-    node: app-node-1
-    context_id: '{{spreadsheet_ctx}}'
-    method: remove_cursor
-    args: {}
+      sheet_id: '{{sheet}}'
+      row_id: "0"
+      col_id: "1"
 
   - type: wait_for_sync
-    name: Wait for sync after clear_cell and remove_cursor
-    context_id: '{{spreadsheet_ctx}}'
+    name: "sync the cell edits"
+    context_id: '{{ctx}}'
     nodes: [app-node-1, app-node-2]
-    timeout: 30
+    timeout: 60
     trigger_sync: true
 
   - type: call
-    name: Confirm cursor list empty on app-node-2 after remove_cursor
+    name: "get_cells on node 2"
     node: app-node-2
-    context_id: '{{spreadsheet_ctx}}'
-    method: get_cursors
-    args: {}
+    context_id: '{{ctx}}'
+    method: get_cells
+    args:
+      sheet_id: '{{sheet}}'
     outputs:
-      cursors_after_remove: result.output
+      cell_a1: result.output.0
+      cell_a2: result.output.1
 
   - type: json_assert
-    name: remove_cursor cleared the cursor list on app-node-2
+    name: "node 2 has A1 with its format"
     statements:
-      - 'json_equal({{cursors_after_remove}}, [])'
+      - "json_subset({{cell_a1}}, {\"row_id\": \"0\", \"col_id\": \"0\", \"raw_value\": \"1500\", \"format\": \"currency\"})"
 
-  # ---- Mutate: delete_sheet ----
+  - type: json_assert
+    name: "node 2 computes A2's formula"
+    statements:
+      - "json_subset({{cell_a2}}, {\"row_id\": \"1\", \"col_id\": \"0\", \"raw_value\": \"=A1*2\", \"computed_value\": \"3000\"})"
 
   - type: call
-    name: Exercise delete_sheet on app-node-1
+    name: "get_all_cells on node 2"
+    node: app-node-2
+    context_id: '{{ctx}}'
+    method: get_all_cells
+    args: {}
+    outputs:
+      all_cells: result.output
+
+  - type: assert
+    name: "B1 and A3 were cleared, value and format"
+    statements:
+      - "not_contains({{all_cells}}, 'scratch')"
+      - "not_contains({{all_cells}}, 'percent')"
+
+
+  # ---- Rows and columns by id ----
+
+
+  - type: call
+    name: "apply_axis_ops: insert a row between rows 1 and 2"
     node: app-node-1
-    context_id: '{{spreadsheet_ctx}}'
-    method: delete_sheet
+    context_id: '{{ctx}}'
+    method: apply_axis_ops
     args:
-      sheet_id: '{{sheet_id}}'
+      sheet_id: '{{sheet}}'
+      ops: [{"name": "InsertRow", "payload": {"id": "ra", "pos": "50000000005"}}, {"name": "InsertCol", "payload": {"id": "ca", "pos": "50000000005"}}, {"name": "DeleteCol", "payload": {"id": "ca"}}, {"name": "RestoreCol", "payload": {"id": "ca"}}, {"name": "DeleteRow", "payload": {"id": "ra"}}, {"name": "RestoreRow", "payload": {"id": "ra"}}]
+
+  - type: call
+    name: "set a value in the inserted row"
+    node: app-node-1
+    context_id: '{{ctx}}'
+    method: set_cell
+    args:
+      sheet_id: '{{sheet}}'
+      row_id: "ra"
+      col_id: "0"
+      raw_value: "7"
 
   - type: wait_for_sync
-    name: Wait for sync after delete_sheet
-    context_id: '{{spreadsheet_ctx}}'
+    name: "sync the axis ops"
+    context_id: '{{ctx}}'
     nodes: [app-node-1, app-node-2]
-    timeout: 30
+    timeout: 60
     trigger_sync: true
 
   - type: call
-    name: Confirm sheet list empty on app-node-2 after delete_sheet
+    name: "get_layouts on node 2"
     node: app-node-2
-    context_id: '{{spreadsheet_ctx}}'
+    context_id: '{{ctx}}'
+    method: get_layouts
+    args: {}
+    outputs:
+      layout: result.output.0
+
+  - type: json_assert
+    name: "the inserted row and column are live on node 2"
+    statements:
+      - "json_subset({{layout}}, {\"sheet_id\": \"{{sheet}}\", \"rows\": [{\"id\": \"ra\", \"pos\": \"50000000005\", \"deleted\": false}], \"cols\": [{\"id\": \"ca\", \"pos\": \"50000000005\", \"deleted\": false}]})"
+
+
+  # ---- Named ranges ----
+
+
+  - type: call
+    name: "set_named_range"
+    node: app-node-1
+    context_id: '{{ctx}}'
+    method: set_named_range
+    args:
+      name: "Rate"
+      target: "A1"
+
+  - type: call
+    name: "use the name in a formula"
+    node: app-node-1
+    context_id: '{{ctx}}'
+    method: set_cell
+    args:
+      sheet_id: '{{sheet}}'
+      row_id: "3"
+      col_id: "0"
+      raw_value: "=RATE+1"
+
+  - type: wait_for_sync
+    name: "sync the named range"
+    context_id: '{{ctx}}'
+    nodes: [app-node-1, app-node-2]
+    timeout: 60
+    trigger_sync: true
+
+  - type: call
+    name: "get_named_ranges on node 2"
+    node: app-node-2
+    context_id: '{{ctx}}'
+    method: get_named_ranges
+    args: {}
+    outputs:
+      name_0: result.output.0
+
+  - type: json_assert
+    name: "node 2 has the name, as it was typed"
+    statements:
+      - "json_subset({{name_0}}, {\"name\": \"Rate\", \"target\": \"A1\"})"
+
+  - type: call
+    name: "get_cells on node 2 after the name"
+    node: app-node-2
+    context_id: '{{ctx}}'
+    method: get_cells
+    args:
+      sheet_id: '{{sheet}}'
+    outputs:
+      cell_a4: result.output.2
+
+  - type: json_assert
+    name: "node 2 evaluates =RATE+1 through the name"
+    statements:
+      - "json_subset({{cell_a4}}, {\"row_id\": \"3\", \"raw_value\": \"=RATE+1\", \"computed_value\": \"1501\"})"
+
+  - type: call
+    name: "delete_named_range (names match case-insensitively)"
+    node: app-node-1
+    context_id: '{{ctx}}'
+    method: delete_named_range
+    args:
+      name: "RATE"
+
+  - type: call
+    name: "get_named_ranges after delete"
+    node: app-node-1
+    context_id: '{{ctx}}'
+    method: get_named_ranges
+    args: {}
+    outputs:
+      names_after: result.output
+
+  - type: json_assert
+    name: "the name is gone"
+    statements:
+      - "json_equal({{names_after}}, [])"
+
+
+  # ---- Comments and notes ----
+
+
+  - type: call
+    name: "add_comment on A1 mentioning Bob"
+    node: app-node-1
+    context_id: '{{ctx}}'
+    method: add_comment
+    args:
+      sheet_id: '{{sheet}}'
+      row_id: "0"
+      col_id: "0"
+      text: "Is this right, @Bob?"
+      parent: ""
+    outputs:
+      comment: result.output
+
+  - type: wait_for_sync
+    name: "sync the comment"
+    context_id: '{{ctx}}'
+    nodes: [app-node-1, app-node-2]
+    timeout: 60
+    trigger_sync: true
+
+  - type: call
+    name: "Bob replies"
+    node: app-node-2
+    context_id: '{{ctx}}'
+    method: add_comment
+    args:
+      sheet_id: '{{sheet}}'
+      row_id: "0"
+      col_id: "0"
+      text: "Yes"
+      parent: '{{comment}}'
+    outputs:
+      reply: result.output
+
+  - type: call
+    name: "Bob cannot edit Ada's comment"
+    node: app-node-2
+    context_id: '{{ctx}}'
+    method: edit_comment
+    args:
+      id: '{{comment}}'
+      text: "hijacked"
+    expected_failure: true
+
+  - type: call
+    name: "edit_comment by its author"
+    node: app-node-1
+    context_id: '{{ctx}}'
+    method: edit_comment
+    args:
+      id: '{{comment}}'
+      text: "Is this right, @Bob? (Q3)"
+
+  - type: call
+    name: "set_comment_resolved"
+    node: app-node-1
+    context_id: '{{ctx}}'
+    method: set_comment_resolved
+    args:
+      id: '{{comment}}'
+      resolved: true
+
+  - type: wait_for_sync
+    name: "sync the thread"
+    context_id: '{{ctx}}'
+    nodes: [app-node-1, app-node-2]
+    timeout: 60
+    trigger_sync: true
+
+  - type: call
+    name: "get_comments on node 1"
+    node: app-node-1
+    context_id: '{{ctx}}'
+    method: get_comments
+    args: {}
+    outputs:
+      comment_0: result.output.0
+      comment_1: result.output.1
+
+  - type: json_assert
+    name: "the comment is edited, resolved and mentions Bob"
+    statements:
+      - "json_subset({{comment_0}}, {\"text\": \"Is this right, @Bob? (Q3)\", \"resolved\": true, \"author\": \"{{ada}}\", \"mentions\": [\"{{bob}}\"]})"
+
+  - type: json_assert
+    name: "Bob's reply is in the thread"
+    statements:
+      - "json_subset({{comment_1}}, {\"text\": \"Yes\", \"parent\": \"{{comment}}\"})"
+
+  - type: call
+    name: "delete_comment (the reply, by its author)"
+    node: app-node-2
+    context_id: '{{ctx}}'
+    method: delete_comment
+    args:
+      id: '{{reply}}'
+
+  - type: call
+    name: "edit_note: type into A1's note"
+    node: app-node-1
+    context_id: '{{ctx}}'
+    method: edit_note
+    args:
+      sheet_id: '{{sheet}}'
+      row_id: "0"
+      col_id: "0"
+      ops: [{"insert": "Includes the Q2 carry-over"}]
+
+  - type: wait_for_sync
+    name: "sync the note"
+    context_id: '{{ctx}}'
+    nodes: [app-node-1, app-node-2]
+    timeout: 60
+    trigger_sync: true
+
+  - type: call
+    name: "edit_note on node 2: append"
+    node: app-node-2
+    context_id: '{{ctx}}'
+    method: edit_note
+    args:
+      sheet_id: '{{sheet}}'
+      row_id: "0"
+      col_id: "0"
+      ops: [{"retain": 26}, {"insert": "."}]
+
+  - type: wait_for_sync
+    name: "sync the note edit"
+    context_id: '{{ctx}}'
+    nodes: [app-node-1, app-node-2]
+    timeout: 60
+    trigger_sync: true
+
+  - type: call
+    name: "get_note on node 1"
+    node: app-node-1
+    context_id: '{{ctx}}'
+    method: get_note
+    args:
+      sheet_id: '{{sheet}}'
+      row_id: "0"
+      col_id: "0"
+    outputs:
+      note: result.output
+
+  - type: assert
+    name: "both edits are in the note"
+    statements:
+      - "contains({{note}}, 'Includes the Q2 carry-over.')"
+
+  - type: call
+    name: "get_noted_cells"
+    node: app-node-1
+    context_id: '{{ctx}}'
+    method: get_noted_cells
+    args: {}
+    outputs:
+      noted: result.output.0
+
+  - type: json_assert
+    name: "A1 is marked as noted"
+    statements:
+      - "json_subset({{noted}}, {\"sheet_id\": \"{{sheet}}\", \"row_id\": \"0\", \"col_id\": \"0\"})"
+
+
+  # ---- Styles, rules, charts, layout ----
+
+
+  - type: call
+    name: "apply_style_ops: bold and a fill on A1"
+    node: app-node-1
+    context_id: '{{ctx}}'
+    method: apply_style_ops
+    args:
+      sheet_id: '{{sheet}}'
+      ops: [{"row_id": "0", "col_id": "0", "field": "bold", "value": "1"}, {"row_id": "0", "col_id": "0", "field": "fill", "value": "#fde68a"}]
+
+  - type: call
+    name: "add_rule: conditional format"
+    node: app-node-1
+    context_id: '{{ctx}}'
+    method: add_rule
+    args:
+      rule: {"sheet_id": "{{sheet}}", "top_row_id": "0", "left_col_id": "0", "bottom_row_id": "1", "right_col_id": "0", "kind": "format", "condition": "gt", "args": ["1000"], "style": {"color": "#b91c1c"}, "strict": false, "recipients": []}
+    outputs:
+      rule: result.output
+
+  - type: call
+    name: "update_rule"
+    node: app-node-1
+    context_id: '{{ctx}}'
+    method: update_rule
+    args:
+      id: '{{rule}}'
+      rule: {"sheet_id": "{{sheet}}", "top_row_id": "0", "left_col_id": "0", "bottom_row_id": "1", "right_col_id": "0", "kind": "format", "condition": "gt", "args": ["2000"], "style": {"color": "#b91c1c"}, "strict": false, "recipients": []}
+
+  - type: call
+    name: "add_chart"
+    node: app-node-1
+    context_id: '{{ctx}}'
+    method: add_chart
+    args:
+      chart: {"sheet_id": "{{sheet}}", "top_row_id": "0", "left_col_id": "0", "bottom_row_id": "1", "right_col_id": "0", "kind": "bar", "title": "Income"}
+    outputs:
+      chart: result.output
+
+  - type: call
+    name: "update_chart"
+    node: app-node-1
+    context_id: '{{ctx}}'
+    method: update_chart
+    args:
+      id: '{{chart}}'
+      chart: {"sheet_id": "{{sheet}}", "top_row_id": "0", "left_col_id": "0", "bottom_row_id": "1", "right_col_id": "0", "kind": "line", "title": "Income by quarter"}
+
+  - type: call
+    name: "set_frozen"
+    node: app-node-1
+    context_id: '{{ctx}}'
+    method: set_frozen
+    args:
+      sheet_id: '{{sheet}}'
+      rows: 1
+      cols: 1
+
+  - type: call
+    name: "set_sizes"
+    node: app-node-1
+    context_id: '{{ctx}}'
+    method: set_sizes
+    args:
+      sheet_id: '{{sheet}}'
+      sizes: [{"axis": "col", "id": "0", "size": 160}, {"axis": "row", "id": "0", "size": 40}]
+
+  - type: call
+    name: "add_attachment"
+    node: app-node-1
+    context_id: '{{ctx}}'
+    method: add_attachment
+    args:
+      sheet_id: '{{sheet}}'
+      row_id: "0"
+      col_id: "0"
+      blob_id: "abc123"
+      name: "receipt.pdf"
+      size: 2048
+      mime: "application/pdf"
+    outputs:
+      attachment: result.output
+
+  - type: wait_for_sync
+    name: "sync styles, rules, charts, layout and attachments"
+    context_id: '{{ctx}}'
+    nodes: [app-node-1, app-node-2]
+    timeout: 60
+    trigger_sync: true
+
+  - type: call
+    name: "get_styles on node 2"
+    node: app-node-2
+    context_id: '{{ctx}}'
+    method: get_styles
+    args: {}
+    outputs:
+      styles: result.output
+
+  - type: assert
+    name: "node 2 has the bold fill"
+    statements:
+      - "contains({{styles}}, '#fde68a')"
+
+  - type: call
+    name: "get_rules on node 2"
+    node: app-node-2
+    context_id: '{{ctx}}'
+    method: get_rules
+    args: {}
+    outputs:
+      rule_0: result.output.0
+
+  - type: json_assert
+    name: "node 2 has the updated rule"
+    statements:
+      - "json_subset({{rule_0}}, {\"id\": \"{{rule}}\", \"rule\": {\"kind\": \"format\", \"condition\": \"gt\", \"args\": [\"2000\"], \"style\": {\"color\": \"#b91c1c\"}}})"
+
+  - type: call
+    name: "get_charts on node 2"
+    node: app-node-2
+    context_id: '{{ctx}}'
+    method: get_charts
+    args: {}
+    outputs:
+      chart_0: result.output.0
+
+  - type: json_assert
+    name: "node 2 has the updated chart"
+    statements:
+      - "json_subset({{chart_0}}, {\"id\": \"{{chart}}\", \"chart\": {\"kind\": \"line\", \"title\": \"Income by quarter\"}})"
+
+  - type: call
+    name: "get_sheet_views on node 2"
+    node: app-node-2
+    context_id: '{{ctx}}'
+    method: get_sheet_views
+    args: {}
+    outputs:
+      view: result.output.0
+
+  - type: json_assert
+    name: "node 2 has the frozen panes"
+    statements:
+      - "json_subset({{view}}, {\"sheet_id\": \"{{sheet}}\", \"frozen_rows\": 1, \"frozen_cols\": 1})"
+
+  - type: assert
+    name: "node 2 has both sizes"
+    statements:
+      - "contains({{view}}, '160')"
+      - "contains({{view}}, '40')"
+
+  - type: call
+    name: "get_attachments on node 2"
+    node: app-node-2
+    context_id: '{{ctx}}'
+    method: get_attachments
+    args: {}
+    outputs:
+      attachment_0: result.output.0
+
+  - type: json_assert
+    name: "node 2 has the attachment"
+    statements:
+      - "json_subset({{attachment_0}}, {\"name\": \"receipt.pdf\", \"blob_id\": \"abc123\", \"size\": 2048})"
+
+  - type: call
+    name: "remove_rule"
+    node: app-node-1
+    context_id: '{{ctx}}'
+    method: remove_rule
+    args:
+      id: '{{rule}}'
+
+  - type: call
+    name: "remove_chart"
+    node: app-node-1
+    context_id: '{{ctx}}'
+    method: remove_chart
+    args:
+      id: '{{chart}}'
+
+  - type: call
+    name: "remove_attachment"
+    node: app-node-1
+    context_id: '{{ctx}}'
+    method: remove_attachment
+    args:
+      id: '{{attachment}}'
+
+  - type: call
+    name: "get_rules after remove"
+    node: app-node-1
+    context_id: '{{ctx}}'
+    method: get_rules
+    args: {}
+    outputs:
+      rules_after: result.output
+
+  - type: json_assert
+    name: "no rules left"
+    statements:
+      - "json_equal({{rules_after}}, [])"
+
+  - type: call
+    name: "get_charts after remove"
+    node: app-node-1
+    context_id: '{{ctx}}'
+    method: get_charts
+    args: {}
+    outputs:
+      charts_after: result.output
+
+  - type: json_assert
+    name: "no charts left"
+    statements:
+      - "json_equal({{charts_after}}, [])"
+
+  - type: call
+    name: "get_attachments after remove"
+    node: app-node-1
+    context_id: '{{ctx}}'
+    method: get_attachments
+    args: {}
+    outputs:
+      att_after: result.output
+
+  - type: json_assert
+    name: "no attachments left"
+    statements:
+      - "json_equal({{att_after}}, [])"
+
+
+  # ---- Private sheets stay on their node ----
+
+
+  - type: call
+    name: "create_private_sheet"
+    node: app-node-1
+    context_id: '{{ctx}}'
+    method: create_private_sheet
+    args:
+      name: "What-if"
+    outputs:
+      private: result.output
+
+  - type: call
+    name: "apply_private_cell_ops"
+    node: app-node-1
+    context_id: '{{ctx}}'
+    method: apply_private_cell_ops
+    args:
+      sheet_id: '{{private}}'
+      ops: [{"name": "Set", "payload": {"row_id": "0", "col_id": "0", "raw_value": "secret"}}]
+
+  - type: call
+    name: "rename_private_sheet"
+    node: app-node-1
+    context_id: '{{ctx}}'
+    method: rename_private_sheet
+    args:
+      sheet_id: '{{private}}'
+      name: "What-if 2"
+
+  - type: call
+    name: "get_private_sheets on node 1"
+    node: app-node-1
+    context_id: '{{ctx}}'
+    method: get_private_sheets
+    args: {}
+    outputs:
+      private_1: result.output.0
+
+  - type: json_assert
+    name: "node 1 has it, renamed"
+    statements:
+      - "json_subset({{private_1}}, {\"id\": \"{{private}}\", \"name\": \"What-if 2\"})"
+
+  - type: call
+    name: "get_private_cells on node 1"
+    node: app-node-1
+    context_id: '{{ctx}}'
+    method: get_private_cells
+    args: {}
+    outputs:
+      pcells_1: result.output.0
+
+  - type: json_assert
+    name: "node 1 has its cell"
+    statements:
+      - "json_subset({{pcells_1}}, {\"sheet_id\": \"{{private}}\", \"raw_value\": \"secret\"})"
+
+  - type: wait_for_sync
+    name: "sync (nothing private may travel)"
+    context_id: '{{ctx}}'
+    nodes: [app-node-1, app-node-2]
+    timeout: 60
+    trigger_sync: true
+
+  - type: call
+    name: "get_private_sheets on node 2"
+    node: app-node-2
+    context_id: '{{ctx}}'
+    method: get_private_sheets
+    args: {}
+    outputs:
+      private_2: result.output
+
+  - type: json_assert
+    name: "node 2 has no private sheets"
+    statements:
+      - "json_equal({{private_2}}, [])"
+
+  - type: call
+    name: "get_private_cells on node 2"
+    node: app-node-2
+    context_id: '{{ctx}}'
+    method: get_private_cells
+    args: {}
+    outputs:
+      pcells_2: result.output
+
+  - type: json_assert
+    name: "node 2 has no private cells"
+    statements:
+      - "json_equal({{pcells_2}}, [])"
+
+  - type: call
+    name: "export_all on node 2"
+    node: app-node-2
+    context_id: '{{ctx}}'
+    method: export_all
+    args: {}
+    outputs:
+      export_2: result.output
+
+  - type: assert
+    name: "the export has no private sheet"
+    statements:
+      - "not_contains({{export_2}}, 'What-if')"
+
+  - type: call
+    name: "delete_private_sheet"
+    node: app-node-1
+    context_id: '{{ctx}}'
+    method: delete_private_sheet
+    args:
+      sheet_id: '{{private}}'
+
+
+  # ---- Roles and protected ranges ----
+
+
+  - type: call
+    name: "set_role: Bob becomes a viewer"
+    node: app-node-1
+    context_id: '{{ctx}}'
+    method: set_role
+    args:
+      member_id: '{{bob}}'
+      role: "viewer"
+
+  - type: wait_for_sync
+    name: "sync the role"
+    context_id: '{{ctx}}'
+    nodes: [app-node-1, app-node-2]
+    timeout: 60
+    trigger_sync: true
+
+  - type: call
+    name: "a viewer's write is refused"
+    node: app-node-2
+    context_id: '{{ctx}}'
+    method: set_cell
+    args:
+      sheet_id: '{{sheet}}'
+      row_id: "5"
+      col_id: "0"
+      raw_value: "nope"
+    expected_failure: true
+
+  - type: call
+    name: "set_role: Bob is an editor again"
+    node: app-node-1
+    context_id: '{{ctx}}'
+    method: set_role
+    args:
+      member_id: '{{bob}}'
+      role: "editor"
+
+  - type: wait_for_sync
+    name: "sync Bob's editor role"
+    context_id: '{{ctx}}'
+    nodes: [app-node-1, app-node-2]
+    timeout: 60
+    trigger_sync: true
+
+  - type: call
+    name: "an editor cannot change roles (owners only)"
+    node: app-node-2
+    context_id: '{{ctx}}'
+    method: set_role
+    args:
+      member_id: '{{ada}}'
+      role: "viewer"
+    expected_failure: true
+
+  - type: call
+    name: "protect_range A1:A2, Ada only"
+    node: app-node-1
+    context_id: '{{ctx}}'
+    method: protect_range
+    args:
+      sheet_id: '{{sheet}}'
+      top_row_id: "0"
+      left_col_id: "0"
+      bottom_row_id: "1"
+      right_col_id: "0"
+      description: "Totals"
+      editors: []
+    outputs:
+      protection: result.output
+
+  - type: call
+    name: "update_protection"
+    node: app-node-1
+    context_id: '{{ctx}}'
+    method: update_protection
+    args:
+      id: '{{protection}}'
+      description: "Totals (locked)"
+      editors: []
+
+  - type: wait_for_sync
+    name: "sync the role and protection"
+    context_id: '{{ctx}}'
+    nodes: [app-node-1, app-node-2]
+    timeout: 60
+    trigger_sync: true
+
+  - type: call
+    name: "get_protections on node 2"
+    node: app-node-2
+    context_id: '{{ctx}}'
+    method: get_protections
+    args: {}
+    outputs:
+      protection_0: result.output.0
+
+  - type: json_assert
+    name: "node 2 has the protection"
+    statements:
+      - "json_subset({{protection_0}}, {\"id\": \"{{protection}}\", \"description\": \"Totals (locked)\"})"
+
+  - type: call
+    name: "Bob's write inside the range is refused"
+    node: app-node-2
+    context_id: '{{ctx}}'
+    method: set_cell
+    args:
+      sheet_id: '{{sheet}}'
+      row_id: "0"
+      col_id: "0"
+      raw_value: "0"
+    expected_failure: true
+
+  - type: call
+    name: "Bob's write outside it lands"
+    node: app-node-2
+    context_id: '{{ctx}}'
+    method: set_cell
+    args:
+      sheet_id: '{{sheet}}'
+      row_id: "5"
+      col_id: "0"
+      raw_value: "42"
+
+  - type: call
+    name: "remove_protection"
+    node: app-node-1
+    context_id: '{{ctx}}'
+    method: remove_protection
+    args:
+      id: '{{protection}}'
+
+  - type: wait_for_sync
+    name: "sync Bob's edit and the removal"
+    context_id: '{{ctx}}'
+    nodes: [app-node-1, app-node-2]
+    timeout: 60
+    trigger_sync: true
+
+  - type: call
+    name: "get_cells on node 1"
+    node: app-node-1
+    context_id: '{{ctx}}'
+    method: get_cells
+    args:
+      sheet_id: '{{sheet}}'
+    outputs:
+      final_a1: result.output.0
+      final_a6: result.output.3
+
+  - type: json_assert
+    name: "the protected cell kept its value"
+    statements:
+      - "json_subset({{final_a1}}, {\"row_id\": \"0\", \"col_id\": \"0\", \"raw_value\": \"1500\"})"
+
+  - type: json_assert
+    name: "Bob's edit outside the range reached node 1"
+    statements:
+      - "json_subset({{final_a6}}, {\"row_id\": \"5\", \"col_id\": \"0\", \"raw_value\": \"42\", \"last_editor\": \"{{bob}}\"})"
+
+
+  # ---- History ----
+
+
+  - type: call
+    name: "get_activity on node 2"
+    node: app-node-2
+    context_id: '{{ctx}}'
+    method: get_activity
+    args:
+      since: 0
+      limit: 200
+    outputs:
+      activity: result.output
+
+  - type: assert
+    name: "both members' edits are in the log"
+    statements:
+      - "contains({{activity}}, '{{ada}}')"
+      - "contains({{activity}}, '{{bob}}')"
+
+  - type: call
+    name: "export_all on node 1"
+    node: app-node-1
+    context_id: '{{ctx}}'
+    method: export_all
+    args: {}
+    outputs:
+      export: result.output
+
+  - type: assert
+    name: "the export carries the sheet"
+    statements:
+      - "contains({{export}}, 'Income')"
+
+  - type: call
+    name: "delete_sheet"
+    node: app-node-1
+    context_id: '{{ctx}}'
+    method: delete_sheet
+    args:
+      sheet_id: '{{sheet}}'
+
+  - type: wait_for_sync
+    name: "sync the delete"
+    context_id: '{{ctx}}'
+    nodes: [app-node-1, app-node-2]
+    timeout: 60
+    trigger_sync: true
+
+  - type: call
+    name: "list_sheets on node 2"
+    node: app-node-2
+    context_id: '{{ctx}}'
     method: list_sheets
     args: {}
     outputs:
-      sheets_after_delete: result.output
+      sheets_final: result.output
 
-  - type: json_assert
-    name: delete_sheet cleared the sheet list on app-node-2
+  - type: assert
+    name: "the sheet is gone on node 2"
     statements:
-      - 'json_equal({{sheets_after_delete}}, [])'
+      - "not_contains({{sheets_final}}, 'Income')"

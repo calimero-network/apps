@@ -1,6 +1,467 @@
 {
   "schema_version": "wasm-abi/1",
   "types": {
+    "AccountData": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "account",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "ActivityData": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "author",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "kind",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "summary",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "count",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "changes",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "CellChange"
+            }
+          }
+        }
+      ]
+    },
+    "ActivityEntry": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "author",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "kind",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "summary",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "count",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "changes",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "CellChange"
+            }
+          }
+        }
+      ]
+    },
+    "AlertState": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "cells",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "Attachment": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "blob_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "size",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "mime",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "created_by",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "AttachmentData": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "blob_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "size",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "mime",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "created_by",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "deleted",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "AxisData": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "pos",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "deleted",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "AxisEntryView": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "pos",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "deleted",
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ]
+    },
+    "AxisOp": {
+      "kind": "variant",
+      "variants": [
+        {
+          "name": "InsertRow",
+          "payload": {
+            "$ref": "AxisOp_InsertRow"
+          }
+        },
+        {
+          "name": "InsertCol",
+          "payload": {
+            "$ref": "AxisOp_InsertCol"
+          }
+        },
+        {
+          "name": "DeleteRow",
+          "payload": {
+            "$ref": "AxisOp_DeleteRow"
+          }
+        },
+        {
+          "name": "DeleteCol",
+          "payload": {
+            "$ref": "AxisOp_DeleteCol"
+          }
+        },
+        {
+          "name": "RestoreRow",
+          "payload": {
+            "$ref": "AxisOp_RestoreRow"
+          }
+        },
+        {
+          "name": "RestoreCol",
+          "payload": {
+            "$ref": "AxisOp_RestoreCol"
+          }
+        }
+      ]
+    },
+    "AxisOp_DeleteCol": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "AxisOp_DeleteRow": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "AxisOp_InsertCol": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "pos",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "AxisOp_InsertRow": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "pos",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "AxisOp_RestoreCol": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "AxisOp_RestoreRow": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "AxisSize": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "axis",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "size",
+          "type": {
+            "kind": "u32"
+          }
+        }
+      ]
+    },
     "Cell": {
       "kind": "record",
       "fields": [
@@ -17,15 +478,15 @@
           }
         },
         {
-          "name": "row",
+          "name": "row_id",
           "type": {
-            "kind": "u32"
+            "kind": "string"
           }
         },
         {
-          "name": "col",
+          "name": "col_id",
           "type": {
-            "kind": "u32"
+            "kind": "string"
           }
         },
         {
@@ -51,6 +512,59 @@
           "type": {
             "kind": "u64"
           }
+        },
+        {
+          "name": "last_editor",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "last_edited_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "CellChange": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "before_raw",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "before_format",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "after_raw",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "after_format",
+          "type": {
+            "kind": "string"
+          }
         }
       ]
     },
@@ -70,31 +584,30 @@
           }
         },
         {
-          "name": "row",
-          "type": {
-            "kind": "u32"
-          }
-        },
-        {
-          "name": "col",
-          "type": {
-            "kind": "u32"
-          }
-        },
-        {
           "name": "raw_value",
           "type": {
             "kind": "string"
           }
         },
         {
-          "name": "format",
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "CellMeta": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "author",
           "type": {
             "kind": "string"
           }
         },
         {
-          "name": "updated_at",
+          "name": "at",
           "type": {
             "kind": "u64"
           }
@@ -128,15 +641,15 @@
       "kind": "record",
       "fields": [
         {
-          "name": "row",
+          "name": "row_id",
           "type": {
-            "kind": "u32"
+            "kind": "string"
           }
         },
         {
-          "name": "col",
+          "name": "col_id",
           "type": {
-            "kind": "u32"
+            "kind": "string"
           }
         }
       ]
@@ -145,15 +658,15 @@
       "kind": "record",
       "fields": [
         {
-          "name": "row",
+          "name": "row_id",
           "type": {
-            "kind": "u32"
+            "kind": "string"
           }
         },
         {
-          "name": "col",
+          "name": "col_id",
           "type": {
-            "kind": "u32"
+            "kind": "string"
           }
         },
         {
@@ -168,15 +681,15 @@
       "kind": "record",
       "fields": [
         {
-          "name": "row",
+          "name": "row_id",
           "type": {
-            "kind": "u32"
+            "kind": "string"
           }
         },
         {
-          "name": "col",
+          "name": "col_id",
           "type": {
-            "kind": "u32"
+            "kind": "string"
           }
         },
         {
@@ -187,11 +700,199 @@
         }
       ]
     },
-    "Cursor": {
+    "CellStyle": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "style",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "string"
+            }
+          }
+        }
+      ]
+    },
+    "Chart": {
       "kind": "record",
       "fields": [
         {
           "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "chart",
+          "type": {
+            "$ref": "ChartInput"
+          }
+        },
+        {
+          "name": "created_by",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "ChartData": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "top_row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "left_col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "bottom_row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "right_col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "kind",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "title",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "created_by",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "deleted",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "ChartInput": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "top_row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "left_col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "bottom_row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "right_col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "kind",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "title",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Comment": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "col_id",
           "type": {
             "kind": "string"
           }
@@ -203,27 +904,36 @@
           }
         },
         {
-          "name": "sheet_id",
+          "name": "text",
           "type": {
             "kind": "string"
           }
         },
         {
-          "name": "row",
+          "name": "mentions",
           "type": {
-            "kind": "u32"
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
           }
         },
         {
-          "name": "col",
-          "type": {
-            "kind": "u32"
-          }
-        },
-        {
-          "name": "color",
+          "name": "parent",
           "type": {
             "kind": "string"
+          }
+        },
+        {
+          "name": "resolved",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
           }
         },
         {
@@ -234,7 +944,7 @@
         }
       ]
     },
-    "CursorData": {
+    "CommentData": {
       "kind": "record",
       "fields": [
         {
@@ -244,27 +954,126 @@
           }
         },
         {
-          "name": "row",
-          "type": {
-            "kind": "u32"
-          }
-        },
-        {
-          "name": "col",
-          "type": {
-            "kind": "u32"
-          }
-        },
-        {
-          "name": "color",
+          "name": "row_id",
           "type": {
             "kind": "string"
+          }
+        },
+        {
+          "name": "col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "author",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "text",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "mentions",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "parent",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "resolved",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "deleted",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
           }
         },
         {
           "name": "updated_at",
           "type": {
             "kind": "u64"
+          }
+        }
+      ]
+    },
+    "Event_AlertTriggered": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "rule_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "recipients",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "message",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_AttachmentsChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_AxesChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "count",
+          "type": {
+            "kind": "u32"
           }
         }
       ]
@@ -279,15 +1088,15 @@
           }
         },
         {
-          "name": "row",
+          "name": "row_id",
           "type": {
-            "kind": "u32"
+            "kind": "string"
           }
         },
         {
-          "name": "col",
+          "name": "col_id",
           "type": {
-            "kind": "u32"
+            "kind": "string"
           }
         }
       ]
@@ -326,11 +1135,54 @@
         }
       ]
     },
-    "Event_CursorMoved": {
+    "Event_ChartsChanged": {
       "kind": "record",
       "fields": [
         {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_CommentAdded": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
           "name": "author",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "mentions",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        }
+      ]
+    },
+    "Event_CommentChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
           "type": {
             "kind": "string"
           }
@@ -343,11 +1195,11 @@
         }
       ]
     },
-    "Event_CursorRemoved": {
+    "Event_LinkedChanged": {
       "kind": "record",
       "fields": [
         {
-          "name": "author",
+          "name": "sheet_id",
           "type": {
             "kind": "string"
           }
@@ -388,6 +1240,40 @@
         }
       ]
     },
+    "Event_NamedRangesChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_NoteChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "col_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
     "Event_ProjectInitialized": {
       "kind": "record",
       "fields": [
@@ -399,6 +1285,50 @@
         },
         {
           "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_ProtectionsChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_PublicationsChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_RolesChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "member_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_RulesChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "sheet_id",
           "type": {
             "kind": "string"
           }
@@ -450,11 +1380,56 @@
         }
       ]
     },
+    "Event_SheetViewChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "Event_StylesChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "FormatData": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "format",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
     "FunctionDef": {
       "kind": "record",
       "fields": [
         {
           "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "category",
           "type": {
             "kind": "string"
           }
@@ -475,6 +1450,121 @@
           "name": "example",
           "type": {
             "kind": "string"
+          }
+        }
+      ]
+    },
+    "Link": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "source_context",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "source_name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "rows",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "cols",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "LinkedData": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "source_context",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "source_name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "rows",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "cols",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "values",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "created_at",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "blocked",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "deleted",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
           }
         }
       ]
@@ -505,6 +1595,18 @@
           "type": {
             "kind": "u64"
           }
+        },
+        {
+          "name": "account",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "role",
+          "type": {
+            "kind": "string"
+          }
         }
       ]
     },
@@ -531,6 +1633,155 @@
         }
       ]
     },
+    "NamedRange": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "target",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "NamedRangeData": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "target",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "NoteChange": {
+      "kind": "variant",
+      "variants": [
+        {
+          "name": "Retain",
+          "payload": {
+            "$ref": "NoteChange_Retain"
+          }
+        },
+        {
+          "name": "Insert",
+          "payload": {
+            "$ref": "NoteChange_Insert"
+          }
+        },
+        {
+          "name": "Delete",
+          "payload": {
+            "$ref": "NoteChange_Delete"
+          }
+        }
+      ]
+    },
+    "NoteChange_Delete": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "delete",
+          "type": {
+            "kind": "u32"
+          }
+        }
+      ]
+    },
+    "NoteChange_Insert": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "insert",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "attributes",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "string"
+            }
+          }
+        }
+      ]
+    },
+    "NoteChange_Retain": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "retain",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "attributes",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "string"
+            }
+          }
+        }
+      ]
+    },
+    "NotedCell": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "preview",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
     "Project": {
       "kind": "record",
       "fields": [
@@ -550,6 +1801,487 @@
           "name": "created_at",
           "type": {
             "kind": "u64"
+          }
+        }
+      ]
+    },
+    "Protection": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "top_row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "left_col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "bottom_row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "right_col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "description",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "editors",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "created_by",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "ProtectionData": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "top_row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "left_col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "bottom_row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "right_col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "description",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "editors",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "created_by",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "deleted",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "Publication": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "top_row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "left_col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "bottom_row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "right_col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "target_context",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "created_by",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "PublicationData": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "top_row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "left_col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "bottom_row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "right_col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "target_context",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "created_by",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "deleted",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "RoleData": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "role",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "by",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "Rule": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "rule",
+          "type": {
+            "$ref": "RuleInput"
+          }
+        },
+        {
+          "name": "created_by",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "RuleData": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "top_row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "left_col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "bottom_row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "right_col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "kind",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "condition",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "args",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "style",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "StylePair"
+            }
+          }
+        },
+        {
+          "name": "strict",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "recipients",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "created_by",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "deleted",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "RuleInput": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "top_row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "left_col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "bottom_row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "right_col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "kind",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "condition",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "args",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "style",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "strict",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "recipients",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
           }
         }
       ]
@@ -579,6 +2311,12 @@
           "name": "created_at",
           "type": {
             "kind": "u64"
+          }
+        },
+        {
+          "name": "linked_from",
+          "type": {
+            "kind": "string"
           }
         }
       ]
@@ -614,6 +2352,130 @@
           "name": "updated_at",
           "type": {
             "kind": "u64"
+          }
+        }
+      ]
+    },
+    "SheetLayout": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "rows",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "AxisEntryView"
+            }
+          }
+        },
+        {
+          "name": "cols",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "AxisEntryView"
+            }
+          }
+        }
+      ]
+    },
+    "SheetView": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "frozen_rows",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "frozen_cols",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "sizes",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "AxisSize"
+            }
+          }
+        }
+      ]
+    },
+    "SheetViewData": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "frozen_rows",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "frozen_cols",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "SizeData": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "size",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "Span": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "text",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "attributes",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "string"
+            }
           }
         }
       ]
@@ -681,19 +2543,6 @@
           }
         },
         {
-          "name": "cursors",
-          "type": {
-            "kind": "map",
-            "key": {
-              "kind": "string"
-            },
-            "value": {
-              "$ref": "CursorData"
-            },
-            "crdt_type": "authored_map"
-          }
-        },
-        {
           "name": "members",
           "type": {
             "kind": "map",
@@ -705,11 +2554,491 @@
             },
             "crdt_type": "unordered_map"
           }
+        },
+        {
+          "name": "axes",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "AxisData"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "formats",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "FormatData"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "names",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "NamedRangeData"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "cell_meta",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "CellMeta"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "activity",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "ActivityData"
+            },
+            "crdt_type": "sorted_map"
+          }
+        },
+        {
+          "name": "comments",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "CommentData"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "notes",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "map",
+              "key": {
+                "kind": "string"
+              },
+              "value": {
+                "$ref": "Span"
+              }
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "accounts",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "AccountData"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "roles",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "RoleData"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "protections",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "ProtectionData"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "sizes",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "SizeData"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "views",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "SheetViewData"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "styles",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "StyleData"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "rules",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "RuleData"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "charts",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "ChartData"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "attachments",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "AttachmentData"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "publications",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "PublicationData"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "linked",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "LinkedData"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "alert_state",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "AlertState"
+            },
+            "crdt_type": "unordered_map"
+          }
+        }
+      ]
+    },
+    "StyleData": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "fields",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "StyleField"
+            }
+          }
+        }
+      ]
+    },
+    "StyleField": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "field",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "StyleOp": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "field",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "StylePair": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "field",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "string"
+          }
         }
       ]
     }
   },
   "methods": [
+    {
+      "name": "add_attachment",
+      "params": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "blob_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "size",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "mime",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "add_chart",
+      "params": [
+        {
+          "name": "chart",
+          "type": {
+            "$ref": "ChartInput"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "add_comment",
+      "params": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "text",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "parent",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "add_rule",
+      "params": [
+        {
+          "name": "rule",
+          "type": {
+            "$ref": "RuleInput"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "apply_axis_ops",
+      "params": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "ops",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "AxisOp"
+            }
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
     {
       "name": "apply_cell_ops",
       "params": [
@@ -735,6 +3064,54 @@
       "intent": "mutating"
     },
     {
+      "name": "apply_private_cell_ops",
+      "params": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "ops",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "CellOp"
+            }
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "apply_style_ops",
+      "params": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "ops",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "StyleOp"
+            }
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
       "name": "clear_cell",
       "params": [
         {
@@ -744,20 +3121,35 @@
           }
         },
         {
-          "name": "row",
+          "name": "row_id",
           "type": {
-            "kind": "u32"
+            "kind": "string"
           }
         },
         {
-          "name": "col",
+          "name": "col_id",
           "type": {
-            "kind": "u32"
+            "kind": "string"
           }
         }
       ],
       "returns": {
         "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "create_private_sheet",
+      "params": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
       },
       "intent": "mutating"
     },
@@ -777,12 +3169,138 @@
       "intent": "mutating"
     },
     {
+      "name": "delete_comment",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "delete_named_range",
+      "params": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "delete_private_sheet",
+      "params": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
       "name": "delete_sheet",
       "params": [
         {
           "name": "sheet_id",
           "type": {
             "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "drop_link",
+      "params": [
+        {
+          "name": "from_context",
+          "type": {
+            "kind": "bytes",
+            "size": 32
+          }
+        },
+        {
+          "name": "publication_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating",
+      "xcall_callable": true,
+      "xcall_callers": "same_app"
+    },
+    {
+      "name": "edit_comment",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "text",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "edit_note",
+      "params": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "ops",
+          "type": {
+            "kind": "list",
+            "items": {
+              "$ref": "NoteChange"
+            }
           }
         }
       ],
@@ -803,12 +3321,47 @@
       "intent": "read_only"
     },
     {
+      "name": "get_activity",
+      "params": [
+        {
+          "name": "since",
+          "type": {
+            "kind": "u64"
+          }
+        },
+        {
+          "name": "limit",
+          "type": {
+            "kind": "u32"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "ActivityEntry"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
       "name": "get_all_cells",
       "params": [],
       "returns": {
         "kind": "list",
         "items": {
           "$ref": "Cell"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_attachments",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "Attachment"
         }
       },
       "intent": "read_only"
@@ -832,12 +3385,23 @@
       "intent": "read_only"
     },
     {
-      "name": "get_cursors",
+      "name": "get_charts",
       "params": [],
       "returns": {
         "kind": "list",
         "items": {
-          "$ref": "Cursor"
+          "$ref": "Chart"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_comments",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "Comment"
         }
       },
       "intent": "read_only"
@@ -854,6 +3418,28 @@
       "intent": "read_only"
     },
     {
+      "name": "get_layouts",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "SheetLayout"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_links",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "Link"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
       "name": "get_members",
       "params": [],
       "returns": {
@@ -865,10 +3451,139 @@
       "intent": "read_only"
     },
     {
+      "name": "get_named_ranges",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "NamedRange"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_note",
+      "params": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "col_id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "Span"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_noted_cells",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "NotedCell"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_private_cells",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "Cell"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_private_sheets",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "Sheet"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
       "name": "get_project",
       "params": [],
       "returns": {
         "$ref": "Project"
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_protections",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "Protection"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_publications",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "Publication"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_rules",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "Rule"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_sheet_views",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "SheetView"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
+      "name": "get_styles",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "CellStyle"
+        }
       },
       "intent": "read_only"
     },
@@ -921,8 +3636,258 @@
       "intent": "read_only"
     },
     {
-      "name": "remove_cursor",
-      "params": [],
+      "name": "protect_range",
+      "params": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "top_row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "left_col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "bottom_row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "right_col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "description",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "editors",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "publish_range",
+      "params": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "top_row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "left_col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "bottom_row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "right_col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "target_context",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "push_publication",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "receive_link",
+      "params": [
+        {
+          "name": "from_context",
+          "type": {
+            "kind": "bytes",
+            "size": 32
+          }
+        },
+        {
+          "name": "publication_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "source_name",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "rows",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "cols",
+          "type": {
+            "kind": "u32"
+          }
+        },
+        {
+          "name": "values",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating",
+      "xcall_callable": true,
+      "xcall_callers": "same_app"
+    },
+    {
+      "name": "remove_attachment",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "remove_chart",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "remove_protection",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "remove_rule",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "rename_private_sheet",
+      "params": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
       "returns": {
         "kind": "unit"
       },
@@ -977,15 +3942,15 @@
           }
         },
         {
-          "name": "row",
+          "name": "row_id",
           "type": {
-            "kind": "u32"
+            "kind": "string"
           }
         },
         {
-          "name": "col",
+          "name": "col_id",
           "type": {
-            "kind": "u32"
+            "kind": "string"
           }
         },
         {
@@ -1010,15 +3975,15 @@
           }
         },
         {
-          "name": "row",
+          "name": "row_id",
           "type": {
-            "kind": "u32"
+            "kind": "string"
           }
         },
         {
-          "name": "col",
+          "name": "col_id",
           "type": {
-            "kind": "u32"
+            "kind": "string"
           }
         },
         {
@@ -1034,7 +3999,28 @@
       "intent": "mutating"
     },
     {
-      "name": "set_cell_formula",
+      "name": "set_comment_resolved",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "resolved",
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "set_frozen",
       "params": [
         {
           "name": "sheet_id",
@@ -1043,31 +4029,67 @@
           }
         },
         {
-          "name": "row",
+          "name": "rows",
           "type": {
             "kind": "u32"
           }
         },
         {
-          "name": "col",
+          "name": "cols",
           "type": {
             "kind": "u32"
           }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "set_named_range",
+      "params": [
+        {
+          "name": "name",
+          "type": {
+            "kind": "string"
+          }
         },
         {
-          "name": "formula",
+          "name": "target",
           "type": {
             "kind": "string"
           }
         }
       ],
       "returns": {
-        "kind": "string"
+        "kind": "unit"
       },
       "intent": "mutating"
     },
     {
-      "name": "update_cursor",
+      "name": "set_role",
+      "params": [
+        {
+          "name": "member_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "role",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "set_sizes",
       "params": [
         {
           "name": "sheet_id",
@@ -1076,15 +4098,114 @@
           }
         },
         {
-          "name": "row",
+          "name": "sizes",
           "type": {
-            "kind": "u32"
+            "kind": "list",
+            "items": {
+              "$ref": "AxisSize"
+            }
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "unlink",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "unpublish",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "update_chart",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
           }
         },
         {
-          "name": "col",
+          "name": "chart",
           "type": {
-            "kind": "u32"
+            "$ref": "ChartInput"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "update_protection",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "description",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "editors",
+          "type": {
+            "kind": "list",
+            "items": {
+              "kind": "string"
+            }
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "update_rule",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "rule",
+          "type": {
+            "$ref": "RuleInput"
           }
         }
       ],
@@ -1104,6 +4225,24 @@
   ],
   "events": [
     {
+      "name": "AlertTriggered",
+      "payload": {
+        "$ref": "Event_AlertTriggered"
+      }
+    },
+    {
+      "name": "AttachmentsChanged",
+      "payload": {
+        "$ref": "Event_AttachmentsChanged"
+      }
+    },
+    {
+      "name": "AxesChanged",
+      "payload": {
+        "$ref": "Event_AxesChanged"
+      }
+    },
+    {
       "name": "CellCleared",
       "payload": {
         "$ref": "Event_CellCleared"
@@ -1122,15 +4261,27 @@
       }
     },
     {
-      "name": "CursorMoved",
+      "name": "ChartsChanged",
       "payload": {
-        "$ref": "Event_CursorMoved"
+        "$ref": "Event_ChartsChanged"
       }
     },
     {
-      "name": "CursorRemoved",
+      "name": "CommentAdded",
       "payload": {
-        "$ref": "Event_CursorRemoved"
+        "$ref": "Event_CommentAdded"
+      }
+    },
+    {
+      "name": "CommentChanged",
+      "payload": {
+        "$ref": "Event_CommentChanged"
+      }
+    },
+    {
+      "name": "LinkedChanged",
+      "payload": {
+        "$ref": "Event_LinkedChanged"
       }
     },
     {
@@ -1146,9 +4297,45 @@
       }
     },
     {
+      "name": "NamedRangesChanged",
+      "payload": {
+        "$ref": "Event_NamedRangesChanged"
+      }
+    },
+    {
+      "name": "NoteChanged",
+      "payload": {
+        "$ref": "Event_NoteChanged"
+      }
+    },
+    {
       "name": "ProjectInitialized",
       "payload": {
         "$ref": "Event_ProjectInitialized"
+      }
+    },
+    {
+      "name": "ProtectionsChanged",
+      "payload": {
+        "$ref": "Event_ProtectionsChanged"
+      }
+    },
+    {
+      "name": "PublicationsChanged",
+      "payload": {
+        "$ref": "Event_PublicationsChanged"
+      }
+    },
+    {
+      "name": "RolesChanged",
+      "payload": {
+        "$ref": "Event_RolesChanged"
+      }
+    },
+    {
+      "name": "RulesChanged",
+      "payload": {
+        "$ref": "Event_RulesChanged"
       }
     },
     {
@@ -1167,6 +4354,18 @@
       "name": "SheetRenamed",
       "payload": {
         "$ref": "Event_SheetRenamed"
+      }
+    },
+    {
+      "name": "SheetViewChanged",
+      "payload": {
+        "$ref": "Event_SheetViewChanged"
+      }
+    },
+    {
+      "name": "StylesChanged",
+      "payload": {
+        "$ref": "Event_StylesChanged"
       }
     }
   ],

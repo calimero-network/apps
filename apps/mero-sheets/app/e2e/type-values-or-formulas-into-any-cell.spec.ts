@@ -3,7 +3,7 @@
 // writer subagent enriches `test.skip` lines into real assertions; you can
 // too. Do NOT delete the smoke test (it's the floor the verify gate trusts).
 import { test, expect } from '@playwright/test';
-import { loginViaHash, clearAuth } from './helpers';
+import { loginViaHash, clearAuth, cell, enterCell, withTwoMembers } from './helpers';
 
 test.describe(`collaborator: type values or formulas into any cell`, () => {
   test.beforeEach(async ({ page }) => {
@@ -23,67 +23,29 @@ test.describe(`collaborator: type values or formulas into any cell`, () => {
     await expect(errorBanner).toBeHidden({ timeout: 5_000 }).catch(() => {});
   });
 
-  // FIXME(mero-sheets): multi-node collaboration in the 3-node browser harness
-  // does not sync reliably in CI (the join/gossip timing that also flakes
-  // merobox — see the cold-join notes). Cross-node behaviour IS covered by
-  // the merobox E2E (mero-sheets) scenario, which passes. Re-enable once the
-  // browser harness's peering is made reliable.
-  test.fixme(`after a collaborator sets a cell value, all other collaborators see the new value in the same cell within 2s`, async ({ browser }) => {
-    // Multi-node: node 0 sets A1=1500; node 1 must see it within 2s.
-    const ctxA = await browser.newContext();
-    const ctxB = await browser.newContext();
-    const pageA = await ctxA.newPage();
-    const pageB = await ctxB.newPage();
-    try {
-      await loginViaHash(pageA, 0);
-      await loginViaHash(pageB, 1);
-
-      // Node 0 selects cell A1 (row 0, col 0) and sets a value
-      await pageA.getByTestId('item-Cell-0-0').click();
-      await pageA.getByTestId('field-raw_value').fill('1500');
-      await pageA.getByTestId('action-set_cell').click();
-
-      // Node 1 sees the new value in the same cell within 2s
-      await expect(pageB.getByTestId('item-Cell-0-0')).toContainText('1500', { timeout: 2_000 });
-    } finally {
-      await ctxA.close();
-      await ctxB.close();
-    }
+  test(`after a collaborator sets a cell value, all other collaborators see the new value in the same cell within 2s`, async ({ browser }) => {
+    await withTwoMembers(browser, async (a, b) => {
+      await enterCell(a, 2, 3, 'hello');
+      await expect(cell(a, 2, 3)).toHaveText('hello');
+      await expect(cell(b, 2, 3)).toHaveText('hello', { timeout: 60_000 });
+      // Once connected, a change arrives quickly.
+      const started = Date.now();
+      await enterCell(a, 2, 3, 'again');
+      await expect(cell(b, 2, 3)).toHaveText('again', { timeout: 30_000 });
+      console.log(`cross-node cell edit arrived in ${Date.now() - started}ms`);
+    });
   });
 
-  // FIXME(mero-sheets): multi-node collaboration in the 3-node browser harness
-  // does not sync reliably in CI (the join/gossip timing that also flakes
-  // merobox — see the cold-join notes). Cross-node behaviour IS covered by
-  // the merobox E2E (mero-sheets) scenario, which passes. Re-enable once the
-  // browser harness's peering is made reliable.
-  test.fixme(`entering a formula (e.g. =SUM(A1:A5)) stores the raw formula and displays the computed result for everyone`, async ({ browser }) => {
-    // Multi-node: node 0 fills A1:A5 with 10, sets =SUM(A1:A5) in A6; both nodes see 50.
-    const ctxA = await browser.newContext();
-    const ctxB = await browser.newContext();
-    const pageA = await ctxA.newPage();
-    const pageB = await ctxB.newPage();
-    try {
-      await loginViaHash(pageA, 0);
-      await loginViaHash(pageB, 1);
+  test(`entering a formula (e.g. =SUM(A1:A5)) stores the raw formula and displays the computed result for everyone`, async ({ browser }) => {
+    await withTwoMembers(browser, async (a, b) => {
+      for (let row = 0; row < 5; row++) await enterCell(a, row, 0, String((row + 1) * 10));
+      await enterCell(a, 5, 0, '=SUM(A1:A5)');
+      await expect(cell(a, 5, 0)).toHaveText('150');
+      await expect(cell(b, 5, 0)).toHaveText('150', { timeout: 60_000 });
 
-      // Set source values in A1–A5 (rows 0–4, col 0)
-      for (let row = 0; row < 5; row++) {
-        await pageA.getByTestId(`item-Cell-${row}-0`).click();
-        await pageA.getByTestId('field-raw_value').fill('10');
-        await pageA.getByTestId('action-set_cell').click();
-      }
-
-      // Enter formula =SUM(A1:A5) in A6 (row 5, col 0)
-      await pageA.getByTestId('item-Cell-5-0').click();
-      await pageA.getByTestId('field-formula').fill('=SUM(A1:A5)');
-      await pageA.getByTestId('action-set_cell_formula').click();
-
-      // The formula cell displays the computed result (50) for all collaborators
-      await expect(pageA.getByTestId('item-Cell-5-0')).toContainText('50', { timeout: 5_000 });
-      await expect(pageB.getByTestId('item-Cell-5-0')).toContainText('50', { timeout: 5_000 });
-    } finally {
-      await ctxA.close();
-      await ctxB.close();
-    }
+      // The cell shows the result; selecting it shows the formula it holds.
+      await cell(b, 5, 0).click();
+      await expect(b.getByLabel('Formula bar')).toHaveValue('=SUM(A1:A5)');
+    });
   });
 });

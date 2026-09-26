@@ -3,7 +3,7 @@
 // writer subagent enriches `test.skip` lines into real assertions; you can
 // too. Do NOT delete the smoke test (it's the floor the verify gate trusts).
 import { test, expect } from '@playwright/test';
-import { loginViaHash, clearAuth } from './helpers';
+import { loginViaHash, clearAuth, cell, enterCell, withTwoMembers } from './helpers';
 
 test.describe(`collaborator: add, rename, or delete sheet tabs within the project`, () => {
   test.beforeEach(async ({ page }) => {
@@ -23,95 +23,45 @@ test.describe(`collaborator: add, rename, or delete sheet tabs within the projec
     await expect(errorBanner).toBeHidden({ timeout: 5_000 }).catch(() => {});
   });
 
-  // FIXME(mero-sheets): multi-node collaboration in the 3-node browser harness
-  // does not sync reliably in CI (the join/gossip timing that also flakes
-  // merobox — see the cold-join notes). Cross-node behaviour IS covered by
-  // the merobox E2E (mero-sheets) scenario, which passes. Re-enable once the
-  // browser harness's peering is made reliable.
-  test.fixme(`after a collaborator adds a new sheet, every participant sees the new tab appear in the tab bar within 3s`, async ({ browser }) => {
-    // Multi-node: node 0 creates a sheet; node 1 must see the new tab within 3s.
-    const ctxA = await browser.newContext();
-    const ctxB = await browser.newContext();
-    const pageA = await ctxA.newPage();
-    const pageB = await ctxB.newPage();
-    try {
-      await loginViaHash(pageA, 0);
-      await loginViaHash(pageB, 1);
-
-      // Node 0 adds a new sheet named "Revenue"
-      await pageA.getByTestId('field-name').fill('Revenue');
-      await pageA.getByTestId('action-create_sheet').click();
-
-      // Node 1 sees the new "Revenue" tab in the tab bar within 3s
-      await expect(pageB.getByTestId('item-Sheet').filter({ hasText: 'Revenue' })).toBeVisible({ timeout: 3_000 });
-    } finally {
-      await ctxA.close();
-      await ctxB.close();
-    }
+  test(`after a collaborator adds a new sheet, every participant sees the new tab appear in the tab bar within 3s`, async ({ browser }) => {
+    await withTwoMembers(browser, async (a, b) => {
+      await expect(b.getByTestId('item-sheet')).toHaveCount(1);
+      await a.getByTestId('action-create_sheet').click();
+      await expect(a.getByTestId('item-sheet')).toHaveCount(2);
+      await expect(b.getByTestId('item-sheet')).toHaveCount(2, { timeout: 60_000 });
+    });
   });
 
-  // FIXME(mero-sheets): multi-node collaboration in the 3-node browser harness
-  // does not sync reliably in CI (the join/gossip timing that also flakes
-  // merobox — see the cold-join notes). Cross-node behaviour IS covered by
-  // the merobox E2E (mero-sheets) scenario, which passes. Re-enable once the
-  // browser harness's peering is made reliable.
-  test.fixme(`after a sheet is renamed, the updated name shows for everyone within 3s`, async ({ browser }) => {
-    // Multi-node: node 0 creates then renames a sheet; node 1 sees the new name within 3s.
-    const ctxA = await browser.newContext();
-    const ctxB = await browser.newContext();
-    const pageA = await ctxA.newPage();
-    const pageB = await ctxB.newPage();
-    try {
-      await loginViaHash(pageA, 0);
-      await loginViaHash(pageB, 1);
-
-      // Node 0 creates a sheet
-      await pageA.getByTestId('field-name').fill('OldName');
-      await pageA.getByTestId('action-create_sheet').click();
-      await expect(pageA.getByTestId('item-Sheet').filter({ hasText: 'OldName' })).toBeVisible({ timeout: 3_000 });
-
-      // Node 0 renames the sheet: click tab to select, fill new name, confirm
-      await pageA.getByTestId('item-Sheet').filter({ hasText: 'OldName' }).dblclick();
-      await pageA.getByTestId('field-new_name').fill('NewName');
-      await pageA.getByTestId('action-rename_sheet').click();
-
-      // Node 1 sees the updated tab name within 3s
-      await expect(pageB.getByTestId('item-Sheet').filter({ hasText: 'NewName' })).toBeVisible({ timeout: 3_000 });
-    } finally {
-      await ctxA.close();
-      await ctxB.close();
-    }
+  test(`after a sheet is renamed, the updated name shows for everyone within 3s`, async ({ browser }) => {
+    await withTwoMembers(browser, async (a, b) => {
+      await a.getByTestId('item-sheet').first().dblclick();
+      const input = a.getByLabel('Rename sheet');
+      await input.fill('Budget 2026');
+      await input.press('Enter');
+      await expect(a.getByTestId('item-sheet').first()).toContainText('Budget 2026');
+      await expect(b.getByTestId('item-sheet').first()).toContainText('Budget 2026', { timeout: 60_000 });
+    });
   });
 
-  // FIXME(mero-sheets): multi-node collaboration in the 3-node browser harness
-  // does not sync reliably in CI (the join/gossip timing that also flakes
-  // merobox — see the cold-join notes). Cross-node behaviour IS covered by
-  // the merobox E2E (mero-sheets) scenario, which passes. Re-enable once the
-  // browser harness's peering is made reliable.
-  test.fixme(`after a sheet is deleted, the tab and all its cell data disappear for everyone`, async ({ browser }) => {
-    // Multi-node: node 0 creates then deletes a sheet; node 1 sees the tab disappear.
-    const ctxA = await browser.newContext();
-    const ctxB = await browser.newContext();
-    const pageA = await ctxA.newPage();
-    const pageB = await ctxB.newPage();
-    try {
-      await loginViaHash(pageA, 0);
-      await loginViaHash(pageB, 1);
+  test(`after a sheet is deleted, the tab and all its cell data disappear for everyone`, async ({ browser }) => {
+    await withTwoMembers(browser, async (a, b) => {
+      await a.getByTestId('action-create_sheet').click();
+      const tabsA = a.getByTestId('item-sheet');
+      const tabsB = b.getByTestId('item-sheet');
+      await expect(tabsA).toHaveCount(2);
+      await tabsA.nth(1).click();
+      await enterCell(a, 0, 0, 'doomed');
+      await expect(tabsB).toHaveCount(2, { timeout: 60_000 });
+      await tabsB.nth(1).click();
+      await expect(cell(b, 0, 0)).toHaveText('doomed', { timeout: 60_000 });
+      const doomed = (await tabsA.nth(1).getAttribute('data-sheet-id'))!;
 
-      // Node 0 creates a sheet to be deleted
-      await pageA.getByTestId('field-name').fill('ToDelete');
-      await pageA.getByTestId('action-create_sheet').click();
-      await expect(pageA.getByTestId('item-Sheet').filter({ hasText: 'ToDelete' })).toBeVisible({ timeout: 3_000 });
-
-      // Node 0 selects then deletes the sheet
-      await pageA.getByTestId('item-Sheet').filter({ hasText: 'ToDelete' }).click();
-      await pageA.getByTestId('action-delete_sheet').click();
-
-      // Node 1 no longer sees the deleted sheet's tab
-      await expect(pageB.getByTestId('item-Sheet').filter({ hasText: 'ToDelete' })).toBeHidden({ timeout: 3_000 });
-    } finally {
-      await ctxA.close();
-      await ctxB.close();
-    }
+      await tabsA.nth(1).getByTestId('action-delete_sheet').click();
+      await expect(tabsA).toHaveCount(1);
+      await expect(tabsB).toHaveCount(1, { timeout: 60_000 });
+      await expect(b.locator(`[data-testid="item-sheet"][data-sheet-id="${doomed}"]`)).toHaveCount(0);
+      // Bob was looking at it: he lands on the remaining sheet, without its cells.
+      await expect(b.getByTestId('item-cell').filter({ hasText: 'doomed' })).toHaveCount(0);
+    });
   });
 });

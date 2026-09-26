@@ -42,7 +42,7 @@ export const CONFIG: LandingConfig = {
     {
       icon: BarChart,
       title: "Formulas that always compute",
-      body: "SUM, AVERAGE, MIN, MAX, COUNT and IF, re-evaluated per peer whenever a referenced cell changes.",
+      body: "94 functions, from SUMIFS and XLOOKUP to TEXT and EOMONTH, re-evaluated per peer whenever a referenced cell changes.",
     },
     {
       icon: Table,
@@ -131,10 +131,10 @@ export const CONFIG: LandingConfig = {
       ],
       concepts: [
         { term: "Namespace", def: "A project you own and invite collaborators into." },
-        { term: "Context", def: "One workbook: its sheets, its cells and its cursors." },
+        { term: "Context", def: "One workbook: its sheets and its cells." },
         { term: "Sheet", def: "A tab. Stored as a record; a workbook can hold several." },
         { term: "Cell", def: "One entry in a map keyed by sheet and coordinate. Value, formula and format are separate, so formatting a cell does not fight with typing in it." },
-        { term: "Cursor", def: "Where each collaborator is, in their own colour. Authored presence, kept out of the data." },
+        { term: "Cursor", def: "Where each collaborator is and what they have selected, in their own colour. Live presence, never stored in the workbook." },
       ],
     },
     {
@@ -143,7 +143,7 @@ export const CONFIG: LandingConfig = {
       steps: [
         { title: "Connect a node", body: "Press Connect to node and choose your node." },
         { title: "Create a project", body: "A namespace you own, with one workbook in it." },
-        { title: "Type something", body: "Enter values, or a formula: SUM, AVERAGE, MIN, MAX, COUNT and IF are built in, with autocomplete and inline help." },
+        { title: "Type something", body: "Enter values, or a formula: 94 functions are built in, from SUM and IF to XLOOKUP and TEXT, with autocomplete and inline help." },
         { title: "Invite collaborators", body: "Share the link. Their cursor appears in its own colour as soon as they arrive." },
       ],
     },
@@ -162,7 +162,7 @@ export const CONFIG: LandingConfig = {
         "Project name and creation time.",
         "Sheets, keyed by id, with their names.",
         "Cells, keyed by sheet and coordinate, holding the raw value, the raw formula and the format separately.",
-        "Cursors, as authored presence — each one owned by the person it belongs to.",
+        "Not stored: cursors and selections. They travel on the node's ephemeral presence channel and vanish when you close the sheet.",
       ],
     },
     {

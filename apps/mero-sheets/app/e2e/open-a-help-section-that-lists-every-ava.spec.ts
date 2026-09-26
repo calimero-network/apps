@@ -3,7 +3,7 @@
 // writer subagent enriches `test.skip` lines into real assertions; you can
 // too. Do NOT delete the smoke test (it's the floor the verify gate trusts).
 import { test, expect } from '@playwright/test';
-import { loginViaHash, clearAuth } from './helpers';
+import { loginViaHash, clearAuth, cell, enterCell, openNewWorkbook } from './helpers';
 
 test.describe(`anyone in the project: open a help section that lists every available function with its syntax and a short example`, () => {
   test.beforeEach(async ({ page }) => {
@@ -23,64 +23,54 @@ test.describe(`anyone in the project: open a help section that lists every avail
     await expect(errorBanner).toBeHidden({ timeout: 5_000 }).catch(() => {});
   });
 
-  // FIXME(mero-sheets): the browser harness logs in but never opens a
-  // spreadsheet — global-setup seeds no context_id, so the app sits on the
-  // project picker and any test that touches a cell/toolbar hangs. Every
-  // spreadsheet-touching test (single-node feature AND multi-node collab) is
-  // deferred until the harness creates+seeds a context. Real behaviour is
-  // covered by the merobox E2E (mero-sheets) scenario and the vitest suite.
-  test.fixme(`the help panel lists every supported function alphabetically with its name, syntax pattern, and at least one usage example`, async ({ page }) => {
-    // [Verifier] NOTE: help panel toggle is not a spec API method; using role/text selector.
-    await page.getByRole('button', { name: /help/i }).click();
+  test(`the help panel lists every supported function alphabetically with its name, syntax pattern, and at least one usage example`, async ({ page }) => {
+    await openNewWorkbook(page, { name: 'Help' });
+    await page.getByLabel('Open function reference').click();
+    const panel = page.getByRole('dialog', { name: 'Function reference' });
+    await expect(panel).toBeVisible();
+    const cards = panel.locator('li');
+    const count = await cards.count();
+    expect(count).toBeGreaterThan(20);
+    await expect(panel.getByText(`${count} functions`)).toBeVisible();
 
-    // The panel shows FunctionDef items (name, syntax, example)
-    await expect(page.getByTestId('item-FunctionDef')).toBeVisible({ timeout: 3_000 });
+    const names = await cards.evaluateAll((els) => els.map((el) => el.firstElementChild?.firstChild?.textContent ?? ''));
+    expect(names).toEqual([...names].sort((x, y) => x.localeCompare(y)));
+    for (const n of ['SUM', 'AVERAGE', 'MIN', 'MAX', 'COUNT', 'IF']) expect(names).toContain(n);
 
-    // At minimum, SUM is listed (first alphabetically common function)
-    await expect(page.getByTestId('item-FunctionDef').filter({ hasText: 'SUM' })).toBeVisible({ timeout: 3_000 });
+    const sum = cards.filter({ has: page.getByText(/^SUM\(/) }).first();
+    await expect(sum).toContainText('Example');
+    await expect(sum.locator('code')).toContainText('=SUM(');
   });
 
-  // FIXME(mero-sheets): the browser harness logs in but never opens a
-  // spreadsheet — global-setup seeds no context_id, so the app sits on the
-  // project picker and any test that touches a cell/toolbar hangs. Every
-  // spreadsheet-touching test (single-node feature AND multi-node collab) is
-  // deferred until the harness creates+seeds a context. Real behaviour is
-  // covered by the merobox E2E (mero-sheets) scenario and the vitest suite.
-  test.fixme(`the help panel includes a search box that filters the function list as the user types`, async ({ page }) => {
-    // [Verifier] NOTE: help panel toggle not a spec API method; using role/text selector.
-    await page.getByRole('button', { name: /help/i }).click();
-    await expect(page.getByTestId('item-FunctionDef')).toBeVisible({ timeout: 3_000 });
-
-    // Type 'SU' into the search/filter box (field-prefix from search_functions(prefix: String))
-    await page.getByTestId('field-prefix').fill('SU');
-
-    // SUM (matches 'SU') should remain visible; IF (does not match) should be hidden
-    await expect(page.getByTestId('item-FunctionDef').filter({ hasText: 'SUM' })).toBeVisible({ timeout: 2_000 });
-    await expect(page.getByTestId('item-FunctionDef').filter({ hasText: 'IF' })).toBeHidden({ timeout: 2_000 });
+  test(`the help panel includes a search box that filters the function list as the user types`, async ({ page }) => {
+    await openNewWorkbook(page, { name: 'Help' });
+    await page.getByLabel('Open function reference').click();
+    const panel = page.getByRole('dialog', { name: 'Function reference' });
+    const total = await panel.locator('li').count();
+    await panel.getByLabel('Search functions').fill('aver');
+    await expect.poll(() => panel.locator('li').count()).toBeLessThan(total);
+    await expect(panel.locator('li').first()).toContainText('AVERAGE');
+    await panel.getByLabel('Search functions').fill('nosuchfunction');
+    await expect(panel.getByText('No functions match "nosuchfunction"')).toBeVisible();
+    await panel.getByLabel('Clear search').click();
+    await expect(panel.locator('li')).toHaveCount(total);
   });
 
-  // FIXME(mero-sheets): the browser harness logs in but never opens a
-  // spreadsheet — global-setup seeds no context_id, so the app sits on the
-  // project picker and any test that touches a cell/toolbar hangs. Every
-  // spreadsheet-touching test (single-node feature AND multi-node collab) is
-  // deferred until the harness creates+seeds a context. Real behaviour is
-  // covered by the merobox E2E (mero-sheets) scenario and the vitest suite.
-  test.fixme(`the help panel can be opened and closed without losing the current spreadsheet state`, async ({ page }) => {
-    // Set a known cell value, open help panel, close it, verify cell still shows the value.
-    await page.getByTestId('item-Cell-0-0').click();
-    await page.getByTestId('field-raw_value').fill('preserve-me');
-    await page.getByTestId('action-set_cell').click();
-    await expect(page.getByTestId('item-Cell-0-0')).toContainText('preserve-me', { timeout: 5_000 });
+  test(`the help panel can be opened and closed without losing the current spreadsheet state`, async ({ page }) => {
+    await openNewWorkbook(page, { name: 'Help' });
+    await enterCell(page, 0, 0, '7');
+    await enterCell(page, 0, 1, '=A1*6');
+    await expect(cell(page, 0, 1)).toHaveText('42');
+    await cell(page, 0, 1).click();
 
-    // Open the help panel
-    // [Verifier] NOTE: help panel toggle not a spec API method; using role/text selector.
-    await page.getByRole('button', { name: /help/i }).click();
-    await expect(page.getByTestId('item-FunctionDef')).toBeVisible({ timeout: 3_000 });
+    await page.getByLabel('Open function reference').click();
+    const panel = page.getByRole('dialog', { name: 'Function reference' });
+    await expect(panel).toBeVisible();
+    await panel.getByRole('button', { name: 'Close function help' }).click();
+    await expect(panel).toBeHidden();
 
-    // Close the help panel (Escape is the universal dismiss key)
-    await page.keyboard.press('Escape');
-
-    // The spreadsheet cell still holds its value
-    await expect(page.getByTestId('item-Cell-0-0')).toContainText('preserve-me', { timeout: 3_000 });
+    await expect(cell(page, 0, 0)).toHaveText('7');
+    await expect(cell(page, 0, 1)).toHaveText('42');
+    await expect(page.getByLabel('Formula bar')).toHaveValue('=A1*6');
   });
 });

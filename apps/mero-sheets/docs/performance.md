@@ -16,6 +16,18 @@ to run them and how the harness is built.
 > O(N²) today because the node caps ops per CRDT commit — a node-config lever,
 > not an app-logic one.
 
+> **Re-measured on 0.11.0-rc.43 (single binary node).** The register cap
+> described below no longer binds: `max_registers` limits the VM's scratch
+> registers, not storage writes. What bounds a batch is the execution's gas
+> budget (1e9 points): 500 cell inserts fit in one `apply_cell_ops`, 600 do not.
+> And the per-commit cost no longer grows with state: a 200-op commit took
+> ~115 ms whether the context held 0 or 4000 cells, so loading 4000 cells took
+> ~2.3 s in 20 commits, not tens of seconds. Since every cell op also stamps
+> the cell's last editor (the activity log), the costliest op fits 160 to a
+> call; `apply_cell_ops` refuses more than `MAX_OPS_PER_APPLY = 100`, the
+> client splits range ops to that size, and `APPLY_CHUNK` follows it. The
+> tables below are the rc.8 run, kept as recorded.
+
 ---
 
 ## Environment

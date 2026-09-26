@@ -19,16 +19,13 @@ describe('describeError', () => {
     expect(describeError(new Error('nope'))).toBe('nope');
   });
 
-  it('appends contract detail from RpcError.data ({kind,data} shape)', () => {
+  it('shows contract detail from RpcError.data ({kind,data} shape) in place of the bare type', () => {
     const rpc = {
       name: 'RpcError',
       message: 'FunctionCallError',
       data: { kind: 'Forbidden', data: 'delete: caller is not the owner' },
     };
-    const out = describeError(rpc);
-    expect(out).toContain('FunctionCallError');
-    expect(out).toContain('Forbidden');
-    expect(out).toContain('caller is not the owner');
+    expect(describeError(rpc)).toBe('Forbidden: delete: caller is not the owner');
   });
 
   it('does not duplicate detail already in the message', () => {
@@ -71,5 +68,14 @@ describe('describeError', () => {
     expect(describeError('the method call returned an error: boom')).toBe(
       'the method call returned an error: boom',
     );
+  });
+  it('shows a refused write as the contract says it, without the error type', () => {
+    const err = { message: 'FunctionCallError', data: '"forbidden: A1 is in a protected range (\\"Totals\\")"' };
+    expect(describeError(err)).toBe('Forbidden: A1 is in a protected range ("Totals")');
+  });
+  it('reads a message the node sends as the bytes of a JSON string', () => {
+    const bytes = Array.from(new TextEncoder().encode(JSON.stringify('invalid input: B1 must be one of Yes, No')));
+    const err = { message: 'FunctionCallError', data: `the method call returned an error: [${bytes.join(', ')}]` };
+    expect(describeError(err)).toBe('Invalid input: B1 must be one of Yes, No');
   });
 });

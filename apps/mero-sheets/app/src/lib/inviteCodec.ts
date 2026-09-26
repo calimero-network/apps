@@ -203,11 +203,8 @@ export function encodeInvite(payload: SheetsInvitePayload): string {
 }
 
 /**
- * Decode pasted input. Accepts, in order of preference:
- *   - base58(deflate(JSON))  — what `encodeInvite` produces
- *   - base58(JSON)           — uncompressed, for curb-era codes
- *   - base64(JSON)           — what mero-sheets itself emitted before this
- *   - raw JSON               — for debugging and for pasting an API response
+ * Decode pasted input: base58(deflate(JSON)), what `encodeInvite` produces,
+ * or raw JSON, for debugging and for pasting an API response.
  *
  * Returns null rather than throwing: this is user input, and every caller wants
  * "that code is not valid" rather than an exception.
@@ -218,32 +215,7 @@ export function decodeInvite(input: string): SheetsInvitePayload | null {
   if (trimmed.startsWith('{')) return parsePayload(input.trim());
 
   try {
-    const bytes = bs58.decode(trimmed);
-    let json: string;
-    try {
-      json = new TextDecoder().decode(inflateSync(bytes));
-    } catch {
-      json = new TextDecoder().decode(bytes); // uncompressed legacy form
-    }
-    const parsed = parsePayload(json);
-    if (parsed) return parsed;
-  } catch {
-    // Not base58 at all — `+`, `/` and `=` are outside its alphabet, which is
-    // precisely how an old base64 code lands here.
-  }
-  return decodeLegacyBase64(trimmed);
-}
-
-/**
- * The format this app shipped before adopting the shared one: base64 of raw
- * JSON. Read, never written. Anyone already holding one of those codes should
- * not have it stop working because we changed our minds about the encoding.
- */
-function decodeLegacyBase64(code: string): SheetsInvitePayload | null {
-  try {
-    const bin = atob(code);
-    const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
-    return parsePayload(new TextDecoder().decode(bytes));
+    return parsePayload(new TextDecoder().decode(inflateSync(bs58.decode(trimmed))));
   } catch {
     return null;
   }
