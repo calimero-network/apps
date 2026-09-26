@@ -44,7 +44,7 @@ calimero-storage = { workspace = true, features = ["testing"] }
 [package.metadata.calimero]
 package     = "com.calimero.chat"
 name        = "Mero Chat"
-description = "Mero Chat v2 - group-based context management. Each context is one channel or DM."
+description = "Private team chat on your own nodes: channels, threads and direct messages with no central server."
 author      = "Calimero"
 icon        = "../app/public/icons/icon-512x512.png"
 # The existing deployment. It is also the login callback's registered origin, so

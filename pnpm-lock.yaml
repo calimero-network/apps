@@ -511,6 +511,9 @@ importers:
       '@braintree/sanitize-url':
         specifier: ^7.1.2
         version: 7.1.2
+      '@calimero-network/mero-icons':
+        specifier: 'catalog:'
+        version: 0.0.5(react@19.2.8)
       '@calimero-network/mero-js':
         specifier: 'catalog:'
         version: 19.14.1

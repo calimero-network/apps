@@ -91,7 +91,10 @@ function readCalimeroMeta(app) {
 
   for (const f of candidates) {
     const src = readFileSync(f, 'utf8');
-    const block = src.match(/^\[package\.metadata\.calimero\]\s*$([\s\S]*?)(?=^\[|\Z)/m);
+    // `(?![\s\S])` is end-of-input. It was `\Z`, which JavaScript does not
+    // have — there it matches a literal "Z", so a table at the END of the file
+    // (mero-chat's) was never found.
+    const block = src.match(/^\[package\.metadata\.calimero\]\s*$([\s\S]*?)(?=^\[|(?![\s\S]))/m);
     if (!block) continue;
     const body = block[1];
     const get = (k) => body.match(new RegExp(`^\\s*${k}\\s*=\\s*"([^"]*)"`, 'm'))?.[1];
@@ -579,7 +582,9 @@ function renderConfig(app, entry, meta) {
   lines.push(`  tagline: ${q(meta.tagline)},`);
   lines.push(`  dir: ${q(app)},`);
   lines.push(`  markSrc: ${q(entry.markSrc ?? '/favicon.svg')},`);
-  lines.push(`  iconSrc: '/icon-512.png',`);
+  // Overridable like `markSrc`: not every app ships `/icon-512.png` (mero-chat's
+  // icons live under /icons/), and a wrong path is a broken image, not an error.
+  lines.push(`  iconSrc: ${entry.iconSrc ? q(entry.iconSrc) : "'/icon-512.png'"},`);
   lines.push(`  availability: ${q(entry.availability)},`);
   if (entry.themeStorageKey) lines.push(`  themeStorageKey: ${q(entry.themeStorageKey)},`);
   if (entry.experimental) lines.push('  experimental: true,');

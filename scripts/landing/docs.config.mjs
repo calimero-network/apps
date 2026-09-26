@@ -212,6 +212,72 @@ export const DOCS = {
       { title: 'Names, not keys', body: 'Each member carries a username so the calendar reads like a calendar.' },
     ],
   },
+  'mero-chat': {
+    docs: [
+      {
+        id: 'concepts',
+        heading: 'The words, and what they mean here',
+        paragraphs: [
+          'Mero Chat maps the platform’s nouns onto the ones a chat app already has. Knowing which is which explains who can see what.',
+        ],
+        concepts: [
+          { term: 'Namespace', def: 'A workspace — the team you invite people into. Joining it is what makes you a member.' },
+          { term: 'Subgroup', def: 'A channel’s membership. A public channel’s subgroup is open, so any workspace member can join; a private one is restricted to the people added to it.' },
+          { term: 'Context', def: 'One channel or one direct message: its messages, threads, reactions, profiles and roles, replicated only to its members’ nodes.' },
+          { term: 'Account', def: 'Who you are across your devices. A message’s sender and a reaction are stamped with your account, which is how your name is shown next to them.' },
+          { term: 'Presence', def: 'Who is here and who is typing. Ephemeral — it is never written into the channel’s history.' },
+        ],
+      },
+      {
+        id: 'start',
+        heading: 'Getting started',
+        steps: [
+          { title: 'Connect a node', body: 'Press Connect to node and choose your node in the popup, or open the app from the Calimero desktop.' },
+          { title: 'Create a workspace', body: 'Name it and pick the name people will see you by. You are its admin.' },
+          { title: 'Create channels', body: 'Press + next to Channels. Choose Public for anyone in the workspace, or Private for only the people you add.' },
+          { title: 'Invite your team', body: 'Share an invite link. Whoever opens it joins the workspace from their own node.' },
+        ],
+      },
+      {
+        id: 'sharing',
+        heading: 'Working together',
+        paragraphs: [
+          'Everyone in a channel can post, react, reply in threads and edit or delete their own messages. Admins and moderators can delete any message and ban a member; only admins grant roles.',
+          'Roles are checked by the contract when changes merge, so a message deleted by someone without the right is refused on every node — not just hidden in one interface.',
+        ],
+      },
+      {
+        id: 'storage',
+        heading: 'What is stored, and where',
+        bullets: [
+          'Messages, in order, each stamped with its sender’s account and a timestamp.',
+          'Thread replies, kept beside the message they answer.',
+          'Reactions: for each message and emoji, the set of accounts that reacted.',
+          'Profiles (display name, avatar), roles and per-member read positions.',
+          'Files and images as blobs on the channel members’ nodes, referenced from the message.',
+          'NOT stored: drafts, which stay on your node and are never synced, and typing, which is presence.',
+        ],
+      },
+      OFFLINE,
+      {
+        id: 'trouble',
+        heading: 'When something looks wrong',
+        concepts: [
+          { term: 'A message you sent is not on their screen yet', def: 'Their node has not synced with a peer since you sent it. It arrives when it does; nothing is lost.' },
+          { term: 'You cannot see a channel', def: 'It is private and you have not been added. Ask a member of it to add you.' },
+          { term: 'Your delete was undone', def: 'You deleted someone else’s message without being an admin or moderator. The contract refused it when it merged.' },
+          { term: 'Creating a channel or workspace fails', def: 'The node may be on an older runtime than the app expects. Update the node, then try again.' },
+        ],
+      },
+    ],
+    previewSteps: [
+      { title: 'Pick a channel', body: 'Click between #general, #design and the private #leadership — each keeps its own conversation.' },
+      { title: 'Send a message', body: 'Type in the box and press Enter. It lands in the channel straight away.' },
+      { title: 'A teammate answers', body: 'Ada is typing — a moment later her reply arrives from her own node.' },
+      { title: 'React', body: 'Click a reaction under any message to add yours, and again to take it back.' },
+    ],
+  },
+
   'mero-design': {
     docs: [
       {

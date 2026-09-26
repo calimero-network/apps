@@ -1,9 +1,12 @@
-import React from "react";
-import { useMero, ConnectButton } from "@calimero-network/mero-react";
+import React, { useState } from "react";
+import { useMero } from "@calimero-network/mero-react";
 import { clearStoredSession, clearNamespaceReady } from "../../utils/session";
 import { INVITATION_STORAGE_KEY } from "../../utils/invitation";
 import { useNavigate } from "react-router-dom";
-import LandingPage from "./LandingPage";
+// The shared landing template (generated — scripts/landing), the same page
+// every other app in the fleet renders.
+import LandingPage from "../landing/LandingPage";
+import LoginPopup from "../landing/loginPopup";
 import NamespaceEntryPopup from "../../components/popups/NamespaceEntryPopup";
 
 declare global {
@@ -77,29 +80,37 @@ export default function Login({ isAuthenticated, isConfigSet }: LoginProps) {
     navigate("/login");
   };
 
-  // Not connected yet — show landing with ConnectButton.
-  // Wrap in a pointerDownCapture handler so stale localStorage is purged
-  // (whitelist preserved) before the SDK button kicks off the auth flow.
+  // Not connected yet — the landing page. Its "Connect to node" opens the
+  // shared login popup, but through `onConnect`, so the stale-storage purge
+  // (whitelist preserved) runs before the auth flow starts, as it always has.
   if (!isAuthenticated && !isConfigSet) {
-    return (
-      <LandingPage
-        connectButton={
-          <div onPointerDownCapture={clearStorageForConnect}>
-            <ConnectButton />
-          </div>
-        }
-      />
-    );
+    return <UnauthenticatedLanding />;
   }
 
-  // Connected — show namespace entry popup over the landing background
+  // Connected — the workspace picker (its own fixed overlay) over the landing.
   return (
-    <LandingPage>
+    <>
+      <LandingPage isAuthenticated />
       <NamespaceEntryPopup
         isAuthenticated={isAuthenticated}
         isConfigSet={isConfigSet}
         onLogout={() => void handleLogout()}
       />
-    </LandingPage>
+    </>
+  );
+}
+
+export function UnauthenticatedLanding() {
+  const [loginOpen, setLoginOpen] = useState(false);
+  return (
+    <>
+      <LandingPage
+        onConnect={() => {
+          clearStorageForConnect();
+          setLoginOpen(true);
+        }}
+      />
+      <LoginPopup isOpen={loginOpen} onClose={() => setLoginOpen(false)} />
+    </>
   );
 }

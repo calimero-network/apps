@@ -8,6 +8,12 @@ import { ToastProvider, useToast } from "./contexts/ToastContext";
 import { ToastManager } from "./components/common/ToastManager";
 
 const Login = lazy(() => import("./pages/Login"));
+// `/docs` and `/preview` are the shared landing template's other two pages.
+// Real URLs, so they can be shared and opened cold — and reachable signed in
+// too, since someone already using the app is who most wants the docs.
+const Landing = lazy(() =>
+  import("./pages/Login").then((m) => ({ default: m.UnauthenticatedLanding })),
+);
 const Home = lazy(() => import("./pages/Home"));
 
 function ToastDisplay() {
@@ -78,6 +84,8 @@ function App() {
               )
             }
           />
+          <Route path="/docs" element={<Landing />} />
+          <Route path="/preview" element={<Landing />} />
           <Route path="*" element={<Navigate to="/login" replace />} />
         </Routes>
         <ToastDisplay />
