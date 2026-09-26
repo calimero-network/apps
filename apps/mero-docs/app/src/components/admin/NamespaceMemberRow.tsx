@@ -33,16 +33,15 @@ import { useGroupRoleAdmin } from '@/hooks/useGroupRoleAdmin';
 import {
   canChangeRole,
   parseGroupRole,
+  roleDisplayLabel,
   type GroupRole,
 } from '@/lib/roles';
 
 interface Props {
   groupId: string;
   identity: string;
-  /** Pre-resolved label (e.g. server-reported `m.name`, or the shared
-   *  unnamed-member fallback). Used as the MemberLabel fallback so a
-   *  member with no display name still gets the parent panel's chosen
-   *  text; also reused for the "Remove member?" confirm dialog. */
+  /** Server-reported name or the shared unnamed fallback; MemberLabel's
+   *  fallback and the remove dialog's text. */
   label: string;
   /** Server-reported core group role: Admin / Member / ReadOnly.
    *  Undefined if the caller didn't resolve it. */
@@ -236,7 +235,7 @@ export function NamespaceMemberRow({
       title: 'Remove member?',
       body: (
         <>
-          Remove <code className="text-xs">{label}</code> from this
+          Remove <span className="font-medium">{label}</span> from this
           workspace?
         </>
       ),
@@ -338,7 +337,7 @@ export function NamespaceMemberRow({
                       role,
                     )}`}
                   >
-                    {role === 'ReadOnly' ? 'Read only' : role}
+                    {roleDisplayLabel(role)}
                   </span>
                 )}
               </>

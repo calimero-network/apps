@@ -58,7 +58,7 @@ export const ROLE_DESCRIPTIONS: Record<GroupRole, string> = {
 
 /** Display label for a role name, sentence-cased. `role` values themselves
  *  (used as option/select values) stay the server's exact spelling. */
-export function roleDisplayLabel(role: GroupRole): string {
+export function roleDisplayLabel(role: string): string {
   return role === 'ReadOnly' ? 'Read only' : role;
 }
 

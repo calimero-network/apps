@@ -103,7 +103,7 @@ export function useGroupRoleAdmin(
             const msg = e instanceof Error ? e.message : String(e);
             warnings.push(
               nextRole === 'ReadOnly'
-                ? `Role set to Read only, but their existing permissions could not be cleared (${msg}). They may still be able to make changes.`
+                ? `Role set to ${roleDisplayLabel(nextRole)}, but their existing permissions could not be cleared (${msg}). They may still be able to make changes.`
                 : `Role set to ${roleDisplayLabel(nextRole)}, but their permissions could not be set (${msg}). They may not be able to do anything until a permission preset is applied.`,
             );
           }

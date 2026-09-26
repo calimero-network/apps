@@ -17,7 +17,7 @@ import { useConfirm } from '@/components/ui/confirm-dialog';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useNamespacePermissions } from '@/hooks/useNamespacePermissions';
 import { useRegistryAdmin } from '@/hooks/useRegistryAdmin';
-import { MemberLabel } from '@/components/common/MemberLabel';
+import { MemberLabel, UNNAMED_MEMBER_LABEL } from '@/components/common/MemberLabel';
 import { MemberPicker } from '@/components/common/MemberPicker';
 import { looksLikeMemberIdentity } from '@/utils/validation';
 
@@ -28,6 +28,7 @@ export function WorkspaceSettingsPanel() {
     registryClient,
     registryContextId,
     registryDuplicates,
+    namespaceMemberNames,
   } = useDriveWorkspace();
   // Display-name routing in this panel uses the namespace id (not the
   // registry context id) — display names are per-namespace, the same
@@ -151,7 +152,7 @@ export function WorkspaceSettingsPanel() {
 
         {reg.error && (
           <p className="text-xs text-destructive" role="alert">
-            Couldn't load roles: {reg.error.message}
+            Couldn't load roles. Try refreshing the page.
           </p>
         )}
 
@@ -252,7 +253,7 @@ export function WorkspaceSettingsPanel() {
                           size="icon"
                           className="h-6 w-6 text-muted-foreground hover:text-destructive"
                           disabled={busy}
-                          aria-label={`Remove manager ${m.slice(0, 8)}`}
+                          aria-label={`Remove manager ${namespaceMemberNames[m] ?? UNNAMED_MEMBER_LABEL}`}
                           onClick={() => {
                             void onRemoveManager(m);
                           }}
@@ -292,9 +293,11 @@ export function WorkspaceSettingsPanel() {
                     {managerInput && (
                       <p className="mt-1 truncate text-[11px] text-muted-foreground">
                         Selected:{' '}
-                        <code className="text-foreground">
-                          {managerInput.slice(0, 16)}…
-                        </code>
+                        <MemberLabel
+                          namespaceId={namespaceId}
+                          memberId={managerInput}
+                          className="text-foreground"
+                        />
                       </p>
                     )}
                   </div>

@@ -38,6 +38,7 @@ import { FolderMemberRoleRow } from '@/components/admin/FolderMemberRoleRow';
 import { MemberLabel, UNNAMED_MEMBER_LABEL } from '@/components/common/MemberLabel';
 import { MemberPicker } from '@/components/common/MemberPicker';
 import type { Role } from '@/generated/registry/RegistryClient';
+import { roleDisplayLabel } from '@/lib/roles';
 import { looksLikeMemberIdentity } from '@/utils/validation';
 
 interface Props {
@@ -266,7 +267,7 @@ export function FolderSharingPanel({ folderId }: Props) {
                     />
                   </div>
                   <div className="truncate text-xs text-muted-foreground">
-                    {m.role === 'ReadOnly' ? 'Read only' : m.role}
+                    {roleDisplayLabel(m.role)}
                   </div>
                 </div>
                 {!isOpenFolder && perms.canManageMembers && (
@@ -319,9 +320,11 @@ export function FolderSharingPanel({ folderId }: Props) {
                 {identity && (
                   <p className="mt-1 truncate text-[11px] text-muted-foreground">
                     Selected:{' '}
-                    <code className="text-foreground">
-                      {identity.slice(0, 16)}…
-                    </code>
+                    <MemberLabel
+                      namespaceId={namespaceId}
+                      memberId={identity}
+                      className="text-foreground"
+                    />
                   </p>
                 )}
               </div>
@@ -364,8 +367,8 @@ export function FolderSharingPanel({ folderId }: Props) {
             <>
               Share this link to add someone to{' '}
               <span className="font-medium text-foreground">{folderAlias}</span>
-              {' '}only. They won't gain access to other folders or the
-              workspace root.
+              {' '}only. They won't gain access to the rest of the
+              workspace.
             </>
           }
           footnote="Scope: this folder only. Anyone with this link and a Calimero account can join."
