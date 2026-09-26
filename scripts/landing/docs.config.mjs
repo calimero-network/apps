@@ -464,6 +464,72 @@ export const DOCS = {
     ],
   },
 
+  'mero-crm': {
+    docs: [
+      {
+        id: 'concepts',
+        heading: 'The words, and what they mean here',
+        paragraphs: [
+          'The model is deliberately small: a pipeline of stages, deals moving through them, the people behind the deals, and the activities that move them forward.',
+        ],
+        concepts: [
+          { term: 'Namespace', def: 'Your sales team. Its members are the people who can see and work the pipelines.' },
+          { term: 'Pipeline', def: 'One sales process — say New business or Renewals — and one Calimero context. It holds its stages, deals, people, activities, notes and automations.' },
+          { term: 'Stage', def: 'A column of the pipeline with a win probability. The probability is what turns a pipeline total into a weighted forecast.' },
+          { term: 'Deal', def: 'An opportunity with a value, an owner, a contact person and an expected close date. Every field is its own register, so two people editing different fields never collide.' },
+          { term: 'Activity', def: 'A call, meeting, task, email or deadline, due on a date. The earliest open one is the deal’s next step.' },
+          { term: 'Rotting', def: 'An open deal nobody has touched for longer than the pipeline allows (14 days by default). It is flagged on the board.' },
+          { term: 'Automation', def: 'A rule of the form “when a deal enters this stage, schedule this activity”. It runs inside the contract, so it fires whoever moves the deal.' },
+        ],
+      },
+      {
+        id: 'start',
+        heading: 'Getting started',
+        steps: [
+          { title: 'Connect a node', body: 'Press Connect to node and pick your node in the popup.' },
+          { title: 'Create a workspace and a pipeline', body: 'A workspace for the team, then a pipeline with its currency. It starts with five stages you can rename, reorder and re-weight in Settings.' },
+          { title: 'Add your deals', body: 'Press N anywhere. Only a title is required; the value accepts shorthand like 12k.' },
+          { title: 'Work the board', body: 'Drag deals forward, schedule the next step on each, and let the Activities list tell you what is due today.' },
+        ],
+      },
+      {
+        id: 'sharing',
+        heading: 'The deal assistant',
+        paragraphs: [
+          'Every open deal gets a health score from the signals a sales manager checks by eye: is there a next step, is it overdue, has anyone touched the deal lately, has the close date slipped, is there a contact person.',
+          'From those it suggests the next best step for the deal’s stage — a discovery call, a demo, the proposal, the follow-up — and schedules it in one click. It also drafts a stage-appropriate follow-up email.',
+          'The assistant runs in your browser on your own data; nothing is sent anywhere. For open-ended coaching, Copy AI coaching prompt packages the deal’s context for whichever AI assistant you already use.',
+        ],
+      },
+      {
+        id: 'storage',
+        heading: 'What is stored, and where',
+        bullets: [
+          'Stages, deals, people, activities, notes and automations, each in its own map keyed by id, in the pipeline’s context.',
+          'Every mutable field as its own last-writer-wins register; edits only write the fields that changed, so a teammate’s concurrent edit to another field survives.',
+          'Money as whole units of the pipeline currency, never floats, so every node computes identical totals.',
+          'Only a deal’s creator can delete it, and only a note’s author can delete the note — enforced in the contract, not the UI.',
+        ],
+      },
+      OFFLINE,
+      {
+        id: 'trouble',
+        heading: 'When something looks wrong',
+        concepts: [
+          { term: 'A stage will not delete', def: 'It still has open deals. Move them to another stage, or close them, first.' },
+          { term: 'A deal cannot be dragged', def: 'Closed deals leave the board. Reopen it from its page to put it back in the stage it closed from.' },
+          { term: 'A teammate’s move has not shown up', def: 'Their node is behind or offline. The board catches up on sync without any action.' },
+        ],
+      },
+    ],
+    previewSteps: [
+      { title: 'A pipeline of stages', body: 'Five columns, each with its count, value and weighted forecast — replicated to every member, with no server hosting it.' },
+      { title: 'A deal moves', body: 'The stage is one register on the deal. Moving it collides with nothing else on the card.' },
+      { title: 'A follow-up appears', body: 'Entering Proposal fired an automation, and the owner now has “Send the proposal” due tomorrow.' },
+      { title: 'The assistant flags a deal', body: 'No activity in three weeks and a slipped close date: the card is marked rotting, with the next step one click away.' },
+    ],
+  },
+
   'mero-issue-tracker': {
     docs: [
       {

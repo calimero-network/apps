@@ -1,0 +1,23 @@
+{
+  "appName": "mero-crm",
+  "appVersion": "0.1.0",
+  "package": "com.calimero.mero-crm",
+  "frontendUrl": "https://mero-crm.vercel.app",
+  "metadata": {
+    "name": "mero-crm",
+    "description": "A simple, private sales CRM — track your pipeline, work your deals, and never lose a follow-up",
+    "author": "Calimero",
+    "route": "/crm"
+  },
+  "theme": {
+    "primaryColor": "#2563EB",
+    "accentColor": "#F97316",
+    "style": "clean-modern"
+  },
+  "services": [
+    {
+      "name": "crm",
+      "crate": "mero-crm"
+    }
+  ]
+}

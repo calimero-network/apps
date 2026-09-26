@@ -37,6 +37,7 @@ reimplements one gets its own behaviour, and nothing notices.
 | mero-design | MeroProvider | ✅ | ✅ | ✅ | |
 | mero-docs | MeroProvider | ✅ | ✅ | ✅ | also mounts `LoginModal` directly |
 | mero-forum | MeroProvider | ✅ | ✅ | ✅ | |
+| mero-crm | MeroProvider | ✅ | ✅ | ✅ | same shell as mero-issue-tracker |
 | mero-issue-tracker | MeroProvider | ✅ | ✅ | ✅ | |
 | mero-pass | MeroProvider | ✅ | ✅ | ✅ | |
 | mero-pixart | MeroProvider | ✅ | ✅ | ✅ | |
@@ -148,6 +149,7 @@ node calls** and **the link format**.
 | mero-design | app-local `generateInvite`, `joinGroup` | mero-platform | `encodeInvitation` |
 | mero-docs | `createNamespaceInvitation`, `joinNamespace`, `joinGroup` | - | own `useNamespaceInvitation` |
 | mero-forum | **none** | — | **none** |
+| mero-crm | `createNamespaceInvitation` + `joinNamespace` | mero-platform | `encodeInvitationPayload` |
 | mero-issue-tracker | `createNamespaceInvitation` + `joinNamespace` | mero-platform | `encodeInvitationPayload` |
 | mero-pass | **none** | — | **none** |
 | mero-pixart | app-local `generateInvite` | mero-platform | `encodeInvitation` |
