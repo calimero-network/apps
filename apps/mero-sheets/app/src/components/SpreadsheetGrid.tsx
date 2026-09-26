@@ -61,6 +61,11 @@ interface SpreadsheetGridProps {
   ruleAt: (row: number, col: number, value: string) => RuleEffect;
   /** Flip a checkbox cell between TRUE and FALSE. */
   onToggleCheckbox: (row: number, col: number) => void;
+  /** Rows your filter view hides. */
+  hiddenRows: ReadonlySet<number>;
+  /** Your filter view's header row, its columns, and the ones filtered. */
+  filterHeader: { row: number; left: number; right: number; active: ReadonlySet<number> } | null;
+  onFilterColumn: (col: number) => void;
   /** Open a list validation's choices for a cell, under `anchor`. */
   onPickOption: (row: number, col: number, options: string[], anchor: DOMRect) => void;
   /** Resize a row or column (by position); absent where the sheet cannot be resized. */
@@ -110,6 +115,9 @@ function SpreadsheetGrid({
   ruleAt,
   onToggleCheckbox,
   onPickOption,
+  hiddenRows,
+  filterHeader,
+  onFilterColumn,
   onResize,
   keyHandlerRef,
   selectedCell,
@@ -179,8 +187,10 @@ function SpreadsheetGrid({
   const rowMetrics = useMemo(() => {
     const sizes = new Map(view.rowSizes);
     if (liveResize?.axis === 'row') sizes.set(liveResize.index, liveResize.size);
+    // Filtered-out rows take no space.
+    for (const r of hiddenRows) sizes.set(r, 0);
     return new AxisMetrics(GRID_ROWS, DEFAULT_ROW_HEIGHT, sizes);
-  }, [view.rowSizes, liveResize]);
+  }, [view.rowSizes, liveResize, hiddenRows]);
   const colMetrics = useMemo(() => {
     const sizes = new Map(view.colSizes);
     if (liveResize?.axis === 'col') sizes.set(liveResize.index, liveResize.size);
@@ -425,6 +435,9 @@ function SpreadsheetGrid({
           row: Math.max(0, Math.min(GRID_ROWS - 1, from.row + dr)),
           col: Math.max(0, Math.min(GRID_COLS - 1, from.col + dc)),
         };
+        // Step over rows a filter hides.
+        const dir = Math.sign(dr);
+        while (dir !== 0 && hiddenRows.has(to.row) && to.row + dir >= 0 && to.row + dir < GRID_ROWS) to.row += dir;
         if (e.shiftKey && anchorRef.current) {
           keyEndRef.current = to;
           onSelectRange(anchorRef.current, to);
@@ -460,7 +473,7 @@ function SpreadsheetGrid({
           break;
       }
     },
-    [selectedCell, bodyHeight, onSelectCell, onSelectRange, onEditCell, onOpenNote, onCommitAndMove, onDelete, onClearClipboard],
+    [selectedCell, bodyHeight, hiddenRows, onSelectCell, onSelectRange, onEditCell, onOpenNote, onCommitAndMove, onDelete, onClearClipboard],
   );
   useEffect(() => {
     if (keyHandlerRef) keyHandlerRef.current = handleKeyDown;
@@ -473,7 +486,7 @@ function SpreadsheetGrid({
   const rows = [
     ...Array.from({ length: frozenRows }, (_, i) => i),
     ...Array.from({ length: rowRange.end - rowRange.start }, (_, i) => rowRange.start + i),
-  ];
+  ].filter((r) => !hiddenRows.has(r));
   const cols = [
     ...Array.from({ length: frozenCols }, (_, i) => i),
     ...Array.from({ length: colRange.end - colRange.start }, (_, i) => colRange.start + i),
@@ -564,6 +577,17 @@ function SpreadsheetGrid({
           <CellValue $isFormula={shownIsFormula} style={look.color ? { color: look.color } : undefined}>{shownValue}</CellValue>
         )}
         {effect.invalid && <InvalidMark data-testid="invalid-mark" aria-label={effect.invalid} />}
+        {filterHeader && row === filterHeader.row && col >= filterHeader.left && col <= filterHeader.right && (
+          <FilterBtn
+            type="button"
+            $active={filterHeader.active.has(col)}
+            aria-label={`Filter column ${columnLabel(col)}`}
+            data-testid="cell-filter"
+            onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); onFilterColumn(col); }}
+          >
+            ⏷
+          </FilterBtn>
+        )}
         {isSelected && effect.options && (
           <PickBtn
             type="button"
@@ -653,7 +677,7 @@ function SpreadsheetGrid({
         >
           {rows.map((row, i) => (
             <React.Fragment key={row}>
-              {i === frozenRows && topGap > 0 && <tr aria-hidden="true" style={{ height: topGap }} />}
+              {row >= frozenRows && (i === 0 || rows[i - 1] < frozenRows) && topGap > 0 && <tr aria-hidden="true" style={{ height: topGap }} />}
               <tr style={{ height: rowMetrics.size(row) }}>
                 <RowTh
                   $selected={rowSelected(row)}
@@ -875,6 +899,14 @@ const InvalidMark = styled.span`
 const Checkbox = styled.span`
   display: block; text-align: center; font-size: 15px; line-height: 1; cursor: pointer;
   color: ${C.greenDeep};
+`;
+
+const FilterBtn = styled.button<{ $active: boolean }>`
+  position: absolute; top: 3px; right: 3px; width: 17px; height: 17px;
+  border-radius: 4px; cursor: pointer; padding: 0; font-size: 10px; line-height: 1;
+  color: ${(p) => (p.$active ? C.onAccent : C.muted)};
+  background: ${(p) => (p.$active ? C.green : C.paper2)};
+  border: 1px solid ${C.line};
 `;
 
 const PickBtn = styled.button`

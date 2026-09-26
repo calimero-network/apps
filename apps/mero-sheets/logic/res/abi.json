@@ -597,6 +597,141 @@
         }
       ]
     },
+    "Chart": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "chart",
+          "type": {
+            "$ref": "ChartInput"
+          }
+        },
+        {
+          "name": "created_by",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
+    "ChartData": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "top_row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "left_col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "bottom_row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "right_col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "kind",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "title",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "created_by",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "deleted",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
+    "ChartInput": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "top_row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "left_col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "bottom_row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "right_col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "kind",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "title",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ]
+    },
     "Comment": {
       "kind": "record",
       "fields": [
@@ -815,6 +950,17 @@
           "name": "count",
           "type": {
             "kind": "u32"
+          }
+        }
+      ]
+    },
+    "Event_ChartsChanged": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
           }
         }
       ]
@@ -2147,6 +2293,19 @@
             },
             "crdt_type": "unordered_map"
           }
+        },
+        {
+          "name": "charts",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "ChartData"
+            },
+            "crdt_type": "unordered_map"
+          }
         }
       ]
     },
@@ -2235,6 +2394,21 @@
     }
   },
   "methods": [
+    {
+      "name": "add_chart",
+      "params": [
+        {
+          "name": "chart",
+          "type": {
+            "$ref": "ChartInput"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "string"
+      },
+      "intent": "mutating"
+    },
     {
       "name": "add_comment",
       "params": [
@@ -2624,6 +2798,17 @@
       "intent": "read_only"
     },
     {
+      "name": "get_charts",
+      "params": [],
+      "returns": {
+        "kind": "list",
+        "items": {
+          "$ref": "Chart"
+        }
+      },
+      "intent": "read_only"
+    },
+    {
       "name": "get_comments",
       "params": [],
       "returns": {
@@ -2892,6 +3077,21 @@
       ],
       "returns": {
         "kind": "string"
+      },
+      "intent": "mutating"
+    },
+    {
+      "name": "remove_chart",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
       },
       "intent": "mutating"
     },
@@ -3166,6 +3366,27 @@
       "intent": "mutating"
     },
     {
+      "name": "update_chart",
+      "params": [
+        {
+          "name": "id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "chart",
+          "type": {
+            "$ref": "ChartInput"
+          }
+        }
+      ],
+      "returns": {
+        "kind": "unit"
+      },
+      "intent": "mutating"
+    },
+    {
       "name": "update_protection",
       "params": [
         {
@@ -3248,6 +3469,12 @@
       "name": "CellsChanged",
       "payload": {
         "$ref": "Event_CellsChanged"
+      }
+    },
+    {
+      "name": "ChartsChanged",
+      "payload": {
+        "$ref": "Event_ChartsChanged"
       }
     },
     {

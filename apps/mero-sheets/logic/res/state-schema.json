@@ -190,6 +190,71 @@
         }
       ]
     },
+    "ChartData": {
+      "kind": "record",
+      "fields": [
+        {
+          "name": "sheet_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "top_row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "left_col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "bottom_row_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "right_col_id",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "kind",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "title",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "created_by",
+          "type": {
+            "kind": "string"
+          }
+        },
+        {
+          "name": "deleted",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "updated_at",
+          "type": {
+            "kind": "u64"
+          }
+        }
+      ]
+    },
     "CommentData": {
       "kind": "record",
       "fields": [
@@ -864,6 +929,19 @@
             },
             "value": {
               "$ref": "RuleData"
+            },
+            "crdt_type": "unordered_map"
+          }
+        },
+        {
+          "name": "charts",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "ChartData"
             },
             "crdt_type": "unordered_map"
           }

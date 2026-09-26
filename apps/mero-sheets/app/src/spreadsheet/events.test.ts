@@ -113,3 +113,10 @@ describe('styles and rules', () => {
     expect(partial(planFor(mutation(['RulesChanged', { sheet_id: 's1' }]))).rules).toBe(true);
   });
 });
+
+describe('charts', () => {
+  it('re-reads only the charts', () => {
+    const p = partial(planFor(mutation(['ChartsChanged', { sheet_id: 's1' }])));
+    expect([p.charts, p.sheets.size]).toEqual([true, 0]);
+  });
+});

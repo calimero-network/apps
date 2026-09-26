@@ -394,6 +394,33 @@ pub struct StylePair {
     pub value: String,
 }
 
+/// A chart of a range, anchored on corner row and column ids. Keyed by id.
+#[app::mergeable(id = "mero_sheets::ChartData")]
+#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, AbiType)]
+#[borsh(crate = "calimero_sdk::borsh")]
+pub struct ChartData {
+    pub sheet_id: String,
+    pub top_row_id: String,
+    pub left_col_id: String,
+    pub bottom_row_id: String,
+    pub right_col_id: String,
+    /// `bar` or `line`.
+    pub kind: String,
+    pub title: String,
+    pub created_by: String,
+    pub deleted: bool,
+    pub updated_at: u64,
+}
+
+impl Mergeable for ChartData {
+    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
+        if (other.updated_at, other.deleted) > (self.updated_at, self.deleted) {
+            *self = other.clone();
+        }
+        Ok(())
+    }
+}
+
 /// Style fields and what each takes (besides empty, which clears it).
 fn check_style_field(field: &str, value: &str) -> app::Result<()> {
     let ok = value.is_empty()
@@ -753,6 +780,30 @@ pub struct RuleInput {
     pub strict: bool,
 }
 
+/// A chart as written or read: its range by corner ids, its kind and title.
+/// The range's first column labels the points; each other column is a
+/// series, named by the first row when that row is text.
+#[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct ChartInput {
+    pub sheet_id: String,
+    pub top_row_id: String,
+    pub left_col_id: String,
+    pub bottom_row_id: String,
+    pub right_col_id: String,
+    pub kind: String,
+    pub title: String,
+}
+
+/// A live chart.
+#[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
+#[serde(crate = "calimero_sdk::serde")]
+pub struct Chart {
+    pub id: String,
+    pub chart: ChartInput,
+    pub created_by: String,
+}
+
 /// A live rule.
 #[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
 #[serde(crate = "calimero_sdk::serde")]
@@ -1033,6 +1084,9 @@ pub struct Spreadsheet {
     /// Conditional formats, colour scales and validations, keyed by id.
     #[migrate(new = UnorderedMap::new_with_field_name("spreadsheet:rules"))]
     rules: UnorderedMap<String, RuleData>,
+    /// Charts, keyed by id.
+    #[migrate(new = UnorderedMap::new_with_field_name("spreadsheet:charts"))]
+    charts: UnorderedMap<String, ChartData>,
 }
 
 /// This node's private sheets: scratch space for what-if work that never
@@ -1113,6 +1167,7 @@ impl Spreadsheet {
             views: UnorderedMap::new_with_field_name("spreadsheet:views"),
             styles: UnorderedMap::new_with_field_name("spreadsheet:styles"),
             rules: UnorderedMap::new_with_field_name("spreadsheet:rules"),
+            charts: UnorderedMap::new_with_field_name("spreadsheet:charts"),
         }
     }
 
@@ -2590,6 +2645,126 @@ impl Spreadsheet {
             }
         }
         Ok(())
+    }
+
+    // ---- Charts ----
+
+    /// Chart a range. Returns the chart's id.
+    pub fn add_chart(&mut self, chart: ChartInput) -> app::Result<String> {
+        self.require_role(Role::Editor)?;
+        self.check_chart(&chart)?;
+        let now = storage_env::time_now();
+        let mut nonce = [0u8; 4];
+        env::random_bytes(&mut nonce);
+        let id = generate_id("chart", now, &nonce);
+        self.put_chart(&id, chart, now)?;
+        Ok(id)
+    }
+
+    /// Replace a chart's range, kind or title.
+    pub fn update_chart(&mut self, id: String, chart: ChartInput) -> app::Result<()> {
+        self.require_role(Role::Editor)?;
+        self.check_chart(&chart)?;
+        self.live_chart(&id)?;
+        self.put_chart(&id, chart, storage_env::time_now())
+    }
+
+    pub fn remove_chart(&mut self, id: String) -> app::Result<()> {
+        self.require_role(Role::Editor)?;
+        let mut chart = self.live_chart(&id)?;
+        chart.deleted = true;
+        chart.updated_at = storage_env::time_now();
+        let sheet_id = chart.sheet_id.clone();
+        self.charts
+            .insert(id, chart)
+            .map_err(|e| AppError::msg(format!("charts.insert: {e}")))?;
+        app::emit!(Event::ChartsChanged {
+            sheet_id: &sheet_id
+        });
+        Ok(())
+    }
+
+    /// Every live chart.
+    pub fn get_charts(&self) -> app::Result<Vec<Chart>> {
+        let mut out: Vec<Chart> = self
+            .charts
+            .entries()
+            .map_err(|e| AppError::msg(format!("charts.entries: {e}")))?
+            .filter(|(_, c)| !c.deleted)
+            .map(|(id, c)| Chart {
+                id,
+                created_by: c.created_by,
+                chart: ChartInput {
+                    sheet_id: c.sheet_id,
+                    top_row_id: c.top_row_id,
+                    left_col_id: c.left_col_id,
+                    bottom_row_id: c.bottom_row_id,
+                    right_col_id: c.right_col_id,
+                    kind: c.kind,
+                    title: c.title,
+                },
+            })
+            .collect();
+        out.sort_by(|a, b| a.id.cmp(&b.id));
+        Ok(out)
+    }
+
+    fn check_chart(&self, chart: &ChartInput) -> app::Result<()> {
+        self.require_sheet(&chart.sheet_id)?;
+        for c in [
+            &chart.top_row_id,
+            &chart.left_col_id,
+            &chart.bottom_row_id,
+            &chart.right_col_id,
+        ] {
+            Spreadsheet::check_id(c)?;
+        }
+        if !matches!(chart.kind.as_str(), "bar" | "line") {
+            return Err(AppError::from(Error::Invalid(
+                "a chart is bar or line".into(),
+            )));
+        }
+        if chart.title.chars().count() > 120 {
+            return Err(AppError::from(Error::Invalid(
+                "a chart title is at most 120 characters".into(),
+            )));
+        }
+        Ok(())
+    }
+
+    fn put_chart(&mut self, id: &str, chart: ChartInput, now: u64) -> app::Result<()> {
+        let sheet_id = chart.sheet_id.clone();
+        let me = self.caller_hex();
+        self.charts
+            .insert(
+                id.to_string(),
+                ChartData {
+                    sheet_id: chart.sheet_id,
+                    top_row_id: chart.top_row_id,
+                    left_col_id: chart.left_col_id,
+                    bottom_row_id: chart.bottom_row_id,
+                    right_col_id: chart.right_col_id,
+                    kind: chart.kind,
+                    title: chart.title.trim().to_string(),
+                    created_by: me,
+                    deleted: false,
+                    updated_at: now,
+                },
+            )
+            .map_err(|e| AppError::msg(format!("charts.insert: {e}")))?;
+        app::emit!(Event::ChartsChanged {
+            sheet_id: &sheet_id
+        });
+        Ok(())
+    }
+
+    fn live_chart(&self, id: &str) -> app::Result<ChartData> {
+        self.charts
+            .get(id)
+            .map_err(|e| AppError::msg(format!("charts.get: {e}")))?
+            .filter(|c| !c.deleted)
+            .map(|c| c.clone())
+            .ok_or_else(|| AppError::from(Error::NotFound(id.to_string())))
     }
 
     // ---- Sheet view: sizes and frozen panes ----
@@ -5436,5 +5611,35 @@ mod tests {
             rules[0].rule.style.get("fill").map(String::as_str),
             Some("#ff0000")
         );
+    }
+
+    #[test]
+    fn charts_are_added_changed_and_removed() {
+        let mut app = make_app();
+        let sid = new_sheet(&mut app);
+        let chart = |kind: &str, title: &str| ChartInput {
+            sheet_id: sid.clone(),
+            top_row_id: "0".into(),
+            left_col_id: "0".into(),
+            bottom_row_id: "5".into(),
+            right_col_id: "2".into(),
+            kind: kind.into(),
+            title: title.into(),
+        };
+        let id = app.call(|s| s.add_chart(chart("bar", " Sales "))).unwrap();
+        app.call(|s| s.update_chart(id.clone(), chart("line", "Sales by month")))
+            .unwrap();
+        let charts = app.view(|s| s.get_charts()).unwrap();
+        assert_eq!(charts.len(), 1);
+        assert_eq!(
+            (
+                charts[0].chart.kind.as_str(),
+                charts[0].chart.title.as_str()
+            ),
+            ("line", "Sales by month")
+        );
+        assert!(app.call(|s| s.add_chart(chart("pie", "x"))).is_err());
+        app.call(|s| s.remove_chart(id.clone())).unwrap();
+        assert!(app.view(|s| s.get_charts()).unwrap().is_empty());
     }
 }

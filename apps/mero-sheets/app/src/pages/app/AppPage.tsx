@@ -50,6 +50,11 @@ import PeoplePanel from '../../components/PeoplePanel';
 import ProtectModal from '../../components/ProtectModal';
 import FormatBar from '../../components/FormatBar';
 import RulesModal, { conditionLabel } from '../../components/RulesModal';
+import ChartsPanel from '../../components/ChartsPanel';
+import FilterModal from '../../components/FilterModal';
+import { dataRegion, looksLikeHeader, planSort, sortOrder } from '../../spreadsheet/sort';
+import { columnValues, hiddenRows, withColumn, type FilterView } from '../../spreadsheet/filter';
+import { chartModel } from '../../spreadsheet/chart';
 import { NO_EFFECT, placeRules, ruleEffect, scaleBounds } from '../../spreadsheet/styling';
 import { conditionDescribe, conditionMatches } from '../../engine/engine';
 import { lockedReason, placeProtections } from '../../spreadsheet/access';
@@ -195,6 +200,10 @@ export default function AppPage() {
   const [rulesMode, setRulesMode] = useState<'format' | 'validate' | null>(null);
   const [rulesSaving, setRulesSaving] = useState(false);
   const [rulesError, setRulesError] = useState<string | null>(null);
+  const [showCharts, setShowCharts] = useState(false);
+  // Filter views: yours alone, kept in this browser per workbook and sheet.
+  const [filters, setFilters] = useState<Record<string, FilterView>>({});
+  const [filterCol, setFilterCol] = useState<number | null>(null);
   // A list validation's choices, open under a cell.
   const [pick, setPick] = useState<{ row: number; col: number; options: string[]; x: number; y: number } | null>(null);
   // The cell whose note is open, by id so it stays on that cell as rows move.
@@ -515,6 +524,44 @@ export default function AppPage() {
     [placedRules, scales],
   );
 
+  // Filter views live in this browser, per workbook.
+  const filterKey = ws.contextId ? `sheets:filters:${ws.contextId}` : null;
+  useEffect(() => {
+    if (!filterKey) return;
+    try {
+      setFilters(JSON.parse(localStorage.getItem(filterKey) ?? '{}') as Record<string, FilterView>);
+    } catch {
+      setFilters({});
+    }
+  }, [filterKey]);
+  const saveFilters = useCallback((next: Record<string, FilterView>) => {
+    setFilters(next);
+    try {
+      if (filterKey) localStorage.setItem(filterKey, JSON.stringify(next));
+    } catch {
+      /* storage unavailable: the filter lasts for this visit */
+    }
+  }, [filterKey]);
+
+  // The active sheet's computed values by position, for sort, filter and charts.
+  const valueMap = useMemo(() => {
+    const m = new Map<string, { raw: string; format: string; computed: string }>();
+    for (const c of ss.cells) {
+      if (c.sheet_id === activeSheetId) m.set(`${c.row}-${c.col}`, { raw: c.raw_value, format: c.format, computed: c.computed_value });
+    }
+    return m;
+  }, [ss.cells, activeSheetId]);
+  const cellAt = useCallback((r: number, c: number) => valueMap.get(`${r}-${c}`) ?? null, [valueMap]);
+  const valueAt = useCallback((r: number, c: number) => valueMap.get(`${r}-${c}`)?.computed ?? '', [valueMap]);
+  const activeFilter = activeSheetId ? filters[activeSheetId] ?? null : null;
+  const hidden = useMemo(() => hiddenRows(activeFilter, valueAt), [activeFilter, valueAt]);
+  const filterHeader = useMemo(() => (activeFilter
+    ? {
+      row: activeFilter.rect.top, left: activeFilter.rect.left, right: activeFilter.rect.right,
+      active: new Set(Object.keys(activeFilter.columns).map(Number)),
+    }
+    : null), [activeFilter]);
+
   // The choice list closes on any click elsewhere, or when the selection moves.
   useEffect(() => {
     if (!pick) return;
@@ -717,6 +764,30 @@ export default function AppPage() {
       ? { top: selectedCell.row, left: selectedCell.col, bottom: selectedCell.row, right: selectedCell.col }
       : null);
 
+  // The range sort and filter act on: the selection, or the block of data
+  // around the selected cell.
+  const dataRect = (): Rect | null => {
+    if (selectionRange) return selectionRange;
+    if (!selectedCell) return null;
+    return dataRegion(selectedCell, GRID_ROWS, GRID_COLS, (r, c) => valueMap.has(`${r}-${c}`));
+  };
+  const sortBy = async (ascending: boolean) => {
+    setCtxMenu(null);
+    const rect = dataRect();
+    if (!activeSheetId || !rect || !selectedCell) return;
+    const key = Math.max(rect.left, Math.min(rect.right, selectedCell.col));
+    const header = looksLikeHeader(rect, key, cellAt);
+    const order = sortOrder(rect, key, ascending, header, cellAt);
+    const first = rect.top + (header ? 1 : 0);
+    const writes = planSort(rect, key, ascending, header, cellAt);
+    const ops: CellOp[] = writes.flatMap((w) => (w.raw === ''
+      ? [clearOp(w.row, w.col)]
+      : [setOp(w.row, w.col, w.raw), formatOp(w.row, w.col, w.format)]));
+    if (ops.length > 0) await ss.applyCellOps(activeSheetId, ops);
+    // Styles travel with their rows.
+    await ss.moveStyles(activeSheetId, { ...rect, top: first }, (row) => order[row - first] ?? row);
+  };
+
   // Each is one write per row or column: cells keep their ids, and formulas
   // that reference them keep pointing at the same cells.
   const structural = (fn: (sheetId: string, rect: Rect) => Promise<void>) => () => {
@@ -764,6 +835,32 @@ export default function AppPage() {
             onClick: () => { setCtxMenu(null); setShowComments(true); } },
           { label: 'Note… (Shift+F2)', testId: 'open-note',
             onClick: () => { setCtxMenu(null); if (selectedCell) openNote(selectedCell.row, selectedCell.col); } },
+        ],
+      },
+      ...(canResize ? [{
+        label: 'Sort',
+        actions: [
+          { label: `Sort A → Z by column ${columnLabel(selectedCell?.col ?? r.left)}`, testId: 'sort-asc', onClick: () => void sortBy(true) },
+          { label: `Sort Z → A by column ${columnLabel(selectedCell?.col ?? r.left)}`, testId: 'sort-desc', onClick: () => void sortBy(false) },
+        ],
+      }] : []),
+      {
+        label: 'View',
+        actions: [
+          activeFilter
+            ? { label: 'Remove my filter', testId: 'filter-remove', onClick: () => {
+              setCtxMenu(null);
+              if (!activeSheetId) return;
+              const next = { ...filters };
+              delete next[activeSheetId];
+              saveFilters(next);
+            } }
+            : { label: 'Filter (just for me)', testId: 'filter-create', onClick: () => {
+              setCtxMenu(null);
+              const rect = dataRect();
+              if (activeSheetId && rect) saveFilters({ ...filters, [activeSheetId]: { rect, columns: {} } });
+            } },
+          { label: 'Chart this range…', testId: 'open-charts', onClick: () => { setCtxMenu(null); setShowCharts(true); } },
         ],
       },
       ...(canResize ? [{
@@ -1329,6 +1426,14 @@ export default function AppPage() {
           <span>Comments{openComments.length > 0 ? ` · ${openComments.length}` : ''}</span>
         </ToolBtn>
 
+        <ToolBtn onClick={() => setShowCharts(true)} title="Charts of this sheet" aria-label="Open charts" data-testid="action-charts">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="6" y1="20" x2="6" y2="12" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="18" y1="20" x2="18" y2="9" />
+          </svg>
+          <span>Charts</span>
+        </ToolBtn>
+
         <ToolBtn onClick={() => setShowActivity(true)} title="Who changed what" aria-label="Open activity" data-testid="action-activity">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
             stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1436,6 +1541,9 @@ export default function AppPage() {
           void ss.setCell(activeSheetId, row, col, current?.computed_value.toUpperCase() === 'TRUE' ? 'FALSE' : 'TRUE');
         }}
         onPickOption={(row, col, options, anchor) => setPick({ row, col, options, x: anchor.left, y: anchor.bottom })}
+        hiddenRows={hidden}
+        filterHeader={filterHeader}
+        onFilterColumn={setFilterCol}
         keyHandlerRef={gridKeyRef}
         onResize={canResize ? handleResize : undefined}
         selectedCell={pickingForeignSheet ? null : selectedCell}
@@ -1576,6 +1684,42 @@ export default function AppPage() {
           }}>View</button>
           <button type="button" aria-label="Dismiss" onClick={() => ss.dismissMention(mention.commentId)}>×</button>
         </MentionToast>
+      )}
+      {filterCol !== null && activeFilter && activeSheetId && (() => {
+        const values = columnValues(activeFilter, filterCol, valueAt);
+        return (
+          <FilterModal
+            column={columnLabel(filterCol)}
+            values={values}
+            shown={activeFilter.columns[filterCol] ?? values}
+            onApply={(shown) => {
+              saveFilters({ ...filters, [activeSheetId]: withColumn(activeFilter, filterCol, shown, values) });
+              setFilterCol(null);
+            }}
+            onClose={() => setFilterCol(null)}
+          />
+        );
+      })()}
+      {showCharts && activeSheetId && (
+        <ChartsPanel
+          charts={ss.charts.filter((c) => c.chart.sheet_id === activeSheetId).map(({ id, chart }) => {
+            const a = ss.refOf(activeSheetId, chart.top_row_id, chart.left_col_id);
+            const b = ss.refOf(activeSheetId, chart.bottom_row_id, chart.right_col_id);
+            const rect = a && b ? normalizeRect(a, b) : null;
+            return {
+              id,
+              kind: chart.kind === 'line' ? 'line' : 'bar',
+              title: chart.title,
+              model: rect ? chartModel(rect, valueAt, (col) => `Column ${columnLabel(col)}`) : null,
+              where: rect ? rangeRef({ row: rect.top, col: rect.left }, { row: rect.bottom, col: rect.right }) : null,
+            };
+          })}
+          selection={selectionRange ? namesSelection : null}
+          canEdit={canResize}
+          onAdd={async (kind, title) => { if (selectionRange) await ss.addChart(activeSheetId, selectionRange, kind, title); }}
+          onRemove={ss.removeChart}
+          onClose={() => setShowCharts(false)}
+        />
       )}
       {pick && (
         <PickMenu role="listbox" aria-label="Choose a value" style={{ left: pick.x, top: pick.y }} data-testid="menu-pick">

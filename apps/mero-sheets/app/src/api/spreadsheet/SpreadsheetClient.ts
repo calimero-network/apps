@@ -164,6 +164,35 @@ export interface CellStyle {
   style: Record<string, string>;
 }
 
+export interface Chart {
+  id: string;
+  chart: ChartInput;
+  created_by: string;
+}
+
+export interface ChartData {
+  sheet_id: string;
+  top_row_id: string;
+  left_col_id: string;
+  bottom_row_id: string;
+  right_col_id: string;
+  kind: string;
+  title: string;
+  created_by: string;
+  deleted: boolean;
+  updated_at: number;
+}
+
+export interface ChartInput {
+  sheet_id: string;
+  top_row_id: string;
+  left_col_id: string;
+  bottom_row_id: string;
+  right_col_id: string;
+  kind: string;
+  title: string;
+}
+
 export interface Comment {
   id: string;
   sheet_id: string;
@@ -211,6 +240,10 @@ export interface Event_CellUpdated {
 export interface Event_CellsChanged {
   sheet_id: string;
   count: number;
+}
+
+export interface Event_ChartsChanged {
+  sheet_id: string;
 }
 
 export interface Event_CommentAdded {
@@ -497,6 +530,7 @@ export interface Spreadsheet {
   views: Record<string, SheetViewData>;
   styles: Record<string, StyleData>;
   rules: Record<string, RuleData>;
+  charts: Record<string, ChartData>;
 }
 
 export interface StyleData {
@@ -541,11 +575,13 @@ export interface StylePair {
 
 
 
+
 export type AbiEvent =
   | { name: "AxesChanged"; payload: Event_AxesChanged }
   | { name: "CellCleared"; payload: Event_CellCleared }
   | { name: "CellUpdated"; payload: Event_CellUpdated }
   | { name: "CellsChanged"; payload: Event_CellsChanged }
+  | { name: "ChartsChanged"; payload: Event_ChartsChanged }
   | { name: "CommentAdded"; payload: Event_CommentAdded }
   | { name: "CommentChanged"; payload: Event_CommentChanged }
   | { name: "MemberJoined"; payload: Event_MemberJoined }
@@ -572,6 +608,16 @@ export class SpreadsheetClient {
   constructor(mero: MeroJs, contextId: string) {
     this._mero = mero;
     this._contextId = contextId;
+  }
+
+  /**
+   * add_chart
+   *
+   * @intent mutating
+   */
+  public async addChart(params: { chart: ChartInput }): Promise<string> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'add_chart', argsJson: params });
+    return response as string;
   }
 
   /**
@@ -765,6 +811,16 @@ export class SpreadsheetClient {
   }
 
   /**
+   * get_charts
+   *
+   * @intent read_only
+   */
+  public async getCharts(): Promise<Chart[]> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'get_charts', argsJson: {} });
+    return response as Chart[];
+  }
+
+  /**
    * get_comments
    *
    * @intent read_only
@@ -953,6 +1009,16 @@ export class SpreadsheetClient {
   }
 
   /**
+   * remove_chart
+   *
+   * @intent mutating
+   */
+  public async removeChart(params: { id: string }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'remove_chart', argsJson: params });
+    return response as void;
+  }
+
+  /**
    * remove_protection
    *
    * @intent mutating
@@ -1069,6 +1135,16 @@ export class SpreadsheetClient {
    */
   public async setSizes(params: { sheet_id: string; sizes: AxisSize[] }): Promise<void> {
     const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'set_sizes', argsJson: params });
+    return response as void;
+  }
+
+  /**
+   * update_chart
+   *
+   * @intent mutating
+   */
+  public async updateChart(params: { id: string; chart: ChartInput }): Promise<void> {
+    const response = await this._mero.rpc.execute({ contextId: this._contextId, method: 'update_chart', argsJson: params });
     return response as void;
   }
 

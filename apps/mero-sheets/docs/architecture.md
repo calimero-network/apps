@@ -196,6 +196,25 @@ cells, so the two never disagree about what a rule means. Formulas are not
 validated on write, since their value is not known there; the app still marks
 a formula result that breaks a rule.
 
+## Sort, filter and charts
+
+- **Sort** rewrites the range's cells: each row's cells move together, a
+  moved formula shifts its relative references by the rows it moved (as a
+  copy would), and styles travel with their rows. Blanks sort last; numbers
+  before text; ties keep their order. With one cell selected, the range is
+  the block of data around it, and a text first row over numbers is kept as
+  the header (`spreadsheet/sort.ts`). It is ordinary cell writes, so it
+  merges, logs and undoes like any edit.
+- **Filter views** are personal: kept in this browser per workbook and
+  sheet, never written to the workbook, so filtering to "my rows" changes
+  nothing for anyone else. Hidden rows take no height in the grid.
+- **Charts** are shared (`charts`, anchored on corner ids like rules): bars
+  or lines, the range's first column labelling the points and each other
+  column a series. They are drawn live from the sheet's values, in the
+  categorical palette's fixed order (up to eight series, checked for
+  colour-vision separation against the app's light and dark surfaces), with
+  a legend, a hover tooltip and a table of the same numbers.
+
 ## Derive-on-read
 
 If values aren't stored, they have to be produced somehow when a peer asks
