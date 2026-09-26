@@ -8,8 +8,8 @@
 // inheritance natively now, so we don't need to enumerate namespace
 // members and add them to each new folder.
 //
-// All mutations go through mero-react hooks so the underlying admin
-// client is the same MeroJs instance everything else uses.
+// Mutations go through mero-react hooks, except rename and member adds: those
+// hooks resolve a failed call to null, so they call `mero.admin`, which throws.
 
 import { useCallback } from 'react';
 import {
@@ -17,9 +17,7 @@ import {
   useCreateContext,
   useDeleteContext,
   useDeleteGroup,
-  useSetGroupMetadata,
   useSetSubgroupVisibility,
-  useAddGroupMembers,
   useMero,
 } from '@calimero-network/mero-react';
 // `FolderId`/`ContextId` are BRANDED at abi-codegen 2: `string & {__brand}`.
@@ -51,8 +49,8 @@ export interface CreateFolderInput {
 }
 
 export interface FolderOperations {
-  /** Returns the new folder's groupId on success. */
-  create: (input: CreateFolderInput) => Promise<string>;
+  /** Resolves to the identities from `input.members` that failed to be added; empty on a clean add. */
+  create: (input: CreateFolderInput) => Promise<string[]>;
   rename: (folderId: string, alias: string) => Promise<void>;
   remove: (folderId: string) => Promise<void>;
 }
@@ -71,14 +69,12 @@ export function useFolderOperations(
   const { createContext } = useCreateContext();
   const { deleteContext } = useDeleteContext();
   const { deleteGroup } = useDeleteGroup();
-  const { setGroupMetadata } = useSetGroupMetadata();
   const { setSubgroupVisibility } = useSetSubgroupVisibility();
-  const { addGroupMembers } = useAddGroupMembers();
-  const { nodeUrl } = useMero();
+  const { mero, nodeUrl } = useMero();
 
   const create = useCallback(
-    async (input: CreateFolderInput): Promise<string> => {
-      if (!registryClient || !rootGroupId) {
+    async (input: CreateFolderInput): Promise<string[]> => {
+      if (!registryClient || !rootGroupId || !mero) {
         throw new Error('workspace not bootstrapped');
       }
       // Empty applicationId makes admin-api reject the context
@@ -144,7 +140,7 @@ export function useFolderOperations(
 
         // Now the name op encrypts on the namespace key chain for
         // Open subgroups; on the subgroup key for Restricted.
-        await setGroupMetadata(newId, { name: input.alias });
+        await mero.admin.setGroupMetadata(newId, { name: input.alias });
 
         const ctx = await createContext({
           applicationId,
@@ -216,9 +212,10 @@ export function useFolderOperations(
       // broke adds before) and let the dialog close. Missing members
       // can be re-added from the folder's sharing panel.
       if (folderReady && createdGroupId) {
+        let failedMembers: string[] = [];
         if (input.members && input.members.length > 0) {
           try {
-            await addGroupMembers(createdGroupId, {
+            await mero.admin.addGroupMembers(createdGroupId, {
               members: input.members.map((identity) => ({
                 identity,
                 role: 'Member',
@@ -229,12 +226,13 @@ export function useFolderOperations(
               '[create] addGroupMembers failed (folder kept; add via sharing panel)',
               e,
             );
+            failedMembers = input.members;
           }
         }
         await refetch().catch((e) =>
           console.error('[create] post-create refetch failed', e),
         );
-        return createdGroupId;
+        return failedMembers;
       }
       // Unreachable in practice (a creation failure rethrows above), but
       // keeps the function total for TypeScript.
@@ -245,11 +243,10 @@ export function useFolderOperations(
       rootGroupId,
       applicationId,
       refetch,
+      mero,
       nodeUrl,
       createGroupInNamespace,
-      setGroupMetadata,
       setSubgroupVisibility,
-      addGroupMembers,
       createContext,
       deleteContext,
       deleteGroup,
@@ -258,13 +255,14 @@ export function useFolderOperations(
 
   const rename = useCallback(
     async (folderId: string, alias: string) => {
+      if (!mero) throw new Error('workspace not connected');
       // Folder names live in core group metadata (`metadata.name`) and
       // are visible to every namespace member on the list rows as of
       // #2338 — no registry alias mirror needed anymore.
-      await setGroupMetadata(folderId, { name: alias });
+      await mero.admin.setGroupMetadata(folderId, { name: alias });
       await refetch();
     },
-    [setGroupMetadata, refetch],
+    [mero, refetch],
   );
 
   const remove = useCallback(

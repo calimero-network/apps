@@ -1,6 +1,7 @@
 import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { FolderInfoPanel } from '../FolderInfoPanel';
 
 // Embedded children reach into data hooks; stub them to inert shells so
@@ -14,44 +15,37 @@ vi.mock('../FolderVisibilityToggle', () => ({
   FolderVisibilityToggle: () => <button>visibility</button>,
 }));
 
+function renderPanel() {
+  const onClose = vi.fn();
+  render(
+    <FolderInfoPanel
+      folderId="f1"
+      folderAlias="Design"
+      currentVisibility="Open"
+      onClose={onClose}
+    />,
+  );
+  return { onClose, user: userEvent.setup() };
+}
+
 describe('FolderInfoPanel', () => {
-  it('renders the alias, embeds sharing, and closes on backdrop click', () => {
-    const onClose = vi.fn();
-    render(
-      <FolderInfoPanel
-        folderId="f1"
-        folderAlias="Design"
-        currentVisibility="Open"
-        onClose={onClose}
-      />,
-    );
-    expect(screen.getByText('Design')).toBeTruthy();
+  it('names the dialog after the folder, embeds sharing, and closes from its button', async () => {
+    const { onClose, user } = renderPanel();
+    expect(screen.getByRole('dialog', { name: 'Design' })).toBeTruthy();
     expect(screen.getByTestId('sharing').textContent).toBe('f1');
-    // backdrop is the dialog root; clicking it closes
-    fireEvent.click(screen.getByRole('dialog'));
+    await user.click(screen.getByRole('button', { name: 'Close' }));
     expect(onClose).toHaveBeenCalled();
   });
 
-  it('does not close when the inner card is clicked', () => {
-    const onClose = vi.fn();
-    render(
-      <FolderInfoPanel
-        folderId="f1"
-        folderAlias="Design"
-        currentVisibility="Open"
-        onClose={onClose}
-      />,
-    );
-    fireEvent.click(screen.getByText('Design'));
+  it('does not close when the inner card is clicked', async () => {
+    const { onClose, user } = renderPanel();
+    await user.click(screen.getByText('Design'));
     expect(onClose).not.toHaveBeenCalled();
   });
 
-  it('closes on Escape', () => {
-    const onClose = vi.fn();
-    render(
-      <FolderInfoPanel folderId="f1" folderAlias="Design" currentVisibility="Open" onClose={onClose} />,
-    );
-    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+  it('closes on Escape', async () => {
+    const { onClose, user } = renderPanel();
+    await user.keyboard('{Escape}');
     expect(onClose).toHaveBeenCalled();
   });
 });

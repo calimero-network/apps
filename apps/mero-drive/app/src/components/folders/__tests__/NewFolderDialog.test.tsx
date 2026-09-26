@@ -1,14 +1,20 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 // vi.mock is hoisted above imports, so this resolves to the mocked
 // dependencies declared below.
 import { NewFolderDialog } from '../NewFolderDialog';
 
-const create = vi.fn().mockResolvedValue('new-folder');
+const create = vi.fn().mockResolvedValue([]);
+const toastError = vi.hoisted(() => vi.fn());
 
 vi.mock('@/hooks/useFolderOperations', () => ({
   useFolderOperations: () => ({ create, rename: vi.fn(), remove: vi.fn() }),
+}));
+
+vi.mock('sonner', () => ({
+  toast: { error: toastError },
 }));
 
 vi.mock('@/hooks/useDriveWorkspace', () => ({
@@ -20,6 +26,7 @@ vi.mock('@/hooks/useDriveWorkspace', () => ({
     applicationId: 'app-1',
     refetch: vi.fn(),
     selfIdentity: 'me',
+    namespaceMemberNames: { 'member-a': 'Alice', 'member-b': 'Bob' },
   }),
 }));
 
@@ -70,7 +77,8 @@ describe('NewFolderDialog member-picker', () => {
   });
 
   it('sends no members when visibility stays Open', async () => {
-    render(<NewFolderDialog parentFolderId={null} onClose={vi.fn()} />);
+    const onClose = vi.fn();
+    render(<NewFolderDialog parentFolderId={null} onClose={onClose} />);
     fireEvent.change(screen.getByPlaceholderText('Folder name'), {
       target: { value: 'Public' },
     });
@@ -80,5 +88,46 @@ describe('NewFolderDialog member-picker', () => {
         expect.objectContaining({ visibility: 'Open', members: [] }),
       ),
     );
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(toastError).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { failedMembers: ['member-a', 'member-b'], description: "Alice, Bob weren't added to the folder." },
+    { failedMembers: ['member-a'], description: "Alice wasn't added to the folder." },
+  ])('toasts the display names of members that failed to be added ($failedMembers.length)', async ({ failedMembers, description }) => {
+    create.mockResolvedValueOnce(failedMembers);
+    const onClose = vi.fn();
+    render(<NewFolderDialog parentFolderId={null} onClose={onClose} />);
+    fireEvent.click(screen.getByRole('button', { name: /Restricted/ }));
+    fireEvent.change(screen.getByPlaceholderText('Folder name'), {
+      target: { value: 'Secret' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(toastError).toHaveBeenCalledWith("Some members weren't added", { description });
+  });
+});
+
+describe('NewFolderDialog closing', () => {
+  it('closes on Escape', async () => {
+    const onClose = vi.fn();
+    render(<NewFolderDialog parentFolderId={null} onClose={onClose} />);
+    await userEvent.setup().keyboard('{Escape}');
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it('ignores Escape while the folder is being created', async () => {
+    create.mockReturnValueOnce(new Promise(() => {}));
+    const onClose = vi.fn();
+    render(<NewFolderDialog parentFolderId={null} onClose={onClose} />);
+    const user = userEvent.setup();
+    await user.type(screen.getByPlaceholderText('Folder name'), 'Slow');
+    await user.click(screen.getByRole('button', { name: 'Create' }));
+    await screen.findByRole('button', { name: 'Creating…' });
+    await user.keyboard('{Escape}');
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByRole('dialog', { name: 'New folder' })).toBeTruthy();
   });
 });

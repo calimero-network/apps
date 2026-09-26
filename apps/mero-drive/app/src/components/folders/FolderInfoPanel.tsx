@@ -4,13 +4,18 @@
 // previously lived in the main pane (FolderSharingPanel), and now have
 // their home here since the pane is the document editor.
 //
-// Centered-modal pattern (matches NamespaceCreateDialog) rather than an
-// anchored popover: the trigger is a dropdown-menu item that closes its
-// own menu on select, so a modal avoids fighting the menu for focus.
+// Centered modal rather than an anchored popover: the trigger closes its
+// own dropdown menu on select, so a modal avoids fighting it for focus.
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useState } from 'react';
 import { X, Globe, Lock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { FolderSharingPanel } from './FolderSharingPanel';
 import { FolderVisibilityToggle } from './FolderVisibilityToggle';
 
@@ -27,46 +32,28 @@ export function FolderInfoPanel({
   currentVisibility,
   onClose,
 }: Props) {
-  const cardRef = useRef<HTMLDivElement>(null);
   const [visError, setVisError] = useState<string | null>(null);
 
-  useEffect(() => {
-    cardRef.current?.focus();
-  }, []);
-
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="folder-info-title"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-      onClick={onClose}
-      onKeyDown={(e) => {
-        if (e.key === 'Escape') onClose();
-      }}
-    >
-      <div
-        ref={cardRef}
-        tabIndex={-1}
-        className="flex max-h-[85vh] w-full max-w-md flex-col overflow-hidden rounded-lg border border-border bg-card shadow-xl focus:outline-none"
-        onClick={(e) => e.stopPropagation()}
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent
+        aria-describedby={undefined}
+        className="flex flex-col overflow-hidden p-0"
       >
         <header className="flex items-center justify-between border-b border-border px-4 py-3">
-          <h2
-            id="folder-info-title"
-            className="truncate text-base font-semibold text-foreground"
-          >
+          <DialogTitle className="truncate text-foreground">
             {folderAlias}
-          </h2>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7"
-            aria-label="Close"
-            onClick={onClose}
-          >
-            <X className="h-4 w-4" />
-          </Button>
+          </DialogTitle>
+          <DialogClose asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              aria-label="Close"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </DialogClose>
         </header>
 
         <div className="flex items-center justify-between gap-3 border-b border-border/60 px-4 py-3">
@@ -74,12 +61,12 @@ export function FolderInfoPanel({
             {currentVisibility === 'Restricted' ? (
               <>
                 <Lock className="h-3.5 w-3.5" aria-hidden />
-                Restricted — explicit members only
+                Restricted: only invited members
               </>
             ) : currentVisibility === 'Open' ? (
               <>
                 <Globe className="h-3.5 w-3.5" aria-hidden />
-                Open — all workspace members
+                Open: all workspace members
               </>
             ) : (
               'Loading visibility…'
@@ -101,7 +88,7 @@ export function FolderInfoPanel({
         <div className="min-h-0 flex-1 overflow-y-auto p-4">
           <FolderSharingPanel folderId={folderId} />
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

@@ -84,6 +84,22 @@ describe('FolderDocLeaves', () => {
     expect(useDocsMock).toHaveBeenCalledWith('f1');
   });
 
+  it('marks the open document with aria-current, not its siblings', () => {
+    useDocsMock.mockReturnValue({
+      ...baseDocs,
+      list: [
+        { id: 'd1', title: 'Brief' },
+        { id: 'd2', title: 'Notes' },
+      ],
+    });
+    render(<Harness selectedDocId="d1" />);
+    const rows = screen.getAllByTestId('doc-row');
+    const brief = rows.find((r) => r.getAttribute('data-doc-id') === 'd1');
+    const notes = rows.find((r) => r.getAttribute('data-doc-id') === 'd2');
+    expect(brief?.getAttribute('aria-current')).toBe('page');
+    expect(notes?.getAttribute('aria-current')).toBeNull();
+  });
+
   describe('New document requests', () => {
     it('does not create on mount without a request', () => {
       const create = vi.fn();

@@ -290,7 +290,7 @@ export class FolderTreeDriver {
     // Target the row <div> (direct child of <li>), not the <li> itself.
     // When a folder is expanded, the <li>'s textContent accumulates all
     // descendant doc/subfolder names — the anchored regex would no longer
-    // match. The row <div> holds only the chevron, icon, name span, and
+    // match. The row <div> holds only the chevron, icon, name button, and
     // actions button, so its textContent stays stable regardless of
     // expansion state.
     return this.page
@@ -525,17 +525,21 @@ export class EditorDriver {
     await input.press('Enter');
   }
 
-  async deleteDocument(): Promise<void> {
-    // EditorHeader renders a 3-dot trigger with an explicit
-    // aria-label="Document actions"; that's the only consumer of
-    // the dropdown so the literal match is safe.
+  // EditorHeader renders a 3-dot trigger with an explicit
+  // aria-label="Document actions"; that's the only consumer of
+  // the dropdown so the literal match is safe.
+  async openDeleteConfirm(): Promise<Locator> {
     await this.page
       .getByRole('button', { name: /Document actions/i })
       .click();
     await this.page
       .getByRole('menuitem', { name: /Delete Document/i })
       .click();
-    const confirm = this.page.getByRole('dialog', { name: 'Delete document?' });
+    return this.page.getByRole('dialog', { name: 'Delete document?' });
+  }
+
+  async deleteDocument(): Promise<void> {
+    const confirm = await this.openDeleteConfirm();
     await confirm.getByRole('button', { name: /^Delete$/ }).click();
     await expect(confirm).toBeHidden();
   }

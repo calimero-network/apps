@@ -10,12 +10,18 @@
 //                  same component the `/join` route uses). On
 //                  success, refetches the namespace list and closes.
 //
-// The Cancel/backdrop/Escape paths just close — no need for the
-// gating createWorkspace dialog uses because the actual join request
-// is owned by JoinInviteCard, which manages its own loading state.
+// The Cancel/backdrop/Escape paths just close, except while a join is in
+// flight: closing then would unmount JoinInviteCard mid-request and drop its result.
 
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import {
   extractInviteParams,
   parseInviteUrl,
@@ -36,6 +42,11 @@ export function NamespaceJoinDialog({ onClose, onJoined }: Props) {
   const [stage, setStage] = useState<Stage>({ kind: 'input' });
   const [input, setInput] = useState('');
   const [parseError, setParseError] = useState<string | null>(null);
+  const [joining, setJoining] = useState(false);
+
+  const safeClose = () => {
+    if (!joining) onClose();
+  };
 
   const onContinue = () => {
     setParseError(null);
@@ -65,26 +76,11 @@ export function NamespaceJoinDialog({ onClose, onJoined }: Props) {
       : `Join ${stage.parsed.kind === 'namespace' ? 'workspace' : 'folder'}`;
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="join-dialog-title"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-      onClick={onClose}
-      onKeyDown={(e) => {
-        if (e.key === 'Escape') onClose();
-      }}
-    >
-      <div
-        className="w-full max-w-md rounded-lg border border-border bg-card p-6 shadow-xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h2
-          id="join-dialog-title"
-          className="text-lg font-semibold mb-3"
-        >
-          {title}
-        </h2>
+    <Dialog open onOpenChange={(open) => !open && safeClose()}>
+      <DialogContent aria-describedby={undefined}>
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+        </DialogHeader>
 
         {stage.kind === 'input' ? (
           <>
@@ -109,8 +105,8 @@ export function NamespaceJoinDialog({ onClose, onJoined }: Props) {
                 {parseError}
               </p>
             )}
-            <div className="mt-4 flex justify-end gap-2">
-              <Button variant="ghost" size="sm" onClick={onClose}>
+            <DialogFooter>
+              <Button variant="ghost" size="sm" onClick={safeClose}>
                 Cancel
               </Button>
               <Button
@@ -120,19 +116,20 @@ export function NamespaceJoinDialog({ onClose, onJoined }: Props) {
               >
                 Continue
               </Button>
-            </div>
+            </DialogFooter>
           </>
         ) : (
           <JoinInviteCard
             parsed={stage.parsed}
             onJoined={handleJoined}
+            onJoiningChange={setJoining}
             secondaryAction={{
               label: 'Back to invite link',
               onClick: () => setStage({ kind: 'input' }),
             }}
           />
         )}
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

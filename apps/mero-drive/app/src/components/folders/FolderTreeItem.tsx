@@ -9,6 +9,7 @@
 // the alias text is owned by this row's render.
 
 import React, { useCallback, useRef, useState } from 'react';
+import { toast } from 'sonner';
 import { ChevronRight, ChevronDown, Lock, Folder } from 'lucide-react';
 import type { TreeNode } from '@/utils/ancestry';
 import { safeColor } from '@/utils/validation';
@@ -96,6 +97,7 @@ export function FolderTreeItem({
       await ops.rename(node.id, next);
     } catch (e) {
       console.error('rename failed', e);
+      toast.error("Couldn't rename folder");
     } finally {
       submitRenameInFlightRef.current = false;
       setRenaming(false);
@@ -110,7 +112,9 @@ export function FolderTreeItem({
             ? 'bg-selected text-selected-foreground font-medium'
             : 'text-foreground hover:bg-muted/60'
         }`}
-        onClick={() => {
+        onClick={(e) => {
+          // Portalled dialogs and menus still bubble through React; only this row's DOM selects.
+          if (!e.currentTarget.contains(e.target as Node)) return;
           if (renaming) return;
           onSelect(node.id);
           // Selecting a folder also reveals its contents. Expand-only (not
@@ -121,7 +125,8 @@ export function FolderTreeItem({
       >
         <button
           type="button"
-          aria-label={isExpanded ? 'Collapse' : 'Expand'}
+          aria-expanded={isExpanded}
+          aria-label={`${isExpanded ? 'Collapse' : 'Expand'} ${folder?.alias ?? 'folder'}`}
           className="flex h-4 w-4 items-center justify-center text-muted-foreground hover:text-foreground"
           onClick={(e) => {
             e.stopPropagation();
@@ -166,9 +171,14 @@ export function FolderTreeItem({
             }}
           />
         ) : (
-          <span className="flex-1 truncate">
+          // No own onClick: the click (mouse or keyboard-triggered) bubbles
+          // to the row's handler, so selection never fires twice.
+          <button
+            type="button"
+            className="flex-1 truncate text-left rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
             {folder?.alias ?? node.id.slice(0, 8)}
-          </span>
+          </button>
         )}
         {folder?.visibility === 'Restricted' && !renaming && (
           <Lock

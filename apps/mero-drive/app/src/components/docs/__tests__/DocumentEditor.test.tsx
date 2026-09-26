@@ -2,18 +2,23 @@
 // this file guards is the loading screen: the shell must leave it once the
 // document read resolves, whichever read wins the race.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { act, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { DocDto } from '@/generated/docs/DocsClient';
 import { DocumentEditor } from '../DocumentEditor';
 
 const getDoc = vi.fn();
 const getDocument = vi.fn();
 const getTitle = vi.fn();
+const docsRemove = vi.fn();
+const toastError = vi.hoisted(() => vi.fn());
 let deliver: ((event: unknown) => void) | undefined;
 // Stable identity: useDocs memoizes its client, and a fresh one per render
 // would re-run every hook effect that keys on it.
 const client = { getDocument, getTitle };
 
+vi.mock('sonner', () => ({
+  toast: { error: toastError },
+}));
 vi.mock('@calimero-network/mero-react', () => ({
   useSubscription: (_ids: string[], handler: (event: unknown) => void) => {
     deliver = handler;
@@ -39,23 +44,30 @@ vi.mock('@/hooks/useDocs', () => ({
   useDocs: () => ({
     get: getDoc,
     edit: vi.fn(),
-    remove: vi.fn(),
+    remove: docsRemove,
     refetch: vi.fn(),
     contextId: 'docs-ctx',
     client,
   }),
 }));
 vi.mock('@/components/ui/confirm-dialog', () => ({
-  useConfirm: () => vi.fn(),
+  useConfirm: () => vi.fn().mockResolvedValue(true),
 }));
 vi.mock('@/components/editor/EditorShell', () => ({
   EditorShell: ({
     isLoading,
     documentName,
+    onDelete,
   }: {
     isLoading: boolean;
     documentName: string;
-  }) => <div>{isLoading ? 'Loading document...' : documentName}</div>,
+    onDelete?: () => void;
+  }) => (
+    <div>
+      {isLoading ? 'Loading document...' : documentName}
+      {onDelete && <button onClick={onDelete}>Delete</button>}
+    </div>
+  ),
 }));
 
 const DOC = {
@@ -120,5 +132,19 @@ describe('DocumentEditor', () => {
     render(<DocumentEditor folderId="f" docId="doc-1" onClose={() => {}} />);
     await screen.findByText("Couldn't load document");
     expect(screen.getByText('context unreachable')).toBeTruthy();
+  });
+
+  it('toasts when the delete call fails, instead of failing silently', async () => {
+    docsRemove.mockRejectedValue(new Error('delete boom'));
+    const onClose = vi.fn();
+    render(<DocumentEditor folderId="f" docId="doc-1" onClose={onClose} />);
+    await screen.findByText('Notes');
+
+    fireEvent.click(screen.getByText('Delete'));
+
+    await waitFor(() =>
+      expect(toastError).toHaveBeenCalledWith("Couldn't delete document"),
+    );
+    expect(onClose).not.toHaveBeenCalled();
   });
 });

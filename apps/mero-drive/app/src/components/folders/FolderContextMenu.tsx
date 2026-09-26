@@ -13,6 +13,7 @@
 // intent, not the editing surface.
 
 import React, { useState } from 'react';
+import { toast } from 'sonner';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -76,7 +77,6 @@ export function FolderContextMenu({
 
   const [showNewSub, setShowNewSub] = useState(false);
   const [showInfo, setShowInfo] = useState(false);
-  const [actionError, setActionError] = useState<string | null>(null);
   const confirm = useConfirm();
 
   const onDelete = async () => {
@@ -95,9 +95,8 @@ export function FolderContextMenu({
     try {
       await ops.remove(folderId);
     } catch (e: unknown) {
-      const err = e instanceof Error ? e : new Error(String(e));
-      setActionError(err.message);
-      console.error('folder delete failed', err);
+      console.error('folder delete failed', e);
+      toast.error("Couldn't delete folder");
     }
   };
 
@@ -107,7 +106,7 @@ export function FolderContextMenu({
         <Button
           variant="ghost"
           size="icon"
-          className="h-6 w-6 shrink-0 text-muted-foreground opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+          className="h-6 w-6 shrink-0 text-muted-foreground opacity-0 group-hover:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
           aria-label="New document"
           title="New document"
           onClick={(e) => {
@@ -123,7 +122,7 @@ export function FolderContextMenu({
           <Button
             variant="ghost"
             size="icon"
-            className="h-6 w-6 shrink-0 text-muted-foreground opacity-0 group-hover:opacity-100 data-[state=open]:opacity-100"
+            className="h-6 w-6 shrink-0 text-muted-foreground opacity-0 group-hover:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100 data-[state=open]:opacity-100"
             aria-label="Folder actions"
             onClick={(e) => {
               // Don't bubble to the row's selection handler.
@@ -133,7 +132,7 @@ export function FolderContextMenu({
             <MoreHorizontal className="h-4 w-4" />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+        <DropdownMenuContent align="end">
           {perms.canEditDocs && (
             <DropdownMenuItem onClick={onNewDocument}>
               <FilePlus className="mr-2 h-4 w-4" />
@@ -190,22 +189,6 @@ export function FolderContextMenu({
           currentVisibility={currentVisibility}
           onClose={() => setShowInfo(false)}
         />
-      )}
-
-      {actionError && (
-        <div
-          role="alert"
-          className="fixed bottom-4 right-4 z-50 max-w-sm rounded-md border border-destructive bg-destructive/10 p-3 text-xs text-destructive shadow"
-        >
-          {actionError}
-          <button
-            className="ml-2 underline"
-            onClick={() => setActionError(null)}
-            type="button"
-          >
-            dismiss
-          </button>
-        </div>
       )}
     </>
   );

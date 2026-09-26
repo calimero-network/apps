@@ -30,9 +30,16 @@ interface Props {
    *  invite link" inside the dialog). Rendered as an underlined link
    *  below the primary action. */
   secondaryAction?: { label: string; onClick: () => void };
+  /** Reports join-in-flight so an embedding dialog can refuse to close mid-join. */
+  onJoiningChange?: (joining: boolean) => void;
 }
 
-export function JoinInviteCard({ parsed, onJoined, secondaryAction }: Props) {
+export function JoinInviteCard({
+  parsed,
+  onJoined,
+  secondaryAction,
+  onJoiningChange,
+}: Props) {
   const { isAuthenticated, isLoading } = useMero();
   // ⚠️ NOT `useMero().applicationId`. The membership pre-check below lists
   // namespaces scoped by application id, and the provider's id belongs to
@@ -66,6 +73,7 @@ export function JoinInviteCard({ parsed, onJoined, secondaryAction }: Props) {
 
   const onJoinClick = async () => {
     setJoining(true);
+    onJoiningChange?.(true);
     setError(null);
     try {
       if (parsed.kind === 'namespace') {
@@ -113,6 +121,7 @@ export function JoinInviteCard({ parsed, onJoined, secondaryAction }: Props) {
       // Also on success: onJoined usually navigates away, but a caller that
       // only closes a dialog would leave the button stuck on "Joining…".
       setJoining(false);
+      onJoiningChange?.(false);
     }
   };
 
@@ -188,7 +197,8 @@ export function JoinInviteCard({ parsed, onJoined, secondaryAction }: Props) {
         <div className="mt-6 text-center text-xs text-muted-foreground">
           <button
             type="button"
-            className="underline hover:text-foreground"
+            className="underline hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50 disabled:no-underline"
+            disabled={joining}
             onClick={secondaryAction.onClick}
           >
             {secondaryAction.label}
