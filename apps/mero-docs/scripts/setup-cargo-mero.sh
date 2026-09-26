@@ -8,7 +8,7 @@ set -euo pipefail
 # script and `fleet-bump` does not rewrite it, so it is free to rot: it sat on
 # rc.28 while the fleet moved to rc.34. Bump RELEASE and the three checksums
 # together — a stale checksum fails closed, a stale RELEASE does not.
-RELEASE=0.11.0-rc.43
+RELEASE=0.11.0-rc.44
 
 # Per-asset SHA-256, so a re-uploaded asset under the same tag cannot swap the
 # binary silently. Refresh these together with RELEASE:
