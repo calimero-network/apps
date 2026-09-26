@@ -1,1772 +1,1261 @@
-/* ══════════════════════════════════════════════════════════════════════════
-   Shared app landing page — styles
+/* ── Mero Pass landing, in the calimero.network language ────────────────────
+ *
+ * A plain-CSS port of the Calimero landing's own setup — its colour tokens
+ * (`colors.scss`, `.dark-mod`), fluid spacing (`spacings.scss`), type scale
+ * (`_typography.scss`), 12-column grid, buttons, chapter markers, hairline
+ * grids, lime band and footer — the same port Calimero Cloud's marketing site
+ * makes. Values are copied, not re-derived.
+ *
+ * Scoped to `.mp-ld` and dark only, like those pages: the marketing surfaces
+ * are charcoal whatever the app's own light/dark choice is.
+ */
 
-   GENERATED FILE. Source: scripts/landing/template/landing.css.
-   `pnpm landing:generate` writes it into every app; `pnpm landing:check`
-   fails CI if a copy drifts.
+.mp-ld {
+  --background-inverse: #131215;
+  --background-gray: #4848480c;
+  --content-primary: #fcfcfc;
+  --content-secondary: #c8c8c8;
+  --content-tertiary: #8e8e8e;
+  --content-brand: #a4ff11;
+  --content-brand-hover: #73b30c;
+  --content-on-action: #131215;
+  --surface-action: #a4ff11;
+  --surface-brand: #4848480c;
+  --border-low-contrast: #282828;
+  --border-mid-contrast: #404040;
+  --border-brand: #a4ff11;
+  --layer-blur-low-contrast: #6deaad19;
+  --overlay-dark: #0000007f;
+  --shadow-button: 0 0 20px 0 rgb(181 255 17 / 50%);
 
-   THREE CONSTRAINTS THIS FILE EXISTS UNDER, all learned the hard way:
+  /* The app-wide tokens the shared lockup reads, pinned dark here. */
+  --ink: #fcfcfc;
+  --border-strong: #404040;
+  --accent-text: #a4ff11;
 
-   1. It drops into FOUR different styling worlds. Four apps use
-      styled-components, six use CSS modules, two use Tailwind (mero-sign uses
-      all three), and three use none. So: plain CSS, every class prefixed
-      `cal-lp-`, no element selectors, no reset, nothing global. This file must
-      not restyle the app behind it, and must not need anything from it.
+  --spacing-6xl: clamp(8.75rem, 3.75rem + 5.556vw, 10rem);
+  --spacing-5xl: clamp(6.875rem, 4.375rem + 2.778vw, 7.5rem);
+  --spacing-4xl: clamp(5.625rem, 4.125rem + 1.667vw, 6rem);
+  --spacing-3xl: clamp(3.75rem, 0.75rem + 3.333vw, 4.5rem);
+  --spacing-2xl: clamp(3.375rem, 2.875rem + 0.556vw, 3.5rem);
+  --spacing-xl: clamp(2.25rem, 1.25rem + 1.111vw, 2.5rem);
+  --spacing-l: clamp(1.875rem, 1.375rem + 0.556vw, 2rem);
+  --spacing-m: clamp(1.5rem, 1.412rem + 0.376vw, 1.75rem);
+  --spacing-s: clamp(1.125rem, -0.375rem + 1.667vw, 1.5rem);
+  --spacing-xs: clamp(0.813rem, 0.063rem + 0.833vw, 1rem);
+  --spacing-2xs: 0.5rem;
+  --spacing-3xs: 0.25rem;
 
-   2. It carries its OWN theme, scoped to `.cal-lp-root`. Seven of the fourteen
-      apps have no ThemeProvider, so requiring one would mean fourteen more
-      edits. Tokens live on the root element keyed by `data-cal-lp-theme`, NOT
-      on `<html>` — that also means the landing page can never fight a host
-      app's own theming.
+  --grid-margin: max(calc((100vw - 1280px) / 2), 64px);
 
-   3. Reveal animations are an ENHANCEMENT, never a gate. A headless capture
-      screenshots before anything scrolls, so a section that starts at
-      `opacity: 0` renders BLANK in exactly the artefact used to review it.
-      That has bitten twice. Everything here is visible by default; the
-      observer only adds a transition.
-   ══════════════════════════════════════════════════════════════════════════ */
-
-/* ── Tokens ───────────────────────────────────────────────────────────────
-   Names deliberately match mero-calendar's theme.css so an app that already
-   themes is speaking the same vocabulary. The COMPLETE light palette is
-   declared here on the root; the dark block below only redefines. Never let a
-   colour exist solely inside a media query or a [data-theme] block.
-
-   ⚠️ LIGHT IS THE DEFAULT, and it is not a `prefers-color-scheme` default.
-   There is deliberately NO `@media (prefers-color-scheme: dark)` rule in this
-   file: dark is reachable only by an explicit `[data-cal-lp-theme='dark']`,
-   which is to say only by someone clicking the toggle. A landing page is the
-   first thing a stranger sees and it is the same page in a screenshot, a
-   review and a share card, so it renders the same for everyone until asked
-   otherwise. The toggle still works, and the choice still persists. */
-.cal-lp-root {
-  /* Calimero brand, taken from calimero.network: the green is #a5ff11, the
-     near-black #131215, the off-white #fcfcfc. Same green in BOTH themes — it
-     is the one constant across every app. */
-  --cal-lp-bg-0: #fcfcfc;
-  --cal-lp-bg-1: #ffffff;
-  --cal-lp-bg-2: #ffffff;
-  --cal-lp-bg-3: #f2f2f3;
-  --cal-lp-border: #e4e4e6;
-  --cal-lp-border-strong: #c8c8c8;
-  --cal-lp-text: #131215;
-  --cal-lp-text-dim: #404040;
-  --cal-lp-text-faint: #8e8e8e;
-
-  --cal-lp-accent: #a5ff11;
-  --cal-lp-accent-soft: rgba(165, 255, 17, 0.18);
-  /* Text ON the green. Near-black in both themes, because #a5ff11 is a fill
-     colour: white on it is unreadable. */
-  --cal-lp-accent-text: #131215;
-  /* Accent TEXT on the page background. #a5ff11 on white is ~1.5:1, so light
-     mode deepens the same hue to stay legible; dark mode uses the brand green
-     itself, which is what the marketing site does on #131215. */
-  --cal-lp-accent-ink: #5f9400;
-  --cal-lp-accent-hover: #b6ff3d;
-
-  --cal-lp-radius: 10px;
-  --cal-lp-radius-sm: 7px;
-  --cal-lp-radius-lg: 16px;
-  --cal-lp-font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
-  --cal-lp-shadow: 0 10px 34px rgba(19, 18, 21, 0.10);
-  --cal-lp-shadow-sm: 0 2px 10px rgba(19, 18, 21, 0.07);
-
-  /* Fixed chrome dimensions, so a host app's global CSS cannot make one app's
-     header or hero a different height from another's. */
-  --cal-lp-header-h: 60px;
-  --cal-lp-hero-min: 520px;
-
-  --cal-lp-anim: running;
-  --cal-lp-reveal: 0.55s;
-}
-
-/* Dark, and ONLY by explicit choice — see the note above the tokens. */
-.cal-lp-root[data-cal-lp-theme='dark'] {
-  --cal-lp-bg-0: #131215;
-  --cal-lp-bg-1: #1a191d;
-  --cal-lp-bg-2: #141216;
-  --cal-lp-bg-3: #232227;
-  --cal-lp-border: #2b2a30;
-  --cal-lp-border-strong: #3b3b3b;
-  --cal-lp-text: #fcfcfc;
-  --cal-lp-text-dim: #c8c8c8;
-  --cal-lp-text-faint: #8e8e8e;
-  --cal-lp-accent: #a5ff11;
-  --cal-lp-accent-soft: rgba(165, 255, 17, 0.14);
-  --cal-lp-accent-text: #131215;
-  --cal-lp-accent-ink: #a5ff11;
-  --cal-lp-accent-hover: #b6ff3d;
-  --cal-lp-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
-  --cal-lp-shadow-sm: 0 2px 12px rgba(0, 0, 0, 0.4);
-}
-
-/* An explicit background: a transparent root borrows whatever the host painted. */
-.cal-lp-root {
-  background: var(--cal-lp-bg-0);
-  color: var(--cal-lp-text);
-  font-family: var(--cal-lp-font);
+  position: relative;
+  isolation: isolate;
   min-height: 100vh;
+  overflow-x: clip;
+  background: var(--background-inverse);
+  color: var(--content-primary);
+  color-scheme: dark;
+  font-family: 'Power Grotesk', arial, helvetica, sans-serif;
+  font-weight: 300;
+  letter-spacing: 0.015em;
   -webkit-font-smoothing: antialiased;
 }
 
-.cal-lp-root *,
-.cal-lp-root *::before,
-.cal-lp-root *::after {
-  box-sizing: border-box;
-}
-
-/* ── Reveal: enhancement only ─────────────────────────────────────────────
-   `.cal-lp-reveal` is fully visible as authored. The observer adds
-   `--in`, which only replays a small translate. Remove the observer and the
-   page still reads correctly — that is the point. */
-.cal-lp-reveal {
-  opacity: 1;
-  transform: none;
-}
-.cal-lp-reveal--in {
-  animation: cal-lp-rise var(--cal-lp-reveal) cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-@keyframes cal-lp-rise {
-  from {
-    opacity: 0.35;
-    transform: translateY(14px);
+/* Desktop renders at 80%, as calimero.network and the Cloud site do. */
+@media (width >= 1100px) {
+  .mp-ld {
+    zoom: 0.8;
   }
-  to {
-    opacity: 1;
-    transform: none;
+  .mp-ld-hero {
+    min-height: calc(125vh - 6.5rem);
   }
 }
 
-/* Type is stated, never inherited. `font: inherit` on the interactive elements
-   plus an explicit family on every text element means a host app's global
-   `h1 {}` / `button {}` / `body {}` rules cannot change this page's metrics —
-   which is what made the navbar and hero come out different heights per app. */
-.cal-lp-root h1,
-.cal-lp-root h2,
-.cal-lp-root h3,
-.cal-lp-root h4,
-.cal-lp-root p,
-.cal-lp-root a,
-.cal-lp-root span,
-.cal-lp-root li,
-.cal-lp-root button,
-.cal-lp-root input {
-  font-family: var(--cal-lp-font);
+@media (width < 1320px) {
+  .mp-ld {
+    --spacing-6xl: clamp(4rem, 2.327rem + 7.136vw, 8.75rem);
+    --spacing-5xl: clamp(6rem, 5.692rem + 1.315vw, 6.875rem);
+    --spacing-4xl: clamp(4.5rem, 4.104rem + 1.69vw, 5.625rem);
+    --spacing-3xl: clamp(3.5rem, 3.412rem + 0.376vw, 3.75rem);
+    --spacing-2xl: clamp(2.5rem, 2.192rem + 1.315vw, 3.375rem);
+    --spacing-xl: clamp(2rem, 1.912rem + 0.376vw, 2.25rem);
+    --spacing-l: clamp(1.75rem, 1.706rem + 0.188vw, 1.875rem);
+    --spacing-m: clamp(1.438rem, 1.415rem + 0.094vw, 1.5rem);
+    --spacing-s: clamp(1rem, 0.956rem + 0.188vw, 1.125rem);
+    --spacing-xs: clamp(0.5rem, 0.39rem + 0.469vw, 0.813rem);
+  }
 }
-.cal-lp-root h1,
-.cal-lp-root h2,
-.cal-lp-root h3,
-.cal-lp-root h4,
-.cal-lp-root p,
-.cal-lp-root ul {
+@media (width < 1024px) {
+  .mp-ld {
+    --grid-margin: 32px;
+  }
+}
+@media (width < 640px) {
+  .mp-ld {
+    --grid-margin: 16px;
+  }
+}
+
+/* Zero specificity, so every link class below sets its own colour. */
+:where(.mp-ld) a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.mp-ld ::selection {
+  background: var(--surface-action);
+  color: var(--content-on-action);
+}
+
+/* ── Grid and background lines ──────────────────────────────────────────── */
+
+.mp-ld-grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  column-gap: 16px;
+  width: calc(100% - var(--grid-margin) * 2);
+  max-width: 1280px;
+  margin-inline: auto;
+}
+@media (width < 1024px) {
+  .mp-ld-grid {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+}
+@media (width < 640px) {
+  .mp-ld-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    column-gap: 8px;
+  }
+}
+
+/* Five faint column rules behind the whole page, as on calimero.network. */
+.mp-ld-lines {
+  position: absolute;
+  inset: 0 var(--grid-margin);
+  z-index: -2;
+  display: flex;
+  justify-content: space-between;
+  max-width: 1280px;
+  margin-inline: auto;
+  pointer-events: none;
+}
+.mp-ld-lines span {
+  width: 1px;
+  background: var(--border-low-contrast);
+}
+@media (width < 1024px) {
+  .mp-ld-lines span:nth-child(even) {
+    display: none;
+  }
+}
+
+/* ── Type ───────────────────────────────────────────────────────────────── */
+
+.mp-ld-eyebrow {
   margin: 0;
-  padding: 0;
-}
-.cal-lp-root ul {
-  list-style: none;
-}
-
-/* ── Layout ─────────────────────────────────────────────────────────────── */
-.cal-lp-shell {
-  max-width: 1140px;
-  margin: 0 auto;
-  padding-inline: 22px;
-}
-
-.cal-lp-section {
-  padding-block: 78px;
-  border-top: 1px solid var(--cal-lp-border);
-}
-.cal-lp-section--alt {
-  background: var(--cal-lp-bg-1);
-}
-
-.cal-lp-kicker {
-  font-family: var(--cal-lp-font);
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.09em;
+  font-weight: 400;
+  font-size: clamp(0.875rem, 0.831rem + 0.188vw, 1rem);
+  line-height: 1.5;
+  letter-spacing: 0.28em;
   text-transform: uppercase;
-  color: var(--cal-lp-accent-ink);
-}
-.cal-lp-h2 {
-  margin: 12px 0 0;
-  font-size: clamp(24px, 3.1vw, 34px);
-  line-height: 1.18;
-  letter-spacing: -0.02em;
-  font-weight: 720;
-}
-.cal-lp-sectionsub {
-  margin: 13px 0 0;
-  max-width: 62ch;
-  font-size: 15.5px;
-  line-height: 1.65;
-  color: var(--cal-lp-text-dim);
+  color: var(--content-brand);
 }
 
-/* ── Header ─────────────────────────────────────────────────────────────── */
-.cal-lp-header {
-  position: sticky;
-  top: 0;
-  z-index: 20;
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  height: var(--cal-lp-header-h);
-  padding: 0 22px;
-  font-family: var(--cal-lp-font);
-  background: color-mix(in srgb, var(--cal-lp-bg-0) 88%, transparent);
-  backdrop-filter: blur(10px);
-  border-bottom: 1px solid var(--cal-lp-border);
+.mp-ld-title {
+  max-width: 28ch;
+  margin: 0 0 var(--spacing-xl);
+  font-weight: 950;
+  font-size: clamp(2.625rem, 1.125rem + 1.667vw, 3rem);
+  line-height: 1.16;
+  text-transform: uppercase;
+  text-wrap: balance;
+  color: var(--content-primary);
 }
-.cal-lp-brand {
-  display: inline-flex;
-  align-items: center;
-  gap: 9px;
-  /* Shrinks before the CTA does: on a 360px phone `Mero Issue Tracker` wrapped
-     under its own icon and pushed the sticky header to 120px tall. */
-  min-width: 0;
-  flex: 0 1 auto;
-  /* Small and quiet: the mark is the identity, the name is a label. */
-  font-weight: 640;
-  font-size: 13.5px;
-  letter-spacing: 0.005em;
-  color: var(--cal-lp-text);
-  text-decoration: none;
+@media (width < 1320px) {
+  .mp-ld-title {
+    font-size: clamp(2rem, 1.78rem + 0.939vw, 2.625rem);
+  }
 }
-.cal-lp-brandname {
-  min-width: 0;
-  overflow: hidden;
+
+.mp-ld-lede {
+  max-width: 48ch;
+  margin: 0;
+  font-weight: 300;
+  font-size: 1.125rem;
+  line-height: 1.6;
+  letter-spacing: 0.04em;
+  color: var(--content-secondary);
+}
+
+.mp-ld-meta {
+  margin: 0;
+  font-weight: 400;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  letter-spacing: 0.23em;
+  text-transform: uppercase;
+  color: var(--content-tertiary);
+}
+
+.mp-ld-kicker {
+  margin: 0 0 var(--spacing-2xs);
+  font-weight: 400;
+  font-size: 0.875rem;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: var(--content-brand);
+}
+.mp-ld-kicker--muted {
+  color: var(--content-tertiary);
+}
+
+.mp-ld-note {
+  max-width: 68ch;
+  margin: var(--spacing-xl) 0 0;
+  font-size: 1rem;
+  line-height: 1.6;
+  letter-spacing: 0.03em;
+  color: var(--content-tertiary);
+}
+
+.mp-ld-link {
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  font-size: 0.875rem;
+  color: var(--content-brand);
   white-space: nowrap;
-  text-overflow: ellipsis;
 }
-.cal-lp-brandicon {
-  width: 24px;
-  height: 24px;
-  border-radius: 6px;
-  object-fit: contain;
-  flex: 0 0 auto;
+.mp-ld-link::after {
+  content: '\00a0→';
 }
-.cal-lp-nav {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  margin-left: auto;
-}
-.cal-lp-navlink {
-  padding: 7px 11px;
-  border-radius: var(--cal-lp-radius-sm);
-  font-size: 13.5px;
-  color: var(--cal-lp-text-dim);
-  text-decoration: none;
-}
-.cal-lp-navlink:hover {
-  color: var(--cal-lp-text);
-  background: var(--cal-lp-bg-3);
-}
-
-.cal-lp-iconbtn {
-  display: inline-grid;
-  place-items: center;
-  width: 34px;
-  height: 34px;
-  border: 1px solid var(--cal-lp-border);
-  border-radius: var(--cal-lp-radius-sm);
-  background: var(--cal-lp-bg-1);
-  color: var(--cal-lp-text-dim);
-  cursor: pointer;
-}
-.cal-lp-iconbtn:hover {
-  color: var(--cal-lp-text);
-  border-color: var(--cal-lp-border-strong);
+.mp-ld-link:hover {
+  color: var(--content-brand-hover);
 }
 
 /* ── Buttons ────────────────────────────────────────────────────────────── */
-.cal-lp-btn {
+
+.mp-ld-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  padding: 11px 19px;
-  border-radius: var(--cal-lp-radius);
+  gap: 0.6rem;
+  padding: var(--spacing-s) var(--spacing-l);
   border: 1px solid transparent;
-  font: inherit;
-  font-size: 14.5px;
-  font-weight: 650;
-  cursor: pointer;
-  text-decoration: none;
-  white-space: nowrap;
-}
-.cal-lp-btn--primary {
-  background: var(--cal-lp-accent);
-  color: var(--cal-lp-accent-text);
-}
-.cal-lp-btn--primary:hover {
-  background: var(--cal-lp-accent-hover);
-}
-.cal-lp-btn--ghost {
-  background: var(--cal-lp-bg-1);
-  border-color: var(--cal-lp-border);
-  color: var(--cal-lp-text);
-}
-.cal-lp-btn--ghost:hover {
-  border-color: var(--cal-lp-border-strong);
-}
-.cal-lp-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-/* ── Badges ─────────────────────────────────────────────────────────────── */
-.cal-lp-badges {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: center;
-}
-.cal-lp-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 11px;
-  border-radius: 999px;
-  border: 1px solid var(--cal-lp-border);
-  background: var(--cal-lp-bg-1);
-  font-size: 12px;
-  font-weight: 620;
-  color: var(--cal-lp-text-dim);
-}
-.cal-lp-badge--accent {
-  border-color: transparent;
-  background: var(--cal-lp-accent-soft);
-  color: var(--cal-lp-accent-ink);
-}
-.cal-lp-badge--warn {
-  border-color: transparent;
-  background: rgba(255, 176, 46, 0.16);
-  color: #b26a00;
-}
-.cal-lp-root[data-cal-lp-theme='dark'] .cal-lp-badge--warn {
-  color: #ffc766;
-}
-
-/* ── Hero: two columns, the mero-sheets shape ───────────────────────────── */
-.cal-lp-hero {
-  display: grid;
-  grid-template-columns: 1.05fr 0.95fr;
-  gap: 54px;
-  align-items: center;
-  min-height: var(--cal-lp-hero-min);
-  padding-block: 74px 84px;
-}
-.cal-lp-h1 {
-  margin: 16px 0 0;
-  font-size: clamp(34px, 5.4vw, 56px);
-  line-height: 1.05;
-  letter-spacing: -0.035em;
-  font-weight: 760;
-}
-.cal-lp-lede {
-  margin: 18px 0 0;
-  max-width: 54ch;
-  font-size: 17px;
-  line-height: 1.62;
-  color: var(--cal-lp-text-dim);
-}
-.cal-lp-cta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 11px;
-  margin-top: 28px;
-}
-.cal-lp-trust {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px;
-  margin-top: 26px;
-  font-size: 12.5px;
-  color: var(--cal-lp-text-faint);
-}
-.cal-lp-trustdot {
-  width: 4px;
-  height: 4px;
-  border-radius: 50%;
-  background: var(--cal-lp-border-strong);
-}
-
-/* ── Animation frame ────────────────────────────────────────────────────── */
-.cal-lp-stage {
-  position: relative;
-  aspect-ratio: 4 / 3;
-  max-width: 100%;
-  border: 1px solid var(--cal-lp-border);
-  border-radius: var(--cal-lp-radius-lg);
-  background: var(--cal-lp-bg-1);
-  box-shadow: var(--cal-lp-shadow);
-  overflow: hidden;
-}
-.cal-lp-stagebar {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  height: 30px;
-  padding-inline: 12px;
-  border-bottom: 1px solid var(--cal-lp-border);
-  background: var(--cal-lp-bg-2);
-}
-.cal-lp-stagedot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--cal-lp-border-strong);
-}
-.cal-lp-stagebody {
-  position: absolute;
-  inset: 30px 0 0;
-}
-
-/* ── Features ───────────────────────────────────────────────────────────── */
-.cal-lp-features {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr));
-  gap: 16px;
-  margin-top: 38px;
-}
-.cal-lp-feature {
-  display: flex;
-  gap: 14px;
-  padding: 20px;
-  border: 1px solid var(--cal-lp-border);
-  border-radius: var(--cal-lp-radius);
-  background: var(--cal-lp-bg-1);
-}
-.cal-lp-featureicon {
-  flex: 0 0 auto;
-  display: grid;
-  place-items: center;
-  width: 38px;
-  height: 38px;
-  border-radius: var(--cal-lp-radius-sm);
-  background: var(--cal-lp-accent-soft);
-  color: var(--cal-lp-accent-ink);
-}
-.cal-lp-featuretitle {
-  margin: 1px 0 0;
-  font-size: 15px;
-  font-weight: 680;
-}
-.cal-lp-featurebody {
-  margin: 7px 0 0;
-  font-size: 14px;
-  line-height: 1.6;
-  color: var(--cal-lp-text-dim);
-}
-
-/* ── Explainer prose ────────────────────────────────────────────────────── */
-.cal-lp-prose {
-  max-width: 68ch;
-  margin-top: 26px;
-}
-.cal-lp-prose p {
-  margin: 0 0 15px;
-  font-size: 15.5px;
-  line-height: 1.72;
-  color: var(--cal-lp-text-dim);
-}
-
-/* ── Steps ──────────────────────────────────────────────────────────────── */
-.cal-lp-steps {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(230px, 100%), 1fr));
-  gap: 16px;
-  margin-top: 38px;
-  counter-reset: cal-lp-step;
-}
-.cal-lp-step {
-  padding: 20px;
-  border: 1px solid var(--cal-lp-border);
-  border-radius: var(--cal-lp-radius);
-  background: var(--cal-lp-bg-1);
-}
-.cal-lp-stepnum {
-  display: grid;
-  place-items: center;
-  width: 27px;
-  height: 27px;
-  border-radius: 50%;
-  background: var(--cal-lp-accent);
-  color: var(--cal-lp-accent-text);
-  font-size: 12.5px;
-  font-weight: 750;
-}
-.cal-lp-steptitle {
-  margin: 13px 0 0;
-  font-size: 15px;
-  font-weight: 680;
-}
-.cal-lp-stepbody {
-  margin: 7px 0 0;
-  font-size: 14px;
-  line-height: 1.6;
-  color: var(--cal-lp-text-dim);
-}
-
-/* ── Why p2p list ───────────────────────────────────────────────────────── */
-.cal-lp-why {
-  display: grid;
-  gap: 13px;
-  margin-top: 34px;
-  padding: 0;
-  list-style: none;
-}
-.cal-lp-whyitem {
-  display: flex;
-  gap: 12px;
-  align-items: flex-start;
-  font-size: 15px;
-  line-height: 1.6;
-  color: var(--cal-lp-text-dim);
-}
-.cal-lp-whyitem strong {
-  color: var(--cal-lp-text);
-  font-weight: 660;
-}
-.cal-lp-whycheck {
-  flex: 0 0 auto;
-  color: var(--cal-lp-accent-ink);
-  margin-top: 1px;
-}
-
-/* ── Desktop band ───────────────────────────────────────────────────────── */
-.cal-lp-band {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 22px;
-  padding: 30px;
-  border: 1px solid var(--cal-lp-border);
-  border-radius: var(--cal-lp-radius-lg);
-  background: linear-gradient(135deg, var(--cal-lp-accent-soft), transparent 70%),
-    var(--cal-lp-bg-1);
-}
-.cal-lp-bandtext {
-  flex: 1 1 320px;
-}
-.cal-lp-bandtitle {
-  margin: 0;
-  font-size: 20px;
+  border-radius: 0;
+  background: transparent;
+  font-family: inherit;
   font-weight: 700;
-}
-.cal-lp-bandbody {
-  margin: 9px 0 0;
-  font-size: 14.5px;
-  line-height: 1.62;
-  color: var(--cal-lp-text-dim);
-}
-
-/* ── Overview extras ────────────────────────────────────────────────────
-   Optional sections an app opts into through `CONFIG.overview`. Class names
-   are their own (`.cal-lp-persona`, `.cal-lp-point`) rather than reusing
-   `.cal-lp-feature` / `.cal-lp-step`, because the generated spec counts those
-   to prove the overview and docs pages did not bleed into each other. */
-.cal-lp-root .cal-lp-headline {
-  margin: 12px 0 0;
-  font-size: clamp(19px, 2.3vw, 24px);
-  line-height: 1.3;
-  letter-spacing: -0.015em;
-  font-weight: 680;
-  color: var(--cal-lp-accent-ink);
-}
-
-/* Showcase: numbered chapters beside the clip, which follow it as it plays. */
-.cal-lp-story {
-  display: grid;
-  grid-template-columns: minmax(240px, 0.36fr) 1fr;
-  gap: 28px;
-  align-items: center;
-  margin-top: 36px;
-}
-.cal-lp-chapters {
-  display: grid;
-  gap: 6px;
-  padding: 0;
-  list-style: none;
-}
-.cal-lp-chapter {
-  position: relative;
-  display: flex;
-  gap: 13px;
-  width: 100%;
-  padding: 13px 14px 15px;
-  overflow: hidden;
-  border: 1px solid transparent;
-  border-radius: var(--cal-lp-radius);
-  background: none;
-  font: inherit;
-  text-align: left;
-  color: inherit;
-  cursor: pointer;
-}
-.cal-lp-chapter:hover {
-  background: var(--cal-lp-bg-1);
-}
-.cal-lp-chapter[data-cal-lp-active] {
-  border-color: var(--cal-lp-border);
-  background: var(--cal-lp-bg-1);
-  box-shadow: var(--cal-lp-shadow-sm);
-}
-.cal-lp-chapternum {
-  flex: 0 0 auto;
-  display: grid;
-  place-items: center;
-  width: 25px;
-  height: 25px;
-  border-radius: 50%;
-  border: 1px solid var(--cal-lp-border-strong);
-  font-size: 12px;
-  font-weight: 720;
-  color: var(--cal-lp-text-faint);
-}
-.cal-lp-chapter[data-cal-lp-active] .cal-lp-chapternum {
-  border-color: var(--cal-lp-accent);
-  background: var(--cal-lp-accent);
-  color: var(--cal-lp-accent-text);
-}
-.cal-lp-chaptertitle {
-  display: block;
-  font-size: 15px;
-  font-weight: 680;
-  color: var(--cal-lp-text-dim);
-}
-.cal-lp-chapter[data-cal-lp-active] .cal-lp-chaptertitle {
-  color: var(--cal-lp-text);
-}
-.cal-lp-chapterbody {
-  display: block;
-  margin-top: 3px;
-  font-size: 13.5px;
+  font-size: 1rem;
   line-height: 1.5;
-  color: var(--cal-lp-text-faint);
+  letter-spacing: 0.17em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background-color 0.3s ease-out,
+    color 0.3s ease-out,
+    box-shadow 0.3s ease-out;
 }
-/* Progress through the chapter, as a hairline along its bottom edge. */
-.cal-lp-chapterbar {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 2px;
-  background: var(--cal-lp-accent);
-  transform-origin: left;
-  transition: transform 0.25s linear;
+.mp-ld-btn--primary {
+  background: var(--surface-action);
+  color: var(--content-on-action);
 }
-.cal-lp-chapter:not([data-cal-lp-active]) .cal-lp-chapterbar {
-  opacity: 0;
+.mp-ld-btn--secondary {
+  border-color: var(--border-brand);
+  color: var(--content-brand);
 }
-/* The hero stage is 4:3 for the illustrations; a recording is as tall as the
-   window it was captured from, so the frame follows the video instead. */
-.cal-lp-stage--video {
-  aspect-ratio: auto;
+.mp-ld-btn--secondary:hover {
+  background: var(--content-brand);
+  color: var(--content-on-action);
 }
-.cal-lp-video {
-  display: block;
-  width: 100%;
-  height: auto;
-  aspect-ratio: 16 / 10;
-  background: var(--cal-lp-bg-3);
-}
-
-/* Open source: the pitch and steps beside the commands that get a fork running. */
-.cal-lp-os {
-  display: grid;
-  grid-template-columns: 1.1fr 0.9fr;
-  gap: 40px;
-  align-items: center;
-}
-.cal-lp-forksteps {
-  display: grid;
-  gap: 16px;
-  margin: 28px 0 0;
-  padding: 0;
-  list-style: none;
-}
-.cal-lp-forkstep {
-  display: flex;
-  gap: 14px;
-}
-.cal-lp-forkstep .cal-lp-stepnum {
-  flex: 0 0 auto;
-}
-.cal-lp-forkstep .cal-lp-steptitle {
-  margin-top: 2px;
-}
-.cal-lp-code {
-  margin: 0;
-  padding: 22px 24px;
-  overflow-x: auto;
-  border-radius: var(--cal-lp-radius-lg);
-  background: #0e140f;
-  box-shadow: var(--cal-lp-shadow);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 13.5px;
-  line-height: 1.9;
-  color: #f5f8f1;
-}
-/* Scoped under .cal-lp-code on purpose: `.cal-lp-root span` pins every span
-   to the UI font, and one class alone loses to it. */
-.cal-lp-code .cal-lp-codeline {
-  display: block;
-  font-family: inherit;
-  /* Wrapped, not scrolled: a command whose end is out of sight is a command
-     someone copies half of. */
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-.cal-lp-code .cal-lp-codeprompt {
-  font-family: inherit;
+.mp-ld-btn--dark {
+  background: #131215;
   color: #a4ff11;
-  user-select: none;
 }
-.cal-lp-code .cal-lp-codecomment {
-  font-family: inherit;
-  color: #7d8a7f;
+.mp-ld-btn--small {
+  padding: 0.55rem 1.1rem;
+  font-size: 0.875rem;
 }
-
-@media (max-width: 940px) {
-  .cal-lp-story,
-  .cal-lp-os {
-    grid-template-columns: 1fr;
+@media (hover: hover) and (pointer: fine) {
+  .mp-ld-btn--primary:hover,
+  .mp-ld-btn--secondary:hover {
+    box-shadow: var(--shadow-button);
   }
-  /* Video first on a narrow screen; the chapters read as its caption. */
-  .cal-lp-story .cal-lp-stage {
-    order: -1;
+  .mp-ld-btn--dark:hover {
+    box-shadow: 4px 4px 0 0 #131215;
   }
 }
-
-@media (max-width: 640px) {
-  /* Five full chapters under a phone-sized clip is a wall of text; only the
-     one playing keeps its sentence. */
-  .cal-lp-chapter:not([data-cal-lp-active]) .cal-lp-chapterbody {
-    display: none;
+@media (width < 1024px) {
+  .mp-ld-btn {
+    padding: 16px 24px;
   }
-  .cal-lp-chapter {
-    padding-block: 10px 12px;
+  .mp-ld-btn--small {
+    padding: 0.55rem 1rem;
   }
 }
 
-/* Comparison: a three-column grid that becomes one card per row on a phone,
-   because three columns of prose at 320px is ninety pixels each. */
-.cal-lp-cmp {
-  margin-top: 34px;
-  border: 1px solid var(--cal-lp-border);
-  border-radius: var(--cal-lp-radius-lg);
-  overflow: hidden;
-  background: var(--cal-lp-bg-1);
-}
-.cal-lp-cmprow {
-  display: grid;
-  grid-template-columns: 0.8fr 1.1fr 1.1fr;
-  gap: 18px;
-  padding: 16px 22px;
-  border-top: 1px solid var(--cal-lp-border);
-  font-size: 14.5px;
-  line-height: 1.55;
-}
-.cal-lp-cmprow--head {
-  border-top: 0;
-  background: var(--cal-lp-bg-3);
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--cal-lp-text-faint);
-}
-.cal-lp-cmprow--head .cal-lp-cmpus {
-  color: var(--cal-lp-accent-ink);
-}
-.cal-lp-cmplabel {
-  font-weight: 660;
-  color: var(--cal-lp-text);
-}
-.cal-lp-cmpthem {
-  color: var(--cal-lp-text-faint);
-}
-.cal-lp-cmprow:not(.cal-lp-cmprow--head) .cal-lp-cmpus {
-  display: flex;
-  gap: 8px;
-  align-items: flex-start;
-  color: var(--cal-lp-text);
-}
-.cal-lp-cmprow:not(.cal-lp-cmprow--head) .cal-lp-cmpus svg {
-  flex: 0 0 auto;
-  margin-top: 3px;
-  color: var(--cal-lp-accent-ink);
-}
-
-/* Who it is for: persona cards — who, what it gets them, what they use. */
-.cal-lp-audiences {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(420px, 100%), 1fr));
-  gap: 16px;
-  margin-top: 36px;
-}
-.cal-lp-persona {
-  display: flex;
-  flex-direction: column;
-  padding: 24px 24px 22px;
-  border: 1px solid var(--cal-lp-border);
-  border-radius: var(--cal-lp-radius-lg);
-  background: var(--cal-lp-bg-1);
-  border-top: 3px solid var(--cal-lp-accent);
-}
-.cal-lp-personalabel {
-  font-size: 12px;
-  font-weight: 720;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--cal-lp-accent-ink);
-}
-.cal-lp-root .cal-lp-personatitle {
-  margin: 10px 0 0;
-  font-size: 19px;
-  line-height: 1.3;
-  letter-spacing: -0.01em;
-  font-weight: 700;
-}
-.cal-lp-root .cal-lp-personabody {
-  margin: 9px 0 0;
-  font-size: 14.5px;
-  line-height: 1.6;
-  color: var(--cal-lp-text-dim);
-}
-/* `.cal-lp-root` in front of the new blocks below: `.cal-lp-root h3, p, ul`
-   zeroes margins and padding, and one class alone loses to it. */
-.cal-lp-root .cal-lp-uses {
+.mp-ld-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 7px;
-  margin-top: auto;
-  padding: 18px 0 0;
-  list-style: none;
-}
-.cal-lp-use {
-  padding: 5px 10px;
-  border-radius: 999px;
-  background: var(--cal-lp-bg-3);
-  font-size: 12.5px;
-  font-weight: 600;
-  color: var(--cal-lp-text-dim);
-}
-
-/* Collaboration points and roles. */
-.cal-lp-points {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(230px, 100%), 1fr));
-  gap: 16px;
-  margin-top: 38px;
-  padding: 0;
-  list-style: none;
-}
-.cal-lp-root .cal-lp-point .cal-lp-steptitle {
-  margin-top: 13px;
-}
-.cal-lp-root .cal-lp-point .cal-lp-stepbody {
-  margin-top: 7px;
-}
-.cal-lp-point {
-  padding: 20px;
-  border: 1px solid var(--cal-lp-border);
-  border-radius: var(--cal-lp-radius);
-  background: var(--cal-lp-bg-0);
-}
-.cal-lp-roles {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
-  gap: 12px;
-  margin-top: 26px;
-}
-.cal-lp-role {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 14px 16px;
-  border: 1px dashed var(--cal-lp-border-strong);
-  border-radius: var(--cal-lp-radius);
-}
-.cal-lp-rolename {
-  font-size: 13px;
-  font-weight: 720;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--cal-lp-accent-ink);
-}
-.cal-lp-rolecan {
-  font-size: 14px;
-  line-height: 1.55;
-  color: var(--cal-lp-text-dim);
-}
-.cal-lp-root .cal-lp-rolesnote {
-  margin: 16px 0 0;
-  font-size: 13.5px;
-  line-height: 1.6;
-  color: var(--cal-lp-text-faint);
-}
-
-/* Free vs Calimero Cloud. */
-.cal-lp-plans {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
-  gap: 18px;
-  margin-top: 36px;
-}
-.cal-lp-plan {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 24px;
-  border: 1px solid var(--cal-lp-border);
-  border-radius: var(--cal-lp-radius-lg);
-  background: var(--cal-lp-bg-0);
-}
-.cal-lp-plan--accent {
-  border-color: var(--cal-lp-accent-ink);
-  background: linear-gradient(135deg, var(--cal-lp-accent-soft), transparent 70%),
-    var(--cal-lp-bg-0);
-}
-.cal-lp-planhead {
-  display: flex;
-  gap: 14px;
+  gap: var(--spacing-xs);
   align-items: center;
 }
-.cal-lp-planprice {
-  display: block;
-  margin-top: 3px;
-  font-size: 13.5px;
-  font-weight: 650;
-  color: var(--cal-lp-text-dim);
-}
-.cal-lp-plan .cal-lp-why {
-  flex: 1;
-  margin: 18px 0 22px;
-}
-.cal-lp-plan .cal-lp-btn {
-  align-self: flex-start;
-}
-
-/* Closing call to action. */
-.cal-lp-closing {
-  text-align: center;
-}
-.cal-lp-closing .cal-lp-sectionsub {
-  margin-inline: auto;
-}
-.cal-lp-closing .cal-lp-cta {
+.mp-ld-actions--center {
   justify-content: center;
 }
 
-@media (max-width: 640px) {
-  .cal-lp-cmprow--head {
-    display: none;
-  }
-  .cal-lp-cmprow {
-    grid-template-columns: 1fr;
-    gap: 8px;
-    padding: 16px;
-  }
-  .cal-lp-cmprow:nth-child(2) {
-    border-top: 0;
-  }
-  /* The header row is gone, so the status-quo cell names its column. The
-     other cell carries the check mark, which says the same thing. */
-  .cal-lp-cmpthem::before {
-    content: attr(data-label) ': ';
-    font-weight: 650;
-  }
-  .cal-lp-plan .cal-lp-btn {
-    align-self: stretch;
-  }
-}
+/* ── Header ─────────────────────────────────────────────────────────────── */
 
-/* ── FAQ ────────────────────────────────────────────────────────────────── */
-.cal-lp-faq {
-  margin-top: 34px;
-  border-top: 1px solid var(--cal-lp-border);
-}
-.cal-lp-faqrow {
-  border-bottom: 1px solid var(--cal-lp-border);
-}
-.cal-lp-faqq {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  width: 100%;
-  padding: 18px 2px;
-  border: 0;
-  background: none;
-  font: inherit;
-  font-size: 15.5px;
-  font-weight: 640;
-  color: var(--cal-lp-text);
-  text-align: left;
-  cursor: pointer;
-}
-.cal-lp-faqsign {
-  margin-left: auto;
-  color: var(--cal-lp-text-faint);
-  font-size: 19px;
-  line-height: 1;
-}
-.cal-lp-faqa {
-  padding: 0 2px 20px;
-  max-width: 72ch;
-  font-size: 14.5px;
-  line-height: 1.68;
-  color: var(--cal-lp-text-dim);
-}
-
-/* ── Footer ─────────────────────────────────────────────────────────────── */
-.cal-lp-footer {
-  padding-block: 46px 60px;
-  border-top: 1px solid var(--cal-lp-border);
-  background: var(--cal-lp-bg-1);
-}
-.cal-lp-footergrid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr));
-  gap: 30px;
-}
-.cal-lp-footerhead {
-  margin: 0 0 12px;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--cal-lp-text-faint);
-}
-.cal-lp-footerlink {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 0;
-  font-size: 14px;
-  color: var(--cal-lp-text-dim);
-  text-decoration: none;
-}
-.cal-lp-footerlink:hover {
-  color: var(--cal-lp-accent-ink);
-}
-.cal-lp-footerbase {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  align-items: center;
-  margin-top: 38px;
-  padding-top: 22px;
-  border-top: 1px solid var(--cal-lp-border);
-  font-size: 12.5px;
-  color: var(--cal-lp-text-faint);
-}
-
-
-/* ── Animation primitives ───────────────────────────────────────────────
-   Every app's hero animation is its OWN component (`animation.tsx`), but they
-   all compose from these, so fourteen animations do not mean fourteen
-   stylesheets — and every one of them themes, pauses under
-   `prefers-reduced-motion`, and reads correctly as a still frame.
-
-   Positions and delays come from inline style on the element; the motion lives
-   here. Colour is always a token, never a literal, or dark mode breaks. */
-.cal-lp-a {
-  /* A FIXED design box, scaled to whatever the stage happens to be.
-     Every animation.tsx positions its parts in literal pixels against a
-     495px-wide stage, so letting this box stretch means the parts keep their
-     desktop coordinates inside a 328px phone frame and write over each other.
-     `--cal-lp-a-s` is measured exactly by useStageScale(); the breakpoint
-     fallbacks at the bottom of this file cover a browser with no
-     ResizeObserver. Height follows the stage rather than the 4/3 ratio,
-     because the title bar eats a fixed 30px the ratio does not know about. */
-  position: absolute;
+.mp-ld-header {
+  position: sticky;
   top: 0;
-  left: 0;
-  width: 495px;
-  height: calc(100% / var(--cal-lp-a-s, 1));
-  padding: 20px;
-  transform-origin: top left;
-  transform: scale(var(--cal-lp-a-s, 1));
+  z-index: 20;
+  transition:
+    background-color 600ms,
+    backdrop-filter 600ms;
 }
-.cal-lp-a * {
-  animation-play-state: var(--cal-lp-anim);
+.mp-ld-header.is-scrolled {
+  background: rgb(19 18 21 / 85%);
+  backdrop-filter: blur(25px);
+  border-bottom: 1px solid var(--border-low-contrast);
 }
-
-/* A panel/board/canvas the app's content sits on. */
-.cal-lp-a-pane {
-  position: absolute;
-  border-radius: 8px;
-  background: var(--cal-lp-bg-3);
-  border: 1px solid var(--cal-lp-border);
-}
-/* A rectangular thing: a cell, a card, a tile, a layer row, a block. */
-.cal-lp-a-box {
-  position: absolute;
-  border-radius: 5px;
-  background: var(--cal-lp-bg-3);
-  border: 1px solid var(--cal-lp-border);
-}
-/* A text line. */
-.cal-lp-a-line {
-  position: absolute;
-  height: 7px;
-  border-radius: 4px;
-  background: var(--cal-lp-border);
-}
-/* A round thing: an avatar, a player, a node, a brush dab. */
-.cal-lp-a-dot {
-  position: absolute;
-  border-radius: 50%;
-  background: var(--cal-lp-accent);
-}
-/* A label chip. */
-.cal-lp-a-chip {
-  position: absolute;
-  display: inline-flex;
-  align-items: center;
-  padding: 3px 8px;
-  border-radius: 999px;
-  background: var(--cal-lp-accent-soft);
-  color: var(--cal-lp-accent-ink);
-  font-family: var(--cal-lp-font);
-  font-size: 10.5px;
-  font-weight: 650;
-  white-space: nowrap;
-}
-/* A second peer's cursor. */
-.cal-lp-a-cursor {
-  position: absolute;
-  width: 10px;
-  height: 10px;
-  border-radius: 50% 50% 50% 0;
-  transform: rotate(-45deg);
-  background: var(--cal-lp-accent);
-  box-shadow: 0 0 0 2px var(--cal-lp-bg-1);
-}
-
-
-/* Text inside an animation. The old bespoke previews worked because they showed
-   REAL labels — column letters, project names, "=SUM(A1:A3)" — not grey boxes.
-   An abstract rectangle communicates nothing about what the app does. */
-.cal-lp-a-txt {
-  position: absolute;
-  font-family: var(--cal-lp-font);
-  font-size: 10px;
-  line-height: 1;
-  color: var(--cal-lp-text-dim);
-  white-space: nowrap;
-}
-.cal-lp-a-txt--dim { color: var(--cal-lp-text-faint); }
-.cal-lp-a-txt--head {
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--cal-lp-text-faint);
-}
-.cal-lp-a-txt--val { color: var(--cal-lp-text); font-weight: 600; }
-.cal-lp-a-txt--accent { color: var(--cal-lp-accent-ink); font-weight: 650; }
-/* The window chrome every preview sits in. */
-.cal-lp-a-tool {
-  position: absolute;
-  display: grid;
-  place-items: center;
-  width: 17px;
-  height: 17px;
-  border-radius: 4px;
-  background: var(--cal-lp-bg-3);
-  font-family: var(--cal-lp-font);
-  font-size: 9px;
-  font-weight: 650;
-  color: var(--cal-lp-text-faint);
-}
-/* A peer avatar. */
-.cal-lp-a-av {
-  position: absolute;
-  display: grid;
-  place-items: center;
-  width: 17px;
-  height: 17px;
-  border-radius: 50%;
-  font-family: var(--cal-lp-font);
-  font-size: 8.5px;
-  font-weight: 700;
-  color: var(--cal-lp-accent-text);
-  background: var(--cal-lp-accent);
-}
-
-/* The motions. `--d` sets the delay, `--t` the duration, both from inline style.
-   NO fill-mode, deliberately: `both` plus a delay parks an element at its 0%
-   keyframe until its turn comes, so a still capture — the exact artefact used
-   to review this — shows an almost empty frame. Without a fill mode the resting
-   state is the element as authored, i.e. VISIBLE, and the animation only adds
-   emphasis on top. Every keyframe below therefore ends where it started. */
-.cal-lp-a-in     { animation: cal-lp-a-in     var(--t, 4s) ease-in-out var(--d, 0s) infinite; }
-.cal-lp-a-fill   { animation: cal-lp-a-fill   var(--t, 4s) ease-in-out var(--d, 0s) infinite; }
-.cal-lp-a-flash  { animation: cal-lp-a-flash  var(--t, 4s) ease-in-out var(--d, 0s) infinite; }
-.cal-lp-a-grow   { animation: cal-lp-a-grow   var(--t, 4s) ease-out    var(--d, 0s) infinite; }
-.cal-lp-a-drift  { animation: cal-lp-a-drift  var(--t, 4s) ease-in-out var(--d, 0s) infinite; }
-.cal-lp-a-blink  { animation: cal-lp-a-blink  var(--t, 4s) ease-in-out var(--d, 0s) infinite; }
-.cal-lp-a-rise   { animation: cal-lp-a-rise   var(--t, 4s) ease-out    var(--d, 0s) infinite; }
-/* A pair: `peek` shows something briefly, `hide` takes something away for
-   exactly that window. They exist because a mock that reveals a secret was
-   drawing the revealed value ON TOP of the masked dots it was supposed to
-   replace — `in` never actually hides anything. Both carry their resting state
-   as a plain declaration, so a paused animation (which is what
-   prefers-reduced-motion and every headless capture get) still shows the
-   masked state rather than both at once. */
-.cal-lp-a-peek   { opacity: 0; animation: cal-lp-a-peek   var(--t, 4s) ease-in-out var(--d, 0s) infinite; }
-.cal-lp-a-hide   { opacity: 1; animation: cal-lp-a-hide   var(--t, 4s) ease-in-out var(--d, 0s) infinite; }
-
-@keyframes cal-lp-a-in {
-  0%, 100%  { opacity: 1; transform: none; }
-  6%        { opacity: 0.15; transform: translateY(7px) scale(0.96); }
-  20%, 92%  { opacity: 1; transform: none; }
-}
-@keyframes cal-lp-a-fill {
-  0%, 10%, 100% { background: var(--cal-lp-bg-3); }
-  26%, 76%      { background: var(--cal-lp-accent-soft); }
-}
-@keyframes cal-lp-a-flash {
-  0%, 16%   { border-color: var(--cal-lp-border); }
-  24%, 40%  { border-color: var(--cal-lp-accent); }
-  56%, 100% { border-color: var(--cal-lp-border); }
-}
-@keyframes cal-lp-a-grow {
-  0%        { transform: scaleX(1); }
-  8%        { transform: scaleX(0.06); }
-  58%, 100% { transform: scaleX(1); }
-}
-@keyframes cal-lp-a-drift {
-  0%, 100%  { transform: translate(0, 0); }
-  30%       { transform: translate(var(--dx, 18px), var(--dy, 10px)); }
-  65%       { transform: translate(calc(var(--dx, 18px) * 0.3), calc(var(--dy, 10px) * 1.6)); }
-}
-@keyframes cal-lp-a-blink {
-  0%, 100%  { opacity: 1; }
-  40%       { opacity: 0.3; }
-  70%       { opacity: 1; }
-}
-@keyframes cal-lp-a-peek {
-  0%, 100%  { opacity: 0; }
-  6%, 26%   { opacity: 1; }
-  33%       { opacity: 0; }
-}
-@keyframes cal-lp-a-hide {
-  0%, 100%  { opacity: 1; }
-  6%, 26%   { opacity: 0; }
-  33%       { opacity: 1; }
-}
-@keyframes cal-lp-a-rise {
-  0%, 100%  { opacity: 1; transform: none; }
-  10%       { opacity: 0.2; transform: translateY(11px); }
-  34%       { opacity: 1; transform: none; }
-}
-
-/* ── Default peer-sync animation ────────────────────────────────────────
-   Every app gets a real animation from day one, so none of the fourteen ships
-   with an empty frame. CSS only: three peers, a packet travelling between
-   them, and a row of rows filling in. No library, no canvas, no rAF. */
-.cal-lp-sync {
-  position: absolute;
-  inset: 0;
-  padding: 22px;
-  display: grid;
-  grid-template-rows: auto 1fr;
-  gap: 18px;
-}
-.cal-lp-peers {
+.mp-ld-header__inner {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  position: relative;
-}
-.cal-lp-peer {
-  display: grid;
-  place-items: center;
-  width: 42px;
-  height: 42px;
-  border-radius: 12px;
-  border: 1px solid var(--cal-lp-border-strong);
-  background: var(--cal-lp-bg-2);
-  color: var(--cal-lp-text-dim);
-  animation: cal-lp-pulse 3.2s ease-in-out infinite;
-  animation-play-state: var(--cal-lp-anim);
-}
-.cal-lp-peer:nth-child(2) {
-  animation-delay: 1.05s;
-}
-.cal-lp-peer:nth-child(3) {
-  animation-delay: 2.1s;
-}
-@keyframes cal-lp-pulse {
-  0%,
-  100% {
-    border-color: var(--cal-lp-border-strong);
-    color: var(--cal-lp-text-faint);
-  }
-  18% {
-    border-color: var(--cal-lp-accent);
-    color: var(--cal-lp-accent-ink);
-  }
-}
-.cal-lp-wire {
-  position: absolute;
-  left: 46px;
-  right: 46px;
-  top: 50%;
-  height: 1px;
-  background: var(--cal-lp-border);
-}
-.cal-lp-packet {
-  position: absolute;
-  top: -3px;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--cal-lp-accent);
-  animation: cal-lp-travel 3.2s cubic-bezier(0.5, 0, 0.5, 1) infinite;
-  animation-play-state: var(--cal-lp-anim);
-}
-@keyframes cal-lp-travel {
-  0% {
-    left: 0;
-    opacity: 0;
-  }
-  12% {
-    opacity: 1;
-  }
-  50% {
-    left: 50%;
-  }
-  88% {
-    opacity: 1;
-  }
-  100% {
-    left: 100%;
-    opacity: 0;
-  }
-}
-.cal-lp-rows {
-  display: grid;
-  align-content: start;
-  gap: 9px;
-}
-.cal-lp-row {
-  height: 11px;
-  border-radius: 6px;
-  background: var(--cal-lp-bg-3);
-  transform-origin: left;
-  animation: cal-lp-fill 3.2s ease-in-out infinite;
-  animation-play-state: var(--cal-lp-anim);
-}
-.cal-lp-row:nth-child(1) { width: 82%; animation-delay: 0.1s; }
-.cal-lp-row:nth-child(2) { width: 64%; animation-delay: 0.4s; }
-.cal-lp-row:nth-child(3) { width: 91%; animation-delay: 0.7s; }
-.cal-lp-row:nth-child(4) { width: 47%; animation-delay: 1s; }
-.cal-lp-row:nth-child(5) { width: 73%; animation-delay: 1.3s; }
-@keyframes cal-lp-fill {
-  0%,
-  100% {
-    background: var(--cal-lp-bg-3);
-    transform: scaleX(0.94);
-  }
-  22% {
-    background: var(--cal-lp-accent-soft);
-    transform: scaleX(1);
-  }
-}
-
-/* ══════════════════════════════════════════════════════════════════════════
-   Three views: overview, docs, preview
-   ══════════════════════════════════════════════════════════════════════════ */
-
-/* The header's right-hand slot. `margin-inline-start: auto` lives here rather
-   than on the button, so the nav can centre itself and the CTA still pins right
-   whether or not the app offers one (a desktop-only app does not). */
-.cal-lp-headerend {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  margin-inline-start: auto;
-}
-.cal-lp-nav {
+  gap: var(--spacing-m);
+  width: calc(100% - var(--grid-margin) * 2);
+  max-width: 1280px;
   margin-inline: auto;
+  padding-block: var(--spacing-m);
 }
-.cal-lp-navlink[data-cal-lp-active] {
-  color: var(--cal-lp-text);
-  background: var(--cal-lp-bg-3);
-}
-
-/* The theme switch, now in the footer's small print. Text beside the icon
-   because down here it has room, and a lone moon in a row of legal text reads
-   as decoration. */
-.cal-lp-themebtn {
+.mp-ld-header__brand {
   display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  margin-inline-start: auto;
-  padding: 6px 12px;
-  border: 1px solid var(--cal-lp-border);
-  border-radius: 999px;
-  background: var(--cal-lp-bg-0);
-  color: var(--cal-lp-text-dim);
-  font: inherit;
-  font-size: 12.5px;
-  font-weight: 600;
-  cursor: pointer;
+  flex: none;
 }
-.cal-lp-themebtn:hover {
-  color: var(--cal-lp-text);
-  border-color: var(--cal-lp-border-strong);
+.mp-ld-header__nav {
+  display: flex;
+  gap: 2rem;
 }
-
-.cal-lp-inlinelink {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--cal-lp-accent-ink);
-  font-weight: 640;
-  text-decoration: none;
+.mp-ld-header__nav a {
+  padding: 8px 0;
+  font-weight: 700;
+  font-size: 0.875rem;
+  line-height: 1.7;
+  letter-spacing: 0.23em;
+  text-transform: uppercase;
+  color: var(--content-primary);
+  transition: color 0.2s;
 }
-.cal-lp-inlinelink:hover {
-  text-decoration: underline;
+.mp-ld-header__nav a:hover {
+  color: var(--content-brand);
+}
+@media (width < 1024px) {
+  .mp-ld-header__nav {
+    display: none;
+  }
 }
 
-.cal-lp-stagewrap {
+/* ── Hero ───────────────────────────────────────────────────────────────── */
+
+.mp-ld-hero {
+  position: relative;
   display: flex;
   flex-direction: column;
-  /* ⚠️ `stretch`, not `flex-start`. The stage sizes itself from an
-     `aspect-ratio` and has no width of its own, so a non-stretch alignment
-     makes it shrink-to-fit its only in-flow content — the three title-bar
-     dots — and the frame collapses to a thumbnail. The link below gets
-     `align-self` instead. Same trap as the auto-margin one at 940px. */
-  align-items: stretch;
+  justify-content: center;
+  min-height: calc(100vh - 6.5rem);
+}
+.mp-ld-hero__content {
+  grid-column: 1 / 7;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-m);
+  padding-block: var(--spacing-4xl);
+  align-self: center;
+}
+.mp-ld-hero__title {
+  margin: 0;
+  font-weight: 400;
+  font-size: clamp(2.75rem, 1.9rem + 2vw, 4rem);
+  line-height: 1.05;
+  text-wrap: balance;
+  color: var(--content-primary);
+}
+.mp-ld-hero__title > span {
+  display: block;
+  color: var(--content-brand);
+}
+.mp-ld-hero__shot {
+  grid-column: 7 / -1;
+  position: relative;
+  align-self: center;
+}
+.mp-ld-hero__shot::before {
+  content: '';
+  position: absolute;
+  inset: 8% 6%;
+  z-index: -1;
+  background: radial-gradient(closest-side, rgb(164 255 17 / 14%), transparent);
+  filter: blur(40px);
+}
+@media (width < 1024px) {
+  .mp-ld-hero__content,
+  .mp-ld-hero__shot {
+    grid-column: 1 / -1;
+  }
+  .mp-ld-hero__content {
+    padding-bottom: var(--spacing-xl);
+  }
+  .mp-ld-hero__shot {
+    padding-bottom: var(--spacing-4xl);
+  }
 }
 
-/* A quiet way out of the hero frame and into the full-size preview. */
-.cal-lp-stagelink {
-  display: inline-flex;
-  align-self: flex-start;
-  align-items: center;
-  gap: 6px;
-  margin-top: 12px;
+/* ── The product shot ───────────────────────────────────────────────────── */
+
+.mp-shot {
+  border: 1px solid var(--border-mid-contrast);
+  background: #131215;
+  box-shadow: 0 40px 80px rgb(0 0 0 / 45%);
   font-size: 13px;
-  font-weight: 620;
-  color: var(--cal-lp-text-faint);
-  text-decoration: none;
+  font-weight: 400;
+  letter-spacing: 0.015em;
+  color: #fcfcfc;
 }
-.cal-lp-stagelink:hover {
-  color: var(--cal-lp-accent-ink);
-}
-
-/* ── Docs ───────────────────────────────────────────────────────────────── */
-.cal-lp-docshead {
-  padding-block: 56px 10px;
-}
-.cal-lp-h1--docs {
-  font-size: clamp(30px, 3.6vw, 42px);
-}
-.cal-lp-docs {
-  display: grid;
-  grid-template-columns: 210px minmax(0, 1fr);
-  gap: 54px;
-  padding-block: 34px 78px;
-  align-items: start;
-}
-.cal-lp-toc {
-  position: sticky;
-  top: calc(var(--cal-lp-header-h) + 22px);
+.mp-shot__bar {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.9rem 1.2rem;
+  border-bottom: 1px solid var(--border-low-contrast);
 }
-.cal-lp-toclink {
-  padding: 6px 10px;
-  border-radius: var(--cal-lp-radius-sm);
-  font-size: 13.5px;
-  color: var(--cal-lp-text-dim);
-  text-decoration: none;
+.mp-shot__crumb {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #8e8e8e;
 }
-.cal-lp-toclink:hover {
-  color: var(--cal-lp-text);
-  background: var(--cal-lp-bg-3);
+.mp-shot__crumb--on {
+  color: #fcfcfc;
 }
-/* The section being read, marked in the list. Deliberately the same shape as
-   the hover state — one affordance, not two — with the accent doing the work
-   of saying which one is current when the pointer is somewhere else. */
-.cal-lp-toclink[data-cal-lp-active] {
-  color: var(--cal-lp-accent-ink);
-  background: var(--cal-lp-accent-soft);
-  font-weight: 650;
+.mp-shot__sep {
+  color: #404040;
 }
-.cal-lp-docsbody {
-  /* `minmax(0, 1fr)` above plus this: a grid item's default `min-width: auto`
-     is its CONTENT width, so one long unbreakable token in a doc would widen
-     the column and scroll the whole page sideways. */
-  min-width: 0;
+.mp-shot__badge {
+  margin-left: auto;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid rgb(164 255 17 / 35%);
+  background: rgb(164 255 17 / 8%);
+  color: #a4ff11;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
 }
-.cal-lp-docsection {
-  padding-block: 0 52px;
-  scroll-margin-top: calc(var(--cal-lp-header-h) + 20px);
+.mp-shot__body {
+  padding: 1.3rem 1.2rem 1.2rem;
 }
-.cal-lp-docsection .cal-lp-h2 {
-  margin-bottom: 4px;
+.mp-shot__eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0 0 0.35rem;
+  font-size: 10px;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: #a4ff11;
 }
-
-/* Term → what it means IN THIS APP. The most useful rows on the page, so they
-   get a real definition list rather than a bulleted fudge. */
-.cal-lp-concepts {
-  margin: 26px 0 0;
-  display: grid;
-  gap: 12px;
+.mp-shot__eyebrow::before {
+  content: '';
+  width: 18px;
+  height: 1px;
+  background: currentColor;
 }
-.cal-lp-concept {
-  display: grid;
-  grid-template-columns: 190px minmax(0, 1fr);
-  gap: 18px;
-  padding: 15px 18px;
-  border: 1px solid var(--cal-lp-border);
-  border-radius: var(--cal-lp-radius);
-  background: var(--cal-lp-bg-1);
+.mp-shot__title {
+  margin: 0 0 1rem;
+  font-size: 1.6rem;
+  font-weight: 950;
+  line-height: 1;
+  text-transform: uppercase;
 }
-.cal-lp-conceptterm {
-  margin: 0;
-  font-size: 14.5px;
-  font-weight: 680;
-  color: var(--cal-lp-text);
+.mp-shot__tabs {
+  display: flex;
+  gap: 1.1rem;
+  margin-bottom: 0.9rem;
+  border-bottom: 1px solid var(--border-low-contrast);
 }
-.cal-lp-conceptdef {
-  margin: 0;
-  font-size: 14.5px;
-  line-height: 1.62;
-  color: var(--cal-lp-text-dim);
+.mp-shot__tabs span {
+  padding-bottom: 0.55rem;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #8e8e8e;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
 }
-.cal-lp-steps--docs {
-  margin-top: 26px;
-  /* A narrower track than the overview's, so four steps sit on one row in the
-     docs column instead of leaving a single orphan card underneath three. */
-  grid-template-columns: repeat(auto-fit, minmax(min(168px, 100%), 1fr));
+.mp-shot__tabs .is-on {
+  color: #fcfcfc;
+  border-bottom-color: #a4ff11;
 }
-
-/* ── Preview ────────────────────────────────────────────────────────────── */
-.cal-lp-previewwrap {
-  display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
-  gap: 48px;
-  align-items: start;
-  padding-block: 34px 60px;
-}
-.cal-lp-stage--big {
-  width: 100%;
-}
-.cal-lp-beats {
+.mp-shot__list {
   margin: 0;
   padding: 0;
   list-style: none;
-  display: grid;
-  gap: 18px;
+  border: 1px solid var(--border-low-contrast);
 }
-.cal-lp-beat {
+.mp-shot__row {
   display: grid;
-  grid-template-columns: 27px minmax(0, 1fr);
-  gap: 14px;
-  align-items: start;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  column-gap: 0.8rem;
+  padding: 0.65rem 0.8rem;
+  background: #1a191c;
+}
+.mp-shot__row + .mp-shot__row {
+  border-top: 1px solid var(--border-low-contrast);
+}
+.mp-shot__row.is-open {
+  background: #211f23;
+}
+.mp-shot__kind {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid rgb(164 255 17 / 35%);
+  background: rgb(164 255 17 / 8%);
+  color: #a4ff11;
+}
+.mp-shot__name {
+  display: flex;
+  flex-direction: column;
+  font-weight: 700;
+  font-size: 12.5px;
+}
+.mp-shot__name small {
+  font-size: 9px;
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #8e8e8e;
+}
+.mp-shot__tags {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.mp-shot__tags em {
+  padding: 0.2rem 0.35rem;
+  border: 1px solid #404040;
+  font-style: normal;
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #c8c8c8;
+}
+.mp-shot__tags b {
+  width: 14px;
+  text-align: center;
+  font-weight: 300;
+  color: #a4ff11;
+}
+.mp-shot__fields {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 0.4rem;
+  margin-top: 0.65rem;
+  padding: 0.6rem 0.7rem;
+  background: #0f0e11;
+  border: 1px solid var(--border-low-contrast);
+}
+.mp-shot__fields span {
+  display: flex;
+  gap: 0.8rem;
+  align-items: baseline;
+}
+.mp-shot__fields i,
+.mp-shot__totp i {
+  width: 70px;
+  font-style: normal;
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #8e8e8e;
+}
+.mp-shot code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11.5px;
+  letter-spacing: 0;
+  color: #fcfcfc;
+}
+.mp-shot__reveal {
+  color: #a4ff11 !important;
+}
+.mp-shot__totp {
+  grid-column: 2 / -1;
+  margin-top: 0.35rem;
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+.mp-shot__totp code {
+  color: #a4ff11;
+  font-size: 13px;
+  letter-spacing: 0.1em;
+}
+.mp-shot__totp i {
+  width: auto;
 }
 
-/* ── Responsive ──────────────────────────────────────────────────────────
-   Four things break on a phone if nothing here runs, and all four were seen in
-   a 360px capture rather than guessed at:
+/* ── Chapters ───────────────────────────────────────────────────────────── */
 
-     1. the hero art keeps its desktop coordinates and the rows collide;
-     2. the brand name wraps under its own icon and doubles the header height;
-     3. a full-width primary button and a full-width secondary one sit side by
-        side and each ends up too narrow to read;
-     4. the section rhythm authored for a 1140px page becomes a long scroll
-        through whitespace.
+.mp-ld-chapter {
+  position: relative;
+  scroll-margin-top: 6rem;
+}
+.mp-ld-chapter__inner {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: min(92vh, 60rem);
+  padding-block: var(--spacing-2xl);
+}
+.mp-ld-chapter--slim .mp-ld-chapter__inner {
+  min-height: 0;
+  padding-bottom: var(--spacing-4xl);
+}
 
-   Verified by `does not scroll sideways on a phone` in every app's generated
-   marketing-landing.spec.ts, at 390px AND at 320px. */
-@media (max-width: 940px) {
-  /* Both new views are two-column and both collapse here, for the same reason
-     the hero does. The TOC un-sticks: pinned above the prose on a short screen
-     it would eat most of it. */
-  .cal-lp-docs,
-  .cal-lp-previewwrap {
+.mp-ld-marker {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0 0 1.5rem;
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.mp-ld-marker__n {
+  font-weight: 700;
+  color: var(--content-brand);
+}
+.mp-ld-marker__rule {
+  width: 2.5rem;
+  height: 1px;
+  background: var(--border-low-contrast);
+}
+.mp-ld-marker__label {
+  color: var(--content-tertiary);
+}
+
+/* The two panels: today, and us — ours with a lime edge and a faint wash. */
+.mp-ld-versus {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--spacing-m);
+}
+@media (width < 1024px) {
+  .mp-ld-versus {
     grid-template-columns: 1fr;
-    gap: 30px;
   }
-  .cal-lp-toc {
-    position: static;
-    flex-direction: row;
-    flex-wrap: wrap;
-    gap: 4px;
-    padding-bottom: 6px;
-    border-bottom: 1px solid var(--cal-lp-border);
-  }
-  .cal-lp-toc .cal-lp-footerhead {
-    width: 100%;
-    margin-bottom: 4px;
-  }
-  .cal-lp-toclink {
-    border: 1px solid var(--cal-lp-border);
-  }
-  .cal-lp-hero {
+}
+.mp-ld-panel {
+  padding: var(--spacing-m) var(--spacing-l);
+  border: 1px solid var(--border-low-contrast);
+}
+.mp-ld-panel--brand {
+  border-color: var(--border-brand);
+  background: var(--layer-blur-low-contrast);
+}
+.mp-ld-panel__title {
+  margin: 0 0 var(--spacing-s);
+  font-weight: 700;
+  font-size: clamp(1.5rem, 0.5rem + 1.111vw, 1.75rem);
+  line-height: 1.15;
+}
+
+.mp-ld-ticks {
+  display: grid;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.mp-ld-ticks li {
+  position: relative;
+  padding-left: 1.4rem;
+  font-size: 1rem;
+  line-height: 1.6;
+  letter-spacing: 0.03em;
+  color: var(--content-secondary);
+}
+.mp-ld-ticks li::before {
+  content: '';
+  position: absolute;
+  top: 0.7em;
+  left: 0;
+  width: 6px;
+  height: 6px;
+  background: var(--content-brand);
+}
+.mp-ld-ticks--muted li::before {
+  background: var(--content-tertiary);
+}
+
+/* What you see, next to what a node stores — the whole argument in one frame. */
+.mp-ld-sealed {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  margin-top: var(--spacing-m);
+  border: 1px solid var(--border-low-contrast);
+  background: #1a1a1d;
+}
+.mp-ld-sealed__col {
+  padding: var(--spacing-s) var(--spacing-m);
+}
+.mp-ld-sealed__col + .mp-ld-sealed__col {
+  border-left: 1px solid var(--border-low-contrast);
+}
+.mp-ld-sealed__cap {
+  margin: 0 0 var(--spacing-xs);
+  font-weight: 700;
+  font-size: 0.875rem;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--content-tertiary);
+}
+.mp-ld-sealed dl {
+  display: grid;
+  grid-template-columns: 7rem 1fr;
+  gap: 0.5rem 1rem;
+  margin: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.875rem;
+  letter-spacing: 0;
+}
+.mp-ld-sealed dt {
+  color: #6b6b70;
+}
+.mp-ld-sealed dd {
+  margin: 0;
+  color: var(--content-secondary);
+  overflow-wrap: anywhere;
+}
+.mp-ld-sealed__lime {
+  color: var(--content-brand) !important;
+}
+@media (width < 1024px) {
+  .mp-ld-sealed {
     grid-template-columns: 1fr;
-    gap: 36px;
-    padding-block: 44px 56px;
-    /* A 520px floor is a desktop two-column figure; one column is as tall as
-       its content and nothing else. */
-    min-height: 0;
   }
-  /* ⚠️ NOT `display: none` any more. The nav used to be four in-page anchors
-     and hiding it cost a visitor nothing — the sections were below them. It is
-     now the only way to reach two of the three pages, so it wraps under the
-     header instead of disappearing. */
-  .cal-lp-nav {
-    order: 3;
-    width: 100%;
-    margin-inline: 0;
-    gap: 2px;
-    overflow-x: auto;
-    scrollbar-width: none;
+  .mp-ld-sealed__col + .mp-ld-sealed__col {
+    border-left: 0;
+    border-top: 1px solid var(--border-low-contrast);
   }
-  .cal-lp-nav::-webkit-scrollbar {
+}
+
+/* The four-step flow: hairline-ruled columns, big lime numbers. */
+.mp-ld-flow {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--border-low-contrast);
+}
+.mp-ld-flow__step {
+  display: flex;
+  flex-direction: column;
+  padding: var(--spacing-l) var(--spacing-m) var(--spacing-l) 0;
+}
+.mp-ld-flow__step + .mp-ld-flow__step {
+  padding-left: var(--spacing-m);
+  border-left: 1px solid var(--border-low-contrast);
+}
+.mp-ld-flow__n {
+  font-weight: 950;
+  font-size: clamp(2.625rem, 1.125rem + 1.667vw, 3rem);
+  line-height: 1.16;
+  color: var(--content-brand);
+}
+.mp-ld-flow__title {
+  margin: var(--spacing-2xs) 0;
+  font-weight: 700;
+  font-size: clamp(1.5rem, 0.5rem + 1.111vw, 1.75rem);
+  line-height: 1.15;
+}
+.mp-ld-flow__body {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.6;
+  letter-spacing: 0.03em;
+  color: var(--content-secondary);
+}
+@media (width < 1024px) {
+  .mp-ld-flow {
+    grid-template-columns: 1fr 1fr;
+  }
+  .mp-ld-flow__step:nth-child(odd) {
+    padding-left: 0;
+    border-left: 0;
+  }
+  .mp-ld-flow__step:nth-child(n + 3) {
+    border-top: 1px solid var(--border-low-contrast);
+  }
+}
+@media (width < 640px) {
+  .mp-ld-flow {
+    grid-template-columns: 1fr;
+  }
+  .mp-ld-flow__step,
+  .mp-ld-flow__step + .mp-ld-flow__step {
+    padding-left: 0;
+    border-left: 0;
+  }
+  .mp-ld-flow__step + .mp-ld-flow__step {
+    border-top: 1px solid var(--border-low-contrast);
+  }
+}
+
+/* A hairline card grid: the grid draws top and left, each card right and
+   bottom, so every rule is exactly one pixel. */
+.mp-ld-cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--border-low-contrast);
+  border-left: 1px solid var(--border-low-contrast);
+}
+@media (width < 1024px) {
+  .mp-ld-cards {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+@media (width < 640px) {
+  .mp-ld-cards {
+    grid-template-columns: 1fr;
+  }
+}
+.mp-ld-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2xs);
+  padding: var(--spacing-m) var(--spacing-l);
+  border-right: 1px solid var(--border-low-contrast);
+  border-bottom: 1px solid var(--border-low-contrast);
+  transition: background-color 0.3s;
+}
+.mp-ld-card:hover {
+  background: var(--layer-blur-low-contrast);
+}
+.mp-ld-card__icon {
+  color: var(--content-brand);
+  margin-bottom: var(--spacing-2xs);
+}
+.mp-ld-card__title {
+  margin: 0;
+  font-weight: 700;
+  font-size: 1.438rem;
+  line-height: 1.4;
+}
+.mp-ld-card__body {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.6;
+  letter-spacing: 0.03em;
+  color: var(--content-secondary);
+}
+
+/* The benefit list, two columns of icon + title + body. */
+.mp-ld-benefits {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--spacing-l) var(--spacing-2xl);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+@media (width < 1024px) {
+  .mp-ld-benefits {
+    grid-template-columns: 1fr;
+  }
+}
+.mp-ld-benefits__item {
+  display: flex;
+  gap: var(--spacing-s);
+  align-items: flex-start;
+}
+.mp-ld-benefits__icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  color: var(--content-brand);
+}
+.mp-ld-benefits__title {
+  margin: 0 0 var(--spacing-3xs);
+  font-weight: 700;
+  font-size: 1.438rem;
+  line-height: 1.4;
+}
+.mp-ld-benefits__body {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.6;
+  letter-spacing: 0.03em;
+  color: var(--content-secondary);
+}
+
+/* ── The lime band ──────────────────────────────────────────────────────── */
+
+.mp-ld-band {
+  --content-primary: #131215;
+  --content-secondary: #282828;
+  --content-tertiary: #404040;
+  --content-brand: #131215;
+
+  background: #a4ff11;
+  color: #131215;
+}
+.mp-ld-band__inner {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 7fr 5fr;
+  gap: var(--spacing-2xl);
+  align-items: center;
+  padding-block: var(--spacing-4xl);
+}
+.mp-ld-band .mp-ld-eyebrow {
+  margin-bottom: var(--spacing-s);
+}
+.mp-ld-band .mp-ld-title {
+  margin-bottom: var(--spacing-s);
+}
+.mp-ld-band .mp-ld-actions {
+  margin-top: var(--spacing-l);
+}
+.mp-ld-band__list {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid #131215;
+}
+.mp-ld-band__list li {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+  padding: var(--spacing-s) 0;
+  border-bottom: 1px solid #131215;
+  font-weight: 700;
+  font-size: 1rem;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+@media (width < 1024px) {
+  .mp-ld-band__inner {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Comparison table ───────────────────────────────────────────────────── */
+
+.mp-ld-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border-low-contrast);
+}
+.mp-ld-table {
+  width: 100%;
+  min-width: 640px;
+  border-collapse: collapse;
+  font-size: 1rem;
+  line-height: 1.5;
+}
+.mp-ld-table th,
+.mp-ld-table td {
+  padding: var(--spacing-xs) var(--spacing-s);
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--border-low-contrast);
+}
+.mp-ld-table tbody tr:last-child th,
+.mp-ld-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+.mp-ld-table thead th {
+  font-weight: 700;
+  font-size: 0.875rem;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--content-tertiary);
+  background: var(--background-gray);
+}
+.mp-ld-table tbody th {
+  width: 30%;
+  font-weight: 700;
+  color: var(--content-primary);
+}
+.mp-ld-table td {
+  color: var(--content-tertiary);
+}
+.mp-ld-table .is-us {
+  background: var(--layer-blur-low-contrast);
+  color: var(--content-primary);
+  border-left: 1px solid var(--border-brand);
+  border-right: 1px solid var(--border-brand);
+}
+.mp-ld-table thead .is-us {
+  color: var(--content-brand);
+}
+
+/* ── FAQ ────────────────────────────────────────────────────────────────── */
+
+.mp-ld-faq {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap: var(--spacing-2xl);
+}
+@media (width < 1024px) {
+  .mp-ld-faq {
+    grid-template-columns: 1fr;
+  }
+}
+.mp-ld-faq__item {
+  border-top: 1px solid var(--border-low-contrast);
+}
+.mp-ld-faq__item summary {
+  position: relative;
+  padding: var(--spacing-s) 2.5rem var(--spacing-s) 0;
+  cursor: pointer;
+  list-style: none;
+  font-weight: 700;
+  font-size: 1.125rem;
+  line-height: 1.4;
+  transition: color 0.2s;
+}
+.mp-ld-faq__item summary::-webkit-details-marker {
+  display: none;
+}
+.mp-ld-faq__item summary::after {
+  content: '+';
+  position: absolute;
+  top: var(--spacing-s);
+  right: 0;
+  font-weight: 300;
+  font-size: 1.5rem;
+  line-height: 1;
+  color: var(--content-brand);
+}
+.mp-ld-faq__item[open] summary::after {
+  content: '−';
+}
+.mp-ld-faq__item summary:hover {
+  color: var(--content-brand);
+}
+.mp-ld-faq__item p {
+  margin: 0 0 var(--spacing-s);
+  font-size: 1rem;
+  line-height: 1.6;
+  letter-spacing: 0.03em;
+  color: var(--content-secondary);
+}
+
+/* ── Closing ────────────────────────────────────────────────────────────── */
+
+.mp-ld-closing__inner {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-s);
+  padding-block: var(--spacing-5xl) var(--spacing-3xl);
+  text-align: center;
+}
+.mp-ld-closing__title {
+  margin: 0;
+  font-weight: 400;
+  font-size: clamp(2.75rem, 1.9rem + 2vw, 4rem);
+  line-height: 1.05;
+  text-wrap: balance;
+}
+.mp-ld-closing__title > span {
+  display: block;
+  color: var(--content-brand);
+}
+.mp-ld-closing .mp-ld-lede {
+  max-width: 60ch;
+  margin-inline: auto;
+}
+.mp-ld-closing .mp-ld-actions {
+  margin-top: var(--spacing-s);
+}
+
+/* ── Footer ─────────────────────────────────────────────────────────────── */
+
+.mp-ld-footer {
+  position: relative;
+  overflow: hidden;
+  padding-top: var(--spacing-6xl);
+  background: var(--background-gray);
+}
+.mp-ld-footer__glow {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(
+      495px circle at 10% 20%,
+      rgb(225 234 223 / 5%),
+      transparent 70%
+    ),
+    radial-gradient(
+      365px circle at 50% 100%,
+      rgb(109 234 173 / 5%),
+      transparent 70%
+    ),
+    radial-gradient(
+      400px circle at 90% 10%,
+      rgb(255 255 255 / 5%),
+      transparent 70%
+    );
+  filter: blur(40px);
+}
+.mp-ld-footer__top {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  gap: 64px;
+  padding-bottom: var(--spacing-3xl);
+}
+@media (width < 1024px) {
+  .mp-ld-footer__top {
+    grid-template-columns: 1fr;
+    gap: var(--spacing-xl);
+  }
+}
+.mp-ld-footer__about {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-s);
+}
+.mp-ld-footer__about p {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8125rem;
+  letter-spacing: 0;
+  color: var(--content-tertiary);
+}
+.mp-ld-footer__about .mp-ld-footer__tag {
+  font-family: inherit;
+  font-size: 1rem;
+  letter-spacing: 0.03em;
+  line-height: 1.6;
+}
+.mp-ld-footer__mark {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  flex: none;
+}
+/* The keyhole is knocked OUT of the padlock body, so it has to be painted in
+   the tile's fill rather than left transparent. */
+.mp-ld-footer__mark .keyhole {
+  fill: #090b10;
+}
+.mp-ld-footer__cols {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  column-gap: 24px;
+  row-gap: var(--spacing-l);
+}
+@media (width < 640px) {
+  .mp-ld-footer__cols {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+.mp-ld-footer__cols > div {
+  display: flex;
+  flex-direction: column;
+}
+.mp-ld-footer__head {
+  margin: 0 0 var(--spacing-2xs);
+  font-weight: 700;
+  font-size: 0.875rem;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--content-primary);
+}
+.mp-ld-footer__cols a {
+  padding-block: 8px;
+  font-size: 1.125rem;
+  line-height: 1.2;
+  letter-spacing: 0.04em;
+  color: var(--content-tertiary);
+  transition: opacity 0.4s;
+}
+.mp-ld-footer__cols a:hover {
+  opacity: 0.5;
+}
+.mp-ld-footer__bottom {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--spacing-s);
+  padding-block: var(--spacing-xl);
+  border-top: 1px solid var(--border-low-contrast);
+  font-weight: 400;
+  font-size: 0.75rem;
+  letter-spacing: 0.23em;
+  text-transform: uppercase;
+  color: var(--content-tertiary);
+}
+.mp-ld-footer__links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.mp-ld-footer__links a {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.mp-ld-footer__links a:hover {
+  color: var(--content-primary);
+}
+.mp-ld-dot {
+  width: 4px;
+  height: 4px;
+  margin-inline: 16px;
+  border-radius: 50%;
+  background: var(--content-secondary);
+}
+
+/* The header's call to action, shortened where the bar is a phone wide. */
+.mp-ld-short {
+  display: none;
+}
+@media (width < 640px) {
+  .mp-ld-long {
     display: none;
   }
-  .cal-lp-header {
-    height: auto;
-    flex-wrap: wrap;
-    padding-block: 10px;
-    row-gap: 6px;
+  .mp-ld-short {
+    display: inline;
   }
-  .cal-lp-section {
-    padding-block: 56px;
-  }
-  /* One column would otherwise stretch the art to the full page width — 896px
-     on a 940px viewport, nearly twice the size it was drawn at. */
-  .cal-lp-stagewrap {
-    /* `width: 100%` is load-bearing next to the auto margins: an auto margin
-       turns a grid item's default stretch into shrink-to-fit, and the only
-       in-flow content here is the three title-bar dots — so without it the
-       frame collapses to a ~120px thumbnail. */
-    width: 100%;
-    max-width: 520px;
-    margin-inline: auto;
-  }
-}
-
-@media (max-width: 640px) {
-  /* A 190px term column leaves nothing for the definition on a phone. */
-  .cal-lp-concept {
-    grid-template-columns: 1fr;
-    gap: 5px;
-  }
-  .cal-lp-docshead {
-    padding-block: 34px 6px;
-  }
-  .cal-lp-docs {
-    padding-block: 24px 52px;
-  }
-  .cal-lp-docsection {
-    padding-block: 0 38px;
-  }
-  .cal-lp-shell {
-    padding-inline: 16px;
-  }
-  .cal-lp-header {
-    gap: 10px;
-    padding-inline: 16px;
-  }
-  .cal-lp-section {
-    padding-block: 46px;
-  }
-  .cal-lp-h1 {
-    font-size: clamp(30px, 8.4vw, 42px);
-  }
-  .cal-lp-lede {
-    font-size: 16px;
-  }
-  .cal-lp-cta {
-    margin-top: 22px;
-  }
-  /* Stacked and full width: two buttons on one row at this size leaves both
-     unreadable, and the primary one is the whole point of the page. */
-  .cal-lp-cta .cal-lp-btn {
-    width: 100%;
-  }
-  .cal-lp-band {
-    padding: 22px;
-    gap: 16px;
-  }
-  .cal-lp-band .cal-lp-btn {
-    width: 100%;
-  }
-  .cal-lp-bandtitle {
-    font-size: 18px;
-  }
-  .cal-lp-prose p,
-  .cal-lp-faqa {
-    font-size: 15px;
-  }
-  .cal-lp-footergrid {
-    gap: 24px;
-  }
-}
-
-/* A phone with no ResizeObserver still gets the art roughly right. An inline
-   `--cal-lp-a-s` from useStageScale() wins over these, which is the point:
-   they are the floor, not the mechanism. */
-@media (max-width: 560px) {
-  .cal-lp-stagebody {
-    --cal-lp-a-s: 0.78;
-  }
-}
-@media (max-width: 420px) {
-  .cal-lp-stagebody {
-    --cal-lp-a-s: 0.68;
-  }
-}
-
-@media (max-width: 400px) {
-  /* Below this the name cannot be both complete and legible next to the CTA,
-     and the H1 one scroll-line down says it anyway. */
-  .cal-lp-brandname {
-    display: none;
-  }
-}
-
-/* A finger is not a mouse pointer: the 34px icon button is under the 44px
-   minimum every touch guideline asks for. */
-@media (pointer: coarse) {
-  .cal-lp-iconbtn {
-    width: 40px;
-    height: 40px;
-  }
-  .cal-lp-faqq {
-    padding-block: 20px;
-  }
-}
-
-/* ── Reduced motion: stop everything, keep every pixel ──────────────────
-   The capture harness sets this, which is also what keeps the reveal from
-   blanking a screenshot. */
-@media (prefers-reduced-motion: reduce) {
-  .cal-lp-root {
-    --cal-lp-anim: paused;
-    --cal-lp-reveal: 0.001s;
-  }
-  .cal-lp-root *,
-  .cal-lp-root *::before,
-  .cal-lp-root *::after {
-    animation-duration: 0.001s !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.001s !important;
+  .mp-ld .mp-wordmark__logo svg {
+    height: 20px;
   }
 }

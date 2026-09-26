@@ -210,6 +210,7 @@ export default function TeamsPage() {
       <AppHeader />
 
       <main className={styles.main}>
+        <p className={styles.eyebrow}>Mero Pass</p>
         <h1 className={styles.title}>Your vaults</h1>
         <p className={styles.subtitle}>
           Keep credentials to yourself in your private vault, or share them with
@@ -246,7 +247,7 @@ export default function TeamsPage() {
           </div>
         ) : (
           <div className={styles.createRow}>
-            <p className={styles.empty} style={{ margin: 0, flex: 1 }}>
+            <p className={`${styles.empty} ${styles.emptyInline}`}>
               A vault only you can open, synced across your own devices.
             </p>
             <button
