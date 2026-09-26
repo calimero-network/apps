@@ -51,10 +51,16 @@ export function parseGroupRole(raw: string | undefined | null): GroupRole {
 
 export const ROLE_DESCRIPTIONS: Record<GroupRole, string> = {
   Admin:
-    'Full control of this workspace — bypasses the permission list entirely.',
+    'Full control of this workspace. Bypasses the permission list entirely.',
   Member: 'Permissions come from the list beside the role.',
   ReadOnly: 'Can see the workspace but cannot change anything.',
 };
+
+/** Display label for a role name, sentence-cased. `role` values themselves
+ *  (used as option/select values) stay the server's exact spelling. */
+export function roleDisplayLabel(role: GroupRole): string {
+  return role === 'ReadOnly' ? 'Read only' : role;
+}
 
 /**
  * The capability bitmask to write ALONGSIDE a role change, or `null` to leave

@@ -338,7 +338,7 @@ export function NamespaceMemberRow({
                       role,
                     )}`}
                   >
-                    {role}
+                    {role === 'ReadOnly' ? 'Read only' : role}
                   </span>
                 )}
               </>

@@ -193,7 +193,7 @@ export function FolderSharingPanel({ folderId }: Props) {
         <p className="flex items-start gap-2 border-b border-border/60 px-4 py-2.5 text-xs text-muted-foreground">
           <Globe className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
           <span>
-            Open to all workspace members — anyone in the workspace can join
+            Open to all workspace members. Anyone in the workspace can join
             and edit this folder. Use the role dropdowns below to pin a
             specific person to <strong>Viewer</strong> (read-only) or{' '}
             <strong>Manager</strong>.
@@ -266,7 +266,7 @@ export function FolderSharingPanel({ folderId }: Props) {
                     />
                   </div>
                   <div className="truncate text-xs text-muted-foreground">
-                    {m.role}
+                    {m.role === 'ReadOnly' ? 'Read only' : m.role}
                   </div>
                 </div>
                 {!isOpenFolder && perms.canManageMembers && (
@@ -364,7 +364,7 @@ export function FolderSharingPanel({ folderId }: Props) {
             <>
               Share this link to add someone to{' '}
               <span className="font-medium text-foreground">{folderAlias}</span>
-              {' '}only — they won't gain access to other folders or the
+              {' '}only. They won't gain access to other folders or the
               workspace root.
             </>
           }

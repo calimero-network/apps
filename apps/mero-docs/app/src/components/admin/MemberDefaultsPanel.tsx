@@ -230,12 +230,12 @@ export function MemberDefaultsPanel() {
       );
       if (sweep.skippedAdmins.length > 0) {
         parts.push(
-          `${sweep.skippedAdmins.length} admin${sweep.skippedAdmins.length === 1 ? '' : 's'} skipped — admins already bypass this list.`,
+          `${sweep.skippedAdmins.length} admin${sweep.skippedAdmins.length === 1 ? '' : 's'} skipped. Admins already bypass this list.`,
         );
       }
       if (sweep.skippedReadOnly.length > 0) {
         parts.push(
-          `${sweep.skippedReadOnly.length} read-only member${sweep.skippedReadOnly.length === 1 ? '' : 's'} skipped — granting these would let them make changes.`,
+          `${sweep.skippedReadOnly.length} read-only member${sweep.skippedReadOnly.length === 1 ? '' : 's'} skipped. Granting these would let them make changes.`,
         );
       }
       if (failures.length > 0) {
@@ -330,7 +330,7 @@ export function MemberDefaultsPanel() {
             }
             title={
               dirty
-                ? 'Save the defaults first — this applies the saved value.'
+                ? 'Save the defaults first. This applies the saved value.'
                 : undefined
             }
             onClick={() => {

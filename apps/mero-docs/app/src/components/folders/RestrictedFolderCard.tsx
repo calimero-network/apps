@@ -153,8 +153,8 @@ export function RestrictedFolderCard({
       setError(
         isTransient
           ? isSyncing
-            ? "Workspace sync isn't quite there yet — visibility op still propagating. Try again in a moment."
-            : "Your node can't reach this folder yet — either sync is still in progress or the workspace owner needs to add you. Try again, or ask the admin."
+            ? "Workspace sync isn't quite there yet. Try again in a moment."
+            : "Your node can't reach this folder yet. Either sync is still in progress or the workspace owner needs to add you. Try again, or ask the admin."
           : msg,
       );
     } finally {
@@ -197,9 +197,8 @@ export function RestrictedFolderCard({
                 <span className="font-medium text-foreground">
                   {folderAlias}
                 </span>{' '}
-                yet — namespace governance typically propagates within
-                a few seconds. Click <strong>Try joining</strong> to
-                retry now.
+                yet. That usually settles within a few seconds. Click{' '}
+                <strong>Try joining</strong> to retry now.
               </>
             ) : (
               <>

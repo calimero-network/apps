@@ -172,14 +172,14 @@ export function WorkspaceSettingsPanel() {
             </p>
             <p className="mt-1 text-xs text-amber-700/90 dark:text-amber-400/90">
               Older versions of this app picked one by list order, which two
-              nodes do not agree on — that is why folders could appear to
+              nodes do not agree on. That is why folders could appear to
               vanish. The one holding your folders is now pinned for everyone:
             </p>
             <p className="mt-1 font-mono text-[11px] text-foreground">
               {registryContextId?.slice(0, 16)}…
             </p>
             <p className="mt-1 text-xs text-amber-700/90 dark:text-amber-400/90">
-              The others are left in place rather than deleted — they may hold
+              The others are left in place rather than deleted. They may hold
               folders created before the pin:
             </p>
             <ul className="mt-1 space-y-0.5 font-mono text-[11px] text-muted-foreground">
@@ -232,7 +232,7 @@ export function WorkspaceSettingsPanel() {
               </div>
               {reg.managers.length === 0 ? (
                 <p className="text-xs text-muted-foreground">
-                  No managers — only the owner can change folder roles.
+                  No managers. Only the owner can change folder roles.
                 </p>
               ) : (
                 <ul className="space-y-1">

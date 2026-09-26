@@ -142,7 +142,7 @@ export function JoinInviteCard({
         )}
         {parsed.kind === 'group' ? (
           <>
-            . You'll only gain access to this folder — not the workspace
+            . You'll only gain access to this folder, not the workspace
             root or other folders.
           </>
         ) : (

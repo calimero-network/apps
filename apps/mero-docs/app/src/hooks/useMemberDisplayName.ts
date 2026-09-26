@@ -90,7 +90,7 @@ export function useMemberDisplayName(
       // metadata, leaving the caller's own state stale until next mount.
       if (memberId && memberId !== selfIdentity) {
         throw new Error(
-          'setName is self-only — bind useMemberDisplayName to selfIdentity to write',
+          'setName is self-only: bind useMemberDisplayName to selfIdentity to write',
         );
       }
       await setMemberMetadata(namespaceId, selfIdentity, {
