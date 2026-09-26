@@ -7,6 +7,7 @@ import { parseTotp } from '../lib/totp';
 import type { Secret, VaultSession } from '../lib/vaultSession';
 import shell from '../styles/shell.module.css';
 import styles from './SecretForm.module.css';
+import { describeError } from '../lib/errors';
 
 const STRENGTH_LABEL = ['Very weak', 'Weak', 'Fair', 'Strong', 'Very strong'];
 
@@ -23,6 +24,7 @@ const STRENGTH_LABEL = ['Very weak', 'Weak', 'Fair', 'Strong', 'Very strong'];
 export default function SecretForm({
   session,
   secret,
+  initialKind,
   open,
   onClose,
   onSuccess,
@@ -30,9 +32,12 @@ export default function SecretForm({
   session: VaultSession;
   /** Editing an existing secret, rather than adding one. */
   secret?: Secret;
+  /** The kind a new secret starts as, e.g. the category being browsed. */
+  initialKind?: Kind;
   open: boolean;
   onClose: () => void;
-  onSuccess: () => void;
+  /** Called with the saved secret's id. */
+  onSuccess: (id: string) => void;
 }) {
   const dialogRef = useRef<HTMLDialogElement | null>(null);
   const editing = !!secret;
@@ -52,10 +57,10 @@ export default function SecretForm({
     setError(null);
     setShown(new Set());
     setName(secret?.name ?? '');
-    setKind(((secret?.kind as Kind) || 'login') as Kind);
+    setKind(((secret?.kind as Kind) || initialKind || 'login') as Kind);
     setValues(secret ? { ...secret.fields } : {});
     setTags(secret?.tags.join(', ') ?? '');
-  }, [open, secret]);
+  }, [open, secret, initialKind]);
 
   const fields = useMemo(() => FIELDS[kind] ?? FIELDS.login, [kind]);
 
@@ -87,12 +92,13 @@ export default function SecretForm({
       ),
     };
     try {
+      let id = secret?.id ?? '';
       if (secret) await session.update(secret, draft);
-      else await session.add(draft);
+      else id = await session.add(draft);
       setValues({});
-      onSuccess();
+      onSuccess(id);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not save the secret.');
+      setError(describeError(e));
     } finally {
       setSaving(false);
     }

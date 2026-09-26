@@ -3,6 +3,7 @@ import { type ReactNode, useEffect, useState } from 'react';
 import { useDeviceUnlocked } from '../hooks/useDeviceLock';
 import { type Protection, deviceKeeper } from '../lib/deviceKey';
 import shell from '../styles/shell.module.css';
+import { describeError } from '../lib/errors';
 
 /**
  * Nothing inside renders until this browser's device key is unlocked.
@@ -48,7 +49,7 @@ export default function LockGate({ children }: { children: ReactNode }) {
       await deviceKeeper.unlock(passphrase || undefined);
       setPassphrase('');
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(describeError(e));
     } finally {
       setBusy(false);
     }

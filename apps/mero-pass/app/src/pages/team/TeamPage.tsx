@@ -22,6 +22,7 @@ import {
 import type { VaultRow } from '../../lib/vaults';
 import styles from '../../styles/shell.module.css';
 import { JoinSyncBanner, useJoinSync } from '@calimero-apps/join-sync';
+import { describeError } from '../../lib/errors';
 
 type Tab = 'vaults' | 'people';
 
@@ -95,7 +96,7 @@ export default function TeamPage() {
       setListedForTeam(teamId);
       setError(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(describeError(e));
     } finally {
       setLoading(false);
     }
@@ -136,7 +137,7 @@ export default function TeamPage() {
       setRestricted(false);
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(describeError(e));
     } finally {
       setBusy(null);
     }
@@ -165,7 +166,7 @@ export default function TeamPage() {
         );
         navigate(`/vault/${vault.contextId}`);
       } catch (e) {
-        setError(e instanceof Error ? e.message : String(e));
+        setError(describeError(e));
       } finally {
         setBusy(null);
       }
@@ -188,7 +189,7 @@ export default function TeamPage() {
         hint: `Anyone who opens this link within ${validLabel} can join the team and open every vault that is not invite-only. Their devices get each vault's key once a member who holds it opens the vault.`,
       });
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(describeError(e));
     } finally {
       setBusy(null);
     }
@@ -223,7 +224,7 @@ export default function TeamPage() {
             : `This link lands them in “${vault.name}”, but the access it grants is the whole of ${heading} — every open vault in the team, including ones added later. Valid for ${validLabel}.`,
         });
       } catch (e) {
-        setError(e instanceof Error ? e.message : String(e));
+        setError(describeError(e));
       } finally {
         setBusy(null);
       }

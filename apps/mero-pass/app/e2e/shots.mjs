@@ -128,7 +128,7 @@ const SCENARIOS = [
     '[data-testid="field-hidden"]',
     {
       scenario: 'vault',
-      click: '[data-testid="secret-row"]:has-text("GitHub") button',
+      click: '[data-testid="secret-row"]:has-text("GitHub")',
     },
   ],
   [
@@ -137,7 +137,7 @@ const SCENARIOS = [
     '[data-testid="field-shown"]',
     {
       scenario: 'vault',
-      click: '[data-testid="secret-row"]:has-text("GitHub") button',
+      click: '[data-testid="secret-row"]:has-text("GitHub")',
       then: '[data-testid="reveal"]',
     },
   ],
@@ -193,7 +193,31 @@ const SCENARIOS = [
     '[data-testid="create-recovery"]',
   ],
   ['teams-light', 'Teams, light theme', '[data-testid="team-card"]'],
-  ['vault-light', 'A vault, light theme', '[data-testid="secret-row"]'],
+  [
+    'vault-light',
+    'A vault, light theme',
+    '[data-testid="item-detail"]',
+    {
+      scenario: 'vault-light',
+      click: '[data-testid="secret-row"]:has-text("GitHub")',
+    },
+  ],
+  [
+    'vault-mobile',
+    'A vault on a phone: the list',
+    '[data-testid="secret-row"]',
+    { scenario: 'vault', viewport: { width: 390, height: 844 } },
+  ],
+  [
+    'vault-mobile-detail',
+    'A vault on a phone: one item',
+    '[data-testid="item-detail"]',
+    {
+      scenario: 'vault',
+      viewport: { width: 390, height: 844 },
+      click: '[data-testid="secret-row"]:has-text("GitHub")',
+    },
+  ],
   ['landing', 'The front door', '[data-testid="landing"]'],
 ];
 
@@ -265,7 +289,7 @@ async function main() {
   try {
     for (const [id, title, waitFor, drive] of SCENARIOS) {
       const page = await browser.newPage({
-        viewport: { width: 1440, height: 900 },
+        viewport: drive?.viewport ?? { width: 1440, height: 900 },
         deviceScaleFactor: 2, // retina, so the text in the screenshots is legible
       });
       const errors = [];

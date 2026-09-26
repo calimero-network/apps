@@ -16,6 +16,7 @@ import { useMero } from '@calimero-network/mero-react';
 import type { PassInvitePayload } from '../lib/inviteCodec';
 import { destinationFor } from '../lib/redeemFlow';
 import { redeemInvite } from '../lib/vaults';
+import { describeError } from '../lib/errors';
 
 export interface RedeemState {
   /** A redeem is in flight. Disable the control that started it. */
@@ -66,9 +67,7 @@ export function useRedeemInvitation(): RedeemState {
         navigate(destination);
         return destination;
       } catch (e) {
-        setError(
-          e instanceof Error ? e.message : 'Could not accept the invitation.',
-        );
+        setError(describeError(e));
         return null;
       } finally {
         setBusy(false);

@@ -74,6 +74,7 @@ import { MeroPassClient } from '../generated/MeroPassClient';
 import type { DeviceKeyPair } from './crypto';
 import { vaultApiFor } from './vaultApi';
 import { type VaultApi, VaultSession } from './vaultSession';
+import { rawReason } from './errors';
 
 /** The admin client, as `useMero().mero.admin` provides it. */
 export type AdminLike = MeroJs['admin'];
@@ -146,7 +147,7 @@ export function initParamsFor(name: string): number[] {
  * error.
  */
 function isAlreadyMember(e: unknown): boolean {
-  const m = (e instanceof Error ? e.message : String(e)).toLowerCase();
+  const m = rawReason(e).toLowerCase();
   return (
     m.includes('already a member') ||
     m.includes('already member') ||
@@ -158,9 +159,7 @@ function isAlreadyMember(e: unknown): boolean {
 
 /** A 403 from the admission check, as opposed to a network or shape failure. */
 function isForbidden(e: unknown): boolean {
-  return /403|forbidden|not allowed|not eligible/i.test(
-    e instanceof Error ? e.message : String(e),
-  );
+  return /403|forbidden|not allowed|not eligible/i.test(rawReason(e));
 }
 
 // ── Names ────────────────────────────────────────────────────────────────────
