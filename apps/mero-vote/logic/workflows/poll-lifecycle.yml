@@ -27,7 +27,7 @@ e2e_mode: true
 
 nodes:
   count: 2
-  image: ghcr.io/calimero-network/merod:0.11.0-rc.45
+  image: ghcr.io/calimero-network/merod:0.11.0-rc.46
   prefix: vote-node
   mdns: true
 
