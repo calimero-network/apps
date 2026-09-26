@@ -24,7 +24,7 @@ export const CONFIG: LandingConfig = {
   availability: "web+desktop",
   trust: ["Folders have their own members", "Rich-text editing", "Private by default"],
   explainer: [
-    "A document workspace: folders, rich-text documents, and the tags you need to find them again six months later. Each folder holds its own documents separately, so sharing one project does not hand over the whole workspace.",
+    "A document workspace: folders, rich-text documents, and the tags you need to find them again six months later. Each folder keeps its own documents, separate from the rest of the workspace.",
     "That structure is the point. A folder’s documents replicate only to the people who have that folder, so sharing one project does not hand over the whole workspace.",
   ],
   features: [
@@ -65,8 +65,7 @@ export const CONFIG: LandingConfig = {
       ],
       concepts: [
         { term: "Workspace", def: "The workspace you and your members share. It holds the folder tree." },
-        { term: "Folder", def: "A folder in the tree, bound once to its own sharing scope. The binding never changes after it is made." },
-        { term: "Sharing scope", def: "One folder’s documents. Sharing a folder means adding someone to this scope." },
+        { term: "Folder", def: "A folder in the tree. It holds its own documents, and sharing it gives access to those documents only." },
         { term: "Document", def: "A rich-text document with an id like `doc-3`, allocated by a counter that produces distinct ids even when two people create a document at the same moment." },
         { term: "Owner / manager / folder role", def: "The workspace has one owner and any number of managers who may set roles on any folder. Individual folders can also carry their own per-person roles." },
       ],
@@ -77,7 +76,7 @@ export const CONFIG: LandingConfig = {
       steps: [
         { title: "Connect a node", body: "Press Connect to node and pick your node." },
         { title: "Create a workspace", body: "The first person to claim it is the workspace owner." },
-        { title: "Make a folder", body: "Creating a folder sets up its own sharing scope right away." },
+        { title: "Make a folder", body: "A new folder can be shared on its own right away." },
         { title: "Write", body: "Documents live inside their folder. Editing is collaborative and merges as you type." },
       ],
     },
@@ -111,7 +110,7 @@ export const CONFIG: LandingConfig = {
       heading: "When something looks wrong",
       concepts: [
         { term: "A shared folder is empty for them", def: "Being in the workspace is not being in the folder. They must be added to that folder itself before its documents replicate." },
-        { term: "A folder shows no documents after a move", def: "Moving a folder changes its place in the tree, not what it holds, which is fixed once set. Reload the tree." },
+        { term: "A folder shows no documents after a move", def: "Moving a folder changes its place in the tree, not the documents inside it. Reload the tree." },
         { term: "Two documents with the same name", def: "Ids are allocated by counter and are always distinct; names are not unique by design. Rename one." },
       ],
     },
