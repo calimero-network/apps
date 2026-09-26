@@ -9,6 +9,7 @@ import { buildTree } from '@/utils/ancestry';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { FolderTreeItem } from './FolderTreeItem';
 import { NewFolderButton } from './NewFolderButton';
+import { NoFoldersState } from './NoFolderStates';
 
 // Map useDriveWorkspace's DriveLoadingStage values to user-facing
 // labels. Keys that don't appear here fall through to a generic
@@ -97,9 +98,7 @@ export function FolderTree({
       </div>
 
       {tree.roots.length === 0 ? (
-        <div className="p-3 text-xs text-muted-foreground">
-          No folders yet. Create one to get started.
-        </div>
+        <NoFoldersState />
       ) : (
         <ul className="flex-1 space-y-1.5 overflow-y-auto px-3 py-2">
           {tree.roots.map((n) => (

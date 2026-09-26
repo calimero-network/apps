@@ -393,7 +393,7 @@ export class RestrictedCardDriver {
   async joinIfPrompted(opts: { timeout?: number } = {}): Promise<void> {
     const main = this.page.getByRole('main');
     const folderView = main.getByRole('heading', {
-      name: /^No document open$/,
+      name: /^(No document open|No documents yet)$/,
     });
     const join = main.getByRole('button', {
       name: /^(Join folder|Try joining)$/,

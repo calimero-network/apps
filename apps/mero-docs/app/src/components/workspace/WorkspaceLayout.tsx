@@ -32,6 +32,8 @@ import { WorkspaceSidebar } from './WorkspaceSidebar';
 import { FolderTree } from '@/components/folders/FolderTree';
 import { RestrictedFolderCard } from '@/components/folders/RestrictedFolderCard';
 import { FolderEmptyState } from './FolderEmptyState';
+import { EmptyState } from './EmptyState';
+import { SelectFolderState } from '@/components/folders/NoFolderStates';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { usePublishWorkspacePresence } from '@/hooks/useWorkspacePresence';
@@ -276,10 +278,7 @@ export function WorkspaceLayout() {
               onRetry={onRetrySync}
             />
           ) : !selectedFolderId ? (
-            <EmptyState
-              title="Select a folder"
-              body="Pick a folder from the left rail to see its documents."
-            />
+            <SelectFolderState />
           ) : !selectedFolder ? (
             // A folder IS selected (selectedFolderId set) but its object
             // isn't in the recomputed `folders` list yet — a transient gap
@@ -307,17 +306,6 @@ export function WorkspaceLayout() {
           )}
         </main>
         <DisplayNameGate />
-      </div>
-    </div>
-  );
-}
-
-function EmptyState({ title, body }: { title: string; body: string }) {
-  return (
-    <div className="flex h-full items-center justify-center p-8">
-      <div className="max-w-md text-center">
-        <h2 className="text-xl font-semibold text-foreground">{title}</h2>
-        <p className="mt-2 text-sm text-muted-foreground">{body}</p>
       </div>
     </div>
   );
