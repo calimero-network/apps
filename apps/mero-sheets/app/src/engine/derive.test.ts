@@ -23,7 +23,7 @@ const stubEval = (json: string): string => {
   })));
 };
 
-// The legacy layout, plus a new row `nab` placed second.
+// The implicit layout, plus a new row `nab` placed second.
 const place: Placement = {
   order: { rows: ['0', 'nab', '1', '2'], cols: ['0', '1'] },
   toDisplay: (stored) => stored.replace('{r=nab;c=0}', 'A2'),
@@ -71,7 +71,7 @@ describe('deriveSheetCells', () => {
     const overlay: Overlay = new Map([[cellKey('s', 'nab', '1'), ov('s', 'nab', '1', '={r=nab;c=0}*2')]]);
     const out = deriveSheetCells(snap, overlay, ['s', 'other'], 's', stubEval, place);
     expect(out.every((c) => c.sheet_id === 's')).toBe(true);
-    // Legacy row 1 sits third, after the inserted row.
+    // Implicit row 1 sits third, after the inserted row.
     expect(out.find((c) => c.row_id === '1')).toMatchObject({ row: 2, col: 0, computed_value: 'DERIVED' });
     expect(out.find((c) => c.row_id === 'nab')).toMatchObject({ row: 1, col: 1, raw_value: '=A2*2' });
   });

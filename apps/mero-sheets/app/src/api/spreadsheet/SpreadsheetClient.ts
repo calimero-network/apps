@@ -149,10 +149,7 @@ export interface CellChange {
 export interface CellData {
   id: string;
   sheet_id: string;
-  row: number;
-  col: number;
   raw_value: string;
-  format: string;
   updated_at: number;
 }
 
@@ -313,11 +310,6 @@ export interface Event_MemberJoined {
 export interface Event_MemberRenamed {
   id: string;
   nickname: string;
-}
-
-export interface Event_Migrated {
-  from_version: string;
-  to_version: string;
 }
 
 export interface Event_NamedRangesChanged {
@@ -685,7 +677,6 @@ export interface StylePair {
 
 
 
-
 export type AbiEvent =
   | { name: "AlertTriggered"; payload: Event_AlertTriggered }
   | { name: "AttachmentsChanged"; payload: Event_AttachmentsChanged }
@@ -699,7 +690,6 @@ export type AbiEvent =
   | { name: "LinkedChanged"; payload: Event_LinkedChanged }
   | { name: "MemberJoined"; payload: Event_MemberJoined }
   | { name: "MemberRenamed"; payload: Event_MemberRenamed }
-  | { name: "Migrated"; payload: Event_Migrated }
   | { name: "NamedRangesChanged"; payload: Event_NamedRangesChanged }
   | { name: "NoteChanged"; payload: Event_NoteChanged }
   | { name: "ProjectInitialized"; payload: Event_ProjectInitialized }

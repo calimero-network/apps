@@ -14,7 +14,7 @@ use calimero_sdk::ContextId;
 use calimero_storage::collections::crdt_meta::MergeError;
 use calimero_storage::collections::rich_text::{Attrs, DeltaOp};
 use calimero_storage::collections::{
-    AuthoredMap, DefaultMarks, LwwRegister, Mergeable, RichText, SortedMap, Span, UnorderedMap,
+    DefaultMarks, LwwRegister, Mergeable, RichText, SortedMap, Span, UnorderedMap,
 };
 use calimero_storage::env as storage_env;
 use std::collections::{BTreeMap, HashSet};
@@ -64,8 +64,9 @@ impl Mergeable for SheetData {
     }
 }
 
-/// A single cell stored in the shared UnorderedMap.
-/// Key: `"{sheet_id}|{row}|{col}"`.
+/// A cell's value, stored in the shared UnorderedMap under
+/// `"{sheet_id}|{row_id}|{col_id}"`. Its format is a separate field
+/// (`formats`), so a value edit and a format edit never overwrite each other.
 #[app::mergeable(id = "mero_sheets::CellData")]
 #[derive(Debug, Clone, BorshSerialize, BorshDeserialize, AbiType)]
 #[borsh(crate = "calimero_sdk::borsh")]
@@ -73,71 +74,17 @@ pub struct CellData {
     /// Mirrors the map key for ABI convenience.
     pub id: String,
     pub sheet_id: String,
-    pub row: u32,
-    pub col: u32,
     /// Raw user input (may be a formula like `=SUM(A1:A5)`).
     pub raw_value: String,
-    /// Display format for this cell (e.g. "number", "currency", "percent",
-    /// "date"; empty = Automatic). Rendered client-side; does not affect
-    /// evaluation. Colon-delimited for future options (e.g. "number:2").
-    pub format: String,
     pub updated_at: u64,
 }
 
 impl Mergeable for CellData {
     fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        // LWW: newer update wins, tie-broken over EVERY field the branch
-        // assigns. Tie-breaking on `raw_value` alone left `format` divergent —
-        // two replicas that set the same value with different formats in one
-        // clock tick each kept their own, and re-merging never closed it.
-        if (other.updated_at, &other.raw_value, &other.format)
-            > (self.updated_at, &self.raw_value, &self.format)
-        {
+        // LWW: newer update wins, tie-broken on the value so an exact clock
+        // tie still converges.
+        if (other.updated_at, &other.raw_value) > (self.updated_at, &self.raw_value) {
             self.raw_value = other.raw_value.clone();
-            self.format = other.format.clone();
-            self.updated_at = other.updated_at;
-        }
-        Ok(())
-    }
-}
-
-/// A cursor as v1 stored it, in a per-author AuthoredMap. Cursors are
-/// ephemeral presence since v2; the type remains only so the v2 migration can
-/// read the v1 state it drops them from.
-#[app::mergeable(id = "mero_sheets::CursorData")]
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize, AbiType)]
-#[borsh(crate = "calimero_sdk::borsh")]
-pub struct CursorData {
-    pub sheet_id: String,
-    pub row: u32,
-    pub col: u32,
-    /// Hex colour assigned deterministically from the author pubkey.
-    pub color: String,
-    pub updated_at: u64,
-}
-
-impl Mergeable for CursorData {
-    fn merge(&mut self, other: &Self) -> Result<(), MergeError> {
-        // Last update wins — the author only writes their own cursor. The
-        // tie-break spans every assigned field, not just `sheet_id`, so an
-        // exact clock tie cannot leave row/col/colour divergent.
-        if (
-            other.updated_at,
-            &other.sheet_id,
-            other.row,
-            other.col,
-            &other.color,
-        ) > (
-            self.updated_at,
-            &self.sheet_id,
-            self.row,
-            self.col,
-            &self.color,
-        ) {
-            self.sheet_id = other.sheet_id.clone();
-            self.row = other.row;
-            self.col = other.col;
-            self.color = other.color.clone();
             self.updated_at = other.updated_at;
         }
         Ok(())
@@ -1027,8 +974,9 @@ pub struct Sheet {
     pub linked_from: String,
 }
 
-/// A cell, by row and column id. A legacy id is the cell's old 0-based
-/// position; the client places ids with the sheet's layout (`get_layouts`).
+/// A cell, by row and column id. An implicit id is a 0-based position
+/// (`"3"` is the fourth row until rows move); the client places ids with the
+/// sheet's layout (`get_layouts`).
 #[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct Cell {
@@ -1137,7 +1085,7 @@ pub struct AxisEntryView {
 }
 
 /// A sheet's explicit row and column entries. A sheet with none has the
-/// legacy layout: row id `k` at row `k`.
+/// implicit layout: row id `k` at row `k`.
 #[derive(Debug, Clone, Serialize, Deserialize, AbiType)]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct SheetLayout {
@@ -1178,23 +1126,8 @@ pub const MAX_OPS_PER_APPLY: usize = 100;
 // State
 // ---------------------------------------------------------------------------
 
-/// Schema versions, as the migration event reports them.
-const SCHEMA_V1: &str = "1";
-const SCHEMA_V2: &str = "2";
-
 // `#[app::state]` injects borsh derives itself (SDK 0.11+).
-//
-// v2 adds row/column ids (`axes`), per-field formats (`formats`) and named
-// ranges (`names`), and drops v1's contract-stored cursors. Every v1
-// collection is carried by id and no cell is rewritten, so the migration costs
-// the same for a workbook of any size: rewriting cells in one execution would
-// run out of gas past a few hundred of them.
-#[app::state(version = 2, emits = for<'a> Event<'a>)]
-#[derive(app::Migrate)]
-#[migrate(
-    from = SpreadsheetV1,
-    emit = Event::Migrated { from_version: SCHEMA_V1, to_version: SCHEMA_V2 }
-)]
+#[app::state(emits = for<'a> Event<'a>)]
 pub struct Spreadsheet {
     /// Set once by `init_project`; empty until then.
     project_id: LwwRegister<String>,
@@ -1202,8 +1135,7 @@ pub struct Spreadsheet {
     project_created_at: LwwRegister<u64>,
     /// Sheet tabs keyed by sheet id.
     sheets: UnorderedMap<String, SheetData>,
-    /// Cells keyed by `"{sheet_id}|{row_id}|{col_id}"`. A v1 key
-    /// (`"{sheet_id}|{row}|{col}"`) is the same cell: legacy ids are positions.
+    /// Cell values keyed by `"{sheet_id}|{row_id}|{col_id}"`.
     cells: UnorderedMap<String, CellData>,
     /// Chosen nicknames keyed by device hex (`whoami`).
     ///
@@ -1212,63 +1144,43 @@ pub struct Spreadsheet {
     members: UnorderedMap<String, MemberData>,
     /// Added and deleted rows and columns, keyed `"{sheet_id}|r|{id}"` and
     /// `"{sheet_id}|c|{id}"`.
-    #[migrate(new = UnorderedMap::new_with_field_name("spreadsheet:axes"))]
     axes: UnorderedMap<String, AxisData>,
-    /// Cell formats, keyed like `cells`. Where a cell has no entry, the format
-    /// it carried from v1 (`CellData::format`) applies.
-    #[migrate(new = UnorderedMap::new_with_field_name("spreadsheet:formats"))]
+    /// Cell formats, keyed like `cells`.
     formats: UnorderedMap<String, FormatData>,
     /// Named ranges keyed by upper-case name.
-    #[migrate(new = UnorderedMap::new_with_field_name("spreadsheet:names"))]
     names: UnorderedMap<String, NamedRangeData>,
     /// Who last changed each cell, keyed like `cells`.
-    #[migrate(new = UnorderedMap::new_with_field_name("spreadsheet:cell_meta"))]
     cell_meta: UnorderedMap<String, CellMeta>,
     /// The activity log, in time order.
-    #[migrate(new = SortedMap::new_with_field_name("spreadsheet:activity"))]
     activity: SortedMap<String, ActivityData>,
     /// Cell comments and replies, keyed by comment id.
-    #[migrate(new = UnorderedMap::new_with_field_name("spreadsheet:comments"))]
     comments: UnorderedMap<String, CommentData>,
     /// Cell notes, keyed like `cells`: rich text that merges concurrent edits
     /// character by character.
-    #[migrate(new = UnorderedMap::new_with_field_name("spreadsheet:notes"))]
     notes: UnorderedMap<String, RichText<DefaultMarks>>,
     /// Each member's account, keyed by member (device) id.
-    #[migrate(new = UnorderedMap::new_with_field_name("spreadsheet:accounts"))]
     accounts: UnorderedMap<String, AccountData>,
     /// Workbook roles, keyed by member id. A member without one is an editor.
-    #[migrate(new = UnorderedMap::new_with_field_name("spreadsheet:roles"))]
     roles: UnorderedMap<String, RoleData>,
     /// Protected ranges, keyed by id.
-    #[migrate(new = UnorderedMap::new_with_field_name("spreadsheet:protections"))]
     protections: UnorderedMap<String, ProtectionData>,
     /// Resized rows and columns, keyed like `axes`.
-    #[migrate(new = UnorderedMap::new_with_field_name("spreadsheet:sizes"))]
     sizes: UnorderedMap<String, SizeData>,
     /// Frozen rows and columns per sheet.
-    #[migrate(new = UnorderedMap::new_with_field_name("spreadsheet:views"))]
     views: UnorderedMap<String, SheetViewData>,
     /// Cell styles, keyed like `cells`.
-    #[migrate(new = UnorderedMap::new_with_field_name("spreadsheet:styles"))]
     styles: UnorderedMap<String, StyleData>,
     /// Conditional formats, colour scales and validations, keyed by id.
-    #[migrate(new = UnorderedMap::new_with_field_name("spreadsheet:rules"))]
     rules: UnorderedMap<String, RuleData>,
     /// Charts, keyed by id.
-    #[migrate(new = UnorderedMap::new_with_field_name("spreadsheet:charts"))]
     charts: UnorderedMap<String, ChartData>,
     /// Files attached to cells, keyed by id.
-    #[migrate(new = UnorderedMap::new_with_field_name("spreadsheet:attachments"))]
     attachments: UnorderedMap<String, AttachmentData>,
     /// Ranges this workbook pushes to others, keyed by id.
-    #[migrate(new = UnorderedMap::new_with_field_name("spreadsheet:publications"))]
     publications: UnorderedMap<String, PublicationData>,
     /// Ranges pushed here from other workbooks, keyed by linked sheet id.
-    #[migrate(new = UnorderedMap::new_with_field_name("spreadsheet:linked"))]
     linked: UnorderedMap<String, LinkedData>,
     /// Alert rules' last matching cells, keyed by rule id.
-    #[migrate(new = UnorderedMap::new_with_field_name("spreadsheet:alert_state"))]
     alert_state: UnorderedMap<String, AlertState>,
 }
 
@@ -1281,7 +1193,7 @@ pub struct Spreadsheet {
 pub struct Scratch {
     /// Private sheets keyed by id. Few and small: kept in the private blob.
     sheets: BTreeMap<String, ScratchSheet>,
-    /// Their cells, keyed like `cells`, by legacy (position) ids: a private
+    /// Their cells, keyed like `cells`, by implicit (position) ids: a private
     /// sheet has no inserted or deleted rows.
     cells: UnorderedMap<String, ScratchCell>,
 }
@@ -1309,20 +1221,6 @@ pub struct ScratchCell {
     pub raw_value: String,
     pub format: String,
     pub updated_at: u64,
-}
-
-/// The v1 state, read once by the v2 migration.
-#[derive(BorshDeserialize)]
-#[borsh(crate = "calimero_sdk::borsh")]
-struct SpreadsheetV1 {
-    project_id: LwwRegister<String>,
-    project_name: LwwRegister<String>,
-    project_created_at: LwwRegister<u64>,
-    sheets: UnorderedMap<String, SheetData>,
-    cells: UnorderedMap<String, CellData>,
-    #[allow(dead_code, reason = "v1 field the v2 migration drops")]
-    cursors: AuthoredMap<String, CursorData>,
-    members: UnorderedMap<String, MemberData>,
 }
 
 #[app::logic]
@@ -1657,8 +1555,8 @@ impl Spreadsheet {
     // ---- Cells ----
     //
     // A cell is keyed by `"{sheet_id}|{row_id}|{col_id}"` (see the recalc
-    // crate's `layout`): a legacy id is the old 0-based position, so every key
-    // written before row/column ids existed still names the same cell.
+    // crate's `layout`): rows and columns nobody has added or moved use their
+    // implicit id, their 0-based position, so an untouched grid stores no axis.
     //
     // Storage helpers emit nothing. Single-cell methods emit their own event
     // and `apply_cell_ops` one for the whole batch, which keeps a bulk apply
@@ -1721,10 +1619,7 @@ impl Spreadsheet {
                     CellData {
                         id: key.clone(),
                         sheet_id: sheet_id.to_string(),
-                        row: layout::legacy_index(row_id).unwrap_or(u32::MAX),
-                        col: layout::legacy_index(col_id).unwrap_or(u32::MAX),
                         raw_value,
-                        format: String::new(),
                         updated_at: now,
                     },
                 )
@@ -1900,7 +1795,7 @@ impl Spreadsheet {
             .map_err(|e| AppError::msg(format!("formats.get: {e}")))?;
         Ok(match (cell, format) {
             (Some(c), Some(f)) => (c.raw_value.clone(), f.format.clone()),
-            (Some(c), None) => (c.raw_value.clone(), c.format.clone()),
+            (Some(c), None) => (c.raw_value.clone(), String::new()),
             (None, Some(f)) => (String::new(), f.format.clone()),
             (None, None) => (String::new(), String::new()),
         })
@@ -3505,7 +3400,9 @@ impl Spreadsheet {
                 | CellOp::Format { row_id, col_id, .. }
                 | CellOp::Clear { row_id, col_id } => (row_id.clone(), col_id.clone()),
             };
-            if layout::legacy_index(&row_id).is_none() || layout::legacy_index(&col_id).is_none() {
+            if layout::implicit_index(&row_id).is_none()
+                || layout::implicit_index(&col_id).is_none()
+            {
                 return Err(AppError::from(Error::Invalid(format!(
                     "a private sheet has no inserted rows or columns: {row_id}/{col_id}"
                 ))));
@@ -3589,7 +3486,7 @@ impl Spreadsheet {
     /// keep pointing at the same cells. A deleted row's cells stay stored but
     /// out of the layout, so references to them read `#REF!`.
     ///
-    /// The client picks ids (letters first, never a legacy number) and
+    /// The client picks ids (letters first, never an implicit number) and
     /// positions (see the recalc crate's `layout`).
     pub fn apply_axis_ops(&mut self, sheet_id: String, ops: Vec<AxisOp>) -> app::Result<()> {
         if ops.len() > MAX_OPS_PER_APPLY {
@@ -3650,7 +3547,7 @@ impl Spreadsheet {
                 .map_err(|e| AppError::msg(format!("axes.get: {e}")))?;
             match insert_pos {
                 Some(pos) => {
-                    if layout::legacy_index(&id).is_some()
+                    if layout::implicit_index(&id).is_some()
                         || !id.starts_with(|c: char| c.is_ascii_alphabetic())
                     {
                         return Err(AppError::from(Error::Invalid(format!(
@@ -3688,17 +3585,17 @@ impl Spreadsheet {
                         guard.updated_at = now;
                     }
                 }
-                // A legacy row that was never deleted is already there.
+                // An implicit row that was never deleted is already there.
                 None if !deleted => {}
-                // Deleting a legacy row writes its tombstone at its fixed position.
+                // Deleting an implicit row writes its tombstone at its fixed position.
                 None => {
-                    let k = layout::legacy_index(&id)
+                    let k = layout::implicit_index(&id)
                         .ok_or_else(|| AppError::from(Error::NotFound(id.clone())))?;
                     self.axes
                         .insert(
                             key,
                             AxisData {
-                                pos: layout::legacy_pos(k),
+                                pos: layout::implicit_pos(k),
                                 deleted: true,
                                 updated_at: now,
                             },
@@ -3897,10 +3794,7 @@ impl Spreadsheet {
                     stored.push(CellData {
                         id: Spreadsheet::cell_key(&id, &r.to_string(), &c.to_string()),
                         sheet_id: id.clone(),
-                        row: r,
-                        col: c,
                         raw_value: v.clone(),
-                        format: String::new(),
                         updated_at: l.updated_at,
                     });
                 }
@@ -3929,7 +3823,7 @@ impl Spreadsheet {
             .collect();
         let mut out = Vec::new();
         for d in stored {
-            let format = formats.get(&d.id).cloned().unwrap_or(d.format);
+            let format = formats.get(&d.id).cloned().unwrap_or_default();
             if d.raw_value.is_empty() && format.is_empty() {
                 continue;
             }
@@ -4926,28 +4820,34 @@ mod tests {
     }
 
     #[test]
-    fn cell_merge_carries_format_from_winner() {
+    fn cell_merge_is_last_writer_wins() {
         let mut a = CellData {
             id: "k".into(),
             sheet_id: "s".into(),
-            row: 0,
-            col: 0,
             raw_value: "1".into(),
-            format: String::new(),
             updated_at: 1,
         };
         let b = CellData {
             id: "k".into(),
             sheet_id: "s".into(),
-            row: 0,
-            col: 0,
             raw_value: "2".into(),
-            format: "currency".into(),
             updated_at: 2,
         };
         a.merge(&b).unwrap();
         assert_eq!(a.raw_value, "2");
-        assert_eq!(a.format, "currency", "LWW winner's format is kept");
+        // An exact clock tie converges on the same value from either side.
+        let mut c = CellData {
+            raw_value: "3".into(),
+            ..b.clone()
+        };
+        let mut d = b.clone();
+        c.merge(&b).unwrap();
+        d.merge(&CellData {
+            raw_value: "3".into(),
+            ..b.clone()
+        })
+        .unwrap();
+        assert_eq!(c.raw_value, d.raw_value);
     }
 
     #[test]
@@ -5605,8 +5505,8 @@ mod tests {
         }
         app.call(|s| s.set_cell(sid.clone(), "0".into(), "1".into(), "=SUM(A1:A3)".into()))
             .unwrap();
-        // A row between legacy rows 0 and 1, holding 10.
-        let pos = format!("{}5", layout::legacy_pos(0));
+        // A row between implicit rows 0 and 1, holding 10.
+        let pos = format!("{}5", layout::implicit_pos(0));
         app.call(|s| {
             s.apply_axis_ops(
                 sid.clone(),
@@ -5702,18 +5602,13 @@ mod tests {
     }
 
     #[test]
-    fn a_v1_format_applies_until_overridden_and_clear_blanks_both() {
+    fn clear_blanks_value_and_format() {
         let mut app = make_app();
         let sid = new_sheet(&mut app);
         app.call(|s| s.set_cell(sid.clone(), "0".into(), "0".into(), "3".into()))
             .unwrap();
-        // A cell as v1 left it: its format inside the cell.
-        app.call(|s| {
-            let key = Spreadsheet::cell_key(&sid, "0", "0");
-            s.cells.get_mut(&key).unwrap().unwrap().format = "percent".into();
-            Ok::<(), AppError>(())
-        })
-        .unwrap();
+        app.call(|s| s.set_cell_format(sid.clone(), "0".into(), "0".into(), "percent".into()))
+            .unwrap();
         let cells = app.view(|s| s.get_cells(sid.clone())).unwrap();
         assert_eq!(cell_at(&cells, "0", "0").unwrap().format, "percent");
         app.call(|s| s.clear_cell(sid.clone(), "0".into(), "0".into()))
@@ -6194,7 +6089,7 @@ mod tests {
         let mut app = make_app();
         let sid = new_sheet(&mut app);
         let (ada, bob) = with_people(&mut app);
-        // Protect A2:B3 (legacy rows 1-2, columns 0-1); Ada may edit it.
+        // Protect A2:B3 (implicit rows 1-2, columns 0-1); Ada may edit it.
         app.call(|s| {
             s.protect_range(
                 sid.clone(),

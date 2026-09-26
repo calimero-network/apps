@@ -66,11 +66,6 @@ pub enum Event<'a> {
         row_id: &'a str,
         col_id: &'a str,
     },
-    /// The state was migrated to a new schema.
-    Migrated {
-        from_version: &'a str,
-        to_version: &'a str,
-    },
     /// A device announced itself under a nickname for the first time.
     MemberJoined { id: &'a str, nickname: &'a str },
     /// A member changed the nickname they are shown under.

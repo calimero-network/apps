@@ -43,19 +43,12 @@ cell it was aimed at. Formulas store references by id too (`=SUM(A1:A4)` for
 rows that were there from the start, `{r=n…;c=0}` for inserted ones), so they
 keep pointing at the same cells; a reference to a deleted row reads `#REF!`.
 
-Every workbook written before ids existed keeps working unchanged: the
-original row `k` has id `k` at an implicit position, so an old key or an old
-A1 formula already *is* the id form. The app shows and accepts positions; the
+Rows and columns nobody has added or moved need no axis entries: row `k` of
+an untouched axis has the implicit id `k` at a fixed position, so an A1
+formula already *is* the id form. The app shows and accepts positions; the
 engine converts at the edge (`to_display` / `to_stored` in
 `logic/crates/recalc`), and places cells with the same layout code the node
 evaluates with. See [Recalc engine](recalc) for the formula side.
-
-**The v2 migration** that introduced ids, per-field formats and named ranges
-carries every v1 collection over by id and rewrites no cell, so it costs the
-same for a workbook of any size: a migration runs as one execution, and
-rewriting cells one by one would exhaust its gas budget past a few hundred of
-them. It also drops v1's contract-stored cursors, which are ephemeral presence
-now.
 
 ## Who changed what
 
@@ -146,7 +139,7 @@ sheets back after each write instead of waiting for an event.
 A private sheet's formulas can read the shared sheets (the app evaluates
 private and shared cells together), but a shared cell may not refer to a
 private sheet: nobody else could see what it points at, so the app refuses
-the write. A private sheet has fixed rows and columns (legacy position ids),
+the write. A private sheet has fixed rows and columns (implicit position ids),
 and no comments, notes, protection or named ranges. The app does not publish
 your cursor while you are on one. "Private" means this node: another device of
 yours does not see it, and anyone who can read this node's storage could.

@@ -233,25 +233,7 @@
           }
         },
         {
-          "name": "row",
-          "type": {
-            "kind": "u32"
-          }
-        },
-        {
-          "name": "col",
-          "type": {
-            "kind": "u32"
-          }
-        },
-        {
           "name": "raw_value",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "format",
           "type": {
             "kind": "string"
           }
@@ -1291,11 +1273,5 @@
   "methods": [],
   "events": [],
   "state_root": "Spreadsheet",
-  "state_version": 2,
-  "migrations": [
-    {
-      "method": "migrate_v1_to_v2",
-      "fromVersion": 1
-    }
-  ]
+  "state_version": 1
 }

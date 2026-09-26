@@ -16,7 +16,7 @@ use std::borrow::Cow;
 use std::cmp::Ordering::{self, Equal, Greater, Less};
 use std::collections::BTreeMap;
 
-use crate::layout::{legacy_index, Axis, Layout};
+use crate::layout::{implicit_index, Axis, Layout};
 
 /// Rows a sheet has, and so what a whole-column reference (`A:A`) spans.
 pub const MAX_ROWS: u32 = 1000;
@@ -39,7 +39,7 @@ pub struct Env {
     /// Named ranges: upper-case name → the reference it stands for, written as
     /// a stored formula would write it (`B2:B20`, `[sheet-id]!A1:A9`).
     pub names: BTreeMap<String, String>,
-    /// Row and column order per sheet id. A sheet with no entry has the legacy
+    /// Row and column order per sheet id. A sheet with no entry has the implicit
     /// layout, where row id `k` is row `k`.
     pub layouts: BTreeMap<String, Layout>,
 }
@@ -258,7 +258,7 @@ fn rewrite_end(tok: &Tok, raw: &str, layout: &Layout, to_ids: bool) -> Option<St
         if to_ids {
             layout
                 .rows
-                .id_at(legacy_index(id)? as usize)
+                .id_at(implicit_index(id)? as usize)
                 .map(Cow::into_owned)
         } else {
             layout.rows.index_of(id).map(|k| k.to_string())
@@ -268,7 +268,7 @@ fn rewrite_end(tok: &Tok, raw: &str, layout: &Layout, to_ids: bool) -> Option<St
         if to_ids {
             layout
                 .cols
-                .id_at(legacy_index(id)? as usize)
+                .id_at(implicit_index(id)? as usize)
                 .map(Cow::into_owned)
         } else {
             layout.cols.index_of(id).map(|k| k.to_string())
@@ -289,9 +289,9 @@ fn dollar(abs: bool) -> &'static str {
     }
 }
 
-/// A cell by row and column id: A1 when both are legacy ids, braces otherwise.
+/// A cell by row and column id: A1 when both are implicit ids, braces otherwise.
 fn cell_text(row: &str, col: &str, col_abs: bool, row_abs: bool) -> String {
-    match (legacy_index(row), legacy_index(col)) {
+    match (implicit_index(row), implicit_index(col)) {
         (Some(r), Some(c)) => format!(
             "{}{}{}{}",
             dollar(col_abs),
@@ -304,14 +304,14 @@ fn cell_text(row: &str, col: &str, col_abs: bool, row_abs: bool) -> String {
 }
 
 fn col_text(col: &str, abs: bool) -> String {
-    match legacy_index(col) {
+    match implicit_index(col) {
         Some(c) => format!("{}{}", dollar(abs), col_label(c)),
         None => format!("{{{}c={col}}}", dollar(abs)),
     }
 }
 
 fn row_text(row: &str, abs: bool) -> String {
-    match legacy_index(row) {
+    match implicit_index(row) {
         Some(r) => format!("{}{}", dollar(abs), r + 1),
         None => format!("{{{}r={row}}}", dollar(abs)),
     }
@@ -460,7 +460,7 @@ enum Tok {
     /// `[sheet-id]!`, which qualifies the reference after it.
     Sheet(String),
     /// `{r=ID;c=ID}`, `{c=ID}` or `{r=ID}`: a cell, column or row by id, for
-    /// rows and columns added after the legacy layout (see [`crate::layout`]).
+    /// rows and columns added after the implicit layout (see [`crate::layout`]).
     IdRef {
         row: Option<String>,
         col: Option<String>,
@@ -717,7 +717,7 @@ enum Anchor {
 }
 
 impl Anchor {
-    /// In stored form, `B12` is row id `11`, column id `1`: a legacy id.
+    /// In stored form, `B12` is row id `11`, column id `1`: an implicit id.
     fn from_tok(t: &Tok) -> Option<Anchor> {
         match t {
             Tok::Word(w) => {
@@ -2583,9 +2583,9 @@ pub const CATALOG: &[FnInfo] = catalog! {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::layout::{legacy_pos, AxisEntry};
+    use crate::layout::{implicit_pos, AxisEntry};
 
-    /// Evaluate on sheet `s` with the legacy layout, where row id `k` is row
+    /// Evaluate on sheet `s` with the implicit layout, where row id `k` is row
     /// `k`, so a getter can take positions.
     fn eval_env(
         formula: &str,
@@ -2601,7 +2601,7 @@ mod tests {
         eval_env(formula, &Env::default(), gv)
     }
 
-    /// Precedents with the legacy layout, as positions.
+    /// Precedents with the implicit layout, as positions.
     fn precedents_in(formula: &str, home: &str, env: &Env) -> Vec<(String, u32, u32)> {
         precedents_with(formula, home, env)
             .into_iter()
@@ -3059,18 +3059,18 @@ mod tests {
     }
 
     /// Sheet `s` with a new row `nab` inserted between rows 1 and 2, and
-    /// legacy row 4 deleted.
+    /// implicit row 4 deleted.
     fn edited() -> Env {
         let rows = Axis::build(
             &[
                 AxisEntry {
                     id: "nab".into(),
-                    pos: format!("{}5", legacy_pos(1)),
+                    pos: format!("{}5", implicit_pos(1)),
                     deleted: false,
                 },
                 AxisEntry {
                     id: "4".into(),
-                    pos: legacy_pos(4),
+                    pos: implicit_pos(4),
                     deleted: true,
                 },
             ],
@@ -3133,7 +3133,7 @@ mod tests {
         // Visible rows: 0, 1, nab, 2, 3, 5, …
         assert_eq!(to_stored("=A3*2", "s", &env), "={r=nab;c=0}*2");
         assert_eq!(to_display("={r=nab;c=0}*2", "s", &env), "=A3*2");
-        // Legacy row 2 now shows as row 4.
+        // Implicit row 2 now shows as row 4.
         assert_eq!(to_display("=SUM(A1:A3)", "s", &env), "=SUM(A1:A4)");
         assert_eq!(to_stored("=SUM(A1:A4)", "s", &env), "=SUM(A1:A3)");
         // Anchors, spacing and strings survive; a function name is not a ref.
@@ -3159,7 +3159,7 @@ mod tests {
     }
 
     #[test]
-    fn the_legacy_layout_changes_nothing() {
+    fn the_implicit_layout_changes_nothing() {
         let env = Env::default();
         for f in [
             "=SUM(A1:B3)",

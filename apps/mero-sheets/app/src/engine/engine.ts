@@ -56,8 +56,8 @@ let structure = '{}';
 const orders = new Map<string, Order>();
 
 /** Rows and columns a sheet has before any structural edit (MAX_ROWS/MAX_COLS). */
-const LEGACY_ROWS = 1000;
-const LEGACY_COLS = 702;
+const IMPLICIT_ROWS = 1000;
+const IMPLICIT_COLS = 702;
 
 function applyStructure() {
   orders.clear();
@@ -72,15 +72,15 @@ export function setStructure(layouts: SheetLayout[], names: NamedRange[]): void 
 
 /**
  * A sheet's visible order: the row id and column id at each position. Before
- * the engine loads, the legacy layout (id `k` at position `k`).
+ * the engine loads, the implicit layout (id `k` at position `k`).
  */
 export function visibleOrder(sheetId: string): Order {
   const cached = orders.get(sheetId);
   if (cached) return cached;
   if (!ready) {
     return {
-      rows: Array.from({ length: LEGACY_ROWS }, (_, i) => String(i)),
-      cols: Array.from({ length: LEGACY_COLS }, (_, i) => String(i)),
+      rows: Array.from({ length: IMPLICIT_ROWS }, (_, i) => String(i)),
+      cols: Array.from({ length: IMPLICIT_COLS }, (_, i) => String(i)),
     };
   }
   const order = JSON.parse(wasmVisibleOrder(sheetId)) as Order;

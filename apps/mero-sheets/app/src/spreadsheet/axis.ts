@@ -7,13 +7,13 @@
  * only has to invent a new position between two neighbours, and a new id.
  */
 
-/** Must match `legacy_pos` in logic/crates/recalc/src/layout.rs. */
-export function legacyPos(k: number): string {
+/** Must match `implicit_pos` in logic/crates/recalc/src/layout.rs. */
+export function implicitPos(k: number): string {
   return `5${String(k).padStart(9, '0')}`;
 }
 
-/** Whether an id is a legacy row/column number (`"12"`, never `"012"`). */
-export function isLegacyId(id: string): boolean {
+/** Whether an id is an implicit row/column number (`"12"`, never `"012"`). */
+export function isImplicitId(id: string): boolean {
   return /^(0|[1-9]\d*)$/.test(id);
 }
 
@@ -49,7 +49,7 @@ export function positionsBetween(a: string, b: string | null, count: number): st
   return out;
 }
 
-/** A fresh row/column id: a letter first, so it can never read as legacy. */
+/** A fresh row/column id: a letter first, so it can never read as implicit. */
 export function newAxisId(): string {
   const bytes = new Uint8Array(6);
   crypto.getRandomValues(bytes);
@@ -63,9 +63,9 @@ export interface AxisEntry {
   deleted: boolean;
 }
 
-/** The position of any id: its entry's, or a legacy id's fixed one. */
+/** The position of any id: its entry's, or an implicit id's fixed one. */
 export function positionOf(id: string, entries: readonly AxisEntry[]): string | null {
   const e = entries.find((x) => x.id === id);
   if (e) return e.pos;
-  return isLegacyId(id) ? legacyPos(Number(id)) : null;
+  return isImplicitId(id) ? implicitPos(Number(id)) : null;
 }

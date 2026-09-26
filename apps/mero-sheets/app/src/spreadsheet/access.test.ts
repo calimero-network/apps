@@ -6,7 +6,7 @@ const prot = (over: Partial<Protection>): Protection => ({
   id: 'p', sheet_id: 's', top_row_id: '1', left_col_id: '0', bottom_row_id: '2', right_col_id: '1',
   description: 'Totals', editors: [], created_by: 'o', ...over,
 });
-// Legacy ids are positions.
+// Implicit ids are positions.
 const locate = (r: string, c: string) => (r === 'gone' ? null : { row: Number(r), col: Number(c) });
 
 describe('roles', () => {

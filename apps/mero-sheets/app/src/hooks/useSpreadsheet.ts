@@ -363,7 +363,7 @@ export function useSpreadsheet({
   });
 
   // One sheet's cells, placed and computed. Before the engine is ready, the
-  // node's computed values captured in the snapshot, at their legacy positions
+  // node's computed values captured in the snapshot, at their implicit positions
   // (pre-WASM initial paint — no flash of raw formulas).
   const sheetCells = useCallback((sheetId: string): Cell[] => {
     if (!engineReady()) {
