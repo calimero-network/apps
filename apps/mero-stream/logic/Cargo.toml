@@ -35,7 +35,7 @@ icon        = "../app/public/icon-512.png"
 category = "media"
 tags        = ["streaming", "video", "webcodecs", "capacity-probe"]
 github      = "https://github.com/calimero-network/apps"
-min-runtime-version = "0.11.0-rc.45"
+min-runtime-version = "0.11.0-rc.47"
 # MUST be the exact origin the frontend is deployed on, and a BARE one.
 #
 # This is not cosmetic: the embedded auth frontend uses it as the
