@@ -143,7 +143,7 @@ describe('useFolderOperations.create — members', () => {
   });
 });
 
-describe('useFolderOperations.create — double-submit guard', () => {
+describe('useFolderOperations.create - double-submit guard', () => {
   it('ignores a second create() call while the first is still in flight', async () => {
     const registry = makeRegistry();
     const refetch = vi.fn().mockResolvedValue(undefined);

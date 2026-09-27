@@ -71,9 +71,6 @@ export function useFolderOperations(
   const { deleteGroup } = useDeleteGroup();
   const { setSubgroupVisibility } = useSetSubgroupVisibility();
   const { mero, nodeUrl } = useMero();
-  // Every caller (dialog, buttons, context menus) routes through this one
-  // function, so a rapid double-submit is deduped here instead of trusting
-  // each caller's own disabled-while-submitting state.
   const inFlightRef = useRef<Promise<string[]> | null>(null);
 
   const createInternal = useCallback(
@@ -257,8 +254,8 @@ export function useFolderOperations(
     ],
   );
 
-  // Dedupe concurrent calls onto the same in-flight promise so a rapid
-  // double-submit (double click, click + Enter) creates one folder, not two.
+  // Per hook instance, a concurrent call gets the first call's result (its
+  // own input is dropped), so a double submit creates one folder.
   const create = useCallback(
     (input: CreateFolderInput): Promise<string[]> => {
       if (inFlightRef.current) return inFlightRef.current;

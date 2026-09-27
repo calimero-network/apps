@@ -18,10 +18,10 @@
 //                                is the registry OWNER, because the contract
 //                                permits nobody else to write that list.
 //
-// Steps 2 and 3 are reported, not thrown, once step 1 has written. The role change has already landed
-// by then, and failing the whole call would tell the user nothing happened
-// when something did. `warnings` carries what did not get done, in the words
-// the user needs to act on it.
+// Steps 2 and 3 are reported, not thrown, once step 1 has written. The role
+// change has already landed by then, and failing the whole call would tell the
+// user nothing happened when something did. `warnings` carries what did not
+// get done, in the words the user needs to act on it.
 
 import { useCallback, useState } from 'react';
 import { useMero, useUpdateMemberRole } from '@calimero-network/mero-react';

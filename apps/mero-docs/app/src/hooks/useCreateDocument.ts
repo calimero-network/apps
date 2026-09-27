@@ -11,8 +11,8 @@ export function useCreateDocument(
 ) {
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Guards every caller (button, context menu, pending-then-expand flow) at
-  // the one place they all go through, so a double click can't create twice.
+  // Per hook instance: the sidebar row and empty-folder buttons each have
+  // their own guard, so pressing both at once still creates two.
   const inFlightRef = useRef(false);
 
   const create = useCallback(async () => {
