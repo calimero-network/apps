@@ -36,6 +36,7 @@ vi.mock('@calimero-network/mero-react', () => ({
     ageOf: () => undefined,
     error: null,
   }),
+  useMero: () => ({ mero: null }),
 }));
 vi.mock('@/hooks/useDriveWorkspace', () => ({
   useDriveWorkspace: () => ({

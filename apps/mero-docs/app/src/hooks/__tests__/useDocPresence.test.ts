@@ -1,4 +1,5 @@
-// `useEphemeral` is faked so a test can read every slice the hook publishes.
+// `useEphemeral` is faked so a test can read every slice the hook publishes,
+// and `mero.ephemeral.set` so it can read the leave sent when a doc closes.
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook } from '@testing-library/react';
@@ -10,8 +11,10 @@ const CARET = { blockId: null, anchor: 'a', head: 'b' };
 const NO_CARET = { blockId: null, anchor: '', head: '' };
 
 const setPresence = vi.fn();
+const set = vi.fn(async () => {});
 vi.mock('@calimero-network/mero-react', () => ({
   useEphemeral: () => ({ peers: new Map(), setPresence }),
+  useMero: () => ({ mero: { ephemeral: { set } } }),
 }));
 
 function render(name: string, doc = DOC) {
@@ -21,7 +24,10 @@ function render(name: string, doc = DOC) {
   );
 }
 
-beforeEach(() => setPresence.mockClear());
+beforeEach(() => {
+  setPresence.mockClear();
+  set.mockClear();
+});
 
 describe('useDocPresence', () => {
   it('announces itself under the current name before any caret exists', () => {
@@ -57,6 +63,22 @@ describe('useDocPresence', () => {
     rerender({ who: 'bob', id: 'doc-2' });
     expect(setPresence).toHaveBeenLastCalledWith(
       expect.objectContaining({ ...NO_CARET, docId: 'doc-2' }),
+    );
+  });
+
+  it('leaves when the doc closes, since the node replays the last slice', () => {
+    const { unmount } = render('bob');
+    expect(set).not.toHaveBeenCalled();
+    unmount();
+    expect(set).toHaveBeenCalledWith(CTX, {});
+  });
+
+  it('leaves the old doc before announcing the next one', () => {
+    const { rerender } = render('bob');
+    rerender({ who: 'bob', id: 'doc-2' });
+    expect(set).toHaveBeenCalledTimes(1);
+    expect(setPresence).toHaveBeenLastCalledWith(
+      expect.objectContaining({ docId: 'doc-2' }),
     );
   });
 

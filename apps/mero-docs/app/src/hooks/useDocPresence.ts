@@ -3,7 +3,7 @@
 // node keeps only the latest value an author wrote.
 
 import { useCallback, useEffect, useMemo, useRef } from 'react';
-import { useEphemeral } from '@calimero-network/mero-react';
+import { useEphemeral, useMero } from '@calimero-network/mero-react';
 import {
   peersOnDoc,
   presenceColour,
@@ -12,6 +12,7 @@ import {
 
 export const PRESENCE_THROTTLE_MS = 200; // bounds the burst while dragging
 const NO_CARET: CaretSlice = { blockId: null, anchor: '', head: '' }; // listed as here, drawn nowhere
+const LEAVE_SLICE = {}; // names no doc, so every reader drops the author
 
 /** Where the caret is: a null block is the title, anchors are bs58 tokens. */
 export interface CaretSlice {
@@ -33,6 +34,7 @@ export function useDocPresence(
   const { peers, setPresence } = useEphemeral<DocPresence>(contextId, {
     throttleMs: PRESENCE_THROTTLE_MS,
   });
+  const ephemeral = useMero().mero?.ephemeral;
   // Read through refs: the caller builds `identity` inline, and a publisher
   // whose identity churns every render re-runs every effect that holds it.
   const publishRef = useRef(setPresence);
@@ -66,6 +68,13 @@ export function useDocPresence(
     const last = lastCaretRef.current;
     publish(last?.docId === docId ? last.caret : NO_CARET);
   }, [name, docId, publish]);
+
+  // The node keeps replaying an author's last slice while it stays in the
+  // context, so closing a doc must say so or its readers see a ghost.
+  useEffect(() => {
+    if (!ephemeral || !contextId || !docId) return;
+    return () => void ephemeral.set(contextId, LEAVE_SLICE).catch(() => {});
+  }, [ephemeral, contextId, docId]);
 
   const onDoc = useMemo(
     () => peersOnDoc(peers, docId ?? ''),
