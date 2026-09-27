@@ -35,7 +35,7 @@
           }
         },
         {
-          "name": "created_at",
+          "name": "createdAt",
           "type": {
             "kind": "u64"
           }
@@ -47,7 +47,8 @@
             "items": {
               "$ref": "CommentReply"
             }
-          }
+          },
+          "doc": "Filled on read from `MeroDesign::replies`, and always stored empty: a\nreply is its own entry, so two replies posted at once both survive.\nKept in a `Vec` inside the comment they were whole-record LWW, and the\ncomment's clock never moved, so one of them was lost."
         }
       ]
     },
@@ -73,7 +74,7 @@
           }
         },
         {
-          "name": "created_at",
+          "name": "createdAt",
           "type": {
             "kind": "u64"
           }
@@ -87,7 +88,15 @@
           "name": "identity",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "The device this pointer belongs to — one per open window."
+        },
+        {
+          "name": "account",
+          "type": {
+            "kind": "string"
+          },
+          "doc": "The member (account) behind that device, read from the entry's owner\nstamp, so the overlay can label the pointer with a username."
         },
         {
           "name": "x",
@@ -102,7 +111,7 @@
           }
         },
         {
-          "name": "updated_at",
+          "name": "updatedAt",
           "type": {
             "kind": "u64"
           }
@@ -111,6 +120,7 @@
     },
     "Element": {
       "kind": "record",
+      "doc": "`layer_index` is indexed, so the stack in order, and its top and bottom,\nare seeks rather than a scan and sort.",
       "fields": [
         {
           "name": "id",
@@ -167,7 +177,7 @@
           }
         },
         {
-          "name": "stroke_width",
+          "name": "strokeWidth",
           "type": {
             "kind": "u32"
           }
@@ -179,52 +189,53 @@
           }
         },
         {
-          "name": "layer_index",
+          "name": "layerIndex",
           "type": {
             "kind": "u32"
           }
         },
         {
-          "name": "created_by",
+          "name": "createdBy",
           "type": {
             "kind": "string"
-          }
+          },
+          "doc": "Set by the contract from the caller, never taken from the client."
         },
         {
-          "name": "created_at",
+          "name": "createdAt",
           "type": {
             "kind": "u64"
           }
         },
         {
-          "name": "updated_at",
+          "name": "updatedAt",
           "type": {
             "kind": "u64"
           }
         },
         {
-          "name": "shadow_color",
+          "name": "shadowColor",
           "type": {
             "kind": "string"
           },
           "nullable": true
         },
         {
-          "name": "shadow_offset_x",
+          "name": "shadowOffsetX",
           "type": {
             "kind": "i32"
           },
           "nullable": true
         },
         {
-          "name": "shadow_offset_y",
+          "name": "shadowOffsetY",
           "type": {
             "kind": "i32"
           },
           "nullable": true
         },
         {
-          "name": "shadow_blur",
+          "name": "shadowBlur",
           "type": {
             "kind": "u32"
           },
@@ -238,11 +249,12 @@
           "nullable": true
         },
         {
-          "name": "corner_radius",
+          "name": "cornerRadius",
           "type": {
             "kind": "u32"
           },
-          "nullable": true
+          "nullable": true,
+          "doc": "Corner radius in px, clamped by the client to min(width, height) / 2."
         }
       ]
     },
@@ -250,48 +262,50 @@
       "kind": "variant",
       "variants": [
         {
-          "name": "Rect"
+          "name": "rect"
         },
         {
-          "name": "Circle"
+          "name": "circle"
         },
         {
-          "name": "Line",
+          "name": "line",
           "payload": {
             "$ref": "ElementData_Line"
-          }
+          },
+          "doc": "`points` is \"x1,y1 x2,y2\" in element-local space. A bounding box cannot\nexpress which way a line was drawn, so a line drawn bottom-left to\ntop-right came back mirrored. Defaulted so pre-existing elements and older\nclients that send a bare `{\"kind\":\"line\"}` still deserialize."
         },
         {
-          "name": "Arrow",
+          "name": "arrow",
           "payload": {
             "$ref": "ElementData_Arrow"
           }
         },
         {
-          "name": "Path",
+          "name": "path",
           "payload": {
             "$ref": "ElementData_Path"
           }
         },
         {
-          "name": "Text",
+          "name": "text",
           "payload": {
             "$ref": "ElementData_Text"
           }
         },
         {
-          "name": "Image",
+          "name": "image",
           "payload": {
             "$ref": "ElementData_Image"
           }
         },
         {
-          "name": "Svg",
+          "name": "svg",
           "payload": {
             "$ref": "ElementData_Svg"
           }
         }
-      ]
+      ],
+      "tag": "kind"
     },
     "ElementData_Arrow": {
       "kind": "record",
@@ -308,19 +322,19 @@
       "kind": "record",
       "fields": [
         {
-          "name": "natural_width",
+          "name": "naturalWidth",
           "type": {
             "kind": "u32"
           }
         },
         {
-          "name": "natural_height",
+          "name": "naturalHeight",
           "type": {
             "kind": "u32"
           }
         },
         {
-          "name": "blob_id",
+          "name": "blobId",
           "type": {
             "kind": "string"
           }
@@ -353,19 +367,19 @@
       "kind": "record",
       "fields": [
         {
-          "name": "natural_width",
+          "name": "naturalWidth",
           "type": {
             "kind": "u32"
           }
         },
         {
-          "name": "natural_height",
+          "name": "naturalHeight",
           "type": {
             "kind": "u32"
           }
         },
         {
-          "name": "blob_id",
+          "name": "blobId",
           "type": {
             "kind": "string"
           }
@@ -382,13 +396,13 @@
           }
         },
         {
-          "name": "font_size",
+          "name": "fontSize",
           "type": {
             "kind": "u32"
           }
         },
         {
-          "name": "font_family",
+          "name": "fontFamily",
           "type": {
             "kind": "string"
           }
@@ -409,13 +423,15 @@
           "name": "text_align",
           "type": {
             "kind": "string"
-          }
+          },
+          "nullable": true
         },
         {
           "name": "vertical_align",
           "type": {
             "kind": "string"
-          }
+          },
+          "nullable": true
         }
       ]
     },
@@ -442,16 +458,17 @@
           "nullable": true
         },
         {
-          "name": "joined_at",
+          "name": "joinedAt",
           "type": {
             "kind": "u64"
           }
         },
         {
-          "name": "username_updated_at",
+          "name": "usernameUpdatedAt",
           "type": {
             "kind": "u64"
-          }
+          },
+          "doc": "Dedicated LWW clock for username/avatar edits. Merging on `joined_at`\n(which never changes after the first join) would freeze a member's\nusername at its first value across nodes; this field is the real\nlast-writer-wins timestamp for profile edits."
         }
       ]
     },
@@ -495,7 +512,7 @@
           "type": {
             "kind": "record",
             "fields": [],
-            "crdt_type": "lww_register",
+            "crdt_type": "shared_storage",
             "inner_type": {
               "kind": "string"
             }
@@ -506,7 +523,7 @@
           "type": {
             "kind": "record",
             "fields": [],
-            "crdt_type": "lww_register",
+            "crdt_type": "shared_storage",
             "inner_type": {
               "kind": "string"
             }
@@ -515,15 +532,21 @@
         {
           "name": "elements",
           "type": {
-            "kind": "map",
-            "key": {
-              "kind": "string"
-            },
-            "value": {
-              "$ref": "Element"
-            },
-            "crdt_type": "unordered_map"
-          }
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "map",
+              "key": {
+                "kind": "string"
+              },
+              "value": {
+                "$ref": "Element"
+              },
+              "crdt_type": "unordered_map"
+            }
+          },
+          "doc": "The canvas. Writer-set guarded: only accounts holding a role mask\nprojected from `roles` (editors, admins) may write an entry, on every\nnode."
         },
         {
           "name": "members",
@@ -534,22 +557,47 @@
             },
             "value": {
               "$ref": "Member"
-            },
-            "crdt_type": "unordered_map"
-          }
+            }
+          },
+          "doc": "One slot per account, written only by that account."
         },
         {
           "name": "comments",
           "type": {
-            "kind": "map",
-            "key": {
-              "kind": "string"
-            },
-            "value": {
-              "$ref": "Comment"
-            },
-            "crdt_type": "unordered_map"
-          }
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "map",
+              "key": {
+                "kind": "string"
+              },
+              "value": {
+                "$ref": "Comment"
+              },
+              "crdt_type": "unordered_map"
+            }
+          },
+          "doc": "Guarded like `elements`."
+        },
+        {
+          "name": "replies",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "shared_storage",
+            "inner_type": {
+              "kind": "map",
+              "key": {
+                "kind": "string"
+              },
+              "value": {
+                "$ref": "CommentReply"
+              },
+              "crdt_type": "sorted_map"
+            }
+          },
+          "doc": "Every reply, keyed `\"<comment>/<created_at:020>/<reply>\"` so one\ncomment's thread is a prefix slice in order. Guarded like `elements`."
         },
         {
           "name": "cursors",
@@ -561,8 +609,9 @@
             "value": {
               "$ref": "CursorState"
             },
-            "crdt_type": "unordered_map"
-          }
+            "crdt_type": "authored_map"
+          },
+          "doc": "Keyed by DEVICE: a pointer belongs to a screen. Each entry is owned by\nthe account that wrote it."
         },
         {
           "name": "roles",
@@ -575,25 +624,6 @@
               "kind": "bool"
             },
             "crdt_type": "shared_storage"
-          }
-        },
-        {
-          "name": "accounts",
-          "type": {
-            "kind": "map",
-            "key": {
-              "kind": "string"
-            },
-            "value": {
-              "kind": "record",
-              "fields": [],
-              "crdt_type": "lww_register",
-              "inner_type": {
-                "kind": "bytes",
-                "size": 32
-              }
-            },
-            "crdt_type": "unordered_map"
           }
         }
       ]

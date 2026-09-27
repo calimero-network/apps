@@ -84,9 +84,8 @@ export default function SettingsModal({ type, id, groupId, name, onClose }: Prop
   // The board owner/admin (contract) may grant/revoke the editor role. The grant
   // is admin-gated at merge, so a non-admin's forged grant is rejected by peers.
   //
-  // `identity` is an ACCOUNT id — the only id this screen has. The contract
-  // resolves either form, but only for an account it has already recorded for a
-  // member, so a grant can never name someone the board has never seen.
+  // `identity` is an ACCOUNT id — the only id this screen has, and exactly what
+  // the contract's member ids and grants are keyed by.
   async function setEditor(identity: string, makeEditor: boolean) {
     setPendingEditor(identity);
     try {

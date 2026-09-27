@@ -6,7 +6,9 @@
 //   * `/groups/{id}/members` — the namespace roster, keyed by ACCOUNT id. This
 //     is the authorization subject, and the only id that screen ever holds.
 //   * the board contract (`list_roles` / `get_members`) — keyed by the board's
-//     device-scoped MEMBER id, which is what canvas elements are authored by.
+//     MEMBER id. That used to be a device-scoped key; it is now the ACCOUNT
+//     too (the device→account table it was resolved through was writable by
+//     any member, and so could be poisoned), so `member` and `account` agree.
 //
 // Since rc.27 both are 64 hex characters, so comparing one to the other is not
 // a type error and never throws — it simply never matches. That is exactly how
@@ -18,10 +20,10 @@
 
 /** A row of the contract's `list_roles`. */
 export interface ContractRoleRow {
-  /** Board-scoped device key. */
+  /** The member's account. */
   member: string;
   role: string;
-  /** Authorization subject; null until the member has written to the board. */
+  /** Authorization subject — the same account as `member`. */
   account?: string | null;
 }
 
@@ -42,10 +44,8 @@ export interface IndexedBoardMembers {
  * Re-key the contract's two member views by account, so a namespace member row
  * can find its board username and canvas role.
  *
- * A member with no account yet — someone who joined but has never written, so
- * the contract has no device→account pairing for them — is keyed by member id
- * instead of dropped. Nothing on the namespace list will match it, which is
- * correct: that member genuinely cannot be named in a grant yet.
+ * A row with no `account` (an older contract) is keyed by member id instead
+ * of dropped.
  */
 /** A row of the namespace roster, which is account-keyed. */
 export interface RosterRow {
