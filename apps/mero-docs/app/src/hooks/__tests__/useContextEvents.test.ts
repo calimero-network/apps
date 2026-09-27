@@ -125,6 +125,25 @@ describe('useContextEvents', () => {
     expect(onChange).toHaveBeenCalledTimes(2);
   });
 
+  it('names the context that fired, so a caller can refresh just that one', () => {
+    const onChange = vi.fn();
+    renderHook(() =>
+      useContextEvents(['ctx-a', 'ctx-b'], onChange, { strict: true }),
+    );
+    fire('ctx-b');
+    expect(onChange).toHaveBeenLastCalledWith('ctx-b');
+  });
+
+  it('names no context after a reconnect, since anything may have changed', () => {
+    vi.useFakeTimers();
+    const onChange = vi.fn();
+    renderHook(() => useContextEvents(['ctx-a'], onChange, { strict: true }));
+    reconnect();
+    vi.advanceTimersByTime(500);
+    vi.useRealTimers();
+    expect(onChange).toHaveBeenCalledWith();
+  });
+
   it('still subscribes to the same context ids in strict mode', () => {
     renderHook(() =>
       useContextEvents(['ctx-a', 'ctx-b'], vi.fn(), { strict: true }),

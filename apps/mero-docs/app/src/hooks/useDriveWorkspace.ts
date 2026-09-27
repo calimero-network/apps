@@ -925,6 +925,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
         parent_id: f.parent_id ?? null,
         color: f.color ?? null,
         alias: f.alias ?? null,
+        context_id: f.context_id ?? null,
       }));
       // Keep the previous array identity when the fetched content is
       // byte-identical, so the `folders`/`allFolderNodes` memos (and the

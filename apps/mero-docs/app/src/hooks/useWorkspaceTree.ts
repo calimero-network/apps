@@ -31,6 +31,8 @@ export interface RegistryFolderShape {
   /** Copy of the group name, readable by members who can't read a restricted
    *  folder's metadata; null for folders created before it was written. */
   alias?: string | null;
+  /** The folder's docs context; null until its binding reaches this node. */
+  context_id?: string | null;
 }
 
 export interface MergedFolder {

@@ -99,7 +99,8 @@ export function useContextEvents(
     | string
     | null
     | undefined,
-  onChange: () => void,
+  // Names the context that fired; none after a reconnect or a debounced burst.
+  onChange: (contextId?: string) => void,
   options?: UseContextEventsOptions,
 ): void {
   // Computing on every render is cheap (≤ a handful of strings) and lets
@@ -139,7 +140,7 @@ export function useContextEvents(
       if (sync?.phase === 'syncing' || sync?.phase === 'receivingSnapshot')
         return;
       if (debounceMs <= 0) {
-        onChange();
+        onChange(event.contextId);
         return;
       }
       if (timerRef.current) clearTimeout(timerRef.current);

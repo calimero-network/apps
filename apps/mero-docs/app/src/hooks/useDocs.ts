@@ -65,7 +65,7 @@ export interface UseDocsState {
 // the explicit notification trigger a refetch — refetch itself is
 // guarded by inFlightRef so duplicate triggers collapse to one fetch.
 const docsRefetchersByContext = new Map<string, Set<() => void>>();
-function subscribeDocsRefetch(contextId: string, fn: () => void): () => void {
+export function subscribeDocsRefetch(contextId: string, fn: () => void): () => void {
   let bucket = docsRefetchersByContext.get(contextId);
   if (!bucket) {
     bucket = new Set();
@@ -79,7 +79,7 @@ function subscribeDocsRefetch(contextId: string, fn: () => void): () => void {
     }
   };
 }
-function notifyDocsRefetch(contextId: string | null) {
+export function notifyDocsRefetch(contextId: string | null) {
   if (!contextId) return;
   const bucket = docsRefetchersByContext.get(contextId);
   if (!bucket) return;
@@ -124,6 +124,29 @@ function isMissingOwnedIdentityError(err: unknown): boolean {
   return /no owned identity/i.test(parts.join(' | '));
 }
 
+/** A folder's docs, joining its docs context when this node has no identity there
+ *  yet; `joined` holds contexts already tried, so a second miss is an error. */
+export async function listDocsJoining(
+  client: DocsClient,
+  contextId: string | null,
+  includeArchived: boolean,
+  join: (contextId: string) => Promise<unknown>,
+  joined: Set<string>,
+): Promise<DocDto[]> {
+  try {
+    return await client.listDocs({ include_archived: includeArchived });
+  } catch (e) {
+    // A node can be a folder-SUBGROUP member without an owned identity in the
+    // docs CONTEXT: core's join-via-inheritance is subgroup-scoped.
+    if (!contextId || joined.has(contextId) || !isMissingOwnedIdentityError(e))
+      throw e;
+    joined.add(contextId);
+    console.warn('[useDocs] no owned identity in docs context; joining', contextId);
+    await healContext(contextId, join);
+    return client.listDocs({ include_archived: includeArchived });
+  }
+}
+
 export interface UseDocsOptions {
   /** Include archived docs in `list`, for an existence check, not display. */
   includeArchived?: boolean;
@@ -140,9 +163,9 @@ export function useDocs(
   // returned fn isn't guaranteed stable, and `refetch` feeds an effect.
   const joinContextRef = useRef(joinContext);
   joinContextRef.current = joinContext;
-  // Caps the docs-context self-heal at one attempt per context (see
-  // `refetch`) so a persistently-failing join can't loop.
-  const healedContextRef = useRef<string | null>(null);
+  // Caps the docs-context self-heal at one attempt per context, so a
+  // persistently-failing join can't loop.
+  const healedContextsRef = useRef(new Set<string>());
 
   const [contextId, setContextId] = useState<string | null>(null);
   const [resolveError, setResolveError] = useState<Error | null>(null);
@@ -239,42 +262,13 @@ export function useDocs(
     const readList = async () => {
       setListError(null);
       try {
-        let result: DocDto[];
-        try {
-          result = await docsClient.listDocs({ include_archived: includeArchived });
-        } catch (e) {
-          // Self-heal. A node can be a folder-SUBGROUP member without an
-          // owned identity in the docs CONTEXT: core's join-via-
-          // inheritance is subgroup-scoped and never provisions a
-          // child-context `ContextIdentity` (see RestrictedFolderCard +
-          // core `join_context.rs`). RestrictedFolderCard joins the
-          // context proactively, but that card only renders for non-
-          // members — a node that became a subgroup member by any other
-          // path (or before that card existed) has no way to trigger the
-          // context join. So when `list_docs` reports the missing
-          // identity, join the docs context once and retry. core's
-          // join_context persists the identity, so this heal runs at
-          // most once per context per node, ever.
-          if (
-            contextId &&
-            healedContextRef.current !== contextId &&
-            isMissingOwnedIdentityError(e)
-          ) {
-            healedContextRef.current = contextId;
-            // One-time recovery breadcrumb. If `joinContext` throws it
-            // propagates to the outer catch and surfaces as `error`,
-            // same as any other list failure.
-            console.warn(
-              '[useDocs] docs context has no owned identity — ' +
-                'self-healing via joinContext',
-              contextId,
-            );
-            await healContext(contextId, joinContextRef.current);
-            result = await docsClient.listDocs({ include_archived: includeArchived });
-          } else {
-            throw e;
-          }
-        }
+        const result = await listDocsJoining(
+          docsClient,
+          contextId,
+          includeArchived,
+          joinContextRef.current,
+          healedContextsRef.current,
+        );
         if (stale()) return;
         // Sort most-recent first so the list's default cursor lands
         // on what the user likely wants to read.
