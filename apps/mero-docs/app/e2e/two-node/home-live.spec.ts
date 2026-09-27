@@ -18,7 +18,7 @@ test.describe('Home live (two-node)', () => {
 
     await bob.joinNamespace(inviteUrl);
     await bob.tree.openFolder('Shared');
-    await bob.restrictedCard.joinIfPrompted();
+    await bob.restrictedCard.joinIfPrompted('Shared');
     await bob.createDoc('From Bob');
 
     await expect(alice.home.row('From Bob')).toBeVisible({ timeout: 60_000 });
@@ -41,7 +41,7 @@ test.describe('Home live (two-node)', () => {
 
     await bob.joinNamespace(inviteUrl);
     await bob.tree.openFolder('Room');
-    await bob.restrictedCard.joinIfPrompted();
+    await bob.restrictedCard.joinIfPrompted('Room');
     await bob.openDoc('Together');
 
     const row = alice.home.row('Together');

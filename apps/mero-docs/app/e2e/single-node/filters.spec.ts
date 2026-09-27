@@ -37,23 +37,23 @@ test.describe('Home filters (single-node)', () => {
     await expect(
       page.getByRole('radiogroup', { name: 'Updated' }),
     ).toBeHidden();
-    expect(searchOf(page)).toContain('updated=1d');
+    await expect.poll(() => searchOf(page)).toContain('updated=1d');
     await home.expectTitles(['Brand']);
 
     await home.chip('Created by').click();
     await page.getByRole('checkbox', { name: /^You/ }).click();
     await page.keyboard.press('Escape');
-    expect(searchOf(page)).toContain('by=');
+    await expect.poll(() => searchOf(page)).toContain('by=');
     await expect(home.chip('Created by: You')).toBeVisible();
 
     await home.chip('Archived').click();
-    expect(searchOf(page)).toContain('archived=true');
+    await expect.poll(() => searchOf(page)).toContain('archived=true');
     await expect(
       page.getByRole('heading', { name: 'No documents match these filters' }),
     ).toBeVisible();
 
     await home.chip('Clear').click();
-    expect(searchOf(page)).toBe('');
+    await expect.poll(() => searchOf(page)).toBe('');
     await home.expectTitles(['Brand', 'Roadmap']);
   });
 
@@ -76,7 +76,9 @@ test.describe('Home filters (single-node)', () => {
       },
     );
     await expect(
-      fresh.getByRole('main').getByRole('button', { name: 'Folder: Product' }),
+      fresh
+        .getByRole('main')
+        .getByRole('button', { name: 'Folder: Product', exact: true }),
     ).toBeVisible();
     await fresh.close();
   });
@@ -93,11 +95,11 @@ test.describe('Home filters (single-node)', () => {
     await home.expectTitles(['Roadmap', 'Brand']);
 
     await home.chip('Sort: Last updated').click();
-    expect(searchOf(page)).toBe('?sort=name');
+    await expect.poll(() => searchOf(page)).toBe('?sort=name');
     await home.expectTitles(['Brand', 'Roadmap']);
 
     await home.chip('Sort: Name').click();
-    expect(searchOf(page)).toBe('?sort=created');
+    await expect.poll(() => searchOf(page)).toBe('?sort=created');
     await home.expectTitles(['Brand', 'Roadmap']);
 
     await page.reload();

@@ -56,7 +56,7 @@ test.describe('Open folder inheritance (two-node)', () => {
     await bob.tree.expectFolderVisible('OpenSpace', { timeout: 60_000 });
 
     await bob.tree.openFolder('OpenSpace');
-    await bob.restrictedCard.joinIfPrompted();
+    await bob.restrictedCard.joinIfPrompted('OpenSpace');
 
     // Bob can see Alice's doc (the docs-context CRDT replicated to
     // his node through the inherited membership).
@@ -83,7 +83,7 @@ test.describe('Open folder inheritance (two-node)', () => {
     await bob.tree.expectFolderVisible('Specs', { timeout: 60_000 });
 
     await bob.tree.openFolder('Specs');
-    await bob.restrictedCard.joinIfPrompted();
+    await bob.restrictedCard.joinIfPrompted('Specs');
 
     await bob.docs.expectDocVisible('Alpha');
 
@@ -129,7 +129,7 @@ test.describe('Open folder inheritance (two-node)', () => {
 
     await bob.tree.openFolder('Wire');
     await bob.restrictedCard.expectJoinCTA();
-    await bob.restrictedCard.joinIfPrompted();
+    await bob.restrictedCard.joinIfPrompted('Wire');
 
     expect(calledJoinInheritance).toBe(true);
   });

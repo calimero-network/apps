@@ -23,7 +23,7 @@ test.describe('Visibility toggle (two-node)', () => {
     await bob.joinNamespace(inviteUrl);
     await bob.tree.expectFolderVisible('Mutable', { timeout: 60_000 });
     await bob.tree.openFolder('Mutable');
-    await bob.restrictedCard.joinIfPrompted();
+    await bob.restrictedCard.joinIfPrompted('Mutable');
     await bob.docs.expectDocVisible('Visible Doc');
 
     // Alice: flip to Restricted.
@@ -57,7 +57,7 @@ test.describe('Visibility toggle (two-node)', () => {
     // Bob inherits the now-Open folder, so it and its docs appear.
     await bob.tree.expectFolderVisible('Liberating', { timeout: 60_000 });
     await bob.tree.openFolder('Liberating');
-    await bob.restrictedCard.joinIfPrompted();
+    await bob.restrictedCard.joinIfPrompted('Liberating');
     await bob.docs.expectDocVisible('Future Public', { timeout: 60_000 });
   });
 

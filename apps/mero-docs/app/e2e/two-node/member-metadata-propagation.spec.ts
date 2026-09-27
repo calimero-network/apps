@@ -83,7 +83,7 @@ test.describe('Member metadata propagation (two-node)', () => {
 
     await bob.joinNamespace(inviteUrl);
     await bob.tree.openFolder('Room');
-    await bob.restrictedCard.joinIfPrompted();
+    await bob.restrictedCard.joinIfPrompted('Room');
     await bob.openDoc('Together');
     await alice.openDoc('Together');
     await alice.editor.type('hi');

@@ -405,10 +405,13 @@ export class RestrictedCardDriver {
 
   // Core auto-follow usually joins an inherited Open folder before this card can
   // render, so click Join only when the card is up, then wait for the folder view.
-  async joinIfPrompted(opts: { timeout?: number } = {}): Promise<void> {
+  async joinIfPrompted(
+    folderName: string,
+    opts: { timeout?: number } = {},
+  ): Promise<void> {
     const main = this.page.getByRole('main');
     // The folder's own list is headed by its name; the card and waits never use h1.
-    const folderView = main.getByRole('heading', { level: 1 });
+    const folderView = main.getByRole('heading', { level: 1, name: folderName });
     const join = main.getByRole('button', {
       name: /^(Join folder|Try joining)$/,
     });

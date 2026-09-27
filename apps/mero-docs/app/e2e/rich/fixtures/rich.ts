@@ -97,7 +97,7 @@ export class RichRig {
     const window = await this.open(node);
     await window.ws.tree.expectFolderVisible(this.folder, { timeout: 120_000 });
     await window.ws.tree.openFolder(this.folder);
-    await window.ws.restrictedCard.joinIfPrompted();
+    await window.ws.restrictedCard.joinIfPrompted(this.folder);
     // By id, not title: a scenario may have renamed the document by now.
     const row = window.page.locator(`[data-testid="doc-row"][data-doc-id="${this.doc.docId}"]`);
     await expect(row).toBeVisible({ timeout: 120_000 });

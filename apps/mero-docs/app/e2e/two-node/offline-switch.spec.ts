@@ -57,7 +57,7 @@ test.describe('Rig offline switch (two-node)', () => {
 
     await bob.joinNamespace(inviteUrl);
     await bob.tree.openFolder('Pad');
-    await bob.restrictedCard.joinIfPrompted();
+    await bob.restrictedCard.joinIfPrompted('Pad');
     await bob.docs.expectDocVisible('Switch', { timeout: 60_000 });
     await bob.openDoc('Switch');
 
