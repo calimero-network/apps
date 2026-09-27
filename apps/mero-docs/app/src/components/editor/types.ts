@@ -1,6 +1,4 @@
-// Editor status shared between EditorShell (producer — drives the UI
-// state machine in Phase 8's DocumentEditor) and EditorStatusBar
-// (consumer — renders the dot + label). Lives in a tiny shared file
-// so the status bar doesn't need to import the shell.
+// Save status shared by EditorShell (producer) and EditorStatusBar (consumer);
+// its own file so the status bar never has to import the shell.
 
 export type SaveStatus = 'saved' | 'saving' | 'unsaved' | 'error' | 'offline';

@@ -305,11 +305,8 @@ export function useFolderOperations(
       // deleted after all of its children.
       const victims = [...descendantsOf(tree, folderId), folderId];
       for (const id of victims) {
-        // Fetch the bound docs context BEFORE unregistering, because
-        // unregister removes the folder-context binding and we lose
-        // the handle. Folders without a bound context (shouldn't
-        // happen after Phase 7's create path but tolerated during
-        // migration) return null and skip the context delete.
+        // Read the bound docs context before unregistering drops the binding.
+        // A folder with no binding (older data) returns null and skips it.
         const boundContextId = await registryClient
           .getFolderContext({ folder_id: FolderId(id) })
           .catch(() => null);

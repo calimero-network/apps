@@ -3,10 +3,6 @@
 // permission hook — the dropdown only renders items the caller
 // actually has rights to use.
 //
-// Delete uses a confirm() prompt as a minimal guard for this phase;
-// a dedicated confirm dialog component is deferred to Phase 8-C
-// along with the sharing panel.
-//
 // Rename flows through a parent-supplied callback because the
 // inline-edit UI lives on FolderTreeItem (switches the row from
 // text to input in place). This component owns the "open rename"

@@ -1,9 +1,5 @@
-// Root of the app. Mirrors battleships' App.tsx shape exactly: a
-// single MeroProvider at the top, then the UI-level providers, then
-// the router. No session-timeout logic here — the per-page guard in
-// pages/workspace/index.tsx handles the "not authenticated" branch,
-// and Phase 3's useDriveWorkspace owns any cache invalidation on
-// namespace switch / logout.
+// Root of the app: MeroProvider, then the UI providers, then the router. Auth
+// is guarded by the workspace page; useDriveWorkspace owns cache invalidation.
 //
 // Env vars consumed:
 //   VITE_PACKAGE_NAME    — passed to MeroProvider so the OAuth flow

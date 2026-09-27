@@ -1,6 +1,5 @@
-// Shared input validators for folder / namespace UIs. Keeping these
-// in one place so the create + rename flows enforce identical rules
-// and can't drift — Bugbot caught one such drift risk on Phase 8-B.
+// Shared input validators for folder / namespace UIs, kept in one place so
+// the create and rename flows enforce identical rules and cannot drift.
 
 // Allowlist of CSS color strings we're willing to pass into inline
 // style. folder.color ultimately comes from registry WASM state

@@ -118,15 +118,8 @@ export function useMemberCaps(
     debounceMs: 400,
   });
 
-  // Track the last (groupId, memberId) we kicked off a fetch for.
-  // When those genuinely change, the previous caps are stale and we
-  // reset to null so callers don't briefly read another group's
-  // state. When they stay the same (a tick bump from
-  // useContextEvents / external refetch()), we keep the prior value
-  // visible while the refetch is in flight — otherwise every
-  // unrelated event flickers permission-gated UI through
-  // disabled→enabled, which Bugbot caught as the "Registry SSE
-  // drops edit permission" regression.
+  // Reset caps to null only when (groupId, memberId) really change; a plain
+  // refetch keeps the prior value, or every SSE tick flickers gated UI off/on.
   const lastIdsRef = useRef<{ groupId: string; memberId: string } | null>(null);
 
   useEffect(() => {
