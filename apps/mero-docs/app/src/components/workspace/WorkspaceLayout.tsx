@@ -24,7 +24,6 @@ import React, {
 } from 'react';
 import { Settings, LogOut, Circle, PanelLeft } from 'lucide-react';
 import { useMero } from '@calimero-network/mero-react';
-import { useMediaQuery } from '@mantine/hooks';
 import { LogoWithText } from '@/components/icons/Logo';
 import { Button } from '@/components/ui/button';
 import { NamespaceSwitcher } from './NamespaceSwitcher';
@@ -36,6 +35,7 @@ import { FolderEmptyState } from './FolderEmptyState';
 import { EmptyState } from '@/components/ui/empty-state';
 import { SelectFolderState } from '@/components/folders/NoFolderStates';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { usePublishWorkspacePresence } from '@/hooks/useWorkspacePresence';
 import type { SyncSnapshot } from '@/hooks/useSyncStatus';
@@ -115,9 +115,7 @@ export function WorkspaceLayout() {
     false,
   );
   // Read synchronously so a phone never mounts the inline sidebar first.
-  const isDesktop = useMediaQuery(MD_QUERY, undefined, {
-    getInitialValueInEffect: false,
-  });
+  const isDesktop = useMediaQuery(MD_QUERY);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const sidebarShown = isDesktop ? !sidebarCollapsed : drawerOpen;
   // The drawer is phone-only, so a trip through a wide screen must not bring it back.
