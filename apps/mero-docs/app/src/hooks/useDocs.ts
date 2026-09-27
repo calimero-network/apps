@@ -14,6 +14,7 @@
 // Caller patterns:
 //   const docs = useDocs(folderId);
 //   const byId = useMemo(() => new Map(docs.list.map(d => [d.id, d])), [docs.list]);
+//   const forExistence = useDocs(folderId, { includeArchived: true });
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useJoinContext } from '@calimero-network/mero-react';
@@ -35,9 +36,13 @@ export interface UseDocsState {
    *  show a syncing message) from "folder genuinely has no binding"
    *  (legacy / unbound state, show the static empty copy). */
   contextResolving: boolean;
-  /** Non-archived docs in the folder (sorted by updated_at desc). */
+  /** Docs in the folder (archived excluded unless requested), sorted by
+   *  updated_at desc. */
   list: DocDto[];
   loading: boolean;
+  /** True once `list` is a completed read for the current folder (a genuine
+   *  empty binding, or a successful listDocs); false on a switch or error. */
+  listed: boolean;
   error: Error | null;
   refetch: () => Promise<void>;
   create: (input: { title: string }) => Promise<string>;
@@ -104,7 +109,16 @@ function isMissingOwnedIdentityError(err: unknown): boolean {
   return /no owned identity/i.test(parts.join(' | '));
 }
 
-export function useDocs(folderId: string | null): UseDocsState {
+export interface UseDocsOptions {
+  /** Include archived docs in `list`, for an existence check, not display. */
+  includeArchived?: boolean;
+}
+
+export function useDocs(
+  folderId: string | null,
+  opts?: UseDocsOptions,
+): UseDocsState {
+  const includeArchived = !!opts?.includeArchived;
   const { registryClient, selfIdentity: identity } = useDriveWorkspace();
   const { joinContext } = useJoinContext();
   // Ref-captured so it isn't a `refetch` dependency — useJoinContext's
@@ -171,6 +185,12 @@ export function useDocs(folderId: string | null): UseDocsState {
   const [list, setList] = useState<DocDto[]>([]);
   const [listLoading, setListLoading] = useState<boolean>(true);
   const [listError, setListError] = useState<Error | null>(null);
+  // The client `list` reflects a completed read for, or 'none' for a
+  // confirmed unbound folder; a folder switch hands a new client before
+  // `list` is overwritten, so a raw `!loading` alone is not enough.
+  const [listedFor, setListedFor] = useState<DocsClient | 'none' | null>(
+    null,
+  );
   // Guards `refetch` from double-fetching under Strict Mode
   // double-mount + useDocEvents firing on the same tick.
   const inFlightRef = useRef(false);
@@ -179,9 +199,14 @@ export function useDocs(folderId: string | null): UseDocsState {
   const lastListSigRef = useRef<string>('');
 
   const refetch = useCallback(async () => {
+    // The context read is still in flight; settling `list` now would be
+    // reporting on the PREVIOUS folder's client, not this one's.
+    if (contextResolving) return;
     if (!docsClient) {
       setList([]);
       setListLoading(false);
+      // A resolution error is not a confirmed "no docs"; leave unlisted.
+      if (!resolveError) setListedFor('none');
       return;
     }
     if (inFlightRef.current) return;
@@ -190,7 +215,7 @@ export function useDocs(folderId: string | null): UseDocsState {
     try {
       let result: DocDto[];
       try {
-        result = await docsClient.listDocs({ include_archived: false });
+        result = await docsClient.listDocs({ include_archived: includeArchived });
       } catch (e) {
         // Self-heal. A node can be a folder-SUBGROUP member without an
         // owned identity in the docs CONTEXT: core's join-via-
@@ -219,7 +244,7 @@ export function useDocs(folderId: string | null): UseDocsState {
             contextId,
           );
           await joinContextRef.current(contextId);
-          result = await docsClient.listDocs({ include_archived: false });
+          result = await docsClient.listDocs({ include_archived: includeArchived });
         } else {
           throw e;
         }
@@ -243,14 +268,17 @@ export function useDocs(folderId: string | null): UseDocsState {
         setList(result);
       }
       setListLoading(false);
+      setListedFor(docsClient);
     } catch (e: unknown) {
+      // A failed read leaves `listedFor` as-is: a prior success for this
+      // same client still stands; otherwise this stays unlisted.
       const err = e instanceof Error ? e : new Error(String(e));
       setListError(err);
       setListLoading(false);
     } finally {
       inFlightRef.current = false;
     }
-  }, [docsClient, contextId]);
+  }, [docsClient, contextId, contextResolving, resolveError, includeArchived]);
 
   useEffect(() => {
     setListLoading(true);
@@ -340,11 +368,16 @@ export function useDocs(folderId: string | null): UseDocsState {
     [docsClient, refetch, contextId],
   );
 
+  const listed = docsClient
+    ? listedFor === docsClient
+    : listedFor === 'none';
+
   return {
     contextId,
     contextResolving,
     list,
     loading: listLoading,
+    listed,
     error: resolveError ?? listError,
     refetch,
     create,

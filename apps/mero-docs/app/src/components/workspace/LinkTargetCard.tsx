@@ -1,10 +1,7 @@
-// Card for a routed URL this node can't currently open: a restricted
-// folder, a deleted or unknown target, or a workspace it isn't in. Reuses
-// RestrictedFolderCard's shell — that card is for a folder still visible in
-// the tree but not yet joined; this one is for a link that resolves to
-// nothing the caller can see at all.
+// Card for a routed URL this node can't open at all. RestrictedFolderCard
+// covers a folder still visible in the tree but not yet joined.
 
-import { Lock, Home, Copy } from 'lucide-react';
+import { Lock, FileX2, DoorOpen, Home, Copy } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { copyLink } from '@/lib/copyLink';
 import type { LinkTarget } from '@/lib/linkTarget';
@@ -13,8 +10,16 @@ const RESTRICTED_FOLDER_FALLBACK = 'a restricted folder'; // no alias known for 
 
 export type LinkTargetCardKind = Exclude<LinkTarget, 'ok' | 'syncing'>;
 
+const ICONS = {
+  'no-access': Lock,
+  deleted: FileX2,
+  'not-in-workspace': DoorOpen,
+};
+
 interface Props {
   kind: LinkTargetCardKind;
+  /** For 'deleted': whether the folder itself is gone, or just the doc in it. */
+  deletedKind?: 'folder' | 'doc';
   /** Folder name for the 'no-access' copy; falls back when unknown. */
   folderName?: string | null;
   onGoHome: () => void;
@@ -23,21 +28,28 @@ interface Props {
 
 function copyFor(
   kind: LinkTargetCardKind,
+  deletedKind: 'folder' | 'doc',
   folderName?: string | null,
 ): { title: string; body: string } {
   switch (kind) {
     case 'no-access': {
-      const name = folderName?.trim() || RESTRICTED_FOLDER_FALLBACK;
+      const name = folderName?.trim();
+      const subject = name || 'This folder';
       return {
-        title: `This document is in ${name}`,
-        body: 'Ask a folder manager to add you, then open this link again.',
+        title: `This document is in ${name || RESTRICTED_FOLDER_FALLBACK}`,
+        body: `${subject} is a restricted folder, and you are not a member yet. Ask a folder manager to add you, then open this link again.`,
       };
     }
     case 'deleted':
-      return {
-        title: 'This document was deleted or moved',
-        body: "It's no longer at this link.",
-      };
+      return deletedKind === 'folder'
+        ? {
+            title: 'This folder was deleted or moved',
+            body: "It's no longer at this link.",
+          }
+        : {
+            title: 'This document was deleted or moved',
+            body: "It's no longer at this link.",
+          };
     case 'not-in-workspace':
       return {
         title: 'You are not in this workspace',
@@ -46,13 +58,20 @@ function copyFor(
   }
 }
 
-export function LinkTargetCard({ kind, folderName, onGoHome, linkUrl }: Props) {
-  const { title, body } = copyFor(kind, folderName);
+export function LinkTargetCard({
+  kind,
+  deletedKind = 'doc',
+  folderName,
+  onGoHome,
+  linkUrl,
+}: Props) {
+  const { title, body } = copyFor(kind, deletedKind, folderName);
+  const Icon = ICONS[kind];
   return (
-    <div className="mx-auto max-w-xl rounded-lg border border-border bg-card p-6">
+    <div className="w-full max-w-xl rounded-lg border border-border bg-card p-6">
       <div className="flex items-start gap-3">
         <div className="mt-0.5 rounded-md bg-muted p-2 text-muted-foreground">
-          <Lock className="h-4 w-4" />
+          <Icon className="h-4 w-4" />
         </div>
         <div className="flex-1">
           <h3 className="text-sm font-semibold text-foreground">{title}</h3>

@@ -1,6 +1,6 @@
 // A link into a restricted folder shows a card naming it instead of
 // silently dropping the visitor on Home; the same link opens the doc once
-// the folder owner adds them (R-06, R-07).
+// the folder owner adds them.
 
 import { test, expect } from '../fixtures/two-user';
 
@@ -31,7 +31,7 @@ test.describe('Deep link into a restricted folder (two-node)', () => {
     ).toBeVisible({ timeout: 30_000 });
     await expect(
       bob.page.getByText(
-        'Ask a folder manager to add you, then open this link again.',
+        'Finance is a restricted folder, and you are not a member yet. Ask a folder manager to add you, then open this link again.',
       ),
     ).toBeVisible();
 

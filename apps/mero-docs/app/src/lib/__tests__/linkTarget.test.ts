@@ -11,8 +11,10 @@ const folder = (id: string, alias?: string | null) => ({
 const NONE = new Set<string>();
 
 const base = {
+  justJoinedWorkspace: false,
   namespaceIds: ['ws'],
   folderRegistry: [folder('f1', 'Finance')],
+  resolvedFolderIds: new Set(['f1']),
   hiddenFolderIds: NONE,
   docs: [{ id: 'doc-1' }],
 };
@@ -38,12 +40,23 @@ describe('resolveLinkTarget', () => {
     ).toBe('ok');
   });
 
+  it('is syncing, not not-in-workspace, for a workspace just joined and not yet listed', () => {
+    expect(
+      resolveLinkTarget({
+        ...base,
+        justJoinedWorkspace: true,
+        namespaceIds: ['ws'],
+        route: { ws: 'other' },
+      }),
+    ).toBe('syncing');
+  });
+
   it('is ok for a folder route once the folder resolves', () => {
     const route: AppRoute = { ws: 'ws', folder: 'f1' };
     expect(resolveLinkTarget({ ...base, route })).toBe('ok');
   });
 
-  it('is syncing for a folder route before the folder list has loaded — never a false deleted', () => {
+  it('is syncing for a folder route before the folder list has loaded, never a false deleted', () => {
     const route: AppRoute = { ws: 'ws', folder: 'f1' };
     expect(
       resolveLinkTarget({ ...base, folderRegistry: null, route }),
@@ -55,7 +68,14 @@ describe('resolveLinkTarget', () => {
     expect(resolveLinkTarget({ ...base, route })).toBe('deleted');
   });
 
-  it('is no-access when the folder is registered but hidden from this caller', () => {
+  it('is syncing when the folder exists but its access has not resolved yet, never a false no-access or deleted', () => {
+    const route: AppRoute = { ws: 'ws', folder: 'f1' };
+    expect(
+      resolveLinkTarget({ ...base, resolvedFolderIds: NONE, route }),
+    ).toBe('syncing');
+  });
+
+  it('is no-access when the folder is registered, resolved and hidden from this caller', () => {
     const route: AppRoute = { ws: 'ws', folder: 'f1' };
     expect(
       resolveLinkTarget({ ...base, hiddenFolderIds: new Set(['f1']), route }),
@@ -67,14 +87,25 @@ describe('resolveLinkTarget', () => {
     expect(resolveLinkTarget({ ...base, route })).toBe('ok');
   });
 
-  it('is syncing for a doc route before the docs list has loaded — never a false deleted', () => {
+  it('is syncing for a doc route before the docs list has loaded, never a false deleted', () => {
     const route: AppRoute = { ws: 'ws', folder: 'f1', doc: 'doc-1' };
     expect(resolveLinkTarget({ ...base, docs: null, route })).toBe('syncing');
   });
 
-  it('is deleted when the doc is not in the loaded list', () => {
+  it('is deleted when the doc is not in the loaded list, archived docs included', () => {
     const route: AppRoute = { ws: 'ws', folder: 'f1', doc: 'gone' };
     expect(resolveLinkTarget({ ...base, route })).toBe('deleted');
+  });
+
+  it('is ok for an archived doc, as long as it is present in the loaded list', () => {
+    const route: AppRoute = { ws: 'ws', folder: 'f1', doc: 'archived-1' };
+    expect(
+      resolveLinkTarget({
+        ...base,
+        docs: [{ id: 'archived-1' }],
+        route,
+      }),
+    ).toBe('ok');
   });
 
   it('judges no-access before ever looking at the doc', () => {

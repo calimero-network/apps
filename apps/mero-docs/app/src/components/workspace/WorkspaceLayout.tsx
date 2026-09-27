@@ -64,11 +64,14 @@ export function WorkspaceLayout() {
   const {
     namespaceId,
     namespaces,
+    namespacesLoading,
+    isJustJoined,
     registryContextId,
     selectedFolderId,
     setSelectedFolder,
     folders,
     registryFolders,
+    resolvedFolderIds,
     hiddenFolderIds,
     selfIdentity,
     stage,
@@ -118,53 +121,70 @@ export function WorkspaceLayout() {
   const showSettings = !!route?.settings;
   const navigate = useNavigate();
 
-  // Workspace ids this node belongs to, null while that list hasn't loaded —
-  // an empty read must never read as "you're not in this workspace".
+  // Workspace ids this node belongs to; null while that list is loading.
   const namespaceIds = useMemo(
-    () => (namespaces.length > 0 ? namespaces.map((n) => n.namespaceId) : null),
-    [namespaces],
+    () => (namespacesLoading ? null : namespaces.map((n) => n.namespaceId)),
+    [namespacesLoading, namespaces],
   );
-  // The routed folder's own docs, so a link to a deleted doc resolves to
-  // 'deleted' rather than mounting the editor on nothing. Sticky on the
-  // first successful load per folder: `useDocs.loading` pulses true on every
-  // background refetch (SSE, autosave), and re-arming this on each pulse
-  // would flip an *open* doc's card back to "syncing" mid-edit.
-  const routedDocs = useDocs(selectedFolderId);
-  const routedDocsStillLoading =
-    routedDocs.contextResolving || routedDocs.loading;
-  const [docsLoadedForFolder, setDocsLoadedForFolder] = useState<
-    string | null
-  >(null);
-  useEffect(() => {
-    if (!selectedFolderId || routedDocsStillLoading) return;
-    setDocsLoadedForFolder(selectedFolderId);
-  }, [selectedFolderId, routedDocsStillLoading]);
+  // Only fetched once access is confirmed open, so a hidden folder never
+  // attempts a context join it has no right to. Archived still counts as existing.
+  const folderAccessible =
+    !!selectedFolderId &&
+    resolvedFolderIds.has(selectedFolderId) &&
+    !hiddenFolderIds.has(selectedFolderId);
+  const routedDocs = useDocs(folderAccessible ? selectedFolderId : null, {
+    includeArchived: true,
+  });
   const linkTarget = useMemo(
     () =>
       resolveLinkTarget({
         route,
+        justJoinedWorkspace: isJustJoined,
         namespaceIds,
         folderRegistry: registryFolders,
+        resolvedFolderIds,
         hiddenFolderIds,
-        docs: docsLoadedForFolder === selectedFolderId ? routedDocs.list : null,
+        docs: routedDocs.listed ? routedDocs.list : null,
       }),
     [
       route,
+      isJustJoined,
       namespaceIds,
       registryFolders,
+      resolvedFolderIds,
       hiddenFolderIds,
-      docsLoadedForFolder,
-      selectedFolderId,
+      routedDocs.listed,
       routedDocs.list,
     ],
   );
-  const routedFolderAlias = registryFolders?.find(
-    (f) => f.id === selectedFolderId,
-  )?.alias;
+  const routedFolder = registryFolders?.find((f) => f.id === selectedFolderId);
+  // 'deleted' covers two absences: the folder itself (or an ancestor) is
+  // gone, or the folder is fine and just its doc is gone.
+  const deletedKind = routedFolder ? 'doc' : 'folder';
   const onLinkTargetGoHome = useCallback(
     () => (linkTarget === 'not-in-workspace' ? goWorkspace(null) : goHome()),
     [linkTarget, goWorkspace, goHome],
   );
+  // A deleted folder leaves nothing to stay on; leave for Home rather than
+  // parking on the dead link. A deleted DOC keeps the still-valid folder.
+  useEffect(() => {
+    if (linkTarget === 'deleted' && deletedKind === 'folder') {
+      goWorkspace(namespaceId, { replace: true });
+    }
+  }, [linkTarget, deletedKind, namespaceId, goWorkspace]);
+  // Once a doc has genuinely opened, a later 'syncing' pulse must not
+  // unmount it mid-edit; only a definitive outcome (branch above) does.
+  const docKey =
+    selectedFolderId && selectedDocId
+      ? `${selectedFolderId}:${selectedDocId}`
+      : null;
+  const [openedDocKey, setOpenedDocKey] = useState<string | null>(null);
+  useEffect(() => {
+    if (docKey && linkTarget === 'ok') setOpenedDocKey(docKey);
+  }, [docKey, linkTarget]);
+  const showEditor =
+    !!docKey &&
+    (linkTarget === 'ok' || (linkTarget === 'syncing' && openedDocKey === docKey));
   const [sidebarWidth, setSidebarWidth] = useLocalStorage<number>(
     'mero-sidebar-width',
     256,
@@ -314,19 +334,17 @@ export function WorkspaceLayout() {
             linkTarget === 'deleted' ||
             linkTarget === 'not-in-workspace' ? (
             // A routed folder/doc/workspace the caller can't open. Checked
-            // ahead of the editor so a dead or restricted link never mounts
-            // it; a genuine access loss on an already-open doc lands here too.
-            <div className="flex-1 overflow-y-auto p-6">
-              <div className="mx-auto max-w-3xl">
-                <LinkTargetCard
-                  kind={linkTarget}
-                  folderName={routedFolderAlias}
-                  onGoHome={onLinkTargetGoHome}
-                  linkUrl={window.location.href}
-                />
-              </div>
+            // ahead of the editor so a dead or restricted link never mounts it.
+            <div className="flex h-full items-center justify-center p-6">
+              <LinkTargetCard
+                kind={linkTarget}
+                deletedKind={deletedKind}
+                folderName={routedFolder?.alias}
+                onGoHome={onLinkTargetGoHome}
+                linkUrl={window.location.href}
+              />
             </div>
-          ) : selectedFolderId && selectedDocId && linkTarget === 'ok' ? (
+          ) : selectedFolderId && selectedDocId && showEditor ? (
             // Editor gated on selectedFolderId (stable persistent state),
             // NOT selectedFolder — `folders` is a useMemo that recomputes on
             // every workspace SSE refetch, and a momentary gap where the

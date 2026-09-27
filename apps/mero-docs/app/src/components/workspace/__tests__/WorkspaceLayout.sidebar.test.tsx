@@ -26,11 +26,14 @@ vi.mock('@/hooks/useDriveWorkspace', async () => {
     useDriveWorkspace: () => ({
       namespaceId: 'ns',
       namespaces: [{ namespaceId: 'ns' }],
+      namespacesLoading: false,
+      isJustJoined: false,
       registryContextId: 'reg',
       selectedFolderId: useAppRoute().route?.folder ?? null,
       setSelectedFolder,
       folders: [],
       registryFolders: [{ id: 'f1', parent_id: null, color: null, alias: 'F1' }],
+      resolvedFolderIds: new Set(['f1']),
       hiddenFolderIds: new Set<string>(),
       selfIdentity: 'me',
       stage: 'ready',
@@ -45,6 +48,7 @@ vi.mock('@/hooks/useDocs', () => ({
   useDocs: () => ({
     list: [{ id: 'doc-2' }, { id: 'd1' }],
     loading: false,
+    listed: true,
     contextResolving: false,
     contextId: 'ctx',
     error: null,

@@ -185,6 +185,12 @@ export interface DriveWorkspaceState {
 
   // namespace list + selection
   namespaces: Namespace[];
+  /** True until the namespace list read has settled; an empty `namespaces`
+   *  while this is true is not yet a definitive "no workspaces". */
+  namespacesLoading: boolean;
+  /** True while the selected workspace is a fresh join not yet reflected
+   *  elsewhere (namespace list, registry). */
+  isJustJoined: boolean;
   selectedNamespaceId: string | null;
   /** Alias of selectedNamespaceId. namespaceId was the field name on
    *  the old WorkspaceContext; keeping it avoids a cascading rename
@@ -221,7 +227,10 @@ export interface DriveWorkspaceState {
   /** Raw registry rows for the active workspace (unfiltered by access),
    *  null until the first load completes for the current registry client. */
   registryFolders: RegistryFolderShape[] | null;
-  /** Folder ids hidden from this caller — restricted folders it isn't a member of. */
+  /** Folder ids whose access fan-out has settled; hiddenFolderIds is only
+   *  trustworthy for ids in this set. */
+  resolvedFolderIds: Set<string>;
+  /** Folder ids hidden from this caller: restricted folders it isn't a member of. */
   hiddenFolderIds: Set<string>;
   /** Registry owner/managers — fetched once here, read by
    *  `useRegistryAdmin()` and `useFolderPermissions`. */
@@ -1120,10 +1129,8 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
     (id: string | null) => (id ? goFolder(id) : goHome()),
     [goFolder, goHome],
   );
-  // Raw registry rows for the active workspace (unfiltered by access, alias
-  // included), null until the first load completes for the current client.
-  // `resolveLinkTarget` reads this to tell a hidden-but-real folder (no-access)
-  // from one that never existed (deleted) instead of dropping the route.
+  // Raw registry rows, unfiltered by access; null until the first load
+  // completes. Lets resolveLinkTarget tell hidden-but-real from deleted.
   const registryFolders =
     registryClient && regFoldersFor === registryClient ? regFolders : null;
 
@@ -1486,6 +1493,8 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
       namespaceMemberNames,
 
       namespaces,
+      namespacesLoading: nsLoading,
+      isJustJoined,
       selectedNamespaceId: selectedNsId,
       namespaceId: selectedNsId,
       rootGroupId,
@@ -1503,6 +1512,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
       folders,
       allFolderNodes,
       registryFolders,
+      resolvedFolderIds,
       hiddenFolderIds,
       registryAdmin,
 
@@ -1520,6 +1530,8 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
       selfIdentity,
       namespaceMemberNames,
       namespaces,
+      nsLoading,
+      isJustJoined,
       selectedNsId,
       rootGroupId,
       selectNamespace,
@@ -1534,6 +1546,7 @@ function useDriveWorkspaceInternal(): DriveWorkspaceState {
       folders,
       allFolderNodes,
       registryFolders,
+      resolvedFolderIds,
       hiddenFolderIds,
       registryAdmin,
       selectedFolderId,

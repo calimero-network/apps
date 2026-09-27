@@ -118,4 +118,39 @@ describe('useDocs', () => {
     expect(result.current.list).toEqual([]);
     expect(result.current.contextId).toBeNull();
   });
+
+  describe('listed', () => {
+    it('is true once a listDocs call has actually succeeded', async () => {
+      const { result } = renderHook(() => useDocs('folder-1'));
+      expect(result.current.listed).toBe(false);
+      await waitFor(() => expect(result.current.listed).toBe(true));
+    });
+
+    it('is true for a folder with no docs binding at all', async () => {
+      getFolderContext.mockResolvedValue(null);
+      const { result } = renderHook(() => useDocs('folder-1'));
+      await waitFor(() => expect(result.current.listed).toBe(true));
+      expect(listDocs).not.toHaveBeenCalled();
+    });
+
+    it('stays false when listDocs fails, so a caller never reads the empty list as final', async () => {
+      listDocs.mockRejectedValue(new Error('docs service unavailable'));
+      const { result } = renderHook(() => useDocs('folder-1'));
+      await waitFor(() => expect(result.current.error).not.toBeNull());
+      expect(result.current.listed).toBe(false);
+    });
+
+    it('stays false when the docs-context resolution itself fails', async () => {
+      getFolderContext.mockRejectedValue(new Error('registry down'));
+      const { result } = renderHook(() => useDocs('folder-1'));
+      await waitFor(() => expect(result.current.error).not.toBeNull());
+      expect(result.current.listed).toBe(false);
+    });
+  });
+
+  it('passes includeArchived through to listDocs', async () => {
+    const { result } = renderHook(() => useDocs('folder-1', { includeArchived: true }));
+    await waitFor(() => expect(result.current.listed).toBe(true));
+    expect(listDocs).toHaveBeenCalledWith({ include_archived: true });
+  });
 });

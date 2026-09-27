@@ -19,7 +19,9 @@ describe('LinkTargetCard', () => {
     );
     expect(screen.getByText('This document is in Finance')).toBeTruthy();
     expect(
-      screen.getByText('Ask a folder manager to add you, then open this link again.'),
+      screen.getByText(
+        'Finance is a restricted folder, and you are not a member yet. Ask a folder manager to add you, then open this link again.',
+      ),
     ).toBeTruthy();
   });
 
@@ -28,11 +30,28 @@ describe('LinkTargetCard', () => {
       <LinkTargetCard kind="no-access" onGoHome={vi.fn()} linkUrl="https://x/doc" />,
     );
     expect(screen.getByText('This document is in a restricted folder')).toBeTruthy();
+    expect(
+      screen.getByText(
+        'This folder is a restricted folder, and you are not a member yet. Ask a folder manager to add you, then open this link again.',
+      ),
+    ).toBeTruthy();
   });
 
-  it('shows the deleted copy', () => {
+  it('shows the doc-worded deleted copy by default', () => {
     render(<LinkTargetCard kind="deleted" onGoHome={vi.fn()} linkUrl="https://x/doc" />);
     expect(screen.getByText('This document was deleted or moved')).toBeTruthy();
+  });
+
+  it('shows the folder-worded deleted copy when the folder itself is gone', () => {
+    render(
+      <LinkTargetCard
+        kind="deleted"
+        deletedKind="folder"
+        onGoHome={vi.fn()}
+        linkUrl="https://x/doc"
+      />,
+    );
+    expect(screen.getByText('This folder was deleted or moved')).toBeTruthy();
   });
 
   it('shows the not-in-workspace copy', () => {
