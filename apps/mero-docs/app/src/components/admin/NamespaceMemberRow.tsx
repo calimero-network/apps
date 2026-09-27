@@ -250,7 +250,7 @@ export function NamespaceMemberRow({
 
   return (
     <li className="px-4 py-2 text-sm">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <span
           role="img"
           aria-label={isPresent ? 'Here now' : 'Away'}
@@ -261,7 +261,7 @@ export function NamespaceMemberRow({
               : 'border-muted-foreground/60 bg-transparent'
           }`}
         />
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 flex-[1_1_8rem]">
           <div className="flex items-center gap-2">
             {renaming ? (
               <>
@@ -327,7 +327,7 @@ export function NamespaceMemberRow({
             )}
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="ml-auto flex items-center gap-2">
           <RoleSelect
             value={currentAccess}
             options={WORKSPACE_ROLES}

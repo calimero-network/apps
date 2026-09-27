@@ -69,7 +69,7 @@ export function NamespaceSwitcher() {
             variant="ghost"
             size="sm"
             data-testid="workspace-switcher"
-            className="gap-1.5 px-2 data-[state=open]:bg-accent"
+            className="min-w-0 gap-1.5 px-2 data-[state=open]:bg-accent"
           >
             {currentLabel ? (
               <span className="max-w-[24ch] truncate">{currentLabel}</span>
