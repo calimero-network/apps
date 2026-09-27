@@ -9,7 +9,6 @@ import {
 export interface Comment {
   id: string;
   issue_id: string;
-  author: string;
   body: string;
   created_at: number;
   edited_at: number;
@@ -73,8 +72,6 @@ export interface Event_RepoUrlChanged {
 }
 
 export interface Issue {
-  id: string;
-  title: string;
   summary: string;
   impact: string;
   repro: string;
@@ -82,8 +79,6 @@ export interface Issue {
   status: string;
   priority: string;
   assignee: string;
-  created_by: string;
-  created_at: number;
 }
 
 export interface IssueDetail {
@@ -91,10 +86,16 @@ export interface IssueDetail {
   comments: CommentView[];
 }
 
+export interface IssueHeader {
+  title: string;
+  created_at: number;
+}
+
 export interface IssueTracker {
+  headers: Record<string, IssueHeader>;
   issues: Record<string, Issue>;
   comments: Record<string, Comment>;
-  labels: Record<string, number>;
+  labels: Record<string, LabelTag>;
   repo_url: string;
 }
 
@@ -111,6 +112,12 @@ export interface IssueView {
   labels: string[];
   created_by: string;
   created_at: number;
+}
+
+export interface LabelTag {
+  issue_id: string;
+  label: string;
+  added_at: number;
 }
 
 export interface RepoInfo {

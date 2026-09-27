@@ -3,6 +3,7 @@
   "types": {
     "Comment": {
       "kind": "record",
+      "doc": "A discussion entry on an issue. `id`, `issue_id`, `created_at` are\nimmutable; `body` and `edited_at` are LWW registers. The author is the\nentry's owner stamp, and only they may edit or delete it — on every node.\n`thread` is one issue's comments, oldest first.",
       "fields": [
         {
           "name": "id",
@@ -12,12 +13,6 @@
         },
         {
           "name": "issue_id",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "author",
           "type": {
             "kind": "string"
           }
@@ -54,24 +49,8 @@
     },
     "Issue": {
       "kind": "record",
+      "doc": "An issue's shared triage state. Every field is a `LwwRegister` so concurrent\nedits converge last-writer-wins. Labels live in a separate index (see\n`IssueTracker`).",
       "fields": [
-        {
-          "name": "id",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "title",
-          "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "lww_register",
-            "inner_type": {
-              "kind": "string"
-            }
-          }
-        },
         {
           "name": "summary",
           "type": {
@@ -148,9 +127,15 @@
               "kind": "string"
             }
           }
-        },
+        }
+      ]
+    },
+    "IssueHeader": {
+      "kind": "record",
+      "doc": "Who filed an issue, and what they called it. Set once at creation. The filer\nis the entry's owner stamp, not a field, so nobody can re-attribute an issue.",
+      "fields": [
         {
-          "name": "created_by",
+          "name": "title",
           "type": {
             "kind": "string"
           }
@@ -167,6 +152,20 @@
       "kind": "record",
       "fields": [
         {
+          "name": "headers",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "IssueHeader"
+            },
+            "crdt_type": "authored_map"
+          },
+          "doc": "Issue id → header, owned by whoever filed it. An issue exists while its\nheader does."
+        },
+        {
           "name": "issues",
           "type": {
             "kind": "map",
@@ -177,7 +176,8 @@
               "$ref": "Issue"
             },
             "crdt_type": "unordered_map"
-          }
+          },
+          "doc": "Issue id → triage state. Shared — any teammate may triage."
         },
         {
           "name": "comments",
@@ -189,8 +189,9 @@
             "value": {
               "$ref": "Comment"
             },
-            "crdt_type": "unordered_map"
-          }
+            "crdt_type": "authored_map"
+          },
+          "doc": "All comments across all issues, keyed by generated id, each owned by\nits author."
         },
         {
           "name": "labels",
@@ -200,15 +201,11 @@
               "kind": "string"
             },
             "value": {
-              "kind": "record",
-              "fields": [],
-              "crdt_type": "lww_register",
-              "inner_type": {
-                "kind": "u64"
-              }
+              "$ref": "LabelTag"
             },
             "crdt_type": "unordered_map"
-          }
+          },
+          "doc": "Key `\"{issue_id}\\u{1}{label}\"` → the label. Concurrent adds of the same\nlabel collapse to one entry (no duplicates); removal is a conflict-free\nkey delete."
         },
         {
           "name": "repo_url",
@@ -218,6 +215,46 @@
             "crdt_type": "lww_register",
             "inner_type": {
               "kind": "string"
+            }
+          },
+          "doc": "The GitHub repository URL this context (repo) tracks. Empty until set;\nLWW so concurrent edits from teammates converge last-writer-wins."
+        }
+      ]
+    },
+    "LabelTag": {
+      "kind": "record",
+      "doc": "One label on one issue.",
+      "fields": [
+        {
+          "name": "issue_id",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "label",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "string"
+            }
+          }
+        },
+        {
+          "name": "added_at",
+          "type": {
+            "kind": "record",
+            "fields": [],
+            "crdt_type": "lww_register",
+            "inner_type": {
+              "kind": "u64"
             }
           }
         }
