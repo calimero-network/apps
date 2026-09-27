@@ -72,11 +72,11 @@ test.describe('URL routing (single-node)', () => {
     expect(pathOf(page)).toBe(doc);
 
     await page.goBack();
-    await expect(page.getByRole('heading', { name: /No document open/i })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: 'Drafts' })).toBeVisible();
     expect(pathOf(page)).toBe(folder);
 
     await page.goBack();
-    await expect(page.getByRole('heading', { name: 'Select a folder' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1, name: 'Home' })).toBeVisible();
     expect(pathOf(page)).toBe(home);
 
     await page.goForward();

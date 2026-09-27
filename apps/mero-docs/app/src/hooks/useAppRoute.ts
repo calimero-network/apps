@@ -5,7 +5,7 @@ import { useCallback, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { appPath, parseAppPath, type AppRoute } from '@/lib/routes';
 
-const DEV_NODE_PARAM = 'node'; // dev rig window selector, see components/dev/devNode
+export const DEV_NODE_PARAM = 'node'; // dev rig window selector, see components/dev/devNode
 
 interface GoOptions {
   search?: string;
@@ -44,7 +44,7 @@ export function useAppRoute() {
     [go, ws],
   );
   const goFolder = useCallback(
-    (folder: string, opts: { replace?: boolean } = {}) => {
+    (folder: string, opts: GoOptions = {}) => {
       if (ws) go({ ws, folder }, opts);
     },
     [go, ws],

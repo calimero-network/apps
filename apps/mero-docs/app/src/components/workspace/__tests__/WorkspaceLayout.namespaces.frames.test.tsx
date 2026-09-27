@@ -79,6 +79,11 @@ vi.mock('@/hooks/useOnlineStatus', () => ({ useOnlineStatus: () => true }));
 vi.mock('@/hooks/useWorkspacePresence', () => ({
   usePublishWorkspacePresence: () => {},
 }));
+// The layout's own screens are under test; the index has its own suite.
+vi.mock('@/context/WorkspaceIndexContext', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/context/WorkspaceIndexContext')>()),
+  WorkspaceIndexProvider: ({ children }: { children: React.ReactNode }) => children,
+}));
 vi.mock('@/components/theme/ThemeToggle', () => ({ ThemeToggle: () => null }));
 vi.mock('../NamespaceSwitcher', () => ({ NamespaceSwitcher: () => null }));
 vi.mock('../DisplayNameGate', () => ({
@@ -86,8 +91,8 @@ vi.mock('../DisplayNameGate', () => ({
 }));
 vi.mock('../NamespaceSettingsPanel', () => ({ NamespaceSettingsPanel: () => null }));
 vi.mock('@/components/folders/FolderTree', () => ({ FolderTree: () => null }));
-vi.mock('@/components/folders/NoFolderStates', () => ({
-  SelectFolderState: () => <div data-testid="select-folder" />,
+vi.mock('@/components/home/HomePage', () => ({
+  HomePage: () => <div data-testid="home" />,
 }));
 
 window.matchMedia = vi.fn().mockImplementation((query: string) => ({
@@ -153,7 +158,7 @@ describe('WorkspaceLayout workspace reload frames', () => {
   it('never commits not-in-workspace while the workspace list is still loading', async () => {
     await reloadWorkspace();
     h.resolveList([{ namespaceId: 'ns1' }]);
-    expect(await screen.findByTestId('select-folder')).toBeTruthy();
+    expect(await screen.findByTestId('home')).toBeTruthy();
     expect(h.cards).not.toContain('not-in-workspace');
   });
 
@@ -168,14 +173,14 @@ describe('WorkspaceLayout workspace reload frames', () => {
   it('keeps Home and the name gate when a later list read fails', async () => {
     await reloadWorkspace();
     h.resolveList([{ namespaceId: 'ns1' }]);
-    expect(await screen.findByTestId('select-folder')).toBeTruthy();
+    expect(await screen.findByTestId('home')).toBeTruthy();
     expect(await screen.findByTestId('name-gate')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'refetch' }));
     await tick();
     h.rejectList(new Error('node unreachable'));
     await tick();
     await tick();
-    expect(screen.getByTestId('select-folder')).toBeTruthy();
+    expect(screen.getByTestId('home')).toBeTruthy();
     expect(screen.getByTestId('name-gate')).toBeTruthy();
     expect(screen.queryByText("Couldn't load your workspaces")).toBeNull();
     expect(h.cards).toHaveLength(0);

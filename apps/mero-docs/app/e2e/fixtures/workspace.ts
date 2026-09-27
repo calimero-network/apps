@@ -35,6 +35,7 @@ export class WorkspaceDriver {
   readonly restrictedCard: RestrictedCardDriver;
   readonly sharing: SharingDriver;
   readonly docs: DocListDriver;
+  readonly home: HomeDriver;
   readonly editor: EditorDriver;
   readonly settings: SettingsDriver;
 
@@ -45,6 +46,7 @@ export class WorkspaceDriver {
     this.restrictedCard = new RestrictedCardDriver(page);
     this.sharing = new SharingDriver(page);
     this.docs = new DocListDriver(page);
+    this.home = new HomeDriver(page);
     this.editor = new EditorDriver(page);
     this.settings = new SettingsDriver(page);
   }
@@ -262,7 +264,7 @@ export class WorkspaceDriver {
   // ─── docs ──────────────────────────────────────────────────────
 
   async createDoc(title: string): Promise<void> {
-    // DocumentList's "New document" button creates a doc named "Untitled" and
+    // The list's "New document" button creates a doc named "Untitled" and
     // opens the editor immediately — there's no create-dialog with a
     // title input. To get a named doc we click New document, wait for the
     // editor to mount, rename via the EditorHeader's editable title,
@@ -342,7 +344,7 @@ export class FolderTreeDriver {
 
   // Select a folder AND ensure it is expanded so its doc leaves render.
   async openFolder(name: string): Promise<void> {
-    await this.folderRow(name).first().click(); // select → FolderEmptyState in <main>
+    await this.folderRow(name).first().click(); // select → the folder's list in <main>
     await this.expandFolder(name);              // expand → doc leaves in sidebar
   }
 
@@ -405,9 +407,8 @@ export class RestrictedCardDriver {
   // render, so click Join only when the card is up, then wait for the folder view.
   async joinIfPrompted(opts: { timeout?: number } = {}): Promise<void> {
     const main = this.page.getByRole('main');
-    const folderView = main.getByRole('heading', {
-      name: /^(No document open|No documents yet)$/,
-    });
+    // The folder's own list is headed by its name; the card and waits never use h1.
+    const folderView = main.getByRole('heading', { level: 1 });
     const join = main.getByRole('button', {
       name: /^(Join folder|Try joining)$/,
     });
@@ -489,6 +490,42 @@ export class DocListDriver {
 
   async clickDoc(title: string): Promise<void> {
     await this.docRow(title).first().click();
+  }
+}
+
+// Home: every readable doc, as the main pane's list of row links.
+export class HomeDriver {
+  constructor(private page: Page) {}
+
+  // The sidebar's Home row is named "Home, <count>".
+  navRow(): Locator {
+    return this.page.locator('aside').getByRole('button', { name: /^Home, \d+$/ });
+  }
+
+  async open(): Promise<void> {
+    await this.navRow().click();
+    await expect(
+      this.page.getByRole('main').getByRole('heading', { level: 1, name: 'Home' }),
+    ).toBeVisible({ timeout: 15_000 });
+  }
+
+  row(title: string): Locator {
+    return this.page
+      .getByRole('main')
+      .getByRole('link', { name: title, exact: true });
+  }
+
+  async expectTitles(titles: string[], opts: { timeout?: number } = {}) {
+    await expect(
+      this.page.getByRole('main').getByTestId('doc-title'),
+    ).toHaveText(titles, { timeout: opts.timeout ?? 30_000 });
+  }
+
+  // Exact, since each active chip also has a "Clear <label>" button.
+  chip(name: string): Locator {
+    return this.page
+      .getByRole('main')
+      .getByRole('button', { name, exact: true });
   }
 }
 

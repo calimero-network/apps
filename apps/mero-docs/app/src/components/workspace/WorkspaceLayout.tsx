@@ -1,10 +1,9 @@
 // Three-pane workspace shell:
 //   - top bar (logo + NamespaceSwitcher)
-//   - left rail (FolderTree); a drawer opened from the top bar below md
+//   - left rail (Home, Views, Tags, then FolderTree); a drawer below md
 //   - main content: DocumentEditor rendered inline in the main pane
 //     (gated on selectedFolderId for save-stability, NOT selectedFolder)
-//     when a doc is open; folder view (breadcrumb + header + doc list +
-//     sharing) when a folder is selected but no doc is open.
+//     when a doc is open; else Home, scoped to the folder when one is selected.
 //
 // Mounted by App.tsx on the /app/* route (via WorkspacePage's
 // auth-guarded shell). MeroProvider is the only app-level provider;
@@ -31,10 +30,11 @@ import { NamespaceSettingsPanel } from './NamespaceSettingsPanel';
 import { SidebarDrawer, WorkspaceSidebar } from './WorkspaceSidebar';
 import { FolderTree } from '@/components/folders/FolderTree';
 import { RestrictedFolderCard } from '@/components/folders/RestrictedFolderCard';
-import { FolderEmptyState } from './FolderEmptyState';
-import { EmptyState } from '@/components/ui/empty-state';
-import { SelectFolderState } from '@/components/folders/NoFolderStates';
+import { EmptyState, QuietLoading } from '@/components/ui/empty-state';
+import { HomePage } from '@/components/home/HomePage';
+import { WorkspaceIndexProvider } from '@/context/WorkspaceIndexContext';
 import { LinkTargetCard } from './LinkTargetCard';
+import { WorkspaceNav } from './WorkspaceNav';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useAppRoute } from '@/hooks/useAppRoute';
 import { useDocs } from '@/hooks/useDocs';
@@ -50,7 +50,6 @@ import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { DisplayNameGate } from './DisplayNameGate';
 
 const MD_QUERY = '(min-width: 768px)'; // Tailwind's md breakpoint
-const QUIET_LOADER_DELAY_MS = 300; // a shorter wait shows nothing rather than flash a loader
 
 // Code-split the editor: BlockNote + its Mantine UI are ~360 KB gzip and
 // only needed once a document is opened, so they must not weigh down the
@@ -244,7 +243,16 @@ export function WorkspaceLayout() {
     else goHome();
   }, [navigate, goHome]);
 
-  const folderTree = (
+  const folderTree = namespaceId ? (
+    <WorkspaceNav
+      key={namespaceId}
+      ws={namespaceId}
+      selectedDocId={selectedDocId}
+      onSelectFolder={selectFolder}
+      onOpenDoc={openDoc}
+      onNavigate={() => setDrawerOpen(false)}
+    />
+  ) : (
     <FolderTree
       selectedDocId={selectedDocId}
       onSelectFolder={selectFolder}
@@ -326,125 +334,127 @@ export function WorkspaceLayout() {
         </div>
       </header>
 
-      {/* Main grid */}
-      <div className="relative flex min-h-0 flex-1">
-        {!isDesktop ? (
-          <SidebarDrawer open={drawerOpen} onOpenChange={setDrawerOpen}>
-            {folderTree}
-          </SidebarDrawer>
-        ) : (
-          !sidebarCollapsed && (
-            <WorkspaceSidebar width={sidebarWidth} onWidthChange={setSidebarWidth}>
+      {/* One index per workspace: a switch remounts it, so nothing carries over. */}
+      <WorkspaceIndexProvider key={namespaceId ?? ''}>
+        <div className="relative flex min-h-0 flex-1">
+          {!isDesktop ? (
+            <SidebarDrawer open={drawerOpen} onOpenChange={setDrawerOpen}>
               {folderTree}
-            </WorkspaceSidebar>
-          )
-        )}
+            </SidebarDrawer>
+          ) : (
+            !sidebarCollapsed && (
+              <WorkspaceSidebar width={sidebarWidth} onWidthChange={setSidebarWidth}>
+                {folderTree}
+              </WorkspaceSidebar>
+            )
+          )}
 
-        <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          {showSettings && namespaceId ? (
-            <div className="flex-1 overflow-y-auto">
-              <NamespaceSettingsPanel key={`settings:${namespaceId}`} />
-            </div>
-          ) : !namespaceId ? (
-            <EmptyState
-              title="No workspace selected"
-              body="Create or pick a workspace from the top bar to see your folders."
-            />
-          ) : linkTarget === 'no-access' ||
-            linkTarget === 'deleted' ||
-            linkTarget === 'not-in-workspace' ? (
-            // A routed folder/doc/workspace the caller can't open. Checked
-            // ahead of the editor so a dead or restricted link never mounts it.
-            <div className="flex h-full items-center justify-center p-6">
-              <LinkTargetCard
-                kind={linkTarget}
-                subject={linkSubject}
-                folderName={routedFolder?.alias}
-                onGoHome={onLinkTargetGoHome}
-                linkUrl={window.location.href}
+          <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            {showSettings && namespaceId ? (
+              <div className="flex-1 overflow-y-auto">
+                <NamespaceSettingsPanel key={`settings:${namespaceId}`} />
+              </div>
+            ) : !namespaceId ? (
+              <EmptyState
+                title="No workspace selected"
+                body="Create or pick a workspace from the top bar to see your folders."
               />
-            </div>
-          ) : selectedFolderId && selectedDocId && showEditor ? (
-            // Editor gated on selectedFolderId (stable persistent state),
-            // NOT selectedFolder — `folders` is a useMemo that recomputes on
-            // every workspace SSE refetch, and a momentary gap where the
-            // folder isn't yet in the recomputed array would otherwise flip
-            // this to "Select a folder", unmount DocumentEditor mid-save,
-            // double-fire edit_doc, and strand the save indicator on
-            // "Saving…".
-            //
-            // This branch also sits ABOVE the 'syncing-from-peers' check:
-            // if the workspace re-enters that stage while a doc is open, the
-            // syncing empty state must NOT replace (and unmount) the editor
-            // mid-edit. DocumentEditor runs its own per-folder permission
-            // probe + read-only mode and shows its own "syncing folder"
-            // state when its docs context isn't ready, so it is safe to
-            // render here ahead of the syncing + access-gating branches.
-            <Suspense fallback={<EmptyState title="Loading editor…" />}>
-              <DocumentEditor
-                key={`${selectedFolderId}:${selectedDocId}`}
-                folderId={selectedFolderId}
-                docId={selectedDocId}
-                onClose={() => goFolder(selectedFolderId)}
-                // The deleted doc's URL is dead, so it must not stay in history.
-                onDeleted={() => goFolder(selectedFolderId, { replace: true })}
-                folderName={selectedFolder?.alias}
-              />
-            </Suspense>
-          ) : namespacesError && !namespacesListed ? (
-            // Only before any list has landed; a failed re-read keeps the last one.
-            <EmptyState
-              title="Couldn't load your workspaces"
-              body="Check your connection to the node, then try again."
-            >
-              <Button variant="outline" onClick={() => void refetch()}>
-                Try again
-              </Button>
-            </EmptyState>
-          ) : docsFailed ? (
-            <EmptyState title="Couldn't load this folder's documents">
-              <Button variant="outline" onClick={() => void refetchDocs()}>
-                Try again
-              </Button>
-            </EmptyState>
-          ) : stage === 'syncing-from-peers' ||
-            (linkTarget === 'syncing' && isJustJoined) ? (
-            <SyncingWorkspaceState
-              syncStatus={syncStatus}
-              onRetry={onRetrySync}
-            />
-          ) : linkTarget === 'syncing' ? (
-            <QuietLoading />
-          ) : !selectedFolderId ? (
-            <SelectFolderState />
-          ) : !selectedFolder ? (
-            // A folder IS selected (selectedFolderId set) but its object
-            // isn't in the recomputed `folders` list yet — a transient gap
-            // during an SSE refetch. Show a neutral loading state rather
-            // than flashing "Select a folder" (same stable-id reasoning as
-            // the editor branch above).
-            <EmptyState title="Loading folder…" />
-          ) : selectedFolderPerms.loading ? (
-            <EmptyState title="Checking access…" />
-          ) : lacksFolderAccess(selectedFolderPerms) ? (
-            <div className="flex-1 overflow-y-auto p-6">
-              <div className="mx-auto max-w-3xl">
-                <RestrictedFolderCard
-                  folderId={selectedFolder.id}
-                  folderAlias={selectedFolder.alias}
-                  visibility={selectedFolder.visibility}
-                  selfIdentity={selfIdentity}
-                  refetch={refetch}
-                  refetchPerms={selectedFolderPerms.refetch}
+            ) : linkTarget === 'no-access' ||
+              linkTarget === 'deleted' ||
+              linkTarget === 'not-in-workspace' ? (
+              // A routed folder/doc/workspace the caller can't open. Checked
+              // ahead of the editor so a dead or restricted link never mounts it.
+              <div className="flex h-full items-center justify-center p-6">
+                <LinkTargetCard
+                  kind={linkTarget}
+                  subject={linkSubject}
+                  folderName={routedFolder?.alias}
+                  onGoHome={onLinkTargetGoHome}
+                  linkUrl={window.location.href}
                 />
               </div>
-            </div>
-          ) : (
-            <FolderEmptyState folderId={selectedFolder.id} onOpenDoc={openDoc} />
-          )}
-        </main>
-        {isMember && <DisplayNameGate />}
-      </div>
+            ) : selectedFolderId && selectedDocId && showEditor ? (
+              // Editor gated on selectedFolderId (stable persistent state),
+              // NOT selectedFolder — `folders` is a useMemo that recomputes on
+              // every workspace SSE refetch, and a momentary gap where the
+              // folder isn't yet in the recomputed array would otherwise flip
+              // this to "Select a folder", unmount DocumentEditor mid-save,
+              // double-fire edit_doc, and strand the save indicator on
+              // "Saving…".
+              //
+              // This branch also sits ABOVE the 'syncing-from-peers' check:
+              // if the workspace re-enters that stage while a doc is open, the
+              // syncing empty state must NOT replace (and unmount) the editor
+              // mid-edit. DocumentEditor runs its own per-folder permission
+              // probe + read-only mode and shows its own "syncing folder"
+              // state when its docs context isn't ready, so it is safe to
+              // render here ahead of the syncing + access-gating branches.
+              <Suspense fallback={<EmptyState title="Loading editor…" />}>
+                <DocumentEditor
+                  key={`${selectedFolderId}:${selectedDocId}`}
+                  folderId={selectedFolderId}
+                  docId={selectedDocId}
+                  onClose={() => goFolder(selectedFolderId)}
+                  // The deleted doc's URL is dead, so it must not stay in history.
+                  onDeleted={() => goFolder(selectedFolderId, { replace: true })}
+                  folderName={selectedFolder?.alias}
+                />
+              </Suspense>
+            ) : namespacesError && !namespacesListed ? (
+              // Only before any list has landed; a failed re-read keeps the last one.
+              <EmptyState
+                title="Couldn't load your workspaces"
+                body="Check your connection to the node, then try again."
+              >
+                <Button variant="outline" onClick={() => void refetch()}>
+                  Try again
+                </Button>
+              </EmptyState>
+            ) : docsFailed ? (
+              <EmptyState title="Couldn't load this folder's documents">
+                <Button variant="outline" onClick={() => void refetchDocs()}>
+                  Try again
+                </Button>
+              </EmptyState>
+            ) : stage === 'syncing-from-peers' ||
+              (linkTarget === 'syncing' && isJustJoined) ? (
+              <SyncingWorkspaceState
+                syncStatus={syncStatus}
+                onRetry={onRetrySync}
+              />
+            ) : linkTarget === 'syncing' ? (
+              <QuietLoading />
+            ) : !selectedFolderId ? (
+              <HomePage />
+            ) : !selectedFolder ? (
+              // A folder IS selected (selectedFolderId set) but its object
+              // isn't in the recomputed `folders` list yet — a transient gap
+              // during an SSE refetch. Show a neutral loading state rather
+              // than flashing "Select a folder" (same stable-id reasoning as
+              // the editor branch above).
+              <EmptyState title="Loading folder…" />
+            ) : selectedFolderPerms.loading ? (
+              <EmptyState title="Checking access…" />
+            ) : lacksFolderAccess(selectedFolderPerms) ? (
+              <div className="flex-1 overflow-y-auto p-6">
+                <div className="mx-auto max-w-3xl">
+                  <RestrictedFolderCard
+                    folderId={selectedFolder.id}
+                    folderAlias={selectedFolder.alias}
+                    visibility={selectedFolder.visibility}
+                    selfIdentity={selfIdentity}
+                    refetch={refetch}
+                    refetchPerms={selectedFolderPerms.refetch}
+                  />
+                </div>
+              </div>
+            ) : (
+              <HomePage key={selectedFolder.id} folderId={selectedFolder.id} />
+            )}
+          </main>
+          {isMember && <DisplayNameGate />}
+        </div>
+      </WorkspaceIndexProvider>
     </div>
   );
 }
@@ -546,14 +556,4 @@ function SyncingWorkspaceState({
       </div>
     </div>
   );
-}
-
-// A wait for a link to resolve: blank at first, then a plain loader.
-function QuietLoading() {
-  const [shown, setShown] = useState(false);
-  useEffect(() => {
-    const timer = setTimeout(() => setShown(true), QUIET_LOADER_DELAY_MS);
-    return () => clearTimeout(timer);
-  }, []);
-  return shown ? <EmptyState title="Loading…" /> : null;
 }

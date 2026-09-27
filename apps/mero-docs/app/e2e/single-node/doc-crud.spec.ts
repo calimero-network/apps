@@ -91,9 +91,11 @@ test.describe('Document CRUD (single-node)', () => {
     await alice.openDoc('Returnable');
     await alice.editor.close();
     await alice.docs.expectDocVisible('Returnable');
+    const main = alice.page.getByRole('main');
     await expect(
-      alice.page.getByRole('heading', { name: /No document open/i }),
+      main.getByRole('heading', { level: 1, name: 'Drafts' }),
     ).toBeVisible();
+    await expect(main.getByRole('link', { name: 'Returnable' })).toBeVisible();
   });
 
   test('delete doc removes from list', async ({ alice }) => {

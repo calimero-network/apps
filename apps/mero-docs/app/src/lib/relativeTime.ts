@@ -1,0 +1,26 @@
+const MINUTE_MS = 60_000;
+const HOUR_MS = 60 * MINUTE_MS;
+const DAY_FORMAT = new Intl.DateTimeFormat(undefined, {
+  month: 'short',
+  day: 'numeric',
+}); // "Sep 22"
+const DAY_YEAR_FORMAT = new Intl.DateTimeFormat(undefined, {
+  month: 'short',
+  day: 'numeric',
+  year: 'numeric',
+}); // "Dec 31, 2025"
+
+/** When a doc changed, as a list shows it: "2 min ago", "3 h ago", "Yesterday", then a date. */
+export function updatedLabel(ms: number, nowMs: number): string {
+  const ago = nowMs - ms;
+  if (ago < MINUTE_MS) return 'Just now'; // a peer's clock may run ahead
+  if (ago < HOUR_MS) return `${Math.floor(ago / MINUTE_MS)} min ago`;
+  const today = new Date(nowMs);
+  today.setHours(0, 0, 0, 0);
+  if (ms >= today.getTime()) return `${Math.floor(ago / HOUR_MS)} h ago`;
+  const yesterday = new Date(today);
+  yesterday.setDate(today.getDate() - 1);
+  if (ms >= yesterday.getTime()) return 'Yesterday';
+  const sameYear = new Date(ms).getFullYear() === today.getFullYear();
+  return (sameYear ? DAY_FORMAT : DAY_YEAR_FORMAT).format(ms);
+}

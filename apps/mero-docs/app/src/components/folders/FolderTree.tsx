@@ -124,7 +124,8 @@ export function FolderTree({
   }
 
   return (
-    <div className="flex h-full flex-col">
+    // The sidebar scrolls as one, so the tree takes its natural height.
+    <div className="flex flex-col">
       <SidebarSectionHeader
         title="Folders"
         collapsed={collapsed}
@@ -146,7 +147,7 @@ export function FolderTree({
       {collapsed ? null : tree.roots.length === 0 ? (
         <NoFoldersState />
       ) : (
-        <ul className="flex-1 space-y-px overflow-y-auto px-2">
+        <ul className="space-y-px px-2 pb-2">
           {tree.roots.map((n) => (
             <FolderTreeItem
               key={n.id}

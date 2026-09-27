@@ -71,11 +71,14 @@ vi.mock('@/hooks/useWorkspacePresence', () => ({
 vi.mock('@/hooks/useFolderPermissions', () => ({
   useFolderPermissions: () => ({ loading: false, caps: 0, refetch: vi.fn() }),
 }));
+// The layout's own screens are under test; the index has its own suite.
+vi.mock('@/context/WorkspaceIndexContext', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/context/WorkspaceIndexContext')>()),
+  WorkspaceIndexProvider: ({ children }: { children: React.ReactNode }) => children,
+}));
 vi.mock('@/components/theme/ThemeToggle', () => ({ ThemeToggle: () => null }));
 vi.mock('../NamespaceSwitcher', () => ({ NamespaceSwitcher: () => null }));
-vi.mock('@/components/folders/NoFolderStates', () => ({
-  SelectFolderState: () => null,
-}));
+vi.mock('@/components/home/HomePage', () => ({ HomePage: () => null }));
 vi.mock('../DisplayNameGate', () => ({ DisplayNameGate: () => null }));
 vi.mock('../NamespaceSettingsPanel', () => ({
   NamespaceSettingsPanel: () => <div data-testid="settings-panel" />,

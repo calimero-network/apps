@@ -78,6 +78,12 @@ describe('useAppRoute', () => {
     expect(result.current.url).toBe('/app/w?q=new&node=2');
   });
 
+  it('carries a folder list filter in its search', () => {
+    const { result } = setup('/app/w?node=2');
+    act(() => result.current.app.goFolder('f1', { search: 'tag=q3' }));
+    expect(result.current.url).toBe('/app/w/f/f1?tag=q3&node=2');
+  });
+
   it('switches workspace, or clears it back to /app', () => {
     const { result } = setup('/app/w/f/f1?node=1');
     act(() => result.current.app.goWorkspace('w2'));

@@ -5,7 +5,7 @@ import { moveFocus } from './moveFocus';
 
 export type UpdatedWindow = '1d' | '7d' | '30d' | undefined;
 
-const OPTIONS: { value: UpdatedWindow; label: string }[] = [
+export const UPDATED_OPTIONS: { value: UpdatedWindow; label: string }[] = [
   { value: '1d', label: 'Today' },
   { value: '7d', label: 'Last 7 days' },
   { value: '30d', label: 'Last 30 days' },
@@ -25,7 +25,7 @@ export function UpdatedMenu({ value, onChange }: Props) {
       className="w-[200px] p-1"
       onKeyDown={(e) => moveFocus(e, '[role="radio"]')}
     >
-      {OPTIONS.map((option) => {
+      {UPDATED_OPTIONS.map((option) => {
         const checked = option.value === value;
         return (
           <button

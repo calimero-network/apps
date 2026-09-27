@@ -81,10 +81,15 @@ vi.mock('@/hooks/useWorkspacePresence', () => ({
 vi.mock('@/hooks/useFolderPermissions', () => ({
   useFolderPermissions: () => ({ loading: false, caps: 0, refetch: vi.fn() }),
 }));
+// The layout's own screens are under test; the index has its own suite.
+vi.mock('@/context/WorkspaceIndexContext', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/context/WorkspaceIndexContext')>()),
+  WorkspaceIndexProvider: ({ children }: { children: React.ReactNode }) => children,
+}));
 vi.mock('@/components/theme/ThemeToggle', () => ({ ThemeToggle: () => null }));
 vi.mock('../NamespaceSwitcher', () => ({ NamespaceSwitcher: () => null }));
-vi.mock('@/components/folders/NoFolderStates', () => ({
-  SelectFolderState: () => <div data-testid="select-folder" />,
+vi.mock('@/components/home/HomePage', () => ({
+  HomePage: () => <div data-testid="home" />,
 }));
 vi.mock('../DisplayNameGate', () => ({
   DisplayNameGate: () => <div data-testid="name-gate" />,
@@ -153,7 +158,7 @@ describe('WorkspaceLayout: routed target the caller cannot open', () => {
     workspace.namespaces = [{ namespaceId: 'other' }];
     renderAt('/app/ns');
     expect(screen.getByText('You are not in this workspace')).toBeTruthy();
-    expect(screen.queryByTestId('select-folder')).toBeNull();
+    expect(screen.queryByTestId('home')).toBeNull();
   });
 
   it('does not treat an empty, not yet listed namespace list as not-in-workspace', () => {
@@ -306,7 +311,7 @@ describe('WorkspaceLayout: routed target the caller cannot open', () => {
     renderAt('/app/ns');
     expect(screen.getByText("Couldn't load your workspaces")).toBeTruthy();
     expect(screen.queryByText(/HTTP 500/)).toBeNull();
-    expect(screen.queryByTestId('select-folder')).toBeNull();
+    expect(screen.queryByTestId('home')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
     expect(workspaceRefetch).toHaveBeenCalledTimes(1);
   });
@@ -315,7 +320,7 @@ describe('WorkspaceLayout: routed target the caller cannot open', () => {
     workspace.namespacesListed = true;
     workspace.namespacesError = new Error('node unreachable');
     renderAt('/app/ns');
-    expect(screen.getByTestId('select-folder')).toBeTruthy();
+    expect(screen.getByTestId('home')).toBeTruthy();
     expect(screen.queryByText("Couldn't load your workspaces")).toBeNull();
   });
 
