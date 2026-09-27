@@ -1,6 +1,25 @@
 {
   "schema_version": "wasm-abi/1",
   "types": {
+    "Avatars": {
+      "kind": "record",
+      "doc": "One account's avatars, keyed by device (see `caller`). The slot belongs to\nthe account, and so does the map nested in it: every node refuses another\naccount's write to either, so nobody can move, rename or evict someone\nelse's avatar, or squat a device id before its owner first joins.",
+      "fields": [
+        {
+          "name": "devices",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "$ref": "Player"
+            },
+            "crdt_type": "unordered_map"
+          }
+        }
+      ]
+    },
     "BlockEntry": {
       "kind": "record",
       "fields": [
@@ -20,6 +39,7 @@
     },
     "BlockOverride": {
       "kind": "record",
+      "doc": "One block override: `b` is the block id (0 = air / broken).",
       "fields": [
         {
           "name": "b",
@@ -28,15 +48,17 @@
           }
         },
         {
-          "name": "updated_at",
+          "name": "updatedAt",
           "type": {
             "kind": "u64"
-          }
+          },
+          "doc": "room-time stamp for LWW convergence when two peers edit the same block"
         }
       ]
     },
     "Edit": {
       "kind": "record",
+      "doc": "One edit in a `set_blocks` batch.",
       "fields": [
         {
           "name": "x",
@@ -68,37 +90,16 @@
       "kind": "record",
       "fields": [
         {
-          "name": "name",
+          "name": "meta",
           "type": {
             "kind": "record",
             "fields": [],
-            "crdt_type": "lww_register",
+            "crdt_type": "shared_storage",
             "inner_type": {
-              "kind": "string"
+              "$ref": "WorldMeta"
             }
-          }
-        },
-        {
-          "name": "seed",
-          "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "lww_register",
-            "inner_type": {
-              "kind": "u64"
-            }
-          }
-        },
-        {
-          "name": "created_at",
-          "type": {
-            "kind": "record",
-            "fields": [],
-            "crdt_type": "lww_register",
-            "inner_type": {
-              "kind": "u64"
-            }
-          }
+          },
+          "doc": "name + seed + day-clock anchor. Every client derives the terrain from\nthe seed, so changing it after creation would rebuild the world under\neveryone's edits: frozen, nobody (the creator included) can."
         },
         {
           "name": "overrides",
@@ -111,7 +112,8 @@
               "$ref": "BlockOverride"
             },
             "crdt_type": "unordered_map"
-          }
+          },
+          "doc": "\"x,y,z\" -> override. Set-only (break = b:0), never removed. Public on\npurpose: the world is collaborative."
         },
         {
           "name": "players",
@@ -121,35 +123,16 @@
               "kind": "string"
             },
             "value": {
-              "$ref": "Player"
-            },
-            "crdt_type": "unordered_map"
-          }
-        },
-        {
-          "name": "reap_marks",
-          "type": {
-            "kind": "map",
-            "key": {
-              "kind": "string"
-            },
-            "value": {
-              "$ref": "ReapMark"
-            },
-            "crdt_type": "unordered_map"
+              "$ref": "Avatars"
+            }
           }
         }
       ]
     },
     "Player": {
       "kind": "record",
+      "doc": "A player row: identity-keyed presence + last known transform.",
       "fields": [
-        {
-          "name": "id",
-          "type": {
-            "kind": "string"
-          }
-        },
         {
           "name": "name",
           "type": {
@@ -190,22 +173,24 @@
           "name": "sel",
           "type": {
             "kind": "u32"
-          }
+          },
+          "doc": "selected hotbar slot (cosmetic — lets peers render what you hold)"
         },
         {
           "name": "left",
           "type": {
             "kind": "bool"
-          }
+          },
+          "doc": "explicitly left; row is kept, never removed"
         },
         {
-          "name": "joined_at",
+          "name": "joinedAt",
           "type": {
             "kind": "u64"
           }
         },
         {
-          "name": "updated_at",
+          "name": "updatedAt",
           "type": {
             "kind": "u64"
           }
@@ -271,25 +256,9 @@
         }
       ]
     },
-    "ReapMark": {
-      "kind": "record",
-      "fields": [
-        {
-          "name": "marked_at",
-          "type": {
-            "kind": "u64"
-          }
-        },
-        {
-          "name": "row_ts",
-          "type": {
-            "kind": "u64"
-          }
-        }
-      ]
-    },
     "Transform": {
       "kind": "record",
+      "doc": "Incoming transform for `heartbeat`.",
       "fields": [
         {
           "name": "name",
@@ -351,7 +320,7 @@
           }
         },
         {
-          "name": "created_at",
+          "name": "createdAt",
           "type": {
             "kind": "u64"
           }
@@ -362,6 +331,7 @@
   "methods": [
     {
       "name": "get_overrides",
+      "doc": "Full override map — join/reconcile pull. O(edits), not O(world).",
       "params": [],
       "returns": {
         "kind": "list",
@@ -373,6 +343,7 @@
     },
     {
       "name": "get_players",
+      "doc": "Roster with liveness — peers render everyone `online`. A player who\nvanished without `leave` simply ages out of the TTL here; nobody\nwrites to another account's row to mark it.",
       "params": [
         {
           "name": "now",
@@ -391,6 +362,7 @@
     },
     {
       "name": "heartbeat",
+      "doc": "Liveness + transform ping. SILENT (no event): peers poll `get_players`\nevery ~1.5s; emitting per-heartbeat would spam SSE for every member\n(mero-meet's silent-heartbeat pattern).",
       "params": [
         {
           "name": "t",
@@ -412,6 +384,7 @@
     },
     {
       "name": "init",
+      "doc": "`now` is the creator's unix-seconds clock — it anchors the shared\nday/night cycle (WASM has no wall clock; mero-meet convention).",
       "params": [
         {
           "name": "name",
@@ -438,6 +411,7 @@
     },
     {
       "name": "join",
+      "doc": "Join (or rejoin) the world. Idempotent upsert of my player row.",
       "params": [
         {
           "name": "name",
@@ -482,6 +456,7 @@
     },
     {
       "name": "set_blocks",
+      "doc": "Apply a batch of block edits. Out-of-bounds edits are skipped (not an\nerror: a stale client must not poison a whole batch). Returns the\nnumber of edits applied.",
       "params": [
         {
           "name": "edits",
@@ -518,7 +493,8 @@
       "name": "BlocksChanged",
       "payload": {
         "kind": "string"
-      }
+      },
+      "doc": "Blocks changed by this member (payload = editor id). Clients re-pull\n`get_overrides` on receipt — event is a nudge, the state is the truth."
     },
     {
       "name": "Initialized"
