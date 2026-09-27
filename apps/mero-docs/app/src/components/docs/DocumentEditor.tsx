@@ -53,6 +53,9 @@ export function DocumentEditor({
     client,
   } = docs;
   const confirm = useConfirm();
+  // Settled with an error and no context (e.g. access lost): no longer "connecting".
+  const contextFailed =
+    !docsContextId && !docs.contextResolving && docs.error !== null;
 
   // Metadata only; the title and the body are read through their own hooks.
   const [doc, setDoc] = useState<DocDto | null>(null);
@@ -196,7 +199,7 @@ export function DocumentEditor({
         saveStatus={body.status}
         lastSavedAt={doc ? new Date(doc.updated_at / 1_000_000) : null}
         isAppReady={!!namespaceId && !!docsContextId}
-        isOffline={!isOnline}
+        isOffline={!isOnline || contextFailed}
         isLoading={body.loading}
         onEditorReady={onEditorReady}
         peers={peerList}
