@@ -232,6 +232,12 @@ export function FolderSharingPanel({ folderId }: Props) {
           const rowErr =
             removeError?.identity === m.identity ? removeError.message : null;
           const isSelfRow = !!selfIdentity && m.identity === selfIdentity;
+          // Open members inherit, so removal would not stick; the node never
+          // removes a folder's owner (its core admin) or last admin.
+          const removable =
+            !isOpenFolder &&
+            perms.canManageMembers &&
+            parseGroupRole(m.role) !== 'Admin';
           if (perms.canManagePermissions) {
             return (
               <React.Fragment key={m.identity}>
@@ -244,13 +250,7 @@ export function FolderSharingPanel({ folderId }: Props) {
                   isSelf={isSelfRow}
                   canManage
                   onAfterRoleChange={refetchRoles}
-                  // No per-member remove on Open folders — membership is
-                  // inherited; removing here wouldn't stick.
-                  onRemove={
-                    !isOpenFolder && perms.canManageMembers
-                      ? onRemove
-                      : undefined
-                  }
+                  onRemove={removable ? onRemove : undefined}
                   removing={removingId === m.identity}
                 />
                 {rowErr && (
@@ -286,7 +286,7 @@ export function FolderSharingPanel({ folderId }: Props) {
                     )}
                   </div>
                 </div>
-                {!isOpenFolder && perms.canManageMembers && (
+                {removable && (
                   <Button
                     variant="ghost"
                     size="icon"

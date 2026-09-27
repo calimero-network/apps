@@ -20,6 +20,9 @@ const setFolderRole = vi.fn();
 const setCapabilities = vi.fn();
 const removeMember = vi.fn();
 const caps = { value: DEFAULT_NEW_MEMBER_CAPS as number | null };
+const ME = { identity: 'me', name: 'Me', role: 'Member' };
+const folderMembers = { value: [ME] };
+const folderPerms = { canManagePermissions: false };
 
 vi.mock('@/components/ui/confirm-dialog', () => ({
   useConfirm: () => confirm,
@@ -60,14 +63,14 @@ vi.mock('@/hooks/useAdminRenameMember', () => ({
 vi.mock('@/hooks/useFolderPermissions', () => ({
   useFolderPermissions: () => ({
     canManageVisibility: true,
-    canManagePermissions: false,
+    canManagePermissions: folderPerms.canManagePermissions,
     canManageMembers: true,
     canInviteMembers: false,
   }),
 }));
 vi.mock('@/hooks/useFolderMembership', () => ({
   useFolderMembership: () => ({
-    members: [{ identity: 'me', name: 'Me', role: 'Member' }],
+    members: folderMembers.value,
     loading: false,
     error: null,
     add: vi.fn(),
@@ -85,6 +88,8 @@ vi.mock('@/hooks/useNamespaceInvitation', () => ({
 beforeEach(() => {
   vi.clearAllMocks();
   caps.value = DEFAULT_NEW_MEMBER_CAPS;
+  folderMembers.value = [ME];
+  folderPerms.canManagePermissions = false;
   for (const fn of [
     setMemberCapabilities,
     updateMemberRole,
@@ -282,6 +287,17 @@ describe('leaving a folder', () => {
     render(<FolderSharingPanel folderId="f1" />);
     fireEvent.click(screen.getByRole('button', { name: 'Remove Me' }));
     await waitFor(() => expect(removeMember).toHaveBeenCalledTimes(1));
+  });
+});
+
+// The node never removes a group's owner or its last admin; a folder's core admin is shown as its Owner.
+describe('removing a folder owner', () => {
+  it.each([false, true])('offers no remove on the Owner row (role editor: %s)', (canManagePermissions) => {
+    folderPerms.canManagePermissions = canManagePermissions;
+    folderMembers.value = [{ ...ME, role: 'Admin' }, { identity: 'bob', name: 'Bob', role: 'Member' }];
+    render(<FolderSharingPanel folderId="f1" />);
+    expect(screen.queryByRole('button', { name: 'Remove Me' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Remove Bob' })).toBeTruthy();
   });
 });
 
