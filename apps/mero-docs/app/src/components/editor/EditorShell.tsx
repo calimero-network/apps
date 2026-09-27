@@ -25,7 +25,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { BlockNoteView } from '@blocknote/mantine';
 import { createExtension } from '@blocknote/core';
-import { useCreateBlockNote } from '@blocknote/react';
+import { SideMenuController, useCreateBlockNote } from '@blocknote/react';
 import '@blocknote/core/fonts/inter.css';
 import '@blocknote/mantine/style.css';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -36,6 +36,7 @@ import { useTheme } from '@/components/theme/ThemeProvider';
 import { schema, type DriveEditor } from './blocknote/schema';
 import { presencePlugin } from './presence/presencePlugin';
 import { blockDecorations } from './blocknote/blockDecorations';
+import { BlockSideMenu, SectionLinksContext, type SectionLinks } from './blocknote/BlockMenu';
 import {
   serializeBlocks,
   parseStoredContent,
@@ -78,6 +79,8 @@ export interface EditorShellProps {
   readOnly?: boolean;
   /** Everyone else with this document open. */
   peers?: Peer[];
+  /** Backs the block menu's Copy link to section. */
+  sectionLinks?: SectionLinks;
 }
 
 export const EditorShell: React.FC<EditorShellProps> = ({
@@ -99,6 +102,7 @@ export const EditorShell: React.FC<EditorShellProps> = ({
   readOnly = false,
   onEditorReady,
   peers,
+  sectionLinks,
 }) => {
   const { theme } = useTheme();
 
@@ -299,11 +303,16 @@ export const EditorShell: React.FC<EditorShellProps> = ({
               data-testid="doc-editor"
               className="max-w-4xl mx-auto px-8 py-6 md:px-16 lg:px-24"
             >
-              <BlockNoteView
-                editor={editor}
-                editable={!readOnly}
-                theme={theme}
-              />
+              <SectionLinksContext.Provider value={sectionLinks ?? null}>
+                <BlockNoteView
+                  editor={editor}
+                  editable={!readOnly}
+                  theme={theme}
+                  sideMenu={false}
+                >
+                  <SideMenuController sideMenu={BlockSideMenu} />
+                </BlockNoteView>
+              </SectionLinksContext.Provider>
             </div>
           </div>
 

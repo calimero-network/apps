@@ -69,6 +69,7 @@ vi.mock('@/components/editor/EditorShell', () => ({
     onCopyLink,
     isAppReady,
     isOffline,
+    sectionLinks,
   }: {
     isLoading: boolean;
     documentName: string;
@@ -76,6 +77,10 @@ vi.mock('@/components/editor/EditorShell', () => ({
     onCopyLink?: () => void;
     isAppReady: boolean;
     isOffline: boolean;
+    sectionLinks?: {
+      copy: (blockId: string, section: string) => void;
+      isConfirmed: (blockId: string) => boolean;
+    };
   }) => (
     <div>
       <span data-testid="connection">
@@ -84,6 +89,11 @@ vi.mock('@/components/editor/EditorShell', () => ({
       {isLoading ? 'Loading document...' : documentName}
       {onDelete && <button onClick={onDelete}>Delete</button>}
       {onCopyLink && <button onClick={onCopyLink}>Copy link</button>}
+      {sectionLinks && (
+        <button onClick={() => sectionLinks.copy('blk-9', 'Milestones')}>
+          Copy link to section
+        </button>
+      )}
     </div>
   ),
 }));
@@ -202,6 +212,22 @@ describe('DocumentEditor', () => {
     await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith('Link copied'));
     expect(writeText).toHaveBeenCalledWith(
       `${window.location.origin}/app/ns/f/f/d/doc-1`,
+    );
+  });
+
+  it('copies the URL of one block with a toast naming its section', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+    render(<DocumentEditor folderId="f" docId="doc-1" onClose={() => {}} onDeleted={() => {}} />);
+    await screen.findByText('Notes');
+
+    fireEvent.click(screen.getByText('Copy link to section'));
+
+    await waitFor(() =>
+      expect(toastSuccess).toHaveBeenCalledWith('Link to "Milestones" copied'),
+    );
+    expect(writeText).toHaveBeenCalledWith(
+      `${window.location.origin}/app/ns/f/f/d/doc-1#b=blk-9`,
     );
   });
 

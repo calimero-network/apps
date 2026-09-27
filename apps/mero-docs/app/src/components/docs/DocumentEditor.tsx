@@ -91,6 +91,21 @@ export function DocumentEditor({
     contextId: docsContextId,
     editor: editor as unknown as BodyEditor | null,
   });
+  const { backendIdOf, isConfirmed } = body;
+  const sectionLinks = useMemo(
+    () =>
+      namespaceId
+        ? {
+            copy: (blockId: string, section: string) =>
+              void copyLink(
+                docUrl(namespaceId, folderId, docId, backendIdOf(blockId)),
+                `Link to "${section}" copied`,
+              ),
+            isConfirmed,
+          }
+        : undefined,
+    [namespaceId, folderId, docId, backendIdOf, isConfirmed],
+  );
   const onEditorReady = useCallback(
     (ready: DriveEditor) => setEditor(ready),
     [],
@@ -212,6 +227,7 @@ export function DocumentEditor({
         isLoading={body.loading}
         onEditorReady={onEditorReady}
         peers={peerList}
+        sectionLinks={sectionLinks}
       />
       <DocumentInspector client={client} docId={docId} />
     </>
