@@ -57,6 +57,7 @@
     --success-foreground: 0 0% 100%;
     --warning: 38 92% 50%;
     --warning-foreground: 0 0% 100%;
+    --warning-ink: 26 90% 37%;
 
     /* Encryption/Security accent */
     --secure: 82 100% 19%;
@@ -111,6 +112,7 @@
     --success-foreground: 260 8% 8%;
     --warning: 38 85% 55%;
     --warning-foreground: 260 8% 8%;
+    --warning-ink: 43 96% 56%;
 
     --secure: var(--primary-ink);
     --secure-foreground: 260 8% 8%;
@@ -221,4 +223,87 @@ html .bn-container[data-color-scheme='dark'] {
   100% {
     opacity: 0;
   }
+}
+
+/* A section opened from a link: a brief lime wash that fades out. */
+.section-wash {
+  --section-wash: hsl(var(--primary) / 0.2);
+  border-radius: 6px;
+  margin-inline: -10px;
+  padding-inline: 10px;
+  animation: section-wash 1.6s ease-out forwards;
+}
+
+.dark .section-wash {
+  --section-wash: hsl(var(--primary) / 0.1);
+}
+
+@keyframes section-wash {
+  0%,
+  40% {
+    background-color: var(--section-wash);
+    box-shadow: inset 3px 0 0 hsl(var(--primary));
+  }
+  100% {
+    background-color: transparent;
+    box-shadow: inset 3px 0 0 transparent;
+  }
+}
+
+/* Reduced motion: a static outline held for the same time, then gone. */
+@media (prefers-reduced-motion: reduce) {
+  .section-wash {
+    animation: section-wash-outline 1.6s steps(1, end) forwards;
+  }
+}
+
+@keyframes section-wash-outline {
+  0% {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+  }
+  100% {
+    outline: none;
+  }
+}
+
+/* In-app links are document chips; any other href keeps the default link look. */
+.bn-editor a[href^='/app/'] {
+  --doc-chip: hsl(var(--primary) / 0.2);
+  --doc-chip-hover: hsl(var(--primary) / 0.32);
+  --doc-chip-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z'/%3E%3Cpath d='M14 2v4a2 2 0 0 0 2 2h4'/%3E%3Cpath d='M10 9H8'/%3E%3Cpath d='M16 13H8'/%3E%3Cpath d='M16 17H8'/%3E%3C/svg%3E"); /* lucide file-text, as in the editor header */
+  color: hsl(var(--card-foreground));
+  text-decoration: none;
+  background-color: var(--doc-chip);
+  border-bottom: 1.5px solid hsl(var(--primary));
+  border-radius: 3px 3px 0 0;
+  padding: 0 3px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  outline: none;
+}
+
+.dark .bn-editor a[href^='/app/'] {
+  --doc-chip: hsl(var(--primary) / 0.1);
+  --doc-chip-hover: hsl(var(--primary) / 0.18);
+}
+
+.bn-editor a[href^='/app/']::before {
+  content: '';
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  margin-right: 4px;
+  vertical-align: -1px;
+  background-color: hsl(var(--muted-foreground));
+  -webkit-mask: var(--doc-chip-icon) center / contain no-repeat;
+  mask: var(--doc-chip-icon) center / contain no-repeat;
+}
+
+.bn-editor a[href^='/app/']:hover {
+  background-color: var(--doc-chip-hover);
+}
+
+.bn-editor a[href^='/app/']:focus-visible {
+  box-shadow: 0 0 0 2px hsl(var(--ring));
 }

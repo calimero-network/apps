@@ -15,6 +15,7 @@
 import React, { useState } from 'react';
 import { Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useNamespacePermissions } from '@/hooks/useNamespacePermissions';
 import { useFolderPermissions } from '@/hooks/useFolderPermissions';
@@ -25,6 +26,7 @@ interface Props {
   label?: string;
   size?: 'sm' | 'default';
   variant?: 'outline' | 'ghost' | 'default';
+  className?: string;
 }
 
 export function NewFolderButton({
@@ -32,6 +34,7 @@ export function NewFolderButton({
   label = 'New folder',
   size = 'sm',
   variant = 'outline',
+  className,
 }: Props) {
   const { namespaceId, rootGroupId } = useDriveWorkspace();
   const nsPerms = useNamespacePermissions(namespaceId ?? '', rootGroupId ?? '');
@@ -54,7 +57,7 @@ export function NewFolderButton({
       <Button
         variant={variant}
         size={size}
-        className="gap-1"
+        className={cn('gap-1', className)}
         onClick={() => setOpen(true)}
       >
         <Plus className="h-3.5 w-3.5" />

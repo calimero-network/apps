@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button';
 import { FolderTreeItem } from './FolderTreeItem';
 import { NewFolderButton } from './NewFolderButton';
 import { NoFoldersState } from './NoFolderStates';
+import { SidebarSectionHeader } from '@/components/workspace/SidebarNav';
 
 // Map useDriveWorkspace's DriveLoadingStage values to user-facing
 // labels. Keys that don't appear here fall through to a generic
@@ -30,15 +31,31 @@ interface FolderTreeProps {
   selectedDocId: string | null;
   onSelectFolder: (folderId: string) => void;
   onOpenDoc: (folderId: string, docId: string) => void;
+  // Controlled when the caller persists section state; otherwise the tree keeps its own.
+  collapsed?: boolean;
+  onToggleCollapsed?: () => void;
 }
 
 export function FolderTree({
   selectedDocId,
   onSelectFolder,
   onOpenDoc,
+  collapsed: collapsedProp,
+  onToggleCollapsed,
 }: FolderTreeProps) {
-  const { folders, loading, stage, error, selectedFolderId, namespaceId, refetch } =
-    useDriveWorkspace();
+  const [collapsedLocal, setCollapsedLocal] = useState(false);
+  const collapsed = collapsedProp ?? collapsedLocal;
+  const toggleCollapsed =
+    onToggleCollapsed ?? (() => setCollapsedLocal((c) => !c));
+  const {
+    folders,
+    loading,
+    stage,
+    error,
+    selectedFolderId,
+    namespaceId,
+    refetch,
+  } = useDriveWorkspace();
 
   // Expansion is owned here (was per-row state) so it survives the
   // frequent useMemo recompute of `folders` on SSE refetch and so a
@@ -108,21 +125,28 @@ export function FolderTree({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="box-content flex min-h-9 items-center justify-between border-b border-border/60 px-3 py-2">
-        <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          Folders
-        </span>
-        {/* Self-gates on canCreateFolder. Hidden while empty because
-            NoFoldersState carries the create action then. */}
-        {tree.roots.length > 0 && (
-          <NewFolderButton parentFolderId={null} label="New" />
-        )}
-      </div>
+      <SidebarSectionHeader
+        title="Folders"
+        collapsed={collapsed}
+        onToggle={toggleCollapsed}
+        action={
+          // Self-gates on canCreateFolder. Hidden while empty because
+          // NoFoldersState carries the create action then.
+          tree.roots.length > 0 && (
+            <NewFolderButton
+              parentFolderId={null}
+              label="New"
+              variant="ghost"
+              className="h-6 gap-1 rounded-md px-1.5 text-xs [&_svg]:size-[13px]"
+            />
+          )
+        }
+      />
 
-      {tree.roots.length === 0 ? (
+      {collapsed ? null : tree.roots.length === 0 ? (
         <NoFoldersState />
       ) : (
-        <ul className="flex-1 space-y-1.5 overflow-y-auto px-3 py-2">
+        <ul className="flex-1 space-y-px overflow-y-auto px-2">
           {tree.roots.map((n) => (
             <FolderTreeItem
               key={n.id}

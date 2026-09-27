@@ -41,6 +41,11 @@ import JoinPage from './pages/join';
 
 /** Every path the shared landing page serves. See src/pages/landing. */
 const LANDING_PATHS = ['/', '/docs', '/preview'];
+// Ternary, not `&&`, so a production build's dead-code elimination can drop
+// the whole `import()` — the gallery must never enter the eager bundle.
+const LayoutGallery = import.meta.env.DEV
+  ? React.lazy(() => import('./pages/dev/LayoutGallery'))
+  : null;
 // Clears EditorStatusBar's bottom bar so a toast never covers "Saved • E2E Encrypted".
 const TOAST_BOTTOM_OFFSET = 64;
 
@@ -210,6 +215,16 @@ export default function App() {
                     bookmark lands on the front door instead of a blank route. */}
                 <Route path="/login" element={<Navigate to="/" replace />} />
                 <Route path="/join" element={<JoinPage />} />
+                {LayoutGallery && (
+                  <Route
+                    path="/dev/layouts"
+                    element={
+                      <React.Suspense fallback={null}>
+                        <LayoutGallery />
+                      </React.Suspense>
+                    }
+                  />
+                )}
                 <Route
                   path="/app/*"
                   element={
