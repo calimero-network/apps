@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { useTagsSource } from '../useTags';
 
@@ -31,6 +31,8 @@ beforeEach(() => {
   onRegistryEvent = null;
   vi.spyOn(console, 'warn').mockImplementation(() => {});
 });
+
+afterEach(() => vi.useRealTimers());
 
 describe('useTagsSource', () => {
   it('reads the workspace tags and indexes them by key', async () => {
@@ -70,5 +72,25 @@ describe('useTagsSource', () => {
     ws.registryClient = { listTags: other };
     rerender();
     expect(result.current.tags).toEqual([]);
+  });
+
+  it('retries a failed first read a few times, so chips are named, then stops', async () => {
+    vi.useFakeTimers();
+    listTags
+      .mockRejectedValueOnce(new Error('not synced'))
+      .mockRejectedValueOnce(new Error('not synced'))
+      .mockResolvedValue([tag('q3')]);
+    const { result } = renderHook(() => useTagsSource());
+    await act(async () => vi.advanceTimersByTimeAsync(10_000));
+    expect(result.current.byKey.has('q3')).toBe(true);
+    expect(listTags).toHaveBeenCalledTimes(3);
+
+    listTags.mockReset().mockRejectedValue(new Error('down'));
+    const other = { listTags };
+    ws.registryClient = other;
+    const view = renderHook(() => useTagsSource());
+    await act(async () => vi.advanceTimersByTimeAsync(60_000));
+    expect(listTags).toHaveBeenCalledTimes(3);
+    expect(view.result.current.tags).toEqual([]);
   });
 });

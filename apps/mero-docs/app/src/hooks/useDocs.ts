@@ -141,7 +141,7 @@ export async function listDocsJoining(
     if (!contextId || joined.has(contextId) || !isMissingOwnedIdentityError(e))
       throw e;
     joined.add(contextId);
-    console.warn('[useDocs] no owned identity in docs context; joining', contextId);
+    console.warn('[listDocsJoining] no owned identity in docs context; joining', contextId);
     await healContext(contextId, join);
     return client.listDocs({ include_archived: includeArchived });
   }
