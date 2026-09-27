@@ -39,7 +39,7 @@ export function RoleSelect<R extends AccessRole>({
         const next = options.find((r) => r === e.target.value);
         if (next && next !== value) onChange(next);
       }}
-      className="h-8 rounded-md border border-input bg-background px-2 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+      className="h-8 w-28 shrink-0 rounded-md border border-input bg-background px-2 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
     >
       {value === null && <option value="">Loading…</option>}
       {options.map((role) => {
@@ -52,7 +52,6 @@ export function RoleSelect<R extends AccessRole>({
             title={reason ?? ROLE_DESCRIPTIONS[role]}
           >
             {roleDisplayLabel(role)}
-            {reason ? ' (unavailable)' : ''}
           </option>
         );
       })}

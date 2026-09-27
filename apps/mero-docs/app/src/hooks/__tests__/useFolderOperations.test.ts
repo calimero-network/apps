@@ -106,7 +106,7 @@ describe('useFolderOperations.create - members', () => {
     expect(addGroupMembers).not.toHaveBeenCalled();
   });
 
-  it('member-add failure is logged but does NOT throw or roll back (so the dialog closes — no duplicate folder)', async () => {
+  it('member-add failure is logged but does NOT throw or roll back (so the dialog closes, no duplicate folder)', async () => {
     const registry = makeRegistry();
     const refetch = vi.fn().mockResolvedValue(undefined);
     addGroupMembers.mockRejectedValue(new Error('add boom'));
