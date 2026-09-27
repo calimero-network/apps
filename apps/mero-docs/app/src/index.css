@@ -190,15 +190,6 @@ html .bn-container[data-color-scheme='dark'] {
   outline: none;
 }
 
-/* Browser focus lands on this contenteditable div directly; same ring
-   token as the other inputs, in place of the outline suppressed above. */
-.ProseMirror:focus-visible {
-  box-shadow: 0 0 0 2px hsl(var(--ring));
-  border-radius: var(--bn-border-radius);
-}
-
-
-
 /* Remote carets. The name shows when the peer moves, then fades, so a busy
    document does not turn into a wall of names. */
 .cal-presence-cursor {

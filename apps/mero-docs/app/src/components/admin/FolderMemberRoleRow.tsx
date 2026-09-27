@@ -155,7 +155,7 @@ export function FolderMemberRoleRow({
             disabled={!canManage || updating || core !== 'Member'}
             ariaLabel={`Role for ${label}`}
           />
-          {onRemove && canManage && (
+          {onRemove && canManage ? (
             <Button
               variant="ghost"
               size="icon"
@@ -166,6 +166,8 @@ export function FolderMemberRoleRow({
             >
               <Trash2 className="h-3.5 w-3.5" />
             </Button>
+          ) : (
+            <span aria-hidden data-testid="remove-slot" className="h-7 w-7 shrink-0" />
           )}
         </div>
       </div>

@@ -256,4 +256,27 @@ describe('NamespaceMemberRow admin-rename affordance', () => {
     expect(screen.getByText(UNNAMED_MEMBER_LABEL)).toBeTruthy();
     expect(screen.queryByText(/bob-id-64charhexlikevalue/)).toBeNull();
   });
+
+  it('keeps the remove slot on a row without remove, so role selects line up', () => {
+    useAdminRenameMemberMock.mockReturnValue({
+      canRename: false,
+      renameTo: renameToMock,
+    });
+    render(
+      <NamespaceMemberRow
+        groupId="ns"
+        identity="owner-id"
+        actorRole="Admin"
+        actorCaps={null}
+        adminCount={2}
+        label="Owner"
+        role="Admin"
+        isOwner={true}
+        canManage={true}
+        onRemove={vi.fn().mockResolvedValue(undefined)}
+      />,
+    );
+    expect(screen.queryByLabelText('Remove Owner')).toBeNull();
+    expect(screen.getByTestId('remove-slot')).toBeTruthy();
+  });
 });

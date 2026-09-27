@@ -28,3 +28,17 @@ describe('EditorStatusBar connection state', () => {
     expect(screen.queryByText('Offline')).toBeNull();
   });
 });
+
+describe('EditorStatusBar counts', () => {
+  it('uses the singular for a count of one', () => {
+    render(<EditorStatusBar {...baseProps} wordCount={1} charCount={1} />);
+    expect(screen.getByText('1 word')).toBeTruthy();
+    expect(screen.getByText('1 character')).toBeTruthy();
+  });
+
+  it('uses the plural otherwise', () => {
+    render(<EditorStatusBar {...baseProps} wordCount={0} charCount={5} />);
+    expect(screen.getByText('0 words')).toBeTruthy();
+    expect(screen.getByText('5 characters')).toBeTruthy();
+  });
+});
