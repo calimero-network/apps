@@ -1,14 +1,9 @@
-// Copy link to section from the block menu, and opening such a link: it lands
-// on the block with a banner, falls back to the top when the block is gone,
-// and never adds a history entry of its own.
+// Copy link to section, and opening such a link: it lands on the block with a banner,
+// falls back to the top when the block is gone, and adds no history entry of its own.
 
 import type { Page } from '@playwright/test';
 import { test, expect } from '../fixtures/single-user';
-import type { WorkspaceDriver } from '../fixtures/workspace';
-
-const FILLER_LINES = 30; // enough text above the heading that landing on it needs a scroll
-const PARAGRAPH =
-  'Pricing follows the model in Pricing notes, and the story lives in the blog';
+import { SECTION_PARAGRAPH } from '../fixtures/workspace';
 
 function pathOf(page: Page): string {
   return new URL(page.url()).pathname;
@@ -17,38 +12,6 @@ function pathOf(page: Page): string {
 function homePathOf(page: Page): string {
   const [, app, ws] = pathOf(page).split('/');
   return `/${app}/${ws}`;
-}
-
-// A long intro, then a "Milestones" heading and a paragraph under it.
-async function writeSections(alice: WorkspaceDriver): Promise<void> {
-  const { page } = alice;
-  await alice.editor.type('Intro');
-  for (let line = 1; line <= FILLER_LINES; line++) {
-    await page.keyboard.press('Enter');
-    await page.keyboard.type(`Filler line ${line}`);
-  }
-  await page.keyboard.press('Enter');
-  await page.keyboard.type('# Milestones');
-  await page.keyboard.press('Enter');
-  await page.keyboard.type(PARAGRAPH);
-  await expect(alice.editor.block('Milestones').locator('h1')).toBeVisible();
-}
-
-/** The block's top edge relative to the editor's scroll area. */
-async function offsetInScroller(
-  page: Page,
-  text: string,
-): Promise<number | null> {
-  const scroller = page.getByTestId('doc-editor').locator('xpath=..');
-  const [block, area] = await Promise.all([
-    page
-      .getByTestId('doc-block')
-      .filter({ hasText: text })
-      .first()
-      .boundingBox(),
-    scroller.boundingBox(),
-  ]);
-  return block && area ? block.y - area.y : null;
 }
 
 test.describe('Section links (single-node)', () => {
@@ -66,7 +29,7 @@ test.describe('Section links (single-node)', () => {
     await alice.openDoc('Launch plan');
     await alice.editor.expectMounted();
     docPath = pathOf(alice.page);
-    await writeSections(alice);
+    await alice.editor.writeSections();
   });
 
   test('copies a link to a heading, named in the toast', async ({ alice }) => {
@@ -85,7 +48,7 @@ test.describe('Section links (single-node)', () => {
   });
 
   test('names a paragraph by its first 40 characters', async ({ alice }) => {
-    await alice.editor.copySectionLink(PARAGRAPH);
+    await alice.editor.copySectionLink(SECTION_PARAGRAPH);
 
     await expect(
       alice.page.getByText(
@@ -97,8 +60,8 @@ test.describe('Section links (single-node)', () => {
   test('opens a section link at the block, with a banner', async ({
     alice,
   }) => {
-    const { page } = alice;
-    const link = await alice.editor.copySectionLink('Milestones');
+    const { page, editor } = alice;
+    const link = await editor.copySectionLink('Milestones');
     await page.goto(homePathOf(page));
     await expect(page.getByTestId('workspace-switcher')).toContainText(
       'Section Links WS',
@@ -115,24 +78,22 @@ test.describe('Section links (single-node)', () => {
     await expect(banner).toHaveText('Opened from a link to Milestones', {
       timeout: 30_000,
     });
+    // The wash lasts 1.6 s, so it is checked before anything slower.
+    await expect(editor.block('Milestones')).toHaveClass(/section-wash/);
     await expect
-      .poll(() => offsetInScroller(page, 'Milestones'))
+      .poll(() => editor.offsetInScroller('Milestones'))
       .toBeGreaterThanOrEqual(0);
     await expect
-      .poll(() => offsetInScroller(page, 'Milestones'))
+      .poll(() => editor.offsetInScroller('Milestones'))
       .toBeLessThan(120);
-    await expect(alice.editor.block('Milestones')).toHaveClass(/section-wash/);
-    await expect(alice.editor.block('Milestones')).not.toHaveClass(
-      /section-wash/,
-      {
-        timeout: 5_000,
-      },
-    );
+    await expect(editor.block('Milestones')).not.toHaveClass(/section-wash/, {
+      timeout: 5_000,
+    });
 
     await page.getByRole('button', { name: 'Go to top' }).click();
-    await expect.poll(() => offsetInScroller(page, 'Intro')).toBeLessThan(120);
+    await expect.poll(() => editor.offsetInScroller('Intro')).toBeLessThan(120);
     await expect
-      .poll(() => offsetInScroller(page, 'Intro'))
+      .poll(() => editor.offsetInScroller('Intro'))
       .toBeGreaterThanOrEqual(0);
 
     await page.getByRole('button', { name: 'Dismiss' }).click();
@@ -142,9 +103,9 @@ test.describe('Section links (single-node)', () => {
   test('opens at the top with a banner when the section was removed', async ({
     alice,
   }) => {
-    const { page } = alice;
-    const link = await alice.editor.copySectionLink('Milestones');
-    await alice.editor.openBlockMenu('Milestones');
+    const { page, editor } = alice;
+    const link = await editor.copySectionLink('Milestones');
+    await editor.openBlockMenu('Milestones');
     await page.getByRole('menuitem', { name: 'Delete' }).click();
     await expect(
       page.getByTestId('doc-block').filter({ hasText: 'Milestones' }),
@@ -160,9 +121,9 @@ test.describe('Section links (single-node)', () => {
         'That section was removed, so you are at the top of the document',
       ),
     ).toBeVisible({ timeout: 30_000 });
-    await expect.poll(() => offsetInScroller(page, 'Intro')).toBeLessThan(120);
+    await expect.poll(() => editor.offsetInScroller('Intro')).toBeLessThan(120);
     await expect
-      .poll(() => offsetInScroller(page, 'Intro'))
+      .poll(() => editor.offsetInScroller('Intro'))
       .toBeGreaterThanOrEqual(0);
   });
 
