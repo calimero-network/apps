@@ -12,6 +12,7 @@ export interface DocPresence {
   head: string;
   name: string;
   colour: string;
+  n?: number; // changes every beat, so a live tab stays fresh
 }
 
 /** The peers editing `docId`, with swept slots dropped. */

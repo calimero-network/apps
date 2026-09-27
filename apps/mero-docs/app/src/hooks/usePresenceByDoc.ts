@@ -6,6 +6,7 @@ import { useEphemeral } from '@calimero-network/mero-react';
 import { UNNAMED_MEMBER_LABEL } from '@/components/common/MemberLabel';
 import { presenceColour, type DocPresence } from '@/lib/rich/presence';
 import { rowKey } from '@/lib/workspaceIndex/types';
+import { useFreshPeers } from './useDocPresence';
 
 export type DocPeer = { id: string; name: string; colour: string };
 export type PresenceByDoc = Map<string, DocPeer[]>; // keyed by rowKey
@@ -38,11 +39,12 @@ export function peersByDoc(
   return out;
 }
 
-/** The readers in one folder's docs context; useEphemeral leaves this node out. */
+/** The fresh readers in one folder's docs context; useEphemeral leaves this node out. */
 export function useFolderPresence(
   folderId: string,
   contextId: string,
 ): PresenceByDoc {
-  const { peers } = useEphemeral<DocPresence>(contextId);
-  return useMemo(() => peersByDoc(folderId, peers), [folderId, peers]);
+  const { peers, ageOf } = useEphemeral<DocPresence>(contextId);
+  const fresh = useFreshPeers(peers, ageOf);
+  return useMemo(() => peersByDoc(folderId, fresh), [folderId, fresh]);
 }

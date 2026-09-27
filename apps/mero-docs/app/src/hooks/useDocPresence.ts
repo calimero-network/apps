@@ -2,8 +2,9 @@
 // single publisher: two of them would overwrite each other's caret, and the
 // node keeps only the latest value an author wrote.
 
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useEphemeral, useMero } from '@calimero-network/mero-react';
+import { PRESENCE_BEAT_MS, PRESENCE_STALE_MS } from '@/lib/presenceTiming';
 import {
   peersOnDoc,
   presenceColour,
@@ -31,7 +32,7 @@ export function useDocPresence(
   docId: string | null,
   identity: { id: string; name: string } | null | undefined,
 ): UseDocPresenceResult {
-  const { peers, setPresence } = useEphemeral<DocPresence>(contextId, {
+  const { peers, setPresence, ageOf } = useEphemeral<DocPresence>(contextId, {
     throttleMs: PRESENCE_THROTTLE_MS,
   });
   const ephemeral = useMero().mero?.ephemeral;
@@ -45,6 +46,7 @@ export function useDocPresence(
   const lastCaretRef = useRef<{ docId: string; caret: CaretSlice } | null>(
     null,
   );
+  const beatRef = useRef(0);
 
   const publish = useCallback(
     (caret: CaretSlice) => {
@@ -56,30 +58,73 @@ export function useDocPresence(
         ...caret,
         name: who.name,
         colour: presenceColour(who.id),
+        n: beatRef.current,
       });
     },
     [docId],
   );
 
+  const announce = useCallback(() => {
+    const last = lastCaretRef.current;
+    publish(last?.docId === docId ? last.caret : NO_CARET);
+  }, [docId, publish]);
+
   // Peers only learn a name from a slice, and a remount forgets the caret, so
   // opening a doc or renaming announces the current name without a caret move.
   const name = identity?.name;
-  useEffect(() => {
-    const last = lastCaretRef.current;
-    publish(last?.docId === docId ? last.caret : NO_CARET);
-  }, [name, docId, publish]);
+  useEffect(announce, [name, announce]);
 
   // The node keeps replaying an author's last slice while it stays in the
-  // context, so closing a doc must say so or its readers see a ghost.
+  // context, so an open doc re-announces every beat and a hidden or closed one leaves.
   useEffect(() => {
     if (!ephemeral || !contextId || !docId) return;
-    return () => void ephemeral.set(contextId, LEAVE_SLICE).catch(() => {});
-  }, [ephemeral, contextId, docId]);
+    const leave = () => void ephemeral.set(contextId, LEAVE_SLICE).catch(() => {});
+    let timer: ReturnType<typeof setInterval> | undefined;
+    const beat = () => {
+      beatRef.current += 1;
+      announce();
+    };
+    const onVisibility = () => {
+      clearInterval(timer);
+      if (document.visibilityState === 'hidden') return leave();
+      announce();
+      timer = setInterval(beat, PRESENCE_BEAT_MS);
+    };
+    onVisibility();
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility);
+      clearInterval(timer);
+      leave();
+    };
+  }, [ephemeral, contextId, docId, announce]);
 
+  const fresh = useFreshPeers(peers, ageOf);
   const onDoc = useMemo(
-    () => peersOnDoc(peers, docId ?? ''),
-    [peers, docId],
+    () => peersOnDoc(fresh, docId ?? ''),
+    [fresh, docId],
   );
 
   return { peers: onDoc, publish };
+}
+
+/** The peers heard from within the stale window, re-read on every beat since ages grow silently. */
+export function useFreshPeers<T>(
+  peers: ReadonlyMap<string, T>,
+  ageOf: (author: string) => number | undefined,
+): Map<string, T> {
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), PRESENCE_BEAT_MS);
+    return () => clearInterval(timer);
+  }, []);
+  return useMemo(() => {
+    const fresh = new Map<string, T>();
+    for (const [author, slice] of peers) {
+      const age = ageOf(author);
+      if (age !== undefined && age < PRESENCE_STALE_MS) fresh.set(author, slice);
+    }
+    return fresh;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `now` re-reads ageOf
+  }, [peers, ageOf, now]);
 }

@@ -1,5 +1,5 @@
-import { describe, it, expect, vi } from 'vitest';
-import { renderHook } from '@testing-library/react';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { act, renderHook } from '@testing-library/react';
 import { peersByDoc, useFolderPresence } from '../usePresenceByDoc';
 
 const useEphemeral = vi.fn();
@@ -55,9 +55,31 @@ describe('useFolderPresence', () => {
   it('reads the folder’s docs context, leaving yourself out', () => {
     useEphemeral.mockReturnValue({
       peers: new Map([['bob-node', slice('d1', 'Bob')]]),
+      ageOf: () => 0,
     });
     const { result } = renderHook(() => useFolderPresence('f1', 'ctx-1'));
     expect(useEphemeral).toHaveBeenCalledWith('ctx-1');
     expect(result.current.get('f1/d1')?.[0].name).toBe('Bob');
+  });
+
+  afterEach(() => vi.useRealTimers());
+
+  it('drops a reader whose closed tab stopped refreshing, on the next beat', () => {
+    vi.useFakeTimers();
+    const ages = new Map([
+      ['bob-node', 1_000],
+      ['ghost-node', 20_000],
+    ]);
+    const ageOf = (author: string) => ages.get(author);
+    const peers = new Map([
+      ['bob-node', slice('d1', 'Bob')],
+      ['ghost-node', slice('d1', 'Ghost')],
+    ]);
+    useEphemeral.mockReturnValue({ peers, ageOf });
+    const { result } = renderHook(() => useFolderPresence('f1', 'ctx-1'));
+    expect(result.current.get('f1/d1')).toHaveLength(2);
+    ages.set('ghost-node', 25_000);
+    act(() => vi.advanceTimersByTime(10_000));
+    expect(result.current.get('f1/d1')?.map((p) => p.name)).toEqual(['Bob']);
   });
 });

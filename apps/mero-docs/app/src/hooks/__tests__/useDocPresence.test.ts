@@ -1,8 +1,8 @@
 // `useEphemeral` is faked so a test can read every slice the hook publishes,
 // and `mero.ephemeral.set` so it can read the leave sent when a doc closes.
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { renderHook } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { act, renderHook } from '@testing-library/react';
 import { useDocPresence } from '../useDocPresence';
 
 const CTX = 'docs-ctx';
@@ -12,10 +12,31 @@ const NO_CARET = { blockId: null, anchor: '', head: '' };
 
 const setPresence = vi.fn();
 const set = vi.fn(async () => {});
+let peers = new Map<string, unknown>();
+let ages = new Map<string, number>();
+// Stable like mero-react's useCallback, so a render alone never re-reads ages.
+const ageOf = (author: string) => ages.get(author);
+// Stable like the provider's client, so a re-render never looks like a new context.
+const MERO = { mero: { ephemeral: { set } } };
 vi.mock('@calimero-network/mero-react', () => ({
-  useEphemeral: () => ({ peers: new Map(), setPresence }),
-  useMero: () => ({ mero: { ephemeral: { set } } }),
+  useEphemeral: () => ({ peers, setPresence, ageOf }),
+  useMero: () => MERO,
 }));
+
+function setHidden(hidden: boolean) {
+  Object.defineProperty(document, 'visibilityState', {
+    configurable: true,
+    get: () => (hidden ? 'hidden' : 'visible'),
+  });
+  document.dispatchEvent(new Event('visibilitychange'));
+}
+
+const slice = (docId: string) => ({
+  docId,
+  ...NO_CARET,
+  name: 'Ann',
+  colour: '#f00',
+});
 
 function render(name: string, doc = DOC) {
   return renderHook(
@@ -27,6 +48,13 @@ function render(name: string, doc = DOC) {
 beforeEach(() => {
   setPresence.mockClear();
   set.mockClear();
+  peers = new Map();
+  ages = new Map();
+});
+
+afterEach(() => {
+  setHidden(false);
+  vi.useRealTimers();
 });
 
 describe('useDocPresence', () => {
@@ -85,5 +113,57 @@ describe('useDocPresence', () => {
   it('stays silent until the identity resolves', () => {
     renderHook(() => useDocPresence(CTX, DOC, null));
     expect(setPresence).not.toHaveBeenCalled();
+  });
+
+  describe('staying fresh', () => {
+    beforeEach(() => vi.useFakeTimers());
+
+    it('refreshes its slice every beat while the doc is open, and stops on close', () => {
+      const { result, unmount } = render('bob');
+      result.current.publish(CARET);
+      setPresence.mockClear();
+      act(() => vi.advanceTimersByTime(10_000));
+      expect(setPresence).toHaveBeenCalledTimes(1);
+      expect(setPresence).toHaveBeenLastCalledWith(
+        expect.objectContaining({ ...CARET, docId: DOC, n: 1 }),
+      );
+      act(() => vi.advanceTimersByTime(10_000));
+      expect(setPresence).toHaveBeenLastCalledWith(
+        expect.objectContaining({ n: 2 }),
+      );
+      unmount();
+      setPresence.mockClear();
+      act(() => vi.advanceTimersByTime(30_000));
+      expect(setPresence).not.toHaveBeenCalled();
+    });
+
+    it('leaves when the tab is hidden, and comes back when it is shown', () => {
+      render('bob');
+      act(() => setHidden(true));
+      expect(set).toHaveBeenCalledWith(CTX, {});
+      setPresence.mockClear();
+      act(() => vi.advanceTimersByTime(30_000));
+      expect(setPresence).not.toHaveBeenCalled();
+      act(() => setHidden(false));
+      expect(setPresence).toHaveBeenLastCalledWith(
+        expect.objectContaining({ docId: DOC, name: 'bob' }),
+      );
+    });
+
+    it('drops a peer not heard from within the stale window, on the next beat', () => {
+      peers = new Map([
+        ['fresh', slice(DOC)],
+        ['ghost', slice(DOC)],
+      ]);
+      ages = new Map([
+        ['fresh', 1_000],
+        ['ghost', 24_000],
+      ]);
+      const { result } = render('bob');
+      expect([...result.current.peers.keys()]).toEqual(['fresh', 'ghost']);
+      ages.set('ghost', 25_000);
+      act(() => vi.advanceTimersByTime(10_000));
+      expect([...result.current.peers.keys()]).toEqual(['fresh']);
+    });
   });
 });

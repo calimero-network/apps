@@ -3,10 +3,12 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useEphemeral, useMero } from '@calimero-network/mero-react';
+import {
+  PRESENCE_BEAT_MS as BEAT_MS,
+  PRESENCE_STALE_MS as STALE_MS,
+} from '@/lib/presenceTiming';
 import { useWarnOnError } from './useWarnOnError';
 
-const BEAT_MS = 10_000; // how often an open workspace changes its slice
-const STALE_MS = 25_000; // a closed tab's node keeps replaying its last slice, so age it out here
 const LEAVE_SLICE = {}; // carries no account, so every reader drops the author
 
 /** The author is the node's key, so `a` names the (self-asserted, never gating)
