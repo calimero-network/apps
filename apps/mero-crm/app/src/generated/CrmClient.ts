@@ -18,7 +18,6 @@ export interface Activity {
   owner: string;
   note: string;
   automation_id: string | null;
-  created_by: string;
   created_at: number;
 }
 
@@ -46,7 +45,6 @@ export interface Automation {
   subject: string;
   due_in_days: number;
   enabled: boolean;
-  created_by: string;
   created_at: number;
 }
 
@@ -68,7 +66,6 @@ export interface Contact {
   phone: string;
   organization: string;
   job_title: string;
-  created_by: string;
   created_at: number;
 }
 
@@ -92,6 +89,7 @@ export interface Crm {
   activities: Record<string, Activity>;
   notes: Record<string, Note>;
   automations: Record<string, Automation>;
+  created_by: Record<string, number>;
   currency: string;
   rotting_days: number;
 }
@@ -110,7 +108,6 @@ export interface Deal {
   source: string;
   stage_entered_at: number;
   closed_at: number;
-  created_by: string;
   created_at: number;
 }
 
@@ -195,7 +192,6 @@ export interface NextActivity {
 export interface Note {
   id: string;
   deal_id: string;
-  author: string;
   body: string;
   created_at: number;
 }

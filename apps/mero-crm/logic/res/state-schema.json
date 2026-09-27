@@ -3,6 +3,7 @@
   "types": {
     "Activity": {
       "kind": "record",
+      "doc": "Something someone has to do: a call, a meeting, a task, an email, a deadline.",
       "fields": [
         {
           "name": "id",
@@ -15,7 +16,8 @@
           "type": {
             "kind": "string"
           },
-          "nullable": true
+          "nullable": true,
+          "doc": "A deal's activities are one seek; `None` puts no row in the index."
         },
         {
           "name": "contact_id",
@@ -101,13 +103,8 @@
           "type": {
             "kind": "string"
           },
-          "nullable": true
-        },
-        {
-          "name": "created_by",
-          "type": {
-            "kind": "string"
-          }
+          "nullable": true,
+          "doc": "Set when an automation scheduled it rather than a person."
         },
         {
           "name": "created_at",
@@ -119,6 +116,7 @@
     },
     "Automation": {
       "kind": "record",
+      "doc": "\"When a deal enters `stage_id`, schedule a `kind` activity called `subject`,\ndue `due_in_days` later.\" The simple rule that covers most of what sales\nautomation is actually used for: never letting a deal arrive somewhere with\nno next step.",
       "fields": [
         {
           "name": "id",
@@ -162,12 +160,6 @@
           }
         },
         {
-          "name": "created_by",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
           "name": "created_at",
           "type": {
             "kind": "u64"
@@ -177,6 +169,7 @@
     },
     "Contact": {
       "kind": "record",
+      "doc": "A person the team sells to.",
       "fields": [
         {
           "name": "id",
@@ -237,12 +230,6 @@
             "inner_type": {
               "kind": "string"
             }
-          }
-        },
-        {
-          "name": "created_by",
-          "type": {
-            "kind": "string"
           }
         },
         {
@@ -318,7 +305,7 @@
             "value": {
               "$ref": "Note"
             },
-            "crdt_type": "unordered_map"
+            "crdt_type": "authored_map"
           }
         },
         {
@@ -333,6 +320,20 @@
             },
             "crdt_type": "unordered_map"
           }
+        },
+        {
+          "name": "created_by",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "u64"
+            },
+            "crdt_type": "authored_map"
+          },
+          "doc": "Record id → when it was created, written once with the record by the\naccount that created it. That owner stamp IS the record's `created_by`:\nno node accepts a rewrite of it, so neither can anyone take over a\nrecord's authorship by writing a field."
         },
         {
           "name": "currency",
@@ -360,6 +361,7 @@
     },
     "Deal": {
       "kind": "record",
+      "doc": "A deal: an opportunity with a value, moving through the stages.\n\nIndexed by the fields the board filters on, so a stage column, an owner's\ndeals or a person's deals is a seek rather than a scan of every deal.",
       "fields": [
         {
           "name": "id",
@@ -464,7 +466,8 @@
             "inner_type": {
               "kind": "u64"
             }
-          }
+          },
+          "doc": "Expected close date, ms since the epoch."
         },
         {
           "name": "source",
@@ -475,7 +478,8 @@
             "inner_type": {
               "kind": "string"
             }
-          }
+          },
+          "doc": "Where the deal came from (referral, inbound, outbound, event, …)."
         },
         {
           "name": "stage_entered_at",
@@ -486,7 +490,8 @@
             "inner_type": {
               "kind": "u64"
             }
-          }
+          },
+          "doc": "When the deal entered its current stage — what \"rotting\" measures."
         },
         {
           "name": "closed_at",
@@ -500,12 +505,6 @@
           }
         },
         {
-          "name": "created_by",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
           "name": "created_at",
           "type": {
             "kind": "u64"
@@ -515,6 +514,7 @@
     },
     "Note": {
       "kind": "record",
+      "doc": "A note on a deal. Immutable once written; only its author may delete it —\nthe author being the entry's owner stamp, not a field.",
       "fields": [
         {
           "name": "id",
@@ -524,12 +524,6 @@
         },
         {
           "name": "deal_id",
-          "type": {
-            "kind": "string"
-          }
-        },
-        {
-          "name": "author",
           "type": {
             "kind": "string"
           }
@@ -550,6 +544,7 @@
     },
     "Stage": {
       "kind": "record",
+      "doc": "A column of the pipeline.",
       "fields": [
         {
           "name": "id",
@@ -577,7 +572,8 @@
             "inner_type": {
               "kind": "u32"
             }
-          }
+          },
+          "doc": "Win probability in percent, 0..=100. Drives the weighted forecast."
         },
         {
           "name": "position",
@@ -588,7 +584,8 @@
             "inner_type": {
               "kind": "u32"
             }
-          }
+          },
+          "doc": "Sort key. Reordering rewrites every stage's position in one call."
         },
         {
           "name": "created_at",
