@@ -13,8 +13,10 @@
 //! - `title` - `FugueText`, plain text that merges character by character
 //! - `body` - `RichDocument<DriveMarks>`, an ordered list of blocks each with
 //!   its own text, formatting and structure
-//! - `tags` - `LwwRegister<Vec<String>>` (LWW-replaced list)
+//! - `tags` - `UnorderedMap<String, LwwRegister<bool>>`, tag key to present,
+//!   merged per key
 //! - `archived` / `created_at` / `updated_at` - `LwwRegister<_>`
+//! - `created_by` / `updated_by` - `LwwRegister<String>`, hex account ids
 //!
 //! ## Scope
 //!
@@ -38,7 +40,7 @@ use calimero_storage::collections::{
     Mergeable, RichDocument, Span, UnorderedMap, ValueRef,
 };
 use calimero_storage::env as storage_env;
-use mero_docs_types::DriveError;
+use mero_docs_types::{is_valid_tag_key, DriveError};
 
 pub mod events;
 use events::Event;
@@ -242,8 +244,8 @@ fn digest_block(view: &BlockView, out: &mut String) {
 
 /// Per-document record.
 ///
-/// The derive supplies the deterministic re-key cascade `title` and `body`
-/// need: a nested collection stored under a value type that is not a
+/// The derive supplies the deterministic re-key cascade `title`, `body` and
+/// `tags` need: a nested collection stored under a value type that is not a
 /// registered `RekeyTarget` keeps a per-replica random storage id and never
 /// converges.
 #[derive(BorshSerialize, BorshDeserialize, AbiType, app::Mergeable)]
@@ -251,14 +253,14 @@ fn digest_block(view: &BlockView, out: &mut String) {
 pub struct DocRecord {
     pub title: FugueText,
     pub body: Body,
-    /// Tags as an LWW-replaced list. `add_tag` / `remove_tag` read-modify-
-    /// write the whole vec; concurrent tag edits on different nodes settle
-    /// by HLC (one side's full tag set wins).
-    pub tags: LwwRegister<Vec<String>>,
+    /// tag key -> present. Per-key LWW, so concurrent tag edits on different keys both hold.
+    pub tags: UnorderedMap<String, LwwRegister<bool>>,
     pub archived: LwwRegister<bool>,
     /// Written once at create time; every replica holds the same value.
     pub created_at: LwwRegister<u64>,
     pub updated_at: LwwRegister<u64>,
+    pub created_by: LwwRegister<String>, // hex account id, written once
+    pub updated_by: LwwRegister<String>, // hex account id, advanced with updated_at
 }
 
 /// Flat projection of a `DocRecord` for list / get APIs. The body is read
@@ -269,23 +271,41 @@ pub struct DocRecord {
 pub struct DocDto {
     pub id: String,
     pub title: String,
+    /// Keys only, sorted; the registry maps each to a name and colour.
     pub tags: Vec<String>,
     pub archived: bool,
     pub created_at: u64,
     pub updated_at: u64,
+    pub created_by: String,
+    pub updated_by: String,
+}
+
+/// The same hex account id the registry keys members by, so the client can name it.
+fn caller_account_hex() -> String {
+    hex::encode(calimero_sdk::env::account_id())
 }
 
 fn project(id: &str, rec: &DocRecord) -> Result<DocDto, DriveError> {
+    let mut tags: Vec<String> = rec
+        .tags
+        .entries()
+        .map_err(|e| DriveError::Invalid(format!("tags.entries: {e}")))?
+        .filter(|(_, present)| *present.get())
+        .map(|(key, _)| key)
+        .collect();
+    tags.sort();
     Ok(DocDto {
         id: id.to_string(),
         title: rec
             .title
             .get_text()
             .map_err(|e| DriveError::Invalid(format!("title.get_text: {e}")))?,
-        tags: rec.tags.get().clone(),
+        tags,
         archived: *rec.archived.get(),
         created_at: *rec.created_at.get(),
         updated_at: *rec.updated_at.get(),
+        created_by: rec.created_by.get().clone(),
+        updated_by: rec.updated_by.get().clone(),
     })
 }
 
@@ -394,6 +414,7 @@ impl DocsState {
         let id = format!("doc-{}", n);
 
         let now = storage_env::time_now();
+        let by = caller_account_hex();
         let mut title_text = FugueText::new();
         let _minted = title_text
             .insert_str(0, &title)
@@ -401,10 +422,12 @@ impl DocsState {
         let rec = DocRecord {
             title: title_text,
             body: Body::new(),
-            tags: LwwRegister::new(Vec::new()),
+            tags: UnorderedMap::new(),
             archived: LwwRegister::new(false),
             created_at: LwwRegister::new(now),
             updated_at: LwwRegister::new(now),
+            created_by: LwwRegister::new(by.clone()),
+            updated_by: LwwRegister::new(by),
         };
         self.docs
             .insert(id.clone(), rec)
@@ -888,6 +911,7 @@ impl DocsState {
             .ok_or_else(|| DriveError::NotFound(id.clone()))?;
         rec.archived.set(archived);
         rec.updated_at.set(storage_env::time_now());
+        rec.updated_by.set(caller_account_hex());
         Ok(())
     }
 
@@ -921,21 +945,18 @@ impl DocsState {
     }
 
     pub(crate) fn add_tag_inner(&mut self, id: String, tag: String) -> Result<(), DriveError> {
-        if tag.is_empty() {
-            return Err(DriveError::Invalid("empty tag".into()));
+        if !is_valid_tag_key(&tag) {
+            return Err(DriveError::Invalid("invalid tag key".into()));
         }
         let mut rec = self
             .docs
             .get_mut(&id)
             .map_err(|e| DriveError::Invalid(format!("docs.get_mut: {e}")))?
             .ok_or_else(|| DriveError::NotFound(id.clone()))?;
-        // Read-modify-write over the whole tag list (LWW-replaced on merge).
-        // De-duplicate inline so `add_tag(x)` twice is idempotent.
-        let mut tags = rec.tags.get().clone();
-        if !tags.iter().any(|t| t == &tag) {
-            tags.push(tag);
-            rec.tags.set(tags);
-        }
+        let _previous = rec
+            .tags
+            .insert(tag, LwwRegister::new(true))
+            .map_err(|e| DriveError::Invalid(format!("tags.insert: {e}")))?;
         Ok(())
     }
 
@@ -953,9 +974,13 @@ impl DocsState {
             .get_mut(&id)
             .map_err(|e| DriveError::Invalid(format!("docs.get_mut: {e}")))?
             .ok_or_else(|| DriveError::NotFound(id.clone()))?;
-        let mut tags = rec.tags.get().clone();
-        tags.retain(|t| t != &tag);
-        rec.tags.set(tags);
+        if let Some(mut present) = rec
+            .tags
+            .get_mut(&tag)
+            .map_err(|e| DriveError::Invalid(format!("tags.get_mut: {e}")))?
+        {
+            present.set(false);
+        }
         Ok(())
     }
 
@@ -1093,12 +1118,13 @@ impl DocsState {
         }
     }
 
-    /// Every mutator goes through here, so the list's sort key advances in one
-    /// place rather than at fifteen call sites.
+    /// Every mutator goes through here, so the list's sort key and last editor
+    /// advance in one place rather than at fifteen call sites.
     fn write(&mut self, doc: &str) -> app::Result<impl DerefMut<Target = DocRecord> + '_> {
         match self.docs.get_mut(doc)? {
             Some(mut found) => {
                 found.updated_at.set(storage_env::time_now());
+                found.updated_by.set(caller_account_hex());
                 Ok(found)
             }
             None => app::bail!("unknown document '{doc}'"),
@@ -1135,6 +1161,8 @@ mod tests {
     use super::*;
 
     const DOC: &str = "doc-1";
+    const ALICE: [u8; 32] = [0xa1; 32];
+    const BOB: [u8; 32] = [0xb0; 32];
 
     fn host(title: &str) -> TestHost<DocsState> {
         let mut app = TestHost::new(DocsState::init);
@@ -1614,6 +1642,32 @@ mod tests {
         assert_eq!(digest(&app), before);
     }
 
+    /// A section link names the heading's block id, so a split must leave that
+    /// id on the head half rather than moving it to the new block.
+    #[test]
+    fn a_split_heading_keeps_its_id_on_the_head_text() {
+        let mut app = host("t");
+        let heading = add_block(&mut app, "heading");
+        let _typed = type_text(&mut app, &heading, "Goals for Q3");
+        let tail = app
+            .call(|s| s.split_block(DOC.to_owned(), heading.clone(), 3))
+            .unwrap();
+        let head = app
+            .view(|s| s.get_block(DOC.to_owned(), heading.clone()))
+            .unwrap()
+            .expect("the heading id still resolves");
+        assert_eq!(head.kind, "heading");
+        assert_eq!(
+            app.view(|s| s.get_text(DOC.to_owned(), heading.clone()))
+                .unwrap(),
+            "Goa"
+        );
+        assert_eq!(
+            app.view(|s| s.list_blocks(DOC.to_owned())).unwrap(),
+            vec![heading, tail]
+        );
+    }
+
     #[test]
     fn mark_renders_as_two_spans_over_the_marked_range() {
         let mut app = host("t");
@@ -1911,11 +1965,44 @@ mod tests {
     }
 
     #[test]
-    fn add_tag_rejects_empty() {
+    fn add_tag_accepts_only_a_tag_key() {
         let mut app = DocsState::init();
         let id = app.create_doc_inner("t".into()).unwrap();
-        let err = app.add_tag_inner(id, "".into()).unwrap_err();
-        assert!(matches!(err, DriveError::Invalid(_)));
+        app.add_tag_inner(id.clone(), "launch-2".into()).unwrap();
+        let too_long = "a".repeat(mero_docs_types::TAG_KEY_MAX + 1);
+        for bad in ["", "Launch", "a b", too_long.as_str()] {
+            let err = app.add_tag_inner(id.clone(), bad.into()).unwrap_err();
+            assert!(
+                matches!(&err, DriveError::Invalid(msg) if msg == "invalid tag key"),
+                "{bad:?}: {err}"
+            );
+        }
+        assert_eq!(app.get_doc(id).unwrap().tags, vec!["launch-2".to_owned()]);
+    }
+
+    #[test]
+    fn list_docs_returns_present_tags_sorted() {
+        let mut app = DocsState::init();
+        let id = app.create_doc_inner("t".into()).unwrap();
+        for tag in ["zeta", "alpha", "mid", "beta"] {
+            app.add_tag_inner(id.clone(), tag.into()).unwrap();
+        }
+        app.remove_tag_inner(id.clone(), "mid".into()).unwrap();
+        assert_eq!(
+            app.list_docs(false).unwrap()[0].tags,
+            vec!["alpha".to_owned(), "beta".to_owned(), "zeta".to_owned()]
+        );
+    }
+
+    #[test]
+    fn remove_tag_is_idempotent_even_for_a_key_never_added() {
+        let mut app = DocsState::init();
+        let id = app.create_doc_inner("t".into()).unwrap();
+        app.remove_tag_inner(id.clone(), "never".into()).unwrap();
+        app.add_tag_inner(id.clone(), "todo".into()).unwrap();
+        app.remove_tag_inner(id.clone(), "todo".into()).unwrap();
+        app.remove_tag_inner(id.clone(), "todo".into()).unwrap();
+        assert!(app.get_doc(id).unwrap().tags.is_empty());
     }
 
     #[test]
@@ -1968,6 +2055,50 @@ mod tests {
     }
 
     #[test]
+    fn create_doc_records_the_caller_and_an_edit_records_the_editor() {
+        let mut app = TestHost::new(DocsState::init);
+        let id = app
+            .call_as_account(ALICE, ALICE, |s| s.create_doc("t".to_owned()))
+            .unwrap();
+        let doc = app.view(|s| s.get_doc(id.clone())).unwrap();
+        assert_eq!(doc.created_by, hex::encode(ALICE));
+        assert_eq!(doc.updated_by, hex::encode(ALICE));
+
+        app.call_as_account(BOB, BOB, |s| s.edit_doc(id.clone(), "u".to_owned()))
+            .unwrap();
+        let doc = app.view(|s| s.get_doc(id.clone())).unwrap();
+        assert_eq!(doc.created_by, hex::encode(ALICE));
+        assert_eq!(doc.updated_by, hex::encode(BOB));
+    }
+
+    #[test]
+    fn archive_records_the_archiver_as_the_last_editor() {
+        let mut app = TestHost::new(DocsState::init);
+        let id = app
+            .call_as_account(ALICE, ALICE, |s| s.create_doc("t".to_owned()))
+            .unwrap();
+        app.call_as_account(BOB, BOB, |s| s.archive_doc(id.clone()))
+            .unwrap();
+        let doc = app.view(|s| s.get_doc(id.clone())).unwrap();
+        assert_eq!(doc.created_by, hex::encode(ALICE));
+        assert_eq!(doc.updated_by, hex::encode(BOB));
+    }
+
+    #[test]
+    fn a_tag_change_leaves_the_last_editor() {
+        let mut app = TestHost::new(DocsState::init);
+        let id = app
+            .call_as_account(ALICE, ALICE, |s| s.create_doc("t".to_owned()))
+            .unwrap();
+        app.call_as_account(BOB, BOB, |s| s.add_tag(id.clone(), "todo".to_owned()))
+            .unwrap();
+        assert_eq!(
+            app.view(|s| s.get_doc(id.clone())).unwrap().updated_by,
+            hex::encode(ALICE)
+        );
+    }
+
+    #[test]
     fn add_tag_does_not_touch_the_title() {
         let mut app = DocsState::init();
         let id = app.create_doc_inner("t".into()).unwrap();
@@ -1991,10 +2122,12 @@ mod tests {
         DocRecord {
             title: FugueText::new(),
             body: Body::new(),
-            tags: zero_lww(Vec::new()),
+            tags: UnorderedMap::new(),
             archived: zero_lww(false),
             created_at: zero_lww(0),
             updated_at: zero_lww(0),
+            created_by: zero_lww(String::new()),
+            updated_by: zero_lww(String::new()),
         }
     }
 
@@ -2002,22 +2135,75 @@ mod tests {
     fn doc_record_merge_takes_the_later_metadata() {
         let mut a = stub_record();
         let mut b = stub_record();
-        b.tags = LwwRegister::new(vec!["urgent".to_owned()]);
         b.archived = LwwRegister::new(true);
+        b.updated_by = LwwRegister::new("b0".to_owned());
         <DocRecord as Mergeable>::merge(&mut a, &b).unwrap();
-        assert_eq!(a.tags.get(), &vec!["urgent".to_owned()]);
         assert!(*a.archived.get());
+        assert_eq!(a.updated_by.get(), "b0");
+    }
+
+    /// Two replicas of one base record carrying `base`, each making one tag
+    /// edit, then `receiver` merges the other's state. Returns the receiver's tags.
+    fn merged_tags(
+        base: &[&str],
+        a_edit: (&str, bool),
+        b_edit: (&str, bool),
+        receiver_is_a: bool,
+    ) -> Vec<String> {
+        let (mut a, mut b) = (stub_record(), stub_record());
+        for rec in [&mut a, &mut b] {
+            for key in base {
+                let _new = rec.tags.insert((*key).to_owned(), zero_lww(true)).unwrap();
+            }
+        }
+        for (rec, (key, present)) in [(&mut a, a_edit), (&mut b, b_edit)] {
+            let _previous = rec
+                .tags
+                .insert(key.to_owned(), LwwRegister::new(present))
+                .unwrap();
+        }
+        let (mut receiver, sender) = if receiver_is_a { (a, b) } else { (b, a) };
+        <DocRecord as Mergeable>::merge(&mut receiver, &sender).unwrap();
+        project("d", &receiver).unwrap().tags
+    }
+
+    #[test]
+    fn concurrent_tags_on_different_keys_both_hold() {
+        for receiver_is_a in [true, false] {
+            assert_eq!(
+                merged_tags(&[], ("x", true), ("y", true), receiver_is_a),
+                vec!["x".to_owned(), "y".to_owned()],
+                "receiver_is_a={receiver_is_a}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_concurrent_untag_and_tag_on_different_keys_both_hold() {
+        for receiver_is_a in [true, false] {
+            assert_eq!(
+                merged_tags(&["x"], ("x", false), ("y", true), receiver_is_a),
+                vec!["y".to_owned()],
+                "receiver_is_a={receiver_is_a}"
+            );
+        }
     }
 
     #[test]
     fn doc_record_merge_is_idempotent() {
         let mut working = stub_record();
-        working.tags = LwwRegister::new(vec!["t".to_owned()]);
+        let _new = working
+            .tags
+            .insert("t".to_owned(), LwwRegister::new(true))
+            .unwrap();
         let mut snapshot = stub_record();
-        snapshot.tags = LwwRegister::new(vec!["t".to_owned()]);
+        let _new = snapshot
+            .tags
+            .insert("t".to_owned(), LwwRegister::new(true))
+            .unwrap();
         <DocRecord as Mergeable>::merge(&mut working, &snapshot).unwrap();
         <DocRecord as Mergeable>::merge(&mut working, &snapshot).unwrap();
-        assert_eq!(working.tags.get(), &vec!["t".to_owned()]);
+        assert_eq!(project("d", &working).unwrap().tags, vec!["t".to_owned()]);
         assert!(!*working.archived.get());
     }
 }

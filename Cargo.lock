@@ -899,6 +899,7 @@ dependencies = [
  "calimero-sdk",
  "calimero-storage",
  "calimero-storage-macros",
+ "hex",
  "mero-docs-types",
  "serial_test",
 ]
