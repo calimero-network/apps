@@ -1,13 +1,17 @@
 #![allow(clippy::len_without_is_empty)]
 
 use std::cmp::Ordering;
+use std::collections::BTreeSet;
 
 use calimero_sdk::abi::AbiType;
 use calimero_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use calimero_sdk::serde::{Deserialize, Serialize};
 use calimero_sdk::types::Error as AppError;
-use calimero_sdk::{app, env, PublicKey};
-use calimero_storage::collections::{LwwRegister, Mergeable, UnorderedMap, UnorderedSet, Vector};
+use calimero_sdk::{app, env, AccountId, PublicKey};
+use calimero_storage::collections::{
+    AccessControl, Frozen, LwwRegister, Mergeable, ModeratedOnce, SortedMap, UnorderedMap,
+    UserStorage, WriteOnce,
+};
 
 pub type UserId = [u8; 32];
 pub type BlobId = [u8; 32];
@@ -109,9 +113,51 @@ pub struct DocumentChunk {
     pub end_position: usize,
 }
 
-/// Document information - uses LWW based on uploaded_at timestamp
-#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize)]
+/// A document as uploaded. Written once: nobody, the uploader included, can
+/// change it afterwards, and only an admin (a moderator of `documents`) can
+/// remove it. The uploader is the entry's owner stamp.
+///
+/// What signing changes is recorded beside it, one write-once
+/// [`SignedVersion`] per signature, never by rewriting this.
+#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize)]
 #[borsh(crate = "calimero_sdk::borsh")]
+pub struct StoredDocument {
+    pub name: String,
+    pub hash: String,
+    pub pdf_blob_id: BlobId,
+    pub size: u64,
+    pub uploaded_at: u64,
+    /// Who must sign it: every participant holding `Sign` or `Admin` when it
+    /// was uploaded. Fixed with the document, so completion is a fact about
+    /// the past — nobody who joins later reopens it.
+    pub required_signers: Vec<UserId>,
+    pub embeddings: Option<Vec<f32>>,
+    pub extracted_text: Option<String>,
+    pub chunks: Option<Vec<DocumentChunk>>,
+}
+
+/// One signature: the signer (the entry's owner stamp) took the version at
+/// `base_hash`, put their mark on it, and produced the version at `new_hash`,
+/// stored as `pdf_blob_id`. Written once, so a signature can be neither
+/// withdrawn nor edited, and the version it signed stays on record.
+#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize)]
+#[borsh(crate = "calimero_sdk::borsh")]
+pub struct SignedVersion {
+    pub base_hash: String,
+    pub new_hash: String,
+    pub pdf_blob_id: BlobId,
+    pub size: u64,
+    pub signed_at: u64,
+}
+
+/// Document information as read: the uploaded document, its current version
+/// (the last signature's, or the upload's) and its status, derived every read
+/// from the write-once entries.
+///
+/// `embeddings`, `extracted_text` and `chunks` are always `None` in
+/// `list_documents`, which returns every document; they stay in storage for
+/// `search_document_by_embedding`.
+#[derive(AbiType, Debug, Clone, Serialize)]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct DocumentInfo {
     pub id: String,
@@ -122,75 +168,19 @@ pub struct DocumentInfo {
     pub status: DocumentStatus,
     pub pdf_blob_id: BlobId,
     pub size: u64,
+    pub required_signers: Vec<UserId>,
     pub embeddings: Option<Vec<f32>>,
     pub extracted_text: Option<String>,
     pub chunks: Option<Vec<DocumentChunk>>,
 }
 
-/// Declared UNDISPATCHED, unlike its neighbours here, and the reason is
-/// specific: `DocumentInfo` is mutable after creation — `sign_document` rewrites
-/// `pdf_blob_id`, `size`, `hash` and `status`, and two more paths flip `status`
-/// when a signer joins — but its only timestamp is `uploaded_at`, which by
-/// design records the upload and never advances.
+/// Document status, derived from the document's signatures.
 ///
-/// core 0.11.0-rc.32 runs a DISPATCHED merge on every write, including a node's
-/// own, merging the incoming record against the stored one. Dispatching a
-/// last-write-wins on `uploaded_at` would therefore compare two equal clocks on
-/// every update and keep the copy already on disk: every signature, hash and
-/// status change after upload would be silently discarded. The rule below was
-/// never called before #3807, so the app has always relied on the storage
-/// layer's own write-order resolution — this declaration records that rather
-/// than replacing it with a rule that is wrong for a mutable record.
-///
-/// Giving the record a real edit clock (and dispatching a total order on it, as
-/// the set-once types here now do) is the better end state, but it is a state
-/// layout and ABI change to a signing audit trail — the owner's call, not a
-/// dependency bump's.
-impl calimero_storage::collections::MergeStrategy for DocumentInfo {
-    const DISPATCHED: bool = false;
-}
-
-impl Mergeable for DocumentInfo {
-    fn merge(
-        &mut self,
-        other: &Self,
-    ) -> Result<(), calimero_storage::collections::crdt_meta::MergeError> {
-        // Reached only on a root-blob conflict, never at a collection entry —
-        // see the note above. Kept as last-write-wins by upload time.
-        if lww_take(self.uploaded_at, other.uploaded_at, self, other) {
-            *self = other.clone();
-        }
-        Ok(())
-    }
-}
-
-// `Mergeable: RekeyTarget`, and an undispatched declaration does not generate
-// it. Flat record, no nested collections, so re-keying is a no-op.
-impl calimero_storage::collections::rekey::RekeyTarget for DocumentInfo {
-    fn rekey_relative_to(&mut self, _parent_id: calimero_storage::address::Id) {}
-}
-
-/// Document status tracking
-///
-/// ⚠️ `FullySigned` IS TERMINAL, and that is a deliberate change.
-///
-/// Adding a participant, or promoting one to `Sign`, used to walk every
-/// `FullySigned` document and put it back to `PartiallySigned` — on the
-/// reasoning that "everybody has signed" stops being true when the set of
-/// signers grows. The effect was that a finished agreement silently un-finished
-/// itself: no event, no record that it had ever been complete, and no way for
-/// the people who had already signed to find out.
-///
-/// That treats completion as a query over current membership. It is not: it is
-/// a fact about the past. Three people signed this document on these dates, and
-/// adding a fourth person tomorrow does not make that untrue — it means the
-/// fourth person was not party to it. If they need to be, that is a new
-/// document, which is also the only honest way to get their signature onto the
-/// same page as the others.
-///
-/// So nothing reopens a completed document any more. `Declined` and `Voided`
-/// are the two terminal states still missing; until they exist a stalled
-/// agreement is indistinguishable from an ignored one.
+/// `FullySigned` IS TERMINAL. Completion is a fact about the past: the
+/// signers a document waits for are fixed when it is uploaded, its signatures
+/// are written once, and a completed document refuses further signatures. A
+/// participant added later was not party to it; if they need to be, that is a
+/// new document.
 #[derive(AbiType, Debug, Clone, PartialEq, BorshSerialize, BorshDeserialize, Serialize)]
 #[borsh(crate = "calimero_sdk::borsh")]
 #[serde(crate = "calimero_sdk::serde")]
@@ -200,27 +190,12 @@ pub enum DocumentStatus {
     FullySigned,
 }
 
-/// Signature record for documents - uses LWW based on signed_at timestamp
-#[app::mergeable(id = "mero_sign::DocumentSignature")]
-#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize)]
-#[borsh(crate = "calimero_sdk::borsh")]
+/// A signature on a document, as read. `signer` is the entry's owner stamp.
+#[derive(AbiType, Debug, Clone, Serialize)]
 #[serde(crate = "calimero_sdk::serde")]
 pub struct DocumentSignature {
     pub signer: UserId,
     pub signed_at: u64,
-}
-
-impl Mergeable for DocumentSignature {
-    fn merge(
-        &mut self,
-        other: &Self,
-    ) -> Result<(), calimero_storage::collections::crdt_meta::MergeError> {
-        // LWW based on signed_at - newer wins
-        if lww_take(self.signed_at, other.signed_at, self, other) {
-            *self = other.clone();
-        }
-        Ok(())
-    }
 }
 
 /// Permission levels for participants
@@ -235,62 +210,20 @@ pub enum PermissionLevel {
     Admin,
 }
 
-/// Storage cell holding a participant's [`PermissionLevel`].
-///
-/// The enum cannot carry the declaration itself: from core 0.11.0-rc.32 every
-/// `Mergeable` type must declare HOW it merges, and both `#[app::mergeable]`
-/// and `#[derive(Mergeable)]` reject enums — differing variants have no
-/// canonical merge rule, and core's diagnostic says to wrap. This one-field
-/// struct is that wrapper, and it keeps the rank rule (Admin > Sign > Read)
-/// this app has always intended.
-///
-/// The rule is a maximum over a total order — the three ranks are distinct, so
-/// there is no tie to resolve — hence commutative, associative and idempotent,
-/// which is what core requires of a dispatched merge.
-///
-/// ⚠️ Rank-max raises a permission concurrently but can never LOWER one: a
-/// demotion that races anything else loses, so a revocation does not converge.
-/// That is this app's pre-existing intent, NOT a change made here — before
-/// core#3807 the rule was dead code that was never called, so the behaviour was
-/// never observable. Switching to `LwwRegister<PermissionLevel>` would make
-/// revocation converge (and is what core recommends for an enum) but changes an
-/// authorization semantic, so it is left as the owner's call.
-#[app::mergeable(id = "mero_sign::PermissionCell")]
-#[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
-#[borsh(crate = "calimero_sdk::borsh")]
-#[serde(crate = "calimero_sdk::serde")]
-pub struct PermissionCell {
-    pub level: PermissionLevel,
-}
-
-impl PermissionCell {
-    fn rank(level: &PermissionLevel) -> u8 {
-        match level {
-            PermissionLevel::Admin => 2,
-            PermissionLevel::Sign => 1,
-            PermissionLevel::Read => 0,
-        }
+fn rank(level: &PermissionLevel) -> u8 {
+    match level {
+        PermissionLevel::Admin => 2,
+        PermissionLevel::Sign => 1,
+        PermissionLevel::Read => 0,
     }
 }
 
-impl From<PermissionLevel> for PermissionCell {
-    fn from(level: PermissionLevel) -> Self {
-        PermissionCell { level }
-    }
-}
-
-impl Mergeable for PermissionCell {
-    fn merge(
-        &mut self,
-        other: &Self,
-    ) -> Result<(), calimero_storage::collections::crdt_meta::MergeError> {
-        // Take the higher permission (Admin > Sign > Read).
-        if Self::rank(&other.level) > Self::rank(&self.level) {
-            self.level = other.level.clone();
-        }
-        Ok(())
-    }
-}
+/// Roles in [`AccessControl`]. Admin is the registry's own admin tier.
+const ROLE_SIGNER: &str = "signer";
+const ROLE_VIEWER: &str = "viewer";
+/// Set by an admin's `remove_participant`: overrides a self-registration,
+/// which only its registrant could otherwise withdraw.
+const ROLE_REMOVED: &str = "removed";
 
 /// Metadata for tracking joined shared contexts
 #[app::mergeable(id = "mero_sign::ContextMetadata")]
@@ -344,6 +277,14 @@ impl Mergeable for IdentityMapping {
     }
 }
 
+/// One account's consents, in that account's own [`UserStorage`] slot: only
+/// they can give (or forge) their consent, and nobody can occupy the entry.
+#[derive(AbiType, Debug, Default, BorshSerialize, BorshDeserialize, app::Mergeable)]
+#[borsh(crate = "calimero_sdk::borsh")]
+pub struct Consents {
+    documents: UnorderedMap<String, LwwRegister<bool>>,
+}
+
 /// Participant information with permission level
 #[derive(AbiType, Debug, Clone, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
 #[borsh(crate = "calimero_sdk::borsh")]
@@ -368,26 +309,47 @@ pub struct ContextDetails {
     pub created_at: u64,
 }
 
+/// Every field that decides who may do what is guarded by a storage type,
+/// because a member running a modified node skips every check in the methods
+/// below and writes plain fields directly:
+///
+/// | field | who may write it, on every node |
+/// |---|---|
+/// | `is_private`, `owner`, `context_name` | nobody after `init` (`Frozen`) |
+/// | `roles` | admins (`AccessControl`'s writer set) |
+/// | `joined` | each account its own slot (`UserStorage`) |
+/// | `documents` | anyone adds; nobody edits; admins remove (`ModeratedOnce`) |
+/// | `document_signatures` | each signer their own; nobody edits or removes (`WriteOnce`) |
+/// | `consents` | each account its own slot (`UserStorage`) |
+///
+/// The private-context fields (`signatures`, `joined_contexts`,
+/// `identity_mappings`) are plain: a private context holds its owner's
+/// account alone.
 #[app::state(emits = MeroSignEvent)]
 pub struct MeroSignState {
     // Context type flag
-    pub is_private: LwwRegister<bool>,
+    pub is_private: Frozen<bool>,
 
-    pub owner: LwwRegister<UserId>,
-    pub context_name: LwwRegister<String>,
+    pub owner: Frozen<UserId>,
+    pub context_name: Frozen<String>,
 
     // Private context data
     pub signatures: UnorderedMap<String, SignatureRecord>,
     pub joined_contexts: UnorderedMap<String, ContextMetadata>,
     pub identity_mappings: UnorderedMap<String, IdentityMapping>,
-    pub signature_count: LwwRegister<u64>,
 
     // Shared context data
-    pub participants: UnorderedSet<UserId>,
-    pub documents: UnorderedMap<String, DocumentInfo>,
-    pub document_signatures: UnorderedMap<String, Vector<DocumentSignature>>,
-    pub permissions: UnorderedMap<UserId, PermissionCell>,
-    pub consents: UnorderedMap<String, LwwRegister<bool>>,
+    /// Admin, signer and viewer grants, and removals.
+    pub roles: AccessControl,
+    /// Accounts that registered themselves through an open invitation: `Sign`
+    /// unless an admin set another level or removed them.
+    pub joined: UserStorage<LwwRegister<u64>>,
+    /// Moderated by the admins, kept equal to `roles.admins()`.
+    pub documents: ModeratedOnce<UnorderedMap<String, StoredDocument>>,
+    /// `"{document_id}/{signer hex}/{nonce}"`: a document's signatures are one
+    /// prefix, and the nonce leaves no key for anyone to occupy first.
+    pub document_signatures: WriteOnce<SortedMap<String, SignedVersion>>,
+    pub consents: UserStorage<Consents>,
 }
 
 #[app::event]
@@ -501,6 +463,58 @@ fn encode_context_id_base58(context_id: &ContextId) -> String {
     hex::encode(context_id)
 }
 
+fn store_err(what: &str) -> impl Fn(calimero_storage::collections::StoreError) -> AppError + '_ {
+    move |e| AppError::msg(format!("{what}: {e:?}"))
+}
+
+/// A document's signatures in the order they were applied, with their
+/// signers: starting from the uploaded version, each is the signature built
+/// on the version before it.
+///
+/// Two signers who built on the same version (a race the `base_hash` check
+/// narrows but cannot close) fork it; the fork is decided the same way on
+/// every node — a required signer first, then the earlier signature, then the
+/// key — and the other signature is not on the document: its mark is not in
+/// the current PDF, so its signer may sign again. Each signer appears once.
+fn chain(
+    records: Vec<(String, UserId, SignedVersion)>,
+    doc: &StoredDocument,
+) -> Vec<(UserId, SignedVersion)> {
+    let mut out: Vec<(UserId, SignedVersion)> = Vec::new();
+    let mut hash = doc.hash.clone();
+    loop {
+        let next = records
+            .iter()
+            .filter(|(_, signer, v)| v.base_hash == hash && !out.iter().any(|(s, _)| s == signer))
+            .min_by_key(|(key, signer, v)| {
+                (
+                    !doc.required_signers.contains(signer),
+                    v.signed_at,
+                    key.clone(),
+                )
+            });
+        let Some((_, signer, v)) = next else {
+            return out;
+        };
+        hash = v.new_hash.clone();
+        out.push((*signer, v.clone()));
+    }
+}
+
+fn status_of(doc: &StoredDocument, signed: &[(UserId, SignedVersion)]) -> DocumentStatus {
+    if signed.is_empty() {
+        DocumentStatus::Pending
+    } else if doc
+        .required_signers
+        .iter()
+        .all(|r| signed.iter().any(|(s, _)| s == r))
+    {
+        DocumentStatus::FullySigned
+    } else {
+        DocumentStatus::PartiallySigned
+    }
+}
+
 #[app::logic]
 impl MeroSignState {
     #[app::init]
@@ -509,35 +523,34 @@ impl MeroSignState {
         // signer on two machines must not read as two distinct signatories.
         let owner_raw = env::account_id();
 
-        let mut state = MeroSignState {
-            is_private: is_private.into(),
-            owner: owner_raw.into(),
-            context_name: context_name.into(),
+        // The creator is the first admin of a shared context, and the first
+        // moderator of its documents.
+        MeroSignState {
+            is_private: Frozen::new(is_private),
+            owner: Frozen::new(owner_raw),
+            context_name: Frozen::new(context_name),
 
             signatures: UnorderedMap::new(),
             joined_contexts: UnorderedMap::new(),
             identity_mappings: UnorderedMap::new(),
-            signature_count: 0u64.into(),
-            participants: UnorderedSet::new(),
-            documents: UnorderedMap::new(),
-            document_signatures: UnorderedMap::new(),
-            permissions: UnorderedMap::new(),
-            consents: UnorderedMap::new(),
-        };
-
-        // For shared contexts, add the creator as a participant with admin permissions
-        if !is_private {
-            let _ = state.participants.insert(owner_raw);
-            let _ = state
-                .permissions
-                .insert(owner_raw, PermissionLevel::Admin.into());
+            roles: AccessControl::new(AccountId::from(owner_raw)),
+            joined: UserStorage::new(),
+            documents: ModeratedOnce::new(),
+            document_signatures: WriteOnce::new(),
+            consents: UserStorage::new(),
         }
+    }
 
-        state
+    fn private(&self) -> app::Result<bool> {
+        Ok(*self.is_private.get()?)
     }
 
     pub fn is_default_private_context(&self) -> bool {
-        *self.is_private.get() && self.context_name.get() == "default"
+        self.private().unwrap_or(false)
+            && self
+                .context_name
+                .get()
+                .is_ok_and(|name| name.as_str() == "default")
     }
 
     /// Create a new signature and store its blob ID
@@ -547,14 +560,17 @@ impl MeroSignState {
         blob_id_str: String,
         data_size: u64,
     ) -> app::Result<u64> {
-        if !*self.is_private.get() {
+        if !self.private()? {
             return Err(AppError::msg(
                 "Signatures can only be created in private context".to_string(),
             ));
         }
 
-        let signature_id = *self.signature_count.get();
-        self.signature_count.set(signature_id + 1);
+        // Random, not a counter: two devices of the owner creating a signature
+        // at once read the same count and one overwrote the other.
+        let mut id_bytes = [0u8; 8];
+        env::random_bytes(&mut id_bytes);
+        let signature_id = u64::from_le_bytes(id_bytes);
 
         let blob_id = parse_blob_id_hex(&blob_id_str)?;
 
@@ -594,7 +610,7 @@ impl MeroSignState {
 
     /// Delete a signature by ID
     pub fn delete_signature(&mut self, signature_id: u64) -> app::Result<()> {
-        if !*self.is_private.get() {
+        if !self.private()? {
             return Err(AppError::msg(
                 "Signatures can only be deleted in private context".to_string(),
             ));
@@ -620,7 +636,7 @@ impl MeroSignState {
 
     /// Get all signatures
     pub fn list_signatures(&self) -> app::Result<Vec<SignatureRecord>> {
-        if !*self.is_private.get() {
+        if !self.private()? {
             return Err(AppError::msg(
                 "Signatures can only be accessed in private context".to_string(),
             ));
@@ -642,7 +658,7 @@ impl MeroSignState {
         shared_identity_str: String,
         context_name: String,
     ) -> app::Result<()> {
-        if !*self.is_private.get() {
+        if !self.private()? {
             return Err(AppError::msg(
                 "Context joining can only be managed in private context".to_string(),
             ));
@@ -659,7 +675,7 @@ impl MeroSignState {
             return Err(AppError::msg("Already joined this context".to_string()));
         }
 
-        let private_identity = *self.owner.get();
+        let private_identity = *self.owner.get()?;
         let shared_identity = parse_public_key_hex(&shared_identity_str)?;
 
         let metadata = ContextMetadata {
@@ -695,7 +711,7 @@ impl MeroSignState {
 
     /// Leave a shared context
     pub fn leave_shared_context(&mut self, context_id_str: String) -> app::Result<()> {
-        if !*self.is_private.get() {
+        if !self.private()? {
             return Err(AppError::msg(
                 "Context leaving can only be managed in private context".to_string(),
             ));
@@ -719,7 +735,7 @@ impl MeroSignState {
 
     /// List all joined contexts
     pub fn list_joined_contexts(&self) -> app::Result<Vec<ContextMetadata>> {
-        if !*self.is_private.get() {
+        if !self.private()? {
             return Err(AppError::msg(
                 "Joined contexts can only be accessed in private context".to_string(),
             ));
@@ -740,25 +756,12 @@ impl MeroSignState {
     pub fn get_context_details(&self, context_id_str: String) -> app::Result<ContextDetails> {
         let context_id = parse_context_id_hex(&context_id_str)?;
         let mut participants_with_permissions = Vec::new();
-
-        if let Ok(iter) = self.participants.iter() {
-            for participant in iter {
-                let permission = self
-                    .permissions
-                    .get(&participant)
-                    .map_err(|e| {
-                        AppError::msg(format!("Failed to get permission for user: {:?}", e))
-                    })?
-                    // `get` returns a `ValueRef`; deref out before defaulting so
-                    // both arms are the same owned type.
-                    .map(|v| v.level.clone())
-                    .unwrap_or(PermissionLevel::Read);
-
-                participants_with_permissions.push(ParticipantInfo {
-                    user_id: participant,
-                    permission_level: permission,
-                });
-            }
+        for user_id in self.participant_ids()? {
+            let permission_level = self.level_of(&user_id)?.unwrap_or(PermissionLevel::Read);
+            participants_with_permissions.push(ParticipantInfo {
+                user_id,
+                permission_level,
+            });
         }
 
         let document_count = self
@@ -769,9 +772,9 @@ impl MeroSignState {
 
         let context_details = ContextDetails {
             context_id,
-            context_name: self.context_name.get().clone(),
-            owner: *self.owner.get(),
-            is_private: *self.is_private.get(),
+            context_name: self.context_name.get()?.clone(),
+            owner: *self.owner.get()?,
+            is_private: self.private()?,
             participant_count: participants_with_permissions.len() as u64,
             participants: participants_with_permissions,
             document_count,
@@ -781,75 +784,100 @@ impl MeroSignState {
         Ok(context_details)
     }
 
+    /// A participant's level: `None` for someone who is not one.
+    ///
+    /// Read from storage every node enforces: the admin tier and grants of
+    /// `roles`, which only admins write, and the account's own `joined` slot,
+    /// which only it writes. An admin's removal outranks a self-registration.
+    fn level_of(&self, account: &UserId) -> app::Result<Option<PermissionLevel>> {
+        let who = AccountId::from(*account);
+        let has = |role: &str| {
+            self.roles
+                .has_role(role, &who)
+                .map_err(store_err("Failed to check user permissions"))
+        };
+        Ok(if self.roles.is_admin(&who) {
+            Some(PermissionLevel::Admin)
+        } else if has(ROLE_REMOVED)? {
+            None
+        } else if has(ROLE_VIEWER)? {
+            Some(PermissionLevel::Read)
+        } else if has(ROLE_SIGNER)?
+            || self
+                .joined
+                .contains_user(&who)
+                .map_err(store_err("Failed to check user permissions"))?
+        {
+            Some(PermissionLevel::Sign)
+        } else {
+            None
+        })
+    }
+
+    /// Every participant, in account order.
+    fn participant_ids(&self) -> app::Result<Vec<UserId>> {
+        let mut candidates: BTreeSet<UserId> = self
+            .roles
+            .admins()
+            .into_iter()
+            .map(|a| *a.as_bytes())
+            .collect();
+        for role in [ROLE_SIGNER, ROLE_VIEWER] {
+            for who in self
+                .roles
+                .members_of(role)
+                .map_err(store_err("Failed to list participants"))?
+            {
+                let _ = candidates.insert(*who.as_bytes());
+            }
+        }
+        for (who, _) in self
+            .joined
+            .entries()
+            .map_err(store_err("Failed to list participants"))?
+        {
+            let _ = candidates.insert(*who.as_bytes());
+        }
+        let mut out = Vec::new();
+        for id in candidates {
+            if self.level_of(&id)?.is_some() {
+                out.push(id);
+            }
+        }
+        Ok(out)
+    }
+
     /// The admin gate for this shared context.
     ///
-    /// ⚠️ THIS CHECK USED TO PASS FOR EVERYONE. It read
-    /// `let current_user = *self.owner.get();` — the CREATOR's account, an
-    /// `LwwRegister` that holds the same value on every node and is set to
-    /// `Admin` by `init`. So it looked up the owner's permission, found `Admin`,
-    /// and returned `Ok(())` no matter who was calling. Every participant could
-    /// `delete_document`, `add_participant` and `remove_participant`: the only
-    /// authorization gate in the app was a no-op.
-    ///
-    /// The idiom is correct in `join_shared_context` and `resolve_private_identity`,
-    /// which run in the PRIVATE context where the owner IS the caller. It was
-    /// copied into shared-context code, where those are different people.
-    ///
-    /// The ACCOUNT, not the device: `init` and `register_self_as_participant`
-    /// both key `participants`/`permissions` by `env::account_id()`, so an
-    /// admin on a second machine must still be an admin.
+    /// The ACCOUNT, not the device: an admin on a second machine must still be
+    /// an admin. This check only makes a refused call fail early — every node
+    /// refuses a non-admin's write to `roles` or removal from `documents`.
     fn validate_admin_permissions(&self) -> app::Result<()> {
-        if *self.is_private.get() {
+        if self.private()? {
             return Err(AppError::msg(
                 "This method can only be called from shared context".to_string(),
             ));
         }
 
-        let current_user = env::account_id();
-        // `.map(|v| v.level.clone())` so the pattern sees `PermissionLevel`,
-        // not the `ValueRef` wrapper the map hands back.
-        match self
-            .permissions
-            .get(&current_user)
-            .map(|o| o.map(|v| v.level.clone()))
-        {
-            Ok(Some(PermissionLevel::Admin)) => Ok(()),
-            Ok(Some(_)) => Err(AppError::msg(
+        match self.level_of(&env::account_id())? {
+            Some(PermissionLevel::Admin) => Ok(()),
+            Some(_) => Err(AppError::msg(
                 "Admin permissions required for this operation".to_string(),
             )),
-            Ok(None) => Err(AppError::msg("User permissions not found".to_string())),
-            Err(e) => Err(AppError::msg(format!(
-                "Failed to check user permissions: {:?}",
-                e
-            ))),
+            None => Err(AppError::msg("User permissions not found".to_string())),
         }
     }
 
     /// Require the CALLER to be a participant holding at least `minimum`.
-    ///
-    /// The companion to `validate_admin_permissions`, for the levels below
-    /// Admin. Before this, `Read` and `Sign` were indistinguishable in effect:
-    /// nothing in the contract consulted a permission except the admin gate, so
-    /// a participant set to `Read` could upload and sign exactly like everyone
-    /// else. The enum described an intention that was never enforced.
-    ///
-    /// The ACCOUNT, for the same reason as everywhere else here.
     fn require_permission(&self, minimum: PermissionLevel) -> app::Result<()> {
-        if *self.is_private.get() {
+        if self.private()? {
             return Err(AppError::msg(
                 "This method can only be called from shared context".to_string(),
             ));
         }
 
-        let caller = env::account_id();
-        let held = self
-            .permissions
-            .get(&caller)
-            .map_err(|e| AppError::msg(format!("Failed to check user permissions: {:?}", e)))?
-            .map(|v| v.level.clone());
-
-        match held {
-            Some(level) if PermissionCell::rank(&level) >= PermissionCell::rank(&minimum) => Ok(()),
+        match self.level_of(&env::account_id())? {
+            Some(level) if rank(&level) >= rank(&minimum) => Ok(()),
             Some(_) => Err(AppError::msg(format!(
                 "{:?} permission or higher is required for this operation",
                 minimum
@@ -860,25 +888,125 @@ impl MeroSignState {
         }
     }
 
-    /// Whether this participant is one whose signature a document waits for.
+    /// Set `user`'s level through `roles`, then make the documents' moderators
+    /// the admins again. Only an admin may; every node enforces both writes.
+    fn set_level(&mut self, user: UserId, level: &PermissionLevel) -> app::Result<()> {
+        let who = AccountId::from(user);
+        let err = store_err("Failed to set permissions");
+        let is_admin = self.roles.is_admin(&who);
+        if *level != PermissionLevel::Admin && is_admin && self.roles.admins().len() <= 1 {
+            return Err(AppError::msg(
+                "An agreement needs at least one admin: promote someone else first".to_string(),
+            ));
+        }
+        // Every grant before the admin revoke: an admin stepping themselves
+        // down stops being able to grant on the line that revokes them. They
+        // are still a moderator until the moderators are replaced, last.
+        match level {
+            PermissionLevel::Admin => {
+                if !is_admin {
+                    self.roles.grant_admin(who).map_err(&err)?;
+                }
+            }
+            PermissionLevel::Sign => {
+                self.roles.grant(ROLE_SIGNER, who).map_err(&err)?;
+                self.roles.revoke(ROLE_VIEWER, &who).map_err(&err)?;
+            }
+            PermissionLevel::Read => {
+                self.roles.grant(ROLE_VIEWER, who).map_err(&err)?;
+                self.roles.revoke(ROLE_SIGNER, &who).map_err(&err)?;
+            }
+        }
+        self.roles.revoke(ROLE_REMOVED, &who).map_err(&err)?;
+        if *level != PermissionLevel::Admin && is_admin {
+            self.roles.revoke_admin(&who).map_err(&err)?;
+        }
+        self.sync_moderators()
+    }
+
+    /// The admins moderate `documents`: they are who may delete one.
+    fn sync_moderators(&mut self) -> app::Result<()> {
+        let admins = self.roles.admins();
+        if self.documents.moderators() != admins {
+            self.documents
+                .set_moderators(admins)
+                .map_err(store_err("Failed to update document moderators"))?;
+        }
+        Ok(())
+    }
+
+    /// A stored document, or an error naming it.
+    fn stored(&self, document_id: &str) -> app::Result<StoredDocument> {
+        self.documents
+            .get(&document_id.to_owned())
+            .map_err(store_err("Failed to get document"))?
+            .ok_or_else(|| AppError::msg("Document not found".to_string()))
+    }
+
+    /// The document's signatures on it, in order; see [`chain`].
     ///
-    /// `Sign` and above; a `Read` participant is a viewer and never blocks
-    /// completion. Keyed by ACCOUNT, like `participants` and `permissions` — see
-    /// the note on `sign_document`.
-    ///
-    /// A participant with no permission row at all is treated as a viewer rather
-    /// than a signer: the alternative is an agreement that can never complete
-    /// because of a row that was never written, and refusing to complete is the
-    /// worse failure here.
-    fn is_required_signer(&self, account: &UserId) -> bool {
-        self.permissions
-            .get(account)
-            .ok()
-            .flatten()
-            .map(|cell| {
-                PermissionCell::rank(&cell.level) >= PermissionCell::rank(&PermissionLevel::Sign)
-            })
-            .unwrap_or(false)
+    /// Signatures from accounts that neither must sign the document nor hold
+    /// `Sign` now are ignored, so a member who is not a signer cannot put a
+    /// version of their own on it.
+    fn signed_chain(
+        &self,
+        document_id: &str,
+        doc: &StoredDocument,
+    ) -> app::Result<Vec<(UserId, SignedVersion)>> {
+        let err = store_err("Failed to get document signatures");
+        let mut records = Vec::new();
+        for (key, version) in self
+            .document_signatures
+            .prefix(format!("{document_id}/").as_bytes())
+            .map_err(&err)?
+        {
+            let Some(owner) = self.document_signatures.owner_of(&key).map_err(&err)? else {
+                continue;
+            };
+            let signer = *owner.as_bytes();
+            let may_sign = doc.required_signers.contains(&signer)
+                || self
+                    .level_of(&signer)?
+                    .is_some_and(|l| rank(&l) >= rank(&PermissionLevel::Sign));
+            if may_sign {
+                records.push((key, signer, version));
+            }
+        }
+        Ok(chain(records, doc))
+    }
+
+    fn info(
+        &self,
+        id: String,
+        doc: StoredDocument,
+        with_content: bool,
+    ) -> app::Result<DocumentInfo> {
+        let uploaded_by = self
+            .documents
+            .owner_of(&id)
+            .map_err(store_err("Failed to get document"))?
+            .map(|a| *a.as_bytes())
+            .unwrap_or_default();
+        let signed = self.signed_chain(&id, &doc)?;
+        let status = status_of(&doc, &signed);
+        let (hash, pdf_blob_id, size) = match signed.last() {
+            Some((_, v)) => (v.new_hash.clone(), v.pdf_blob_id, v.size),
+            None => (doc.hash.clone(), doc.pdf_blob_id, doc.size),
+        };
+        Ok(DocumentInfo {
+            id,
+            name: doc.name,
+            hash,
+            uploaded_by,
+            uploaded_at: doc.uploaded_at,
+            status,
+            pdf_blob_id,
+            size,
+            required_signers: doc.required_signers,
+            embeddings: doc.embeddings.filter(|_| with_content),
+            extracted_text: doc.extracted_text.filter(|_| with_content),
+            chunks: doc.chunks.filter(|_| with_content),
+        })
     }
 
     /// Upload a document
@@ -893,24 +1021,15 @@ impl MeroSignState {
         extracted_text: Option<String>,
         chunks: Option<Vec<DocumentChunk>>,
     ) -> app::Result<String> {
-        // The other half of making `Read` mean something: a reader reads. Before
-        // this, nothing in the contract consulted a permission except the admin
-        // gate, so every level could upload.
+        // A reader reads.
         self.require_permission(PermissionLevel::Sign)?;
 
         // NOT `doc_<millis>_<name>`: two uploads of the same filename inside one
-        // millisecond produced the same key, and `insert` is an upsert — so one
-        // document silently destroyed the other, and converged to the loss on
-        // every replica. Random bytes are unique without coordination.
+        // millisecond produced the same key. Random bytes are unique without
+        // coordination, and leave no key for anyone to occupy first.
         let mut id_bytes = [0u8; 16];
         env::random_bytes(&mut id_bytes);
         let document_id = format!("doc_{}", hex::encode(id_bytes));
-
-        if self.documents.contains(&document_id).unwrap_or(false) {
-            return Err(AppError::msg(
-                "Document with this ID already exists".to_string(),
-            ));
-        }
 
         let pdf_blob_id = parse_blob_id_hex(&pdf_blob_id_str)?;
 
@@ -925,20 +1044,23 @@ impl MeroSignState {
             );
         }
 
-        // ⚠️ WAS `*self.owner.get()` — the same copy-paste as the admin gate
-        // above, so EVERY document in a shared context was recorded as uploaded
-        // by the agreement's creator, whoever actually uploaded it. The account,
-        // to match `participants`.
+        let mut required_signers = Vec::new();
+        for id in self.participant_ids()? {
+            if self
+                .level_of(&id)?
+                .is_some_and(|l| rank(&l) >= rank(&PermissionLevel::Sign))
+            {
+                required_signers.push(id);
+            }
+        }
         let uploaded_by = env::account_id();
-        let document = DocumentInfo {
-            id: document_id.clone(),
+        let document = StoredDocument {
             name: name.clone(),
             hash,
-            uploaded_by,
-            uploaded_at: env::time_now(),
-            status: DocumentStatus::Pending,
             pdf_blob_id,
             size: file_size,
+            uploaded_at: env::time_now(),
+            required_signers,
             embeddings,
             extracted_text,
             chunks,
@@ -947,21 +1069,6 @@ impl MeroSignState {
         self.documents
             .insert(document_id.clone(), document)
             .map_err(|e| AppError::msg(format!("Failed to upload document: {:?}", e)))?;
-
-        // NOT `insert(k, Vector::new())`. A freshly-built nested collection
-        // carries a RANDOM internal id, so two nodes that each create this
-        // document's signature list independently would hold lists that never
-        // converge. `entry(…).or_default()` re-keys the new value
-        // deterministically under this entry's id — the SDK calls this the
-        // blessed path for nested CRDTs, and rejects the other one outright.
-        let _ = self
-            .document_signatures
-            .entry(document_id.clone())
-            .map_err(|e| AppError::msg(format!("document_signatures.entry failed: {:?}", e)))?
-            .or_default()
-            .map_err(|e| {
-                AppError::msg(format!("Failed to initialize document signatures: {:?}", e))
-            })?;
 
         app::emit!(MeroSignEvent::DocumentUploaded {
             id: document_id.clone(),
@@ -972,16 +1079,14 @@ impl MeroSignState {
         Ok(document_id)
     }
 
-    /// Delete a document by ID
+    /// Delete a document by ID. Admins only: they are the documents'
+    /// moderators, and every node refuses anyone else's removal.
     pub fn delete_document(&mut self, document_id: String) -> app::Result<()> {
         self.validate_admin_permissions()?;
 
         match self.documents.remove(&document_id) {
             Ok(Some(_)) => {
-                let _ = self.document_signatures.remove(&document_id);
-
                 app::emit!(MeroSignEvent::DocumentDeleted { id: document_id });
-
                 Ok(())
             }
             Ok(None) => Err(AppError::msg(format!(
@@ -992,44 +1097,50 @@ impl MeroSignState {
         }
     }
 
-    /// List all documents
+    /// List all documents, without their search content (see [`DocumentInfo`]).
     pub fn list_documents(&self) -> app::Result<Vec<DocumentInfo>> {
+        let entries: Vec<(String, StoredDocument)> = self
+            .documents
+            .entries()
+            .map_err(store_err("Failed to list documents"))?
+            .collect();
         let mut documents = Vec::new();
-        if let Ok(entries) = self.documents.entries() {
-            for (_, document) in entries {
-                documents.push(document.clone());
-            }
+        for (id, doc) in entries {
+            documents.push(self.info(id, doc, false)?);
         }
         Ok(documents)
     }
 
-    /// Record the CALLER's consent to sign a document.
-    ///
-    /// ⚠️ THIS USED TO TAKE THE USER AS A PARAMETER, with no gate of any kind:
-    /// anybody could record consent on behalf of anybody. That was not a
-    /// cosmetic problem, because consent was the ONLY precondition
-    /// `sign_document` checked — so the pair let one member manufacture both
-    /// halves of somebody else's signature.
+    /// Record the CALLER's consent to sign a document, in their own slot.
     ///
     /// Consent is a personal act. Nobody can give it for you, so there is no
-    /// parameter to give.
+    /// parameter to give — and the slot is yours alone on every node.
     pub fn set_consent(&mut self, document_id: String) -> app::Result<()> {
-        let user_id = env::account_id();
-        let key = format!("{}|{}", hex::encode(user_id), document_id);
-        self.consents
-            .insert(key, true.into())
-            .map_err(|e| AppError::msg(format!("Failed to store consent: {:?}", e)))?;
+        let err = store_err("Failed to store consent");
+        let mut consents = self.consents.get().map_err(&err)?.unwrap_or_default();
+        let _ = consents
+            .documents
+            .insert(document_id, true.into())
+            .map_err(&err)?;
+        let _ = self.consents.insert(consents).map_err(&err)?;
         Ok(())
     }
 
     /// Check if user has given consent for a document (internal helper)
     fn check_consent(&self, user_id: &UserId, document_id: &str) -> app::Result<bool> {
-        let key = format!("{}|{}", hex::encode(user_id), document_id);
-        match self.consents.get(&key) {
-            Ok(Some(consented)) => Ok(*consented.get()),
-            Ok(None) => Ok(false),
-            Err(e) => Err(AppError::msg(format!("Failed to check consent: {:?}", e))),
-        }
+        let err = store_err("Failed to check consent");
+        let Some(consents) = self
+            .consents
+            .get_for_user(&AccountId::from(*user_id))
+            .map_err(&err)?
+        else {
+            return Ok(false);
+        };
+        Ok(consents
+            .documents
+            .get(document_id)
+            .map_err(&err)?
+            .is_some_and(|c| *c.get()))
     }
 
     /// Check if user has given consent for a document (public API)
@@ -1040,43 +1151,27 @@ impl MeroSignState {
 
     /// Record the CALLER's signature on a document.
     ///
-    /// ⚠️ THIS USED TO TAKE THE SIGNER AS A PARAMETER:
+    /// The signer is the caller's ACCOUNT — a document is signed by a PERSON,
+    /// and one signer on two machines must not read as two signatories — and on
+    /// every other node it is the signature entry's owner stamp. There is no
+    /// signer parameter.
     ///
-    /// ```text
-    /// pub fn sign_document(…, signer_id_str: String) -> app::Result<()> {
-    ///     let signer_id = parse_public_key_hex(&signer_id_str)?;
-    ///     let has_consent = self.check_consent(&signer_id, &document_id)?;
-    ///     …
-    ///     let signature = DocumentSignature { signer: signer_id, … };
-    /// ```
+    /// A signature is not a field value, it is a whole new PDF: the signer
+    /// downloads the current version, flattens their mark into it in the
+    /// browser, uploads the result as a NEW blob, and records it here as a
+    /// write-once [`SignedVersion`] from `base_hash` to `new_hash`. Nothing is
+    /// overwritten: the uploaded document and every signature stay on record,
+    /// and the document's current version is the last one in the chain.
     ///
-    /// `env::account_id()` appeared nowhere in the function. The only gate was
-    /// `check_consent(&signer_id, …)` — consent for the id the CALLER had just
-    /// supplied, which is circular rather than an authorization check, and which
-    /// the caller could satisfy themselves because `set_consent` took the same
-    /// unchecked id. So any member of the agreement could record a signature
-    /// attributed to another member, on a document of their choosing, and the
-    /// audit trail would show that person as having signed it. In an app whose
-    /// entire purpose is signed agreements, that is the whole ball game.
-    ///
-    /// The parameter is REMOVED rather than accepted-and-ignored, deliberately:
-    /// an old client calling with `signer_id_str` now fails loudly on an unknown
-    /// argument instead of appearing to work while signing as somebody else.
-    /// That is an ABI change, and an intended one.
-    ///
-    /// The ACCOUNT, not the device — a document is signed by a PERSON, and one
-    /// signer on two machines must not read as two signatories. It is also what
-    /// `participants` and `permissions` are keyed by, which is what makes
-    /// `mark_participant_signed`'s "has everybody signed?" comparison able to
-    /// match at all; see the note there.
+    /// `base_hash` is the hash the signer actually had in front of them. If it
+    /// is not the current version, somebody else signed in the meantime and
+    /// this PDF lacks their mark — refused, so the signer re-fetches and
+    /// re-signs.
     ///
     /// ⚠️ `pdf_blob_id_str` must name a blob THIS node holds. The announce below
     /// fails the whole call otherwise, with
     /// `blob operations not supported (NodeClient not available)` — a message
     /// about the host, not about the blob, which reads like a misconfigured node.
-    /// The signer is expected to have uploaded their countersigned copy to their
-    /// own node first, which is what the frontend does; the two-node e2e passes a
-    /// blob uploaded on the signing node for exactly this reason.
     pub fn sign_document(
         &mut self,
         document_id: String,
@@ -1088,60 +1183,37 @@ impl MeroSignState {
         let signer_id = env::account_id();
 
         // A signature from somebody who is not in the agreement is not a
-        // signature, and it would also break `mark_participant_signed`'s
-        // all-signed count. `Read` is a real level in this contract and this is
-        // the one place it means something.
+        // signature. `Read` is a real level in this contract and this is the
+        // one place it means something.
         self.require_permission(PermissionLevel::Sign)?;
 
-        let has_consent = self.check_consent(&signer_id, &document_id)?;
-        if !has_consent {
+        if !self.check_consent(&signer_id, &document_id)? {
             return Err(AppError::msg(
                 "You must provide consent before signing this document".to_string(),
             ));
         }
 
-        // `.clone()` out of the `ValueRef`: this edits the record and writes it
-        // back, and a ValueRef is a read handle.
-        let mut document = match self.documents.get(&document_id) {
-            Ok(Some(doc)) => (*doc).clone(),
-            Ok(None) => return Err(AppError::msg("Document not found".to_string())),
-            Err(e) => return Err(AppError::msg(format!("Failed to get document: {:?}", e))),
-        };
-
-        // ⚠️ THE GUARD THAT STOPS TWO SIGNATURES DESTROYING EACH OTHER.
-        //
-        // A signature here is not a field value, it is a whole replacement PDF:
-        // the signer downloads the document, flattens their own mark into it in
-        // the browser, uploads the result as a NEW blob, and the lines below
-        // overwrite `pdf_blob_id`/`size`/`hash` with it.
-        //
-        // So two people who start from the same version both succeed, and the
-        // second write wins: `document_signatures` ends up with two entries
-        // while the stored PDF carries ONE mark, and the loser's blob is
-        // orphaned with nothing referencing it. The audit trail and the artefact
-        // disagree, silently, and the lost signature is unrecoverable. Nothing
-        // in the storage layer prevents it either — `DocumentInfo` is
-        // deliberately undispatched (see its `MergeStrategy`) and its only clock
-        // is `uploaded_at`, which never advances after upload.
-        //
-        // `base_hash` is the hash the signer actually had in front of them. If
-        // it no longer matches, somebody else signed in the meantime and this
-        // PDF was built from a stale copy — so it would erase their mark.
-        // Refusing sends the signer back to re-fetch and re-sign, which is
-        // optimistic concurrency and the honest answer while the document
-        // remains a mutable blob.
-        //
-        // This is a STOPGAP. The real fix is to stop rewriting the PDF at all —
-        // keep the original immutable and store each signature's mark as data
-        // keyed by its signer, so two signatures are two writes to two different
-        // keys and no conflict exists to lose. That is a state-layout change and
-        // it is tracked separately; this guard stops the data loss today.
-        if document.hash != base_hash {
+        let document = self.stored(&document_id)?;
+        let signed = self.signed_chain(&document_id, &document)?;
+        if status_of(&document, &signed) == DocumentStatus::FullySigned {
+            return Err(AppError::msg(
+                "This document is fully signed and takes no more signatures".to_string(),
+            ));
+        }
+        if signed.iter().any(|(s, _)| *s == signer_id) {
+            return Err(AppError::msg(
+                "You have already signed this document".to_string(),
+            ));
+        }
+        let current = signed
+            .last()
+            .map_or(document.hash.clone(), |(_, v)| v.new_hash.clone());
+        if current != base_hash {
             return Err(AppError::msg(format!(
                 "This document changed while you were signing it: you started from {}, \
                  but it is now at {}. Somebody else signed in the meantime, and saving \
                  this copy would erase their signature. Reopen the document and sign again.",
-                base_hash, document.hash
+                base_hash, current
             )));
         }
 
@@ -1158,32 +1230,24 @@ impl MeroSignState {
             );
         }
 
-        document.pdf_blob_id = pdf_blob_id;
-        document.size = file_size;
-        document.hash = new_hash;
-        document.status = DocumentStatus::PartiallySigned;
-
-        self.documents
-            .insert(document_id.clone(), document)
-            .map_err(|e| AppError::msg(format!("Failed to update document: {:?}", e)))?;
-
-        let signature = DocumentSignature {
-            signer: signer_id,
-            signed_at: env::time_now(),
-        };
-
-        // Same reasoning as `upload_document`: get → push → re-insert would put a
-        // detached Vector back under the key, and `get` hands back a read-only
-        // `ValueRef` in any case. The entry guard re-persists on drop.
-        let mut signatures = self
-            .document_signatures
-            .entry(document_id.clone())
-            .map_err(|e| AppError::msg(format!("document_signatures.entry failed: {:?}", e)))?
-            .or_default()
-            .map_err(|e| AppError::msg(format!("Failed to get document signatures: {:?}", e)))?;
-
-        signatures
-            .push(signature)
+        let mut nonce = [0u8; 16];
+        env::random_bytes(&mut nonce);
+        let key = format!(
+            "{document_id}/{}/{}",
+            hex::encode(signer_id),
+            hex::encode(nonce)
+        );
+        self.document_signatures
+            .insert(
+                key,
+                SignedVersion {
+                    base_hash,
+                    new_hash,
+                    pdf_blob_id,
+                    size: file_size,
+                    signed_at: env::time_now(),
+                },
+            )
             .map_err(|e| AppError::msg(format!("Failed to add signature: {:?}", e)))?;
 
         app::emit!(MeroSignEvent::DocumentSigned {
@@ -1194,156 +1258,85 @@ impl MeroSignState {
         Ok(())
     }
 
-    /// Get signatures for a document
+    /// The signatures on a document, in the order they were applied.
     pub fn get_document_signatures(
         &self,
         document_id: String,
     ) -> app::Result<Vec<DocumentSignature>> {
-        let mut signatures = Vec::new();
-        if let Ok(Some(sigs)) = self.document_signatures.get(&document_id) {
-            if let Ok(iter) = sigs.iter() {
-                for sig in iter {
-                    signatures.push(sig.clone());
-                }
-            }
-        }
-        Ok(signatures)
+        let Some(document) = self
+            .documents
+            .get(&document_id)
+            .map_err(store_err("Failed to get document"))?
+        else {
+            return Ok(Vec::new());
+        };
+        Ok(self
+            .signed_chain(&document_id, &document)?
+            .into_iter()
+            .map(|(signer, v)| DocumentSignature {
+                signer,
+                signed_at: v.signed_at,
+            })
+            .collect())
     }
 
-    /// Recompute a document's status after the CALLER has signed it.
+    /// Confirm the CALLER's signature is on a document.
     ///
-    /// The `user_id_str` parameter is gone for the same reason as the other two:
-    /// it was a caller-supplied id where the caller's own account is meant. It
-    /// could not forge a signature — everything it claimed was verified against
-    /// stored state — but it was the same shape, and the shape is the bug.
-    ///
-    /// ⚠️ THE ALL-SIGNED COUNT BELOW COULD NEVER SUCCEED. It compares
-    /// `sig.signer` against each entry of `participants`. Signatures held
-    /// whatever the frontend passed — `localStorage['agreementContextUserID']`,
-    /// the context member DEVICE key — while `participants` holds ACCOUNTS, and
-    /// since core 0.11.0-rc.27 both are 32 raw bytes, so the comparison
-    /// type-checked, ran, and matched nothing. No document could reach
-    /// `FullySigned`. Deriving the signer from `env::account_id()` puts both
-    /// sides of that comparison in the same identity space, which is what makes
-    /// this method able to do its job at all.
+    /// The status is derived from the signatures on every read, so there is
+    /// nothing left to recompute; this stays so a client can ask, after
+    /// signing, whether its signature is the one on the document.
     pub fn mark_participant_signed(&mut self, document_id: String) -> app::Result<()> {
         let user_id = env::account_id();
-        let has_consent = self.check_consent(&user_id, &document_id)?;
-        if !has_consent {
+        if !self.check_consent(&user_id, &document_id)? {
             return Err(AppError::msg(
                 "You must provide consent before being marked as signed".to_string(),
             ));
         }
-
-        // `.clone()` out of the `ValueRef`: this edits the record and writes it
-        // back, and a ValueRef is a read handle.
-        let mut document = match self.documents.get(&document_id) {
-            Ok(Some(doc)) => (*doc).clone(),
-            Ok(None) => return Err(AppError::msg("Document not found".to_string())),
-            Err(e) => return Err(AppError::msg(format!("Failed to get document: {:?}", e))),
-        };
-
-        // Gathered BEFORE the entry guard below, which borrows `self` mutably
-        // for as long as it lives — `is_required_signer` reads `permissions` and
-        // cannot run while it is held.
-        let required_signers: Vec<UserId> = self
-            .participants
+        let document = self.stored(&document_id)?;
+        if !self
+            .signed_chain(&document_id, &document)?
             .iter()
-            .map(|it| it.filter(|p| self.is_required_signer(p)).collect())
-            .unwrap_or_default();
-
-        // Read-only here, so `get` is right — but the empty case cannot be a
-        // freshly-built `Vector`: `unwrap_or_else(Vector::new)` mixes a detached
-        // collection into a `ValueRef` branch, and a detached nested CRDT has a
-        // random id that would never converge if it were ever stored.
-        let signatures = self
-            .document_signatures
-            .entry(document_id.clone())
-            .map_err(|e| AppError::msg(format!("document_signatures.entry failed: {:?}", e)))?
-            .or_default()
-            .map_err(|e| AppError::msg(format!("Failed to get document signatures: {:?}", e)))?;
-
-        let mut already_signed = false;
-        if let Ok(iter) = signatures.iter() {
-            for sig in iter {
-                if sig.signer == user_id {
-                    already_signed = true;
-                    break;
-                }
-            }
-        }
-        if !already_signed {
+            .any(|(s, _)| *s == user_id)
+        {
             return Err(AppError::msg(
                 "You have not signed this document yet".to_string(),
             ));
         }
-
-        // ⚠️ ONLY THE PARTICIPANTS WHO CAN ACTUALLY SIGN COUNT.
-        //
-        // This used to demand a signature from EVERY entry of `participants`,
-        // with no regard for what they are allowed to do. `Read` is a real level
-        // in this contract — `require_permission` refuses an upload or a
-        // signature from anyone below `Sign` — so a reader was required to
-        // produce a signature the contract would have rejected. One reader in an
-        // agreement meant no document in it could ever reach `FullySigned`, and
-        // nothing reported that: the status simply never advanced.
-        //
-        // That made the `Read` level unusable in practice, which is why every
-        // path that seats a participant grants `Sign`. A viewer is a reasonable
-        // thing to want in a signing app, and this is what it costs to have one.
-        let mut all_signed = true;
-        for participant in &required_signers {
-            let mut signed = false;
-            if let Ok(sig_iter) = signatures.iter() {
-                for sig in sig_iter {
-                    if sig.signer == *participant {
-                        signed = true;
-                        break;
-                    }
-                }
-            }
-            if !signed {
-                all_signed = false;
-                break;
-            }
-        }
-
-        if all_signed {
-            document.status = DocumentStatus::FullySigned;
-            self.documents
-                .insert(document_id, document)
-                .map_err(|e| AppError::msg(format!("Failed to update document status: {:?}", e)))?;
-        }
-
         Ok(())
     }
 
     /// Register self as participant (for users who joined via open invitation)
     pub fn register_self_as_participant(&mut self) -> app::Result<()> {
-        if *self.is_private.get() {
+        if self.private()? {
             return Err(AppError::msg(
                 "Cannot register as participant in private context".to_string(),
             ));
         }
 
-        // The ACCOUNT — see the note in `init`. `executor_id()` no longer exists.
+        // The ACCOUNT — see the note in `init`.
         let executor_id = env::account_id();
 
-        // Check if already a participant
-        if self.participants.contains(&executor_id).unwrap_or(false) {
+        let who = AccountId::from(executor_id);
+        if self
+            .roles
+            .has_role(ROLE_REMOVED, &who)
+            .map_err(store_err("Failed to check user permissions"))?
+        {
+            return Err(AppError::msg(
+                "An admin removed you from this agreement".to_string(),
+            ));
+        }
+        if self.level_of(&executor_id)?.is_some() {
             return Err(AppError::msg(
                 "Already registered as participant".to_string(),
             ));
         }
 
-        // Add as participant with Sign permission
-        self.participants
-            .insert(executor_id)
+        // `Sign`, in the caller's own slot.
+        let _ = self
+            .joined
+            .insert(LwwRegister::new(env::time_now()))
             .map_err(|e| AppError::msg(format!("Failed to register as participant: {:?}", e)))?;
-
-        self.permissions
-            .insert(executor_id, PermissionLevel::Sign.into())
-            .map_err(|e| AppError::msg(format!("Failed to set permissions: {:?}", e)))?;
 
         app::emit!(MeroSignEvent::ParticipantJoined {
             user_id: executor_id
@@ -1362,72 +1355,55 @@ impl MeroSignState {
 
         let user_id = parse_public_key_hex(&user_id_str)?;
 
-        if self.participants.contains(&user_id).unwrap_or(false) {
+        if self.level_of(&user_id)?.is_some() {
             return Err(AppError::msg("User is already a participant".to_string()));
         }
 
-        self.participants
-            .insert(user_id)
-            .map_err(|e| AppError::msg(format!("Failed to add participant: {:?}", e)))?;
-
-        self.permissions
-            .insert(user_id, permission.clone().into())
-            .map_err(|e| AppError::msg(format!("Failed to set permissions: {:?}", e)))?;
+        self.set_level(user_id, &permission)?;
 
         app::emit!(MeroSignEvent::ParticipantJoined { user_id });
 
         Ok(())
     }
 
-    /// Remove participant from shared context
+    /// Remove participant from shared context. The removal outranks the
+    /// participant's own registration, and is refused for the last admin.
     pub fn remove_participant(&mut self, user_id_str: String) -> app::Result<()> {
         self.validate_admin_permissions()?;
 
         let user_id = parse_public_key_hex(&user_id_str)?;
 
-        if !self.participants.contains(&user_id).unwrap_or(false) {
+        if self.level_of(&user_id)?.is_none() {
             return Err(AppError::msg("User is not a participant".to_string()));
         }
 
-        self.participants
-            .remove(&user_id)
-            .map_err(|e| AppError::msg(format!("Failed to remove participant: {:?}", e)))?;
-
-        self.permissions
-            .remove(&user_id)
-            .map_err(|e| AppError::msg(format!("Failed to remove permissions: {:?}", e)))?;
+        let who = AccountId::from(user_id);
+        let err = store_err("Failed to remove participant");
+        if self.roles.is_admin(&who) && self.roles.admins().len() <= 1 {
+            return Err(AppError::msg(
+                "An agreement needs at least one admin: promote someone else first".to_string(),
+            ));
+        }
+        self.roles.grant(ROLE_REMOVED, who).map_err(&err)?;
+        for role in [ROLE_SIGNER, ROLE_VIEWER] {
+            self.roles.revoke(role, &who).map_err(&err)?;
+        }
+        if self.roles.is_admin(&who) {
+            self.roles.revoke_admin(&who).map_err(&err)?;
+            self.sync_moderators()?;
+        }
 
         app::emit!(MeroSignEvent::ParticipantLeft { user_id });
 
         Ok(())
     }
 
-    /// Change an EXISTING participant's permission level.
+    /// Change an EXISTING participant's permission level, up or down.
     ///
     /// `add_participant` cannot do this: it refuses a user who is already a
-    /// participant, so before this method there was NO way to promote or demote
-    /// anybody. A role was whatever it was set to at the moment they joined —
-    /// `Admin` for the creator, `Sign` for everyone who redeemed an invitation —
-    /// and it stayed that way forever.
-    ///
-    /// ⚠️ A DEMOTION IS REFUSED, and that refusal is the honest answer rather
-    /// than a missing feature. `permissions` is an `UnorderedMap<UserId,
-    /// PermissionCell>` and `PermissionCell::merge` takes the HIGHER rank, so
-    /// lowering a level is discarded the moment it meets a replica that still
-    /// holds the old one: the demotion would appear to work on the admin's node
-    /// and never reach anybody else's. Accepting a write that cannot converge is
-    /// worse than refusing it, because the admin would believe authority had been
-    /// withdrawn when it had not.
-    ///
-    /// The convergent way to withdraw authority today is `remove_participant`,
-    /// whose removals are tombstoned and do converge.
-    ///
-    /// Making a demotion stick needs a permission cell that merges
-    /// last-writer-wins (a `level` plus a timestamp, or `LwwRegister`). That
-    /// changes the stored layout, so it cannot be done without recreating every
-    /// existing context — an owner's decision, not one to smuggle into a bug fix.
-    /// When it is made, delete the `Ordering::Less` arm below and nothing else
-    /// here changes.
+    /// participant. Levels live in `AccessControl`, whose grants merge
+    /// last-writer-wins, so a demotion converges like a promotion. The last
+    /// admin cannot step down.
     pub fn set_participant_permission(
         &mut self,
         user_id_str: String,
@@ -1437,36 +1413,16 @@ impl MeroSignState {
 
         let user_id = parse_public_key_hex(&user_id_str)?;
 
-        if !self.participants.contains(&user_id).unwrap_or(false) {
+        let Some(current) = self.level_of(&user_id)? else {
             return Err(AppError::msg("User is not a participant".to_string()));
+        };
+        // Idempotent: setting the level somebody already holds is a no-op,
+        // not an error. A UI that re-sends the current value is not a bug.
+        if current == permission {
+            return Ok(());
         }
 
-        let current = self
-            .permissions
-            .get(&user_id)
-            .map_err(|e| AppError::msg(format!("Failed to read permission: {:?}", e)))?
-            .map(|v| v.level.clone())
-            .unwrap_or(PermissionLevel::Read);
-
-        match PermissionCell::rank(&permission).cmp(&PermissionCell::rank(&current)) {
-            // Idempotent: setting the level somebody already holds is a no-op,
-            // not an error. A UI that re-sends the current value is not a bug.
-            Ordering::Equal => return Ok(()),
-            Ordering::Less => {
-                return Err(AppError::msg(
-                    "Lowering a permission cannot converge on this contract: \
-                     permissions merge by taking the higher level, so the change \
-                     would be discarded on every other node. Remove the \
-                     participant instead."
-                        .to_string(),
-                ))
-            }
-            Ordering::Greater => {}
-        }
-
-        self.permissions
-            .insert(user_id, permission.clone().into())
-            .map_err(|e| AppError::msg(format!("Failed to set permissions: {:?}", e)))?;
+        self.set_level(user_id, &permission)?;
 
         app::emit!(MeroSignEvent::ParticipantPermissionChanged {
             user_id,
@@ -1482,10 +1438,10 @@ impl MeroSignState {
     /// account id have both been 32 raw bytes — 64 hex characters — since core
     /// 0.11.0-rc.27, so the two are indistinguishable by inspection, and this
     /// app holds a DEVICE key in `localStorage` (`agreementContextUserID`, the
-    /// context member public key from the join response) while `participants`
-    /// and `permissions` are keyed by ACCOUNT. Comparing the two type-checks and
-    /// silently matches nothing, which is how a UI ends up unable to tell an
-    /// admin that they are one.
+    /// context member public key from the join response) while participants
+    /// are keyed by ACCOUNT. Comparing the two type-checks and silently matches
+    /// nothing, which is how a UI ends up unable to tell an admin that they
+    /// are one.
     ///
     /// One call removes the guess: the contract is the only thing that knows.
     pub fn whoami(&self) -> UserId {
@@ -1494,23 +1450,14 @@ impl MeroSignState {
 
     /// List all participants
     pub fn list_participants(&self) -> app::Result<Vec<UserId>> {
-        let mut participants = Vec::new();
-        if let Ok(iter) = self.participants.iter() {
-            for participant in iter {
-                participants.push(participant);
-            }
-        }
-        Ok(participants)
+        self.participant_ids()
     }
 
     /// Get user permission level
     pub fn get_user_permission(&self, user_id_str: String) -> app::Result<PermissionLevel> {
         let user_id = parse_public_key_hex(&user_id_str)?;
-        match self.permissions.get(&user_id) {
-            Ok(Some(perm)) => Ok(perm.level.clone()),
-            Ok(None) => Err(AppError::msg("User not found".to_string())),
-            Err(e) => Err(AppError::msg(format!("Failed to get permission: {:?}", e))),
-        }
+        self.level_of(&user_id)?
+            .ok_or_else(|| AppError::msg("User not found".to_string()))
     }
 
     /// Get current context ID
@@ -1520,7 +1467,7 @@ impl MeroSignState {
 
     /// Get identity mapping for a specific context
     pub fn get_identity_mapping(&self, context_id_str: String) -> app::Result<IdentityMapping> {
-        if !*self.is_private.get() {
+        if !self.private()? {
             return Err(AppError::msg(
                 "Identity mappings can only be accessed in private context".to_string(),
             ));
@@ -1543,7 +1490,7 @@ impl MeroSignState {
 
     /// Get shared identity for a specific context
     pub fn get_shared_identity(&self, context_id_str: String) -> app::Result<UserId> {
-        if !*self.is_private.get() {
+        if !self.private()? {
             return Err(AppError::msg(
                 "Identity resolution can only be done in private context".to_string(),
             ));
@@ -1558,7 +1505,7 @@ impl MeroSignState {
         &self,
         shared_identity_str: String,
     ) -> app::Result<Option<UserId>> {
-        if *self.is_private.get() {
+        if self.private()? {
             let shared_identity = parse_public_key_hex(&shared_identity_str)?;
             if let Ok(entries) = self.identity_mappings.entries() {
                 for (_, mapping) in entries {
@@ -1725,724 +1672,4 @@ fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
 }
 
 #[cfg(test)]
-mod tests {
-    use calimero_sdk::testing::TestHost;
-
-    use super::*;
-
-    // Two DISTINCT people. Both axes have to move: `call_as` alone changes only
-    // the device and keeps the account, which models one human's second machine.
-    // Since every permission in this contract is keyed by ACCOUNT, a test that
-    // used `call_as` for "somebody else" would silently assert nothing.
-    const ALICE_ACCOUNT: [u8; 32] = [0xA0; 32];
-    const ALICE_DEVICE: [u8; 32] = [0xA1; 32];
-    const BOB_ACCOUNT: [u8; 32] = [0xB0; 32];
-    const BOB_DEVICE: [u8; 32] = [0xB1; 32];
-    // Alice again, on a second machine.
-    const ALICE_PHONE: [u8; 32] = [0xA2; 32];
-
-    fn hexed(id: [u8; 32]) -> String {
-        hex::encode(id)
-    }
-
-    /// A shared agreement created by Alice, who is therefore its only admin.
-    ///
-    /// `TestHost::new` runs `init` immediately, as the harness's default
-    /// account, and `init` seats that account as a participating admin. Leaving
-    /// it there would put a third person in `participants` who never signs
-    /// anything — which is invisible to most assertions but makes
-    /// `mark_participant_signed`'s all-signed count unreachable, so the fixture
-    /// evicts it and seats Alice instead.
-    fn new_agreement() -> TestHost<MeroSignState> {
-        let mut app = TestHost::new(|| MeroSignState::init(false, "NDA with Acme".to_owned()));
-        let seeded = app.account_id();
-        app.set_account(ALICE_ACCOUNT);
-        app.set_device(ALICE_DEVICE);
-        app.call(|s| {
-            if seeded != ALICE_ACCOUNT {
-                let _ = s.participants.remove(&seeded);
-                let _ = s.permissions.remove(&seeded);
-            }
-            s.owner = ALICE_ACCOUNT.into();
-            let _ = s.participants.insert(ALICE_ACCOUNT);
-            let _ = s
-                .permissions
-                .insert(ALICE_ACCOUNT, PermissionLevel::Admin.into());
-        });
-        app
-    }
-
-    /// Bob redeems an invitation: he joins and registers himself, which is the
-    /// only way a non-creator becomes a participant.
-    fn bob_joins(app: &mut TestHost<MeroSignState>) {
-        app.call_as_account(BOB_ACCOUNT, BOB_DEVICE, |s| {
-            s.register_self_as_participant()
-        })
-        .unwrap();
-    }
-
-    fn permission_of(app: &TestHost<MeroSignState>, account: [u8; 32]) -> PermissionLevel {
-        app.view(|s| s.get_user_permission(hexed(account))).unwrap()
-    }
-
-    // ── the admin gate ───────────────────────────────────────────────────────
-
-    /// The regression this contract shipped with: `validate_admin_permissions`
-    /// looked up `*self.owner.get()` — the CREATOR — rather than the caller, so
-    /// it found `Admin` every time and returned `Ok(())` for everybody. Bob
-    /// could delete Alice's documents and add participants to her agreement.
-    ///
-    /// If someone "simplifies" the gate back to the owner, this fails, which is
-    /// the point: nothing else in the app would have complained.
-    #[test]
-    fn a_plain_participant_is_not_an_admin() {
-        let mut app = new_agreement();
-        bob_joins(&mut app);
-
-        let err = app
-            .call_as_account(BOB_ACCOUNT, BOB_DEVICE, |s| {
-                s.set_participant_permission(hexed(BOB_ACCOUNT), PermissionLevel::Admin)
-            })
-            .unwrap_err();
-        assert!(
-            format!("{err:?}").contains("Admin permissions required"),
-            "a participant must not pass the admin gate, got: {err:?}"
-        );
-
-        assert_eq!(
-            permission_of(&app, BOB_ACCOUNT),
-            PermissionLevel::Sign,
-            "Bob must not have been able to promote himself"
-        );
-    }
-
-    #[test]
-    fn a_participant_cannot_delete_a_document() {
-        let mut app = new_agreement();
-        bob_joins(&mut app);
-        let doc = upload_doc(&mut app);
-
-        let err = app
-            .call_as_account(BOB_ACCOUNT, BOB_DEVICE, |s| s.delete_document(doc.clone()))
-            .unwrap_err();
-        assert!(format!("{err:?}").contains("Admin permissions required"));
-        assert_eq!(app.view(|s| s.list_documents()).unwrap().len(), 1);
-    }
-
-    #[test]
-    fn a_stranger_who_never_joined_is_not_an_admin() {
-        const NOBODY: [u8; 32] = [0xCC; 32];
-        let mut app = new_agreement();
-        let err = app
-            .call_as_account(NOBODY, NOBODY, |s| {
-                s.add_participant(hexed(BOB_ACCOUNT), PermissionLevel::Admin)
-            })
-            .unwrap_err();
-        assert!(
-            format!("{err:?}").contains("User permissions not found"),
-            "got: {err:?}"
-        );
-    }
-
-    #[test]
-    fn the_admin_is_the_account_so_a_second_device_still_qualifies() {
-        // The whole reason the gate reads `account_id()` and not the device: an
-        // admin on their phone is the same admin.
-        let mut app = new_agreement();
-        bob_joins(&mut app);
-        app.call_as_account(ALICE_ACCOUNT, ALICE_PHONE, |s| {
-            s.set_participant_permission(hexed(BOB_ACCOUNT), PermissionLevel::Admin)
-        })
-        .unwrap();
-        assert_eq!(permission_of(&app, BOB_ACCOUNT), PermissionLevel::Admin);
-    }
-
-    // ── promote / demote ─────────────────────────────────────────────────────
-
-    #[test]
-    fn an_admin_can_promote_a_participant() {
-        let mut app = new_agreement();
-        bob_joins(&mut app);
-        assert_eq!(permission_of(&app, BOB_ACCOUNT), PermissionLevel::Sign);
-
-        app.call(|s| s.set_participant_permission(hexed(BOB_ACCOUNT), PermissionLevel::Admin))
-            .unwrap();
-
-        assert_eq!(permission_of(&app, BOB_ACCOUNT), PermissionLevel::Admin);
-    }
-
-    #[test]
-    fn a_promoted_participant_can_then_actually_do_admin_things() {
-        // "…and making them be able to use things also work": a promotion that
-        // does not change what someone may DO is a label.
-        let mut app = new_agreement();
-        bob_joins(&mut app);
-        let doc = upload_doc(&mut app);
-
-        app.call(|s| s.set_participant_permission(hexed(BOB_ACCOUNT), PermissionLevel::Admin))
-            .unwrap();
-
-        app.call_as_account(BOB_ACCOUNT, BOB_DEVICE, |s| s.delete_document(doc))
-            .unwrap();
-        assert!(app.view(|s| s.list_documents()).unwrap().is_empty());
-    }
-
-    #[test]
-    fn setting_the_level_somebody_already_holds_is_a_no_op_not_an_error() {
-        let mut app = new_agreement();
-        bob_joins(&mut app);
-        app.call(|s| s.set_participant_permission(hexed(BOB_ACCOUNT), PermissionLevel::Sign))
-            .unwrap();
-        assert_eq!(permission_of(&app, BOB_ACCOUNT), PermissionLevel::Sign);
-    }
-
-    /// A demotion is REFUSED, on purpose — see `set_participant_permission`.
-    /// `PermissionCell` merges by rank-max, so a lowered level is discarded the
-    /// moment it meets a replica holding the old one. Refusing is the honest
-    /// answer; accepting would tell an admin authority had been withdrawn when
-    /// it had not.
-    #[test]
-    fn a_demotion_is_refused_because_it_cannot_converge() {
-        let mut app = new_agreement();
-        bob_joins(&mut app);
-        app.call(|s| s.set_participant_permission(hexed(BOB_ACCOUNT), PermissionLevel::Admin))
-            .unwrap();
-
-        let err = app
-            .call(|s| s.set_participant_permission(hexed(BOB_ACCOUNT), PermissionLevel::Sign))
-            .unwrap_err();
-        assert!(
-            format!("{err:?}").contains("cannot converge"),
-            "the refusal must say why, got: {err:?}"
-        );
-        assert_eq!(permission_of(&app, BOB_ACCOUNT), PermissionLevel::Admin);
-    }
-
-    /// The merge rule the refusal above exists because of, asserted directly so
-    /// that lifting the refusal without fixing the rule fails here.
-    #[test]
-    fn permission_merge_takes_the_higher_rank_so_a_demotion_is_lost() {
-        let mut demoted = PermissionCell::from(PermissionLevel::Sign);
-        let mut still_admin = PermissionCell::from(PermissionLevel::Admin);
-        let (d0, a0) = (demoted.clone(), still_admin.clone());
-
-        demoted.merge(&a0).unwrap();
-        still_admin.merge(&d0).unwrap();
-
-        assert_eq!(demoted.level, PermissionLevel::Admin);
-        assert_eq!(still_admin.level, PermissionLevel::Admin);
-    }
-
-    #[test]
-    fn a_non_participant_cannot_be_given_a_permission() {
-        let mut app = new_agreement();
-        let err = app
-            .call(|s| s.set_participant_permission(hexed(BOB_ACCOUNT), PermissionLevel::Admin))
-            .unwrap_err();
-        assert!(
-            format!("{err:?}").contains("not a participant"),
-            "got: {err:?}"
-        );
-    }
-
-    #[test]
-    fn removing_a_participant_takes_their_permission_with_them() {
-        let mut app = new_agreement();
-        bob_joins(&mut app);
-        app.call(|s| s.remove_participant(hexed(BOB_ACCOUNT)))
-            .unwrap();
-
-        assert!(app
-            .view(|s| s.get_user_permission(hexed(BOB_ACCOUNT)))
-            .is_err());
-        let err = app
-            .call_as_account(BOB_ACCOUNT, BOB_DEVICE, |s| {
-                s.add_participant(hexed(BOB_ACCOUNT), PermissionLevel::Admin)
-            })
-            .unwrap_err();
-        assert!(format!("{err:?}").contains("User permissions not found"));
-    }
-
-    // ── whoami ───────────────────────────────────────────────────────────────
-
-    #[test]
-    fn whoami_is_the_account_not_the_device() {
-        let mut app = new_agreement();
-        assert_eq!(app.view(|s| s.whoami()), ALICE_ACCOUNT);
-        // Same person, second machine: same answer. This is exactly what the
-        // frontend could not work out for itself — a device key and an account
-        // id are both 64 hex characters since rc.27.
-        assert_eq!(
-            app.call_as_account(ALICE_ACCOUNT, ALICE_PHONE, |s| s.whoami()),
-            ALICE_ACCOUNT
-        );
-        assert_eq!(
-            app.call_as_account(BOB_ACCOUNT, BOB_DEVICE, |s| s.whoami()),
-            BOB_ACCOUNT
-        );
-    }
-
-    // ── attribution ──────────────────────────────────────────────────────────
-
-    /// `upload_document` recorded `*self.owner.get()`, so every document in a
-    /// shared agreement was attributed to its CREATOR whoever uploaded it.
-    #[test]
-    fn a_document_is_attributed_to_whoever_uploaded_it() {
-        let mut app = new_agreement();
-        bob_joins(&mut app);
-
-        app.call_as_account(BOB_ACCOUNT, BOB_DEVICE, |s| {
-            s.upload_document(
-                "contract.pdf".to_owned(),
-                "deadbeef".to_owned(),
-                hexed([0x11; 32]),
-                1024,
-                None,
-                None,
-                None,
-            )
-        })
-        .unwrap();
-
-        let docs = app.view(|s| s.list_documents()).unwrap();
-        assert_eq!(docs.len(), 1);
-        assert_eq!(
-            docs[0].uploaded_by, BOB_ACCOUNT,
-            "the uploader, not the agreement's creator"
-        );
-    }
-
-    // ── signatures and consent ───────────────────────────────────────────────
-
-    /// Sign whatever the document is currently at.
-    ///
-    /// `sign_document` refuses a signature built from a stale copy, so the base
-    /// hash has to be read back rather than hard-coded: after the first
-    /// signature the document is no longer at the hash `upload_doc` gave it.
-    /// Each signature advances the hash to the next value in the chain, which is
-    /// what a real signer's freshly-flattened PDF does.
-    fn sign_as(
-        app: &mut TestHost<MeroSignState>,
-        account: [u8; 32],
-        device: [u8; 32],
-        doc: &str,
-    ) -> app::Result<()> {
-        let base = hash_of(app, doc);
-        let next = format!("{base}-signed");
-        app.call_as_account(account, device, |s| {
-            s.sign_document(
-                doc.to_owned(),
-                base.clone(),
-                hexed([0x22; 32]),
-                2048,
-                next.clone(),
-            )
-        })
-    }
-
-    fn hash_of(app: &TestHost<MeroSignState>, doc: &str) -> String {
-        app.view(|s| s.list_documents())
-            .unwrap()
-            .into_iter()
-            .find(|d| d.id == doc)
-            .expect("document exists")
-            .hash
-    }
-
-    fn status_of(app: &TestHost<MeroSignState>, doc: &str) -> DocumentStatus {
-        app.view(|s| s.list_documents())
-            .unwrap()
-            .into_iter()
-            .find(|d| d.id == doc)
-            .expect("document exists")
-            .status
-    }
-
-    fn signers_of(app: &TestHost<MeroSignState>, doc: &str) -> Vec<UserId> {
-        app.view(|s| s.get_document_signatures(doc.to_owned()))
-            .unwrap()
-            .into_iter()
-            .map(|sig| sig.signer)
-            .collect()
-    }
-
-    /// ⚠️ THE ONE THAT MATTERS.
-    ///
-    /// `sign_document` used to take `signer_id_str` and write it straight into
-    /// `DocumentSignature.signer`, with `env::account_id()` appearing nowhere in
-    /// the function. Its only gate was `check_consent` for the id the caller had
-    /// just supplied — circular, and satisfiable by the caller because
-    /// `set_consent` took the same unchecked id. So Bob could record Alice as
-    /// having signed a document she had never seen.
-    ///
-    /// The parameter is gone, so the forgery is no longer expressible: this test
-    /// is the strongest statement the type system allows — whatever Bob does, the
-    /// signature that lands carries BOB.
-    #[test]
-    fn a_signature_is_always_attributed_to_the_caller() {
-        let mut app = new_agreement();
-        bob_joins(&mut app);
-        let doc = upload_doc(&mut app);
-
-        // Bob consents and signs. There is no argument with which he could name
-        // anyone else, and he cannot consent on Alice's behalf either.
-        app.call_as_account(BOB_ACCOUNT, BOB_DEVICE, |s| s.set_consent(doc.clone()))
-            .unwrap();
-        sign_as(&mut app, BOB_ACCOUNT, BOB_DEVICE, &doc).unwrap();
-
-        assert_eq!(
-            signers_of(&app, &doc),
-            vec![BOB_ACCOUNT],
-            "the signature must carry the caller"
-        );
-        assert!(
-            !signers_of(&app, &doc).contains(&ALICE_ACCOUNT),
-            "Alice never signed and must not appear"
-        );
-    }
-
-    /// Bob consenting does not let him sign as Alice, because consent is now
-    /// keyed by the caller too. Before, `set_consent(alice_id, doc)` from Bob
-    /// was accepted with no gate at all, which was the other half of the forgery.
-    #[test]
-    fn consent_is_recorded_for_the_caller_and_nobody_else() {
-        let mut app = new_agreement();
-        bob_joins(&mut app);
-        let doc = upload_doc(&mut app);
-
-        app.call_as_account(BOB_ACCOUNT, BOB_DEVICE, |s| s.set_consent(doc.clone()))
-            .unwrap();
-
-        assert!(app
-            .view(|s| s.has_consented(hexed(BOB_ACCOUNT), doc.clone()))
-            .unwrap());
-        assert!(
-            !app.view(|s| s.has_consented(hexed(ALICE_ACCOUNT), doc.clone()))
-                .unwrap(),
-            "Bob's consent must not be recorded against Alice"
-        );
-
-        // And so Alice cannot be made to have signed: her consent is missing.
-        let err = sign_as(&mut app, ALICE_ACCOUNT, ALICE_DEVICE, &doc).unwrap_err();
-        assert!(
-            format!("{err:?}").contains("consent"),
-            "expected a consent refusal, got: {err:?}"
-        );
-    }
-
-    /// The other side of the same coin: signing as yourself still works, on any
-    /// of your devices, and is recorded once against your ACCOUNT.
-    #[test]
-    fn a_participant_can_sign_as_themselves_from_any_device() {
-        let mut app = new_agreement();
-        bob_joins(&mut app);
-        let doc = upload_doc(&mut app);
-
-        app.call_as_account(ALICE_ACCOUNT, ALICE_DEVICE, |s| s.set_consent(doc.clone()))
-            .unwrap();
-        // Consent on the laptop, sign on the phone: one person, one signature.
-        sign_as(&mut app, ALICE_ACCOUNT, ALICE_PHONE, &doc).unwrap();
-
-        assert_eq!(signers_of(&app, &doc), vec![ALICE_ACCOUNT]);
-    }
-
-    #[test]
-    fn signing_without_consenting_is_refused() {
-        let mut app = new_agreement();
-        bob_joins(&mut app);
-        let doc = upload_doc(&mut app);
-
-        let err = sign_as(&mut app, BOB_ACCOUNT, BOB_DEVICE, &doc).unwrap_err();
-        assert!(format!("{err:?}").contains("consent"), "got: {err:?}");
-        assert!(signers_of(&app, &doc).is_empty());
-    }
-
-    /// A signature from somebody who is not in the agreement is not a signature.
-    #[test]
-    fn a_non_participant_cannot_sign() {
-        const NOBODY: [u8; 32] = [0xCC; 32];
-        let mut app = new_agreement();
-        let doc = upload_doc(&mut app);
-
-        app.call_as_account(NOBODY, NOBODY, |s| s.set_consent(doc.clone()))
-            .unwrap();
-        let err = sign_as(&mut app, NOBODY, NOBODY, &doc).unwrap_err();
-        assert!(
-            format!("{err:?}").contains("not a participant"),
-            "got: {err:?}"
-        );
-        assert!(signers_of(&app, &doc).is_empty());
-    }
-
-    // ── `Read` finally means something ───────────────────────────────────────
-
-    #[test]
-    fn a_reader_can_neither_upload_nor_sign() {
-        const READER: [u8; 32] = [0xDD; 32];
-        let mut app = new_agreement();
-        // Only an admin can seat somebody at `Read`; `register_self_as_participant`
-        // grants `Sign`.
-        app.call(|s| s.add_participant(hexed(READER), PermissionLevel::Read))
-            .unwrap();
-        let doc = upload_doc(&mut app);
-
-        let err = app
-            .call_as_account(READER, READER, |s| {
-                s.upload_document(
-                    "sneaky.pdf".to_owned(),
-                    "deadbeef".to_owned(),
-                    hexed([0x11; 32]),
-                    1,
-                    None,
-                    None,
-                    None,
-                )
-            })
-            .unwrap_err();
-        assert!(format!("{err:?}").contains("Sign"), "got: {err:?}");
-
-        app.call_as_account(READER, READER, |s| s.set_consent(doc.clone()))
-            .unwrap();
-        let err = sign_as(&mut app, READER, READER, &doc).unwrap_err();
-        assert!(format!("{err:?}").contains("Sign"), "got: {err:?}");
-    }
-
-    /// And a promotion makes both work — the roles are enforced, not decorative.
-    #[test]
-    fn promoting_a_reader_lets_them_sign() {
-        const READER: [u8; 32] = [0xDD; 32];
-        let mut app = new_agreement();
-        app.call(|s| s.add_participant(hexed(READER), PermissionLevel::Read))
-            .unwrap();
-        let doc = upload_doc(&mut app);
-        app.call_as_account(READER, READER, |s| s.set_consent(doc.clone()))
-            .unwrap();
-
-        app.call(|s| s.set_participant_permission(hexed(READER), PermissionLevel::Sign))
-            .unwrap();
-
-        sign_as(&mut app, READER, READER, &doc).unwrap();
-        assert_eq!(signers_of(&app, &doc), vec![READER]);
-    }
-
-    // ── the all-signed count, which could never succeed before ───────────────
-
-    /// `mark_participant_signed` compares `sig.signer` against each entry of
-    /// `participants`. Signatures held the DEVICE key the frontend passed while
-    /// `participants` holds ACCOUNTS — both 32 bytes since rc.27 — so the
-    /// comparison matched nothing and no document could ever reach
-    /// `FullySigned`. With the signer derived from `env::account_id()` both
-    /// sides are in the same identity space.
-    #[test]
-    fn a_document_reaches_fully_signed_once_every_participant_has_signed() {
-        let mut app = new_agreement();
-        bob_joins(&mut app);
-        let doc = upload_doc(&mut app);
-
-        for (account, device) in [(ALICE_ACCOUNT, ALICE_DEVICE), (BOB_ACCOUNT, BOB_DEVICE)] {
-            app.call_as_account(account, device, |s| s.set_consent(doc.clone()))
-                .unwrap();
-            sign_as(&mut app, account, device, &doc).unwrap();
-            app.call_as_account(account, device, |s| s.mark_participant_signed(doc.clone()))
-                .unwrap();
-        }
-
-        let docs = app.view(|s| s.list_documents()).unwrap();
-        assert_eq!(docs[0].status, DocumentStatus::FullySigned);
-    }
-
-    #[test]
-    fn one_signature_short_is_not_fully_signed() {
-        let mut app = new_agreement();
-        bob_joins(&mut app);
-        let doc = upload_doc(&mut app);
-
-        app.call(|s| s.set_consent(doc.clone())).unwrap();
-        sign_as(&mut app, ALICE_ACCOUNT, ALICE_DEVICE, &doc).unwrap();
-        app.call(|s| s.mark_participant_signed(doc.clone()))
-            .unwrap();
-
-        let docs = app.view(|s| s.list_documents()).unwrap();
-        assert_eq!(docs[0].status, DocumentStatus::PartiallySigned);
-    }
-
-    #[test]
-    fn marking_yourself_signed_without_having_signed_is_refused() {
-        let mut app = new_agreement();
-        bob_joins(&mut app);
-        let doc = upload_doc(&mut app);
-        app.call_as_account(BOB_ACCOUNT, BOB_DEVICE, |s| s.set_consent(doc.clone()))
-            .unwrap();
-
-        let err = app
-            .call_as_account(BOB_ACCOUNT, BOB_DEVICE, |s| {
-                s.mark_participant_signed(doc.clone())
-            })
-            .unwrap_err();
-        assert!(format!("{err:?}").contains("not signed"), "got: {err:?}");
-    }
-
-    // ── two signatures must not destroy each other ──────────────────────────
-
-    /// The data-loss bug, stated directly.
-    ///
-    /// Bob and Alice both open the document at the same version. Alice signs.
-    /// Bob's browser has already flattened his mark into the copy he downloaded,
-    /// so the PDF he is about to upload contains HIS signature and not hers —
-    /// saving it would overwrite `pdf_blob_id` and Alice's mark would be gone
-    /// from the artefact while her `DocumentSignature` row stayed behind.
-    ///
-    /// Before the `base_hash` guard both calls returned `Ok`.
-    #[test]
-    fn a_signature_built_from_a_stale_copy_is_refused() {
-        let mut app = new_agreement();
-        bob_joins(&mut app);
-        let doc = upload_doc(&mut app);
-
-        // Both of them are looking at the same version.
-        let what_they_both_opened = hash_of(&app, &doc);
-
-        for (account, device) in [(ALICE_ACCOUNT, ALICE_DEVICE), (BOB_ACCOUNT, BOB_DEVICE)] {
-            app.call_as_account(account, device, |s| s.set_consent(doc.clone()))
-                .unwrap();
-        }
-
-        sign_as(&mut app, ALICE_ACCOUNT, ALICE_DEVICE, &doc).unwrap();
-
-        // Bob saves the copy he opened, which no longer reflects the document.
-        let err = app
-            .call_as_account(BOB_ACCOUNT, BOB_DEVICE, |s| {
-                s.sign_document(
-                    doc.clone(),
-                    what_they_both_opened.clone(),
-                    hexed([0x33; 32]),
-                    4096,
-                    "bob-only".to_owned(),
-                )
-            })
-            .unwrap_err();
-        assert!(
-            format!("{err:?}").contains("changed while you were signing"),
-            "got: {err:?}"
-        );
-
-        // Alice's signature survived, and hers is the PDF on record.
-        assert_eq!(signers_of(&app, &doc), vec![ALICE_ACCOUNT]);
-        assert_ne!(hash_of(&app, &doc), "bob-only");
-    }
-
-    /// And the recovery path works: re-open, re-sign, both signatures land.
-    #[test]
-    fn re_signing_from_the_current_version_succeeds() {
-        let mut app = new_agreement();
-        bob_joins(&mut app);
-        let doc = upload_doc(&mut app);
-        for (account, device) in [(ALICE_ACCOUNT, ALICE_DEVICE), (BOB_ACCOUNT, BOB_DEVICE)] {
-            app.call_as_account(account, device, |s| s.set_consent(doc.clone()))
-                .unwrap();
-        }
-
-        sign_as(&mut app, ALICE_ACCOUNT, ALICE_DEVICE, &doc).unwrap();
-        // `sign_as` re-reads the hash, which is what the UI does on reopen.
-        sign_as(&mut app, BOB_ACCOUNT, BOB_DEVICE, &doc).unwrap();
-
-        assert_eq!(signers_of(&app, &doc), vec![ALICE_ACCOUNT, BOB_ACCOUNT]);
-    }
-
-    // ── a viewer is finally possible ────────────────────────────────────────
-
-    /// A `Read` participant used to make completion unreachable: the all-signed
-    /// count demanded a signature from every participant, including the ones
-    /// `require_permission` would have refused one from. So the document sat at
-    /// `PartiallySigned` forever and nothing said why.
-    #[test]
-    fn a_viewer_does_not_block_completion() {
-        const VIEWER: [u8; 32] = [0xDD; 32];
-        let mut app = new_agreement();
-        bob_joins(&mut app);
-        app.call(|s| s.add_participant(hexed(VIEWER), PermissionLevel::Read))
-            .unwrap();
-        let doc = upload_doc(&mut app);
-
-        for (account, device) in [(ALICE_ACCOUNT, ALICE_DEVICE), (BOB_ACCOUNT, BOB_DEVICE)] {
-            app.call_as_account(account, device, |s| s.set_consent(doc.clone()))
-                .unwrap();
-            sign_as(&mut app, account, device, &doc).unwrap();
-            app.call_as_account(account, device, |s| s.mark_participant_signed(doc.clone()))
-                .unwrap();
-        }
-
-        assert_eq!(
-            status_of(&app, &doc),
-            DocumentStatus::FullySigned,
-            "the viewer must not be counted among the signatures the document waits for"
-        );
-    }
-
-    /// The other half: a viewer is still not a signature. Promote them and the
-    /// document is no longer complete-able without them.
-    #[test]
-    fn a_signer_still_blocks_completion() {
-        const LATECOMER: [u8; 32] = [0xEE; 32];
-        let mut app = new_agreement();
-        app.call(|s| s.add_participant(hexed(LATECOMER), PermissionLevel::Sign))
-            .unwrap();
-        let doc = upload_doc(&mut app);
-
-        app.call(|s| s.set_consent(doc.clone())).unwrap();
-        sign_as(&mut app, ALICE_ACCOUNT, ALICE_DEVICE, &doc).unwrap();
-        app.call(|s| s.mark_participant_signed(doc.clone()))
-            .unwrap();
-
-        assert_eq!(status_of(&app, &doc), DocumentStatus::PartiallySigned);
-    }
-
-    // ── completion is a fact about the past ─────────────────────────────────
-
-    /// Adding a participant used to walk every `FullySigned` document and put it
-    /// back to `PartiallySigned`. A finished agreement un-finished itself, with
-    /// no event and no trace that it had ever been complete.
-    #[test]
-    fn a_completed_document_stays_completed_when_somebody_new_joins() {
-        let mut app = new_agreement();
-        let doc = upload_doc(&mut app);
-        app.call(|s| s.set_consent(doc.clone())).unwrap();
-        sign_as(&mut app, ALICE_ACCOUNT, ALICE_DEVICE, &doc).unwrap();
-        app.call(|s| s.mark_participant_signed(doc.clone()))
-            .unwrap();
-        assert_eq!(status_of(&app, &doc), DocumentStatus::FullySigned);
-
-        bob_joins(&mut app);
-        assert_eq!(
-            status_of(&app, &doc),
-            DocumentStatus::FullySigned,
-            "a new participant must not reopen a document Alice already completed"
-        );
-
-        const VIEWER: [u8; 32] = [0xDD; 32];
-        app.call(|s| s.add_participant(hexed(VIEWER), PermissionLevel::Read))
-            .unwrap();
-        app.call(|s| s.set_participant_permission(hexed(VIEWER), PermissionLevel::Sign))
-            .unwrap();
-        assert_eq!(
-            status_of(&app, &doc),
-            DocumentStatus::FullySigned,
-            "neither must a promotion"
-        );
-    }
-
-    fn upload_doc(app: &mut TestHost<MeroSignState>) -> String {
-        app.call(|s| {
-            s.upload_document(
-                "contract.pdf".to_owned(),
-                "deadbeef".to_owned(),
-                hexed([0x11; 32]),
-                1024,
-                None,
-                None,
-                None,
-            )
-        })
-        .unwrap()
-    }
-}
+mod tests;

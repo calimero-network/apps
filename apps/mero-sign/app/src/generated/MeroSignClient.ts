@@ -6,6 +6,10 @@ import {
 
 // Generated types
 
+export interface Consents {
+  documents: Record<string, boolean>;
+}
+
 export interface ContextDetails {
   context_id: CalimeroBytes;
   context_name: string;
@@ -42,6 +46,7 @@ export interface DocumentInfo {
   status: DocumentStatus;
   pdf_blob_id: CalimeroBytes;
   size: number;
+  required_signers: CalimeroBytes[];
   embeddings: number[] | null;
   extracted_text: string | null;
   chunks: DocumentChunk[] | null;
@@ -120,12 +125,11 @@ export interface MeroSignState {
   signatures: Record<string, SignatureRecord>;
   joined_contexts: Record<string, ContextMetadata>;
   identity_mappings: Record<string, IdentityMapping>;
-  signature_count: number;
-  participants: CalimeroBytes[];
-  documents: Record<string, DocumentInfo>;
-  document_signatures: Record<string, DocumentSignature[]>;
-  permissions: Record<string, PermissionCell>;
-  consents: Record<string, boolean>;
+  roles: Record<string, boolean>;
+  joined: Record<string, number>;
+  documents: Record<string, StoredDocument>;
+  document_signatures: Record<string, SignedVersion>;
+  consents: Record<string, Consents>;
 }
 
 export interface ParticipantInfo {
@@ -135,10 +139,6 @@ export interface ParticipantInfo {
 
 export type ParticipantRole = 'Owner' | 'Signer' | 'Viewer' | 'Unknown';
 
-export interface PermissionCell {
-  level: PermissionLevel;
-}
-
 export type PermissionLevel = 'Read' | 'Sign' | 'Admin';
 
 export interface SignatureRecord {
@@ -147,6 +147,26 @@ export interface SignatureRecord {
   blob_id: CalimeroBytes;
   size: number;
   created_at: number;
+}
+
+export interface SignedVersion {
+  base_hash: string;
+  new_hash: string;
+  pdf_blob_id: CalimeroBytes;
+  size: number;
+  signed_at: number;
+}
+
+export interface StoredDocument {
+  name: string;
+  hash: string;
+  pdf_blob_id: CalimeroBytes;
+  size: number;
+  uploaded_at: number;
+  required_signers: CalimeroBytes[];
+  embeddings: number[] | null;
+  extracted_text: string | null;
+  chunks: DocumentChunk[] | null;
 }
 
 
@@ -381,7 +401,7 @@ export class MeroSignClient {
    */
   public async listDocuments(): Promise<DocumentInfo[]> {
     const response: any = await this._mero.rpc.execute({ contextId: this._contextId, method: 'list_documents', argsJson: {} });
-    return (response == null ? null : response.map((item: any) => ({ ...item, uploaded_by: new CalimeroBytes(item['uploaded_by']), pdf_blob_id: new CalimeroBytes(item['pdf_blob_id']) }))) as DocumentInfo[];
+    return (response == null ? null : response.map((item: any) => ({ ...item, uploaded_by: new CalimeroBytes(item['uploaded_by']), pdf_blob_id: new CalimeroBytes(item['pdf_blob_id']), required_signers: item['required_signers'].map((item: any) => new CalimeroBytes(item)) }))) as DocumentInfo[];
   }
 
   /**

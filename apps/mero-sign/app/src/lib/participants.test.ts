@@ -5,7 +5,7 @@ import {
   canRemove,
   isAdmin,
   isHexId,
-  promotionsFor,
+  levelChangesFor,
   rankOf,
   shortId,
   toHexId,
@@ -78,31 +78,22 @@ describe('rankOf', () => {
   });
 });
 
-describe('promotionsFor', () => {
-  // Only upward, and this is the load-bearing assertion. The contract refuses a
-  // demotion because permissions merge by taking the higher rank, so a "demote"
-  // control would appear to withdraw authority and would not.
-  it('offers only levels above the current one', () => {
-    expect(promotionsFor(PermissionLevel.Read)).toEqual([
+describe('levelChangesFor', () => {
+  // Levels are AccessControl grants in the contract, so a demotion converges
+  // like a promotion and both are offered.
+  it('offers every other level, lowest first', () => {
+    expect(levelChangesFor(PermissionLevel.Read)).toEqual([
       PermissionLevel.Sign,
       PermissionLevel.Admin,
     ]);
-    expect(promotionsFor(PermissionLevel.Sign)).toEqual([
+    expect(levelChangesFor(PermissionLevel.Sign)).toEqual([
+      PermissionLevel.Read,
       PermissionLevel.Admin,
     ]);
-    expect(promotionsFor(PermissionLevel.Admin)).toEqual([]);
-  });
-
-  it('never offers a demotion', () => {
-    for (const level of [
+    expect(levelChangesFor(PermissionLevel.Admin)).toEqual([
       PermissionLevel.Read,
       PermissionLevel.Sign,
-      PermissionLevel.Admin,
-    ]) {
-      for (const offered of promotionsFor(level)) {
-        expect(rankOf(offered)).toBeGreaterThan(rankOf(level));
-      }
-    }
+    ]);
   });
 });
 

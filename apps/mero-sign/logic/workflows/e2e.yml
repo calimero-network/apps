@@ -468,6 +468,29 @@ steps:
     statements:
       - 'contains({{bob_docs_signed}}, "FullySigned")'
 
+  # Signatures are write-once and completion is terminal: a completed document
+  # takes no more signatures, not even a second one from a signer.
+  - name: Bob cannot sign the completed document again
+    type: call
+    node: calimero-node-2
+    context_id: "{{agreement_id}}"
+    method: sign_document
+    args:
+      document_id: "{{document_id}}"
+      base_hash: "2222222222222222222222222222222222222222222222222222222222222222"
+      pdf_blob_id_str: "{{bob_blob_id}}"
+      file_size: 1024
+      new_hash: "3333333333333333333333333333333333333333333333333333333333333333"
+    executor_public_key: "{{bob_key}}"
+    expected_failure: true
+    outputs:
+      err_sign_completed: error
+
+  - name: Assert the extra signature was refused
+    type: assert
+    statements:
+      - "is_set({{err_sign_completed}})"
+
   # ── A delete replicates ─────────────────────────────────────────────────────
   - name: Alice deletes the document
     type: call
