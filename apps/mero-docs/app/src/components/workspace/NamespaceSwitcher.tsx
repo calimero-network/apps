@@ -58,7 +58,7 @@ export function NamespaceSwitcher() {
 
   const current = namespaces.find((n) => n.namespaceId === selectedNamespaceId);
   const currentLabel = current
-    ? namespaceLabel(current.namespaceId, current.name)
+    ? namespaceLabel(current.name)
     : null;
 
   return (
@@ -69,7 +69,7 @@ export function NamespaceSwitcher() {
             variant="ghost"
             size="sm"
             data-testid="workspace-switcher"
-            className="gap-1.5 px-2 data-[state=open]:bg-accent"
+            className="min-w-0 gap-1.5 px-2 data-[state=open]:bg-accent"
           >
             {currentLabel ? (
               <span className="max-w-[24ch] truncate">{currentLabel}</span>
@@ -102,7 +102,7 @@ export function NamespaceSwitcher() {
                 className="min-h-0 max-h-80 overflow-y-auto"
               >
                 {namespaces.map((n) => {
-                  const label = namespaceLabel(n.namespaceId, n.name);
+                  const label = namespaceLabel(n.name);
                   return (
                     <DropdownMenuRadioItem
                       key={n.namespaceId}

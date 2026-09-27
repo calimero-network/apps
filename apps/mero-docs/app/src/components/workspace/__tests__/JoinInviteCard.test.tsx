@@ -82,3 +82,20 @@ describe('JoinInviteCard secondary action', () => {
     expect(onSecondary).not.toHaveBeenCalled();
   });
 });
+
+describe('JoinInviteCard target', () => {
+  it.each([
+    ['namespace', 'a workspace'],
+    ['group', 'a folder'],
+  ] as const)('names an unnamed %s plainly instead of showing its id', (kind, phrase) => {
+    render(
+      <JoinInviteCard
+        parsed={{ ...parsed, kind, targetId: 'ns-abcdef0123456789', targetName: undefined }}
+        onJoined={vi.fn()}
+      />,
+    );
+    const intro = screen.getByText(/invited to join/);
+    expect(intro.textContent).toContain(`invited to join ${phrase}.`);
+    expect(intro.textContent).not.toContain('ns-abcdef');
+  });
+});

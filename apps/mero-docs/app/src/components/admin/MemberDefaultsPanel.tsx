@@ -316,7 +316,7 @@ export function MemberDefaultsPanel() {
       )}
 
       <div className="border-t border-border/60 px-4 py-3">
-        <div className="flex items-start justify-between gap-3">
+        <div className="flex flex-col items-start gap-3 sm:flex-row sm:justify-between">
           <p className="text-xs text-muted-foreground">
             Saving above only affects people who join later. To give the
             {' '}

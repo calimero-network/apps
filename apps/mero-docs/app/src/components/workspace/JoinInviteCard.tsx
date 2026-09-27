@@ -130,15 +130,16 @@ export function JoinInviteCard({
   return (
     <>
       <p className="mb-6 text-sm text-muted-foreground">
-        You've been invited to join {scopeLabel}{' '}
+        You've been invited to join{' '}
         {parsed.targetName ? (
-          <span className="font-medium text-foreground">
-            {parsed.targetName}
-          </span>
+          <>
+            {scopeLabel}{' '}
+            <span className="font-medium text-foreground">
+              {parsed.targetName}
+            </span>
+          </>
         ) : (
-          <code className="rounded bg-muted px-1.5 py-0.5 text-xs text-foreground">
-            {parsed.targetId.slice(0, 12)}…
-          </code>
+          `a ${scopeLabel}`
         )}
         {parsed.kind === 'group' ? (
           <>

@@ -10,6 +10,7 @@
 
 import React, { useState } from 'react';
 import { toast } from 'sonner';
+import { Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -291,7 +292,7 @@ export function NewFolderDialog({ parentFolderId, onClose }: Props) {
                           }
                           className="text-muted-foreground hover:text-foreground"
                         >
-                          ×
+                          <Trash2 className="h-3 w-3" />
                         </button>
                       </li>
                     ))}

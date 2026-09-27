@@ -4,7 +4,7 @@
 // file no longer imports Tiptap.
 
 import React from 'react';
-import { Shield, AlertCircle, FileText, WifiOff } from 'lucide-react';
+import { Loader2, Shield, AlertCircle, FileText, WifiOff } from 'lucide-react';
 import type { SaveStatus } from './types';
 import { useSettledSaveStatus } from './useSettledSaveStatus';
 
@@ -16,6 +16,9 @@ interface EditorStatusBarProps {
   saveStatus: SaveStatus;
   lastSavedAt: Date | null;
   isAppReady?: boolean;
+  /** True only once the connection is known to be down. Distinct from
+   *  `!isAppReady`, which also covers "still loading". */
+  isOffline?: boolean;
 }
 
 export const EditorStatusBar: React.FC<EditorStatusBarProps> = ({
@@ -25,15 +28,25 @@ export const EditorStatusBar: React.FC<EditorStatusBarProps> = ({
   saveStatus,
   lastSavedAt,
   isAppReady = true,
+  isOffline = false,
 }) => {
   const shownStatus = useSettledSaveStatus(saveStatus);
 
   const getSaveStatusDisplay = () => {
-    if (!isAppReady) {
+    if (isOffline) {
       return (
         <div className="flex items-center gap-1.5 text-muted-foreground" data-testid="save-status">
           <WifiOff className="w-3.5 h-3.5" />
           <span>Offline</span>
+        </div>
+      );
+    }
+
+    if (!isAppReady) {
+      return (
+        <div className="flex items-center gap-1.5 text-muted-foreground" data-testid="save-status">
+          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+          <span>Connecting…</span>
         </div>
       );
     }

@@ -243,10 +243,19 @@ export class WorkspaceDriver {
   async toggleVisibility(folderName: string): Promise<void> {
     await this.openFolderInfo(folderName);
     // FolderVisibilityToggle renders a button: "Make restricted" (Open→) or "Make open" (Restricted→).
-    await this.page
-      .getByRole('dialog')
-      .getByRole('button', { name: /Make (open|restricted)/i })
-      .click();
+    const toggle = this.page
+      .getByRole('dialog', { name: folderName })
+      .getByRole('button', { name: /Make (open|restricted)/i });
+    const restricting = /restricted/i.test((await toggle.textContent()) ?? '');
+    await toggle.click();
+    if (restricting) {
+      // Restricting revokes inherited access, so the app asks first.
+      const confirm = this.page.getByRole('dialog', {
+        name: 'Make this folder restricted?',
+      });
+      await confirm.getByRole('button', { name: 'Make restricted' }).click();
+      await expect(confirm).toBeHidden({ timeout: 15_000 });
+    }
     await this.closeFolderInfo();
   }
 

@@ -1,6 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { Dialog, DialogContent, DialogTitle } from '../ui/dialog';
 import { MemberPicker } from '../common/MemberPicker';
 
 const members = [
@@ -109,6 +111,34 @@ describe('MemberPicker', () => {
     expect(screen.getAllByText('Unnamed member')).toHaveLength(2);
     expect(screen.queryByText(/bob-pubkey/)).toBeNull();
     expect(screen.queryByText(/cathy-pubkey/)).toBeNull();
+  });
+
+  it('Escape inside a dialog closes only the suggestion list, then the dialog', async () => {
+    const user = userEvent.setup();
+    function InDialog() {
+      const [open, setOpen] = useState(true);
+      return (
+        <Dialog open={open} onOpenChange={setOpen}>
+          <DialogContent aria-describedby={undefined}>
+            <DialogTitle>New folder</DialogTitle>
+            <MemberPicker namespaceId="ns" onSelect={vi.fn()} />
+          </DialogContent>
+        </Dialog>
+      );
+    }
+    render(<InDialog />);
+    const input = screen.getByRole('combobox');
+    await user.click(input);
+    await user.keyboard('ali');
+    expect(screen.getByRole('listbox')).toBeTruthy();
+
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('listbox')).toBeNull();
+    expect(screen.getByRole('dialog', { name: 'New folder' })).toBeTruthy();
+    expect((screen.getByRole('combobox') as HTMLInputElement).value).toBe('ali');
+
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 
   it('accepts a free-form pubkey paste via Enter when no option matches', () => {

@@ -7,9 +7,11 @@ import { Dialog, DialogContent, DialogTitle } from '../dialog';
 // Opened from plain state, with no Dialog.Trigger for Radix to return focus to.
 function Harness({
   onCloseAutoFocus,
+  onEscapeKeyDown,
   withAutoFocusField = false,
 }: {
   onCloseAutoFocus?: (e: Event) => void;
+  onEscapeKeyDown?: (e: KeyboardEvent) => void;
   withAutoFocusField?: boolean;
 }) {
   const [open, setOpen] = useState(false);
@@ -17,7 +19,11 @@ function Harness({
     <>
       <button onClick={() => setOpen(true)}>Open</button>
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent aria-describedby={undefined} onCloseAutoFocus={onCloseAutoFocus}>
+        <DialogContent
+          aria-describedby={undefined}
+          onCloseAutoFocus={onCloseAutoFocus}
+          onEscapeKeyDown={onEscapeKeyDown}
+        >
           <DialogTitle>Details</DialogTitle>
           {withAutoFocusField && <input aria-label="Name" autoFocus />}
         </DialogContent>
@@ -57,5 +63,14 @@ describe('DialogContent', () => {
     });
     await user.keyboard('{Enter}');
     expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it("keeps the dialog open when the caller's onEscapeKeyDown prevents it", async () => {
+    const user = userEvent.setup();
+    render(<Harness onEscapeKeyDown={(e) => e.preventDefault()} />);
+    await user.click(screen.getByRole('button', { name: 'Open' }));
+    await screen.findByRole('dialog', { name: 'Details' });
+    await user.keyboard('{Escape}');
+    expect(screen.getByRole('dialog', { name: 'Details' })).toBeTruthy();
   });
 });

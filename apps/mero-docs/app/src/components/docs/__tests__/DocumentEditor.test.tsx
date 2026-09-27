@@ -15,6 +15,12 @@ let deliver: ((event: unknown) => void) | undefined;
 // Stable identity: useDocs memoizes its client, and a fresh one per render
 // would re-run every hook effect that keys on it.
 const client = { getDocument, getTitle };
+// The folder's docs-context resolution, as useDocs reports it.
+let contextState: {
+  contextId: string | null;
+  contextResolving: boolean;
+  error: Error | null;
+};
 
 vi.mock('sonner', () => ({
   toast: { error: toastError },
@@ -37,6 +43,7 @@ vi.mock('@/hooks/useDriveWorkspace', () => ({
     namespaceMemberNames: {},
   }),
 }));
+vi.mock('@/hooks/useOnlineStatus', () => ({ useOnlineStatus: () => true }));
 vi.mock('@/hooks/useFolderPermissions', () => ({
   useFolderPermissions: () => ({ canEditDocs: true }),
 }));
@@ -46,7 +53,7 @@ vi.mock('@/hooks/useDocs', () => ({
     edit: vi.fn(),
     remove: docsRemove,
     refetch: vi.fn(),
-    contextId: 'docs-ctx',
+    ...contextState,
     client,
   }),
 }));
@@ -58,12 +65,19 @@ vi.mock('@/components/editor/EditorShell', () => ({
     isLoading,
     documentName,
     onDelete,
+    isAppReady,
+    isOffline,
   }: {
     isLoading: boolean;
     documentName: string;
     onDelete?: () => void;
+    isAppReady: boolean;
+    isOffline: boolean;
   }) => (
     <div>
+      <span data-testid="connection">
+        {isOffline ? 'offline' : isAppReady ? 'ready' : 'connecting'}
+      </span>
       {isLoading ? 'Loading document...' : documentName}
       {onDelete && <button onClick={onDelete}>Delete</button>}
     </div>
@@ -90,6 +104,7 @@ function deferred<T>() {
 beforeEach(() => {
   vi.clearAllMocks();
   deliver = undefined;
+  contextState = { contextId: 'docs-ctx', contextResolving: false, error: null };
   getDoc.mockResolvedValue(DOC);
   getTitle.mockResolvedValue('Notes');
   getDocument.mockResolvedValue([]);
@@ -146,5 +161,34 @@ describe('DocumentEditor', () => {
       expect(toastError).toHaveBeenCalledWith("Couldn't delete document"),
     );
     expect(onClose).not.toHaveBeenCalled();
+  });
+
+  describe('connection state', () => {
+    const connection = () => screen.getByTestId('connection').textContent;
+
+    it('goes from connecting to offline once the folder context fails to resolve', () => {
+      contextState = { contextId: null, contextResolving: true, error: null };
+      const { rerender } = render(
+        <DocumentEditor folderId="f" docId="doc-1" onClose={() => {}} />,
+      );
+      expect(connection()).toBe('connecting');
+
+      contextState = { contextId: null, contextResolving: false, error: new Error('denied') };
+      rerender(<DocumentEditor folderId="f" docId="doc-1" onClose={() => {}} />);
+      expect(connection()).toBe('offline');
+    });
+
+    it('goes from connecting to ready once the folder context resolves', async () => {
+      contextState = { contextId: null, contextResolving: true, error: null };
+      const { rerender } = render(
+        <DocumentEditor folderId="f" docId="doc-1" onClose={() => {}} />,
+      );
+      expect(connection()).toBe('connecting');
+
+      contextState = { contextId: 'docs-ctx', contextResolving: false, error: null };
+      rerender(<DocumentEditor folderId="f" docId="doc-1" onClose={() => {}} />);
+      expect(connection()).toBe('ready');
+      await screen.findByText('Notes');
+    });
   });
 });

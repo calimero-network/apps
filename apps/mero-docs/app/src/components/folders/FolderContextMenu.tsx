@@ -34,6 +34,7 @@ import {
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { useFolderOperations } from '@/hooks/useFolderOperations';
 import { useFolderPermissions } from '@/hooks/useFolderPermissions';
+import { folderLabel } from '@/lib/folderLabel';
 import { FolderInfoPanel } from './FolderInfoPanel';
 import { NewFolderDialog } from './NewFolderDialog';
 
@@ -47,6 +48,9 @@ interface Props {
   onNewSubfolder: () => void;
   /** Creates an Untitled doc in this folder and opens it. */
   onNewDocument: () => void;
+  /** A document create is already in flight for this folder; disables the
+   *  New document affordances so a second click can't start a duplicate. */
+  newDocPending?: boolean;
 }
 
 export function FolderContextMenu({
@@ -55,6 +59,7 @@ export function FolderContextMenu({
   onRename,
   onNewSubfolder,
   onNewDocument,
+  newDocPending = false,
 }: Props) {
   const {
     namespaceId,
@@ -66,7 +71,7 @@ export function FolderContextMenu({
   } = useDriveWorkspace();
 
   const folder = folders.find((f) => f.id === folderId);
-  const folderAlias = folder?.alias ?? `${folderId.slice(0, 8)}…`;
+  const folderAlias = folderLabel(folder?.alias);
   const perms = useFolderPermissions(namespaceId ?? '', folderId);
   const ops = useFolderOperations(
     registryClient,
@@ -113,6 +118,7 @@ export function FolderContextMenu({
           className="h-6 w-6 shrink-0 text-muted-foreground opacity-0 group-hover:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
           aria-label="New document"
           title="New document"
+          disabled={newDocPending}
           onClick={(e) => {
             e.stopPropagation();
             onNewDocument();
@@ -145,7 +151,7 @@ export function FolderContextMenu({
           }}
         >
           {perms.canEditDocs && (
-            <DropdownMenuItem onClick={onNewDocument}>
+            <DropdownMenuItem onClick={onNewDocument} disabled={newDocPending}>
               <FilePlus className="mr-2 h-4 w-4" />
               New document
             </DropdownMenuItem>

@@ -53,7 +53,7 @@ export type { CapabilityName, CapabilityBit } from '@calimero-network/mero-js';
  *  create folders + create document contexts. Set via
  *  `mero.admin.setDefaultCapabilities(namespaceId, DEFAULT_NEW_MEMBER_CAPS)`
  *  at workspace-creation time (see `useDriveWorkspace.createWorkspace`),
- *  and re-used as the "Editor" preset by `MemberRoleSelect`. Equals 37
+ *  and re-used as the Editor grant in `WORKSPACE_ROLE_GRANTS`. Equals 37
  *  (`CAN_CREATE_CONTEXT | CAN_JOIN_OPEN_SUBGROUPS | CAN_CREATE_SUBGROUP`).
  *  See design spec §5.2 / §5.3. */
 export const DEFAULT_NEW_MEMBER_CAPS: number =

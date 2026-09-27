@@ -81,6 +81,21 @@ describe('DisplayNameGate', () => {
     await waitFor(() => expect(setName).toHaveBeenCalledWith('Ana Ruiz'));
   });
 
+  it('explains the name without mentioning keys', () => {
+    dnMock.mockReturnValue(hookState());
+    render(<DisplayNameGate />);
+    const body = screen.getByText(/Members of this workspace see this name/);
+    expect(body.textContent).toBe(
+      'Members of this workspace see this name. You can change it later in settings.',
+    );
+  });
+
+  it('stacks at the same layer as other modals, not below them', () => {
+    dnMock.mockReturnValue(hookState());
+    render(<DisplayNameGate />);
+    expect(screen.getByRole('dialog').className).toContain('z-50');
+  });
+
   it('closes after a successful save even if the hook name stays null', async () => {
     // Regression for mero-drive#42: useMemberMetadata can fail to
     // rehydrate after a write, so `name` stays null even though the PUT

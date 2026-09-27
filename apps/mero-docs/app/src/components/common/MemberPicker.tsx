@@ -159,7 +159,10 @@ export function MemberPicker({
               e.preventDefault();
               pick(query.trim());
             }
-          } else if (e.key === 'Escape') {
+          } else if (e.key === 'Escape' && open) {
+            // Radix dialogs see Escape first; DialogContent ignores it while this list is open.
+            e.preventDefault();
+            e.stopPropagation();
             setOpen(false);
             setActiveIndex(-1);
           }

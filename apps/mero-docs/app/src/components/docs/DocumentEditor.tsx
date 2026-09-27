@@ -10,6 +10,7 @@ import { useConfirm } from '@/components/ui/confirm-dialog';
 import type { DocDto } from '@/generated/docs/DocsClient';
 import { useDocs } from '@/hooks/useDocs';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
+import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useFolderPermissions } from '@/hooks/useFolderPermissions';
 import { useFugueBody, type BodyEditor } from '@/hooks/useFugueBody';
 import { useFugueTitle } from '@/hooks/useFugueTitle';
@@ -37,6 +38,7 @@ export function DocumentEditor({
 }: Props) {
   const { namespaceId, selfIdentity, namespaceMemberNames } =
     useDriveWorkspace();
+  const isOnline = useOnlineStatus();
   const perms = useFolderPermissions(namespaceId ?? '', folderId);
   // Doc-edit ability is the registry Role, gated through useFolderPermissions.
   // A caps-fetch failure leaves this false, so the editor opens read-only
@@ -51,6 +53,9 @@ export function DocumentEditor({
     client,
   } = docs;
   const confirm = useConfirm();
+  // Settled with an error and no context (e.g. access lost): no longer "connecting".
+  const contextFailed =
+    !docsContextId && !docs.contextResolving && docs.error !== null;
 
   // Metadata only; the title and the body are read through their own hooks.
   const [doc, setDoc] = useState<DocDto | null>(null);
@@ -194,6 +199,7 @@ export function DocumentEditor({
         saveStatus={body.status}
         lastSavedAt={doc ? new Date(doc.updated_at / 1_000_000) : null}
         isAppReady={!!namespaceId && !!docsContextId}
+        isOffline={!isOnline || contextFailed}
         isLoading={body.loading}
         onEditorReady={onEditorReady}
         peers={peerList}

@@ -11,7 +11,7 @@
 // Mutations go through mero-react hooks, except rename and member adds: those
 // hooks resolve a failed call to null, so they call `mero.admin`, which throws.
 
-import { useCallback } from 'react';
+import { useCallback, useRef } from 'react';
 import {
   useCreateGroupInNamespace,
   useCreateContext,
@@ -71,8 +71,9 @@ export function useFolderOperations(
   const { deleteGroup } = useDeleteGroup();
   const { setSubgroupVisibility } = useSetSubgroupVisibility();
   const { mero, nodeUrl } = useMero();
+  const inFlightRef = useRef<Promise<string[]> | null>(null);
 
-  const create = useCallback(
+  const createInternal = useCallback(
     async (input: CreateFolderInput): Promise<string[]> => {
       if (!registryClient || !rootGroupId || !mero) {
         throw new Error('workspace not bootstrapped');
@@ -251,6 +252,20 @@ export function useFolderOperations(
       deleteContext,
       deleteGroup,
     ],
+  );
+
+  // Per hook instance, a concurrent call gets the first call's result (its
+  // own input is dropped), so a double submit creates one folder.
+  const create = useCallback(
+    (input: CreateFolderInput): Promise<string[]> => {
+      if (inFlightRef.current) return inFlightRef.current;
+      const promise = createInternal(input).finally(() => {
+        inFlightRef.current = null;
+      });
+      inFlightRef.current = promise;
+      return promise;
+    },
+    [createInternal],
   );
 
   const rename = useCallback(

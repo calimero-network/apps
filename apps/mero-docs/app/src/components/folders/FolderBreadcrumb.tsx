@@ -19,6 +19,7 @@ import React from 'react';
 import { ChevronRight } from 'lucide-react';
 import { ancestorsOf } from '@/utils/ancestry';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
+import { folderLabel } from '@/lib/folderLabel';
 
 interface Props {
   folderId: string;
@@ -57,7 +58,7 @@ export function FolderBreadcrumb({ folderId }: Props) {
               className="truncate rounded px-1 py-0.5 hover:bg-muted hover:text-foreground"
               onClick={() => setSelectedFolder(id)}
             >
-              {f?.alias ?? id.slice(0, 8)}
+              {folderLabel(f?.alias)}
             </button>
             {!isLast && (
               <ChevronRight className="h-3.5 w-3.5 shrink-0" aria-hidden />

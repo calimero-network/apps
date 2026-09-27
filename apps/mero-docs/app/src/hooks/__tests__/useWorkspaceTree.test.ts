@@ -37,7 +37,7 @@ describe('mergeAdminAndRegistry', () => {
     expect(tree.folders.find((f) => f.id === 'r')).toBeUndefined();
   });
 
-  it('still renders folders when admin is empty — falls back to a stub alias and undefined visibility', () => {
+  it('still renders folders when admin is empty - falls back to a plain name and undefined visibility', () => {
     // This protects against the upstream listSubgroups bug (mero-js
     // unwraps `.data` from a `{subgroups}` response — folder list
     // comes back empty). Registry is authoritative, so folders must
@@ -47,7 +47,7 @@ describe('mergeAdminAndRegistry', () => {
     const a = tree.folders.find((f) => f.id === 'a');
     expect(a?.visibility).toBeUndefined();
     expect(a?.color).toBe('#f00');
-    expect(a?.alias).toMatch(/^folder-/);
+    expect(a?.alias).toBe('Untitled folder');
   });
 });
 

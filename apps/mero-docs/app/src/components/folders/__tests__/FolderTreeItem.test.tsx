@@ -51,6 +51,7 @@ function renderRow(props: Partial<React.ComponentProps<typeof FolderTreeItem>> =
       onSelect={vi.fn()}
       expanded={new Set()}
       onToggleExpanded={vi.fn()}
+      onExpand={vi.fn()}
       selectedDocId={null}
       onOpenDoc={vi.fn()}
       {...props}
@@ -60,18 +61,26 @@ function renderRow(props: Partial<React.ComponentProps<typeof FolderTreeItem>> =
 
 beforeEach(() => vi.clearAllMocks());
 
+describe('folder row name', () => {
+  it('shows a folder it has no record for as Untitled folder, never its id', () => {
+    renderRow({ byId: new Map() as never });
+    expect(screen.getByRole('button', { name: 'Untitled folder' })).toBeTruthy();
+    expect(screen.queryByText('f1')).toBeNull();
+  });
+});
+
 describe('folder row keyboard access', () => {
   it('selects the folder when Enter is pressed on its name button', async () => {
     const onSelect = vi.fn();
-    const onToggleExpanded = vi.fn();
-    renderRow({ onSelect, onToggleExpanded });
+    const onExpand = vi.fn();
+    renderRow({ onSelect, onExpand });
 
     const nameButton = screen.getByRole('button', { name: 'Product' });
     nameButton.focus();
     await userEvent.keyboard('{Enter}');
 
     expect(onSelect).toHaveBeenCalledWith('f1');
-    expect(onToggleExpanded).toHaveBeenCalledWith('f1');
+    expect(onExpand).toHaveBeenCalledWith('f1');
   });
 
   it.each([

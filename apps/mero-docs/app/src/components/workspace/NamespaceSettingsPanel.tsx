@@ -18,13 +18,13 @@ export function NamespaceSettingsPanel() {
   const ns = namespaces.find((n) => n.namespaceId === namespaceId);
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6 p-6">
+    <div className="mx-auto max-w-4xl space-y-6 p-4 sm:p-6">
       <div>
         <h1 className="text-2xl font-semibold text-foreground">
           Workspace settings
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          {namespaceId ? namespaceLabel(namespaceId, ns?.name) : 'Unknown workspace'}
+          {namespaceId ? namespaceLabel(ns?.name) : 'Unknown workspace'}
           {ns && (
             <>
               {' '}

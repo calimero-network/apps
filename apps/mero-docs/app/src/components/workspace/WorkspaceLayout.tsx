@@ -1,6 +1,6 @@
 // Three-pane workspace shell:
 //   - top bar (logo + NamespaceSwitcher)
-//   - left rail (FolderTree)
+//   - left rail (FolderTree); a drawer opened from the top bar below md
 //   - main content: DocumentEditor rendered inline in the main pane
 //     (gated on selectedFolderId for save-stability, NOT selectedFolder)
 //     when a doc is open; folder view (breadcrumb + header + doc list +
@@ -24,11 +24,12 @@ import React, {
 } from 'react';
 import { Settings, LogOut, Circle, PanelLeft } from 'lucide-react';
 import { useMero } from '@calimero-network/mero-react';
+import { useMediaQuery } from '@mantine/hooks';
 import { LogoWithText } from '@/components/icons/Logo';
 import { Button } from '@/components/ui/button';
 import { NamespaceSwitcher } from './NamespaceSwitcher';
 import { NamespaceSettingsPanel } from './NamespaceSettingsPanel';
-import { WorkspaceSidebar } from './WorkspaceSidebar';
+import { SidebarDrawer, WorkspaceSidebar } from './WorkspaceSidebar';
 import { FolderTree } from '@/components/folders/FolderTree';
 import { RestrictedFolderCard } from '@/components/folders/RestrictedFolderCard';
 import { FolderEmptyState } from './FolderEmptyState';
@@ -43,6 +44,8 @@ import { lacksFolderAccess } from '@/utils/accessDenied';
 import { ThemeToggle } from '@/components/theme/ThemeToggle';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { DisplayNameGate } from './DisplayNameGate';
+
+const MD_QUERY = '(min-width: 768px)'; // Tailwind's md breakpoint
 
 // Code-split the editor: BlockNote + its Mantine UI are ~360 KB gzip and
 // only needed once a document is opened, so they must not weigh down the
@@ -111,6 +114,16 @@ export function WorkspaceLayout() {
     'mero-sidebar-collapsed',
     false,
   );
+  // Read synchronously so a phone never mounts the inline sidebar first.
+  const isDesktop = useMediaQuery(MD_QUERY, undefined, {
+    getInitialValueInEffect: false,
+  });
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const sidebarShown = isDesktop ? !sidebarCollapsed : drawerOpen;
+  // The drawer is phone-only, so a trip through a wide screen must not bring it back.
+  useEffect(() => {
+    if (isDesktop) setDrawerOpen(false);
+  }, [isDesktop]);
   // The folder the currently-open doc belongs to. Lets the reset
   // effect below distinguish "user clicked a different folder" (clear
   // the doc) from "user opened a doc in another folder" (keep it).
@@ -126,6 +139,7 @@ export function WorkspaceLayout() {
   const selectFolder = useCallback(
     (folderId: string) => {
       setShowSettings(false);
+      setDrawerOpen(false);
       setSelectedFolder(folderId);
     },
     [setSelectedFolder],
@@ -134,6 +148,7 @@ export function WorkspaceLayout() {
   const openDoc = useCallback(
     (folderId: string, docId: string) => {
       setShowSettings(false);
+      setDrawerOpen(false);
       selectedDocFolderRef.current = folderId;
       setSelectedFolder(folderId);
       setSelectedDocId(docId);
@@ -160,26 +175,42 @@ export function WorkspaceLayout() {
     setShowSettings(false);
   }, [namespaceId]);
 
+  const folderTree = (
+    <FolderTree
+      selectedDocId={selectedDocId}
+      onSelectFolder={selectFolder}
+      onOpenDoc={openDoc}
+    />
+  );
+
   return (
-    <div className="flex h-screen flex-col bg-background">
+    <div className="flex h-dvh flex-col bg-background">
       {/* Top bar */}
-      <header className="flex h-14 items-center justify-between border-b border-border bg-card px-4">
-        <div className="flex items-center gap-4">
+      <header className="flex h-14 items-center justify-between gap-2 border-b border-border bg-card px-3 md:px-4">
+        <div className="flex min-w-0 items-center gap-2 md:gap-4">
           <Button
             variant="ghost"
             size="icon"
-            className="h-9 w-9"
-            aria-label={sidebarCollapsed ? 'Show sidebar' : 'Hide sidebar'}
-            aria-pressed={!sidebarCollapsed}
-            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+            className="h-9 w-9 shrink-0"
+            aria-label={sidebarShown ? 'Hide sidebar' : 'Show sidebar'}
+            aria-pressed={sidebarShown}
+            onClick={() =>
+              isDesktop
+                ? setSidebarCollapsed(!sidebarCollapsed)
+                : setDrawerOpen(!drawerOpen)
+            }
           >
             <PanelLeft className="h-4 w-4" />
           </Button>
-          <LogoWithText size={22} />
+          <LogoWithText
+            size={22}
+            className="shrink-0"
+            textClassName="hidden whitespace-nowrap sm:inline"
+          />
           <div className="hidden h-6 w-px bg-border sm:block" />
           <NamespaceSwitcher />
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-1 sm:gap-2">
           {/* Connection indicator — shows the node URL and online
               state. Hidden on narrow viewports; title carries the
               full URL for copy-paste. */}
@@ -205,11 +236,12 @@ export function WorkspaceLayout() {
               variant={showSettings ? 'selected' : 'ghost'}
               size="sm"
               className="gap-1.5"
+              aria-label="Settings"
               aria-pressed={showSettings}
               onClick={() => setShowSettings((v) => !v)}
             >
               <Settings className="h-3.5 w-3.5" />
-              Settings
+              <span className="hidden sm:inline">Settings</span>
             </Button>
           )}
           <Button
@@ -227,14 +259,16 @@ export function WorkspaceLayout() {
 
       {/* Main grid */}
       <div className="relative flex min-h-0 flex-1">
-        {!sidebarCollapsed && (
-          <WorkspaceSidebar width={sidebarWidth} onWidthChange={setSidebarWidth}>
-            <FolderTree
-              selectedDocId={selectedDocId}
-              onSelectFolder={selectFolder}
-              onOpenDoc={openDoc}
-            />
-          </WorkspaceSidebar>
+        {!isDesktop ? (
+          <SidebarDrawer open={drawerOpen} onOpenChange={setDrawerOpen}>
+            {folderTree}
+          </SidebarDrawer>
+        ) : (
+          !sidebarCollapsed && (
+            <WorkspaceSidebar width={sidebarWidth} onWidthChange={setSidebarWidth}>
+              {folderTree}
+            </WorkspaceSidebar>
+          )
         )}
 
         <main className="flex min-h-0 flex-1 flex-col overflow-hidden">

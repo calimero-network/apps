@@ -48,7 +48,7 @@ beforeEach(() => {
   addGroupMembers.mockResolvedValue(undefined);
 });
 
-describe('useFolderOperations.create — members', () => {
+describe('useFolderOperations.create - members', () => {
   it('adds each chosen member (core role "Member") after the folder is bound', async () => {
     const registry = makeRegistry();
     const refetch = vi.fn().mockResolvedValue(undefined);
@@ -106,7 +106,7 @@ describe('useFolderOperations.create — members', () => {
     expect(addGroupMembers).not.toHaveBeenCalled();
   });
 
-  it('member-add failure is logged but does NOT throw or roll back (so the dialog closes — no duplicate folder)', async () => {
+  it('member-add failure is logged but does NOT throw or roll back (so the dialog closes, no duplicate folder)', async () => {
     const registry = makeRegistry();
     const refetch = vi.fn().mockResolvedValue(undefined);
     addGroupMembers.mockRejectedValue(new Error('add boom'));
@@ -140,6 +140,37 @@ describe('useFolderOperations.create — members', () => {
     expect(refetch).toHaveBeenCalled();
     expect(errSpy).toHaveBeenCalled();
     errSpy.mockRestore();
+  });
+});
+
+describe('useFolderOperations.create - double-submit guard', () => {
+  it('ignores a second create() call while the first is still in flight', async () => {
+    const registry = makeRegistry();
+    const refetch = vi.fn().mockResolvedValue(undefined);
+    let resolveGroup!: (v: { groupId: string }) => void;
+    createGroupInNamespace.mockReturnValueOnce(
+      new Promise((r) => {
+        resolveGroup = r;
+      }),
+    );
+    const { result } = renderHook(() =>
+      useFolderOperations(registry, ROOT, 'app-1', refetch),
+    );
+
+    const input = {
+      namespaceId: 'ns-1',
+      parentGroupId: ROOT,
+      alias: 'Docs',
+      visibility: 'Open' as const,
+    };
+    const p1 = result.current.create(input);
+    const p2 = result.current.create(input);
+
+    expect(createGroupInNamespace).toHaveBeenCalledTimes(1);
+    resolveGroup({ groupId: 'new-folder' });
+    await Promise.all([p1, p2]);
+
+    expect(createGroupInNamespace).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -256,7 +287,7 @@ const CREATE_STEPS = [
   'bindFolderContext',
 ] as const;
 
-describe('useFolderOperations.create — drift on partial failure', () => {
+describe('useFolderOperations.create - drift on partial failure', () => {
   it.each(CREATE_STEPS)('rolls back cleanly when %s fails', async (step) => {
     const registry = makeRegistry() as unknown as {
       registerFolder: ReturnType<typeof vi.fn>;

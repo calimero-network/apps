@@ -5,9 +5,11 @@
 // the right-pane DocumentList reads the same value.
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Loader2 } from 'lucide-react';
 import { buildTree } from '@/utils/ancestry';
 import { useDriveWorkspace } from '@/hooks/useDriveWorkspace';
 import { folderLoadErrorMessage } from '@/lib/folderLoadError';
+import { Button } from '@/components/ui/button';
 import { FolderTreeItem } from './FolderTreeItem';
 import { NewFolderButton } from './NewFolderButton';
 import { NoFoldersState } from './NoFolderStates';
@@ -35,7 +37,7 @@ export function FolderTree({
   onSelectFolder,
   onOpenDoc,
 }: FolderTreeProps) {
-  const { folders, loading, stage, error, selectedFolderId, namespaceId } =
+  const { folders, loading, stage, error, selectedFolderId, namespaceId, refetch } =
     useDriveWorkspace();
 
   // Expansion is owned here (was per-row state) so it survives the
@@ -50,6 +52,10 @@ export function FolderTree({
       else next.add(id);
       return next;
     });
+  }, []);
+  // Idempotent, so callers never read a possibly stale `expanded` to decide.
+  const expand = useCallback((id: string) => {
+    setExpanded((prev) => (prev.has(id) ? prev : new Set(prev).add(id)));
   }, []);
 
   const tree = useMemo(
@@ -73,8 +79,12 @@ export function FolderTree({
 
   if (loading) {
     return (
-      <div className="p-3 text-xs text-muted-foreground">
-        {STAGE_LABELS[stage] ?? 'Loading…'}
+      <div
+        role="status"
+        className="flex items-center gap-2 p-3 text-xs text-muted-foreground"
+      >
+        <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" aria-hidden />
+        <span>{STAGE_LABELS[stage] ?? 'Loading…'}</span>
       </div>
     );
   }
@@ -84,6 +94,14 @@ export function FolderTree({
       <div className="p-3 text-xs text-destructive break-words">
         <div className="font-medium mb-1">Failed to load folders</div>
         <div className="opacity-80">{folderLoadErrorMessage(error)}</div>
+        <Button
+          variant="outline"
+          size="sm"
+          className="mt-2"
+          onClick={() => refetch()}
+        >
+          Try again
+        </Button>
       </div>
     );
   }
@@ -114,6 +132,7 @@ export function FolderTree({
               onSelect={onSelectFolder}
               expanded={expanded}
               onToggleExpanded={toggleExpanded}
+              onExpand={expand}
               selectedDocId={selectedDocId}
               onOpenDoc={onOpenDoc}
             />

@@ -31,6 +31,7 @@ export function NamespaceMembersPanel() {
     namespaces,
     selfIdentity,
     registryContextId,
+    registryAdmin,
   } = useDriveWorkspace();
   const perms = useNamespacePermissions(namespaceId ?? '', rootGroupId ?? '');
   const membership = useFolderMembership(rootGroupId);
@@ -69,7 +70,7 @@ export function NamespaceMembersPanel() {
     (n) => n.namespaceId === namespaceId,
   );
   const aliasLabel = namespaceId
-    ? namespaceLabel(namespaceId, currentNamespace?.name)
+    ? namespaceLabel(currentNamespace?.name)
     : 'this workspace';
 
   // Read-only viewers see the panel but can't mutate. We don't
@@ -163,6 +164,7 @@ export function NamespaceMembersPanel() {
             actorCaps={selfCaps.caps}
             adminCount={adminCount}
             isSelf={!!selfIdentity && m.identity === selfIdentity}
+            isOwner={m.identity === registryAdmin.owner}
             isPresent={present.has(m.identity)}
             canManage={perms.canManageMembers}
             onAfterRoleChange={() => {

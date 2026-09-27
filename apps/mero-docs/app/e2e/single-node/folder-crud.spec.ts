@@ -39,6 +39,27 @@ test.describe('Folder CRUD (single-node)', () => {
     // explicit menuitem or drag-handle locator. Tracked separately.
   });
 
+  test('double-clicking Create in the New folder dialog creates exactly one folder', async ({
+    alice,
+  }) => {
+    await alice.page
+      .locator('aside')
+      .getByRole('button', { name: /^New( folder)?$/ })
+      .click();
+    const dialog = alice.page.getByRole('dialog');
+    await dialog.getByPlaceholder(/Folder name/i).fill('OnlyOne');
+    const createButton = dialog.getByRole('button', { name: /^Create$/ });
+
+    // Actionability is checked once, so the second click does not wait for re-enable.
+    await createButton.dblclick();
+    await expect(dialog).toBeHidden({ timeout: 15_000 });
+    await alice.tree.expectFolderVisible('OnlyOne');
+
+    // A later create's refreshed tree also shows any duplicate of the first.
+    await alice.createFolder({ name: 'Settle', visibility: 'Open' });
+    await expect(alice.tree.folderRow('OnlyOne')).toHaveCount(1);
+  });
+
   test('delete folder with no children removes it from tree', async ({
     alice,
   }) => {

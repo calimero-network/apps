@@ -16,6 +16,14 @@ function focusReturnTarget(): HTMLElement | null {
   return (triggerId && document.getElementById(triggerId)) || active;
 }
 
+// Radix sees Escape at the document before a field does, so an open combobox would lose it to the dialog.
+function isInOpenCombobox(target: EventTarget | null): boolean {
+  return (
+    target instanceof Element &&
+    target.closest('[role="combobox"][aria-expanded="true"]') !== null
+  );
+}
+
 // First child of the content, so it runs before an autoFocus field or Radix moves focus in.
 function CaptureOpener({
   openerRef,
@@ -32,7 +40,7 @@ function CaptureOpener({
 const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
->(({ className, children, onCloseAutoFocus, ...props }, ref) => {
+>(({ className, children, onCloseAutoFocus, onEscapeKeyDown, ...props }, ref) => {
   const openerRef = React.useRef<HTMLElement | null>(null);
   return (
     <DialogPrimitive.Portal>
@@ -48,6 +56,10 @@ const DialogContent = React.forwardRef<
           if (e.defaultPrevented) return;
           e.preventDefault();
           openerRef.current?.focus();
+        }}
+        onEscapeKeyDown={(e) => {
+          onEscapeKeyDown?.(e);
+          if (isInOpenCombobox(e.target)) e.preventDefault();
         }}
         {...props}
       >
