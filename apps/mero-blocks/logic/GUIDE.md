@@ -58,10 +58,10 @@ Every app tool (and `call`) takes an `app_handle`. Get one from `select_app` wit
    ```
 
    This is the Open group the world's context lives in; `open` is what lets an invited player self-join it later. Keep the returned group id.
-4. `create_context` with `application`, `namespace` set to that group id (despite the argument's name, `create_context` passes it straight through as the target group id, so the Open group's id from step 3 works here), `name` (the world name) and `args`:
+4. `create_context` with `application`, `group` set to that group id (the Open group's id from step 3), `name` (the world name) and `args`:
 
    ```json
-   {"application": "com.calimero.mero-blocks", "namespace": "<group id>", "name": "ci", "args": {"name": "ci", "seed": 42, "now": 1727000000}}
+   {"application": "com.calimero.mero-blocks", "group": "<group id>", "name": "ci", "args": {"name": "ci", "seed": 42, "now": 1727000000}}
    ```
 
    Use a seed in [0, 4294967296): the terrain generator reads it as an unsigned 32-bit integer.
