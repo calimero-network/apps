@@ -32,6 +32,9 @@
  * LandingPage.tsx.
  */
 
+import { COLOR_PRESETS } from '@/constants/config';
+import { TAG_COLORS, TAG_COLOR_NAMES, TAG_NEUTRAL } from '@/lib/tags';
+
 /* ── Layout: the three-pane shell, full-bleed like the app ───────────── */
 const L = 20;
 const R = 475;
@@ -121,15 +124,18 @@ const SortIcon = () => (
 );
 
 /* ── The data both panes show ────────────────────────────────────────── */
-const BLUE = '#3b82f6';
-const PURPLE = '#8b5cf6';
-const GREEN = '#10b981';
-const SLATE = '#64748b';
+const tagHex = (name: (typeof TAG_COLOR_NAMES)[number]) =>
+  TAG_COLORS[TAG_COLOR_NAMES.indexOf(name)];
+const folderHex = (label: string) =>
+  COLOR_PRESETS.find((c) => c.label === label)?.value ?? TAG_NEUTRAL;
+const BLUE = folderHex('Blue');
+const PURPLE = folderHex('Purple');
+const GREEN = folderHex('Green');
 
 const TAGS = [
-  { name: 'roadmap', color: BLUE, count: 3 },
-  { name: 'design', color: PURPLE, count: 2 },
-  { name: 'q3', color: SLATE, count: 2 },
+  { name: 'roadmap', color: tagHex('Blue'), count: 3 },
+  { name: 'design', color: tagHex('Purple'), count: 2 },
+  { name: 'q3', color: tagHex('Slate'), count: 2 },
 ];
 const FOLDERS = [
   { name: 'Product', color: BLUE },
@@ -203,7 +209,7 @@ const CHIPS = [
   { label: 'Archived', w: 40 },
 ];
 const tagColor = (name: string) =>
-  TAGS.find((t) => t.name === name)?.color ?? SLATE;
+  TAGS.find((t) => t.name === name)?.color ?? TAG_NEUTRAL;
 
 /** A rail section header, as SidebarSectionHeader draws it. */
 function RailHead({ label, top }: { label: string; top: number }) {
