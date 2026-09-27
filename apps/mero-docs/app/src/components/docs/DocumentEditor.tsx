@@ -20,6 +20,7 @@ import { useTitleCursors } from '@/hooks/useTitleCursors';
 import type { DriveEditor } from '@/components/editor/blocknote/schema';
 import { DocumentInspector } from './DocumentInspector';
 import { UNNAMED_MEMBER_LABEL } from '@/components/common/MemberLabel';
+import { copyLink, docUrl } from '@/lib/routes';
 
 const TITLE_REFETCH_MS = 800; // one list refetch per rename, not per keystroke
 
@@ -191,6 +192,11 @@ export function DocumentEditor({
         onBack={onClose}
         folderName={folderName}
         onDelete={canEditDocs ? onDelete : undefined}
+        onCopyLink={
+          namespaceId
+            ? () => void copyLink(docUrl(namespaceId, folderId, docId))
+            : undefined
+        }
         onUndo={canEditDocs ? body.undo : undefined}
         onRedo={canEditDocs ? body.redo : undefined}
         onContentChange={canEditDocs ? body.onContentChange : undefined}

@@ -1,5 +1,5 @@
-// Every screen has a URL: reload, back/forward and a signed-out deep link all
-// land on the same screen.
+// Every screen has a URL: reload, back/forward, a signed-out deep link and
+// Copy link all land on the same screen.
 
 import type { Page } from '@playwright/test';
 import { test, expect } from '../fixtures/single-user';
@@ -129,5 +129,18 @@ test.describe('URL routing (single-node)', () => {
     } finally {
       await ctx.close();
     }
+  });
+
+  test('Copy link puts the doc URL on the clipboard', async ({ alice }) => {
+    const page = alice.page;
+    await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+    await alice.openDoc('Linked');
+    await expect.poll(() => pathOf(page)).toMatch(DOC_PATH);
+
+    await page.getByRole('button', { name: 'Copy link' }).click();
+
+    await expect(page.getByText('Link copied')).toBeVisible();
+    const copied = await page.evaluate(() => navigator.clipboard.readText());
+    expect(copied).toBe(new URL(pathOf(page), page.url()).href);
   });
 });

@@ -54,6 +54,7 @@ export interface EditorShellProps {
   onUndo?: () => void;
   onRedo?: () => void;
   onDelete?: () => void;
+  onCopyLink?: () => void;
   /** Called with the serialized document (JSON Block[] string) on every
    *  local edit. Caller debounces and persists. NOT called for remote
    *  content applied via the `initialContent` prop. */
@@ -98,6 +99,7 @@ export const EditorShell: React.FC<EditorShellProps> = ({
   onUndo,
   onRedo,
   onDelete,
+  onCopyLink,
   onContentChange,
   initialContent,
   saveStatus = 'saved',
@@ -293,6 +295,7 @@ export const EditorShell: React.FC<EditorShellProps> = ({
           folderName={folderName}
           onUndo={readOnly ? undefined : onUndo}
           onRedo={readOnly ? undefined : onRedo}
+          onCopyLink={onCopyLink}
           peers={peers}
         />
 

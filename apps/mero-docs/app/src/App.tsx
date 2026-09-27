@@ -142,7 +142,8 @@ function CatchAllRedirect() {
   return <Navigate to={search ? `/${search}` : '/'} replace />;
 }
 
-// `!` is needed: sonner's own colour rules outrank plain utility classes.
+// `!` is needed: sonner's own colour rules outrank plain utility classes. Only
+// an error is red; a confirmation like "Link copied" keeps the card colours.
 function AppToaster() {
   const { theme } = useTheme();
   return (
@@ -154,8 +155,8 @@ function AppToaster() {
         classNames: {
           toast: '!bg-card !text-card-foreground !border-border',
           description: '!text-muted-foreground',
-          title: '!text-destructive',
-          icon: '!text-destructive',
+          error:
+            '[&_[data-title]]:!text-destructive [&_[data-icon]]:!text-destructive',
         },
       }}
     />

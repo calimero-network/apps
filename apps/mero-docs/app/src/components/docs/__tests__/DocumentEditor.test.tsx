@@ -22,8 +22,9 @@ let contextState: {
   error: Error | null;
 };
 
+const toastSuccess = vi.hoisted(() => vi.fn());
 vi.mock('sonner', () => ({
-  toast: { error: toastError },
+  toast: { error: toastError, success: toastSuccess },
 }));
 vi.mock('@calimero-network/mero-react', () => ({
   useSubscription: (_ids: string[], handler: (event: unknown) => void) => {
@@ -65,12 +66,14 @@ vi.mock('@/components/editor/EditorShell', () => ({
     isLoading,
     documentName,
     onDelete,
+    onCopyLink,
     isAppReady,
     isOffline,
   }: {
     isLoading: boolean;
     documentName: string;
     onDelete?: () => void;
+    onCopyLink?: () => void;
     isAppReady: boolean;
     isOffline: boolean;
   }) => (
@@ -80,6 +83,7 @@ vi.mock('@/components/editor/EditorShell', () => ({
       </span>
       {isLoading ? 'Loading document...' : documentName}
       {onDelete && <button onClick={onDelete}>Delete</button>}
+      {onCopyLink && <button onClick={onCopyLink}>Copy link</button>}
     </div>
   ),
 }));
@@ -163,6 +167,20 @@ describe('DocumentEditor', () => {
       expect(toastError).toHaveBeenCalledWith("Couldn't delete document"),
     );
     expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('copies the URL of this document in its folder', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+    render(<DocumentEditor folderId="f" docId="doc-1" onClose={() => {}} />);
+    await screen.findByText('Notes');
+
+    fireEvent.click(screen.getByText('Copy link'));
+
+    await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith('Link copied'));
+    expect(writeText).toHaveBeenCalledWith(
+      `${window.location.origin}/app/ns/f/f/d/doc-1`,
+    );
   });
 
   describe('connection state', () => {

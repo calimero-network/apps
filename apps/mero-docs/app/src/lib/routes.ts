@@ -1,6 +1,8 @@
 // URL shapes for the workspace screens. Ids are opaque, so each one is a single
 // percent-encoded path segment; a malformed tail degrades to its valid prefix.
 
+import { toast } from 'sonner';
+
 const BLOCK_PARAM = 'b'; // `#b=<blockId>` on a doc URL
 const RETURN_TO_KEY = 'mero-drive:returnTo'; // sessionStorage: survives the sign-in redirect
 
@@ -74,4 +76,13 @@ export function readReturnTo(): string | null {
   const inApp = url.pathname === '/app' || url.pathname.startsWith('/app/');
   if (url.origin !== window.location.origin || !inApp) return null;
   return url.pathname + url.search + url.hash;
+}
+
+export async function copyLink(url: string): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(url);
+    toast.success('Link copied');
+  } catch {
+    toast.error("Couldn't copy link");
+  }
 }

@@ -8,6 +8,7 @@ import {
   ChevronLeft,
   MoreHorizontal,
   FileText,
+  Link,
   Redo2,
   Trash2,
   Undo2,
@@ -44,6 +45,7 @@ interface EditorHeaderProps {
   folderName?: string;
   onUndo?: () => void;
   onRedo?: () => void;
+  onCopyLink?: () => void;
   peers?: Peer[];
 }
 
@@ -55,6 +57,7 @@ export const EditorHeader: React.FC<EditorHeaderProps> = ({
   folderName,
   onUndo,
   onRedo,
+  onCopyLink,
   peers = [],
 }) => (
   <header className="flex items-center justify-between px-4 py-3 border-b border-border bg-card">
@@ -106,6 +109,18 @@ export const EditorHeader: React.FC<EditorHeaderProps> = ({
 
     <div className="flex shrink-0 items-center gap-2">
       <PeerAvatars peers={peers} />
+      {onCopyLink && (
+        <Button
+          variant="outline"
+          size="sm"
+          className="gap-1.5"
+          aria-label="Copy link"
+          onClick={onCopyLink}
+        >
+          <Link className="h-3.5 w-3.5" />
+          <span className="hidden sm:inline">Copy link</span>
+        </Button>
+      )}
       {onUndo && (
         <Button
           variant="ghost"

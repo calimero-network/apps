@@ -20,3 +20,19 @@ describe('EditorHeader back button', () => {
     expect(screen.getByRole('button', { name: 'Back' })).toBeTruthy();
   });
 });
+
+describe('EditorHeader copy link', () => {
+  it('copies from a labelled button', () => {
+    const onCopyLink = vi.fn();
+    render(<EditorHeader documentName="Plan" onCopyLink={onCopyLink} />);
+    const button = screen.getByRole('button', { name: 'Copy link' });
+    expect(button.textContent).toContain('Copy link');
+    fireEvent.click(button);
+    expect(onCopyLink).toHaveBeenCalledTimes(1);
+  });
+
+  it('is absent without a link to copy', () => {
+    render(<EditorHeader documentName="Plan" />);
+    expect(screen.queryByRole('button', { name: 'Copy link' })).toBeNull();
+  });
+});
