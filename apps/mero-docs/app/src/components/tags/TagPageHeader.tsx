@@ -2,7 +2,7 @@ import * as React from 'react';
 import { Ellipsis, Palette, Pencil, Trash2 } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
-import { TAG_COLORS } from '@/lib/tags';
+import { TAG_COLORS, TAG_COLOR_NAMES } from '@/lib/tags';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -18,17 +18,6 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { HomeHeader, headerActionClass } from '@/components/home/HomeHeader';
 import { TagDot } from './TagChip';
-
-export const TAG_COLOR_NAMES = [
-  'Blue',
-  'Purple',
-  'Green',
-  'Amber',
-  'Pink',
-  'Red',
-  'Teal',
-  'Slate',
-] as const; // same order as TAG_COLORS
 
 interface Props {
   name: string;

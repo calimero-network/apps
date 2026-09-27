@@ -45,6 +45,12 @@ describe('TagChip', () => {
     expect(onRemove).toHaveBeenCalledOnce();
   });
 
+  // Absolutely placed over the trailing edge, so a removable chip is as wide as a plain one.
+  it('overlays the remove button instead of reserving room for it', () => {
+    render(<TagChip name="roadmap" onRemove={() => {}} />);
+    expect(screen.getByRole('button', { name: 'Remove tag roadmap' }).className).toContain('absolute');
+  });
+
   it('applies the lg size', () => {
     render(<TagChip name="roadmap" size="lg" />);
     expect(screen.getByText('roadmap').className).toContain('h-6');
