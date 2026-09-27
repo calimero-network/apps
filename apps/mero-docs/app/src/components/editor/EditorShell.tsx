@@ -158,6 +158,8 @@ export const EditorShell: React.FC<EditorShellProps> = ({
 
   const [wordCount, setWordCount] = useState(0);
   const [charCount, setCharCount] = useState(0);
+  // Bumps on every document change, local or a peer's, so section focus can look again.
+  const [docRevision, setDocRevision] = useState(0);
 
   // True only while we are programmatically applying remote content, so
   // the resulting onChange does NOT round-trip back out as a local save.
@@ -201,6 +203,7 @@ export const EditorShell: React.FC<EditorShellProps> = ({
       const text = blocksToPlainText(doc);
       setWordCount(countWords(text));
       setCharCount(countCharacters(text));
+      setDocRevision((value) => value + 1);
       if (applyingRemoteRef.current) return;
       const serialized = serializeBlocks(doc);
       if (serialized === lastContentRef.current) return; // no real change
@@ -300,6 +303,7 @@ export const EditorShell: React.FC<EditorShellProps> = ({
     block: focusBlock,
     navKey: focusKey,
     ready: !isLoading && initialContent !== undefined,
+    revision: docRevision,
     scrollRef,
     sectionOf,
     wash,

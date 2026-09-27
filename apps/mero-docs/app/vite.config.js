@@ -110,7 +110,7 @@ export default defineConfig({
     // `@playwright/test` import. Playwright owns its own runner; we
     // only want vitest to see `src/` here.
     include: ['src/**/*.{test,spec}.{ts,tsx}'],
-    css: { include: [/index\.css/] }, // a test reads index.css as text to check the section wash
+    css: { include: [/src\/index\.css\?raw$/] }, // a test reads index.css as text to check the section wash
     exclude: ['e2e/**', 'node_modules/**', 'build/**', 'dist/**'],
   },
   // ⚠️ Pinned, and strict.

@@ -1,6 +1,5 @@
-// Opens a document at the block a `#b=` link names: scrolled near the top,
-// washed briefly and explained by a banner. It acts once per navigation, so
-// later edits and re-renders never pull the reader back.
+// Opens a document at the block a `#b=` link names, once per navigation, so
+// later edits never pull the reader back; a block still syncing lands on arrival.
 
 import {
   useCallback,
@@ -25,6 +24,8 @@ interface Options {
   navKey?: string;
   /** The loaded document's blocks are on screen. */
   ready: boolean;
+  /** Changes whenever the document does, so a missing block is looked for again. */
+  revision?: unknown;
   scrollRef: RefObject<HTMLElement | null>;
   sectionOf: (block: string) => string;
   wash: (block: string | null) => void;
@@ -34,12 +35,14 @@ export function useSectionFocus({
   block,
   navKey,
   ready,
+  revision,
   scrollRef,
   sectionOf,
   wash,
 }: Options) {
   const key = `${navKey ?? ''}#${block ?? ''}`;
   const handledRef = useRef<string | null>(null);
+  const awaitingRef = useRef<string | null>(null); // a navigation whose block has not arrived yet
   const washTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [shown, setShown] = useState<{
     key: string;
@@ -48,16 +51,21 @@ export function useSectionFocus({
 
   useEffect(() => {
     const container = scrollRef.current;
-    if (!block || !ready || !container || handledRef.current === key) return;
+    if (!block || !ready || !container) return;
+    const retry = awaitingRef.current === key;
+    if (handledRef.current === key && !retry) return;
     handledRef.current = key;
     const target = [
       ...container.querySelectorAll<HTMLElement>('[data-block-id]'),
     ].find((el) => el.dataset.blockId === block);
     if (!target) {
+      if (retry) return;
+      awaitingRef.current = key;
       container.scrollTop = 0;
       setShown({ key, banner: { variant: 'missing' } });
       return;
     }
+    awaitingRef.current = null;
     const offset =
       target.getBoundingClientRect().top -
       container.getBoundingClientRect().top;
@@ -72,7 +80,7 @@ export function useSectionFocus({
       key,
       banner: { variant: 'opened', section: sectionOf(block) },
     });
-  }, [block, key, ready, scrollRef, sectionOf, wash]);
+  }, [block, key, ready, revision, scrollRef, sectionOf, wash]);
 
   useEffect(
     () => () => {
@@ -84,7 +92,10 @@ export function useSectionFocus({
   const goTop = useCallback(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = 0;
   }, [scrollRef]);
-  const dismiss = useCallback(() => setShown(null), []);
+  const dismiss = useCallback(() => {
+    awaitingRef.current = null;
+    setShown(null);
+  }, []);
 
   const banner = shown?.key === key ? shown.banner : null;
   return { banner, goTop, dismiss };

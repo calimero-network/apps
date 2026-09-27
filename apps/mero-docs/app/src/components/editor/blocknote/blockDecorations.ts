@@ -5,6 +5,7 @@ import { Plugin, PluginKey, type EditorState } from 'prosemirror-state';
 import { Decoration, DecorationSet, type EditorView } from 'prosemirror-view';
 
 const BLOCK_NODE = 'blockContainer'; // BlockNote's node for one block; its id attr is the block id
+const GROUP_NODE = 'blockGroup'; // holds blocks: the document's and a block's children
 const WASH_CLASS = 'section-wash'; // animation in index.css
 
 interface BlockAttrs {
@@ -18,7 +19,8 @@ const blockAttrsKey = new PluginKey<BlockAttrs>('calimero-block-attrs');
 function build(doc: EditorState['doc'], wash: string | null): DecorationSet {
   const decorations: Decoration[] = [];
   doc.descendants((node, pos) => {
-    if (node.type.name !== BLOCK_NODE) return true;
+    // Only the block skeleton is walked; a block's inline content is never entered.
+    if (node.type.name !== BLOCK_NODE) return node.type.name === GROUP_NODE;
     const id = String(node.attrs.id);
     decorations.push(
       Decoration.node(pos, pos + node.nodeSize, {

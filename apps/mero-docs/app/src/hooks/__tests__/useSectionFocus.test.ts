@@ -30,6 +30,7 @@ interface Props {
   block?: string;
   navKey?: string;
   ready: boolean;
+  revision?: number;
 }
 
 function mount(initial: Props) {
@@ -85,6 +86,79 @@ describe('useSectionFocus', () => {
     expect(container.scrollTop).toBe(0);
     expect(wash).not.toHaveBeenCalled();
     expect(view.result.current.banner).toEqual({ variant: 'missing' });
+  });
+
+  it('lands on a missing block once it syncs in, and says so', () => {
+    const view = mount({
+      block: 'blk-late',
+      navKey: 'k1',
+      ready: true,
+      revision: 1,
+    });
+    expect(view.result.current.banner).toEqual({ variant: 'missing' });
+
+    block('blk-late', 900);
+    view.rerender({
+      block: 'blk-late',
+      navKey: 'k1',
+      ready: true,
+      revision: 2,
+    });
+
+    expect(container.scrollTop).toBe(900 - 100 - 24);
+    expect(wash).toHaveBeenLastCalledWith('blk-late');
+    expect(view.result.current.banner).toEqual({
+      variant: 'opened',
+      section: 'Intro',
+    });
+
+    container.scrollTop = 40;
+    view.rerender({
+      block: 'blk-late',
+      navKey: 'k1',
+      ready: true,
+      revision: 3,
+    });
+    expect(container.scrollTop).toBe(40);
+    expect(wash).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the reader where they scrolled while the block is still missing', () => {
+    const view = mount({
+      block: 'blk-late',
+      navKey: 'k1',
+      ready: true,
+      revision: 1,
+    });
+    container.scrollTop = 40;
+    view.rerender({
+      block: 'blk-late',
+      navKey: 'k1',
+      ready: true,
+      revision: 2,
+    });
+    expect(container.scrollTop).toBe(40);
+    expect(view.result.current.banner).toEqual({ variant: 'missing' });
+  });
+
+  it('stops waiting for a missing block once its banner is dismissed', () => {
+    const view = mount({
+      block: 'blk-late',
+      navKey: 'k1',
+      ready: true,
+      revision: 1,
+    });
+    act(() => view.result.current.dismiss());
+    block('blk-late', 900);
+    view.rerender({
+      block: 'blk-late',
+      navKey: 'k1',
+      ready: true,
+      revision: 2,
+    });
+    expect(container.scrollTop).toBe(0);
+    expect(wash).not.toHaveBeenCalled();
+    expect(view.result.current.banner).toBeNull();
   });
 
   it('does nothing without a linked block', () => {

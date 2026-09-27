@@ -1,6 +1,5 @@
-// Block attributes on a mounted editor. Written straight onto the DOM they
-// were redrawn away on ProseMirror's next mutation flush, so every check
-// here waits for that flush first.
+// Block attributes on a mounted editor. Written onto the DOM directly they vanished
+// on ProseMirror's next mutation flush, so every check waits for that flush.
 import { describe, it, expect, afterEach } from 'vitest';
 import { BlockNoteEditor, createExtension } from '@blocknote/core';
 import { schema } from '../schema';
@@ -56,6 +55,24 @@ describe('blockDecorations', () => {
     );
     await flush();
     expect(stamped(root)).toEqual(['blk-1', 'blk-2', 'blk-3']);
+  });
+
+  it('addresses a nested block too', async () => {
+    const { editor, root } = mountEditor();
+    editor.insertBlocks(
+      [
+        {
+          id: 'blk-3',
+          type: 'bulletListItem',
+          content: 'Roles',
+          children: [{ id: 'blk-4', type: 'bulletListItem', content: 'Guest' }],
+        },
+      ],
+      'blk-2',
+      'after',
+    );
+    await flush();
+    expect(stamped(root)).toEqual(['blk-1', 'blk-2', 'blk-3', 'blk-4']);
   });
 
   it('washes one block until told to stop', async () => {
