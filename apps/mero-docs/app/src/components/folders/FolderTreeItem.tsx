@@ -110,7 +110,7 @@ export function FolderTreeItem({
   return (
     <li>
       <div
-        className={`group flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm cursor-pointer transition-colors ${
+        className={`group flex h-[30px] items-center gap-1.5 rounded-md px-1.5 text-sm cursor-pointer transition-colors ${
           isHighlighted
             ? 'bg-selected text-selected-foreground font-medium'
             : 'text-foreground hover:bg-muted/60'
@@ -204,11 +204,11 @@ export function FolderTreeItem({
       </div>
       {isExpanded && (
         // Subtree guide: the left border draws the vertical tree line,
-        // ml-4 positions it under the parent's chevron, and pl-1 gives
+        // ml-[15px] positions it under the parent's chevron, and pl-1.5 gives
         // children a small gap to the right of the line. Indentation is
         // structural (one nested <ul> per level) rather than a computed
         // per-row padding, so the line and the indent always agree.
-        <ul className="ml-4 mt-1.5 space-y-1.5 border-l border-border/50 pl-2">
+        <ul className="my-0.5 ml-[15px] space-y-px border-l border-border/50 pl-1.5">
           <FolderDocLeaves
             folderId={node.id}
             // Doc ids are per-folder counters, so only the open doc's folder may match.

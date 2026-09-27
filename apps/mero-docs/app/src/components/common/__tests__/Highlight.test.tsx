@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect } from 'vitest';
-import { render } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { Highlight } from '../Highlight';
 
 function marks(container: HTMLElement): string[] {
@@ -20,6 +20,11 @@ describe('Highlight', () => {
       <Highlight text="hello world" ranges={[{ start: 6, end: 11 }]} />,
     );
     expect(marks(container)).toEqual(['world']);
+  });
+
+  it('sets matches in semibold', () => {
+    render(<Highlight text="hello world" ranges={[{ start: 6, end: 11 }]} />);
+    expect(screen.getByText('world').className).toContain('font-semibold');
   });
 
   it('merges overlapping and unsorted ranges', () => {

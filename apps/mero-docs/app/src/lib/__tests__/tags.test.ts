@@ -7,6 +7,7 @@ import {
   tagCounts,
   tagKeyFor,
   TAG_COLORS,
+  TAG_COLOR_NAMES,
   TAG_NAME_MAX,
   TAG_NEUTRAL,
   type Tag,
@@ -37,6 +38,19 @@ describe('tag constants', () => {
     ]);
     expect(TAG_NEUTRAL).toBe('#94a3b8');
     expect(TAG_NAME_MAX).toBe(32);
+  });
+
+  it('names every colour, in the same order', () => {
+    expect(TAG_COLOR_NAMES).toEqual([
+      'Blue',
+      'Purple',
+      'Green',
+      'Amber',
+      'Pink',
+      'Red',
+      'Teal',
+      'Slate',
+    ]);
   });
 });
 

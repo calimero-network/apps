@@ -54,7 +54,7 @@ export function Highlight({ text, ranges }: HighlightProps) {
   merged.forEach((range, i) => {
     if (range.start > cursor) nodes.push(text.slice(cursor, range.start));
     nodes.push(
-      <mark key={i} className="rounded-[2px] bg-selected text-selected-foreground">
+      <mark key={i} className="rounded-[2px] bg-selected font-semibold text-selected-foreground">
         {text.slice(range.start, range.end)}
       </mark>
     );

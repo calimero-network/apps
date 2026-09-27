@@ -2,23 +2,13 @@ import * as React from 'react';
 import { Plus } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
-import { TAG_COLORS, TAG_NEUTRAL } from '@/lib/tags';
+import { TAG_COLORS, TAG_COLOR_NAMES, TAG_NEUTRAL } from '@/lib/tags';
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
 
-const TAG_COLOR_NAMES = [
-  'Blue',
-  'Purple',
-  'Green',
-  'Amber',
-  'Pink',
-  'Red',
-  'Teal',
-  'Slate',
-] as const; // TAG_COLORS order
 const rowClass =
   'flex h-8 cursor-pointer items-center gap-2 rounded-md px-2 text-[13px] text-secondary-foreground aria-selected:bg-accent aria-selected:text-foreground'; // a suggestion or the create row
 
