@@ -30,7 +30,10 @@ import { useDriveWorkspace } from './useDriveWorkspace';
 // this fleet has had folder ids, context ids and account ids all be bare
 // 64-hex strings that type-check in each other's slots.
 import { FolderId } from '../generated/registry/RegistryClient';
-import type { Role, FolderRoleEntry } from '../generated/registry/RegistryClient';
+import type {
+  Role,
+  FolderRoleEntry,
+} from '../generated/registry/RegistryClient';
 
 export interface FolderRoleState {
   /** The caller's role on this folder. `null` = not-yet-resolved
@@ -83,6 +86,7 @@ export function useFolderRole(folderId: string | null): FolderRoleState {
   // re-memo, tick bump), we keep the prior value visible until the new
   // one resolves. Without this guard, every churn of useDriveWorkspace
   // bounces canEditDocs through false → true on the next render.
+  const resolvedForRef = useRef<string | null>(null); // folder whose role last resolved
   const lastFolderIdRef = useRef<string | null>(null);
 
   // `folderId` may be empty-string from `useFolderPermissions` when no
@@ -110,6 +114,7 @@ export function useFolderRole(folderId: string | null): FolderRoleState {
       // Different folder → clear prior role; loading from null is the
       // honest state until the new role resolves.
       setRoleState(null);
+      resolvedForRef.current = null;
     }
     // Always clear the error before a fresh attempt — keeps a previous
     // failure from haunting a subsequent successful refetch.
@@ -122,6 +127,7 @@ export function useFolderRole(folderId: string | null): FolderRoleState {
       .then((r) => {
         if (cancelled) return;
         const fetchedRole = (r as Role) ?? 'Editor';
+        resolvedForRef.current = folder;
         // Diff-guard: an SSE-triggered refetch that resolves to the
         // same role should not touch state — returning `prev` lets
         // React bail the re-render (see useMemberCaps for why this
@@ -130,6 +136,12 @@ export function useFolderRole(folderId: string | null): FolderRoleState {
       })
       .catch((e) => {
         if (cancelled) return;
+        // A fault is not an answer: a role this folder already resolved stands,
+        // or every failed sync re-read would flip the editor to read-only.
+        if (resolvedForRef.current === folder) {
+          console.warn('[useFolderRole] re-read failed; keeping last role', e);
+          return;
+        }
         setError(e instanceof Error ? e : new Error(String(e)));
       })
       .finally(() => {

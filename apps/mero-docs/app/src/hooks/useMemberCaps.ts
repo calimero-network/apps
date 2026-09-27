@@ -110,6 +110,8 @@ export function useMemberCaps(
     error: null,
     denied: false,
   });
+  const stateRef = useRef(state);
+  stateRef.current = state;
   const [tick, setTick] = useState(0);
   const refetch = useCallback(() => setTick((t) => t + 1), []);
   // Caps change without a context event; the registry's sync run is the tick.
@@ -222,12 +224,17 @@ export function useMemberCaps(
       if (signal.aborted) return;
       const finalErr =
         lastErr instanceof Error ? lastErr : new Error(String(lastErr));
-      setState({
-        caps: 0,
-        isAdmin: false,
-        error: finalErr,
-        denied: isPropagationLagError(lastErr),
-      });
+      const refused = isPropagationLagError(lastErr);
+      // A fault is not an answer: only a refusal may take away caps a read already granted.
+      const last = stateRef.current;
+      if (!refused && last.caps !== null && last.error === null) {
+        console.warn(
+          '[useMemberCaps] re-read failed; keeping last caps',
+          finalErr,
+        );
+        return;
+      }
+      setState({ caps: 0, isAdmin: false, error: finalErr, denied: refused });
     })();
 
     return () => {

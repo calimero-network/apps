@@ -106,6 +106,35 @@ describe('useMemberCaps', () => {
     12000,
   );
 
+  it('keeps the last good caps when a re-read fails for another reason', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    getCaps.mockResolvedValue({ capabilities: 5 });
+    const { result } = renderHook(() => useMemberCaps('ns', 'g1'));
+    await waitFor(() => expect(result.current.caps).toBe(5));
+    listMembers.mockRejectedValue(new Error('HTTP 502'));
+    act(() => result.current.refetch());
+    await waitFor(() => expect(listMembers).toHaveBeenCalledTimes(2));
+    await new Promise((settled) => setTimeout(settled, 20)); // let the failed read finish
+    expect(result.current.caps).toBe(5);
+    expect(result.current.error).toBeNull();
+  });
+
+  it(
+    'drops to no caps when a re-read is refused as not a member',
+    async () => {
+      getCaps.mockResolvedValue({ capabilities: 5 });
+      const { result } = renderHook(() => useMemberCaps('ns', 'g1'));
+      await waitFor(() => expect(result.current.caps).toBe(5));
+      getCaps.mockRejectedValue(new Error('identity is not a member'));
+      act(() => result.current.refetch());
+      await waitFor(() => expect(result.current.denied).toBe(true), {
+        timeout: 9000,
+      });
+      expect(result.current.caps).toBe(0);
+    },
+    12000,
+  );
+
   it('refetch() re-runs the membership probe', async () => {
     getCaps.mockResolvedValue({ capabilities: 1 });
     const { result } = renderHook(() => useMemberCaps('ns', 'g1'));
