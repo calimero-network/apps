@@ -1,9 +1,9 @@
 import { toast } from 'sonner';
 
-export async function copyLink(url: string): Promise<void> {
+export async function copyLink(url: string, message = 'Link copied'): Promise<void> {
   try {
     await navigator.clipboard.writeText(url);
-    toast.success('Link copied');
+    toast.success(message);
   } catch {
     toast.error("Couldn't copy link");
   }

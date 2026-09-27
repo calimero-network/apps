@@ -15,6 +15,12 @@ describe('copyLink', () => {
     expect(toast.success).toHaveBeenCalledWith('Link copied');
   });
 
+  it('says what was copied when told', async () => {
+    Object.assign(navigator, { clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } });
+    await copyLink('http://x/app/w#b=blk', 'Link to "Milestones" copied');
+    expect(toast.success).toHaveBeenCalledWith('Link to "Milestones" copied');
+  });
+
   it('says so when the clipboard refuses', async () => {
     Object.assign(navigator, {
       clipboard: { writeText: vi.fn().mockRejectedValue(new Error('denied')) },

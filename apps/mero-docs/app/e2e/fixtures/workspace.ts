@@ -16,6 +16,10 @@
 import type { Page, Locator } from '@playwright/test';
 import { expect } from '@playwright/test';
 
+const FILLER_LINES = 30; // enough text above "Milestones" that landing on it needs a scroll
+export const SECTION_PARAGRAPH =
+  'Pricing follows the model in Pricing notes, and the story lives in the blog'; // longer than a section name
+
 export type Visibility = 'Open' | 'Restricted';
 
 export interface CreateFolderOptions {
@@ -595,6 +599,49 @@ export class EditorDriver {
     const confirm = await this.openDeleteConfirm();
     await confirm.getByRole('button', { name: /^Delete$/ }).click();
     await expect(confirm).toBeHidden();
+  }
+
+  block(text: string): Locator {
+    return this.page.getByTestId('doc-block').filter({ hasText: text }).first();
+  }
+
+  // BlockNote shows the drag handle beside the hovered block.
+  async openBlockMenu(text: string): Promise<void> {
+    await this.block(text).hover();
+    await this.page.getByRole('button', { name: 'Open block menu' }).click();
+  }
+
+  // A long intro, then a "Milestones" heading, a line under it and SECTION_PARAGRAPH.
+  async writeSections(): Promise<void> {
+    await this.type('Intro');
+    for (let line = 1; line <= FILLER_LINES; line++) {
+      await this.page.keyboard.press('Enter');
+      await this.page.keyboard.type(`Filler line ${line}`);
+    }
+    for (const text of ['# Milestones', 'Folder sharing and roles', SECTION_PARAGRAPH]) {
+      await this.page.keyboard.press('Enter');
+      await this.page.keyboard.type(text);
+    }
+    await expect(this.block('Milestones').locator('h1')).toBeVisible();
+  }
+
+  /** A block's top edge relative to the editor's scroll area. */
+  async offsetInScroller(text: string): Promise<number | null> {
+    const scroller = this.page.getByTestId('doc-editor').locator('xpath=..');
+    const [block, area] = await Promise.all([
+      this.block(text).boundingBox(),
+      scroller.boundingBox(),
+    ]);
+    return block && area ? block.y - area.y : null;
+  }
+
+  // The item stays disabled ("Saving…") until the node has the block's id.
+  async copySectionLink(text: string): Promise<string> {
+    await this.openBlockMenu(text);
+    const item = this.page.getByRole('menuitem', { name: /Copy link to section/ });
+    await expect(item).toBeEnabled({ timeout: 15_000 });
+    await item.click();
+    return this.page.evaluate(() => navigator.clipboard.readText());
   }
 }
 

@@ -90,6 +90,8 @@ export interface UseFugueBodyResult {
   /** The backend id of a block the editor knows by its own id, and back. */
   backendIdOf: (editorId: string) => string;
   editorIdOf: (backendId: string) => string;
+  /** False while a block the editor minted still waits for the node's id. */
+  isConfirmed: (editorId: string) => boolean;
 }
 
 interface Caret {
@@ -176,6 +178,12 @@ export function useFugueBody({
     }
     return backendId;
   }, []);
+
+  const isConfirmed = useCallback(
+    (editorId: string) =>
+      idMapRef.current.has(editorId) || serverRef.current.some((block) => block.id === editorId),
+    [],
+  );
 
   /** The editor's document as the flat list the diff takes, in backend ids. */
   const localBlocks = useCallback((): EditorBlock[] => {
@@ -662,5 +670,6 @@ export function useFugueBody({
     revision,
     backendIdOf,
     editorIdOf,
+    isConfirmed,
   };
 }

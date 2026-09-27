@@ -398,6 +398,27 @@ describe('useFugueBody', () => {
     expect(client.applyDeltaOn).toHaveBeenCalledTimes(1);
   });
 
+  it('confirms a new block only once the node has minted its id', async () => {
+    const client = fakeClient([row('blk-1', 'a')]);
+    const minted = deferred<string>();
+    client.insertBlock.mockReturnValue(minted.promise);
+    client.applyDeltaOn.mockResolvedValue(applied('hi'));
+    const editor = new FakeEditor();
+    const { result } = await mount(client, editor);
+    expect(result.current.isConfirmed('blk-1')).toBe(true);
+
+    editor.insertBlocks([bn('local-2', 'hi') as unknown as Record<string, unknown>], 'blk-1', 'after');
+    await settle();
+    expect(result.current.isConfirmed('local-2')).toBe(false);
+    expect(result.current.backendIdOf('local-2')).toBe('local-2');
+
+    client.getDocument.mockResolvedValue([row('blk-1', 'a'), row('blk-new', 'hi')]);
+    await act(async () => minted.resolve('blk-new'));
+    await settle();
+    expect(result.current.isConfirmed('local-2')).toBe(true);
+    expect(result.current.backendIdOf('local-2')).toBe('blk-new');
+  });
+
   it('turns Enter mid-block into one split and never resends it', async () => {
     const client = fakeClient([row('blk-1', 'hello world')]);
     const editor = new FakeEditor();
