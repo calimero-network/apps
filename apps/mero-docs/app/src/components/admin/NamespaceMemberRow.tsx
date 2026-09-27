@@ -61,6 +61,8 @@ interface Props {
   /** True when this row is the caller's own identity — surfaces a
    *  "(you)" badge after the display name. */
   isSelf?: boolean;
+  /** True for the workspace owner, whom the node never removes. */
+  isOwner?: boolean;
   /** Presence hint only: the account behind it is self-asserted, so it gates nothing. */
   isPresent?: boolean;
   canManage: boolean;
@@ -76,6 +78,7 @@ export function NamespaceMemberRow({
   actorCaps,
   adminCount,
   isSelf,
+  isOwner = false,
   isPresent = false,
   canManage,
   onAfterRoleChange,
@@ -247,6 +250,9 @@ export function NamespaceMemberRow({
   // has CAN_MANAGE_METADATA. The hook short-circuits these branches
   // (server enforces the same authz; this is just the UI gate).
   const showRenameAffordance = canRename && !isSelf;
+  // The node refuses to remove the owner or the last admin, so neither is offered.
+  const removable =
+    canManage && !isOwner && !(currentRole === 'Admin' && adminCount <= 1);
 
   return (
     <li className="px-4 py-2 text-sm">
@@ -338,7 +344,7 @@ export function NamespaceMemberRow({
             disabled={!canManage || updating || roleAdmin.saving}
             ariaLabel={`Role for ${label}`}
           />
-          {canManage && (
+          {removable && (
             <Button
               variant="ghost"
               size="icon"

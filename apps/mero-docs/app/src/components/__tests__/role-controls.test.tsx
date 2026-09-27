@@ -179,6 +179,22 @@ describe('workspace member row', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Remove Alice' }));
     await waitFor(() => expect(onRemove).toHaveBeenCalledTimes(1));
   });
+
+  // The node refuses both: the owner is immune from removal, and a group keeps one admin.
+  it('offers the owner no way to leave or be removed', () => {
+    renderWorkspaceRow({ isSelf: true, isOwner: true });
+    expect(screen.queryByRole('button', { name: 'Remove Alice' })).toBeNull();
+  });
+
+  it('offers no removal of the only admin', () => {
+    renderWorkspaceRow({ role: 'Admin', adminCount: 1 });
+    expect(screen.queryByRole('button', { name: 'Remove Alice' })).toBeNull();
+  });
+
+  it('still offers removal of one admin among several', () => {
+    renderWorkspaceRow({ role: 'Admin', adminCount: 2 });
+    expect(screen.getByRole('button', { name: 'Remove Alice' })).toBeTruthy();
+  });
 });
 
 function renderFolderRow() {
