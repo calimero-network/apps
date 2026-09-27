@@ -448,7 +448,6 @@ impl IssueTracker {
     /// ```json
     /// {"issue_id":"<issue id>","summary":"Fails on every third run."}
     /// ```
-    #[app::destructive]
     #[app::idempotent]
     pub fn set_summary(&mut self, issue_id: String, summary: String) -> app::Result<()> {
         validate_section("summary", &summary)?;
@@ -467,7 +466,6 @@ impl IssueTracker {
     /// ```json
     /// {"issue_id":"<issue id>","impact":"Every merge waits for a manual re-run."}
     /// ```
-    #[app::destructive]
     #[app::idempotent]
     pub fn set_impact(&mut self, issue_id: String, impact: String) -> app::Result<()> {
         validate_section("impact", &impact)?;
@@ -486,7 +484,6 @@ impl IssueTracker {
     /// ```json
     /// {"issue_id":"<issue id>","repro":"Run the e2e job three times on main."}
     /// ```
-    #[app::destructive]
     #[app::idempotent]
     pub fn set_repro(&mut self, issue_id: String, repro: String) -> app::Result<()> {
         validate_section("repro", &repro)?;
@@ -505,7 +502,6 @@ impl IssueTracker {
     /// ```json
     /// {"issue_id":"<issue id>","resolution_criteria":"Twenty consecutive green runs."}
     /// ```
-    #[app::destructive]
     #[app::idempotent]
     pub fn set_resolution_criteria(
         &mut self,
@@ -599,6 +595,7 @@ impl IssueTracker {
     /// ```json
     /// {"issue_id":"<issue id>","label":"ci"}
     /// ```
+    #[app::destructive]
     #[app::idempotent]
     pub fn remove_label(&mut self, issue_id: String, label: String) -> app::Result<()> {
         if !self.issue_exists(&issue_id)? {
@@ -829,7 +826,6 @@ impl IssueTracker {
     /// ```json
     /// {"comment_id":"<comment id>","new_body":"Seen twice on main."}
     /// ```
-    #[app::destructive]
     #[app::idempotent]
     pub fn edit_comment(&mut self, comment_id: String, new_body: String) -> app::Result<()> {
         if new_body.trim().is_empty() {
