@@ -56,7 +56,7 @@ export function WorkspaceIndexProvider({
   children: React.ReactNode;
 }) {
   const index = useWorkspaceIndex();
-  const tags = useTagsSource();
+  const tags = useTagsSource(index);
   const [byFolder, setByFolder] = useState<Record<string, PresenceByDoc>>({});
   const report = useCallback<ReportPresence>((folderId, byDoc) => {
     setByFolder((prev) => {
